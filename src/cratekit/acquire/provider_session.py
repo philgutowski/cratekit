@@ -1,0 +1,180 @@
+"""The adapter is the sole owner of the provider credential (R4, plan U14.5).
+
+WHAT IS WRONG TODAY. The vendored downloader authorises itself and persists its
+own session to a plaintext file in the user's configuration directory. Nothing in
+the product put it there and nothing in the product knows when it changes, so
+R4's promise that credentials live in the OS keychain is false on the one surface
+that holds a long-lived refresh token. The keychain would hold everything except
+the credential that actually matters.
+
+WHAT THIS DOES INSTEAD. The keychain is the system of record. For the life of ONE
+invocation the adapter materialises the stored session into a private runtime
+file, hands the wrapped tool that path, takes back whatever the tool refreshed,
+writes it to the keychain, and erases the file. Between invocations there is no
+token on disk at all.
+
+THREE PROPERTIES, EACH LOAD-BEARING:
+
+* **The file and its directory are both private.** A 0600 file inside a
+  world-writable directory is not protected: any local account can unlink it and
+  put its own file in place, and the mode on the file it replaced is irrelevant.
+  Both modes come from ``core/config``'s private writers rather than from this
+  module's own chmod, so there is one implementation of "private" (P1).
+* **The erase runs on every exit path.** A run that raised is exactly the run
+  most likely to leave a token behind, so the cleanup is in a ``finally`` and is
+  not conditional on success.
+* **The write-back is validated before it replaces the keychain entry.** A tool
+  killed mid-write leaves a truncated file, and copying that over the stored
+  session destroys the only good copy. An unreadable file is left alone and the
+  keychain keeps what it had.
+
+WHAT THIS IS NOT. It is not a lock. Two invocations in one installation would
+each materialise their own file in their own directory, which is correct for
+reading and is a last-writer-wins race for the refreshed token. Serialising
+acquisition belongs to the job engine, not here.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import tempfile
+import tomllib
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from pathlib import Path
+
+import tomli_w
+
+from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken, Remedy
+from cratekit.core import config, secrets
+
+#: Fields that make a session blob usable. A write-back missing all of them is a
+#: truncated or empty file rather than a refreshed session, and replacing a good
+#: keychain entry with it would cost the user their authorisation.
+SESSION_FIELDS = ("access_token", "refresh_token", "token_type", "expiry_time")
+
+
+@dataclass(frozen=True, slots=True)
+class Codec:
+    """How one tool expects its credential file encoded.
+
+    This exists because the credential is the thing acquisition tools agree on
+    LEAST. The vendored downloader reads a JSON token file written by its client
+    library; the alternative reads its own configuration file. Both hold the same
+    session, so the keychain stores one blob and the codec decides its shape on
+    disk. Without this, either the second adapter reads a file it cannot parse,
+    or the credential module grows a branch per tool.
+    """
+
+    name: str
+    dumps: Callable[[dict], bytes]
+    loads: Callable[[str], object]
+
+
+JSON = Codec(
+    name="json",
+    dumps=lambda payload: json.dumps(payload, sort_keys=True).encode("utf-8"),
+    loads=json.loads,
+)
+
+TOML = Codec(name="toml", dumps=lambda payload: tomli_w.dumps(payload).encode("utf-8"),
+             loads=tomllib.loads)
+
+
+@dataclass(frozen=True, slots=True)
+class SessionScope:
+    """The live, private token file for one invocation."""
+
+    #: The private directory holding it. Erased whole when the scope closes.
+    directory: Path
+    #: The file the wrapped tool reads and rewrites.
+    path: Path
+
+
+def _to_auth_failure(exc: secrets.CredentialError) -> AdapterAuthFailed | AdapterBroken:
+    """Translate a credential failure into the adapter vocabulary.
+
+    Kept as a translation rather than a re-raise because the two vocabularies
+    answer different questions and collapsing them loses the one distinction that
+    changes what the user does. No keychain at all is an adapter that cannot run,
+    and telling that user to re-authorise sends them to a dialog that has nowhere
+    to write the answer. A missing or stale entry is an authorisation problem,
+    and telling that user to repair their keychain sends them to fix something
+    that is working.
+    """
+    if isinstance(exc, secrets.CredentialBackendUnavailable):
+        return AdapterBroken(str(exc), remedy=Remedy.REPAIR_CREDENTIAL_STORE)
+    return AdapterAuthFailed(str(exc), remedy=Remedy.REAUTHENTICATE_PROVIDER)
+
+
+@contextmanager
+def materialised_session(
+    name: str = secrets.Credential.PROVIDER_SESSION,
+    *,
+    filename: str = "session.json",
+    codec: Codec = JSON,
+) -> Iterator[SessionScope]:
+    """Yield a private, short-lived file holding the stored provider session.
+
+    ``filename`` and ``codec`` are parameters because the adapters wrap tools
+    that disagree about both. Forking this module per tool would put the erase,
+    the mode, and the write-back guard in two places, and the one that got fixed
+    would not be the one running.
+    """
+    try:
+        payload = secrets.get_json(name)
+    except secrets.CredentialError as exc:
+        raise _to_auth_failure(exc) from exc
+
+    # mkdtemp creates at 0700 already; the private writer below re-asserts both
+    # the directory and the file mode so the guarantee does not depend on the
+    # standard library's default staying what it is today (P1).
+    directory = Path(tempfile.mkdtemp(prefix="cratekit-session-"))
+    path = directory / filename
+    try:
+        config.atomic_write_bytes(codec.dumps(payload), path, mode=config.PRIVATE_FILE_MODE)
+        yield SessionScope(directory=directory, path=path)
+        write_back(name, path, codec=codec)
+    finally:
+        # Unconditional. The run that raised is the run most likely to have left
+        # a live refresh token sitting in a temporary directory.
+        shutil.rmtree(directory, ignore_errors=True)
+
+
+def write_back(name: str, path: Path, *, codec: Codec = JSON) -> bool:
+    """Return a refreshed session to the keychain, or leave the keychain alone.
+
+    Returns whether the keychain was updated, so a caller can tell "the tool
+    refreshed nothing" from "the tool wrote something unusable". Silence on an
+    unreadable file is deliberate: raising turns a cosmetic problem at the end of
+    a successful run into a failed run, and writing it anyway destroys the stored
+    session. Doing nothing keeps the last known good credential, which is the
+    only one of the three outcomes the user can recover from unaided.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    try:
+        refreshed = codec.loads(raw)
+    except Exception:  # noqa: BLE001 - every codec fails differently; none may raise out
+        return False
+    if not isinstance(refreshed, dict):
+        return False
+    if not any(field in refreshed for field in SESSION_FIELDS):
+        return False
+    secrets.set_json(name, refreshed)
+    return True
+
+
+__all__ = [
+    "JSON",
+    "SESSION_FIELDS",
+    "TOML",
+    "Codec",
+    "SessionScope",
+    "materialised_session",
+    "write_back",
+]
