@@ -154,6 +154,11 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # session lock above because the holder is a different thing and the
         # wait is a different length, and identical remediation is not identity.
         "write-lock-held": ExitCode.LIBRARY_BUSY,
+        # The job engine's one-driver-per-job lock (U10). A third slug on this
+        # code for the same stated reason as the second: the remedy is "wait for
+        # the holder" in all three cases, and what differs is WHAT is held, which
+        # is the only thing that helps a person work out how long to wait.
+        "job-driver-held": ExitCode.LIBRARY_BUSY,
         "rekordbox-running": ExitCode.REKORDBOX_OPEN,
         "library-volume-unmounted": ExitCode.LIBRARY_UNAVAILABLE,
         "library-volume-mismatch": ExitCode.LIBRARY_UNAVAILABLE,
@@ -181,6 +186,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "config-unusable": ExitCode.PRECONDITION,
         "module-extras-missing": ExitCode.MODULE_UNAVAILABLE,
         "credential-missing": ExitCode.PRECONDITION,
+        # U10. A named job that is not in this installation's queue, and a queue
+        # written by a different build of the product. Both are 3x rather than a
+        # command-line class because ``USAGE`` belongs to the argument parser and
+        # to nothing else, and both carry their remediation as STEPS rather than
+        # a token: neither fix is a command, and inventing a token that renders
+        # to one would be worse than saying the sentence.
+        "job-unknown": ExitCode.PRECONDITION,
+        "job-schema-mismatch": ExitCode.PRECONDITION,
         "backup-acknowledgment-missing": ExitCode.ACK_REQUIRED,
         # ── Upstream ────────────────────────────────────────────────────────
         "auth-failed": ExitCode.UPSTREAM_AUTH,

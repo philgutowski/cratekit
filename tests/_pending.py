@@ -74,13 +74,6 @@ PENDING: dict[str, tuple[str, str]] = {
         "with stable identifiers, rather than writing a CSV for a human to hand "
         "edit, which is what fourteen files in the source system already are",
     ),
-    "cratekit.core.jobs": (
-        "U10",
-        "that a verb declaring itself long-running QUEUES through the job engine "
-        "instead of working inline, and that its handler key resolves without "
-        "importing the module, which is what keeps the lazy-import stubs intact "
-        "across the subprocess boundary (KTD26)",
-    ),
     "cratekit.core.session": (
         "U8",
         "that every destructive verb refuses without the library lock, the "
