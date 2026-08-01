@@ -111,6 +111,18 @@ FORBIDDEN_ANLZ_SYMBOLS = frozenset(
         "AnlzFile",                  # the serialiser: build() then save(path)
         "update_content_path",       # saves every ANLZ file, then commits unguarded
         "update_content_filename",   # delegates to update_content_path
+        # THE GRID SETTERS THEMSELVES, which close a hole the first three left.
+        # ``read_anlz_files`` is legal and returns LIVE AnlzFile objects, so a
+        # caller could take one, reach its PQTZ tag, rewrite the beat grid, and
+        # save it without naming any of the three names above. Forbidding the
+        # setters closes that path without forbidding reading, which is the line
+        # this file draws everywhere else. Derived from the binding: these are
+        # every ``set*`` method on every ANLZ tag class in pyrekordbox 0.4.4, and
+        # a test asserts that derivation still holds, so a binding that adds a
+        # fifth setter fails here rather than opening the hole again.
+        "set_bpms",
+        "set_beats",
+        "set_times",
     }
 )
 
@@ -513,3 +525,57 @@ def test_reading_anlz_paths_is_not_a_violation():
         "    pass\n"
     )
     assert anlz_write_violations(source, "cratekit.core.analysis_state") == []
+
+
+def test_the_forbidden_setters_are_every_setter_the_binding_offers():
+    """P4. A derived set must be derived completely, or it is a list in disguise.
+
+    The three setter names are a claim about pyrekordbox's ANLZ tag API. Checked
+    against the binding at run time, so a version that adds a fourth way to write
+    a grid fails here rather than quietly leaving the hole open. Nothing about
+    this asserts the AnlzFile names, which are a different claim.
+    """
+    import inspect as _inspect
+
+    from pyrekordbox.anlz import tags as anlz_tags
+
+    offered = {
+        method
+        for name in dir(anlz_tags)
+        if _inspect.isclass(getattr(anlz_tags, name)) and "Tag" in name
+        for method in dir(getattr(anlz_tags, name))
+        if method.startswith("set_")
+    }
+    assert offered, "found no setters on the binding's tag classes; the walk is broken"
+
+    missing = sorted(offered - FORBIDDEN_ANLZ_SYMBOLS)
+    assert not missing, (
+        f"pyrekordbox offers {missing} to write ANLZ tag data and the scan does not "
+        "forbid them, so a grid could be rewritten through a handle the binding returns"
+    )
+
+
+def test_the_grid_setter_route_is_caught(tmp_path):
+    """The exact path the first three names left open.
+
+    Read the files, which is legal, then rewrite the grid through the tag and
+    save. It names no forbidden AnlzFile symbol, so only the setters catch it.
+    """
+    source = (
+        "def repoint(db, cid, bpms):\n"
+        "    files = db.read_anlz_files(cid)\n"
+        "    for path, f in files.items():\n"
+        "        f.get_tag('PQTZ').set_bpms(bpms)\n"
+        "        f.save(path)\n"
+    )
+    assert anlz_write_violations(source, "cratekit.probe")
+
+
+def test_reading_and_saving_nothing_is_still_allowed():
+    """P7 again, on the widened set. Reading stays legal, all the way through."""
+    source = (
+        "def report(db, cid):\n"
+        "    files = db.read_anlz_files(cid)\n"
+        "    return {p: f.get_tag('PQTZ') for p, f in files.items()}\n"
+    )
+    assert anlz_write_violations(source, "cratekit.probe") == []
