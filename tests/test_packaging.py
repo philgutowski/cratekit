@@ -102,13 +102,20 @@ def test_extras_are_named_for_modules_and_carry_the_weight(pyproject):
     vocals = {_distribution_name(spec) for spec in extras["vocals"]}
     assert "torch" in vocals
 
-    # The aggregate is a convenience, not a module, and must name every real
-    # extra so that installing it cannot silently miss one.
+    # The aggregate must name every extra that corresponds to a feature module,
+    # so installing it cannot silently miss one. Two extras are deliberately not
+    # feature modules and are excluded by name: "all" itself, and "dev", which
+    # carries contributor tooling. A user installing every feature should not
+    # thereby install a test runner and a commit-hook framework.
+    NON_MODULE_EXTRAS = {"all", "dev"}
     aggregate = extras["all"]
     assert len(aggregate) == 1
     named = set(re.search(r"\[(.*)\]", aggregate[0]).group(1).split(","))
-    real_extras = set(extras) - {"all"}
-    assert named == real_extras
+    module_extras = set(extras) - NON_MODULE_EXTRAS
+    assert named == module_extras, (
+        "the 'all' aggregate must list exactly the feature-module extras; "
+        "a new module extra was added without adding it here"
+    )
 
 
 def test_one_console_script_named_crate(pyproject):

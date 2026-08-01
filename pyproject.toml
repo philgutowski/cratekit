@@ -59,6 +59,13 @@ web = [
     "jinja2>=3.1",
 ]
 desktop = ["pywebview>=5.0"]
+# Not a module either. It exists because the repository scan is only a guard
+# once `pre-commit install` has run, and that command is only available once
+# pre-commit is installed. Leaving both to a README step means the guard is off
+# by default on every fresh clone, which was observed: a planted personal path
+# committed cleanly on a machine where pre-commit was not on PATH. Shipping the
+# tool with the dev install makes the documented setup actually executable.
+dev = ["pre-commit>=3.7", "pytest>=8.0", "ruff>=0.6"]
 # Convenience aggregate. Not a module; it exists so a maintainer can install
 # every extra in one command without hand-listing them.
 all = ["cratekit[analysis,vocals,web,desktop]"]
