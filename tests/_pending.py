@@ -84,6 +84,29 @@ PENDING: dict[str, tuple[str, str]] = {
         "U28",
         "the shipped operator skills the skills lint runs over",
     ),
+    "cratekit.cli.registry": (
+        "U5",
+        "that every verb the standalone utilities declare is present in the "
+        "static module registry with the feature toggle that governs it, so a "
+        "shipped module whose verb nobody registered fails the build by "
+        "omission rather than by somebody noticing",
+    ),
+    "cratekit.core.session": (
+        "U8",
+        "that every verb this unit declares destructive is bound to the library "
+        "lock, the backup acknowledgment, and the volume identity assertion "
+        "(KTD24, R38). A backup restore replaces a live database and its "
+        "sidecars while writing no database row, which is exactly the operation "
+        "a rule binding the gates to database writes alone would leave outside "
+        "the entire safety spine",
+    ),
+    "cratekit.cli.exit_codes": (
+        "U5",
+        "that every structured refusal cause the standalone utilities raise has "
+        "a reserved exit code and a remediation, which is the S4 obligation "
+        "applied to this unit: a refusal with no reserved code collapses to a "
+        "bare status at the process boundary and cannot be recovered downstream",
+    ),
 }
 
 
