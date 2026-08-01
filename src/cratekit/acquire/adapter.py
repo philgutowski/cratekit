@@ -87,6 +87,11 @@ class Remedy(StrEnum):
     RETRY_LATER = "retry-later"
     #: The tool's own settings did not take the values the adapter pushed in.
     REPAIR_ADAPTER_SETTINGS = "repair-adapter-settings"
+    #: The provider refused this CLIENT rather than this request: a forbidden
+    #: response or a bot challenge. Distinct from ``RETRY_LATER`` because the two
+    #: instructions are opposites at the only moment either is read. Retrying a
+    #: throttle is correct; retrying a block is what turns it into a lockout.
+    PAUSE_AND_CHECK_ACCOUNT = "pause-and-check-account"
 
 
 class AdapterError(Exception):
@@ -541,10 +546,13 @@ class AdapterSettings:
     download_staging: Path
     quality: str = "lossless"
     lossless_policy: LosslessPolicy = LosslessPolicy.STRICT
-    #: None means "the adapter's own default". Seconds between acquisitions.
+    #: None means "the adapter's own default", which ``download.Pacing`` supplies.
+    #: An explicit 0.0 is a different answer from None: it means the user turned
+    #: pacing off, so the two are never collapsed by a falsy test.
     pacing_delay_s: float | None = None
-    #: Concurrent acquisitions. One until U15 lands the bounded pool, which reads
-    #: this same object rather than declaring a second cap somewhere else.
+    #: Concurrent acquisitions. U15's bounded pool reads THIS field; there is no
+    #: second cap anywhere, which is the whole point of KTD20 moving the setting
+    #: off the wrapped tool's shared settings file.
     concurrency: int = 1
 
     def __post_init__(self) -> None:
@@ -569,6 +577,7 @@ class AdapterSettings:
             quality=acquisition.quality,
             lossless_policy=LosslessPolicy(acquisition.lossless_policy),
             pacing_delay_s=acquisition.pacing_delay_s,
+            concurrency=acquisition.concurrency,
         )
 
 
@@ -655,10 +664,17 @@ def acquire_with_source(
     Letting each adapter re-write that order is how the source system ended up
     with two call sites that classify the same failure differently.
 
-    Pacing lives in this loop because the adapter owns it (KTD20). U15 replaces
-    the sequential delay with a bounded concurrent pool reading the SAME settings
-    object; what it must not do is reintroduce a second place where the delay is
-    configured.
+    Pacing lives in this loop because the adapter owns it (KTD20). U15's
+    ``download.acquire_concurrently`` is the paced, bounded replacement for this
+    loop and reads the SAME settings object rather than declaring a second cap or
+    a second delay. This sequential form stays as the contract's reference
+    implementation: it is what the conformance suite drives, and it is the one
+    place the ORDER of operations is stated once for every adapter.
+
+    Note the one deliberate difference. This loop reads the delay with ``or 0.0``
+    and so treats an unset delay as no delay, which is what its own tests assume.
+    The paced driver distinguishes unset from zero, because unset means "use the
+    adapter's default" and zero means "the user turned pacing off".
     """
     # Materialised before authentication, not after. The requested set has to be
     # reportable even when the run dies on its first call, and an iterator that
@@ -694,7 +710,7 @@ def acquire_with_source(
         if index and delay:
             sleep(delay)
         try:
-            outcome = _acquire_one(source, request, settings)
+            outcome = acquire_one(source, request, settings)
         except AdapterAuthFailed as exc:
             # Mid-run session death. Everything already acquired is kept and
             # reported, but the invocation is a failure, so no watermark moves
@@ -730,10 +746,17 @@ def acquire_with_source(
     )
 
 
-def _acquire_one(
+def acquire_one(
     source: TrackSource, request: TrackRequest, settings: AdapterSettings
 ) -> TrackResult:
-    """One track, from offer through policy to file. Auth failures propagate."""
+    """One track, from offer through policy to file. Auth failures propagate.
+
+    Public because the paced pool in ``download`` runs the SAME per-track step
+    rather than writing its own. Duplicating the sequence there is how the source
+    system ended up with two call sites classifying one provider failure two
+    different ways, so the concurrent driver reuses this one and varies only what
+    surrounds it.
+    """
     try:
         offer = source.offer(request)
     except (AdapterAuthFailed, AdapterBroken):
@@ -928,6 +951,7 @@ __all__ = [
     "TrackResult",
     "TrackSource",
     "UnknownAdapter",
+    "acquire_one",
     "acquire_with_source",
     "classify_unavailable",
     "decide_lossless",

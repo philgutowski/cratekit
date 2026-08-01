@@ -73,6 +73,49 @@ Where a wrapped tool does keep such a file, the adapter pushes this run's values
 into its **in-memory** configuration and then reads them back. A tool that
 coerces, ignores, or renames a setting is caught there. Nothing is saved.
 
+## Pacing and concurrency
+
+Acquisition runs through a bounded pool in `src/cratekit/acquire/download.py`.
+It reads the cap and the nominal delay from the adapter's settings and declares
+neither of its own, which is what keeps "the adapter owns pacing" true rather
+than aspirational.
+
+```toml
+[acquisition]
+concurrency = 1                # simultaneous acquisitions; default 1
+pacing_delay_s = 6.0           # omit to take the adapter's own default
+```
+
+Omitting `pacing_delay_s` and setting it to `0.0` are **different answers**.
+Omitted means the adapter decides, and its default is six seconds. Zero means
+pacing is off and is honoured as written.
+
+Each delay is jittered by half its nominal value, so six seconds lands anywhere
+in three to nine. The width is not decoration. Two runs on fixed delays arrive
+together, trip the provider's limiter together, and back off together, which is
+a retry storm built out of politeness. Every run draws from its own generator so
+neither has to know the other exists.
+
+### A throttle and a ban are not the same event
+
+This is the distinction the pool exists to draw, and getting it wrong is not a
+failed run.
+
+| The provider says | Cratekit | Because |
+|---|---|---|
+| rate limited (429) | honours the `Retry-After` hint, or backs off exponentially, and keeps trying | the request was legitimate, only the pace was not |
+| forbidden (403), or a bot challenge | stops the whole run at once, makes no further request, and parks | retrying into a block is what turns it into a lockout |
+| a retry hint longer than the run's ceiling | parks | sleeping on it is indistinguishable from a hung process, and truncating it is the early retry the hint existed to prevent |
+
+Where the evidence is mixed, the blocked reading wins. A bot wall routinely
+describes itself in the language of rate limiting, and a false stop costs a
+re-run while a false retry can cost the account.
+
+A parked run returns a structured cause with `retryable` set to false. That is
+the field a job engine reads, deliberately rather than the exit code: the exit
+code's class remedy for anything upstream is "retry later", and this is the one
+member of that class where an automatic retry is the harm.
+
 ## Credentials
 
 The OS keychain is the system of record. For the life of one invocation the
@@ -96,6 +139,8 @@ adapter = "tidal_dl_ng"        # the vendored downloader, the default
 # adapter = "streamrip"        # the alternative
 lossless_policy = "strict"     # or "allow_lossy_marked"
 ```
+
+Pacing and concurrency travel with the adapter too, and are covered above.
 
 An adapter whose third-party tool is not installed reports `adapter-broken` with
 the remedy token `install-adapter` and names the distribution. It does **not**
