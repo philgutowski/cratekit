@@ -90,7 +90,12 @@ PENDING: dict[str, tuple[str, str]] = {
         "default vocabulary expects. The source system's equivalent got all "
         "three wrong and nothing failed, because a scan that matches nothing "
         "returns nothing, so every snapshot was prunable while a comment said "
-        "otherwise"
+        "otherwise. U8 ALSO owes the runtime half of R17's fifth surface: a "
+        "write session compares the modification time of every ANLZ file it "
+        "could touch before and after, and refuses if one moved, because the "
+        "source scan in tests/test_no_beatgrid_ever.py sees only the symbols "
+        "this package spells and cannot see a grid rewritten through a handle "
+        "the binding already returned"
     ),
     "cratekit.cli.doctor": (
         "U27",

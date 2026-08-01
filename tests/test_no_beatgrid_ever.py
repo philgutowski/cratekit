@@ -8,7 +8,7 @@ double time, and every cue point and every loop the user has ever set against
 that track moves. Import gridless and rekordbox derives BPM and grid from the
 audio alone, which it is good at and which is reversible.
 
-R17 has four surfaces, and this file guards all four:
+R17 has five surfaces, and this file guards all five:
 
 1. **A ``<TEMPO>`` element in COLLECTION XML.** The element rekordbox reads as a
    grid. No emitter may produce one.
@@ -19,6 +19,15 @@ R17 has four surfaces, and this file guards all four:
    tag write reaches the same place by a longer route.
 4. **The analysis columns of the database.** That surface is the guarded writer's
    additive whitelist, asserted in tests/test_rb_writer_guard.py.
+5. **The ANLZ analysis files on disk.** Once rekordbox has analysed a track, its
+   grid lives in four files beside the row: ``.DAT``, ``.EXT``, ``.2EX``, ``.3EX``.
+   Those are ordinary files, so surface 4's whitelist, which governs database
+   ROWS, is blind to a write here by construction. Worse, the route does not
+   look like a write: pyrekordbox's ``update_content_path`` reads every ANLZ
+   file for a track, mutates a tag, saves each one back, and then commits the
+   database directly, bypassing the guarded writer, so a caller who meant to
+   rename a file rewrites its analysis. Guarded below by name, at the source
+   level, because a filesystem write leaves no row to whitelist.
 
 The distinction that makes all of this workable: rekordbox-AUTHORED grid data
 must round-trip verbatim. A tool that subsets an export the user already analysed
@@ -75,6 +84,35 @@ FORBIDDEN_TAG_KEYS = frozenset(
 # have shipped, and every downloaded track would have reached rekordbox
 # carrying a grid seed, which is the one outcome R17 exists to prevent.
 FORBIDDEN_FRAME_CONSTRUCTORS = frozenset({"TBPM"})
+
+# Symbols that serialise an ANLZ file, or that call one that does. Naming any of
+# them anywhere under src/ is the violation.
+#
+# The reason this is a separate rule rather than another tempo key: after
+# analysis, a track's grid lives in four files beside the audio, and those are
+# ordinary files. The guarded writer's additive whitelist governs database ROWS,
+# so it is blind to a filesystem write by construction, and no amount of
+# tightening it would help.
+#
+# `AnlzFile` is the serialiser itself: `build()` renders the struct to bytes and
+# `save(path)` opens that path "wb" and writes them, so an instance under any
+# name is a write primitive in hand.
+#
+# The other two are the reachable route, and they are worse than the primitive
+# because they do not look like writes. In pyrekordbox 0.4.4,
+# `pyrekordbox/db6/database.py`'s `update_content_path` reads every ANLZ file
+# for a track, calls `set_path` on each, saves each one back to disk, and then
+# calls `self.commit()` DIRECTLY, bypassing the guarded commit entirely.
+# `update_content_filename` just below it delegates to that same method. So a
+# caller who only meant to rename a file writes four analysis files and commits
+# the database outside the whitelist, and nothing in the row guard can see it.
+FORBIDDEN_ANLZ_SYMBOLS = frozenset(
+    {
+        "AnlzFile",                  # the serialiser: build() then save(path)
+        "update_content_path",       # saves every ANLZ file, then commits unguarded
+        "update_content_filename",   # delegates to update_content_path
+    }
+)
 
 # The one value AverageBpm may carry in anything we emit. It is a string, not a
 # number, because the XML attribute is compared as bytes.
@@ -340,3 +378,138 @@ def test_track_xml_has_no_grid_even_with_inizio_and_no_energy():
     xml = build_track_xml(7, _meta(energy=None, inizio=3.25), "2026-01-01")
     assert "<TEMPO" not in xml
     assert '<TRACK TrackID="7"' in xml and "</TRACK>" in xml
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Surface five: no module in the package writes an ANLZ file. Runs today.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def anlz_write_violations(source: str, module: str) -> list[str]:
+    """Return one message per ANLZ-writing symbol named in ``source``.
+
+    Kept separate from ``beatgrid_emission_violations`` on purpose. The two
+    rules fail differently and are fixed differently: a tempo tag is a value
+    somebody chose to write, while an ANLZ write is usually a side effect of
+    calling something that sounded like a rename. Merging them would produce
+    one scanner whose failure message could not tell you which rule you broke.
+
+    Three node kinds carry a name, and all three are checked:
+
+    * ``ast.Name``, the bare symbol, which covers ``AnlzFile.parse_file(p)`` and
+      any call to a module-level ``update_content_path``;
+    * ``ast.Attribute``, which covers ``db.update_content_path(...)`` and the
+      same method reached through an intermediate variable, because the
+      attribute access itself is the node, not the call around it;
+    * ``ast.ImportFrom``, because ``from pyrekordbox.anlz import AnlzFile``
+      binds the name through an ``alias`` node that is neither of the above.
+
+    What this deliberately does NOT match is a string. Every message, docstring
+    and comment naming these symbols, including this one, is an ``ast.Constant``
+    or is not in the tree at all, so prose explaining the rule can never trip
+    it. A guard that fired on the sentence describing it would be suppressed
+    within a week, and a suppressed guard protects nothing.
+
+    Reading stays legal, exactly as it does for a BPM tag. ``get_anlz_paths``,
+    ``get_anlz_path``, ``read_anlz_file``, ``read_anlz_files`` and
+    ``is_anlz_file`` are absent from the forbidden set by decision, not by
+    oversight: R17 is about writing a tempo, and a package that may not even
+    look at an analysis file cannot tell whether a track has been analysed.
+    """
+    problems: list[str] = []
+    tree = ast.parse(source)
+
+    def flag(symbol: str) -> None:
+        problems.append(
+            f"{module}: names {symbol!r}, which writes an ANLZ file to disk; the "
+            f"beat grid lives in those files, they are rekordbox-authored, and "
+            f"the database whitelist governs rows so it cannot see this (R17)"
+        )
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in FORBIDDEN_ANLZ_SYMBOLS:
+            flag(node.id)
+        elif isinstance(node, ast.Attribute) and node.attr in FORBIDDEN_ANLZ_SYMBOLS:
+            flag(node.attr)
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name in FORBIDDEN_ANLZ_SYMBOLS:
+                    flag(alias.name)
+
+    return problems
+
+
+def test_no_module_in_the_package_writes_an_anlz_file():
+    """The live half of surface five. Green today, and green is the point.
+
+    Walks the same derived module set as the tempo scan rather than a list of
+    modules to check, so the next module added to the package is covered on the
+    day it is added and nobody has to remember to add it here.
+    """
+    problems: list[str] = []
+    for module, source in _package_modules():
+        problems += anlz_write_violations(source, module)
+    assert not problems, "R17 ANLZ violations:\n" + "\n".join(problems)
+
+
+@pytest.mark.parametrize(
+    "source, expect",
+    [
+        # The serialiser reached directly. `parse_file` remembers the path it
+        # read, so the bare `save()` with no argument overwrites that file.
+        ("AnlzFile.parse_file(p).save()\n", "AnlzFile"),
+        # The import that binds the name, which no Name or Attribute node sees.
+        ("from pyrekordbox.anlz import AnlzFile\n", "AnlzFile"),
+        # An alias does not launder it.
+        ("from pyrekordbox.anlz import AnlzFile as _AF\n", "AnlzFile"),
+        # The route that does not look like a write at all: this saves every
+        # ANLZ file for the track and then commits the database unguarded.
+        ("db.update_content_path(cid, p)\n", "update_content_path"),
+        ("db.update_content_filename(cid, name)\n", "update_content_filename"),
+        # Reached through an intermediate variable. The attribute access is the
+        # violation, so deferring the call changes nothing.
+        ("rename = db.update_content_path\nrename(cid, p)\n", "update_content_path"),
+        # And the same indirection for the serialiser itself.
+        ("cls = AnlzFile\nf = cls.parse_file(p)\nf.save(q)\n", "AnlzFile"),
+    ],
+)
+def test_the_anlz_scan_catches_each_way_of_writing_one(source, expect):
+    problems = anlz_write_violations(source, "cratekit.core.rb_writer")
+    assert any(expect in p for p in problems), f"{expect!r} not caught; got {problems}"
+
+
+def test_prose_naming_the_forbidden_symbols_is_not_a_violation():
+    """A docstring explaining the rule must not break the rule.
+
+    This is the failure mode that retired an earlier layering pattern: it
+    matched ordinary English containing a common word, so it got suppressed,
+    and a suppressed guard protects nothing. Pinned as a test because the
+    obvious "improvement" to the scanner, also matching string constants, would
+    reintroduce it, and this goes red when it does.
+    """
+    source = (
+        '"""Never call update_content_path: it saves every AnlzFile and then\n'
+        'commits outside the guarded writer. update_content_filename too."""\n'
+        "# AnlzFile.save is the primitive we refuse to name in code.\n"
+        "NOTE = 'update_content_path is forbidden here'\n"
+    )
+    assert anlz_write_violations(source, "cratekit.core.rb_writer") == []
+
+
+def test_reading_anlz_paths_is_not_a_violation():
+    """Locating and parsing ANLZ files is legal. Serialising one is not.
+
+    The same distinction the tempo scanner draws between reading a BPM tag and
+    writing one. A tool that wants to know whether a track has been analysed,
+    or where its analysis lives, has to look, and a guard that forbade looking
+    would be routed around within a week, which is worse than no guard.
+    """
+    source = (
+        "paths = db.get_anlz_paths(content)\n"
+        "files = db.read_anlz_files(cid)\n"
+        "one = db.read_anlz_file(cid, 'DAT')\n"
+        "where = db.get_anlz_path(content, 'EXT')\n"
+        "if is_anlz_file(candidate):\n"
+        "    pass\n"
+    )
+    assert anlz_write_violations(source, "cratekit.core.analysis_state") == []
