@@ -186,6 +186,15 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "auth-failed": ExitCode.UPSTREAM_AUTH,
         "adapter-broken": ExitCode.UPSTREAM_UNAVAILABLE,
         "unavailable-transient": ExitCode.UPSTREAM_UNAVAILABLE,
+        # The provider refused the CLIENT rather than a request: a forbidden
+        # response, a bot challenge, or a wait so long it is a refusal wearing a
+        # wait. It shares a code with the transient case because both are
+        # upstream saying no, and the slug is what keeps the distinction where it
+        # is actually read. What must NOT be shared is the instruction: the
+        # class remedy for this code is "retry later", and this is the one member
+        # of the class where an automated retry is the harm, so a cause built for
+        # it carries explicit steps and ``retryable=False``.
+        "provider-blocked": ExitCode.UPSTREAM_UNAVAILABLE,
         "unavailable-permanent": ExitCode.REFUSED_BY_POLICY,
         "refused-by-policy": ExitCode.REFUSED_BY_POLICY,
         "whitelist-violation": ExitCode.REFUSED_BY_POLICY,

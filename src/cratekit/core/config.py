@@ -1572,6 +1572,14 @@ class AcquisitionConfig:
     quality: str = "lossless"
     #: None means "the adapter's own default". The adapter owns pacing (KTD20).
     pacing_delay_s: float | None = None
+    #: How many acquisitions run at once (R10). The value the system Cratekit
+    #: replaces could not express at all: there it was a constant written into
+    #: the wrapped tool's global settings file by a subprocess call before every
+    #: run, shared with any other process using that tool, and reset to lossy
+    #: factory defaults twice by a racing write. Here it is one declared value
+    #: the adapter carries in memory for one invocation, and the bounded pool
+    #: reads it rather than declaring a second cap.
+    concurrency: int = 1
     #: R21 and S3. Two values only. There is deliberately no third value in which
     #: a lossy file goes UNMARKED: marking is mandatory wherever lossy is
     #: permitted at all, so a "lossy allowed, marking off" combination cannot be
@@ -1913,6 +1921,19 @@ def validate(data: Mapping) -> list[str]:
             f"acquisition.lossless_policy must be one of "
             f"{', '.join(_LOSSLESS_POLICIES)}, found {policy!r}. There is no "
             f"value that permits lossy without marking it (R21)."
+        )
+
+    concurrency = _dig(data, "acquisition.concurrency")
+    if concurrency is not None and (
+        not isinstance(concurrency, int)
+        or isinstance(concurrency, bool)
+        or concurrency < 1
+    ):
+        problems.append(
+            f"acquisition.concurrency must be a positive integer number of "
+            f"simultaneous acquisitions, found {concurrency!r}. Zero or a "
+            f"negative value would not be a slower run, it would be a run that "
+            f"acquires nothing while reporting success."
         )
 
     problems += _validate_db_containment(data)
