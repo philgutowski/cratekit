@@ -1013,6 +1013,8 @@ def open_db(
             detail={"path": str(target)},
         ) from exc
 
+    clear_registry_buffer()
+
     canary(db, write_intent=require_closed, force_cloud_canary=force_cloud_canary)
     assert_schema_version(db, force=force_schema, cfg=cfg)
     return db
@@ -1483,7 +1485,50 @@ CONTENT_TABLE = "djmdContent"
 #: Static, and deliberately not feature-derived. This is the set that makes the
 #: structural guarantee, so no registration may widen it.
 PERMITTED_ROW_TABLES = frozenset(
-    {"djmdPlaylist", "djmdSongPlaylist", "djmdMyTag", "djmdSongMyTag"}
+    {"djmdPlaylist", "djmdSongPlaylist", "djmdMyTag", "djmdSongMyTag", "djmdKey"}
+)
+
+#: ``djmdKey`` joins the whitelist on the A4 verdict, TOLERATED, settled against
+#: rekordbox 7.2.17 on 2026-08-01. An externally authored key row rendered
+#: correctly while referenced and was left completely untouched across a full
+#: launch and quit cycle: rekordbox did not renumber ``Seq``, did not set ``usn``,
+#: did not flip ``rb_data_status`` and did not soft-delete. There is no column
+#: ownership to document because rekordbox took ownership of nothing.
+#:
+#: TWO RULES TRAVEL WITH THE PERMISSION, and both are preventable only in code.
+#:
+#: 1. Create and link in the SAME write session. Never speculatively. rekordbox
+#:    garbage collects a lookup row nothing references, which it was observed
+#:    doing (43 rows to 42), and it would do the same to one of its own.
+#: 2. A duplicate ``ScaleName`` is the one real hazard. There is no unique
+#:    constraint and no trigger, so it is invisible to the schema. Resolve before
+#:    creating, under the write lock this module already holds.
+#:
+#: THE PERMISSION IS A CEILING, NOT A LICENCE. Phillip's decision, taken at the
+#: desk while A4 ran, is that the writer may never author a key value at all:
+#: padded Camelot belongs in the track title as a sorting artifact, and the key
+#: metadata field stays blank so rekordbox's answer and this product's answer
+#: remain independently comparable. That is the grid rule's own argument one
+#: layer up. Nothing in this module can write a key today and nothing should
+#: acquire the ability without that decision being revisited.
+
+#: Analysis columns a row THIS PRODUCT CREATES may never declare. Checked on
+#: creation, which until W3 had no column policy at all.
+#:
+#: AN HONEST LIST RATHER THAN A DERIVATION, and the honesty is the point (P4). A
+#: rule such as "every column whose name contains Analysis" reads plausibly and
+#: misses ``BPM`` and ``CueUpdated``, and a derivation that is nearly complete
+#: invites trust it has not earned. A test asserts every name here is a real
+#: column on the content table, so a binding rename fails loudly rather than
+#: silently disarming the check.
+GRIDLESS_ON_CREATE_COLUMNS = frozenset(
+    {
+        "BPM",
+        "Analysed",
+        "AnalysisDataPath",
+        "AnalysisUpdated",
+        "CueUpdated",
+    }
 )
 
 #: Columns the binding and the object mapper bump on their own during a commit.
@@ -1611,14 +1656,26 @@ def guard_violations(
     )
     violations: list[str] = []
 
-    for table, _columns in new:
+    for table, columns in new:
         if table == CONTENT_TABLE:
             violations.append(
                 f"creates a {CONTENT_TABLE} row; new-track intake stays in the XML "
                 f"bridge, where an import is something a person performs and can undo"
             )
-        elif table not in PERMITTED_ROW_TABLES:
+            continue
+        if table not in PERMITTED_ROW_TABLES:
             violations.append(f"creates a row in the non-whitelisted table {table!r}")
+            continue
+        # W3. A CREATION used to be judged on its table name alone, so a row in a
+        # permitted table could declare any column at all, analysis columns
+        # included. The column set was bound and then discarded.
+        declared = {column for column in columns if column in GRIDLESS_ON_CREATE_COLUMNS}
+        if declared:
+            violations.append(
+                f"creates a row in {table!r} declaring analysis column(s): "
+                f"{sorted(declared)}; a row this product creates is gridless and "
+                f"rekordbox derives the grid from the audio"
+            )
 
     for table, columns in dirty:
         modified = {column for column in columns if column not in BOOKKEEPING_COLUMNS}
@@ -1646,37 +1703,283 @@ def guard_violations(
     return violations
 
 
+#: Reported instead of a column name when an object cannot be introspected.
+#: Guaranteed to be outside every writable set, so it refuses.
+UNINSPECTABLE = "<uninspectable>"
+
+#: Reported for a re-parented row, whose changed column the binding's buffer does
+#: not carry. A named sentinel rather than an empty set, because an empty set is
+#: indistinguishable from a bookkeeping-only touch and would skip the table check
+#: entirely. On a whitelisted table it passes, on any other it refuses, which is
+#: exactly the judgement a move deserves.
+MOVED = "<moved>"
+
+
+def clear_registry_buffer() -> None:
+    """Empty the binding's process-wide update buffer.
+
+    Called when a write session opens. The binding already does this inside its
+    own open, so this is belt and braces, and it is cheap. It is here because the
+    guard's correctness now DEPENDS on the buffer describing this session and no
+    other, and a dependency that important should be asserted by this module
+    rather than inherited from a library's implementation detail. A test pins it.
+    """
+    try:
+        from pyrekordbox.db6.registry import RekordboxAgentRegistry
+    except Exception:  # noqa: BLE001 - binding absent means no buffer to clear
+        return
+    RekordboxAgentRegistry.clear_buffer()
+
+
+def _table_of(obj: Any) -> str | None:
+    table = getattr(obj, "__table__", None)
+    return getattr(table, "name", None)
+
+
+def _columns_of(obj: Any) -> set[str]:
+    """The columns an EXISTING object reports as changed. Fails closed."""
+    from sqlalchemy import inspect as sa_inspect
+
+    try:
+        return {
+            attribute.key
+            for attribute in sa_inspect(obj).attrs
+            if attribute.history.has_changes()
+        }
+    except Exception:  # noqa: BLE001 - un-inspectable means treat as all-changed
+        return {UNINSPECTABLE}
+
+
+def _declared_columns(obj: Any) -> set[str]:
+    """The columns a NOT YET FLUSHED object carries a value for.
+
+    Deliberately does NOT go through the object mapper. Inspecting a transient
+    instance forces mapper configuration, and if that configuration fails the
+    failure is CACHED process-wide: every later mapper use then raises, including
+    in code that had nothing to do with the guard. Swallowing the exception here
+    does not undo it, because the damage is recorded inside the mapper registry
+    rather than raised past us. Reading the instance dictionary asks the same
+    question and touches none of that machinery.
+
+    Fails closed, like its sibling: an object with no table reports the sentinel.
+    """
+    table = getattr(obj, "__table__", None)
+    if table is None:
+        return {UNINSPECTABLE}
+    names = {column.name for column in table.columns}
+    try:
+        state = vars(obj)
+    except TypeError:  # no instance dictionary to read
+        return {UNINSPECTABLE}
+    return {key for key, value in state.items() if key in names and value is not None}
+
+
 def _session_changes(
     session: Any,
-) -> tuple[list[tuple[str, set[str]]], list[tuple[str, set[str]]], list[str]]:
-    """Adapt an object-mapper session into the pure judge's inputs.
+) -> tuple[dict[int, tuple[str, set[str]]], dict[int, tuple[str, set[str]]], dict[int, str]]:
+    """Adapt an object-mapper session into the judge's inputs, keyed by instance.
 
     FAILS CLOSED. An object whose state cannot be introspected reports a
     placeholder column name, which is guaranteed to be outside any writable set
     and therefore refuses. The alternative, reporting no changed columns, would
     let exactly the objects we cannot see through unexamined.
+
+    NOT SUFFICIENT ON ITS OWN, which is the whole of W2. ``session.new`` and
+    ``session.dirty`` are emptied by any flush, and SQLAlchemy flushes pending
+    work before a query so the query can see it. A flushed INSERT is still
+    uncommitted and still rollback-able, but it has left these collections, so a
+    guard reading only them judges an empty session and approves. Every one of
+    this module's own primitives does an add followed by a lookup, in a loop, so
+    the blindness is the normal case rather than the exotic one.
+
+    Keyed by ``id(instance)`` so the union with the registry buffer merges rather
+    than double-reports.
     """
-    from sqlalchemy import inspect as sa_inspect
-
-    def columns_of(obj: Any) -> set[str]:
-        try:
-            return {
-                attribute.key
-                for attribute in sa_inspect(obj).attrs
-                if attribute.history.has_changes()
-            }
-        except Exception:  # noqa: BLE001 - un-inspectable means treat as all-changed
-            return {"<uninspectable>"}
-
-    created = [(obj.__table__.name, set()) for obj in session.new]
-    modified = [(obj.__table__.name, columns_of(obj)) for obj in session.dirty]
-    removed = [obj.__table__.name for obj in session.deleted]
+    created = {
+        id(obj): (_table_of(obj) or UNINSPECTABLE, _declared_columns(obj)) for obj in session.new
+    }
+    modified = {
+        id(obj): (_table_of(obj) or UNINSPECTABLE, _columns_of(obj)) for obj in session.dirty
+    }
+    removed = {id(obj): (_table_of(obj) or UNINSPECTABLE) for obj in session.deleted}
     return created, modified, removed
 
 
-def assert_session_whitelisted(session: Any) -> None:
+def _registry_changes(
+    db: Any,
+) -> tuple[dict[int, tuple[str, set[str]]], dict[int, tuple[str, set[str]]], dict[int, str]]:
+    """The same judgement inputs, read from the binding's own update buffer.
+
+    ``RekordboxAgentRegistry.__update_sequence__`` is a process-wide list the
+    binding appends to on every tracked write. Crucially it is NOT emptied by a
+    flush: it is cleared only on open, close, commit and rollback. So it still
+    holds a creation that autoflush has already carried out of ``session.new``,
+    which is exactly what makes it the fix for W2.
+
+    It is not sufficient on its own either. The binding disables its own tracking
+    around a dozen of its internal operations, and a raw ``session.add`` never
+    reaches it at all. Neither source is complete, so the guard reads the UNION.
+    Stating that plainly matters: a derivation that is nearly complete invites
+    trust it has not earned (P4).
+
+    Reads a list. Runs no query, so it cannot flush anything itself.
+
+    SCOPED TO A HANDLE, DELIBERATELY. The buffer is a CLASS attribute, shared
+    process wide, and the binding clears it on open, close, commit and rollback
+    rather than per session. So without an open handle there is no session whose
+    buffer this could be, and reading it anyway attributes another caller's
+    writes to this one. That is not hypothetical: it fired the first time this
+    ran, when a guard called with no handle inherited rows created by earlier
+    work in the same process and refused a write that was perfectly legitimate.
+    A guard that refuses correct code is one people route around (P7).
+    """
+    if db is None:
+        return {}, {}, {}
+    try:
+        from pyrekordbox.db6.registry import RekordboxAgentRegistry
+    except Exception:  # noqa: BLE001 - binding absent means no buffer to read
+        return {}, {}, {}
+
+    created: dict[int, tuple[str, set[str]]] = {}
+    modified: dict[int, tuple[str, set[str]]] = {}
+    removed: dict[int, str] = {}
+
+    for entry in list(getattr(RekordboxAgentRegistry, "__update_sequence__", [])):
+        try:
+            target, op, key, _value = entry
+        except (TypeError, ValueError):  # a shape this code does not understand
+            modified[id(entry)] = (UNINSPECTABLE, {UNINSPECTABLE})
+            continue
+        # "move" carries a LIST of instances; the other three carry one.
+        instances = target if isinstance(target, (list, tuple)) else [target]
+        for obj in instances:
+            table = _table_of(obj)
+            if table is None:
+                modified[id(obj)] = (UNINSPECTABLE, {UNINSPECTABLE})
+            elif op == "create":
+                created[id(obj)] = (table, _declared_columns(obj))
+            elif op == "update":
+                seen = modified.get(id(obj))
+                columns = set(seen[1]) if seen else set()
+                columns.add(key if key else UNINSPECTABLE)
+                modified[id(obj)] = (table, columns)
+            elif op == "delete":
+                removed[id(obj)] = table
+            elif op == "move":
+                modified[id(obj)] = (table, {MOVED})
+            else:
+                # An operation this code has never heard of. Refuse rather than
+                # ignore: a future binding adding a fifth op must fail loudly
+                # here, not pass silently.
+                modified[id(obj)] = (table, {UNINSPECTABLE})
+    return created, modified, removed
+
+
+def pending_changes(
+    session: Any, db: Any = None
+) -> tuple[list[tuple[str, set[str]]], list[tuple[str, set[str]]], list[str]]:
+    """Everything this session will write, from BOTH sources, unioned.
+
+    Creation wins over modification for the same instance: a row created and then
+    updated in one session is a creation, and reporting it as both would produce
+    two findings for one act.
+    """
+    s_created, s_modified, s_removed = _session_changes(session)
+    r_created, r_modified, r_removed = _registry_changes(db)
+
+    created = {**r_created, **s_created}
+
+    modified: dict[int, tuple[str, set[str]]] = {}
+    for source in (r_modified, s_modified):
+        for key, (table, columns) in source.items():
+            seen = modified.get(key)
+            modified[key] = (table, (set(seen[1]) if seen else set()) | set(columns))
+
+    # Creation wins.
+    for key in created:
+        modified.pop(key, None)
+
+    removed = {**r_removed, **s_removed}
+
+    return list(created.values()), list(modified.values()), list(removed.values())
+
+
+def assert_created_rows_are_gridless(db: Any) -> None:
+    """Verify from SQL that no row this session creates carries analysis data.
+
+    WHY NOT READ THE OBJECT. The mapped object is our own construction, so
+    reading an attribute off it reports what the writer INTENDED rather than what
+    the database will store, and between that read and the INSERT the binding's
+    own machinery still runs: it stamps a local update sequence onto every
+    buffered instance, and column defaults are applied by the database rather
+    than by the attribute. Second, after a flush the object may be expired, so
+    reading an attribute can trigger a fresh load and the answer then depends on
+    session cache state rather than on the row. The in-memory check in
+    ``guard_violations`` is a backstop; this is the check.
+
+    ORDERING IS LOAD BEARING. The flush here is DELIBERATE and happens after the
+    guard has already captured what it is judging, so it cannot be the flush that
+    blinds the guard. It runs before the commit, so a violation still rolls back.
+    A check that only ran after the commit would find a violation it could no
+    longer undo, leaving a snapshot restore as the sole remedy.
+    """
+    session = getattr(db, "session", None)
+    if session is None:
+        return
+
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text
+
+    created, _modified, _removed = _session_changes(session)
+    r_created, _, _ = _registry_changes(db)
+    instances = {**r_created, **created}
+    if not instances:
+        return
+
+    # Resolve the objects again by identity so the primary keys are populated.
+    pending = [obj for obj in session.new]
+    try:
+        session.flush()
+    except Exception:  # noqa: BLE001 - a flush failure is the caller's to report
+        return
+
+    violations: list[str] = []
+    for obj in pending:
+        table = _table_of(obj)
+        if table is None:
+            continue
+        columns = {c.name for c in obj.__table__.columns} & GRIDLESS_ON_CREATE_COLUMNS
+        if not columns:
+            continue
+        identity = sa_inspect(obj).identity
+        if not identity:
+            continue
+        keys = [c.name for c in obj.__table__.primary_key.columns]
+        where = " AND ".join(f"{k} = :{k}" for k in keys)
+        selected = ", ".join(sorted(columns))
+        row = session.execute(
+            text(f"SELECT {selected} FROM {table} WHERE {where}"),
+            dict(zip(keys, identity)),
+        ).first()
+        if row is None:
+            continue
+        for name, value in zip(sorted(columns), row):
+            if value not in (None, 0, 0.0, "", "0"):
+                violations.append(f"{table}.{name} = {value!r}")
+
+    if violations:
+        raise _unavailable(
+            "whitelist-violation",
+            "a row this session creates carries analysis data, which this product "
+            "never writes; rekordbox derives the grid from the audio:\n  - "
+            + "\n  - ".join(violations),
+            detail={"violations": violations},
+        )
+
+
+def assert_session_whitelisted(session: Any, db: Any = None) -> None:
     """Raise unless the pending session touches only whitelisted tables and columns."""
-    created, modified, removed = _session_changes(session)
+    created, modified, removed = pending_changes(session, db)
     violations = guard_violations(created, modified, removed)
     if violations:
         raise _unavailable(
@@ -1894,7 +2197,11 @@ def commit_guarded(db: Any, *, force_cloud_canary: bool = False) -> None:
         assert_cloud_sync_readable(db, force=force_cloud_canary)
 
         try:
-            assert_session_whitelisted(db.session)
+            # Reads the binding's update buffer as well as the session, so a
+            # write autoflush has already carried out of ``session.new`` is
+            # still judged (W2).
+            assert_session_whitelisted(db.session, db)
+            assert_created_rows_are_gridless(db)
         except RekordboxUnavailable:
             # Rolled back rather than left pending: carrying rejected objects
             # forward would land a refused write later, under whatever operation
@@ -1913,6 +2220,7 @@ def commit_guarded(db: Any, *, force_cloud_canary: bool = False) -> None:
 
 __all__ = [
     "BOOKKEEPING_COLUMNS",
+    "GRIDLESS_ON_CREATE_COLUMNS",
     "CLOUD_SYNC_RECENT_DAYS",
     "CONTENT_TABLE",
     "ENV_APP_PATH",
@@ -1939,11 +2247,13 @@ __all__ = [
     "assert_cloud_sync_readable",
     "assert_rekordbox_closed",
     "assert_schema_version",
+    "assert_created_rows_are_gridless",
     "assert_session_whitelisted",
     "canary",
     "cloud_sync_active",
     "cloud_sync_state",
     "close_db",
+    "clear_registry_buffer",
     "commit_guarded",
     "content_writable_columns",
     "db_sidecar_suffixes",
@@ -1951,7 +2261,10 @@ __all__ = [
     "ensure_folder",
     "ensure_my_tag_value",
     "ensure_playlist",
+    "MOVED",
+    "UNINSPECTABLE",
     "guard_violations",
+    "pending_changes",
     "integration_db_path",
     "integrity_ok",
     "live_db_path",
