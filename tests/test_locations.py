@@ -53,6 +53,11 @@ from cratekit.core.locations import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
 
+# Third-party source, vendored because its upstream was deleted (KTD4). Excluded
+# from the one-decoder guard below and from nothing else. See the comment at the
+# exclusion for why that asymmetry is deliberate rather than convenient.
+_VENDOR_ROOT = SRC_ROOT / "cratekit" / "_vendor"
+
 # One synthetic filename spelled two ways.
 #   composed:   LATIN SMALL LETTER E WITH ACUTE, U+00E9
 #   decomposed: LATIN SMALL LETTER E, U+0065, then COMBINING ACUTE ACCENT, U+0301
@@ -471,6 +476,24 @@ def test_no_module_outside_this_one_decodes_a_location_itself():
     for path in sorted(SRC_ROOT.rglob("*.py")):
         if path.name == "locations.py":
             continue
+        # The vendored tree is out of scope for this guard, and only for this
+        # guard. It is third-party source we did not author and do not restyle,
+        # and the rule here is about OUR architectural discipline: one decoder,
+        # so a seventh copy cannot drift away from the composition-form
+        # handling. The vendored downloader does call unquote, twice, but on an
+        # HTTP download URL to derive a filename. It never sees a rekordbox
+        # Location, has no concept of one, and cannot reach the code that does.
+        #
+        # This distinction is the point, so it is worth stating plainly: a
+        # guard about how WE choose to organize code stops at code we wrote,
+        # while a guard about SAFETY or about what ships must cover everything,
+        # vendored trees included. The beatgrid guard, the secret scan, and the
+        # personal-literal scan all deliberately reach in here, and the vendored
+        # downloader is exactly why: it arrived writing a tempo tag in three
+        # containers and carrying live third-party credentials. Adding this
+        # exclusion to one of those would undo the reason they exist.
+        if _VENDOR_ROOT in path.parents:
+            continue
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
             called = None
@@ -484,4 +507,34 @@ def test_no_module_outside_this_one_decodes_a_location_itself():
     assert not offenders, (
         "Location encoding and decoding live in cratekit.core.locations and "
         "nowhere else:\n" + "\n".join(offenders)
+    )
+
+
+def test_the_vendor_exclusion_is_not_copied_into_the_safety_guards():
+    """The guard above skips the vendored tree. The safety guards must not.
+
+    This exists because the exclusion above is the tempting thing to copy. It
+    looks like boilerplate, it silences a failure, and applying it to the
+    beatgrid guard or the secret scan would silence those too, in the one place
+    where they have already earned their keep.
+
+    Concretely, on the day it was vendored, that tree wrote a tempo tag in
+    three containers and carried live third-party credentials in two files. The
+    beatgrid rule is not a style preference and the credential rule is not
+    ours to waive on someone else's code, so both must reach in there.
+
+    Asserted by construction rather than by reading: the beatgrid guard is
+    handed a real vendored module path and must still enumerate it.
+    """
+    from tests.test_no_beatgrid_ever import _package_modules
+
+    assert _VENDOR_ROOT.is_dir(), "vendored tree missing; this guard has nothing to prove"
+
+    scanned = {module for module, _source in _package_modules()}
+    vendored = {m for m in scanned if "._vendor." in m or m.endswith("._vendor")}
+    assert vendored, (
+        "the beatgrid guard no longer enumerates the vendored tree. If an "
+        "exclusion was added there to quiet a failure, remove it and fix the "
+        "vendored source instead: that tree arrived writing tempo tags in three "
+        "containers, and this guard is what caught them."
     )
