@@ -160,7 +160,7 @@ def pinned(library, monkeypatch):
         )
     )
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: cfg)
-    monkeypatch.setattr(W, "read_installed_app_version", lambda: RECORDED_APP_VERSION)
+    monkeypatch.setattr(W, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     return cfg
 
 
@@ -440,7 +440,7 @@ def test_the_tag_primitives_mirror_an_existing_category(opened, cloud_sync_off):
 def test_a_library_with_no_tag_category_refuses_rather_than_inventing_one(
     library, cloud_sync_off
 ):
-    """One of the eleven refusals, and the reason it is a refusal rather than a default.
+    """One of the reserved refusals, and why it refuses rather than defaulting.
 
     The binding defines no constants for a tag row's shape, so the alternative to
     mirroring an existing one is fabricating an attribute value. A fabricated one
@@ -486,7 +486,11 @@ def test_an_unreadable_cloud_state_refuses_a_commit(opened, monkeypatch):
     monkeypatch.setattr(W, "read_rekordbox_settings", unreadable)
     with pytest.raises(W.RekordboxUnavailable) as excinfo:
         W.commit_guarded(opened)
-    assert excinfo.value.cause.reason == "cloud-sync-active"
+    # Its own reason since the slug split. What this test pins is that an
+    # unreadable state refuses a COMMIT against a real session; which slug it
+    # refuses under was incidental to that, and sharing one with the
+    # genuinely-active case gave two opposite remedies one exit code.
+    assert excinfo.value.cause.reason == "cloud-sync-unreadable"
     assert "could not be read" in str(excinfo.value)
 
 

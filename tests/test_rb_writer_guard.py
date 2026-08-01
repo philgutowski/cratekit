@@ -36,6 +36,8 @@ below is armed.
 from __future__ import annotations
 
 import multiprocessing as mp
+import os
+from pathlib import Path
 
 import pytest
 
@@ -237,7 +239,7 @@ def test_commit_guarded_refuses_when_agent_running(monkeypatch):
 
 
 def test_app_version_pin_refuses_on_drift(monkeypatch):
-    monkeypatch.setattr(W, "read_installed_app_version", lambda: "7.3.0.0001")
+    monkeypatch.setattr(W, "read_installed_app_version", lambda **_: "7.3.0.0001")
     with pytest.raises(W.RekordboxUnavailable) as excinfo:
         W.assert_app_version()
     message = str(excinfo.value)
@@ -245,7 +247,7 @@ def test_app_version_pin_refuses_on_drift(monkeypatch):
 
 
 def test_app_version_pin_passes_on_match(monkeypatch):
-    monkeypatch.setattr(W, "read_installed_app_version", lambda: W.pinned_app_version())
+    monkeypatch.setattr(W, "read_installed_app_version", lambda **_: W.pinned_app_version())
     W.assert_app_version()  # no raise
 
 
@@ -255,7 +257,7 @@ def test_app_version_pin_skips_when_app_not_found(monkeypatch):
     Refusing here would break every headless and CI run for no safety gain: if
     the application is not installed, it cannot be holding the database open.
     """
-    monkeypatch.setattr(W, "read_installed_app_version", lambda: None)
+    monkeypatch.setattr(W, "read_installed_app_version", lambda **_: None)
     W.assert_app_version()  # no raise
 
 
@@ -273,6 +275,15 @@ def test_an_unrecorded_app_version_pin_refuses_even_when_the_install_reads_fine(
 
     The installed version deliberately reads FINE, so nothing but the missing
     recorded decision can be what refuses.
+
+    THE EXPECTED TYPE CHANGED, AND THAT WAS THE DEFECT RATHER THAN THE FIX. This
+    used to assert ``config.ConfigInvalid``, which is what the configuration
+    layer raises and what escaped the writer unconverted. A configuration error
+    carries no reason slug and no exit code, so the same condition exited under
+    two different codes depending on whether a config file existed, and it slipped
+    past every ``except RekordboxUnavailable`` a caller writes. What was worth
+    pinning is that an unrecorded pin refuses AT ALL, which is asserted below,
+    unchanged in substance. The configuration error is still reachable underneath.
     """
     library = tmp_path / "library"
     (library / "db").mkdir(parents=True)
@@ -281,10 +292,52 @@ def test_an_unrecorded_app_version_pin_refuses_even_when_the_install_reads_fine(
     assert unpinned.rekordbox.pinned_app_version is None
 
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: unpinned)
-    monkeypatch.setattr(W, "read_installed_app_version", lambda: "7.2.14.0323")
+    monkeypatch.setattr(W, "read_installed_app_version", lambda **_: "7.2.14.0323")
 
-    with pytest.raises(config.ConfigInvalid, match="pinned_app_version"):
+    with pytest.raises(W.RekordboxUnavailable) as excinfo:
         W.assert_app_version()
+    assert excinfo.value.cause.reason == "app-version-pin-unrecorded"
+    assert "pinned_app_version" in str(excinfo.value)
+    assert isinstance(excinfo.value.__cause__, config.ConfigInvalid)
+
+
+def test_an_unrecorded_pin_refuses_with_ONE_code_whether_or_not_config_loads(
+    monkeypatch, tmp_path
+):
+    """The KTD25 collision this repair exists to close, asserted from both sides.
+
+    One condition, two machines. On a machine with a config file the writer used
+    to let ``ConfigInvalid`` escape, which the command-line layer rebuilt as a
+    configuration precondition. On a machine with no usable config at all the
+    writer raised its own version-pin refusal. Same missing decision, two exit
+    codes, and the one a caller saw depended on a file it never asked about.
+
+    Both codes are read from the raised causes rather than written down here, so
+    the assertion is that they AGREE, not that they equal a number somebody typed.
+    """
+    library = tmp_path / "library"
+    (library / "db").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(library))
+    unpinned = config.from_dict(valid_data(library))
+    monkeypatch.setattr(W, "read_installed_app_version", lambda **_: "7.2.14.0323")
+
+    monkeypatch.setattr(config, "load", lambda *args, **kwargs: unpinned)
+    with pytest.raises(W.RekordboxUnavailable) as with_config:
+        W.assert_app_version()
+
+    def unloadable(*args, **kwargs):
+        raise config.ConfigMissing("no configuration on this machine")
+
+    monkeypatch.setattr(config, "load", unloadable)
+    with pytest.raises(W.RekordboxUnavailable) as without_config:
+        W.assert_app_version()
+
+    assert with_config.value.cause.reason == without_config.value.cause.reason
+    assert with_config.value.cause.code == without_config.value.cause.code
+    assert (
+        with_config.value.cause.remediation.remedy
+        == without_config.value.cause.remediation.remedy
+    )
 
 
 # ── the cloud-sync canary ────────────────────────────────────────────────────
@@ -399,7 +452,7 @@ def test_a_recorded_pin_that_matches_the_install_proceeds(tmp_path, monkeypatch)
     _pinned_config(
         tmp_path, monkeypatch, pinned_app_version="9.9.9.0001", validated_on="2026-08-01"
     )
-    monkeypatch.setattr(W, "read_installed_app_version", lambda: "9.9.9.0001")
+    monkeypatch.setattr(W, "read_installed_app_version", lambda **_: "9.9.9.0001")
     W.assert_app_version()  # no raise
 
 
@@ -415,7 +468,7 @@ def test_the_recorded_pin_is_compared_EXACTLY(tmp_path, monkeypatch, installed):
     _pinned_config(
         tmp_path, monkeypatch, pinned_app_version="9.9.9.0001", validated_on="2026-08-01"
     )
-    monkeypatch.setattr(W, "read_installed_app_version", lambda: installed)
+    monkeypatch.setattr(W, "read_installed_app_version", lambda **_: installed)
     with pytest.raises(W.RekordboxUnavailable) as excinfo:
         W.assert_app_version()
     assert excinfo.value.cause.reason == "app-version-pin-drift"
@@ -426,7 +479,7 @@ def test_a_drifted_pin_can_be_forced_for_a_deliberate_revalidation(tmp_path, mon
     _pinned_config(
         tmp_path, monkeypatch, pinned_app_version="9.9.9.0001", validated_on="2026-08-01"
     )
-    monkeypatch.setattr(W, "read_installed_app_version", lambda: "9.9.9.0002")
+    monkeypatch.setattr(W, "read_installed_app_version", lambda **_: "9.9.9.0002")
     W.assert_app_version(force=True)  # no raise
 
 
@@ -440,11 +493,60 @@ def test_the_validation_DATE_travels_with_the_refusal(tmp_path, monkeypatch):
     _pinned_config(
         tmp_path, monkeypatch, pinned_app_version="9.9.9.0001", validated_on="2026-08-01"
     )
-    monkeypatch.setattr(W, "read_installed_app_version", lambda: "9.9.9.0002")
+    monkeypatch.setattr(W, "read_installed_app_version", lambda **_: "9.9.9.0002")
     with pytest.raises(W.RekordboxUnavailable) as excinfo:
         W.assert_app_version()
     assert excinfo.value.cause.detail["validated_on"] == "2026-08-01"
     assert W.pin_validated_on() == "2026-08-01"
+
+
+def test_the_probe_searches_the_SAME_configuration_the_pin_is_judged_against(
+    monkeypatch, tmp_path
+):
+    """P2, as an identity check rather than as a value comparison.
+
+    The probe used to be called with no argument, so it resolved its own
+    configuration by loading one. A caller that passed an explicit config
+    therefore had its pin compared against that config and its application
+    searched for under a different one. Under KTD9 a queued job runs against the
+    configuration frozen when it was queued, so "a different one" is not
+    hypothetical: it is whatever the file says at the moment the job runs.
+
+    Asserting object IDENTITY is what makes this fail if the threading is ever
+    removed. Comparing values would pass against two equal-but-separately-loaded
+    configurations, which is exactly the bug.
+    """
+    supplied = _pinned_config(
+        tmp_path, monkeypatch, pinned_app_version="9.9.9.0001", validated_on="2026-08-01"
+    )
+    other = config.from_dict(valid_data(tmp_path / "library"))
+    monkeypatch.setattr(config, "load", lambda *args, **kwargs: other)
+
+    seen: list[object] = []
+
+    def recording_probe(*, cfg=None):
+        seen.append(cfg)
+        return "9.9.9.0001"
+
+    monkeypatch.setattr(W, "read_installed_app_version", recording_probe)
+    W.assert_app_version(cfg=supplied)  # no raise: the pin matches
+
+    assert seen == [supplied], "the probe did not receive the caller's configuration"
+    assert seen[0] is not other, "the probe re-loaded instead of taking what it was given"
+
+
+def test_the_probe_takes_its_configuration_BY_KEYWORD():
+    """So a caller cannot hand it an application path by position.
+
+    The parameter is the effective configuration, not a path, and the two are one
+    positional slot apart. Keyword-only is what makes that mistake unwritable
+    rather than merely undocumented.
+    """
+    import inspect
+
+    parameter = inspect.signature(W.read_installed_app_version).parameters["cfg"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is None
 
 
 def test_the_binding_pin_has_no_escape_at_all():
@@ -547,7 +649,10 @@ def test_an_unknown_state_answers_false_to_the_activity_predicate(monkeypatch):
     assert W.cloud_sync_active(object()) is False
     with pytest.raises(W.RekordboxUnavailable) as excinfo:
         W.assert_cloud_sync_readable()
-    assert excinfo.value.cause.reason == "cloud-sync-active"
+    # The slug moved off ``cloud-sync-active`` deliberately. It was never
+    # asserting that this condition IS the active one; it was asserting that this
+    # condition refuses, which it still does, under the reason that names it.
+    assert excinfo.value.cause.reason == "cloud-sync-unreadable"
 
 
 def test_the_unknown_refusal_has_a_named_escape(monkeypatch):
@@ -559,6 +664,153 @@ def test_the_unknown_refusal_has_a_named_escape(monkeypatch):
 
     monkeypatch.setattr(W, "read_rekordbox_settings", unreadable)
     W.assert_cloud_sync_readable(force=True)  # no raise
+
+
+def test_the_docstring_still_says_the_ON_ENCODING_IS_AN_UNTESTED_INFERENCE():
+    """The one clause in this module a tidy-up would delete without noticing.
+
+    The falsification record beside it reads as a list of things that were
+    CHECKED, and the positive branch of this predicate was not: the toggle was
+    deliberately never exercised, because switching library sync on against a
+    library with 2,938,336 unacknowledged local updates starts the cloud agent
+    reconciling that backlog. A reader who cannot separate the checked half from
+    the unchecked half will trust the wrong one, and the only thing standing
+    between them is a sentence. Sentences get tidied. This makes that fail.
+    """
+    assert "untested inference" in (W.cloud_sync_state.__doc__ or "")
+
+
+def test_the_canary_reads_the_settings_file_and_NOTHING_ELSE(monkeypatch):
+    """A3's verdict, expressed as a property of the code rather than as a note.
+
+    The staleness cross-check was deleted on evidence that rekordbox writes the
+    settings file at toggle time rather than at quit. What matters more than the
+    tidiness is that the cross-check was the only thing in this canary that
+    touched the caller's session, and touching the session is what re-arms the
+    autoflush hazard below. So the assertion is not "the helper is gone", it is
+    "a database handle passed here is never used", which stays true only while
+    nothing queries.
+    """
+
+    class _Explodes:
+        """Any attribute access at all is a failure."""
+
+        def __getattr__(self, name):
+            raise AssertionError(f"the canary reached into the database for {name!r}")
+
+    _settings(monkeypatch, {W.LIBRARY_SYNC_SETTING: 0})
+    assert W.cloud_sync_state(_Explodes()).state is W.CloudSyncState.OFF
+    assert W.cloud_sync_active(_Explodes()) is False
+    W.assert_cloud_sync_readable(_Explodes())  # no raise, and no database read
+
+
+@pytest.mark.parametrize(
+    "gone", ["_recent_sync_evidence", "CLOUD_SYNC_RECENT_DAYS", "LAST_SYNC_ROW", "OPLOG_ROW_PREFIX"]
+)
+def test_the_deleted_cross_check_is_not_quietly_reintroduced(gone):
+    """Named one by one because each is a separate way back to the same shape.
+
+    A future reader looking at a canary that reads one file may reasonably think
+    corroborating it against the database is a free improvement. It is not free:
+    the last time it was tried it flushed a caller's pending write past the
+    additive whitelist. Reinstating any of these fails here first, which is the
+    prompt to read ``_no_autoflush`` before writing the query.
+    """
+    assert not hasattr(W, gone)
+
+
+# ── the settings file itself, parsed rather than faked ───────────────────────
+#
+# Every canary test above patches ``read_rekordbox_settings`` and therefore
+# proves nothing about the PARSE. This one parses a real file. With
+# ``CRATEKIT_TEST_REKORDBOX_SETTINGS`` unset it parses one written here; with it
+# set to a real rekordbox application-data directory it parses that instead. The
+# assertions are identical either way, which is what makes a supplied fixture
+# strengthen the battery rather than switch it on.
+
+
+def _write_settings_file(app_data_dir, values):
+    """Write a settings file in rekordbox's own shape. Returns the directory.
+
+    The shape matters: the binding's reader walks ``VALUE`` elements and reads
+    their ``name`` and ``val`` attributes, so a file written any other way would
+    make this test prove that our own writer and our own reader agree.
+    """
+    settings_dir = app_data_dir / W.SETTINGS_APP_DIRNAME
+    settings_dir.mkdir(parents=True, exist_ok=True)
+    entries = "".join(f'<VALUE name="{name}" val="{val}"/>' for name, val in values.items())
+    (settings_dir / "rekordbox3.settings").write_text(
+        f'<?xml version="1.0" encoding="UTF-8"?><PIONEER>{entries}</PIONEER>'
+    )
+    return app_data_dir
+
+
+@pytest.fixture()
+def settings_app_data(tmp_path):
+    """A rekordbox application-data directory: supplied if there is one, else built.
+
+    Substitution, not a skip. The gate the verification contract asks for is the
+    PRESENCE of a fixture, and a skip would let the untested case read as tested
+    in a summary line. See ``W.TEST_SETTINGS_ENV``.
+    """
+    supplied = os.environ.get(W.TEST_SETTINGS_ENV)
+    if supplied:
+        return Path(supplied)
+    return _write_settings_file(tmp_path / "appdata", {W.LIBRARY_SYNC_SETTING: 0})
+
+
+def test_a_real_settings_file_parses_into_a_verdict(settings_app_data, monkeypatch):
+    """The parse, the key lookup, and the verdict, end to end with no patching.
+
+    DEFERRED IN HALF. The supplied-fixture half needs a copy of a real
+    ``rekordbox3.settings``, which the offline library volume cannot provide
+    today. The written-file half runs everywhere and covers the parse, the
+    directory name, and the OFF encoding recorded on 2026-08-01. What only the
+    real file can add is whether a live rekordbox writes anything this reader
+    mishandles, which is why the assertions are written against whatever the file
+    says rather than against a value baked in here.
+    """
+    read = W.read_rekordbox_settings
+    settings = read(settings_app_data)
+    assert W.LIBRARY_SYNC_SETTING in settings, (
+        f"no {W.LIBRARY_SYNC_SETTING} in the settings file under "
+        f"{settings_app_data / W.SETTINGS_APP_DIRNAME}"
+    )
+
+    # Bound BEFORE the patch, so the canary drives the real reader against the
+    # real directory. Re-entering the module attribute here would call the
+    # stand-in and prove only that a lambda can call itself.
+    monkeypatch.setattr(
+        W, "read_rekordbox_settings", lambda *args, **kwargs: read(settings_app_data)
+    )
+    verdict = W.cloud_sync_state()
+    declared = settings[W.LIBRARY_SYNC_SETTING]
+    expected = W.CloudSyncState.OFF if str(declared) in ("0", "False") else W.CloudSyncState.ON
+    assert verdict.state is expected
+    assert W.LIBRARY_SYNC_SETTING in verdict.reason
+
+
+def test_a_settings_file_the_reader_cannot_find_reads_as_unknown(tmp_path, monkeypatch):
+    """The other branch of the same parse: a directory with no file in it.
+
+    Driven through the real reader rather than a stand-in that raises, because
+    "unknown" is the state a machine that has never run rekordbox is in, and that
+    machine is the one most likely to be running this software for the first
+    time. What is under test is that a genuine read failure becomes a REFUSAL
+    with the reason attached, not a crash and not a quiet "off".
+    """
+    empty = tmp_path / "empty"
+    (empty / W.SETTINGS_APP_DIRNAME).mkdir(parents=True)
+    read = W.read_rekordbox_settings  # bound before the patch, as above
+    monkeypatch.setattr(W, "read_rekordbox_settings", lambda *args, **kwargs: read(empty))
+
+    verdict = W.cloud_sync_state()
+    assert verdict.state is W.CloudSyncState.UNKNOWN
+    assert W.LIBRARY_SYNC_SETTING in verdict.reason
+
+    with pytest.raises(W.RekordboxUnavailable) as excinfo:
+        W.assert_cloud_sync_readable()
+    assert excinfo.value.cause.reason == "cloud-sync-unreadable"
 
 
 # ── the writable-column registration seam ────────────────────────────────────
@@ -775,6 +1027,75 @@ def test_a_probe_that_queries_cannot_flush_a_forbidden_write_past_the_guard(
         W.commit_guarded(db)
     assert "BPM" in str(excinfo.value)
     assert db.rolled_back and not db.committed
+
+
+def test_the_containment_is_still_armed_for_the_NEXT_probe(monkeypatch, patch_inspect):
+    """P6, and the reason the test above is no longer sufficient on its own.
+
+    The probe that exposed this hazard was the canary's database cross-check, and
+    that has been deleted: nothing on the pre-commit path queries any more, so
+    the test above now passes because no flush is attempted rather than because
+    one was contained. A guard that passes for the wrong reason is a guard that
+    can be removed without anything going red.
+
+    So this one puts a querying probe back on that path deliberately, standing in
+    for whatever gets added there next, and asserts the caller's pending work
+    survives it. It fails the moment the suspension is dropped from
+    ``commit_guarded``, which is exactly the change a future tidy-up would make
+    after noticing that the current occupant no longer needs it.
+    """
+    monkeypatch.setattr(W, "rekordbox_running", lambda: False)
+    monkeypatch.setattr(W, "rekordbox_agent_running", lambda: False)
+
+    def querying_probe(db):
+        db.session.query(object)  # the flush, if it is not suspended
+        return False
+
+    monkeypatch.setattr(W, "cloud_sync_active", querying_probe)
+    monkeypatch.setattr(
+        W, "read_rekordbox_settings", lambda *args, **kwargs: {W.LIBRARY_SYNC_SETTING: 0}
+    )
+
+    db = _FlushingDB()
+    with pytest.raises(W.RekordboxUnavailable) as excinfo:
+        W.commit_guarded(db)
+    assert "BPM" in str(excinfo.value), (
+        "a probe on the pre-commit path flushed the caller's pending write out of "
+        "the session and the whitelist approved a commit it could no longer see"
+    )
+    assert db.rolled_back and not db.committed
+
+
+def test_every_pre_commit_check_runs_inside_the_suspension():
+    """Read from the source, so it cannot drift from what the function does.
+
+    The rule is not "some checks are contained". Any check left outside the
+    ``with`` block is a check that can flush, and the whitelist runs last, so
+    outside-the-block is upstream of the only guard that would notice.
+    """
+    import ast
+    import inspect
+
+    body = ast.parse(inspect.getsource(W.commit_guarded).lstrip()).body[0].body
+    suspensions = [
+        node
+        for node in body
+        if isinstance(node, ast.With)
+        # The context manager must be ``_no_autoflush`` ITSELF, not merely some
+        # ``with`` block. A block that keeps the shape and drops the suspension
+        # is the exact mutation this is here to catch, and matching on any
+        # ``with`` would sail past it.
+        and any(
+            isinstance(item.context_expr, ast.Call)
+            and getattr(item.context_expr.func, "id", None) == "_no_autoflush"
+            for item in node.items
+        )
+    ]
+    assert suspensions, "commit_guarded no longer suspends the automatic flush at all"
+
+    contained = ast.dump(suspensions[0])
+    for check in ("cloud_sync_active", "assert_cloud_sync_readable", "assert_session_whitelisted"):
+        assert check in contained, f"{check} runs outside the suspended-flush block"
 
 
 # ── every refusal this module raises is in the reserved vocabulary ───────────

@@ -63,7 +63,6 @@ import shutil
 import sys
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from functools import partial
 from pathlib import Path
@@ -469,12 +468,18 @@ def _candidate_app_paths(cfg: config.Config | None) -> list[Path]:
     return []
 
 
-def read_installed_app_version(cfg: config.Config | None = None) -> str | None:
+def read_installed_app_version(*, cfg: config.Config | None = None) -> str | None:
     """The installed rekordbox application version, or None when it cannot be found.
 
     None on every failure path, never an exception. The caller treats "cannot
     find it" as its own outcome, and a probe that raised would make that
     indistinguishable from a drift, which has the opposite remediation.
+
+    ``cfg`` is KEYWORD-ONLY so that a caller cannot pass an application path here
+    by mistaking the first parameter for one, and so that the effective
+    configuration is always threaded by name rather than by position. Passing it
+    is what makes the pin comparison and this probe read ONE set of effective
+    values (P2); see :func:`assert_app_version`.
     """
     probe = _default_app_probe()
     for candidate in _candidate_app_paths(cfg):
@@ -510,12 +515,31 @@ def assert_app_version(*, force: bool = False, cfg: config.Config | None = None)
     The health check reports that as a named condition rather than leaving it as
     a line of transient log output, and the configured application path is the
     mechanism that makes the probe stop failing.
+
+    WHY AN UNRECORDED PIN REFUSES IN THIS MODULE'S OWN VOCABULARY. The refusal
+    itself belongs to the configuration layer, which owns the remedy token, but
+    the TYPE it raises there is a plain configuration error carrying no reason
+    slug and no exit code. Letting that escape gave one condition two identities:
+    an unrecorded pin exited as a configuration precondition on a machine with a
+    config file and as a version-pin refusal on a machine without one, which is
+    exactly the collapse the cause type exists to prevent. It also escaped every
+    ``except RekordboxUnavailable`` a caller writes, breaking the discrimination
+    contract this module's header states. It is re-raised below with the
+    configuration error carried underneath, so nothing is lost.
+
+    WHY THE CONFIGURATION IS RESOLVED ONCE (P2). The pin is judged against a
+    configuration and the probe searches the application path recorded in a
+    configuration, so those had better be the same one. The probe used to be
+    called with no argument and re-entered ``config.load()`` on its own, which
+    under KTD9 is a different snapshot from the one a queued job was frozen
+    against: a check and its consumer disagreeing about the same input.
     """
-    # Called with no arguments on purpose: the probe resolves its own candidate
-    # paths from configuration, and keeping the call argument-free keeps it a
-    # SEAM a test can replace with a one-line stand-in. A probe that has to be
-    # replaced with a signature-compatible stub is a probe tests stop replacing.
-    found = read_installed_app_version()
+    loaded = _loaded_config(cfg)
+
+    # Threaded, not re-derived. ``read_installed_app_version`` stays a SEAM a
+    # test replaces with a one-line stand-in; what changed is that the value it
+    # searches with now comes from the caller rather than from a second load.
+    found = read_installed_app_version(cfg=loaded)
     if found is None:
         logger.warning(
             "the rekordbox application could not be located, so its version pin cannot "
@@ -523,12 +547,26 @@ def assert_app_version(*, force: bool = False, cfg: config.Config | None = None)
         )
         return
 
-    loaded = _loaded_config(cfg)
     if loaded is not None:
         # The refusal on an unset pin lives in the configuration layer, which
         # owns the remedy token for it, and is inert until a writer calls it.
         # This is that call.
-        loaded.assert_rekordbox_pin_recorded()
+        try:
+            loaded.assert_rekordbox_pin_recorded()
+        except config.ConfigError as exc:
+            raise _unavailable(
+                "app-version-pin-unrecorded",
+                f"the installed rekordbox application is version {found!r} and no "
+                f"pin has ever been recorded for this machine, so there is nothing "
+                f"to validate the write against: {exc}",
+                remedy=Remedy.RECORD_REKORDBOX_PIN,
+                detail={
+                    "installed": found,
+                    "pinned": None,
+                    "validated_on": pin_validated_on(loaded),
+                    "config_error": type(exc).__name__,
+                },
+            ) from exc
 
     pin = pinned_app_version(loaded)
     if found == pin:
@@ -548,10 +586,15 @@ def assert_app_version(*, force: bool = False, cfg: config.Config | None = None)
 
     detail = {"installed": found, "pinned": pin, "validated_on": pin_validated_on(loaded)}
     if not pin:
-        # No configuration reached this call at all, so no validation event was
-        # ever recorded. Raised as its own reason rather than folded into drift:
-        # "you pinned the wrong version" and "you never pinned one" have the same
-        # class of code and different things to do about them.
+        # The other half of ONE identity. This branch is the machine with no
+        # usable configuration at all; the branch above is the machine that has a
+        # configuration and never recorded a pin. Same slug, same remedy token,
+        # therefore the same exit code either way, which is the whole point:
+        # "you never pinned one" must not become a different failure depending on
+        # whether a config file happens to exist. Raised as its own reason rather
+        # than folded into drift because "you pinned the wrong version" and "you
+        # never pinned one" have the same class of code and different things to
+        # do about them.
         raise _unavailable(
             "app-version-pin-unrecorded",
             message,
@@ -697,15 +740,15 @@ LIBRARY_SYNC_SETTING = "EnableLibrarySync"
 #: nothing. Verified on a machine running rekordbox 7.
 SETTINGS_APP_DIRNAME = "rekordbox6"
 
-#: How recently the database's own last-sync timestamp may have moved before the
-#: cross-check contradicts a settings file that claims sync is off.
-CLOUD_SYNC_RECENT_DAYS = 7
-
-#: The registry row carrying the last time library sync actually ran.
-LAST_SYNC_ROW = "lastSyncTime"
-
-#: The prefix of the per-month cloud operation-log rows.
-OPLOG_ROW_PREFIX = "opLog."
+#: A real rekordbox application-data directory supplied to the canary's battery,
+#: the settings-file sibling of :data:`TEST_DB_ENV`. Named here for the same
+#: reason that one is: the reader and the tests cannot disagree about it.
+#:
+#: It is a SUBSTITUTION, not a skip. With it unset the battery parses a settings
+#: file the test wrote itself, so every assertion runs on every machine; with it
+#: set the SAME assertions run against a real file and the battery gets stronger.
+#: A gate expressed as a skip would let the untested case look tested.
+TEST_SETTINGS_ENV = "CRATEKIT_TEST_REKORDBOX_SETTINGS"
 
 
 def _no_autoflush(session: Any):
@@ -723,6 +766,13 @@ def _no_autoflush(session: Any):
     at all, so ordering it before the whitelist was safe by accident. Giving the
     canary a real predicate made it a query, and the guard went blind. The fix
     travels with every probe rather than with the one that exposed it.
+
+    THE PROBE THAT EXPOSED THIS IS GONE AND THIS STAYS. The canary's database
+    cross-check was deleted on evidence, so at the time of writing no pre-commit
+    check queries at all and this guard has nothing to suspend. Do not delete it
+    on that basis. The containment belongs to the guard PATH, not to whichever
+    probe currently occupies it, and removing it because its occupant left is how
+    the next probe added there inherits the hazard with the fix already gone.
 
     Degrades to a no-op rather than raising, because the probes are driven with
     stand-in objects in tests, and a helper that demanded a real session would
@@ -748,63 +798,34 @@ def read_rekordbox_settings(app_dir: Path | str | None = None) -> Mapping[str, A
     return _read(base / SETTINGS_APP_DIRNAME)
 
 
-def _recent_sync_evidence(db: Any, *, now: datetime) -> tuple[str | None, str | None]:
-    """Cross-check the database for library-sync activity. Returns (evidence, error).
-
-    Only ever escalates: it can contradict a settings file that says off, and it
-    can never overrule one that says on. The two rows it reads were chosen
-    because they are the only ones observed to move with library sync rather
-    than with cloud AUTHENTICATION, which refreshes routinely on a library whose
-    last sync was two years earlier. Confusing the two is what produced the false
-    positive this module's history records.
-    """
-    from pyrekordbox.db6 import tables
-
-    try:
-        session = db.session
-        # NO AUTOFLUSH, AND THIS IS NOT AN OPTIMISATION. An object-mapper session
-        # flushes pending changes before a query so the query can see them. This
-        # function queries through the CALLER's session while the caller may hold
-        # unexamined pending work, so an autoflush here would push that work into
-        # the transaction and empty the very collections the whitelist inspects,
-        # leaving a forbidden write approved by a guard that could no longer see
-        # it. A read-only probe must never move the caller's work.
-        with _no_autoflush(session):
-            row = (
-                session.query(tables.AgentRegistry)
-                .filter(tables.AgentRegistry.registry_id == LAST_SYNC_ROW)
-                .first()
-            )
-            last_sync = None if row is None else row.date_1
-            if isinstance(last_sync, datetime):
-                stamped = last_sync if last_sync.tzinfo else last_sync.replace(tzinfo=timezone.utc)
-                if now - stamped < timedelta(days=CLOUD_SYNC_RECENT_DAYS):
-                    return f"{LAST_SYNC_ROW}={stamped.isoformat()} is recent", None
-
-            month = f"{OPLOG_ROW_PREFIX}{now.strftime('%Y%m')}."
-            recent_oplog = (
-                session.query(tables.AgentRegistry)
-                .filter(tables.AgentRegistry.registry_id.like(f"{month}%"))
-                .first()
-            )
-            if recent_oplog is not None:
-                return f"cloud operation-log rows exist for {month.rstrip('.')}", None
-    except Exception as exc:  # noqa: BLE001 - a corroborator must not become a second veto
-        return None, f"the activity cross-check could not run: {exc}"
-    return None, None
-
-
-def cloud_sync_state(
-    db: Any = None,
-    *,
-    now: datetime | None = None,
-) -> CloudSyncVerdict:
+def cloud_sync_state(db: Any = None) -> CloudSyncVerdict:
     """Read whether Cloud Library Sync is on, off, or unreadable.
 
-    TWO SOURCES, AND NEITHER IS SUFFICIENT ALONE. The declared setting is
-    authoritative, cheap, and readable while everything is closed. The database
-    cross-check catches a settings file that is stale or lying. A contradiction
-    between them is itself a refusal.
+    ONE SOURCE, AND THAT IS A DECISION RATHER THAN A GAP. The declared setting is
+    authoritative, cheap, and readable while everything is closed. A database
+    cross-check for a settings file that had gone stale used to sit below; it was
+    deleted on evidence, and the comment where it stood records both the evidence
+    and the limit of that evidence.
+
+    ``db`` is accepted and DELIBERATELY NOT READ. It stays in the signature
+    because :func:`cloud_sync_active` is the seam every refusal site drives
+    through and a handle is what any future corroborator would need. Nothing here
+    queries it, which is the property that keeps this function off the hazard
+    described on :func:`_no_autoflush`; adding a query means reading that first.
+
+    WHAT WAS OBSERVED, AND WHAT WAS NOT. Read on 2026-08-01 from a disposable
+    copy of a real library: the OFF encoding is ``val="0"``. The ON encoding was
+    never observed. Producing it means switching library sync on against a
+    library carrying 2,938,336 local updates against the 103,480 the cloud has
+    ever acknowledged, dormant since 2024-08-27, which sets the cloud agent
+    reconciling that backlog against a live library and is not quickly
+    reversible. The comparison below is written as "not zero" precisely so that
+    whatever the positive encoding turns out to be is caught by it.
+
+    **The ON encoding is an untested inference.** It does not belong in the list
+    that follows and must not be read as if it did. Every marker in that list was
+    checked against a real library and found FALSE; this one was not checked at
+    all. A reader who cannot tell those two apart will trust the wrong half.
 
     EVERY DATABASE MARKER THAT LOOKS LIKE THE ANSWER IS FALSE, and each was
     checked against a real library rather than reasoned about:
@@ -826,7 +847,6 @@ def cloud_sync_state(
     read as enabled while library sync is off, so anything matching a substring
     of the word "sync" produces an immediate false positive.
     """
-    moment = now or datetime.now(timezone.utc)
     try:
         settings = read_rekordbox_settings()
     except Exception as exc:  # noqa: BLE001 - any failure to read is "cannot tell"
@@ -849,27 +869,32 @@ def cloud_sync_state(
             f"{LIBRARY_SYNC_SETTING}={declared!r} in the rekordbox settings file",
         )
 
-    if db is None:
-        return CloudSyncVerdict(CloudSyncState.OFF, f"{LIBRARY_SYNC_SETTING}={declared!r}")
-
-    evidence, error = _recent_sync_evidence(db, now=moment)
-    if evidence is not None:
-        return CloudSyncVerdict(
-            CloudSyncState.ON,
-            f"{LIBRARY_SYNC_SETTING}={declared!r} but {evidence}",
-        )
-    if error is not None:
-        # Deliberately not a refusal. The declared setting is the marker; this
-        # check exists only to catch a stale file. A corroborator that can veto
-        # is a second thing able to refuse every open, which is the exact shape
-        # of the incident recorded above.
-        return CloudSyncVerdict(
-            CloudSyncState.OFF, f"{LIBRARY_SYNC_SETTING}={declared!r}; {error}"
-        )
-    return CloudSyncVerdict(
-        CloudSyncState.OFF,
-        f"{LIBRARY_SYNC_SETTING}={declared!r} and no recent cloud activity in the database",
-    )
+    # A DATABASE STALENESS CROSS-CHECK STOOD HERE AND WAS DELETED ON EVIDENCE.
+    #
+    # It read two cloud rows to catch a settings file that claimed off while sync
+    # had in fact been running. The question it answered was "does rekordbox
+    # write this file when the user flips the toggle, or only when it quits". A1
+    # answered that at no cost: Auto Analysis was toggled in the interface and,
+    # with rekordbox STILL RUNNING, the settings file already carried the new
+    # value 23 seconds later; separately, two keys edited on disk with rekordbox
+    # closed were honoured at the next startup. The file flips at toggle time, so
+    # there is no staleness window for a cross-check to close (A3).
+    #
+    # HONEST LIMIT. That was observed on Auto Analysis and on the master database
+    # directory, not on the library-sync key itself. It is strong evidence about
+    # rekordbox's write discipline generally and it is a judgement, not a
+    # certainty. If the settings file is ever found lagging a live toggle, this
+    # is the paragraph that was wrong.
+    #
+    # AND A REASON NOT TO PUT IT BACK CASUALLY. That cross-check was the only
+    # code in this canary that touched the caller's session. Touching the session
+    # is what re-arms the hazard on ``_no_autoflush``: the query flushed a
+    # caller's pending write out of the collections the additive whitelist reads,
+    # so the guard approved a commit it could no longer see. The guard would have
+    # passed a forbidden write BECAUSE the canary started working. Reading
+    # nothing removes that at the root; anything added back here must be read
+    # against ``_no_autoflush`` first.
+    return CloudSyncVerdict(CloudSyncState.OFF, f"{LIBRARY_SYNC_SETTING}={declared!r}")
 
 
 def cloud_sync_active(db: Any) -> bool:
@@ -897,6 +922,19 @@ def assert_cloud_sync_readable(db: Any = None, *, force: bool = False) -> None:
     machine with no rekordbox settings at all, or the snapshot integrity check
     would refuse on exactly the machine trying to verify a snapshot, and a user
     could not reach the step that fixes their setup.
+
+    ITS OWN SLUG, NOT THE ACTIVE ONE. This refusal and the two genuinely-ACTIVE
+    ones used to share a reason, so two conditions with opposite remedies arrived
+    at the caller as one exit code, which is the collision the cause type exists
+    to prevent. "Cloud Library Sync is on" is answered by switching it off.
+    "We cannot tell whether it is on" is answered by a PERSON deciding, which is
+    what the decision code already means and what its remedy token already says.
+    No new code was invented for it, per S4.
+
+    ``force`` is the boolean that decision resolves to. It is a boolean and
+    nothing else: the core never learns the name of the gate that produced it,
+    nor any text a user types, because remediation crosses this layer as a token
+    and the rendering belongs to the command-line layer (D2).
     """
     if force:
         return
@@ -904,9 +942,14 @@ def assert_cloud_sync_readable(db: Any = None, *, force: bool = False) -> None:
     if verdict.state is not CloudSyncState.UNKNOWN:
         return
     raise _unavailable(
-        "cloud-sync-active",
+        "cloud-sync-unreadable",
         f"Cloud Library Sync could not be read, so a concurrent writer cannot be "
         f"ruled out and this write is refused: {verdict.reason}",
+        # The token AND the sentence. The token says a person must answer; the
+        # sentence says what to look at before answering, and it is a sentence
+        # rather than a command because switching a preference in another
+        # application is not something this product can run for them.
+        remedy=Remedy.ANSWER_DECISION,
         steps=(
             "confirm Cloud Library Sync is switched off in rekordbox, which "
             "writes the setting this check reads",
@@ -1913,7 +1956,6 @@ def commit_guarded(db: Any, *, force_cloud_canary: bool = False) -> None:
 
 __all__ = [
     "BOOKKEEPING_COLUMNS",
-    "CLOUD_SYNC_RECENT_DAYS",
     "CONTENT_TABLE",
     "ENV_APP_PATH",
     "FIELD_EMPTIES",
@@ -1923,6 +1965,7 @@ __all__ = [
     "ROOT_PARENT_SENTINELS",
     "SETTINGS_APP_DIRNAME",
     "TEST_DB_ENV",
+    "TEST_SETTINGS_ENV",
     "TRACK_COLOR_POLICY",
     "CloudSyncState",
     "CloudSyncVerdict",

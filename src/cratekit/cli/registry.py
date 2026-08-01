@@ -82,6 +82,35 @@ class GateSpec:
 #: destructive thing the product does.
 WRITE_SURFACES: frozenset[str] = frozenset({"db_tree", "db_metadata", "xml", "files", "remote"})
 
+#: The subset of those surfaces that goes through the guarded rekordbox writer.
+#: A verb declaring one of these opens the database with write intent, so it can
+#: reach the writer's cloud-sync refusals and must declare the decision that
+#: answers the unreadable one. Named here so the rule is DERIVED in one place
+#: rather than re-listed by every check that needs it: a hand-listed copy is a
+#: copy that misses the next verb somebody adds (P3).
+DB_WRITE_SURFACES: frozenset[str] = frozenset({"db_tree", "db_metadata"})
+
+#: The decision a verb reaches when the guarded writer cannot READ rekordbox's
+#: Cloud Library Sync state. Declared once and attached to every verb in
+#: ``DB_WRITE_SURFACES`` rather than re-spelled per entry, because eleven copies
+#: of one gate is eleven chances for one of them to drift a word.
+#:
+#: It is ``explicit`` because R34 forbids a blanket answer for anything in this
+#: class: proceeding past a guard that could not rule out a concurrent writer is
+#: a per-run act by a named actor, never a flag, a config key, or an environment
+#: variable that answers it once for everything.
+#:
+#: The name is not scoped to a verb, unlike the confirm gates around it. That is
+#: deliberate: this is one condition raised by one shared layer, and a decision
+#: is recorded against the run's own verb, so a shared name cannot cross-answer
+#: another run's gate.
+CLOUD_SYNC_UNREADABLE_GATE = GateSpec(
+    name="write.cloudsync.unreadable",
+    options=("proceed", "abort"),
+    prompt="Cloud Library Sync state could not be read; proceed anyway?",
+    explicit=True,
+)
+
 #: The five structured-output surfaces R32 names.
 EMIT_SURFACES: frozenset[str] = frozenset(
     {"plan", "match", "review_set", "job_state", "diagnostic"}
@@ -374,6 +403,7 @@ ENTRIES: tuple[Entry, ...] = (
         adjudicates=True,
         destructive=True,
         doctor_checks=("library.mounted", "rekordbox.pins"),
+        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
         planned_in="U27",
     ),
     Entry(
@@ -472,6 +502,7 @@ ENTRIES: tuple[Entry, ...] = (
                 explicit=True,
                 digest_source="plan",
             ),
+            CLOUD_SYNC_UNREADABLE_GATE,
         ),
         planned_in="U32",
     ),
@@ -501,6 +532,7 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"db_tree"}),
         destructive=True,
         doctor_checks=("library.mounted", "library.identity", "rekordbox.closed"),
+        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
         planned_in="U36",
     ),
     # ── Jobs ────────────────────────────────────────────────────────────────
@@ -679,6 +711,7 @@ ENTRIES: tuple[Entry, ...] = (
                 prompt="Apply these renames?",
                 digest_source="plan",
             ),
+            CLOUD_SYNC_UNREADABLE_GATE,
         ),
         planned_in="U21",
     ),
@@ -743,6 +776,7 @@ ENTRIES: tuple[Entry, ...] = (
                 prompt="Apply this routing plan to the library?",
                 digest_source="plan",
             ),
+            CLOUD_SYNC_UNREADABLE_GATE,
         ),
         planned_in="U19",
     ),
@@ -760,6 +794,7 @@ ENTRIES: tuple[Entry, ...] = (
         destructive=True,
         taxonomy_terms=("genre_energy",),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
+        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
         planned_in="U19",
     ),
     Entry(
@@ -778,6 +813,7 @@ ENTRIES: tuple[Entry, ...] = (
         destructive=True,
         taxonomy_terms=("genre_energy", "low", "med", "high"),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
+        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
         planned_in="U19",
     ),
     Entry(
@@ -901,6 +937,7 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"files", "db_metadata"}),
         destructive=True,
         doctor_checks=("library.mounted", "rekordbox.pins"),
+        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
         planned_in="U25",
     ),
     Entry(
@@ -939,6 +976,7 @@ ENTRIES: tuple[Entry, ...] = (
         destructive=True,
         taxonomy_terms=("with_vox",),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
+        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
         planned_in="U21",
     ),
     # ── Sync ────────────────────────────────────────────────────────────────
@@ -992,6 +1030,7 @@ ENTRIES: tuple[Entry, ...] = (
         adjudicates=True,
         destructive=True,
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "credential.provider"),
+        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
         planned_in="U22",
     ),
     Entry(
@@ -1081,6 +1120,7 @@ ENTRIES: tuple[Entry, ...] = (
                 explicit=True,
                 digest_source="plan",
             ),
+            CLOUD_SYNC_UNREADABLE_GATE,
         ),
         planned_in="U23",
     ),
@@ -1267,6 +1307,8 @@ def gate(name: str) -> tuple[Entry, GateSpec]:
 
 
 __all__ = [
+    "CLOUD_SYNC_UNREADABLE_GATE",
+    "DB_WRITE_SURFACES",
     "DEFERRED_MODULES",
     "DISTRIBUTION",
     "EMIT_SURFACES",
