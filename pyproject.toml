@@ -162,6 +162,15 @@ select = ["E9", "F", "I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The suite runs against the source tree it SITS BESIDE, resolved from pytest's
+# own rootdir, never against whatever an editable install happens to point at.
+# In a plain checkout the two are the same path and this changes nothing. In a
+# git worktree they are not: the editable install's path entry names the main
+# checkout, so without this the tests in a worktree import a different tree than
+# the one being edited, pass or fail on code nobody changed, and report it as if
+# it were the worktree's. That is the P2 failure aimed at a build: a check that
+# reads a different value from the thing it is checking.
+pythonpath = ["src"]
 # Every test runs against redirected state roots (tests/conftest.py autouse
 # fixtures). A test that reaches real config, a real library, or a real keychain
 # is a bug, not a slow test.

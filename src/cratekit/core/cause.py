@@ -132,7 +132,8 @@ class Remediation:
 # S4: every refusal the guarded writer (U7) can raise has a slug here, reserved
 # before that unit is written, because a refusal with no code is exactly the
 # defect KTD25 exists to prevent. ``tests/test_cli_contract.py`` names the
-# writer's eleven refusal conditions one by one and asserts each has an entry.
+# writer's refusal conditions one by one and asserts each has an entry, and the
+# writer's own suite asserts the reverse, that every reserved slug is raised.
 
 REASONS: Mapping[str, ExitCode] = MappingProxyType(
     {
@@ -144,6 +145,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # ── Gates ───────────────────────────────────────────────────────────
         "decision-required": ExitCode.DECISION_REQUIRED,
         "decision-unknown-gate": ExitCode.DECISION_REQUIRED,
+        # The guarded writer could not READ the Cloud Library Sync state, which
+        # is a different fact from finding it switched on and has a different
+        # answer. On means "switch it off"; cannot-tell means a person decides
+        # whether to proceed, which is what this code already means and what its
+        # remedy token already says, so no code is invented for it (S4). It is
+        # deliberately NOT ``decision-unknown-gate``: that one means the gate name
+        # itself is not declared, which is a defect rather than a decision.
+        "cloud-sync-unreadable": ExitCode.DECISION_REQUIRED,
         "decision-stale": ExitCode.DECISION_STALE,
         "awaiting-import": ExitCode.PENDING_HUMAN,
         "awaiting-human-action": ExitCode.PENDING_HUMAN,
@@ -174,6 +183,8 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "tree-unconverged": ExitCode.UNCONVERGED,
         "database-open-failed": ExitCode.LIBRARY_UNREADABLE,
         "canary-read-failed": ExitCode.LIBRARY_UNREADABLE,
+        # Genuinely ON, which is the case ``DISABLE_CLOUD_SYNC`` is the answer
+        # to. The cannot-read case is above, under the decision codes.
         "cloud-sync-active": ExitCode.EXTERNAL_WRITER,
         "mytag-category-template-missing": ExitCode.LIBRARY_PREREQUISITE,
         # ── This installation ───────────────────────────────────────────────

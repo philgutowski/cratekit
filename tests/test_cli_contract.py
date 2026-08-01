@@ -301,11 +301,17 @@ def test_every_remediation_token_renders_to_something_a_user_can_act_on():
 
 # ── S4: every refusal the guarded writer raises has a code and a remedy ──────
 
-#: The eleven refusal conditions the guarded rekordbox writer raises, taken from
-#: U7's surface map. U5 ships before U7 precisely so that U7 CONSUMES this
-#: vocabulary instead of inventing codes, and a refusal with no code is the
-#: defect KTD25 exists to prevent. The twelfth, the two-process refusal, is a
-#: separate exception type in the source and is asserted alongside them.
+#: The refusal conditions the guarded rekordbox writer raises, taken from U7's
+#: surface map. U5 ships before U7 precisely so that U7 CONSUMES this vocabulary
+#: instead of inventing codes, and a refusal with no code is the defect KTD25
+#: exists to prevent. The two-process refusal is a separate exception type in the
+#: source and is asserted alongside them.
+#:
+#: DELIBERATELY NOT COUNTED IN PROSE. It was written as "the eleven refusal
+#: conditions" and stopped being eleven the first time one was split in two,
+#: which is what a count in a comment always does. The list is walked by the test
+#: below and reconciled against what the writer actually raises, so its size is
+#: derived in both directions and never asserted here.
 WRITER_REFUSALS: dict[str, str] = {
     "pyrekordbox pin drift": "pyrekordbox-pin-drift",
     "database schema version drift": "db-schema-pin-drift",
@@ -315,6 +321,12 @@ WRITER_REFUSALS: dict[str, str] = {
     "database open failure": "database-open-failed",
     "canary read failure": "canary-read-failed",
     "cloud sync canary tripped": "cloud-sync-active",
+    # Split off the line above. "Sync is on" and "we cannot tell whether sync is
+    # on" were one slug, so two conditions with opposite answers arrived as one
+    # exit code, which is the collision this whole reservation list exists to
+    # prevent. Reserved separately here because the reservation list is the
+    # contract; the writer consumes it.
+    "cloud sync state unreadable": "cloud-sync-unreadable",
     "additive whitelist violation": "whitelist-violation",
     "missing tag-category template": "mytag-category-template-missing",
     "write lock contention": "write-lock-held",
@@ -350,6 +362,79 @@ def test_the_two_process_refusal_and_the_lock_contention_are_different_codes():
 def test_an_unrecorded_application_pin_refuses_rather_than_adopting_what_is_installed():
     """S2. A pin the software copies from the machine it runs on refuses nothing."""
     assert REASONS["app-version-pin-unrecorded"] is ExitCode.VERSION_PIN
+
+
+def test_an_unreadable_cloud_state_and_an_active_one_are_different_failures():
+    """The second collision of the same shape as the two-process one above.
+
+    They shared a slug, so a caller could not tell "Cloud Library Sync is on"
+    from "the file that records it could not be read". The answers are not
+    variations of each other: one is switched off in another application, and the
+    other cannot be, because nothing has established there is anything to switch.
+    The fix for "we cannot tell" is a PERSON deciding whether to proceed, which
+    is what the decision code already means, so no code was invented for it (S4).
+
+    The remedy tokens are read from the codes rather than asserted as literals,
+    so this stays true if a code's class remedy is ever revised.
+    """
+    unreadable, active = REASONS["cloud-sync-unreadable"], REASONS["cloud-sync-active"]
+    assert unreadable is not active
+    assert meaning_of(unreadable).remedy is not meaning_of(active).remedy
+    assert meaning_of(unreadable).remedy is Remedy.ANSWER_DECISION
+    assert meaning_of(active).remedy is Remedy.DISABLE_CLOUD_SYNC
+
+    # "Answer the decision" is only true advice if the run is still there to
+    # answer. The command-line layer decides that by code, so picking this code
+    # is what makes the refusal resumable rather than merely described as such.
+    assert unreadable in gates.GATE_CODES
+    assert active not in gates.GATE_CODES
+
+
+def test_the_unreadable_cloud_state_is_not_the_undeclared_gate_reason():
+    """Two slugs on one code, kept apart because they mean opposite things.
+
+    ``decision-unknown-gate`` means a decision named a gate the verb does not
+    declare, which is a defect. This one means a declared gate was reached with
+    nothing recorded against it, which is the system working. Folding the second
+    into the first would report a normal refusal as a bug in the product.
+    """
+    assert REASONS["cloud-sync-unreadable"] is REASONS["decision-unknown-gate"]
+    assert "cloud-sync-unreadable" != "decision-unknown-gate"
+
+
+def test_the_reason_registry_has_no_duplicate_key():
+    """A duplicate key in a dict literal is silent: the later one simply wins.
+
+    Every test over this mapping iterates the RUNTIME dict, so a slug shadowed at
+    parse time is invisible to all of them, and the shadowed entry's exit code
+    becomes whatever the survivor says. This repository has shipped that defect
+    once with the whole suite green. Counting the literal's keys against the
+    runtime length is the only check that can see it.
+    """
+    import inspect
+
+    from cratekit.core import cause as cause_module
+
+    literal = None
+    for node in ast.walk(ast.parse(inspect.getsource(cause_module))):
+        target = None
+        if isinstance(node, ast.AnnAssign):
+            target = getattr(node.target, "id", None)
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = getattr(node.targets[0], "id", None)
+        if target == "REASONS":
+            literal = node.value
+    assert literal is not None, "REASONS is no longer a module-level assignment"
+
+    # ``MappingProxyType({...})``: the mapping is the call's first argument.
+    mapping = literal.args[0] if isinstance(literal, ast.Call) else literal
+    keys = [key.value for key in mapping.keys]
+    duplicates = sorted({key for key in keys if keys.count(key) > 1})
+    assert not duplicates, f"duplicate reason slugs shadowed at parse time: {duplicates}"
+    assert len(keys) == len(REASONS), (
+        f"the literal declares {len(keys)} keys and the runtime mapping has "
+        f"{len(REASONS)}; the difference is entries one of the others shadows"
+    )
 
 
 def test_every_reason_maps_into_the_vocabulary_and_every_refusal_is_reachable():
@@ -754,6 +839,72 @@ def test_a_gate_marked_explicit_refuses_an_inline_answer(configured):
     gates.record(state, spec, "acknowledged", actor="a-person")
     assert gates.Gates(state=state).require(spec) == "acknowledged"
     assert state.decisions[spec.name].actor == "a-person"
+
+
+def test_the_unreadable_cloud_sync_override_is_a_DECLARED_GATE():
+    """The override used to be a Python keyword argument and nothing else.
+
+    It sat on three functions inside the guarded writer, reachable from no
+    command a user can type, so the only way past a canary that could not read
+    the state was to edit the source. A refusal with an escape nobody can reach
+    is a refusal with no escape.
+
+    Looked up BY NAME through the registry rather than constructed here, because
+    a spec built in the test proves the test can build a spec.
+    """
+    owner, spec = registry.gate("write.cloudsync.unreadable")
+    assert spec.explicit, (
+        "R34 forbids a blanket answer for this class: proceeding past a guard "
+        "that could not rule out a concurrent writer is a per-run act by a named "
+        "actor, not a flag that answers it once for everything"
+    )
+    assert set(spec.options) == {"proceed", "abort"}
+    assert owner.writes & registry.DB_WRITE_SURFACES
+
+
+def test_every_verb_that_writes_the_database_declares_the_cloud_sync_decision():
+    """Derived by walking the registry, never by listing verbs (P3).
+
+    Every verb declaring a database write surface opens the database with write
+    intent and therefore reaches the writer's unreadable-cloud refusal. A verb
+    that reaches it without declaring the decision leaves a user with a refusal
+    and no way to answer it, and a hand-written list of the verbs that qualify is
+    a list that misses the next one somebody adds.
+    """
+    missing = sorted(
+        entry.name
+        for entry in registry.ENTRIES
+        if entry.writes & registry.DB_WRITE_SURFACES
+        and not any(spec.name == "write.cloudsync.unreadable" for spec in entry.gates)
+    )
+    assert not missing, (
+        f"verbs that write the database and declare no cloud-sync decision: {missing}"
+    )
+
+    # And the reverse, which is the direction that rots: a verb declaring the
+    # decision without writing the database would be asking a person to answer a
+    # question its work can never raise.
+    spurious = sorted(
+        entry.name
+        for entry in registry.ENTRIES
+        if any(spec.name == "write.cloudsync.unreadable" for spec in entry.gates)
+        and not entry.writes & registry.DB_WRITE_SURFACES
+    )
+    assert not spurious, f"verbs declaring a decision they cannot reach: {spurious}"
+
+
+def test_the_core_writer_never_learns_the_gates_name_or_any_flag_string():
+    """D2 from the other side: the foundation names no verb and no gate.
+
+    The override crosses into the guarded writer as a BOOLEAN. What produced that
+    boolean, what it is called, and what a user typed to answer it all belong to
+    the command-line layer, which is the only layer allowed to render a token
+    into text. A core module that knows the gate's name has re-acquired the
+    command vocabulary the layering rule removes from it.
+    """
+    source = (SRC_ROOT / "cratekit" / "core" / "rb_writer.py").read_text()
+    for leaked in ("write.cloudsync.unreadable", "--decision", "crate "):
+        assert leaked not in source, f"the core writer names {leaked!r}"
 
 
 def test_no_environment_variable_or_config_key_can_answer_a_gate(configured, monkeypatch):
