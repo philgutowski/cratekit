@@ -1,0 +1,861 @@
+"""U10: the job engine's properties, each named for the failure it prevents.
+
+The engine is small; what makes it worth this many assertions is that every one
+of them corresponds to something that actually went wrong once, either in the
+source system or in the class of bug the plan records. So each test says which.
+
+The subprocess tests are not slow versions of the in-process ones. A killed
+process is the only way to produce the state the engine exists to recover from:
+a claimed item whose driver is gone, a lock the kernel released, and a row that
+still says running. An in-process fake can imitate the rows but not the kernel,
+and the kernel is the half doing the work.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import signal
+import sqlite3
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import pytest
+
+from cratekit.core import config, jobs
+from cratekit.core.cause import Cause, CratekitError, Remediation, Scope
+from cratekit.core.exit_codes import ExitCode, Remedy
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SRC_ROOT = REPO_ROOT / "src"
+WORKER = Path(__file__).resolve().parent / "job_worker.py"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Fixtures
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.fixture
+def cfg(tmp_path):
+    """A saved, loadable configuration. ``enqueue`` freezes exactly this."""
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    built = config.from_dict(
+        {
+            "schema_version": config.CURRENT_SCHEMA_VERSION,
+            "library": {
+                "root": str(root),
+                "volume_id": "F1E2-D3C4",
+                "db_path": str(root / "db" / "master.db"),
+            },
+            "paths": {"download_staging": str(tmp_path / "staging")},
+            "profile": {"name": "full"},
+        }
+    )
+    config.save(built)
+    config.reset_cache()
+    return built
+
+
+@pytest.fixture
+def queue(tmp_path):
+    """A queue in its own directory, so lock and log files are visible to a test."""
+    root = tmp_path / "jobs"
+    with jobs.open_store(root / jobs.QUEUE_FILENAME) as store:
+        yield store, root
+
+
+def _spawn_worker(*args: str) -> subprocess.Popen:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(SRC_ROOT)
+    return subprocess.Popen(
+        [sys.executable, str(WORKER), *args],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def _wait_for(path: Path, *, seconds: float = 20.0) -> None:
+    """Block until a marker file appears, or fail naming what never arrived."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if path.exists():
+            return
+        time.sleep(0.02)
+    raise AssertionError(f"{path.name} never appeared within {seconds}s")
+
+
+def _attempts(ledger: Path) -> list[str]:
+    return [line for line in ledger.read_text().splitlines() if line]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 1: state discipline ported from the source manifest
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_queued_job_freezes_the_whole_configuration_not_a_subset(queue, cfg):
+    """KTD9. A frozen subset un-freezes itself the next time somebody reads a key."""
+    store, _ = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={"x": 1}, cfg=cfg)
+    assert job.config_fingerprint == cfg.fingerprint()
+    assert jobs.frozen_config(job).to_toml_dict() == cfg.to_toml_dict()
+    assert job.library_id == cfg.library.volume_id
+
+
+def test_a_job_records_the_library_it_targets(queue, cfg):
+    """The queue is per install and a library is per config.
+
+    Without the recorded identity, a queue drained after the user reconfigures
+    runs against whatever volume is configured now, which is not the one the work
+    was planned against.
+    """
+    store, _ = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    assert job.library_id == cfg.library.volume_id
+
+
+def test_a_config_that_changed_while_queued_names_what_drifted(queue, cfg, tmp_path):
+    """KTD9's second half, and the structural fix for a recorded resume bug.
+
+    The bug: a base export re-resolved on resume, found something else, and could
+    empty the output. The job here still runs against its frozen copy; what the
+    engine adds is the ability to SAY which keys moved, so the user is not left
+    wondering why their edit had no effect.
+    """
+    store, _ = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    assert jobs.drift(job, cfg) == ()
+
+    moved = config.from_dict(
+        {**cfg.to_toml_dict(), "paths": {"download_staging": str(tmp_path / "elsewhere")}}
+    )
+    drifted = jobs.drift(job, moved)
+    assert drifted == ("paths.download_staging",)
+    # The job still runs against the frozen copy, which is the whole point.
+    assert jobs.frozen_config(job).paths.download_staging == cfg.paths.download_staging
+
+
+def test_transitions_are_forward_only(queue, cfg):
+    store, _ = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    jobs.transition(store, job.job_id, jobs.JobState.RUNNING)
+    jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
+    with pytest.raises(CratekitError) as excinfo:
+        jobs.transition(store, job.job_id, jobs.JobState.RUNNING)
+    assert excinfo.value.cause.reason == "internal-error"
+
+
+def test_an_unrecognized_state_on_disk_coerces_to_an_open_state_never_a_terminal_one(
+    queue, cfg
+):
+    """The direction of the coercion is the load-bearing half.
+
+    A malformed record degrading to ``queued`` costs at most a re-drive, and the
+    item ledger makes that free. The same record degrading to ``succeeded`` is a
+    false success, and nothing downstream can tell it from a real one.
+    """
+    store, _ = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a"])
+    store.conn.execute(
+        "UPDATE jobs SET state = ? WHERE job_id = ?", ("something-else", job.job_id)
+    )
+    store.conn.execute(
+        "UPDATE job_items SET state = ? WHERE job_id = ?", ("nonsense", job.job_id)
+    )
+    assert jobs.get(store, job.job_id).state is jobs.JobState.QUEUED
+    assert jobs.items(store, job.job_id)[0].state is jobs.ItemState.PENDING
+
+
+def test_a_queue_written_at_another_schema_refuses_to_resume(tmp_path):
+    """Ported discipline: the source versions one state file out of twenty-one."""
+    path = tmp_path / "jobs" / jobs.QUEUE_FILENAME
+    jobs.open_store(path).close()
+    conn = sqlite3.connect(str(path))
+    conn.execute("UPDATE queue_schema SET version = 99")
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(CratekitError) as excinfo:
+        jobs.open_store(path)
+    assert excinfo.value.cause.reason == "job-schema-mismatch"
+    assert excinfo.value.cause.code is ExitCode.PRECONDITION
+
+
+def test_an_unknown_job_refuses_with_a_code_from_the_vocabulary(queue):
+    store, _ = queue
+    with pytest.raises(CratekitError) as excinfo:
+        jobs.get(store, "no-such-job")
+    assert excinfo.value.cause.reason == "job-unknown"
+    assert excinfo.value.cause.code is ExitCode.PRECONDITION
+    assert excinfo.value.cause.remediation.steps
+
+
+def test_a_stored_cause_that_cannot_be_read_back_is_not_read_as_success(queue, cfg):
+    """None means "no failure". An unparseable cause must never mean that."""
+    store, _ = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    store.conn.execute(
+        "UPDATE jobs SET cause = ? WHERE job_id = ?", ("{not json", job.job_id)
+    )
+    reloaded = jobs.get(store, job.job_id)
+    assert reloaded.cause is not None
+    assert reloaded.cause.reason == "no-evidence"
+
+
+def test_everything_the_queue_writes_is_owner_only_under_any_umask(tmp_path, cfg):
+    """Audited by WALKING the directory, never by naming the files in it.
+
+    A test that lists the files it knows about is a test that misses the next one,
+    and the next one here is a write-ahead log created by SQLite rather than by
+    us. Directories are checked alongside files for the reason the config module
+    already learned: a 0600 file inside a world-writable directory is not private,
+    because unlink and rename are governed by the directory.
+    """
+    previous = os.umask(0o000)
+    try:
+        root = tmp_path / "queue-root"
+        with jobs.open_store(root / jobs.QUEUE_FILENAME) as store:
+            job = jobs.enqueue(
+                store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a"]
+            )
+            # Every writer this module has: the database, its sidecars, a driver
+            # lock, and a job log. Exercised so the walk below has them all.
+            with jobs.driver_lock(job.job_id, root=root):
+                pass
+            jobs.log_path(job.job_id, root=root).write_bytes(b"")
+            env = dict(os.environ)
+            env["PYTHONPATH"] = str(SRC_ROOT)
+            pid = jobs.spawn(store, job, ["--version"], root=root, env=env)
+            os.waitpid(pid, 0)
+    finally:
+        os.umask(previous)
+
+    exposed = [
+        str(path.relative_to(root))
+        for path in sorted(root.rglob("*"))
+        if path.stat().st_mode & 0o077
+    ]
+    assert not exposed, f"group or world accessible under the queue root: {exposed}"
+    assert root.stat().st_mode & 0o077 == 0, "the queue directory itself is exposed"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 2: blocked needs a reason (KTD25)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _throttled() -> Cause:
+    return Cause(
+        reason="unavailable-transient",
+        message="the provider asked us to slow down",
+        remediation=Remediation(remedy=Remedy.RETRY_LATER),
+        scope=Scope.SOURCE,
+        retryable=True,
+    )
+
+
+def _needs_acknowledgment() -> Cause:
+    return Cause(
+        reason="backup-acknowledgment-missing",
+        message="this session has no recorded backup acknowledgment",
+        remediation=Remediation(remedy=Remedy.ACKNOWLEDGE_BACKUP),
+        scope=Scope.SESSION,
+    )
+
+
+def test_two_jobs_parked_under_one_state_still_carry_two_different_remediations(queue, cfg):
+    """The plan names this case explicitly.
+
+    A throttled provider and a missing acknowledgment are both ``blocked``. The
+    source supervisor would give both the same status and put the difference in a
+    log file; here the difference is a field.
+    """
+    store, _ = queue
+    throttled = jobs.enqueue(store, handler_key="job.resume", payload={"a": 1}, cfg=cfg)
+    unacknowledged = jobs.enqueue(store, handler_key="job.resume", payload={"b": 2}, cfg=cfg)
+
+    jobs.block(store, throttled.job_id, _throttled())
+    jobs.block(store, unacknowledged.job_id, _needs_acknowledgment())
+
+    first = jobs.get(store, throttled.job_id)
+    second = jobs.get(store, unacknowledged.job_id)
+    assert first.state is second.state is jobs.JobState.BLOCKED
+    assert first.cause.reason != second.cause.reason
+    assert first.cause.remediation.remedy is Remedy.RETRY_LATER
+    assert second.cause.remediation.remedy is Remedy.ACKNOWLEDGE_BACKUP
+
+
+def test_parking_a_job_without_a_reason_is_refused(queue, cfg):
+    store, _ = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    with pytest.raises(CratekitError):
+        jobs.transition(store, job.job_id, jobs.JobState.BLOCKED)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 3: durability (KTD8)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_artifact_is_flushed_and_renamed_before_the_row_flips_to_done(
+    queue, cfg, tmp_path, monkeypatch
+):
+    """The ordering is the guarantee, so the ordering is what is asserted.
+
+    Neither state writer in the source system flushes before replacing, so this
+    is the one property in the whole engine that could not be ported and had to be
+    added. A row that flips before the rename is durable leaves a job claiming an
+    artifact that is not there, and "done" is exactly what a resume trusts.
+    """
+    store, root = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["one"])
+
+    events: list[str] = []
+    real_fsync, real_replace = os.fsync, os.replace
+    real_complete = jobs.complete_item
+
+    monkeypatch.setattr(os, "fsync", lambda fd: (events.append("fsync"), real_fsync(fd))[1])
+    monkeypatch.setattr(
+        os, "replace", lambda a, b: (events.append("replace"), real_replace(a, b))[1]
+    )
+    monkeypatch.setattr(
+        jobs,
+        "complete_item",
+        lambda *a, **k: (events.append("done"), real_complete(*a, **k))[1],
+    )
+
+    staged = tmp_path / "staged.txt"
+    staged.write_text("payload")
+
+    def handle(_job, _item):
+        return jobs.Produced(staged=staged, final=tmp_path / "out" / "one.txt")
+
+    jobs.drive(store, job.job_id, handle, root=root)
+
+    assert events == ["fsync", "replace", "fsync", "done"], events
+    assert (tmp_path / "out" / "one.txt").read_text() == "payload"
+    assert not staged.exists()
+
+
+def test_an_item_that_produces_nothing_still_completes(queue, cfg, tmp_path):
+    """Not every unit of work makes a file, and the engine must not require one."""
+    store, root = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a"])
+    result = jobs.drive(store, job.job_id, lambda _j, _i: None, root=root)
+    assert result.processed == 1
+    assert result.job.state is jobs.JobState.SUCCEEDED
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 4: never an empty success
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_job_whose_every_item_fails_raises_rather_than_reporting_success(queue, cfg):
+    """The recorded incident, as a test.
+
+    Total lookup failure returned an empty list, the caller read that as "nothing
+    new", and a playlist was permanently marked as fully downloaded holding zero
+    tracks. Empty means verified empty only when the lookups succeeded.
+    """
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a", "b", "c"]
+    )
+
+    def always_fails(_job, _item):
+        raise RuntimeError("the provider is unreachable")
+
+    with pytest.raises(CratekitError) as excinfo:
+        jobs.drive(store, job.job_id, always_fails, root=root)
+    assert excinfo.value.cause.reason == "no-evidence"
+    # Recorded BEFORE the raise: a raise that left the row saying running would
+    # be the unpersisted-decision half of the same incident.
+    assert jobs.get(store, job.job_id).state is jobs.JobState.FAILED
+
+
+def test_attempting_nothing_is_a_no_op_and_not_a_failure(queue, cfg):
+    """An up-to-date source must not look broken."""
+    store, root = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=[])
+    result = jobs.drive(store, job.job_id, lambda _j, _i: None, root=root)
+    assert result.processed == 0
+    assert result.job.state is jobs.JobState.SUCCEEDED
+    jobs.evidence_or_raise(attempted=0, succeeded=0)
+
+
+def test_a_partial_failure_fails_the_job_and_keeps_the_successes(queue, cfg):
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["good", "bad"]
+    )
+
+    def sometimes(_job, item):
+        if item.item_id == "bad":
+            raise RuntimeError("this one is broken")
+        return None
+
+    result = jobs.drive(store, job.job_id, sometimes, root=root)
+    assert (result.processed, result.failed) == (1, 1)
+    assert result.job.state is jobs.JobState.FAILED
+    states = {item.item_id: item.state for item in jobs.items(store, job.job_id)}
+    assert states == {"good": jobs.ItemState.DONE, "bad": jobs.ItemState.FAILED}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 5: cancelled is not failed, and an interrupt aborts before a commit
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_cancelling_reports_cancelled_rather_than_failed(queue, cfg):
+    """R22 names the distinction. The source registry cannot express it at all."""
+    store, _ = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a"])
+    cancelled = jobs.cancel(store, job.job_id, stage="planning")
+    assert cancelled.state is jobs.JobState.CANCELLED
+    assert cancelled.state is not jobs.JobState.FAILED
+    assert cancelled.cause.reason == "cancelled"
+    assert cancelled.cause.code is ExitCode.INTERRUPTED
+    assert cancelled.stage == "planning"
+
+
+def test_an_interrupt_between_the_work_and_the_commit_leaves_no_artifact(
+    queue, cfg, tmp_path
+):
+    """The abort point is BEFORE the commit, never inside it.
+
+    The handler signals the process itself, which is as close to a real SIGINT as
+    a test can get: the handler runs synchronously, records the flag, and the
+    driver reaches its checkpoint with the item claimed and nothing written.
+    """
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a", "b"]
+    )
+    staged = tmp_path / "staged-a.txt"
+    final = tmp_path / "out" / "a.txt"
+
+    def handle(_job, item):
+        staged.write_text("half a session")
+        os.kill(os.getpid(), signal.SIGINT)
+        return jobs.Produced(staged=staged, final=final)
+
+    result = jobs.drive(store, job.job_id, handle, root=root, stage="downloading")
+
+    assert result.interrupted is True
+    assert result.processed == 0
+    assert not final.exists(), "the commit ran despite the interrupt"
+    assert result.job.state is jobs.JobState.CANCELLED
+    assert result.job.stage == "downloading"
+    # Released, not failed: the item is redone whole on resume rather than
+    # inheriting whatever half-state the interrupted attempt left behind.
+    assert {item.state for item in jobs.items(store, job.job_id)} == {
+        jobs.ItemState.PENDING
+    }
+
+
+def test_the_signal_handler_is_restored_afterwards(queue):
+    """A driver that leaves its handler installed breaks whatever runs next."""
+    before = signal.getsignal(signal.SIGINT)
+    with jobs.interruptible():
+        assert signal.getsignal(signal.SIGINT) is not before
+    assert signal.getsignal(signal.SIGINT) is before
+
+
+def test_a_cancelled_job_can_be_resumed_and_a_succeeded_one_cannot(queue, cfg):
+    """Cancelled is terminal AND retryable; succeeded is terminal and finished."""
+    store, root = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a"])
+    jobs.cancel(store, job.job_id)
+    assert jobs.retry(store, job.job_id).state is jobs.JobState.QUEUED
+
+    jobs.drive(store, job.job_id, lambda _j, _i: None, root=root)
+    with pytest.raises(CratekitError):
+        jobs.retry(store, job.job_id)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 6: one driver per job, decided by holder liveness
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_second_driver_refuses_while_a_live_holder_has_the_lock(queue, cfg):
+    """A slow run is never evicted, which is why there is no timeout anywhere."""
+    store, root = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    holder = _spawn_worker("hold", job.job_id, str(root))
+    try:
+        _wait_for(root / f"holding-{job.job_id}")
+        with pytest.raises(jobs.DriverHeld) as excinfo:
+            with jobs.driver_lock(job.job_id, root=root):
+                pass
+        assert excinfo.value.cause.reason == "job-driver-held"
+        assert excinfo.value.cause.code is ExitCode.LIBRARY_BUSY
+        assert str(holder.pid) in excinfo.value.cause.message
+    finally:
+        holder.kill()
+        holder.wait(timeout=20)
+
+
+def test_a_dead_holders_lock_is_reclaimed_without_any_timeout(queue, cfg):
+    """The kernel releases an advisory lock when its holder dies.
+
+    That IS the staleness rule. A timeout cannot tell a crashed driver from a slow
+    one, and every timeout long enough to be safe for a slow run is too long to be
+    useful after a crash.
+    """
+    store, root = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    holder = _spawn_worker("hold", job.job_id, str(root))
+    _wait_for(root / f"holding-{job.job_id}")
+    holder.kill()
+    holder.wait(timeout=20)
+
+    # No sleep, no grace period: the lock is free the instant the holder is gone.
+    with jobs.driver_lock(job.job_id, root=root) as path:
+        assert json.loads(path.read_text())["pid"] == os.getpid()
+
+
+def test_the_lock_file_survives_release(queue, cfg):
+    """Unlinking on release is the classic way to lose the exclusion it provides."""
+    store, root = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    with jobs.driver_lock(job.job_id, root=root):
+        pass
+    assert jobs.lock_path(job.job_id, root=root).exists()
+
+
+def test_a_running_row_with_no_live_driver_is_reconciled_back_to_queued(queue, cfg):
+    """Disk truth is the lock, not the row.
+
+    Believing the row would either refuse a resume forever or double-drive a job
+    whose lock is genuinely held, and the source supervisor's answer to the same
+    question is where its "no success without evidence" rule comes from.
+    """
+    store, root = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a"])
+    jobs.transition(store, job.job_id, jobs.JobState.RUNNING, stage="downloading")
+    store.conn.execute(
+        "UPDATE job_items SET state = ?, claimed_by = ? WHERE job_id = ?",
+        (str(jobs.ItemState.CLAIMED), "a-dead-driver", job.job_id),
+    )
+
+    reconciled = jobs.reconcile(store, job.job_id, root=root)
+    assert reconciled.state is jobs.JobState.QUEUED
+    assert reconciled.stage == "downloading"
+    assert jobs.items(store, job.job_id)[0].state is jobs.ItemState.PENDING
+
+
+def test_reconcile_leaves_a_genuinely_running_job_alone(queue, cfg):
+    store, root = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    jobs.transition(store, job.job_id, jobs.JobState.RUNNING)
+    holder = _spawn_worker("hold", job.job_id, str(root))
+    try:
+        _wait_for(root / f"holding-{job.job_id}")
+        assert jobs.reconcile(store, job.job_id, root=root).state is jobs.JobState.RUNNING
+    finally:
+        holder.kill()
+        holder.wait(timeout=20)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 7: two processes writing job state
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_two_processes_claiming_the_same_job_never_claim_one_item_twice(
+    queue, cfg, tmp_path
+):
+    """The claim is one immediate transaction, and this is what that buys.
+
+    Under a deferred transaction both processes read the same lowest pending
+    ordinal before either writes, and SQLite resolves it by failing one of them at
+    COMMIT, which is after the work has already been decided.
+    """
+    store, root = queue
+    item_ids = [f"item-{index:03d}" for index in range(60)]
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=item_ids
+    )
+
+    left = tmp_path / "left.log"
+    right = tmp_path / "right.log"
+    barrier = tmp_path / "go"
+    left.write_text("")
+    right.write_text("")
+    workers = [
+        _spawn_worker("claim", str(store.path), job.job_id, str(left), str(barrier)),
+        _spawn_worker("claim", str(store.path), job.job_id, str(right), str(barrier)),
+    ]
+    time.sleep(0.5)  # both are past their imports and waiting on the barrier
+    barrier.write_text("go")
+    for worker in workers:
+        out, err = worker.communicate(timeout=90)
+        assert worker.returncode == 0, err or out
+
+    claimed = _attempts(left) + _attempts(right)
+    assert sorted(claimed) == sorted(item_ids), "an item was claimed twice or not at all"
+    assert {item.state for item in jobs.items(store, job.job_id)} == {jobs.ItemState.DONE}
+    assert jobs.progress(store, job.job_id)["settled"] == len(item_ids)
+    # Both processes did real work, or the test proved nothing about concurrency.
+    assert _attempts(left) and _attempts(right)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 8: the subprocess seam (KTD26)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_child_command_re_invokes_the_module_rather_than_a_console_script():
+    """A console script is a generated wrapper whose path depends on the install.
+
+    The source supervisor shells out to exactly those wrappers, which is one of
+    the things this plan deletes.
+    """
+    command = jobs.child_command(["job", "resume", "abc"], executable="/usr/bin/python3")
+    assert command == ["/usr/bin/python3", "-m", "cratekit.cli", "job", "resume", "abc"]
+
+
+def test_a_spawned_job_runs_detached_and_its_output_lands_in_the_jobs_log(
+    queue, cfg, tmp_path
+):
+    store, root = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(SRC_ROOT)
+
+    pid = jobs.spawn(store, job, ["--version"], root=root, env=env)
+    assert jobs.get(store, job.job_id).pid == pid
+
+    log = jobs.log_path(job.job_id, root=root)
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline and not log.read_text().strip():
+        time.sleep(0.05)
+    assert log.read_text().strip(), "the detached child produced no output"
+    os.waitpid(pid, 0)
+
+
+def test_the_engine_module_names_no_verb():
+    """KTD23, asserted directly rather than only through the layering sweep.
+
+    The engine re-invokes the product, so it is the module most tempted to spell a
+    subcommand. It resolves one through the CLI layer instead, which is why the
+    handler key exists at all.
+    """
+    from cratekit.cli import registry  # noqa: PLC0415 - a test may look upward
+
+    source = (SRC_ROOT / "cratekit" / "core" / "jobs.py").read_text()
+    for name in registry.VERB_NAMES:
+        assert f'"{name}"' not in source, f"the engine spells the verb {name!r}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 9: the handler-key seam, derived from the registry
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_every_landed_long_running_verb_actually_exposes_the_builder_it_declares():
+    """Derived by walking the registry, so the next long-running verb is covered.
+
+    The registry already refuses an entry that declares itself long-running with
+    no argv builder. What it cannot check is that the named function EXISTS, and a
+    declaration pointing at nothing fails only when somebody tries to resume, six
+    units from now.
+    """
+    import importlib  # noqa: PLC0415
+
+    from cratekit.cli import registry  # noqa: PLC0415
+
+    missing: list[str] = []
+    for entry in registry.entries():
+        if not entry.long_running or not entry.landed:
+            continue
+        module = importlib.import_module(entry.module)
+        if not callable(getattr(module, entry.argv_builder, None)):
+            missing.append(f"{entry.name} -> {entry.module}.{entry.argv_builder}")
+    assert not missing, f"declared argv builders that do not exist: {missing}"
+
+
+def test_resolving_a_handler_key_imports_nothing(queue, cfg):
+    """KTD26: validation must not pull a feature module into the supervisor."""
+    from cratekit.cli import registry  # noqa: PLC0415
+
+    target = registry.entry("acquire.download")
+    assert target.module not in sys.modules
+    assert registry.by_handler_key("acquire.download").name == "acquire.download"
+    assert target.module not in sys.modules
+
+
+def test_a_job_queued_for_a_handler_this_build_does_not_register_refuses(queue, cfg):
+    from cratekit.cli import jobs as jobs_cli  # noqa: PLC0415
+
+    store, _ = queue
+    job = jobs.enqueue(store, handler_key="not-a-handler", payload={}, cfg=cfg)
+    with pytest.raises(CratekitError) as excinfo:
+        jobs_cli.argv_for(job)
+    assert excinfo.value.cause.reason == "internal-error"
+
+
+def test_a_job_queued_for_a_verb_that_has_not_landed_refuses_rather_than_importing(
+    queue, cfg
+):
+    """Derived rather than named, so it keeps biting as later units land."""
+    from cratekit.cli import jobs as jobs_cli  # noqa: PLC0415
+    from cratekit.cli import registry  # noqa: PLC0415
+
+    store, _ = queue
+    unlanded = [e for e in registry.entries() if not e.landed and e.argv_builder]
+    assert unlanded, "every verb has landed; this guard has nothing left to check"
+    job = jobs.enqueue(store, handler_key=unlanded[0].handler_key, payload={}, cfg=cfg)
+    with pytest.raises(CratekitError) as excinfo:
+        jobs_cli.argv_for(job)
+    assert excinfo.value.cause.reason == "internal-error"
+    assert unlanded[0].module not in sys.modules
+
+
+def test_the_resume_builder_turns_a_frozen_job_back_into_a_command_line(queue, cfg):
+    from cratekit.cli import jobs as jobs_cli  # noqa: PLC0415
+
+    store, _ = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    assert jobs_cli.argv_for(job) == ["job", "resume", job.job_id]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 10: the four verbs
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _drive_cli(argv: list[str]) -> tuple[int, dict]:
+    import io  # noqa: PLC0415
+
+    from cratekit import cli  # noqa: PLC0415
+
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(["--output", "json", *argv], stdout=out, stderr=err)
+    return code, json.loads(out.getvalue())
+
+
+@pytest.fixture
+def default_queue(cfg):
+    """A queue at the DECLARED path, so the verbs find it the way a user would."""
+    with jobs.open_store() as store:
+        yield store
+
+
+def test_listing_an_empty_queue_is_a_no_op_and_not_an_error(cfg, default_queue):
+    code, envelope = _drive_cli(["job", "list"])
+    assert code == int(ExitCode.OK)
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["progress"]["jobs"] == []
+
+
+def test_listing_reports_each_job_with_its_progress(cfg, default_queue):
+    jobs.enqueue(
+        default_queue,
+        handler_key="job.resume",
+        payload={},
+        cfg=cfg,
+        item_ids=["a", "b"],
+        job_id="job-one",
+    )
+    code, envelope = _drive_cli(["job", "list"])
+    assert code == int(ExitCode.OK)
+    rows = envelope["data"]["progress"]["jobs"]
+    assert [row["job_id"] for row in rows] == ["job-one"]
+    assert rows[0]["progress"]["total"] == 2
+    assert envelope["data"]["progress"]["counts"]["queued"] == 1
+
+
+def test_a_state_filter_that_names_nothing_is_refused_rather_than_ignored(
+    cfg, default_queue
+):
+    """A filter matching nothing looks exactly like an empty queue."""
+    code, envelope = _drive_cli(["job", "list", "--state", "sideways"])
+    assert code == int(ExitCode.PRECONDITION)
+    assert envelope["cause"]["reason"] == "job-unknown"
+
+
+def test_showing_a_broken_job_succeeds_and_carries_the_jobs_cause_in_the_payload(
+    cfg, default_queue
+):
+    """Reporting on a failure is not itself a failure.
+
+    Mirroring the job's status onto the verb's status would leave a caller unable
+    to tell "this job failed" from "I could not read this job", which is the
+    KTD25 collapse one level up.
+    """
+    jobs.enqueue(
+        default_queue, handler_key="job.resume", payload={}, cfg=cfg, job_id="job-two"
+    )
+    jobs.block(default_queue, "job-two", _throttled())
+
+    code, envelope = _drive_cli(["job", "show", "job-two"])
+    assert code == int(ExitCode.OK)
+    assert envelope["cause"] is None
+    assert envelope["data"]["state"] == "blocked"
+    assert envelope["data"]["cause"]["reason"] == "unavailable-transient"
+
+
+def test_showing_a_job_whose_config_moved_warns_and_names_the_keys(
+    cfg, default_queue, tmp_path
+):
+    jobs.enqueue(
+        default_queue, handler_key="job.resume", payload={}, cfg=cfg, job_id="job-three"
+    )
+    moved = config.from_dict(
+        {**cfg.to_toml_dict(), "paths": {"download_staging": str(tmp_path / "elsewhere")}}
+    )
+    config.save(moved)
+    config.reset_cache()
+
+    code, envelope = _drive_cli(["job", "show", "job-three"])
+    assert code == int(ExitCode.OK)
+    assert envelope["warnings"], "a drifted configuration was not reported"
+    assert "paths.download_staging" in envelope["warnings"][0]["message"]
+
+
+def test_cancelling_through_the_verb_succeeds_and_reports_cancelled(cfg, default_queue):
+    """A cancel that exited non-zero could not be told from a cancel that failed."""
+    jobs.enqueue(
+        default_queue, handler_key="job.resume", payload={}, cfg=cfg, job_id="job-four"
+    )
+    code, envelope = _drive_cli(["job", "cancel", "job-four"])
+    assert code == int(ExitCode.OK)
+    assert envelope["data"]["state"] == "cancelled"
+    assert envelope["data"]["cause"]["reason"] == "cancelled"
+
+
+def test_resuming_a_job_a_live_driver_already_holds_refuses_in_the_foreground(
+    cfg, default_queue
+):
+    """The refusal has to reach the person, not a detached child's log file."""
+    jobs.enqueue(
+        default_queue, handler_key="job.resume", payload={}, cfg=cfg, job_id="job-five"
+    )
+    root = jobs.store_dir()
+    holder = _spawn_worker("hold", "job-five", str(root))
+    try:
+        _wait_for(root / "holding-job-five")
+        code, envelope = _drive_cli(["job", "resume", "job-five"])
+        assert code == int(ExitCode.LIBRARY_BUSY)
+        assert envelope["cause"]["reason"] == "job-driver-held"
+    finally:
+        holder.kill()
+        holder.wait(timeout=20)
+
+
+def test_every_job_verb_refuses_an_unknown_identifier_with_the_same_code(
+    cfg, default_queue
+):
+    for argv in (["job", "show"], ["job", "cancel"], ["job", "resume"]):
+        code, envelope = _drive_cli([*argv, "no-such-job"])
+        assert code == int(ExitCode.PRECONDITION), argv
+        assert envelope["cause"]["reason"] == "job-unknown", argv

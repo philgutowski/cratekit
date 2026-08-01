@@ -43,7 +43,6 @@ EXPECTED_PENDING = frozenset(
         "cratekit.core.snapshot",  # U8, the KTD21b capture
         "cratekit.core.restore",  # U32, the KTD21b replace
         "cratekit.core.review",  # U11, the review queue
-        "cratekit.core.jobs",  # U10, the job engine
         "cratekit.core.session",  # U8, the destructive-session gates
         "cratekit.cli.doctor",  # U27, the health check
         "path:skills",  # U28, the shipped operator skills

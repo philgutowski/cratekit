@@ -504,51 +504,57 @@ ENTRIES: tuple[Entry, ...] = (
         planned_in="U36",
     ),
     # ── Jobs ────────────────────────────────────────────────────────────────
+    # U10 landed these against ``cratekit.cli.jobs`` rather than the
+    # ``cratekit.core.jobs_cli`` this table originally named. A verb module is a
+    # CLI module: it imports this registry, and KTD23 ranks anything under
+    # ``core`` below the CLI layer, so the original path could not have been
+    # written without an upward import. The plan's own file list for U10 says
+    # ``src/cratekit/cli/jobs.py``, which is what landed.
     Entry(
         name="job.list",
         summary="list queued, running, blocked, and finished jobs",
-        module="cratekit.core.jobs_cli",
+        module="cratekit.cli.jobs",
         builder="build_list",
         handler_key="job.list",
         feature_rows=(26,),
         emits=frozenset({"job_state"}),
         output_schema="job_state/1",
-        planned_in="U10",
     ),
     Entry(
         name="job.show",
         summary="show one job, its progress, and the cause behind its state",
-        module="cratekit.core.jobs_cli",
+        module="cratekit.cli.jobs",
         builder="build_show",
         handler_key="job.show",
         feature_rows=(26,),
         emits=frozenset({"job_state"}),
         output_schema="job_state/1",
-        planned_in="U10",
     ),
     Entry(
         name="job.resume",
         summary="resume an interrupted job without repeating completed work",
-        module="cratekit.core.jobs_cli",
+        module="cratekit.cli.jobs",
         builder="build_resume",
         handler_key="job.resume",
         feature_rows=(26,),
+        # A resume re-invokes the job's OWN verb, so the argv it needs is that
+        # verb's, not this one's. The builder is declared because the registry
+        # requires one of anything long-running; it is the identity case, and
+        # ``cli.jobs.argv_for`` is what actually resolves the queued handler.
         argv_builder="resume_argv",
         long_running=True,
         emits=frozenset({"job_state"}),
         output_schema="job_state/1",
-        planned_in="U10",
     ),
     Entry(
         name="job.cancel",
         summary="cancel a job; it reports as cancelled rather than as failed",
-        module="cratekit.core.jobs_cli",
+        module="cratekit.cli.jobs",
         builder="build_cancel",
         handler_key="job.cancel",
         feature_rows=(26,),
         emits=frozenset({"job_state"}),
         output_schema="job_state/1",
-        planned_in="U10",
     ),
     # ── Review ──────────────────────────────────────────────────────────────
     Entry(

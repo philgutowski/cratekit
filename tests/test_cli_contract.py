@@ -971,6 +971,14 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "profile.set": ["slim"],
         "run.show": ["no-such-run"],
         "run.decide": ["no-such-run", "profile.set.apply", "apply"],
+        # U10. The three per-job verbs are driven against an identifier that is
+        # deliberately absent: every one of them must refuse with a code from the
+        # vocabulary rather than with a traceback, and an empty queue is the state
+        # a fresh install is actually in.
+        "job.list": [],
+        "job.show": ["no-such-job"],
+        "job.resume": ["no-such-job"],
+        "job.cancel": ["no-such-job"],
     }[entry.name]
 
 
@@ -1064,12 +1072,11 @@ def test_conformance_4_adjudication_goes_through_the_review_queue(entry):
     assert hasattr(review, "list_items")
 
 
-@requires("cratekit.core.jobs")
 @pytest.mark.parametrize(
     "entry", [e for e in ALL_ENTRIES if e.long_running], ids=lambda e: e.name
 )
 def test_conformance_5_long_work_is_queued_rather_than_run_inline(entry):
-    """Assertion 5, armed when the job engine lands."""
+    """Assertion 5, armed now that the job engine has landed (U10)."""
     import importlib
 
     jobs = importlib.import_module("cratekit.core.jobs")
