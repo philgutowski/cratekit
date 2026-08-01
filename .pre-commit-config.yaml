@@ -1,0 +1,33 @@
+# Pre-commit hooks. Install once per clone:
+#
+#     pip install pre-commit && pre-commit install
+#
+# The repository scan is wired here AND as a CI gate, deliberately. The hook is
+# the one that matters: a credential or a personal path that reaches a commit has
+# already entered the history, and removing it from history is a rewrite that
+# every clone has to follow. CI catches what the hook missed, on a machine where
+# nobody could have skipped it.
+#
+# Run it over everything at any time with:
+#
+#     pre-commit run --all-files
+repos:
+  - repo: local
+    hooks:
+      - id: repo-scan
+        name: portability and secret scan (R1)
+        entry: python scripts/scan_repo.py
+        language: system
+        # Every file type, not just Python. The guard this replaces looked only
+        # at package source, and its two live violations were in a shipped skill
+        # and a markdown document.
+        types: [file]
+        pass_filenames: true
+        require_serial: true
+
+      - id: ruff
+        name: ruff (real errors and import hygiene)
+        entry: ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true

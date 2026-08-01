@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DJ_PLAYLISTS Version="1.0.0">
+  <PRODUCT Name="rekordbox" Version="6.0.0" Company="AlphaTheta"/>
+  <COLLECTION Entries="0">
+  </COLLECTION>
+  <PLAYLISTS>
+    <NODE Type="0" Name="ROOT" Count="1">
+      <NODE Name="BY GENRE + ENERGY" Type="0" Count="1">
+        <NODE Name="Deep House" Type="0" Count="2">
+          <NODE Name="High Energy" Type="1" KeyType="0" Entries="0"/>
+          <NODE Name="with vox" Type="1" KeyType="0" Entries="0"/>
+        </NODE>
+      </NODE>
+    </NODE>
+  </PLAYLISTS>
+</DJ_PLAYLISTS>

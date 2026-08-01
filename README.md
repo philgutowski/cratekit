@@ -88,3 +88,38 @@ pytest -q
 
 CI runs both on Python 3.12 and 3.13, plus a cold-install job that proves a
 clean checkout installs and imports with nothing preinstalled.
+
+### Guards
+
+Set up the commit hooks once per clone:
+
+```bash
+pip install pre-commit && pre-commit install
+cp .scan-identity.example .scan-identity   # then list your own drive and account names
+```
+
+`scripts/scan_repo.py` runs on every commit and again in CI. It scans **every**
+tracked path, vendored trees included, for two things: personal literals (a home
+directory, a volume, an account, a machine name) and credential-shaped content
+(OAuth tokens, API keys, private keys, and filenames that are credential stores
+regardless of what is inside them). Nothing here should name a person or carry a
+secret, and the hook is what stops one reaching the history, where removing it
+becomes a rewrite everybody has to follow.
+
+`.scan-identity` is gitignored and optional. It tells the scan which bare names
+are yours, so "the X drive must be mounted" is caught even when X is not
+currently plugged in. Path-shaped literals are caught without it.
+
+### Deferred guards
+
+Some test suites carry guards for modules that have not been written yet. Those
+are ported complete, never stubbed, and skipped with a reason naming the unit
+that arms them:
+
+```bash
+pytest -q -rs        # every skip prints the unit that unblocks it
+```
+
+`tests/_pending.py` is the register and `tests/test_pending_units.py` holds it
+accountable: adding a skip without recording it fails the build, and so does
+keeping one after its module lands. A skip is a countdown, not a hiding place.

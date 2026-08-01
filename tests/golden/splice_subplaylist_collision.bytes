@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DJ_PLAYLISTS Version="1.0.0">
+  <PRODUCT Name="rekordbox" Version="6.0.0" Company="AlphaTheta"/>
+  <COLLECTION Entries="1">
+    <TRACK TrackID="1" Name="Deep House" Artist="Bait" Location="file://localhost/bait.flac"/>
+  </COLLECTION>
+  <PLAYLISTS>
+    <NODE Type="0" Name="ROOT" Count="1">
+      <NODE Type="0" Name="BY GENRE" Count="1">
+        <NODE Type="0" Name="Deep House" Count="1">
+          <NODE Name="High Energy" Type="1" KeyType="0" Entries="1">
+            <TRACK Key="900000001"/>
+          </NODE>
+        </NODE>
+      </NODE>
+    </NODE>
+  </PLAYLISTS>
+</DJ_PLAYLISTS>

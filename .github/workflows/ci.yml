@@ -5,6 +5,29 @@ on:
   pull_request:
 
 jobs:
+  # The repository scan runs FIRST and on its own, with no dependencies
+  # installed. Two reasons it is a separate job rather than a step in `test`:
+  #
+  # 1. It must be able to run when the package does not install. A credential or
+  #    a personal path is exactly the kind of thing that lands in a branch whose
+  #    dependencies are also broken, and that is the worst moment to have the
+  #    guard silently not run.
+  # 2. It needs the FULL history-free checkout and nothing else, so it reports in
+  #    seconds. A guard that reports after a fifteen-minute matrix gets ignored.
+  #
+  # The same script is wired as a pre-commit hook. The hook is the one that
+  # matters, because a secret that reaches a commit is already in the history;
+  # this is the backstop for the machine where the hook was never installed.
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Portability and secret scan (R1)
+        run: python scripts/scan_repo.py
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -53,6 +76,15 @@ jobs:
 
       - name: Test
         run: pytest -q
+
+      # The invariant suites carry deferred guards, gated on the unit that lands
+      # the module each one governs. `-rs` prints those skips with their reasons,
+      # so the CI log reads as a work queue: every line names a unit. The
+      # accounting itself is a test (tests/test_pending_units.py), which fails
+      # the build if a skip is added without a record or kept after its unit
+      # lands.
+      - name: Report deferred guards and the units that arm them
+        run: pytest -q -rs --no-header -p no:cacheprovider | tail -40
 
   # A separate job, not another matrix leg, because its whole purpose is to
   # prove the package is importable with nothing but its own dependencies in a

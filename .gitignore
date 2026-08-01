@@ -7,6 +7,13 @@
 # (KTD22). Committing it would ship those flips to every friend.
 tree_registry.json
 
+# Per-clone list of a contributor's own drive, account, and machine names, read
+# by scripts/scan_repo.py so it can catch those names written WITHOUT a path
+# around them (R1). It is the one file in the repository that deliberately names
+# a specific person, so it is the one file that must never be committed. See
+# .scan-identity.example for the format.
+.scan-identity
+
 # Python build / install artifacts
 __pycache__/
 *.py[cod]

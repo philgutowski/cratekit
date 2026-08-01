@@ -1,0 +1,21 @@
+# Copy this to `.scan-identity` (gitignored) and list the identifiers that are
+# YOURS: drive names, account handles, machine names. One per line, "#" comments.
+#
+# Why this file exists. `scripts/scan_repo.py` already catches any PATH-SHAPED
+# personal literal: /Users/<you>/, /Volumes/<your-drive>/, and so on. What it
+# cannot reliably catch is a bare name with no path around it, as in "the
+# <drive-name> volume must be mounted". It tries, by reading the names of volumes
+# that are mounted right now, but unplug the drive and the check silently stops
+# working. Declaring the names here makes it deterministic instead.
+#
+# Entries shorter than four characters are ignored, as are common words like
+# "root" and "runner", because a guard that fires on ordinary prose gets muted.
+#
+# This file is gitignored and must stay that way: it is the one file in the
+# repository that names a specific person's things.
+#
+# Examples, replace with your own:
+#
+# MyBigAudioDrive
+# my-laptop-hostname
+# my-account-handle

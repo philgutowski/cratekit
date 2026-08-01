@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DJ_PLAYLISTS Version="1.0.0">
+  <PRODUCT Name="rekordbox" Version="6.0.0" Company="AlphaTheta"/>
+  <COLLECTION Entries="0">
+  </COLLECTION>
+  <PLAYLISTS>
+    <NODE Type="0" Name="ROOT" Count="2">
+      <NODE Name="Record Labels" Type="0" Count="1">
+        <NODE Name="Kompakt" Type="0" Count="2">
+          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="2">
+            <TRACK Key="900000001"/>
+            <TRACK Key="900000002"/>
+          </NODE>
+          <NODE Name="Kompakt 2024" Type="1" KeyType="0" Entries="1">
+            <TRACK Key="900000003"/>
+          </NODE>
+        </NODE>
+      </NODE>
+      <NODE Name="INBOX" Type="0" Count="0">
+      </NODE>
+    </NODE>
+  </PLAYLISTS>
+</DJ_PLAYLISTS>
