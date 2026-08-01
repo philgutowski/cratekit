@@ -1,0 +1,106 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cratekit"
+version = "0.1.0"
+description = "Acquisition and curation for rekordbox DJs: slim core, toggleable feature modules, guarded library writes"
+# KTD19: supported Python is 3.12 and 3.13, bounded by the vendored downloader.
+# The upper bound is deliberate — an unbounded floor lets a resolver drag the
+# install onto an interpreter the vendored tree has never run on, and the
+# failure surfaces as an unrelated dependency error instead of a clear message.
+requires-python = ">=3.12,<3.14"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Cratekit contributors" }]
+
+# ---------------------------------------------------------------------------
+# SLIM CORE (R5). Everything here installs for every user, including the slim
+# profile. The rule this list is built to: no audio DSP, no web framework, no
+# machine-learning stack. Those live in extras named one-to-one with the module
+# that needs them (KTD7), so a friend who never enables analysis never downloads
+# torch. Adding a heavy dependency here is a regression, and
+# tests/test_slim_core.py fails the build if one appears.
+# ---------------------------------------------------------------------------
+dependencies = [
+    "platformdirs>=4.0",   # cross-platform config/state directory resolution (KTD6)
+    "tomli-w>=1.0",        # TOML writing; reading uses the stdlib tomllib on 3.12+
+    "keyring>=24.0",       # OS keychain for service credentials, never the plain config (R4)
+    "psutil>=5.9",         # process liveness for lock holders, memory probe for worker sizing (KTD10)
+    "mutagen>=1.47",       # container-correct audio tag read/write (R18)
+    "lxml>=5.0",           # rekordbox XML parsing; writes go out as raw bytes, never a tree serialize
+    "rapidfuzz>=3.0",      # three-state match scoring (R11)
+    "requests>=2.31",      # service HTTP
+    "Pillow>=10.0",        # album art normalization for tagging (Core, feature 8)
+    "tidalapi>=0.7",       # Tidal playlist read + search (Core, feature 3)
+    "pyrekordbox==0.4.4",  # guarded rekordbox database access; pinned because it is schema-coupled
+]
+
+[project.optional-dependencies]
+# Extras are named one-to-one with the modules that need them (KTD7). A module
+# toggled on without its extra attaches a stub subcommand that prints exactly
+# this install command and exits non-zero — `crate --help` never crashes on a
+# missing heavy dependency.
+analysis = [
+    "librosa>=0.10",       # BPM detection and the pure-Python key fallback
+    "numpy>=1.24",         # feature math
+    "scipy>=1.10",         # peak finding for transition detection
+]
+vocals = [
+    "torch>=2.2",              # runs the pretrained CNN on CPU
+    "panns-inference>=0.1",    # AudioSet CNN14: vocal presence and singer gender
+]
+web = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "sse-starlette>=2.0",
+    "jinja2>=3.1",
+]
+desktop = ["pywebview>=5.0"]
+# Convenience aggregate. Not a module; it exists so a maintainer can install
+# every extra in one command without hand-listing them.
+all = ["cratekit[analysis,vocals,web,desktop]"]
+
+[project.scripts]
+# R2: one entry point. The 30 console scripts the source system exposes become
+# subcommands on this one verb, registered through the static module registry.
+crate = "cratekit.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cratekit = ["templates/*.toml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# Real-error rules plus import hygiene. Style churn is deliberately excluded:
+# this codebase is byte-sensitive in places and reformatting is risk without
+# payoff. "I" is included because KTD23's layering test reads imports, and
+# unsorted imports make its failures harder to read.
+select = ["E9", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Every test runs against redirected state roots (tests/conftest.py autouse
+# fixtures). A test that reaches real config, a real library, or a real keychain
+# is a bug, not a slow test.
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["cratekit"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]

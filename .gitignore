@@ -1,0 +1,46 @@
+# Installation-scoped runtime state, secrets, OAuth caches (KTD21).
+# Nothing in here is ever committed. Library-scoped state does not live in the
+# repository at all; it lives beside the library, so it needs no rule here.
+.local/
+
+# The tree registry describes one person's library and their cutover flips
+# (KTD22). Committing it would ship those flips to every friend.
+tree_registry.json
+
+# Python build / install artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# macOS
+.DS_Store
+
+# Editor / tooling
+.vscode/
+.idea/
+*.swp
+*~
+
+# Test / type-check caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Raw idea capture, private scratch (planning convention)
+docs/backlog.md
+
+# Agent worktrees
+.claude/worktrees/
+.worktrees/

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # KTD19 declares 3.12 and 3.13 supported. Both run, because "supported"
+        # that is only ever exercised on one interpreter is a claim, not a fact.
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # ffmpeg is the one audio binary CI provides. Tests that synthesize audio
+      # fixtures guard on shutil.which and skip cleanly without it; the
+      # rekordbox binaries and the download adapter have no Linux equivalent and
+      # their tests skip here by design.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      # The dependency list is DERIVED from pyproject.toml, never mirrored by
+      # hand (U1). Adding a core dependency needs no workflow edit.
+      - name: Install slim core
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . --no-deps
+          pip install $(python scripts/ci_deps.py)
+          pip install ruff pytest
+
+      # Proves the claim the slim profile rests on: a core install has no DSP,
+      # no web framework, and no ML stack present at all.
+      - name: Assert the slim install is actually slim
+        run: |
+          for forbidden in torch panns_inference librosa fastapi uvicorn; do
+            if python -c "import ${forbidden}" 2>/dev/null; then
+              echo "slim core install pulled in ${forbidden}; it belongs in an extra"
+              exit 1
+            fi
+          done
+
+      - name: Lint
+        run: ruff check src tests scripts
+
+      - name: Test
+        run: pytest -q
+
+  # A separate job, not another matrix leg, because its whole purpose is to
+  # prove the package is importable with nothing but its own dependencies in a
+  # brand new environment. Reusing the test job's environment would defeat it.
+  cold-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install from a clean checkout and import
+        run: |
+          python -m venv /tmp/cold
+          /tmp/cold/bin/pip install --upgrade pip
+          /tmp/cold/bin/pip install .
+          /tmp/cold/bin/python -c "import cratekit; print(cratekit.__version__)"
+          /tmp/cold/bin/crate --help
