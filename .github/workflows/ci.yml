@@ -57,7 +57,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e . --no-deps
-          pip install $(python scripts/ci_deps.py)
+          python scripts/ci_deps.py | xargs -r python -m pip install
           pip install ruff pytest
 
       # Proves the claim the slim profile rests on: a core install has no DSP,
