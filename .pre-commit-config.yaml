@@ -16,7 +16,13 @@ repos:
     hooks:
       - id: repo-scan
         name: portability and secret scan (R1)
-        entry: python scripts/scan_repo.py
+        # python3, never bare "python". On macOS "python" can resolve to a 2.7
+        # left on PATH by an old installer, and this scan is annotated 3.9+
+        # syntax, so it dies with a SyntaxError before reading a single file.
+        # A secret scan that fails open depending on which shell you commit from
+        # is worse than none, because the green checkmark is the thing people
+        # trust. Found when a commit from a non-activated shell hit 2.7.18.
+        entry: python3 scripts/scan_repo.py
         language: system
         # Every file type, not just Python. The guard this replaces looked only
         # at package source, and its two live violations were in a shipped skill

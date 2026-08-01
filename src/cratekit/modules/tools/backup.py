@@ -53,18 +53,19 @@ WHAT THIS PORT CHANGES, beyond translating the shell.
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
 
 from cratekit.core import backup_facts, binaries, config
-
-#: The processes that hold the rekordbox database. BOTH matter. The agent is the
-#: one that surprises people: it is always present, it holds the handle, and it
-#: mutates the library through Cloud Library Sync with the window closed.
-REKORDBOX_PROCESSES: tuple[str, ...] = ("rekordbox", "rekordboxAgent")
+from cratekit.core.processes import (
+    REKORDBOX_PROCESSES,
+    ProcessLister,
+    rekordbox_processes_running,
+    running_process_names,
+)
 
 #: Volume clutter no backup should carry. Platform metadata directories and
 #: resource-fork stubs: large in aggregate, meaningless off the machine that made
@@ -167,7 +168,8 @@ class CommandResult:
 
 
 Runner = Callable[[Command], CommandResult]
-ProcessLister = Callable[[], Iterable[str]]
+# ``ProcessLister`` is imported from ``core.processes`` above, so the injection
+# point both guards accept is one type rather than two identical ones.
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,32 +246,11 @@ class BackupOutcome:
 # ---------------------------------------------------------------------------
 
 
-def running_process_names() -> tuple[str, ...]:
-    """Names of every running process, read from the platform.
-
-    Imported lazily so a caller that injects its own lister, which every test
-    does, never loads the extension module at all.
-    """
-    import psutil
-
-    names: list[str] = []
-    for process in psutil.process_iter(["name"]):
-        name = (process.info or {}).get("name")
-        if name:
-            names.append(str(name))
-    return tuple(names)
-
-
-def rekordbox_processes_running(*, lister: ProcessLister | None = None) -> tuple[str, ...]:
-    """Which rekordbox processes hold the database right now.
-
-    Matched on the EXACT process name, never a substring: a substring match makes
-    an unrelated process whose name happens to contain "rekordbox" refuse every
-    database backup forever, and a guard that refuses correct situations is one
-    people learn to bypass.
-    """
-    present = set((lister or running_process_names)())
-    return tuple(name for name in REKORDBOX_PROCESSES if name in present)
+# ``running_process_names`` and ``rekordbox_processes_running`` are imported from
+# ``core.processes`` and re-exported here, so this module's public surface is
+# unchanged while the name list and the matching rule have exactly one home. The
+# local copies were removed when the U7 merge put them beside the database
+# guard's copy and the two turned out to disagree about Windows.
 
 
 def settings_directories(

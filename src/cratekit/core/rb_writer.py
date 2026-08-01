@@ -70,7 +70,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from cratekit.core import config
+from cratekit.core import config, processes
 from cratekit.core.cause import Cause, CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 
@@ -590,17 +590,52 @@ def rekordbox_agent_running() -> bool:
     return bool(get_rekordbox_agent_pid())
 
 
+#: The probe that answers for each name in the shared process list.
+#:
+#: Keyed by name rather than written as a sequence of ``if`` statements, so the
+#: list itself lives in ``core.processes`` and this module holds only the
+#: MECHANISM for asking. The writer asks pyrekordbox, which is the upstream
+#: authority on finding rekordbox; the backup module asks the platform directly,
+#: because it must work on a slim install with the rekordbox extra absent. Two
+#: mechanisms, deliberately. One list, mandatorily.
+#:
+#: The value is the probe's ATTRIBUTE NAME, not the function object, and it is
+#: resolved through the module at call time. Capturing the function here instead
+#: would freeze it at import and silently defeat every test that fakes a running
+#: rekordbox by patching these two seams, which is how the whole refuse-while-open
+#: path is exercised without a real application on the machine.
+_PROCESS_PROBES: Mapping[str, str] = MappingProxyType(
+    {
+        "rekordbox": "rekordbox_running",
+        "rekordboxAgent": "rekordbox_agent_running",
+    }
+)
+
+
 def rekordbox_processes_running() -> str:
     """The names of the rekordbox processes holding the database, comma joined.
 
     The empty string means both are clear. One predicate rather than three call
     sites each asking two questions, so a site cannot accidentally check half.
+
+    Iterates the SHARED name list rather than a local copy. A name added there
+    with no probe here raises instead of being skipped, because a process this
+    guard cannot ask about is one it cannot declare clear. Refusing is the safe
+    direction; silently not checking is how a guard passes a write it should
+    have stopped.
     """
     running = []
-    if rekordbox_running():
-        running.append("rekordbox")
-    if rekordbox_agent_running():
-        running.append("rekordboxAgent")
+    for name in processes.REKORDBOX_PROCESSES:
+        probe_name = _PROCESS_PROBES.get(name)
+        if probe_name is None:
+            raise _running(
+                f"{name!r} is listed as a process holding the database but this "
+                f"module has no way to ask whether it is running, so no write "
+                f"can be declared safe",
+                detail={"process": name},
+            )
+        if globals()[probe_name]():
+            running.append(name)
     return ", ".join(running)
 
 
