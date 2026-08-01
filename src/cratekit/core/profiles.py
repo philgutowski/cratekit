@@ -36,6 +36,13 @@ from dataclasses import dataclass
 #: carry its heavy dependencies (KTD7). A module with no heavy dependency has no
 #: extras group, which is why this list is longer than the extras table; the
 #: reverse must never be true, and ``tests/test_config.py`` asserts it.
+#:
+#: The list tracks the Feature Inventory's Module rows. A row that ships as a
+#: module and is MISSING here is not merely undocumented: ``resolve`` raises
+#: ``UnknownModule`` for any toggle it does not recognise, so the user cannot
+#: turn that feature off, and ``PROFILES["full"]`` is derived from this tuple, so
+#: the slim profile cannot exclude it either. In other words an omission here
+#: makes a module row behave like a core row, silently.
 MODULES: tuple[str, ...] = (
     "analysis",
     "vocals",
@@ -61,6 +68,14 @@ MODULES: tuple[str, ...] = (
     "mastering",  # row 30: set recording mastering
     "backup",  # row 31: library backup, which feeds the backup-age warning
     "skills",  # row 33: the operator skill layer
+
+    # A note U35 established while porting the three utility rows above:
+    # setbuilder, mastering and backup carry no heavy PYTHON dependency, so none
+    # of them appears in EXTRAS_BACKED. What they need is an external BINARY,
+    # which pip cannot install and an extras group therefore cannot promise. A
+    # missing binary is doctor's to report, not packaging's, and conflating the
+    # two would send a user to run an install command that cannot fix their
+    # problem.
 )
 
 #: Modules whose dependencies are heavy enough to live behind an extras group.

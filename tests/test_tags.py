@@ -71,6 +71,7 @@ CONTAINERS = [".flac", ".aiff", ".wav", ".mp3", ".m4a", ".ogg"]
 # writer that clobbers a previously written frame.
 ALL_FIELDS = {
     "title": "01A - 124 - Probe Title",
+    "artist": "Probe Artist",
     "initialkey": "01A",
     "genre": "Test Genre",
     "energylevel": 7,
@@ -249,6 +250,24 @@ def test_the_flac_embedded_audio_checksum_is_unchanged(tmp_path):
 # ═══════════════════════════════════════════════════════════════════════════
 # R17: there is no path from this module to a tempo frame
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_round_trip_probe_covers_every_declared_field():
+    """``ALL_FIELDS`` says "every writable field", so it must be checked against
+    the table rather than trusted.
+
+    It is hand-written on purpose: each field needs a value of the right SHAPE,
+    which cannot be derived. What can be derived is its COVERAGE, and without
+    this the next field added to the table would round-trip in no container and
+    the suite would stay green, which is the state this file was already in.
+    """
+    missing = set(FIELDS) - set(ALL_FIELDS)
+    assert not missing, (
+        f"fields declared in FIELDS but never round-tripped: {sorted(missing)}. "
+        f"Add a value of the right shape to ALL_FIELDS; a field nobody writes in "
+        f"the probe is a field whose container mapping is untested."
+    )
+    assert not set(ALL_FIELDS) - set(FIELDS)
 
 
 def test_tempo_is_not_a_writable_field():

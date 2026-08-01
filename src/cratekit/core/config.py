@@ -1139,6 +1139,50 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="backup_facts",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="backup_facts.json",
+        why=(
+            "When each portion of THIS library was last backed up, recorded PER "
+            "PORTION because the database portion refuses while rekordbox is "
+            "running and the file mirror completes anyway; one aggregate "
+            "timestamp would report a database that is weeks stale as fresh, "
+            "which is precisely the fact R15's warning exists to carry. It is a "
+            "FILE rather than a function call so R15's warning reads a fact "
+            "instead of importing a toggleable module (KTD23). New state: the "
+            "source system's script persists nothing and stats the remote "
+            "instead, so a machine that cannot reach the remote cannot answer "
+            "the question at all. Library-scoped because a second installation "
+            "must see the same answer; an installation-scoped copy reports "
+            "'never backed up' for a library that was backed up an hour ago "
+            "from the other machine, and a warning that cries wolf is one users "
+            "learn to click through."
+            " NEVER_RESTORED: the backup it describes lives off this volume and "
+            "a restore does not un-take it, so rolling the record back would "
+            "demand a fresh backup of something that is still there."
+        ),
+    ),
+    StateFile(
+        key="setbuilder_index_cache",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="setbuilder_index.json",
+        why=(
+            "Per-file ranking signals keyed on THIS library's file paths and "
+            "modification times, so a repeat run re-reads only what changed. "
+            "Every key misses against another library, which makes an "
+            "installation-scoped copy a cache that can only be empty or wrong, "
+            "and the whole-library tag scan it avoids costs minutes per run on a "
+            "library of this size."
+            " NEVER_RESTORED: it is keyed on files, which a database restore "
+            "does not move, and every entry is re-derivable from the files "
+            "themselves at the cost of that scan."
+        ),
+    ),
+    StateFile(
         key="taxonomy_active",
         snapshot=SnapshotRole.COUPLED,
         root=StateRoot.LIBRARY,

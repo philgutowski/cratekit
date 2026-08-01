@@ -91,6 +91,11 @@ class TagSpec:
 # tempo entry; see the module docstring. Adding one is not a feature.
 FIELDS: dict[str, TagSpec] = {
     "title": TagSpec("title", "TIT2", "\xa9nam"),
+    # Artist is here rather than read through a second, private code path,
+    # because a second path is exactly the drift this table exists to end: any
+    # consumer that needed the performer would otherwise open the file with its
+    # own container guess, and a container guess is what corrupted an AIFF.
+    "artist": TagSpec("artist", "TPE1", "\xa9ART"),
     "initialkey": TagSpec("initialkey", "TKEY", "----:com.apple.iTunes:INITIALKEY"),
     "genre": TagSpec("genre", "TCON", "\xa9gen"),
     "energylevel": TagSpec(

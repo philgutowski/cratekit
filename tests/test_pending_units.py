@@ -47,6 +47,8 @@ EXPECTED_PENDING = frozenset(
         "cratekit.core.session",  # U8, the destructive-session gates
         "cratekit.cli.doctor",  # U27, the health check
         "path:skills",  # U28, the shipped operator skills
+        "cratekit.cli.exit_codes",  # U5, the reserved exit-code vocabulary
+        "cratekit.core.session",  # U8, the destructive-session gates
     }
 )
 

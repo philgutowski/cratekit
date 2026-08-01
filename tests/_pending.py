@@ -91,7 +91,12 @@ PENDING: dict[str, tuple[str, str]] = {
         "U8",
         "that every destructive verb refuses without the library lock, the "
         "backup acknowledgment, and a matching volume identity, with three "
-        "distinct codes and no writes on any of the three paths (KTD24)",
+        "distinct codes and no writes on any of the three paths (KTD24, R38). "
+        "Note the case that makes the binding non-obvious: a backup restore "
+        "replaces a live database and its sidecars while writing no database "
+        "row, so a rule binding the gates to database WRITES alone would leave "
+        "the one operation that destroys a library outside the safety spine "
+        "entirely. The gates bind to destructive sessions, not to write sessions"
     ),
     "cratekit.cli.doctor": (
         "U27",
@@ -102,6 +107,13 @@ PENDING: dict[str, tuple[str, str]] = {
     "path:skills": (
         "U28",
         "the shipped operator skills the skills lint runs over",
+    ),
+    "cratekit.cli.exit_codes": (
+        "U5",
+        "that every structured refusal cause the standalone utilities raise has "
+        "a reserved exit code and a remediation, which is the S4 obligation "
+        "applied to this unit: a refusal with no reserved code collapses to a "
+        "bare status at the process boundary and cannot be recovered downstream",
     ),
 }
 
