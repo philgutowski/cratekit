@@ -24,9 +24,12 @@ build/
 dist/
 .eggs/
 
-# Virtualenvs
-.venv/
-venv/
+# Virtualenvs. No trailing slash: a slash matches a DIRECTORY only, and a
+# .venv SYMLINK slipped past the slashed pattern and was committed pointing at
+# an absolute path on one machine. scripts/scan_repo.py now catches that shape
+# too, so this is the first of two independent defences rather than the only one.
+.venv
+venv
 env/
 
 # macOS

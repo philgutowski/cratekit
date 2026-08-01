@@ -380,3 +380,70 @@ def test_the_repository_itself_is_clean():
     """
     findings = scan.scan_tree(REPO_ROOT)
     assert not findings, "repository scan violations:\n" + "\n".join(findings)
+
+
+# ── a symlink has no content, so every content rule skips it ─────────────────
+
+
+def test_a_symlink_to_an_absolute_path_is_caught(tmp_path):
+    """The hole this closes, in the exact shape that got through.
+
+    Every other rule here reads a file's CONTENT. A symlink has none: following
+    one to a directory raises, the reader returns None, and the entry is skipped
+    before any rule sees it. A ``.venv`` symlink pointing at an absolute home
+    directory was committed on a tree where this scan exited 0.
+    """
+    link = tmp_path / "dot-venv"
+    link.symlink_to("/Users/someone/elsewhere/.venv")
+
+    findings = scan.scan_tree(tmp_path, [link], check_identity=False)
+
+    assert findings, "an absolute symlink target was not caught"
+    assert "absolute path" in findings[0]
+
+
+def test_a_symlink_escaping_the_repository_is_caught(tmp_path):
+    """A relative target that leaves the tree resolves to whatever sits beside it."""
+    link = tmp_path / "outward"
+    link.symlink_to("../not-in-the-clone")
+
+    findings = scan.scan_tree(tmp_path, [link], check_identity=False)
+
+    assert findings, "a symlink escaping the tree was not caught"
+    assert "escaping the repository" in findings[0]
+
+
+def test_a_relative_symlink_inside_the_repository_is_allowed(tmp_path):
+    """P7. A guard that fires on correct code is one people route around.
+
+    A relative link within the tree is portable and common. It must stay quiet.
+    """
+    (tmp_path / "real.txt").write_text("fine\n", encoding="utf-8")
+    link = tmp_path / "alias.txt"
+    link.symlink_to("real.txt")
+
+    assert scan.scan_tree(tmp_path, [link], check_identity=False) == []
+
+
+def test_the_scanner_does_not_resolve_away_the_link_it_is_asked_about(tmp_path):
+    """``resolve()`` follows a symlink and hands the checkers the TARGET.
+
+    That disarms the rule precisely where it matters, because pre-commit passes
+    filenames, so the explicit-path branch is the one the hook uses. Pinned here
+    because the first version of this rule had exactly that defect and reported
+    clean against a planted link.
+    """
+    import subprocess
+    import sys
+
+    (tmp_path / "real.txt").write_text("fine\n", encoding="utf-8")
+    link = tmp_path / "dot-venv"
+    link.symlink_to("/Users/someone/elsewhere/.venv")
+
+    result = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts" / "scan_repo.py"), str(link)],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "absolute path" in result.stderr

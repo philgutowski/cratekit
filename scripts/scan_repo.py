@@ -439,6 +439,39 @@ def _read_text(path: Path) -> str | None:
         return None
 
 
+def symlink_violations(path: Path, root: Path) -> list[str]:
+    """Return one message per portability problem in a symlink's TARGET.
+
+    THE HOLE THIS CLOSES. Every other checker here reads a file's CONTENT, and a
+    symlink has none: following one to a directory raises, the reader returns
+    None, and the entry is skipped before any rule sees it. So a link whose
+    target is an absolute path on the author's machine sailed through a scan that
+    reported clean, and got committed. That happened, with a ``.venv`` symlink
+    pointing at an absolute home directory, on a tree where this scan exited 0.
+
+    A symlink is a portability violation in exactly two shapes: an ABSOLUTE
+    target, which cannot resolve on anyone else's machine, and a relative target
+    that ESCAPES the repository, which resolves to whatever happens to sit beside
+    the clone. A relative link inside the tree is fine and stays fine.
+    """
+    try:
+        if not path.is_symlink():
+            return []
+        target = os.readlink(path)
+    except OSError:  # pragma: no cover - unreadable link
+        return []
+
+    if os.path.isabs(target):
+        return [f"is a symlink to the absolute path {target!r}, which exists only on one machine"]
+
+    resolved = (path.parent / target).resolve()
+    try:
+        resolved.relative_to(root.resolve())
+    except ValueError:
+        return [f"is a symlink escaping the repository, to {target!r}"]
+    return []
+
+
 def scan_tree(
     root: Path,
     paths: list[Path] | None = None,
@@ -463,6 +496,9 @@ def scan_tree(
             continue
 
         findings += [f"{relative}: {p}" for p in credential_filename_violations(relative)]
+        # Before the content read, because a symlink has no content to read and
+        # is otherwise skipped entirely.
+        findings += [f"{relative}: {p}" for p in symlink_violations(path, root)]
 
         text = _read_text(path)
         if text is None:
@@ -475,7 +511,12 @@ def scan_tree(
 
 def main(argv: list[str]) -> int:
     root = Path(os.environ.get("CRATEKIT_SCAN_ROOT", REPO_ROOT)).resolve()
-    explicit = [Path(a).resolve() for a in argv[1:]] or None
+    # absolute(), never resolve(): resolve() FOLLOWS a symlink, so the path the
+    # checkers receive is the target rather than the link, and the symlink rule
+    # below then sees nothing to judge. This is the path pre-commit uses, because
+    # it passes filenames, so getting it wrong disarms the rule exactly where it
+    # is meant to fire.
+    explicit = [Path(a).absolute() for a in argv[1:]] or None
     findings = scan_tree(root, explicit)
     if not findings:
         return 0
