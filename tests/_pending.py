@@ -44,8 +44,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PENDING: dict[str, tuple[str, str]] = {
     "cratekit.core.rb_writer": (
         "U7",
-        "the additive whitelist, the two-process refusal, the version pin, the "
-        "cloud canary, and the cross-process write-session lock",
+        "the additive whitelist, the two-process refusal, the version pin "
+        "including U2's refusal on a pin that was never recorded, the cloud "
+        "canary, and the cross-process write-session lock",
     ),
     "cratekit.write.rbxml": (
         "U17",
@@ -59,6 +60,25 @@ PENDING: dict[str, tuple[str, str]] = {
     "cratekit.intake.collection_xml": (
         "U37",
         "the COLLECTION TRACK emitter that must never emit a <TEMPO> element",
+    ),
+    "cratekit.core.snapshot": (
+        "U8",
+        "that the KTD21b capture set is DERIVED from the state inventory rather "
+        "than hand-listed, and that it therefore includes the rekordbox "
+        "database's -wal and -shm sidecars, without which a capture is a "
+        "database silently missing every uncheckpointed transaction",
+    ),
+    "cratekit.core.restore": (
+        "U32",
+        "that a restore replaces exactly the derived coupled set, and that it "
+        "keeps the source system's sidecar asymmetry: clear both live sidecars "
+        "first, write back the -wal, never the -shm",
+    ),
+    "cratekit.cli.doctor": (
+        "U27",
+        "that a database acknowledged outside the library root is REPORTED on "
+        "every run, so the snapshot that is a copy rather than an atomic commit "
+        "stays visible long after the date somebody accepted it",
     ),
     "path:skills": (
         "U28",

@@ -40,6 +40,9 @@ EXPECTED_PENDING = frozenset(
         "cratekit.write.rbxml",  # U17, the XML bridge
         "cratekit.write.trees",  # U18, the tree writers
         "cratekit.intake.collection_xml",  # U37, the COLLECTION emitter
+        "cratekit.core.snapshot",  # U8, the KTD21b capture
+        "cratekit.core.restore",  # U32, the KTD21b replace
+        "cratekit.cli.doctor",  # U27, the health check
         "path:skills",  # U28, the shipped operator skills
     }
 )

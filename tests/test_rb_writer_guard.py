@@ -39,7 +39,9 @@ import multiprocessing as mp
 
 import pytest
 
+from cratekit.core import config
 from tests._pending import requires
+from tests.test_config import valid_data
 
 # Gate the whole module. The import below is deliberately tolerant rather than a
 # hard import, because a module-level ImportError happens at COLLECTION time,
@@ -251,6 +253,34 @@ def test_app_version_pin_skips_when_app_not_found(monkeypatch):
     """
     monkeypatch.setattr(W, "read_installed_app_version", lambda: None)
     W.assert_app_version()  # no raise
+
+
+def test_an_unrecorded_app_version_pin_refuses_even_when_the_install_reads_fine(
+    monkeypatch, tmp_path
+):
+    """S2, and the case the three tests above cannot reach.
+
+    Drift, match, and app-absent all assume a pin EXISTS. U2 makes an unset pin a
+    refusal to write, on the grounds that a pin the software copies from whatever
+    happens to be installed refuses nothing, forever, which is the entire property
+    the pin exists to provide. That refusal lives in
+    ``Config.assert_rekordbox_pin_recorded`` and it is inert until this writer
+    calls it, so the case is registered here against U7 rather than left as a hope.
+
+    The installed version deliberately reads FINE, so nothing but the missing
+    recorded decision can be what refuses.
+    """
+    library = tmp_path / "library"
+    (library / "db").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(library))
+    unpinned = config.from_dict(valid_data(library))
+    assert unpinned.rekordbox.pinned_app_version is None
+
+    monkeypatch.setattr(config, "load", lambda *args, **kwargs: unpinned)
+    monkeypatch.setattr(W, "read_installed_app_version", lambda: "7.2.14.0323")
+
+    with pytest.raises(config.ConfigInvalid, match="pinned_app_version"):
+        W.assert_app_version()
 
 
 # ── the cloud-sync canary ────────────────────────────────────────────────────

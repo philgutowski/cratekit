@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import re
 from pathlib import Path
 
 import pytest
@@ -149,10 +150,49 @@ def verb_names() -> frozenset[str]:
     return _FALLBACK_VERBS
 
 
+# The text a user types, in the two shapes that actually turned up below the CLI:
+# a package-manager install line and an invocation of Cratekit's own entry point.
+# D2 says remediation carries a structured token and only the CLI renders it into
+# a command, because the command depends on the platform, the package manager the
+# user actually has, and the interface they are sitting in front of. A string
+# baked in below the CLI has already decided all three.
+#
+# Matched anywhere in the constant rather than at its start, because a docstring
+# is one constant and a command buried in its middle is the same defect.
+_SHELL_COMMAND = re.compile(
+    r"\b(?:brew|apt|apt-get|pipx|pip|sudo|port|winget|choco|dnf|yum|npm)\s+install\b"
+)
+
+# The entry point followed by a SUBCOMMAND, IN A COMMAND CONTEXT. Three things
+# are excluded, and each exclusion has a reason.
+#
+# Bare flags: ``crate --help`` is the entry point's own identity, and a lower
+# layer explaining that it must stay cheap to run is describing itself, not
+# prescribing a fix. A remediation always names a subcommand, which is the half
+# that belongs to U5's vocabulary and not to any layer below it.
+#
+# The word "crate" as an ORDINARY NOUN. The rule used to be "crate followed by a
+# lowercase word", which matches "the crate registry", "each crate module", and
+# "crate state is per install" - correct prose in a correct module. A guard that
+# can fail correct code gets worked around rather than obeyed, and being worked
+# around is the exact failure D2 itself exists to prevent, so the guard must not
+# model that behaviour.
+#
+# What actually distinguishes the two is CONTEXT, not the following word. A
+# command appears quoted as code, after a shell prompt, or after an imperative
+# telling the reader to run it. A noun phrase appears after an article, a
+# preposition, or nothing at all. So the prefix is required, and it is the
+# narrow half of the pair: a lower layer that spells a bare command with no
+# context at all is a shape nobody has written, while prose about crates is a
+# shape this repository writes constantly.
+_CLI_INVOCATION = re.compile(
+    r"(?:[`$]\s*|\b(?:run|runs|running|type|typing|invoke|invoking|execute|executing)\s+)"
+    r"crate\s+(?!-)[a-z][a-z0-9]*(?:-[a-z0-9]+)*\b"
+)
+
+
 def layer_of(module: str) -> str:
     """Return the layer name for a dotted module path."""
-    import re
-
     for pattern, layer in _LAYER_RULES:
         if re.match(pattern, module):
             return layer
@@ -279,6 +319,20 @@ def higher_concept_violations(source: str, module: str) -> list[str]:
             problems.append(
                 f"{module} ({layer_of(module)}) hardcodes the taxonomy display name "
                 f"{value!r}; taxonomy is declared configuration, not a literal (R19)"
+            )
+
+        spelled = _SHELL_COMMAND.search(value)
+        if spelled is not None:
+            problems.append(
+                f"{module} ({layer_of(module)}) spells the command "
+                f"{spelled.group(0)!r}; remediation below the CLI is a structured "
+                f"token the CLI renders, never the text a user types (D2)"
+            )
+        if _CLI_INVOCATION.search(value):
+            problems.append(
+                f"{module} ({layer_of(module)}) spells an invocation of a CLI "
+                f"subcommand; remediation below the CLI is a structured token the "
+                f"CLI renders, never the text a user types (D2)"
             )
     return problems
 
@@ -459,6 +513,103 @@ def test_a_module_layer_file_may_name_its_own_concepts():
     """The rule is directional. A feature module naming its own verb is normal."""
     source = 'WORKFLOW = "label-sweep"\nFOLDER = "BY GENRE + ENERGY"\n'
     assert higher_concept_violations(source, "cratekit.label.sweep") == []
+
+
+# ── D2: remediation below the CLI is a token, never a command line ───────────
+
+
+def test_a_foundation_module_spelling_an_install_command_fails():
+    """The shape the guard could not see before: prose, not an import or a verb.
+
+    A hint holding "brew install ffmpeg" is an upward dependency written as
+    English. The CLI can no longer choose a platform-appropriate or
+    interface-appropriate remediation, because the string was baked in below it.
+    """
+    source = 'HINTS = {"ffmpeg": "brew install ffmpeg"}\n'
+    problems = higher_concept_violations(source, "cratekit.core.binaries")
+    assert len(problems) == 1 and "brew install" in problems[0]
+
+
+def test_a_foundation_module_spelling_a_cli_invocation_fails():
+    source = 'MESSAGE = "no configuration found; run crate setup to create it"\n'
+    problems = higher_concept_violations(source, "cratekit.core.config")
+    assert len(problems) == 1 and "invocation of a CLI subcommand" in problems[0]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '"""The crate registry lives here."""\n',
+        '"""crate state is per install, and each crate module declares its own."""\n',
+        'NOTE = "one crate directory per library, one crate lock beside it"\n',
+    ],
+)
+def test_prose_using_crate_as_an_ordinary_noun_passes(source):
+    """A guard that fails a correct module trains people to route around it.
+
+    The rule is about the text a user TYPES at a shell. "crate" followed by a
+    lowercase word is a noun phrase far more often than it is a command, and this
+    repository writes that noun phrase constantly: a check that cannot tell them
+    apart would be muted within a week, which is the same behaviour D2 exists to
+    prevent people from having to invent.
+    """
+    assert higher_concept_violations(source, "cratekit.core.config") == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'MESSAGE = "run crate setup first"\n',
+        'DOC = "Fix it with `crate doctor --repair`."\n',
+        'HELP = "$ crate label-sweep"\n',
+    ],
+)
+def test_an_invocation_in_a_command_context_still_fails(source):
+    """The narrowing must not cost the rule its bite.
+
+    Every shape a remediation actually takes below the CLI is still caught: after
+    an imperative, quoted as code, or after a shell prompt.
+    """
+    problems = higher_concept_violations(source, "cratekit.core.config")
+    assert len(problems) == 1 and "invocation of a CLI subcommand" in problems[0]
+
+
+def test_a_foundation_module_may_name_the_entry_point_by_its_own_flags():
+    """The rule is about remediation, not about mentioning the program's name.
+
+    A module explaining that it must stay importable so ``crate --help`` works on
+    an unconfigured machine is describing itself. A remediation always names a
+    subcommand, and that is the half U5 owns.
+    """
+    source = '"""Cheap enough that crate --help runs before setup."""\n'
+    assert higher_concept_violations(source, "cratekit.core.config") == []
+
+
+def test_a_command_buried_in_a_docstring_still_fails():
+    """A docstring is one string constant, so a check on its first words is not a check."""
+    source = '"""Resolve binaries.\n\n    Missing ones need pipx install yt-dlp first.\n    """\n'
+    problems = higher_concept_violations(source, "cratekit.core.binaries")
+    assert len(problems) == 1 and "pipx install" in problems[0]
+
+
+def test_prose_about_installing_without_a_command_passes():
+    """What correct code looks like, asserted so the guard cannot forbid it.
+
+    The rule is about the text a user TYPES. Naming the fact that something must
+    be installed, or that there is nothing to install, is this layer's own
+    knowledge and stays.
+    """
+    source = (
+        'PLATFORM = "provided by the operating system; there is nothing to install"\n'
+        'REMEDY = "install-keychain-backend"\n'
+    )
+    assert higher_concept_violations(source, "cratekit.core.secrets") == []
+
+
+def test_a_module_layer_file_may_spell_its_own_remediation():
+    """Directional, like every other rule here. The CLI is allowed to say it."""
+    source = 'HELP = "brew install ffmpeg"\n'
+    assert higher_concept_violations(source, "cratekit.cli.doctor") == []
 
 
 # ── R19: display names are never keys ────────────────────────────────────────
