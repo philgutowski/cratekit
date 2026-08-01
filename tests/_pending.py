@@ -42,12 +42,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # value -> (unit that lands it, one line saying what the guard asserts)
 # ---------------------------------------------------------------------------
 PENDING: dict[str, tuple[str, str]] = {
-    "cratekit.core.rb_writer": (
-        "U7",
-        "the additive whitelist, the two-process refusal, the version pin "
-        "including U2's refusal on a pin that was never recorded, the cloud "
-        "canary, and the cross-process write-session lock",
-    ),
     "cratekit.write.rbxml": (
         "U17",
         "the XML byte rules: CRLF-only emission, PLAYLISTS-scoped anchoring, "
@@ -96,7 +90,14 @@ PENDING: dict[str, tuple[str, str]] = {
         "replaces a live database and its sidecars while writing no database "
         "row, so a rule binding the gates to database WRITES alone would leave "
         "the one operation that destroys a library outside the safety spine "
-        "entirely. The gates bind to destructive sessions, not to write sessions"
+        "entirely. The gates bind to destructive sessions, not to write sessions. "
+        "It ALSO guards the field U7's snapshot-protection scan reads: the "
+        "session log has to record the snapshot path of the run it belongs to, "
+        "and it has to spell the state field and the terminal set the way U7's "
+        "default vocabulary expects. The source system's equivalent got all "
+        "three wrong and nothing failed, because a scan that matches nothing "
+        "returns nothing, so every snapshot was prunable while a comment said "
+        "otherwise"
     ),
     "cratekit.cli.doctor": (
         "U27",
