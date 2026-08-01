@@ -107,10 +107,22 @@ class Remedy(StrEnum):
     Renaming one is a breaking change to anything holding a stored cause, so
     renames go through the same retirement discipline as an exit code.
 
-    ``cratekit.core.config`` declares a six-member subset of these for its own
-    failures, which landed first. ``tests/test_cli_contract.py`` asserts that
-    subset stays a subset, so the two cannot drift into two vocabularies for one
-    idea, which is the drift KTD13 records in the taxonomy resolvers.
+    Several foundation modules declare their own subset of these for their own
+    failures, because they landed before or beside this enum:
+    ``cratekit.core.config``, ``cratekit.core.binaries``,
+    ``cratekit.core.secrets``, ``cratekit.core.backup_facts`` and
+    ``cratekit.acquire.adapter``. ``tests/test_cli_contract.py`` asserts every
+    one of those stays a subset, so they cannot drift into several vocabularies
+    for one idea, which is the drift KTD13 records in the taxonomy resolvers.
+
+    That test used to name ``config`` alone, because config was the only such
+    module on the day it was written. Four more landed and none of them was a
+    subset: sixteen tokens existed that this enum had never heard of, so
+    ``render`` matched none of them and fell through to the exit code's generic
+    summary. A user told to set a credential read "an unexpected failure"
+    instead. The test now DERIVES the module set by walking the package, per
+    seam decision P3, because a test that enumerates is a test that misses the
+    next addition, and this one already had.
     """
 
     # Configuration (the six ``config.Remedy`` already declares).
@@ -145,11 +157,42 @@ class Remedy(StrEnum):
     RUN_DOCTOR = "run-doctor"
     INSTALL_MODULE_EXTRA = "install-module-extra"
     ACKNOWLEDGE_BACKUP = "acknowledge-backup"
+    REPAIR_BACKUP_FACTS = "repair-backup-facts"
+
+    # External binaries this installation depends on.
+    INSTALL_BINARY = "install-binary"
+    INSTALL_BINARY_SOURCE_UNKNOWN = "install-binary-source-unknown"
+    FIX_BINARY_OVERRIDE = "fix-binary-override"
+    UNSUPPORTED_PLATFORM = "unsupported-platform"
+
+    # Credentials.
+    SET_CREDENTIAL = "set-credential"
+    INSTALL_KEYCHAIN_BACKEND = "install-keychain-backend"
+    REPAIR_CREDENTIAL_STORE = "repair-credential-store"
 
     # Upstream.
     AUTHENTICATE_PROVIDER = "authenticate-provider"
     RETRY_LATER = "retry-later"
     CHANGE_POLICY_OR_INPUT = "change-policy-or-input"
+    PAUSE_AND_CHECK_ACCOUNT = "pause-and-check-account"
+
+    # The acquisition adapter (R9, KTD5).
+    SWITCH_ADAPTER = "switch-adapter"
+    INSTALL_ADAPTER = "install-adapter"
+    CHOOSE_KNOWN_ADAPTER = "choose-known-adapter"
+    REPAIR_ADAPTER_SETTINGS = "repair-adapter-settings"
+    RELAX_LOSSLESS_POLICY = "relax-lossless-policy"
+
+    # Re-authentication. THREE tokens sit close together here and that is
+    # recorded rather than resolved: ``authenticate-provider`` (no credential
+    # yet), ``reauthenticate`` (a stored credential the keychain rejected), and
+    # ``reauthenticate-provider`` (a stored credential the PROVIDER rejected).
+    # They may well be one idea, but each is already a persisted slug, and this
+    # docstring says renaming one is a breaking change to anything holding a
+    # stored cause. Collapsing them is a deliberate decision with a migration,
+    # not a tidy-up.
+    REAUTHENTICATE = "reauthenticate"
+    REAUTHENTICATE_PROVIDER = "reauthenticate-provider"
 
     # Lifecycle.
     RESUME_JOB = "resume-job"

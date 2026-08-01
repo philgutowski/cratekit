@@ -72,6 +72,34 @@ _ADVICE: Mapping[Remedy, str] = {
     ),
     Remedy.INSTALL_MODULE_EXTRA: "install the extra named below",
     Remedy.RETRY_LATER: "the provider is unavailable; retry later",
+    # External binaries.
+    Remedy.INSTALL_BINARY: "install the binary named below, then run crate doctor",
+    Remedy.INSTALL_BINARY_SOURCE_UNKNOWN: (
+        "install the binary named below; this platform has no packaged source, so install it "
+        "yourself and point at it with a configured override"
+    ),
+    Remedy.FIX_BINARY_OVERRIDE: "the configured override does not point at a usable binary",
+    Remedy.UNSUPPORTED_PLATFORM: "this platform is not supported for the operation named below",
+    # Credentials.
+    Remedy.SET_CREDENTIAL: "store the credential named below, then retry",
+    Remedy.INSTALL_KEYCHAIN_BACKEND: "install a keychain backend so credentials can be stored",
+    Remedy.REPAIR_CREDENTIAL_STORE: "the credential store is unreadable; repair or recreate it",
+    Remedy.REAUTHENTICATE: "the stored credential was rejected; authenticate again",
+    Remedy.REAUTHENTICATE_PROVIDER: "the provider rejected the stored credential; log in again",
+    Remedy.PAUSE_AND_CHECK_ACCOUNT: (
+        "the provider is refusing this account; stop and check it before retrying, because "
+        "retrying into a block is how an account gets suspended"
+    ),
+    # The acquisition adapter.
+    Remedy.SWITCH_ADAPTER: "switch to another configured acquisition adapter",
+    Remedy.INSTALL_ADAPTER: "install the acquisition adapter named below",
+    Remedy.CHOOSE_KNOWN_ADAPTER: "name one of the adapters listed below",
+    Remedy.REPAIR_ADAPTER_SETTINGS: "the adapter's own settings are unusable; repair them",
+    Remedy.RELAX_LOSSLESS_POLICY: (
+        "no lossless source exists; change the lossless policy if a marked lossy copy is acceptable"
+    ),
+    # This installation.
+    Remedy.REPAIR_BACKUP_FACTS: "the recorded backup facts are unreadable; repair or reset them",
 }
 
 

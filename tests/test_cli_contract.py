@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import enum
 import io
 import json
 import os
@@ -200,17 +201,89 @@ def test_status_two_belongs_to_the_argument_parser_and_to_nothing_else():
     assert code == int(ExitCode.USAGE)
 
 
-def test_the_configuration_remedies_are_part_of_one_vocabulary():
-    """U2 declared six remediation tokens before this vocabulary existed.
+def _modules_declaring_their_own_remedy() -> dict[str, type]:
+    """Every module in the package that declares a ``Remedy`` of its own.
+
+    DERIVED by walking the package, not listed. The version of this test that
+    named ``config`` alone was already false when it was written: four more
+    modules declared their own Remedy afterwards, none of them a subset, and the
+    suite stayed green over sixteen tokens the canonical enum had never heard
+    of. That is seam decision P3 exactly, and this is the shape that prevents it
+    recurring.
+    """
+    import importlib
+    import pkgutil
+
+    import cratekit
+
+    found: dict[str, type] = {}
+    for info in pkgutil.walk_packages(cratekit.__path__, "cratekit."):
+        if "._vendor" in info.name:
+            continue
+        try:
+            module = importlib.import_module(info.name)
+        except Exception:  # noqa: BLE001 - a missing heavy extra is not a failure here
+            continue
+        declared = vars(module).get("Remedy")
+        if (
+            isinstance(declared, type)
+            and issubclass(declared, enum.Enum)
+            and declared.__module__ == info.name
+            and info.name != "cratekit.core.exit_codes"
+        ):
+            found[info.name] = declared
+    return found
+
+
+def test_every_module_declaring_its_own_remedies_stays_inside_one_vocabulary():
+    """Several modules declared remediation tokens before this vocabulary existed.
 
     They stay a SUBSET rather than becoming a second scheme. Two vocabularies for
     one idea is the drift that produced five genre resolvers, and it starts
     exactly like this: one module needing a token before the module that owns
     them was written.
     """
+    modules = _modules_declaring_their_own_remedy()
+    assert modules, "no module-local Remedy was found; the walk is broken, not the tree"
+
     canonical = {str(member) for member in Remedy}
-    declared = {str(member) for member in config.Remedy}
-    assert declared <= canonical, sorted(declared - canonical)
+    strays = {
+        name: sorted({str(m) for m in declared} - canonical)
+        for name, declared in modules.items()
+        if not {str(m) for m in declared} <= canonical
+    }
+    assert not strays, (
+        "these modules declare remediation tokens the canonical vocabulary has never heard of, "
+        f"so the CLI cannot render them: {strays}"
+    )
+
+
+def test_every_module_local_remedy_renders_to_something_a_user_can_act_on():
+    """The consequence the subset rule exists to prevent, asserted directly.
+
+    A token the canonical enum does not carry falls through ``render`` to the
+    exit code's generic summary, so a refusal that means "store this credential"
+    reads as "an unexpected failure". That is silent, it is user facing, and it
+    is exactly the collapse KTD25 names. Derived over every module-local token,
+    not over a sample.
+    """
+    generic = {str(meaning_of(code).summary) for code in ExitCode}
+    for module_name, declared in _modules_declaring_their_own_remedy().items():
+        for member in declared:
+            line = render.remediation_line(
+                Cause(
+                    reason="internal-error",
+                    message="m",
+                    remediation=Remediation(remedy=Remedy(str(member))),
+                    scope=Scope.RUN,
+                    retryable=False,
+                )
+            )
+            body = line.removeprefix("  fix: ")
+            assert body not in generic, (
+                f"{module_name}.{member.name} renders as the exit code's generic summary "
+                f"rather than as its own remediation"
+            )
 
 
 def test_every_remediation_token_renders_to_something_a_user_can_act_on():
