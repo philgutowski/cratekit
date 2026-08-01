@@ -248,6 +248,59 @@ def test_credential_shapes_are_caught(body, label):
     )
 
 
+@pytest.mark.parametrize(
+    "key",
+    [
+        "client_secret", "clientSecret", "client-secret", "CLIENTSECRET",
+        "client_id", "clientId",
+        "access_token", "accessToken",
+        "refresh_token", "refreshToken",
+        "api_key", "apiKey", "apikey",
+    ],
+)
+def test_a_credential_key_is_caught_in_every_casing_and_separator(key):
+    """Naming conventions are not a security boundary.
+
+    This is not a hypothetical hardening pass. A real vendored source file held
+    five live third-party credential pairs written as ``"clientSecret"``, and
+    this scan walked straight past every one of them while catching the
+    snake_case spelling in a neighbouring file. Two separate causes, both fixed
+    here and both asserted by this test:
+
+    1. The keyword list was written in one casing, so a camelCase key matched
+       nothing.
+    2. The rule that should have caught it anyway, on the bare word ``secret``,
+       required whitespace between the keyword and the colon. In a JSON-shaped
+       literal a closing quote sits there instead, and that is the form almost
+       every credential in a real file takes.
+
+    Parametrized over spellings rather than asserted once, because the failure
+    was specifically that one spelling was covered and the others were not.
+    """
+    body = f'{{"{key}": "{_A_TOKEN}"}}'
+    assert scan.secret_violations(body), f"{key!r} carrying a live value was not caught"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        '{"clientSecret": "YOUR_CLIENT_SECRET_HERE"}',
+        '{"clientId": "abc"}',
+        "The client id is supplied during setup and stored in the keychain.",
+        '{"apiKey": "EXAMPLE_VALUE_GOES_HERE"}',
+    ],
+)
+def test_the_widened_credential_rules_stay_quiet_on_correct_content(body):
+    """A guard that fires on correct code gets suppressed, and then it guards nothing.
+
+    Widening a pattern is the moment false positives arrive, so the quiet cases
+    are asserted alongside the loud ones: a documented placeholder, a value too
+    short to be a credential, ordinary prose naming the concept, and an
+    illustrative example.
+    """
+    assert scan.secret_violations(body) == [], f"wrongly flagged: {body!r}"
+
+
 def test_findings_never_print_the_secret():
     """A guard that echoes what it found has copied it into the CI log.
 
