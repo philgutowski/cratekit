@@ -1,0 +1,197 @@
+# A SECOND taxonomy, shipped only in the tests.
+#
+# Its whole job is to fail if any folder name, band name, sub name, or exception
+# ever creeps back into code. It therefore shares NOTHING with the default: not a
+# bucket name, not a band name, not a band COUNT, not the intake name, not the
+# tree root. If a change makes the default template pass and this one fail, that
+# change hardcoded something.
+#
+# It must differ in three ways for the parameterisation claim to mean anything:
+#
+#   1. different folder names          -> every display below is unrelated;
+#   2. a different band count          -> four bands, not three, with different cuts;
+#   3. at least one per-folder exception -> it carries all four kinds, because a
+#      taxonomy that exercises the happy path only proves the happy path.
+
+schema_version = 1
+
+[tree]
+id = "shelves"
+display = "SHELVES"
+depth = 3
+
+[intake]
+id = "landing"
+display = "LANDING"
+
+[fallback]
+bucket = "unfiled"
+routing_uses_fallback = true
+tagging_uses_fallback = false
+too_coarse_as_source = ["", "Misc"]
+
+[energy]
+enabled = true
+scale_max = 10
+# Four bands where the default has three, and none of the cuts line up with it.
+bands = [
+  { id = "warmup", display = "Warm Up", max = 2 },
+  { id = "groove", display = "Groove",  max = 5 },
+  { id = "peak",   display = "Peak",    max = 8 },
+  { id = "afters", display = "Afters",  max = 10 },
+]
+no_energy_sub = { id = "unread", display = "Unread" }
+
+# Four cuts against four bands, and still not aligned with them: the point of
+# keeping the two independent is that neither has to follow the other.
+[energy.rating]
+cuts = [
+  { max = 3,  rating = 51 },
+  { max = 6,  rating = 153 },
+  { max = 9,  rating = 204 },
+  { max = 10, rating = 255 },
+]
+
+[[sub_class]]
+id = "pinned"
+display = "Pinned"
+policy = "manual"
+present_in = "energy_buckets"
+
+[[sub_class]]
+id = "spoken_over"
+display = "Spoken Over"
+policy = "derived"
+additive = true
+present_in = "all_buckets"
+
+[family]
+catch_all = "misc"
+same_genre = 1.0
+same_family = 0.7
+same_supergroup = 0.5
+unrelated = 0.1
+unknown_anchor = 0.5
+
+[family.supergroup]
+loud = "energetic"
+brisk = "energetic"
+energetic = "energetic"
+
+# ── Buckets ──────────────────────────────────────────────────────────────────
+
+[[bucket]]
+id = "floor_filler"
+display = "Floor Filler"
+family = "loud"
+bpm = { start = 128, floor = 120, ceil = 140 }
+aliases = ["Banger", "Peak Hour"]
+tag_aliases = ["stomper"]
+
+[[bucket]]
+id = "slow_burn"
+display = "Slow Burn"
+family = "brisk"
+bpm = { start = 100, floor = 80, ceil = 118 }
+aliases = ["Slow", "Simmer"]
+# Exception 1: the same cuts, different band LABELS. Only the display moves.
+energy = { enabled = true, band_display = { warmup = "Barely Moving", afters = "Last Call" } }
+
+[[bucket]]
+id = "spoken"
+display = "Spoken Word"
+family = "quiet"
+bpm = { start = 90, floor = 60, ceil = 120 }
+aliases = ["Poetry", "Reading"]
+# Exception 2: no energy dimension at all, and no sink either. A track with no
+# energy reading lands in the single sub rather than nowhere.
+rates = false
+energy = { enabled = false }
+single_sub = { id = "spoken_all", display = "Spoken Word" }
+
+[[bucket]]
+id = "field_recordings"
+display = "Field Recordings"
+family = "quiet"
+bpm = { start = 90, floor = 55, ceil = 130 }
+aliases = ["Field Recording", "Wildlife", "Weather", "Machines"]
+rates = false
+energy = { enabled = false }
+
+[[bucket.sub]]
+id = "water"
+display = "Water"
+tag_aliases = ["hydrophone"]
+
+[[bucket.sub]]
+id = "birds"
+display = "Birds"
+
+[[bucket.sub]]
+id = "engines"
+display = "Engines"
+
+# Exception 3: routes by the SOURCE string rather than by energy, with the
+# landing place for anything unmapped declared instead of hidden in code.
+[bucket.sub_by_source]
+default = "engines"
+map = [
+  { source = "Wildlife", sub = "birds" },
+  { source = "Weather", sub = "water" },
+  { source = "Machines", sub = "engines" },
+]
+
+[[bucket]]
+id = "unfiled"
+display = "Unfiled"
+family = "misc"
+bpm = { start = 110, floor = 60, ceil = 180 }
+aliases = ["Unfiled"]
+
+# ── Ordered rules ────────────────────────────────────────────────────────────
+
+[[fuzzy]]
+keyword = "banger"
+bucket = "floor_filler"
+
+[[fuzzy]]
+keyword = "slow"
+bucket = "slow_burn"
+
+[[fuzzy]]
+keyword = "spoken"
+bucket = "spoken"
+
+[[fuzzy]]
+keyword = "field"
+bucket = "field_recordings"
+
+[[suggest]]
+equals = ["misc"]
+decline = "ask"
+
+[[suggest]]
+any_of = ["banger", "stomper"]
+bucket = "floor_filler"
+
+[[suggest]]
+all_of = ["slow"]
+bucket = "slow_burn"
+[suggest.split]
+when_contains = "slow"
+max_bpm = 95
+below = "spoken"
+at_or_above = "slow_burn"
+unknown_bpm = "slow_burn"
+unknown_bpm_needs_review = true
+
+[label_gate]
+out_of_place_share = 0.25
+
+[[label_gate.rule]]
+any_of = ["banger"]
+keep = true
+
+[[label_gate.rule]]
+any_of = ["spoken", "poetry"]
+family = "talking"

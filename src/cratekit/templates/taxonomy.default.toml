@@ -1,0 +1,902 @@
+# Cratekit taxonomy template, schema 1.
+#
+# This file is PACKAGED DATA: it ships read-only inside the wheel and is the
+# starting point a setup run copies into the library's own state root, where it
+# becomes that library's active template (seam decision S6). Editing the copy
+# in the wheel does nothing; edit the library's copy.
+#
+# Every entry carries a stable `id` alongside its `display` (R19). State keys on
+# the id, rekordbox sees the display, and renaming a folder therefore orphans
+# nothing.
+#
+# PROVENANCE OF THE LIBRARY-DERIVED VALUES. The structure below (which buckets
+# exist, which subs each carries, which bucket is the fallback) was read from a
+# rekordbox XML export of the author's library dated 2026-07-15, 10070 tracks,
+# 18 folders under the tree root. The alias lists, the ordered fuzzy rules, the
+# tempo priors and the family projection were emitted from the source system's
+# own tables, so they are exact rather than transcribed.
+#
+# PROVISIONAL VALUES. The tempo priors are one person's hand-tuned windows and
+# have never been measured against detector error rates; confirming them needs a
+# detection run over a labelled sample per bucket, which no test here performs.
+# The `family` projection is likewise a judgement call: two of its assignments
+# (see the comments on those buckets) are accidents of rule ordering in the
+# system it came from, preserved here so the projection is behaviour-identical,
+# and both deserve a deliberate decision before anyone treats them as intended.
+# The `rates` flags are the third: two of this file's consumers disagreed about
+# whether those buckets get a star rating written, and this file follows the
+# stricter one. Nothing measured that; somebody should decide it.
+#
+# THREE SOURCE STRINGS ROUTE ONE WAY AND TAG ANOTHER, on purpose and visibly:
+#
+#   Bass / Club    routes to the catch-all, tags as UK Garage / Bassline
+#   Reggae         routes to the catch-all, tags as the Caribbean sub
+#   Trap / Wave    routes to the breaks bucket, tags as the Hip-Hop sub
+#
+# This is coherent rather than contradictory: tagging rewrites the file's genre
+# to this library's own name and routing then resolves THAT, so the two are
+# chained. It is recorded here because the two tables it came from held these
+# three apart with no way to see it. Each is one `tag_aliases` line to change.
+
+schema_version = 1
+
+# KTD14 pins the tree at three levels: a child of ROOT, a folder, a sub-playlist.
+# The XML bridge's indentation constants encode exactly that, so a template
+# declaring another depth is refused by name rather than emitted wrong.
+[tree]
+id = "genre_energy"
+display = "BY GENRE + ENERGY"
+depth = 3
+
+# The intake flow (R19). Tracks land here first and are swept into the tree.
+[intake]
+id = "inbox"
+display = "INBOX"
+
+[fallback]
+bucket = "electronica_other"
+# Routing must always land somewhere; tagging must never blanket-fall-back, or
+# a coarse guess becomes the file's permanent genre tag. The two entry points
+# read the same table and differ only here.
+routing_uses_fallback = true
+tagging_uses_fallback = false
+# Source strings too coarse to accept as a final tag. Replaces the source
+# system's separate reject set and its separate fallback-folder constant.
+too_coarse_as_source = ["", "Electronica", "Electronic", "Electronica / Other"]
+
+[energy]
+enabled = true
+scale_max = 10
+# Ordered, each `max` an inclusive upper bound on the 1..scale_max scale.
+bands = [
+  { id = "low",  display = "Low",  max = 3 },
+  { id = "med",  display = "Med",  max = 6 },
+  { id = "high", display = "High", max = 10 },
+]
+# Where a track with no energy reading parks. A bucket may omit it, which means
+# leave the track where it is rather than move it to a sink.
+no_energy_sub = { id = "unsorted", display = "Unsorted" }
+
+# The star curve is deliberately DECOUPLED from the band cuts above. Energy is
+# decile-calibrated, so an even five-way split lands tracks evenly across five
+# stars, while the tree stays a three-way split. Forcing the two to align would
+# silently re-rate the library.
+#
+# Consequence, resolved deliberately (seam decision D3): composing these cuts
+# with a five-to-three star fold makes energy 4 read as the middle band in the
+# tree and the low band on a stars-derived dashboard. The TREE rule wins and is
+# asserted by name in the parity suite. Do not 'fix' the dashboard into agreeing;
+# it reads a rating field that is only written when unset, so its band is not a
+# function of energy at all for any hand-rated track.
+[energy.rating]
+cuts = [
+  { max = 2,  rating = 51 },
+  { max = 4,  rating = 102 },
+  { max = 6,  rating = 153 },
+  { max = 8,  rating = 204 },
+  { max = 10, rating = 255 },
+]
+
+# Two policies, not one 'excluded' flag. Collapsing them loses the reason:
+#   manual  -> automation never writes it and never moves a track out of it.
+#   derived -> automation rebuilds it from a signal, so it is written but is
+#              still never a move source; moving a track out without re-deriving
+#              silently drops the routing that put it there.
+[[sub_class]]
+id = "candy"
+display = "Candy"
+policy = "manual"
+present_in = "energy_buckets"
+
+[[sub_class]]
+id = "with_vox"
+display = "with vox"
+policy = "derived"
+additive = true
+present_in = "all_buckets"
+
+# The set-builder's family vocabulary is a PROJECTION off the bucket, not a
+# second genre table. Reading the family off the resolved bucket also fixes a
+# live inconsistency: the source system runs its family rules on the raw tag, so
+# a track tagged for two genres can land in one bucket and score as another.
+[family]
+# The family that means 'nothing in common'. Two buckets share it without
+# being alike, so it must never award a same-family bonus.
+catch_all = "other"
+same_genre = 1.0
+same_family = 0.6
+same_supergroup = 0.4
+unrelated = 0.2
+unknown_anchor = 0.5
+
+[family.supergroup]
+progressive = "house"
+melodic = "house"
+house = "house"
+
+[[bucket]]
+id = "deep_house"
+display = "Deep House"
+family = "house"
+bpm = { start = 122, floor = 110, ceil = 132 }
+aliases = [
+  "Deep House",
+]
+
+[[bucket]]
+id = "tech_house"
+display = "Tech House"
+family = "house"
+bpm = { start = 125, floor = 115, ceil = 140 }
+aliases = [
+  "Bass House",
+  "Electro House",
+  "Future House",
+  "Tech House",
+]
+# Tagging-only: source strings the tagger accepts that routing deliberately
+# does not. Listing them here is the point — the two tables that used to
+# hold them disagreed, and the disagreement was invisible.
+tag_aliases = [
+  "tech-house",
+]
+
+[[bucket]]
+id = "minimal_deep_tech"
+display = "Minimal / Deep Tech"
+family = "house"
+bpm = { start = 126, floor = 118, ceil = 136 }
+aliases = [
+  "Minimal / Deep Tech",
+]
+# Tagging-only: source strings the tagger accepts that routing deliberately
+# does not. Listing them here is the point — the two tables that used to
+# hold them disagreed, and the disagreement was invisible.
+tag_aliases = [
+  "deep tech",
+  "minimal",
+]
+# Same band boundaries, different band labels. Only the display changes,
+# which is why the override is on the label and not on the cut.
+energy = { enabled = true, band_display = { low = "Low Energy", med = "Med Energy", high = "High Energy" } }
+
+[[bucket]]
+id = "house_funky_disco"
+display = "House / Funky House / Disco"
+# NOTE: reads as the disco family, not house. In the system this came from
+# that is an accident of rule order, and it is the library's largest house
+# folder. Preserved for parity; worth a deliberate decision.
+family = "disco"
+bpm = { start = 122, floor = 110, ceil = 134 }
+aliases = [
+  "Disco",
+  "Funky / Groove / Jackin' House",
+  "Funky House",
+  "House",
+  "House / Funky House / Disco",
+  "Jackin House",
+]
+# Tagging-only: source strings the tagger accepts that routing deliberately
+# does not. Listing them here is the point — the two tables that used to
+# hold them disagreed, and the disagreement was invisible.
+tag_aliases = [
+  "funky",
+  "indian house",
+]
+
+[[bucket]]
+id = "melodic_house"
+display = "Melodic House"
+family = "melodic"
+bpm = { start = 124, floor = 114, ceil = 134 }
+aliases = [
+  "Melodic House",
+  "Melodic House & Techno",
+]
+# Tagging-only: source strings the tagger accepts that routing deliberately
+# does not. Listing them here is the point — the two tables that used to
+# hold them disagreed, and the disagreement was invisible.
+tag_aliases = [
+  "melodic",
+]
+
+[[bucket]]
+id = "organic_house"
+display = "Organic House"
+family = "house"
+bpm = { start = 120, floor = 105, ceil = 128 }
+aliases = [
+  "Organic House",
+  "Organic House / Downtempo",
+]
+
+[[bucket]]
+id = "afro_house"
+display = "Afro House"
+family = "house"
+bpm = { start = 122, floor = 112, ceil = 132 }
+aliases = [
+  "Afro House",
+  "Amapiano",
+]
+
+[[bucket]]
+id = "nu_disco_indie_dance"
+display = "Nu Disco / Indie Dance"
+family = "disco"
+bpm = { start = 118, floor = 105, ceil = 128 }
+aliases = [
+  "Indie Dance",
+  "Nu Disco / Disco",
+  "Nu Disco / Indie Dance",
+]
+# Tagging-only: source strings the tagger accepts that routing deliberately
+# does not. Listing them here is the point — the two tables that used to
+# hold them disagreed, and the disagreement was invisible.
+tag_aliases = [
+  "nu disco",
+]
+
+[[bucket]]
+id = "downtempo"
+display = "Downtempo"
+family = "downtempo"
+bpm = { start = 90, floor = 70, ceil = 115 }
+aliases = [
+  "Downtempo",
+]
+# Tagging-only: source strings the tagger accepts that routing deliberately
+# does not. Listing them here is the point — the two tables that used to
+# hold them disagreed, and the disagreement was invisible.
+tag_aliases = [
+  "trip hop",
+  "trip-hop",
+]
+
+[[bucket]]
+id = "dance_pop"
+display = "Dance / Pop"
+# NOTE: reads as the disco family for the same ordering reason as above.
+family = "disco"
+bpm = { start = 122, floor = 100, ceil = 135 }
+aliases = [
+  "Dance / Electro Pop",
+  "Dance / Pop",
+  "Pop",
+  "Synth-Pop",
+]
+# Tagging-only: source strings the tagger accepts that routing deliberately
+# does not. Listing them here is the point — the two tables that used to
+# hold them disagreed, and the disagreement was invisible.
+tag_aliases = [
+  "dance pop",
+  "electro pop",
+]
+
+[[bucket]]
+id = "uk_garage_bassline"
+display = "UK Garage / Bassline"
+family = "bass"
+bpm = { start = 134, floor = 124, ceil = 145 }
+aliases = [
+  "UK Garage / Bassline",
+]
+# Tagging-only: source strings the tagger accepts that routing deliberately
+# does not. Listing them here is the point — the two tables that used to
+# hold them disagreed, and the disagreement was invisible.
+tag_aliases = [
+  "bass / club",
+  "bassline",
+  "garage",
+  "uk garage",
+]
+
+[[bucket]]
+id = "techno"
+display = "Techno"
+family = "techno"
+bpm = { start = 132, floor = 120, ceil = 150 }
+aliases = [
+  "Techno (Peak Time / Driving)",
+]
+# Tagging-only: source strings the tagger accepts that routing deliberately
+# does not. Listing them here is the point — the two tables that used to
+# hold them disagreed, and the disagreement was invisible.
+tag_aliases = [
+  "hard techno",
+  "techno",
+  "techno (raw / deep / hypnotic)",
+]
+
+[[bucket]]
+id = "trance"
+display = "Trance"
+family = "trance"
+bpm = { start = 138, floor = 128, ceil = 148 }
+aliases = [
+  "Trance",
+  "Trance (Main Floor)",
+  "Trance (Raw / Deep / Hypnotic)",
+]
+
+[[bucket]]
+id = "breaks_dnb_dubstep"
+display = "Breaks / D&B / Dubstep"
+family = "bass"
+bpm = { start = 140, floor = 80, ceil = 185 }
+aliases = [
+  "Breaks / Breakbeat / UK Bass",
+  "Drum & Bass",
+  "Drum & Bass / Halftime",
+  "Dubstep",
+  "Trap / Future Bass",
+  "Trap / Wave",
+]
+# Tagging-only: source strings the tagger accepts that routing deliberately
+# does not. Listing them here is the point — the two tables that used to
+# hold them disagreed, and the disagreement was invisible.
+tag_aliases = [
+  "breakbeat",
+  "breaks",
+  "dnb",
+  "drum and bass",
+]
+
+[[bucket]]
+id = "non_electronic"
+display = "NonElectronic"
+family = "other"
+bpm = { start = 110, floor = 70, ceil = 165 }
+aliases = [
+  "Afrobeat",
+  "Alternative",
+  "Bollywood",
+  "Caribbean",
+  "Classical",
+  "Contemporary Classical",
+  "Country",
+  "Folk",
+  "Funk",
+  "Hip-Hop",
+  "Hip-Hop / R&B",
+  "Indie Rock",
+  "Jazz",
+  "Latin",
+  "MPB",
+  "Punk",
+  "R&B",
+  "Rock",
+  "Soul",
+  "Soul / R&B",
+  "Tango",
+  "World Music",
+]
+# Routes by the SOURCE genre, not by energy, into one sub per style.
+# `rates = false`: a star rating derived from energy means nothing for a
+# bucket that has no energy dimension. UNVERIFIED: two consumers of the old
+# code disagreed here, one suppressing the rating for this bucket and one
+# writing it anyway. This follows the stricter one.
+rates = false
+energy = { enabled = false }
+
+[[bucket.sub]]
+id = "jazz"
+display = "Jazz"
+tag_aliases = [
+  "jazz",
+]
+
+[[bucket.sub]]
+id = "classical"
+display = "Classical"
+tag_aliases = [
+  "classical",
+]
+
+[[bucket.sub]]
+id = "rock"
+display = "Rock"
+tag_aliases = [
+  "rock",
+]
+
+[[bucket.sub]]
+id = "pop"
+display = "Pop"
+
+[[bucket.sub]]
+id = "soul_rnb"
+display = "Soul / R&B"
+tag_aliases = [
+  "r&b",
+  "rnb",
+  "soul",
+  "soul / r&b",
+]
+
+[[bucket.sub]]
+id = "hip_hop"
+display = "Hip-Hop"
+tag_aliases = [
+  "hip hop",
+  "hip-hop",
+  "hip-hop / r&b",
+  "rap",
+  "rap fr",
+  "trap",
+  "trap / wave",
+]
+
+[[bucket.sub]]
+id = "folk"
+display = "Folk"
+tag_aliases = [
+  "folk",
+]
+
+[[bucket.sub]]
+id = "funk"
+display = "Funk"
+tag_aliases = [
+  "funk",
+]
+
+[[bucket.sub]]
+id = "caribbean"
+display = "Caribbean"
+tag_aliases = [
+  "caribbean",
+  "dancehall",
+  "reggae",
+  "reggae / dancehall / ska",
+  "ska",
+]
+
+[[bucket.sub]]
+id = "afrobeat"
+display = "Afrobeat"
+tag_aliases = [
+  "afrobeat",
+  "afrobeats",
+]
+
+[bucket.sub_by_source]
+# An unmapped source genre lands here. The system this came from hardcoded
+# one sub as the default with no way to see it, so anything unrecognised
+# filed as that style whether or not it was. Declaring it makes the choice
+# reviewable; changing it is a one-line edit.
+default = "rock"
+map = [
+  { source = "Afrobeat", sub = "afrobeat" },
+  { source = "Alternative", sub = "rock" },
+  { source = "Bollywood", sub = "caribbean" },
+  { source = "Caribbean", sub = "caribbean" },
+  { source = "Classical", sub = "classical" },
+  { source = "Contemporary Classical", sub = "classical" },
+  { source = "Country", sub = "caribbean" },
+  { source = "Folk", sub = "folk" },
+  { source = "Funk", sub = "funk" },
+  { source = "Hip-Hop", sub = "hip_hop" },
+  { source = "Hip-Hop / R&B", sub = "hip_hop" },
+  { source = "Indie Rock", sub = "rock" },
+  { source = "Jazz", sub = "jazz" },
+  { source = "Latin", sub = "caribbean" },
+  { source = "MPB", sub = "soul_rnb" },
+  { source = "Pop", sub = "pop" },
+  { source = "Punk", sub = "rock" },
+  { source = "R&B", sub = "soul_rnb" },
+  { source = "Rock", sub = "rock" },
+  { source = "Soul", sub = "soul_rnb" },
+  { source = "Soul / R&B", sub = "soul_rnb" },
+  { source = "Tango", sub = "caribbean" },
+  { source = "World Music", sub = "caribbean" },
+]
+
+[[bucket]]
+id = "electronica_other"
+display = "Electronica / Other"
+family = "other"
+bpm = { start = 124, floor = 90, ceil = 160 }
+aliases = [
+  "Acapella",
+  "DJ Tools / Acapellas",
+  "DJ Tools / Samples",
+  "Electro",
+  "Electro (Classic / Detroit / Modern)",
+  "Electronic",
+  "Electronica",
+  "Experimental",
+  "Live Electronic",
+  "Loop Samples",
+  "Mainstage",
+]
+
+[[bucket]]
+id = "chill_ambient"
+display = "Chill / Ambient"
+family = "downtempo"
+bpm = { start = 90, floor = 60, ceil = 120 }
+aliases = [
+  "Ambient",
+  "Ambient / Experimental",
+  "Balearic",
+  "Chill / Ambient",
+]
+# Tagging-only: source strings the tagger accepts that routing deliberately
+# does not. Listing them here is the point — the two tables that used to
+# hold them disagreed, and the disagreement was invisible.
+tag_aliases = [
+  "chill",
+  "chillout",
+]
+# No energy dimension and no sink: this bucket has exactly one sub, named
+# for the bucket itself, and a track with no energy reading lands there
+# rather than in a sink that does not exist.
+# `rates = false`: a star rating derived from energy means nothing for a
+# bucket that has no energy dimension. UNVERIFIED: two consumers of the old
+# code disagreed here, one suppressing the rating for this bucket and one
+# writing it anyway. This follows the stricter one.
+rates = false
+energy = { enabled = false }
+single_sub = { id = "chill_ambient_all", display = "Chill / Ambient" }
+
+[[bucket]]
+id = "progressive_house"
+display = "Progressive House"
+family = "progressive"
+bpm = { start = 124, floor = 114, ceil = 134 }
+aliases = [
+  "Melodic / Progressive House",
+  "Progressive House",
+]
+# Tagging-only: source strings the tagger accepts that routing deliberately
+# does not. Listing them here is the point — the two tables that used to
+# hold them disagreed, and the disagreement was invisible.
+tag_aliases = [
+  "progressive",
+]
+
+# Ordered keyword rules for ROUTING only, first match wins, matched against the
+# lowercased source string. More specific keywords come first: the order is
+# behaviour, not presentation, and reordering these changes where tracks land.
+
+[[fuzzy]]
+keyword = "deep house"
+bucket = "deep_house"
+
+[[fuzzy]]
+keyword = "tech house"
+bucket = "tech_house"
+
+[[fuzzy]]
+keyword = "organic house"
+bucket = "organic_house"
+
+[[fuzzy]]
+keyword = "afro house"
+bucket = "afro_house"
+
+[[fuzzy]]
+keyword = "nu disco"
+bucket = "nu_disco_indie_dance"
+
+[[fuzzy]]
+keyword = "indie dance"
+bucket = "nu_disco_indie_dance"
+
+[[fuzzy]]
+keyword = "melodic house"
+bucket = "melodic_house"
+
+[[fuzzy]]
+keyword = "melodic techno"
+bucket = "melodic_house"
+
+[[fuzzy]]
+keyword = "progressive house"
+bucket = "progressive_house"
+
+[[fuzzy]]
+keyword = "uk garage"
+bucket = "uk_garage_bassline"
+
+[[fuzzy]]
+keyword = "deep tech"
+bucket = "minimal_deep_tech"
+
+[[fuzzy]]
+keyword = "minimal"
+bucket = "minimal_deep_tech"
+
+[[fuzzy]]
+keyword = "drum & bass"
+bucket = "breaks_dnb_dubstep"
+
+[[fuzzy]]
+keyword = "drum and bass"
+bucket = "breaks_dnb_dubstep"
+
+[[fuzzy]]
+keyword = "dubstep"
+bucket = "breaks_dnb_dubstep"
+
+[[fuzzy]]
+keyword = "breakbeat"
+bucket = "breaks_dnb_dubstep"
+
+[[fuzzy]]
+keyword = "breaks"
+bucket = "breaks_dnb_dubstep"
+
+[[fuzzy]]
+keyword = "downtempo"
+bucket = "downtempo"
+
+[[fuzzy]]
+keyword = "bassline"
+bucket = "uk_garage_bassline"
+
+[[fuzzy]]
+keyword = "trance"
+bucket = "trance"
+
+[[fuzzy]]
+keyword = "techno"
+bucket = "techno"
+
+[[fuzzy]]
+keyword = "ambient"
+bucket = "chill_ambient"
+
+[[fuzzy]]
+keyword = "chill"
+bucket = "chill_ambient"
+
+[[fuzzy]]
+keyword = "jazz"
+bucket = "non_electronic"
+
+[[fuzzy]]
+keyword = "classical"
+bucket = "non_electronic"
+
+[[fuzzy]]
+keyword = "hip-hop"
+bucket = "non_electronic"
+
+[[fuzzy]]
+keyword = "hip hop"
+bucket = "non_electronic"
+
+[[fuzzy]]
+keyword = "r&b"
+bucket = "non_electronic"
+
+[[fuzzy]]
+keyword = "soul"
+bucket = "non_electronic"
+
+[[fuzzy]]
+keyword = "folk"
+bucket = "non_electronic"
+
+[[fuzzy]]
+keyword = "afro"
+bucket = "afro_house"
+
+[[fuzzy]]
+keyword = "funky"
+bucket = "house_funky_disco"
+
+[[fuzzy]]
+keyword = "jackin"
+bucket = "house_funky_disco"
+
+[[fuzzy]]
+keyword = "groove"
+bucket = "house_funky_disco"
+
+[[fuzzy]]
+keyword = "disco"
+bucket = "nu_disco_indie_dance"
+
+[[fuzzy]]
+keyword = "house"
+bucket = "house_funky_disco"
+
+[[fuzzy]]
+keyword = "rock"
+bucket = "non_electronic"
+
+[[fuzzy]]
+keyword = "dance"
+bucket = "dance_pop"
+
+[[fuzzy]]
+keyword = "pop"
+bucket = "dance_pop"
+
+[[fuzzy]]
+keyword = "electronic"
+bucket = "electronica_other"
+
+# Ordered rules for TAGGING only, first match wins, matched against the
+# lowercased source string. `all_of` requires every substring, `any_of` requires
+# one. These run BEFORE the alias lookup, because their whole job is to catch
+# strings an alias would accept too readily: a catch-all bucket name must be
+# refused, not written to a file as if it were an answer.
+
+# EXACT refusals run first, before the alias lookup. Each names a source
+# taxonomy's catch-all bucket, and accepting one as a final tag is the blanket
+# genre this entry point exists to refuse. They are `equals` and not substrings
+# on purpose: the specific sub-genres whose names contain these words are
+# confident answers and must keep resolving normally.
+[[suggest]]
+equals = ["techno"]
+decline = "ask"
+
+[[suggest]]
+equals = ["electronica", "electronic", "electronica / other", "other"]
+decline = "ask"
+
+# Substring corrections run after the alias lookup, so a declared alias always
+# beats a guess.
+[[suggest]]
+all_of = ["deep house"]
+bucket = "deep_house"
+
+# Deliberate default rather than a question: on a house-leaning catalogue this
+# pairing is overwhelmingly the house side, and leaving it blank once starved
+# entire labels (52 percent of one 400-track batch landed in this bucket with
+# nobody ever seeing the review queue).
+[[suggest]]
+all_of = ["melodic", "techno", "house"]
+bucket = "melodic_house"
+
+# No bucket exists for this. The rule is preserved because deleting it would
+# silently re-route explicit melodic techno into a house bucket, which is the
+# one thing the rule above exists to prevent. It writes a tag with no folder,
+# which is a gap in the taxonomy, not a bug in the engine: declare a bucket for
+# it, or accept that these tracks route through the fallback.
+[[suggest]]
+all_of = ["melodic", "techno"]
+tag = "Melodic Techno"
+
+[[suggest]]
+all_of = ["progressive"]
+bucket = "progressive_house"
+
+[[suggest]]
+all_of = ["melodic"]
+bucket = "melodic_house"
+
+# The one rule that reads tempo, and the only kind of substring rule that runs
+# BEFORE the alias lookup: it decides on evidence a name lookup does not have.
+# Below the cut it is one bucket, at or above it another, and with no tempo
+# known it takes the safer bucket and asks for review rather than guessing.
+#
+# It requires BOTH terms, which is narrower than the rule it replaces. That
+# rule fired on either term, so it also swallowed the two source strings that
+# name one of these buckets outright and moved them to the other one with a
+# review flag. The combined source bucket is what needs splitting; a source
+# that already named one side does not.
+[[suggest]]
+all_of = ["organic house", "downtempo"]
+bucket = "organic_house"
+[suggest.split]
+when_contains = "downtempo"
+max_bpm = 115
+below = "downtempo"
+at_or_above = "organic_house"
+unknown_bpm = "organic_house"
+unknown_bpm_needs_review = true
+
+# Anything else naming one side of that pair, with no tempo to split on.
+[[suggest]]
+any_of = ["organic house", "downtempo"]
+bucket = "organic_house"
+
+[[suggest]]
+all_of = ["tech house"]
+bucket = "tech_house"
+
+[[suggest]]
+any_of = ["minimal", "deep tech"]
+bucket = "minimal_deep_tech"
+
+[[suggest]]
+all_of = ["afro"]
+bucket = "afro_house"
+
+[[suggest]]
+any_of = ["nu disco", "indie dance"]
+bucket = "nu_disco_indie_dance"
+
+# The acquisition gate keys on the SOURCE vocabulary, never on the resolved
+# bucket, and that is deliberate: a bucket-level 'ask' means the FOLDER is
+# uncertain, while a confident source sub-genre is still a confident family
+# signal. Merging the two would undo the softening that stopped this gate
+# dropping half of a legitimate catalogue.
+#
+# Family names here are opaque identifiers compared only against each other.
+# They are deliberately not bucket ids: a family is a property of the source's
+# taxonomy, not of ours.
+[label_gate]
+# A family drops only when it is under this share of a label's classified
+# output, i.e. genuinely out of place for that label rather than merely absent
+# from our taxonomy.
+out_of_place_share = 0.10
+
+# Keep-exceptions first: each contains a term a family rule below would catch.
+[[label_gate.rule]]
+all_of = ["melodic", "techno", "house"]
+keep = true
+
+[[label_gate.rule]]
+any_of = ["uk garage", "bassline"]
+keep = true
+
+[[label_gate.rule]]
+any_of = ["nu disco", "indie dance"]
+keep = true
+
+# Candidate-drop families.
+[[label_gate.rule]]
+all_of = ["melodic", "techno"]
+family = "melodic_techno"
+
+[[label_gate.rule]]
+any_of = ["techno"]
+family = "techno"
+
+[[label_gate.rule]]
+any_of = ["trance"]
+family = "trance"
+
+[[label_gate.rule]]
+all_of = ["drum", "bass"]
+family = "breaks_bass"
+
+[[label_gate.rule]]
+any_of = ["d&b", "dnb"]
+family = "breaks_bass"
+
+[[label_gate.rule]]
+any_of = ["breaks", "breakbeat"]
+family = "breaks_bass"
+
+[[label_gate.rule]]
+any_of = ["dubstep"]
+family = "breaks_bass"
+
+[[label_gate.rule]]
+any_of = ["dance / pop", "dance/pop"]
+family = "dance_pop"
+
+[[label_gate.rule]]
+any_of = ["hip hop", "hip-hop", "r&b", "trap ", "rap"]
+family = "hip_hop_rnb"
+
+[[label_gate.rule]]
+equals = ["trap"]
+family = "hip_hop_rnb"
