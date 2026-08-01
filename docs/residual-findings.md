@@ -96,3 +96,74 @@ inspected.
 **Closes when:** the vendoring unit lands and the vendored tree is committed
 unpacked, with its provenance recorded, rather than as an archive. Vendoring is
 U13. If an archive must ship, the scan needs an archive-aware tier.
+
+---
+
+## R-4. Nine module toggles were added to satisfy R5, and two of them gate nothing
+
+**Found:** during U5, while building the verb registry.
+
+R5 says profile membership FOLLOWS the Feature Inventory: Module rows are opt-in
+and a slim install runs the Core rows only. Nine Feature rows dispositioned
+Module had no toggle to follow, so a verb for any of them would have had to ship
+as core and be on in the slim profile, which is the opposite of what the
+inventory says. `core/profiles.py` now declares those nine.
+
+Two of the toggles that already existed, `web` and `desktop`, gate no verb,
+because Feature 32 is deferred and the CLI is the launch product. They are
+declared in `registry.DEFERRED_MODULES` so the "every toggle is used by a verb"
+check can tell a deferred module from one whose verb somebody forgot to gate.
+
+**Still open:** the reverse mapping is asserted, but nothing checks a toggle's
+name against the extras table for modules that have no extras group, because
+most of these have no heavy dependency at all. If one later grows one, the
+`EXTRAS_BACKED` set has to grow with it, and only `tests/test_config.py`'s
+existing extras assertion would catch the mismatch.
+
+**Closes when:** each of the nine units lands its verbs and the corresponding
+`planned_in` marker clears, at which point the toggle is exercised end to end
+rather than only declared.
+
+---
+
+## R-5. Four conformance assertions are written in full and gated on units that have not landed
+
+**Found:** during U5.
+
+The verb conformance suite asserts nine properties. Four of them name a module
+that does not exist yet: the review queue (U11), the job engine (U10), the
+destructive-session gates (U8), and the doctor check registry (U27). Each is
+registered in `tests/_pending.py` against the unit that lands it, so the skip is
+a countdown rather than a hole, and `tests/test_pending_units.py` fails the build
+the moment one of those modules appears.
+
+**Still open:** the four gated assertions are currently EXISTENCE checks against
+the module they need (does the review store expose a listing, does the session
+module expose its gate assertion). The behavioural half, driving a verb into
+each refusal and asserting three distinct codes with zero writes, is written in
+the docstrings and cannot be executed against a module that has not been
+designed yet.
+
+**Closes when:** each of U8, U10, U11, and U27 lands. The unit that lands the
+module owns turning its assertion from existence into behaviour, in the same
+commit that removes the pending entry.
+
+---
+
+## R-6. Two shipped verbs have no argument surface beyond what U5 needed
+
+**Found:** during U5.
+
+`profile show`, `profile set`, `run show`, and `run decide` are the vertical
+slice the plan asks for, chosen because between them they exercise every
+contract this unit sets. They are real verbs, not scaffolding, but they are not
+the verbs a user spends time in.
+
+**Still open:** the registry declares roughly fifty more verbs with a
+`planned_in` marker. Until those land, the per-verb conformance drives run over
+four entries, so the assertions are proven correct on a small sample rather than
+on the whole surface.
+
+**Closes when:** each later unit clears its marker. The assertion that a planned
+module is still genuinely absent is what forces that to happen rather than being
+remembered.

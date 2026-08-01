@@ -1,0 +1,25 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "chunk": {
+      "type": "object|null"
+    },
+    "digest": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array"
+    },
+    "totals": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "chunk",
+    "digest",
+    "items",
+    "totals"
+  ],
+  "schema": "plan/1",
+  "type": "object"
+}

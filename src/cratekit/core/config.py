@@ -722,6 +722,26 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="run_state",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.DIRECTORY,
+        relative="runs",
+        why=(
+            "One record per run, holding the gates it reached, the decisions "
+            "recorded against them, and any human action still outstanding. It "
+            "is what makes R33 real: a gate is answerable from a DIFFERENT "
+            "process in a LATER session, which is impossible if the only place "
+            "an answer can live is the invocation that hit the gate."
+            " Installation-scoped alongside the job queue and for the same "
+            "reason: a detached run belongs to the machine executing it, and its "
+            "records name the library they target rather than assuming one."
+            " NEVER_RESTORED: a run is not library content. Rolling one back "
+            "would resurrect decisions a person made about work that no longer "
+            "exists."
+        ),
+    ),
+    StateFile(
         key="app_token",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.INSTALLATION,

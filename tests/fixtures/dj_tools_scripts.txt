@@ -1,0 +1,51 @@
+# Every entry point the source system exposes, transcribed once so parity is
+# checkable in a clone that does not have the source system.
+#
+# WHY THIS FILE EXISTS AND NOT JUST THE FEATURE INVENTORY. Four of the console
+# scripts below have no Feature Inventory row at all, so a parity check keyed on
+# the inventory alone passes while four real workflows vanish. Every name here
+# must either be claimed by a registry entry's `source_scripts` or be listed in
+# CUT.md with a one-line reason.
+#
+# The first block is the [project.scripts] table, thirty entries.
+
+dj-pipeline
+dj-setid
+dj-sort-inbox
+dj-sort-unplaced
+dj-sync
+dj-audit-genres
+dj-pad-camelot
+dj-path-repair
+dj-tag-folder
+dj-scan-playlists
+dj-inbox-rotation
+dj-resort-energy
+dj-resort-genre
+dj-split-genre-folders
+dj-genre-research
+dj-create-vox-playlists
+dj-vox-backfill
+dj-analyze-validate
+dj-energy-calibrate
+dj-vocal-calibrate
+dj-vocal-restamp
+dj-web
+dj-label
+dj-label-library
+dj-label-batch
+dj-favorites
+dj-vocal-mytags
+dj-set-builder
+dj-tidal-login
+dj-desktop
+
+# The second block is workflows that are NOT console scripts and would therefore
+# be invisible to a check that read the scripts table alone. The backup script
+# ships as package data; the two restamp entry points are deliberately excluded
+# from the scripts table because they are one-shot migrations, which is a reason
+# not to put them on a user's PATH, not a reason for them to have no verb.
+
+backup.sh
+energy_restamp
+energy_rerate

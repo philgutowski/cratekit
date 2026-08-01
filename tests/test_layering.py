@@ -68,8 +68,16 @@ RANK = {name: index for index, name in enumerate(LAYERS)}
 #   * the tree registry lives under core/ but is a WRITE concern.
 _LAYER_RULES: tuple[tuple[str, str], ...] = (
     (r"^cratekit\.cli\.(output|exit_codes|envelope)$", "foundation"),
-    (r"^cratekit\.core\.(config|secrets|types|locations|naming|profiles|output|exit_codes)$",
-     "foundation"),
+    # ``cause`` joins the foundation list for the same reason ``exit_codes``
+    # does: KTD25 reserves the failure vocabulary globally, before any verb
+    # ships, and every layer from the adapter upwards has to be able to build one.
+    # Ranking it as infrastructure would forbid the output envelope, which is
+    # foundation, from naming the type it carries.
+    (
+        r"^cratekit\.core\."
+        r"(config|secrets|types|locations|naming|profiles|output|exit_codes|cause)$",
+        "foundation",
+    ),
     (r"^cratekit\.core\.(taxonomy|routing|match|identity|tombstone)$", "domain"),
     (r"^cratekit\.core\.tree_registry$", "write"),
     (r"^cratekit\.core\.", "infrastructure"),
@@ -498,7 +506,15 @@ def test_a_core_module_naming_a_feature_operation_fails():
 
 
 def test_a_core_module_naming_a_verb_fails():
-    source = 'WORKFLOW = "label-sweep"\n'
+    """The planted name is taken FROM the registry, now that one exists.
+
+    Until U5 landed, this guard read a hand-kept fallback list and the fixture
+    planted a name from it. Hardcoding a name here again would test the fallback
+    rather than the rule, and would keep passing after the registry renamed the
+    verb, which is the drift the guard was built to read the registry to avoid.
+    """
+    planted = sorted(verb_names())[0]
+    source = f'WORKFLOW = "{planted}"\n'
     problems = higher_concept_violations(source, "cratekit.core.jobs")
     assert len(problems) == 1 and "names the verb" in problems[0]
 
@@ -511,7 +527,8 @@ def test_a_core_module_hardcoding_a_taxonomy_literal_fails():
 
 def test_a_module_layer_file_may_name_its_own_concepts():
     """The rule is directional. A feature module naming its own verb is normal."""
-    source = 'WORKFLOW = "label-sweep"\nFOLDER = "BY GENRE + ENERGY"\n'
+    planted = sorted(verb_names())[0]
+    source = f'WORKFLOW = "{planted}"\nFOLDER = "BY GENRE + ENERGY"\n'
     assert higher_concept_violations(source, "cratekit.label.sweep") == []
 
 

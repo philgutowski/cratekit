@@ -44,6 +44,23 @@ MODULES: tuple[str, ...] = (
     "deletion",
     "web",
     "desktop",
+    # Added by U5 when the verb registry made the gap visible. R5 says profile
+    # membership FOLLOWS the Feature Inventory, and nine of its Module rows had
+    # no toggle to follow: a verb for one of them would have had to ship as core,
+    # on in the slim profile, which is the opposite of what the inventory says.
+    # Each name below is the module gating one or more Module rows, and
+    # tests/test_cli_contract.py asserts the correspondence in both directions,
+    # so a future Module row without a toggle fails the build rather than
+    # quietly becoming core.
+    "identify",  # rows 1, 2, 5: recognition and tracklist intake
+    "repair",  # row 17: filename and path repair
+    "duplicates",  # row 15: the review-gated duplicate audit
+    "reports",  # row 20 and the read-only library reports
+    "export",  # row 36: playlist export to a streaming service
+    "setbuilder",  # row 29
+    "mastering",  # row 30: set recording mastering
+    "backup",  # row 31: library backup, which feeds the backup-age warning
+    "skills",  # row 33: the operator skill layer
 )
 
 #: Modules whose dependencies are heavy enough to live behind an extras group.

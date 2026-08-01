@@ -1,0 +1,359 @@
+"""The structured cause: what failed, how bad it is, and what fixes it.
+
+KTD25's second half. An exit code is one integer at the end of a process, and
+five boundaries sit between the thing that actually failed and that integer:
+
+1. the acquisition adapter to the acquisition driver,
+2. the driver to a job item's row,
+3. a job worker SUBPROCESS to the job engine (KTD26 makes this a real process
+   boundary, so the only thing that crosses for free is an integer),
+4. the job to the per-source aggregate that decides whether a watermark
+   advances,
+5. the aggregate to the CLI, which is the ONLY place a cause becomes a status.
+
+The source system collapses the whole failure space at boundary 3
+(``status = "succeeded" if code == 0 else "failed"``) and then needs a side
+channel to recover the reason. A cause that collapses at any hop cannot be
+recovered downstream, which is why this type crosses every hop intact and why
+``inner`` exists: boundary 5 can still read boundary 1's cause.
+
+Two rules make the type worth having rather than merely present:
+
+* **``remediation`` is not optional.** A failure with nothing to do about it is
+  "read stderr and guess", which is what an entire scheme of the source system
+  already is.
+* **``reason`` comes from a closed registry in this file.** Two modules inventing
+  two slugs for one failure is the same drift that produced five genre resolvers,
+  and the antidote is the same: one declaration, everybody reads it.
+
+Layer note: FOUNDATION. It carries remediation TOKENS, never command text (D2).
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from enum import StrEnum
+from types import MappingProxyType
+from typing import Any, Mapping, Sequence
+
+from cratekit.core.exit_codes import ExitCode, Remedy, meaning_of
+
+
+class Scope(StrEnum):
+    """How much of the work a cause condemns.
+
+    Read by the aggregate at boundary 4 to decide whether a watermark may
+    advance. It is DECLARED, never derived from the exit code: one unavailable
+    track and an expired credential can share a code and must not share a scope.
+    """
+
+    ITEM = "item"
+    SOURCE = "source"
+    SESSION = "session"
+    RUN = "run"
+
+
+class Outcome(StrEnum):
+    """How a run ended, at the granularity a person cares about.
+
+    Separate from the exit code on purpose. ``OK`` and ``NO_OP`` share status 0
+    because both are success, and the difference between "swept and found
+    nothing" and "swept and acquired forty tracks" belongs in the envelope where
+    it can be read, not in a status byte where it cannot.
+    """
+
+    OK = "ok"
+    NO_OP = "no_op"
+    PENDING = "pending"
+    BLOCKED = "blocked"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True, slots=True)
+class Remediation:
+    """What the user does next, expressed so the CLI can render it.
+
+    ``remedy`` is the token. ``steps`` carries the human sentences for a fix that
+    is not a command at all, such as quitting an application or plugging a drive
+    in. ``doc`` is a repository-relative path, never a URL, so it resolves in a
+    checkout that has never been online.
+
+    At least one of ``remedy`` or ``steps`` must say something; the constructor
+    enforces it. This type is the direct descendant of the source system's
+    doctor check, whose ``fix`` field is the one place in that codebase that
+    already pairs a failure with its exact remedy. What it never does is reach an
+    exit code, which is the gap this closes.
+    """
+
+    remedy: Remedy | None = None
+    steps: tuple[str, ...] = ()
+    doc: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.remedy is None and not self.steps:
+            raise ValueError(
+                "a remediation must carry a remedy token or at least one step. "
+                "A cause with nothing to do about it is an error message, and "
+                "the whole point of the type is to be more than that."
+            )
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "remedy": str(self.remedy) if self.remedy is not None else None,
+            "steps": list(self.steps),
+            "doc": self.doc,
+        }
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> Remediation:
+        remedy = data.get("remedy")
+        return cls(
+            remedy=Remedy(remedy) if remedy else None,
+            steps=tuple(data.get("steps") or ()),
+            doc=data.get("doc"),
+        )
+
+
+# ---------------------------------------------------------------------------
+# The closed reason registry
+# ---------------------------------------------------------------------------
+#
+# slug -> the exit code that slug always maps to.
+#
+# The mapping direction matters. Several slugs share a code, which is correct: a
+# pyrekordbox pin and a database schema pin are one class of refusal with one
+# class of remedy, and the slug is what preserves the distinction where it is
+# actually useful, which is the envelope rather than the process status. What is
+# forbidden is the reverse, one slug meaning two codes, and that is impossible
+# here by construction.
+#
+# S4: every refusal the guarded writer (U7) can raise has a slug here, reserved
+# before that unit is written, because a refusal with no code is exactly the
+# defect KTD25 exists to prevent. ``tests/test_cli_contract.py`` names the
+# writer's eleven refusal conditions one by one and asserts each has an entry.
+
+REASONS: Mapping[str, ExitCode] = MappingProxyType(
+    {
+        # ── Process ─────────────────────────────────────────────────────────
+        "internal-error": ExitCode.INTERNAL,
+        "no-evidence": ExitCode.INTERNAL,
+        "snapshot-integrity-failed": ExitCode.INTERNAL,
+        "smoke-test-failed": ExitCode.INTERNAL,
+        # ── Gates ───────────────────────────────────────────────────────────
+        "decision-required": ExitCode.DECISION_REQUIRED,
+        "decision-unknown-gate": ExitCode.DECISION_REQUIRED,
+        "decision-stale": ExitCode.DECISION_STALE,
+        "awaiting-import": ExitCode.PENDING_HUMAN,
+        "awaiting-human-action": ExitCode.PENDING_HUMAN,
+        "blocked-by-pending-action": ExitCode.PENDING_HUMAN,
+        # ── The library's state ─────────────────────────────────────────────
+        "session-lock-held": ExitCode.LIBRARY_BUSY,
+        # The guarded writer's cross-process write lock. Distinct from the
+        # session lock above because the holder is a different thing and the
+        # wait is a different length, and identical remediation is not identity.
+        "write-lock-held": ExitCode.LIBRARY_BUSY,
+        "rekordbox-running": ExitCode.REKORDBOX_OPEN,
+        "library-volume-unmounted": ExitCode.LIBRARY_UNAVAILABLE,
+        "library-volume-mismatch": ExitCode.LIBRARY_UNAVAILABLE,
+        "library-directory-missing": ExitCode.LIBRARY_UNAVAILABLE,
+        "library-database-missing": ExitCode.LIBRARY_UNAVAILABLE,
+        "pyrekordbox-pin-drift": ExitCode.VERSION_PIN,
+        "db-schema-pin-drift": ExitCode.VERSION_PIN,
+        "app-version-pin-drift": ExitCode.VERSION_PIN,
+        # S2: an unrecorded application pin REFUSES. It is never auto-adopted
+        # from whatever happens to be installed, because a pin the software
+        # copies from the machine it runs on refuses nothing, forever.
+        "app-version-pin-unrecorded": ExitCode.VERSION_PIN,
+        "tree-unconverged": ExitCode.UNCONVERGED,
+        "database-open-failed": ExitCode.LIBRARY_UNREADABLE,
+        "canary-read-failed": ExitCode.LIBRARY_UNREADABLE,
+        "cloud-sync-active": ExitCode.EXTERNAL_WRITER,
+        "mytag-category-template-missing": ExitCode.LIBRARY_PREREQUISITE,
+        # ── This installation ───────────────────────────────────────────────
+        "doctor-check-failed": ExitCode.PRECONDITION,
+        # One slug for every way configuration can be unusable, because the
+        # thing that differs between them is the REMEDY and the remedy travels
+        # on the remediation. ``config.Remedy`` already distinguishes missing
+        # from corrupt from too-new from invalid from locked, and a cause built
+        # from one of those carries its token through unchanged.
+        "config-unusable": ExitCode.PRECONDITION,
+        "module-extras-missing": ExitCode.MODULE_UNAVAILABLE,
+        "credential-missing": ExitCode.PRECONDITION,
+        "backup-acknowledgment-missing": ExitCode.ACK_REQUIRED,
+        # ── Upstream ────────────────────────────────────────────────────────
+        "auth-failed": ExitCode.UPSTREAM_AUTH,
+        "adapter-broken": ExitCode.UPSTREAM_UNAVAILABLE,
+        "unavailable-transient": ExitCode.UPSTREAM_UNAVAILABLE,
+        "unavailable-permanent": ExitCode.REFUSED_BY_POLICY,
+        "refused-by-policy": ExitCode.REFUSED_BY_POLICY,
+        "whitelist-violation": ExitCode.REFUSED_BY_POLICY,
+        "lossy-refused": ExitCode.REFUSED_BY_POLICY,
+        # ── Lifecycle ───────────────────────────────────────────────────────
+        "cancelled": ExitCode.INTERRUPTED,
+    }
+)
+
+
+class UnknownReason(KeyError):
+    """A cause was built with a slug the registry does not declare."""
+
+
+@dataclass(frozen=True, slots=True)
+class Cause:
+    """One failure, carried whole across every boundary between its origin and the CLI.
+
+    ``origin`` is append-only and every hop appends to it. A cause arriving at
+    the CLI with a one-element trail means some hop caught it and re-created it,
+    which loses everything below and is a defect rather than a style choice.
+
+    ``detail`` is free-form and is NEVER read for control flow. Anything a
+    caller must branch on is a declared field, because a consumer reading
+    ``detail["kind"]`` has re-invented the untyped failure this type replaces.
+    """
+
+    reason: str
+    message: str
+    remediation: Remediation
+    scope: Scope = Scope.RUN
+    retryable: bool = False
+    origin: tuple[str, ...] = ()
+    detail: Mapping[str, Any] = field(default_factory=dict)
+    inner: Cause | None = None
+
+    def __post_init__(self) -> None:
+        if self.reason not in REASONS:
+            raise UnknownReason(
+                f"{self.reason!r} is not a declared reason. Add it to "
+                f"cause.REASONS with the exit code it maps to. Two modules "
+                f"inventing two slugs for one failure is how a vocabulary "
+                f"becomes three vocabularies."
+            )
+
+    @property
+    def code(self) -> ExitCode:
+        """The status this cause exits with, looked up rather than stored.
+
+        Storing it alongside the slug would let the two disagree, and a cause
+        whose code contradicts its reason is worse than either alone.
+        """
+        return REASONS[self.reason]
+
+    def at(self, boundary: str) -> Cause:
+        """Return a copy with one more boundary appended to the trail."""
+        return Cause(
+            reason=self.reason,
+            message=self.message,
+            remediation=self.remediation,
+            scope=self.scope,
+            retryable=self.retryable,
+            origin=(*self.origin, boundary),
+            detail=self.detail,
+            inner=self.inner,
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        """A plain dictionary, chained causes included.
+
+        Boundary 3 is a process boundary, so a cause that cannot round-trip
+        through JSON cannot cross it, and a cause that cannot cross it is one
+        the engine has to reconstruct from an exit code.
+        """
+        return {
+            "reason": self.reason,
+            "code": int(self.code),
+            "message": self.message,
+            "remediation": self.remediation.to_json(),
+            "scope": str(self.scope),
+            "retryable": self.retryable,
+            "origin": list(self.origin),
+            "detail": dict(self.detail),
+            "inner": self.inner.to_json() if self.inner is not None else None,
+        }
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> Cause:
+        inner = data.get("inner")
+        return cls(
+            reason=data["reason"],
+            message=data["message"],
+            remediation=Remediation.from_json(data["remediation"]),
+            scope=Scope(data.get("scope", Scope.RUN)),
+            retryable=bool(data.get("retryable", False)),
+            origin=tuple(data.get("origin") or ()),
+            detail=dict(data.get("detail") or {}),
+            inner=cls.from_json(inner) if inner else None,
+        )
+
+    def to_text(self) -> str:
+        """Serialize for a transport that carries only strings, such as a pipe."""
+        return json.dumps(self.to_json(), sort_keys=True)
+
+
+class CratekitError(Exception):
+    """The one exception type that carries a cause across a raise.
+
+    Every refusal in the package raises this or a subclass. A bare ``RuntimeError``
+    forces its catcher to parse a message string, which is the state the source
+    system's writer contract is in: its exit codes are documented in a comment,
+    in a consumer, and two of the four are already indistinguishable one hop
+    downstream.
+    """
+
+    def __init__(self, cause: Cause) -> None:
+        super().__init__(cause.message)
+        self.cause = cause
+
+
+def refuse(
+    reason: str,
+    message: str,
+    *,
+    remedy: Remedy | None = None,
+    steps: Sequence[str] = (),
+    scope: Scope = Scope.RUN,
+    retryable: bool = False,
+    origin: Sequence[str] = (),
+    detail: Mapping[str, Any] | None = None,
+    inner: Cause | None = None,
+) -> CratekitError:
+    """Build the exception for a refusal, with its remediation defaulted sensibly.
+
+    The default remediation is the one the exit code already declares, so a
+    caller only spells one out when this particular failure has a better answer
+    than its whole class does. Without the default, "remediation is mandatory"
+    would in practice mean "every raise site invents its own wording", which is
+    how the source system ended up with eleven prose variants of one instruction.
+    """
+    if reason not in REASONS:
+        raise UnknownReason(
+            f"{reason!r} is not a declared reason; add it to cause.REASONS "
+            f"with the exit code it maps to."
+        )
+    if remedy is None and not steps:
+        remedy = meaning_of(REASONS[reason]).remedy
+    return CratekitError(
+        Cause(
+            reason=reason,
+            message=message,
+            remediation=Remediation(remedy=remedy, steps=tuple(steps)),
+            scope=scope,
+            retryable=retryable,
+            origin=tuple(origin),
+            detail=dict(detail or {}),
+            inner=inner,
+        )
+    )
+
+
+__all__ = [
+    "REASONS",
+    "Cause",
+    "CratekitError",
+    "Outcome",
+    "Remediation",
+    "Scope",
+    "UnknownReason",
+    "refuse",
+]

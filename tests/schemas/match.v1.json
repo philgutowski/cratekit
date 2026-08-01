@@ -1,0 +1,21 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "matched": {
+      "type": "array"
+    },
+    "missing": {
+      "type": "array"
+    },
+    "needs_review": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "matched",
+    "missing",
+    "needs_review"
+  ],
+  "schema": "match/1",
+  "type": "object"
+}

@@ -1,0 +1,42 @@
+{
+  "cause": {
+    "code": 40,
+    "detail": {},
+    "inner": null,
+    "message": "the provider rejected the stored credential",
+    "origin": [
+      "adapter",
+      "download",
+      "job",
+      "cli"
+    ],
+    "reason": "auth-failed",
+    "remediation": {
+      "doc": null,
+      "remedy": "authenticate-provider",
+      "steps": []
+    },
+    "retryable": false,
+    "scope": "run"
+  },
+  "data": {
+    "cause": null,
+    "job_id": "job-1",
+    "progress": {
+      "done": 0,
+      "total": 12
+    },
+    "state": "queued"
+  },
+  "ended": "2026-01-01T00:00:00+00:00",
+  "envelope": 1,
+  "exit_code": 40,
+  "outcome": "failed",
+  "pending_human_action": null,
+  "resumable": false,
+  "run_id": "2026-01-01T00:00:00Z-0000",
+  "schema": "job_state/1",
+  "started": "2026-01-01T00:00:00+00:00",
+  "verb": "job.show",
+  "warnings": []
+}

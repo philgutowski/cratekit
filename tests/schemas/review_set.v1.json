@@ -1,0 +1,21 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "type": "array"
+    },
+    "queue": {
+      "type": "string"
+    },
+    "unresolved": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "items",
+    "queue",
+    "unresolved"
+  ],
+  "schema": "review_set/1",
+  "type": "object"
+}

@@ -1,0 +1,17 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "checks": {
+      "type": "array"
+    },
+    "summary": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "checks",
+    "summary"
+  ],
+  "schema": "diagnostic/1",
+  "type": "object"
+}

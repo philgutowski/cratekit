@@ -1,0 +1,34 @@
+{
+  "cause": null,
+  "data": {
+    "matched": [
+      {
+        "id": "t-1",
+        "source": "s-1"
+      }
+    ],
+    "missing": [
+      {
+        "source": "s-3"
+      }
+    ],
+    "needs_review": [
+      {
+        "id": "t-2",
+        "source": "s-2",
+        "why": "version-differs"
+      }
+    ]
+  },
+  "ended": "2026-01-01T00:00:00+00:00",
+  "envelope": 1,
+  "exit_code": 0,
+  "outcome": "ok",
+  "pending_human_action": null,
+  "resumable": false,
+  "run_id": "2026-01-01T00:00:00Z-0000",
+  "schema": "match/1",
+  "started": "2026-01-01T00:00:00+00:00",
+  "verb": "profile.show",
+  "warnings": []
+}

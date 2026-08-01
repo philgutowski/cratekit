@@ -1,0 +1,25 @@
+{
+  "cause": null,
+  "data": {
+    "items": [
+      {
+        "id": "rv-1",
+        "kind": "duplicate",
+        "verdict": null
+      }
+    ],
+    "queue": "duplicates",
+    "unresolved": 1
+  },
+  "ended": "2026-01-01T00:00:00+00:00",
+  "envelope": 1,
+  "exit_code": 0,
+  "outcome": "ok",
+  "pending_human_action": null,
+  "resumable": false,
+  "run_id": "2026-01-01T00:00:00Z-0000",
+  "schema": "review_set/1",
+  "started": "2026-01-01T00:00:00+00:00",
+  "verb": "profile.show",
+  "warnings": []
+}

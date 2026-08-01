@@ -1,0 +1,28 @@
+{
+  "cause": null,
+  "data": {
+    "chunk": null,
+    "digest": "0123456789abcdef",
+    "items": [
+      {
+        "change": "add",
+        "id": "item-1"
+      }
+    ],
+    "totals": {
+      "add": 1,
+      "remove": 0
+    }
+  },
+  "ended": "2026-01-01T00:00:00+00:00",
+  "envelope": 1,
+  "exit_code": 0,
+  "outcome": "ok",
+  "pending_human_action": null,
+  "resumable": false,
+  "run_id": "2026-01-01T00:00:00Z-0000",
+  "schema": "plan/1",
+  "started": "2026-01-01T00:00:00+00:00",
+  "verb": "profile.show",
+  "warnings": []
+}

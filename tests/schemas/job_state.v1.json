@@ -1,0 +1,25 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "cause": {
+      "type": "object|null"
+    },
+    "job_id": {
+      "type": "string"
+    },
+    "progress": {
+      "type": "object"
+    },
+    "state": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "cause",
+    "job_id",
+    "progress",
+    "state"
+  ],
+  "schema": "job_state/1",
+  "type": "object"
+}
