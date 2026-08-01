@@ -13,7 +13,14 @@ description = "Acquisition and curation for rekordbox DJs: slim core, toggleable
 requires-python = ">=3.12,<3.14"
 readme = "README.md"
 license = "MIT"
-license-files = ["LICENSE"]
+# KTD19: authored code is MIT, and each vendored component keeps its own licence.
+# The downloader under src/cratekit/_vendor/ is AGPL-3.0-only. Its text ships
+# twice on purpose: once inside the package as data, so it can never be separated
+# from the code it covers, and once here so it lands in the distribution metadata
+# where a licence audit looks. tests/test_vendor_import.py asserts the two copies
+# stay byte-identical, which turns the duplication into a checked invariant
+# instead of two files that drift.
+license-files = ["LICENSE", "vendor/LICENSE.tidal-dl-ng"]
 authors = [{ name = "Cratekit contributors" }]
 
 # ---------------------------------------------------------------------------
@@ -29,13 +36,57 @@ dependencies = [
     "tomli-w>=1.0",        # TOML writing; reading uses the stdlib tomllib on 3.12+
     "keyring>=24.0",       # OS keychain for service credentials, never the plain config (R4)
     "psutil>=5.9",         # process liveness for lock holders, memory probe for worker sizing (KTD10)
-    "mutagen>=1.47",       # container-correct audio tag read/write (R18)
+    "mutagen>=1.47,<2",    # container-correct audio tag read/write (R18); also vendored-tree
     "lxml>=5.0",           # rekordbox XML parsing; writes go out as raw bytes, never a tree serialize
     "rapidfuzz>=3.0",      # three-state match scoring (R11)
-    "requests>=2.31",      # service HTTP
+    "requests>=2.32.5",    # service HTTP; floor raised by the vendored tree, see below
     "Pillow>=10.0",        # album art normalization for tagging (Core, feature 8)
-    "tidalapi>=0.7",       # Tidal playlist read + search (Core, feature 3)
+    "tidalapi>=0.8.10,<0.9",  # Tidal playlist read + search (Core, feature 3); see below
     "pyrekordbox==0.4.4",  # guarded rekordbox database access; pinned because it is schema-coupled
+
+    # -----------------------------------------------------------------------
+    # Transitive dependencies of the VENDORED downloader (KTD4, R8).
+    #
+    # The downloader itself is never a dependency specifier — it is a source
+    # tree under src/cratekit/_vendor/, because its upstream was deleted from
+    # PyPI and there is no index left to resolve it from. Its dependencies that
+    # DO still exist stay ordinary dependencies, which is the other half of
+    # KTD4.
+    #
+    # WHY THE UPPER BOUNDS ARE COPIED HERE. Vendoring moved responsibility for
+    # them onto Cratekit. No resolver reads the vendored package's own metadata
+    # any more, so a bound that is not written here is a bound that no longer
+    # exists, and a major release of any of these breaks acquisition with an
+    # error naming none of this.
+    #
+    # tidalapi is the one that matters most: it is the streaming client the
+    # downloader is written against, and its 0.8 to 0.9 step is exactly the
+    # change the vendored code cannot absorb. Its floor also moved up from 0.7,
+    # which the core previously allowed — a resolver picking 0.7.x would have
+    # satisfied the old specifier and broken the vendored tree at runtime.
+    #
+    # The ONE upstream bound deliberately not carried is requests<2.33. requests
+    # is a stable HTTP client shared with the rest of the application, and
+    # capping it there would constrain every other dependency for a pin that
+    # reads like a version-range typo. The floor is real and is carried.
+    #
+    # None of these is DSP, ML, or a web framework, so the slim core holds.
+    # Two are worth naming explicitly rather than adding silently:
+    #   * pycryptodome is a compiled C extension. It publishes wheels for
+    #     CPython 3.12 and 3.13 on macOS, Linux, and Windows, so no user needs a
+    #     compiler, but it is the one dependency here that is not pure Python.
+    #   * python-ffmpeg is a thin subprocess wrapper, small in itself, but it
+    #     requires the ffmpeg BINARY on PATH. That is a SYSTEM dependency pip
+    #     cannot install; doctor has to check for it or a download fails at the
+    #     remux step with a message about a missing executable.
+    # -----------------------------------------------------------------------
+    "dataclasses-json>=0.6.7,<0.7",  # settings and token serialization
+    "m3u8>=6.0,<7",                  # HLS manifest parsing for segmented streams
+    "pathvalidate>=3.3.1,<4",        # filename sanitization per platform
+    "pycryptodome>=3.23,<4",         # stream decryption; compiled, wheels published
+    "python-ffmpeg>=2.0.12,<3",      # remux wrapper; NEEDS the ffmpeg binary on PATH
+    "rich>=14.2,<15",                # progress rendering inside the vendored CLI
+    "typer>=0.20,<0.21",             # the vendored CLI's argument parsing
 ]
 
 [project.optional-dependencies]
@@ -80,10 +131,27 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 cratekit = ["templates/*.toml"]
+# The vendored component's AGPL text ships INSIDE its own package directory.
+# Anything relying on license-files alone would put it in distribution metadata
+# only, where an unpacked or relocated tree loses it; KTD19 wants the licence
+# travelling with the code it covers.
+"cratekit._vendor.tidal_dl_ng" = ["LICENSE"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# Vendored third-party source is excluded from linting. It is code Cratekit did
+# not write and will not restyle: every lint fix there becomes another patch to
+# re-apply on the next version bump, for no defect. Excluding it does give up
+# ruff's E9 syntax check over the tree, so tests/test_vendor_import.py byte
+# compiles every vendored module instead, which is the stronger check for the
+# thing that actually matters — that the extract is valid, importable Python on
+# the interpreters KTD19 supports.
+#
+# This is an exclusion from STYLE only. scripts/scan_repo.py still runs over the
+# vendored tree, deliberately and always. That is the highest-risk directory in
+# the repository, not the most exempt one.
+extend-exclude = ["src/cratekit/_vendor"]
 
 [tool.ruff.lint]
 # Real-error rules plus import hygiene. Style churn is deliberately excluded:

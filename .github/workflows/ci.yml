@@ -103,3 +103,20 @@ jobs:
           /tmp/cold/bin/pip install .
           /tmp/cold/bin/python -c "import cratekit; print(cratekit.__version__)"
           /tmp/cold/bin/crate --help
+      # The vendored downloader is the half of the install that no index can
+      # supply (KTD4), so it is the half most likely to be missing from a wheel
+      # and least likely to be noticed: nothing fails until a user tries to
+      # acquire a track. Importing it here, from the INSTALLED package rather
+      # than the checkout, is what proves the source tree and its licence data
+      # actually shipped.
+      - name: Import the vendored downloader from the installed package
+        run: |
+          cd /tmp
+          /tmp/cold/bin/python -c "
+          import cratekit._vendor.tidal_dl_ng as vendored
+          from cratekit._vendor import TIDAL_DL_NG, license_text
+          assert 'site-packages' in vendored.__file__, vendored.__file__
+          assert vendored.__version__ == TIDAL_DL_NG.version
+          assert 'AFFERO' in license_text(TIDAL_DL_NG)
+          print('vendored', TIDAL_DL_NG.project, vendored.__version__, TIDAL_DL_NG.license_id)
+          "
