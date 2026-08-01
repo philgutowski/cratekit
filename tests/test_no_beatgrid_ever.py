@@ -47,7 +47,34 @@ FORBIDDEN_TOKENS = ("<TEMPO", "Battito", "Metro=", "Inizio=")
 
 # File tag keys that carry tempo. Writing any of these reaches rekordbox on
 # import just as surely as an XML element does.
-FORBIDDEN_TAG_KEYS = frozenset({"bpm", "BPM", "TBPM", "beatgrid", "beat_grid"})
+#
+# The set is per-container, because a tempo tag is spelled differently in each
+# and a guard that knows only one spelling protects only one container. Vorbis
+# and Ogg use BPM, ID3 uses the TBPM frame, and MP4 and M4A use the four-letter
+# atom `tmpo`, which resembles nothing else on this list and is the reason a
+# key set assembled by intuition misses it.
+FORBIDDEN_TAG_KEYS = frozenset(
+    {
+        "bpm", "BPM", "Bpm",            # Vorbis comments, and loose callers
+        "TBPM",                          # ID3v2 tempo frame, by name
+        "tmpo", "TMPO",                  # MP4 and M4A tempo atom
+        "beatgrid", "beat_grid",         # anything storing a grid wholesale
+        "AverageBpm", "averagebpm",      # the rekordbox field, by any route
+    }
+)
+
+# ID3 frame constructors that carry tempo. These never appear as a subscript
+# key, so the subscript rule below cannot see them: mutagen writes a frame by
+# CONSTRUCTING it and handing it to `tags.add(...)`, which is an expression,
+# not an assignment.
+#
+# This gap was not hypothetical. The downloader vendored in U13 wrote the
+# provider's tempo into every file it saved, at three sites in one module, and
+# the original guard caught exactly one of them: the Vorbis subscript. The ID3
+# site was `tags.add(TBPM(...))` and the MP4 site keyed on `tmpo`. Both would
+# have shipped, and every downloaded track would have reached rekordbox
+# carrying a grid seed, which is the one outcome R17 exists to prevent.
+FORBIDDEN_FRAME_CONSTRUCTORS = frozenset({"TBPM"})
 
 # The one value AverageBpm may carry in anything we emit. It is a string, not a
 # number, because the XML attribute is compared as bytes.
@@ -103,6 +130,40 @@ def beatgrid_emission_violations(source: str, module: str) -> list[str]:
                         f"rekordbox reads file tags on import, so a tempo tag is a "
                         f"grid by another route (R17)"
                     )
+
+        # Constructing a tempo frame at all. There is no legitimate reason to
+        # build one: this package never writes tempo, so the constructor call
+        # is the violation, wherever its result ends up. Matching the
+        # construction rather than the `.add(...)` that consumes it means an
+        # intermediate variable, a list comprehension, or a helper that returns
+        # the frame is caught just the same.
+        if isinstance(node, ast.Call):
+            func = node.func
+            name = (
+                func.id
+                if isinstance(func, ast.Name)
+                else func.attr
+                if isinstance(func, ast.Attribute)
+                else None
+            )
+            if name in FORBIDDEN_FRAME_CONSTRUCTORS:
+                problems.append(
+                    f"{module}: constructs the {name} tempo frame; this package "
+                    f"never writes tempo, so building the frame is the violation "
+                    f"regardless of where it is handed off (R17)"
+                )
+
+        # A tempo key inside a dict literal, which reaches a tag store through
+        # `update(...)` or a keyword-expanded call without ever being a
+        # subscript assignment.
+        if isinstance(node, ast.Dict):
+            for key in node.keys:
+                if isinstance(key, ast.Constant) and key.value in FORBIDDEN_TAG_KEYS:
+                    problems.append(
+                        f"{module}: builds a mapping carrying the tempo key "
+                        f"{key.value!r}; a dict handed to a tag writer writes just "
+                        f"as surely as a subscript does (R17)"
+                    )
     return problems
 
 
@@ -138,11 +199,36 @@ def test_no_module_in_the_package_emits_a_grid():
         ('X = f\'<TRACK AverageBpm="{bpm}"\'\n', "interpolates a value into AverageBpm"),
         ('tags["bpm"] = "124"\n', "writes the file tag"),
         ('tags["TBPM"] = value\n', "writes the file tag"),
+        # The three shapes a real downloader used. Only the first was caught
+        # before U13; see FORBIDDEN_FRAME_CONSTRUCTORS for what that cost.
+        ('self.m.tags["BPM"] = str(self.bpm)\n', "writes the file tag"),
+        ("self.m.tags.add(TBPM(encoding=3, text=str(self.bpm)))\n", "TBPM tempo frame"),
+        ('self.m.tags["tmpo"] = [self.bpm]\n', "writes the file tag"),
+        # The same frame reached by an indirection the .add form would miss.
+        ("frame = TBPM(encoding=3, text='124')\n", "TBPM tempo frame"),
+        ("frames = [TBPM(text=str(b)) for b in values]\n", "TBPM tempo frame"),
+        ("tags.update({'bpm': 124})\n", "mapping carrying the tempo key"),
     ],
 )
 def test_the_source_scan_catches_each_way_of_writing_a_grid(source, expect):
     problems = beatgrid_emission_violations(source, "cratekit.intake.collection_xml")
     assert any(expect in p for p in problems), f"{expect!r} not caught; got {problems}"
+
+
+@pytest.mark.parametrize("container_key", ["BPM", "TBPM", "tmpo"])
+def test_every_container_spelling_of_tempo_is_covered(container_key):
+    """One spelling per container, and the guard must know all of them.
+
+    Asserted separately from the table above because the failure this prevents
+    is not "somebody wrote a tempo tag", it is "somebody wrote a tempo tag in
+    the one container whose spelling the guard had never heard of". That is
+    what happened: the MP4 atom is four lowercase letters resembling nothing
+    else on the list, so a key set assembled by intuition omits it.
+    """
+    problems = beatgrid_emission_violations(
+        f'tags[{container_key!r}] = value\n', "cratekit.intake.collection_xml"
+    )
+    assert problems, f"{container_key!r} is a tempo tag in some container and is not caught"
 
 
 def test_the_gridless_constant_is_not_a_violation():

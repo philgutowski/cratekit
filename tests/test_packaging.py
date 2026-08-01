@@ -12,6 +12,7 @@ test cannot build a virtual environment honestly.
 from __future__ import annotations
 
 import re
+import sys
 import tomllib
 from pathlib import Path
 
@@ -129,3 +130,76 @@ def test_no_author_identity_in_shipped_metadata(pyproject):
     """R1: shipped artifacts carry no author name, path, volume, or account."""
     authors = pyproject["project"]["authors"]
     assert authors == [{"name": "Cratekit contributors"}]
+
+
+# ---------------------------------------------------------------------------
+# scripts/ci_deps.py
+#
+# CI installs whatever this script prints, so a malformed line is a broken build
+# on every branch at once. It shipped with no test and its first real CI run
+# failed: it shell-quoted each line, and the workflow consumed it with command
+# substitution, which word-splits but does NOT strip quotes, so pip received a
+# literal `'lxml>=5.0'` and rejected it.
+#
+# These tests exist to pin the output CONTRACT rather than the implementation:
+# every line parses as a real requirement, and nothing decorates it.
+# ---------------------------------------------------------------------------
+
+
+def _run_ci_deps(*args: str) -> list[str]:
+    """Invoke the script the way CI does and return its stdout lines."""
+    import subprocess
+
+    result = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts" / "ci_deps.py"), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.splitlines()
+
+
+@pytest.mark.parametrize("args", [(), ("analysis",), ("vocals",), ("web",), ("dev",)])
+def test_every_emitted_line_parses_as_a_requirement(args):
+    """Each line must be installable as-is, with no unwrapping by the caller."""
+    from packaging.requirements import Requirement
+
+    lines = _run_ci_deps(*args)
+    assert lines, f"ci_deps.py printed nothing for {args!r}"
+    for line in lines:
+        # Requirement() raises InvalidRequirement on anything pip would reject,
+        # including the quoted form that broke the first CI run.
+        Requirement(line)
+
+
+def test_emitted_lines_carry_no_shell_decoration():
+    """The output is consumed by xargs, which does not strip quotes either.
+
+    Asserted separately from the parse check because it names the specific
+    regression: a quote character here is always a bug, never a valid specifier.
+    """
+    for line in _run_ci_deps():
+        assert not (line.startswith(("'", '"')) or line.endswith(("'", '"'))), (
+            f"{line!r} is shell-quoted; emit the raw specifier and let the "
+            f"caller use xargs"
+        )
+        assert line == line.strip(), f"{line!r} carries surrounding whitespace"
+
+
+def test_core_output_is_exactly_the_declared_core_dependencies(pyproject):
+    """The whole point of the script is that CI never mirrors this list by hand."""
+    assert _run_ci_deps() == pyproject["project"]["dependencies"]
+
+
+def test_an_unknown_extra_fails_loudly_and_names_the_known_ones():
+    """A typo in a workflow must not silently install nothing."""
+    import subprocess
+
+    result = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts" / "ci_deps.py"), "nope"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert not result.stdout.strip(), "a failed lookup must print no specifiers"
+    assert "analysis" in result.stderr, "the error should name the known extras"

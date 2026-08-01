@@ -12,13 +12,22 @@ Usage::
     python scripts/ci_deps.py            # slim core dependencies
     python scripts/ci_deps.py analysis   # the analysis extra's dependencies
 
-Output is one specifier per line, already quoted for a shell, so a workflow can
-do ``pip install $(python scripts/ci_deps.py)``.
+Output is one raw specifier per line, deliberately UNQUOTED. Consume it with
+``xargs``, never with command substitution::
+
+    python scripts/ci_deps.py | xargs -r python -m pip install
+
+The first version of this script shell-quoted each line so a workflow could do
+``pip install $(python scripts/ci_deps.py)``. That is wrong, and it failed on
+the first real CI run. Command substitution word-splits its output but does NOT
+perform quote removal on the result, so pip received the literal seven-character
+string ``'lxml>=5.0'`` with the quotes still attached and refused it as an
+invalid requirement. Quoting here cannot help a caller and can only corrupt the
+value, because a dependency specifier never contains whitespace.
 """
 
 from __future__ import annotations
 
-import shlex
 import sys
 import tomllib
 from pathlib import Path
@@ -55,7 +64,7 @@ def main(argv: list[str]) -> int:
         print(exc.args[0], file=sys.stderr)
         return 2
     for specifier in specifiers:
-        print(shlex.quote(specifier))
+        print(specifier)
     return 0
 
 

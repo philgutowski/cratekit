@@ -283,8 +283,16 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         "OAuth token field",
         # The shape the source system's session cache uses: a JSON or TOML field
         # named for a token, carrying a long opaque value.
+        # The separator between words is optional, so client_secret,
+        # clientSecret, client-secret and clientsecret are one rule rather than
+        # four. A real vendored file used the camelCase spelling and this scan
+        # walked straight past five live credential pairs, because the keyword
+        # list had been written in the one casing the author happened to think
+        # of. Naming conventions are not a security boundary.
         re.compile(
-            r"""["']?(?:access_token|refresh_token|id_token|client_secret|session_id)["']?"""
+            r"""["']?(?:access[_-]?token|refresh[_-]?token|id[_-]?token"""
+            r"""|client[_-]?secret|client[_-]?id|session[_-]?id"""
+            r"""|consumer[_-]?(?:key|secret))["']?"""
             r"""\s*[:=]\s*["'][^"'\s]{16,}["']""",
             re.IGNORECASE,
         ),
@@ -300,9 +308,15 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("private key block", re.compile(r"-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----")),
     (
         "credential assignment",
+        # The optional closing quote after the keyword is load-bearing, not
+        # tidiness. Without it this rule matches `secret = "..."` but NOT
+        # `"secret": "..."`, because in the quoted form a quote character sits
+        # between the keyword and the colon where the pattern expects only
+        # whitespace. Every credential in a JSON or JSON-shaped literal takes
+        # the quoted form, which is most of them.
         re.compile(
             r"""(?:api[_-]?key|apikey|secret|password|passwd|passphrase"""
-            r"""|auth[_-]?token|access[_-]?secret|access[_-]?key)"""
+            r"""|auth[_-]?token|access[_-]?secret|access[_-]?key)["']?"""
             r"""\s*[:=]\s*["'][^"'\s]{12,}["']""",
             re.IGNORECASE,
         ),
