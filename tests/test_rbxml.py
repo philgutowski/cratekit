@@ -43,8 +43,9 @@ from tests.xml_fixtures import _no_bare_lf, _routing_xml, _xml_doc
 pytestmark = requires("cratekit.write.rbxml")
 
 try:  # pragma: no cover - the success branch arrives with U17
-    from cratekit.core.locations import location_to_path, location_url
     from cratekit.write import rbxml
+
+    from cratekit.core.locations import location_to_path, location_url
 except ImportError:  # pragma: no cover - the state until U17 lands
     rbxml = None
     location_to_path = location_url = None
