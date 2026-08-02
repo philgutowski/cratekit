@@ -1499,14 +1499,19 @@ def insert_empty_subplaylist(
     stays the answer nobody has to opt into.
     """
     _refuse_wrong_medium(tree)
-    scope = _tree_scope(content, tree)
-    if isinstance(scope, str):
-        return SpliceResult(warning=scope)
-    scope_start, scope_end = scope
+    # A DIRECT child of the tree, never a search over its whole body. The caller
+    # that drives this loops over the tree's direct folder children by name, and
+    # a body-wide search resolves that name to whichever node carries it FIRST in
+    # document order, which is a folder nested inside an earlier sibling whenever
+    # the two share a name. The enumeration and the write would then disagree
+    # about which folder is meant, and the write would win silently.
+    parent = _tree_node(content, tree)
+    if isinstance(parent, str):
+        return SpliceResult(warning=parent)
 
-    folder = find_node(
-        content, folder_name, start=scope_start, end=scope_end, node_type=FOLDER_TYPE
-    )
+    folder = direct_child(content, parent, folder_name, FOLDER_TYPE)
+    if isinstance(folder, str):
+        return SpliceResult(warning=folder)
     if folder is None:
         return SpliceResult(warning=f"genre folder not found: {folder_name}")
 
@@ -1654,7 +1659,16 @@ def _first_child_offset(content: bytes, parent: NodeSpan) -> int | None:
     on its own. None rather than a guess when the break is absent, because the
     only way to write there anyway is to invent a line ending, and inventing one
     is how a bare LF got into an export in the first place.
+
+    A SELF CLOSED node has no body at all, and this is where that has to be
+    caught. Its ``body_start`` lands just past the closing ``/>``, and the bytes
+    there are the break ending the node's OWN line, so the arithmetic below
+    succeeds and hands back a position OUTSIDE the node. The caller then writes
+    its children as the node's siblings and reports success. Refused here rather
+    than at each call site, so every current and future caller inherits it.
     """
+    if parent.self_closing:
+        return None
     at = parent.body_start
     if bytes(content[at : at + len(CRLF)]) != CRLF:
         return None

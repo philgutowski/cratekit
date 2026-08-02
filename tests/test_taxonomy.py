@@ -124,6 +124,59 @@ def test_a_display_name_used_as_an_id_is_refused(default_raw):
     assert any("must match" in p for p in problems)
 
 
+def test_the_catalog_tree_is_declared_in_the_shipped_default(default):
+    """The optional third tree, and the shipped template does declare one.
+
+    Optional in the schema, present in the default. A user who never imports a
+    catalog can delete the section; one who does gets a tree without editing
+    anything, which is the point of shipping a template at all.
+    """
+    assert default.catalog is not None
+    assert default.catalog.id and default.catalog.display
+
+
+def test_a_template_declaring_no_catalog_tree_loads_clean(default_raw):
+    """Absent is a complete declaration, not a deficient one.
+
+    Every other tree in this file is mandatory, so the loader's default answer to
+    a missing section is a problem. This one has to load, or a user who deletes a
+    section they do not use finds their whole taxonomy refused.
+    """
+    data = mutated(default_raw, lambda d: d.pop("catalog"))
+    assert build_taxonomy(data).catalog is None
+
+
+def test_a_half_declared_catalog_tree_is_refused_as_strictly_as_a_mandatory_one(
+    default_raw,
+):
+    """Optional to WRITE is not optional to get right.
+
+    A section carrying one half of the pair reaches a writer as a tree named the
+    empty string, or as one whose id cannot be a state key. Skipping validation
+    because the section is optional is how an optional section becomes the one
+    nobody checks.
+    """
+
+    def no_display(d):
+        d["catalog"]["display"] = ""
+
+    def bad_id(d):
+        d["catalog"]["id"] = d["catalog"]["display"]
+
+    def wrote_the_header_and_nothing_else(d):
+        d["catalog"] = {}
+
+    assert any("[catalog] display" in p for p in problems_from(default_raw, no_display))
+    assert any("[catalog] id" in p for p in problems_from(default_raw, bad_id))
+    # The empty table is the case a truthiness test gets wrong: it is falsy, so
+    # "the user wrote the section header and stopped" reads as "the user wrote no
+    # section" and every rule above is skipped for exactly the template most
+    # likely to be half finished.
+    empty = problems_from(default_raw, wrote_the_header_and_nothing_else)
+    assert any("[catalog] id" in p for p in empty)
+    assert any("[catalog] display" in p for p in empty)
+
+
 def test_a_duplicate_bucket_id_is_refused(default_raw):
     def mutate(d):
         d["bucket"][1]["id"] = d["bucket"][0]["id"]

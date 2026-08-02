@@ -53,6 +53,7 @@ is what stops the next sweep walking through that door by accident.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -70,6 +71,8 @@ from cratekit.core import (
 )
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import rbxml
+
+logger = logging.getLogger(__name__)
 
 #: The vocal sub-playlist's STABLE IDENTIFIER, never its display name. The
 #: display lives in the declared taxonomy and is read from there, so a user who
@@ -99,6 +102,46 @@ class RouteReport:
     inserted: int = 0
     created: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class VoxReport:
+    """What the vocal sweep changed, and every folder it could not serve.
+
+    ``modified`` is the list callers read; ``warnings`` is the half that used to
+    be thrown away. A folder blocked by a wrong-type collision produced a warning
+    the emitter returned and this writer dropped on the floor, so the sweep
+    reported the same thing for "already had it" and "could not write it".
+
+    Iterable over ``modified`` so a caller that only wants the names, which is
+    every caller the goldens describe, reads the same as it always did.
+    """
+
+    modified: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
+
+    def __iter__(self):
+        return iter(self.modified)
+
+    def __len__(self) -> int:
+        return len(self.modified)
+
+    def __eq__(self, other: object) -> bool:
+        """Equal to the plain name list as well as to another report.
+
+        The nine goldens and their sibling tests compare this against a list of
+        display names, which is the whole contract a caller depends on. Keeping
+        that comparison working is what lets the warnings channel be added
+        without rewriting the byte-level tests that pin the output.
+        """
+        if isinstance(other, VoxReport):
+            return (self.modified, self.warnings) == (other.modified, other.warnings)
+        if isinstance(other, (list, tuple)):
+            return list(self.modified) == list(other)
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash((self.modified, self.warnings))
 
 
 class MatchOutcome(str, Enum):
@@ -143,7 +186,12 @@ class ContentRow:
 
     content_id: str
     recorded: str
-    deleted: bool = False
+    #: NO DEFAULT, deliberately. A default of False means "active", which is the
+    #: permissive answer, so a producer that forgot to read the soft-delete
+    #: marker would hand every tombstone to the matcher as a live row. The whole
+    #: value of the active-row rule is that a removed track cannot claim a
+    #: location, and a silent default is how that rule stops being applied.
+    deleted: bool
 
 
 @dataclass(frozen=True)
@@ -342,13 +390,55 @@ def _tree_folders(content: bytes, tree_display: str) -> tuple[str, ...]:
     return tuple(names)
 
 
+def _governed_or_named(
+    tree: rbxml.Tree | None,
+    registry: tree_registry.Registry | None,
+    node: taxonomy.Node,
+    *,
+    what: str,
+) -> rbxml.Tree:
+    """The tree a bridge write targets: governed by the registry, or named outright.
+
+    THE HOLE THIS CLOSES, because it was open and a reviewer walked through it.
+    An entry point that defaulted to ``rbxml.Tree(display=node.display)`` built an
+    UNGOVERNED tree for a node the registry exists to govern. The emitter guard
+    returns on its first line for an ungoverned tree, correctly, because most
+    playlists in a real library are somebody's own. So the sweep spliced an export
+    for a tree the database already owned, and under U9's A2 verdict importing
+    that export replaces the database-native tree outright. The guard did not
+    fail; it was never armed, and naming a tree without the registry that governs
+    it is naming nothing.
+
+    There is no ungoverned DEFAULT here, and that is the whole point.
+    :class:`rbxml.Tree` refuses half a governed tree one layer down for exactly
+    this reason, and offering the same hole through a default would be refusing
+    it in one place and handing it out in the other. A caller that has genuinely
+    loaded no records passes :data:`cratekit.core.tree_registry.EMPTY`, which is a
+    sentence somebody can check. A caller writing a playlist this product does
+    not govern still passes ``rbxml.Tree(display=...)`` itself, deliberately.
+    """
+    if tree is not None:
+        return tree
+    if registry is None:
+        raise ValueError(
+            f"{what} targets a tree the registry governs, so it needs either the "
+            f"registry or an explicit tree. Pass registry=tree_registry.read(cfg), "
+            f"or tree_registry.EMPTY when nothing is recorded yet. Passing neither "
+            f"would build an ungoverned tree, and the bridge guard does not apply "
+            f"to one, so a splice into a tree the database already owns would be "
+            f"refused by nothing"
+        )
+    return rbxml.tree_for(node, registry)
+
+
 def add_vox_playlists(
     raw: bytes,
     declared: taxonomy.Taxonomy | None = None,
     *,
+    registry: tree_registry.Registry | None = None,
     tree: rbxml.Tree | None = None,
     sub_class_id: str = VOX_SUB_CLASS,
-) -> tuple[bytes, list[str]]:
+) -> tuple[bytes, VoxReport]:
     """Give every folder in a tree the vocal sub-playlist, and report which gained one.
 
     rekordbox has no import path that creates an EMPTY playlist, and a splice can
@@ -363,20 +453,30 @@ def add_vox_playlists(
     The declared taxonomy supplies both names. Passing your library's active
     template rather than letting this reach for the shipped default is what makes
     it correct for a user who renamed either one.
+
+    EVERY WARNING IS CARRIED OUT, which is why this returns a report rather than
+    the bare name list it used to. A folder the emitter could not serve, because
+    a playlist of the vocal name already stands where the folder belongs, is not
+    the same fact as a folder that already had the playlist, and both looked
+    identical to a caller reading only the list of names that changed.
     """
     active = taxonomy.default_taxonomy() if declared is None else declared
     sub_display = active.sub_class(sub_class_id).display
-    target = rbxml.Tree(display=active.tree.display) if tree is None else tree
+    target = _governed_or_named(tree, registry, active.tree, what="the vocal sweep")
 
     content = bytearray(raw)
     modified: list[str] = []
+    warnings: list[str] = []
     for folder_display in _tree_folders(content, target.display):
         result = rbxml.insert_empty_subplaylist(
             content, folder_display, sub_display, tree=target
         )
+        if result.warning:
+            warnings.append(result.warning)
+            continue
         if result.created:
             modified.append(folder_display)
-    return bytes(content), modified
+    return bytes(content), VoxReport(modified=tuple(modified), warnings=tuple(warnings))
 
 
 def _catalog_playlists(
@@ -405,6 +505,7 @@ def insert_record_labels_tree(
     out_path: Path | str,
     *,
     declared: taxonomy.Taxonomy | None = None,
+    registry: tree_registry.Registry | None = None,
     tree: rbxml.Tree | None = None,
 ) -> Path:
     """Write one catalogued source's whole subtree into a copy of an export.
@@ -432,7 +533,9 @@ def insert_record_labels_tree(
                 remedy=Remedy.FIX_CONFIG_VALUES,
                 scope=cause.Scope.RUN,
             )
-        tree = rbxml.Tree(display=active.catalog.display)
+        tree = _governed_or_named(
+            None, registry, active.catalog, what="the catalog import"
+        )
 
     content = bytearray(Path(xml_path).read_bytes())
     warning = rbxml.insert_catalog_folder(
@@ -447,7 +550,10 @@ def insert_record_labels_tree(
             scope=cause.Scope.RUN,
         )
     destination = Path(out_path)
-    destination.write_bytes(bytes(content))
+    # Atomically, like every other artifact this product persists. A partial
+    # document at this path is not a partial success; it is a file the user is
+    # told to import into a library that has no second copy.
+    config.atomic_write_bytes(bytes(content), destination)
     return destination
 
 
@@ -572,6 +678,48 @@ def match_indexed_rows(
     return tuple(out)
 
 
+def _root_row(db: Any, root_id: str) -> Any:
+    """The playlist row the cutover adopted, or a refusal naming it.
+
+    Resolved through the binding's own lookup rather than by scanning, and
+    refused rather than defaulted: a missing root here means the registry and the
+    database disagree about a tree that has cut over, which is the same skew
+    ``anchored_root`` refuses one step earlier. Reaching this with no row means
+    the caller's ``root_exists`` probe and the database disagree, and writing
+    unparented would put the whole tree beside itself.
+
+    NO ``.first()`` HERE, and that is the binding's shape rather than a style
+    choice. ``get_playlist`` returns a filtered QUERY for every keyword except
+    ``ID``, where it returns the row itself, or None. A caller that reaches for
+    ``.first()`` out of habit therefore works everywhere else in this package and
+    raises an attribute error on exactly this lookup.
+    """
+    row = db.get_playlist(ID=str(root_id))
+    if row is None:
+        raise tree_registry.RegistrySkew(
+            f"the adopted root {root_id!r} was reported present and could not be "
+            f"read back, so the membership write has nothing to hang the tree's "
+            f"folders from and would create them beside the tree instead",
+            tree_id="",
+            root_id=str(root_id),
+        )
+    return row
+
+
+def _rollback_quietly(db: Any) -> None:
+    """Undo pending work on the caller's handle. Never masks the original failure.
+
+    A rollback that raises on the way out of an except block would replace the
+    real cause with its own, and the real cause is the one worth reading. This is
+    the one place in the module where swallowing is right, and it swallows only
+    the cleanup.
+    """
+    try:
+        db.session.rollback()
+    except Exception:  # noqa: BLE001 - a failed cleanup must not hide its cause
+        logger.warning("could not roll back the pending session after a failed write")
+
+
 def write_tree_membership(
     cfg: config.Config,
     db: Any,
@@ -654,31 +802,53 @@ def write_tree_membership(
         capture = snapshot.capture(cfg, db=db)
         snapshot.assert_verified(capture)
 
-        for (folder_display, sub_display), requested in sorted(plan.items()):
-            matches = match_indexed_rows(
-                requested, index, root=cfg.library.root, prefix_map=resolved_map
-            )
-            resolved_ids = [
-                match.content_id
-                for match in matches
-                if match.outcome is MatchOutcome.MATCHED and match.content_id
-            ]
-            skipped.extend(
-                match for match in matches if match.outcome is not MatchOutcome.MATCHED
-            )
-            if not resolved_ids:
-                continue
+        # THE WRITE IS PARENTED TO THE ROOT THE CUTOVER ADOPTED. Asserting the
+        # anchored root and then resolving the folder globally by name would
+        # leave the assertion true and the write somewhere else: a folder of that
+        # name under a different parent, or a new one at the database root beside
+        # the tree instead of inside it. That is the silent parallel tree the
+        # registry exists to prevent, arriving through the check meant to prevent
+        # it. The root row is resolved once, here, and every folder hangs off it.
+        anchor = _root_row(db, root_id)
 
-            folder = rb_writer.ensure_folder(db, folder_display)
-            playlist = rb_writer.ensure_playlist(db, sub_display, folder)
-            touched.append(f"{folder_display}/{sub_display}")
-            for content_id in resolved_ids:
-                if rb_writer.add_membership(db, playlist, content_id):
-                    added += 1
-                else:
-                    already_present += 1
+        try:
+            for (folder_display, sub_display), requested in sorted(plan.items()):
+                matches = match_indexed_rows(
+                    requested, index, root=cfg.library.root, prefix_map=resolved_map
+                )
+                resolved_ids = [
+                    match.content_id
+                    for match in matches
+                    if match.outcome is MatchOutcome.MATCHED and match.content_id
+                ]
+                skipped.extend(
+                    match
+                    for match in matches
+                    if match.outcome is not MatchOutcome.MATCHED
+                )
+                if not resolved_ids:
+                    continue
 
-        rb_writer.commit_guarded(db)
+                folder = rb_writer.ensure_folder(db, folder_display, parent=anchor)
+                playlist = rb_writer.ensure_playlist(db, sub_display, folder)
+                touched.append(f"{folder_display}/{sub_display}")
+                for content_id in resolved_ids:
+                    if rb_writer.add_membership(db, playlist, content_id):
+                        added += 1
+                    else:
+                        already_present += 1
+
+            rb_writer.commit_guarded(db)
+        except BaseException:
+            # Nothing durable has landed, but the objects this loop created are
+            # still pending on the CALLER'S handle, and the guarded commit raises
+            # on two of its refusals before reaching its own rollback. Left
+            # pending, they land on whatever commits next and arrive under that
+            # operation's name, which is the hazard the writer's own docstring
+            # describes. Rolled back here, and re-raised unchanged: this is a
+            # cleanup, never a place that decides an error is survivable.
+            _rollback_quietly(db)
+            raise
 
     return MembershipReport(
         tree_id=tree_id,
@@ -700,6 +870,7 @@ __all__ = [
     "RouteReport",
     "RowMatch",
     "TreeUnreachable",
+    "VoxReport",
     "add_vox_playlists",
     "apply_playlist_changes",
     "apply_rating_changes",

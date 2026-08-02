@@ -445,10 +445,15 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
     # mandatory trees: an optional section is optional to WRITE, not optional to
     # get right, and a half-declared tree would reach a writer as a folder named
     # the empty string.
-    catalog_raw = data.get("catalog")
+    # Keyed on PRESENCE, never on truthiness. An empty ``[catalog]`` table is a
+    # declaration, and it is falsy, so a truthiness test reads "the user wrote a
+    # section" as "the user wrote no section" and skips the very validation the
+    # paragraph above promises. That is the shape this whole block exists to
+    # refuse, arriving through the check meant to enforce it.
+    catalog_raw = data.get("catalog") if "catalog" in data else None
     catalog = (
         Node(str(catalog_raw.get("id", "")), str(catalog_raw.get("display", "")))
-        if catalog_raw
+        if catalog_raw is not None
         else None
     )
     declared_nodes = [(tree, "tree"), (intake, "intake")]
