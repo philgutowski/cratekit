@@ -487,6 +487,74 @@ all queue behind it. Recorded here rather than acted on, because relaxing a
 conformance rule that four waves have honored is a deliberate act and not a
 side effect of landing a CLI.
 
+**Diagnosed 2026-08-02, and most of the wall was a defect in the assertion.**
+The paragraph above states the wall as one fact. It was three, and two of them
+were never true of the product.
+
+**Defect one: an explicit gate.** `test_conformance_3` drove every gate the same
+way: refuse, hand the answer back
+on `-d`, assert `OK`. `Gates.require` refuses an inline answer for an **explicit**
+gate whenever nothing is recorded against the run, and `cli.run` mints a fresh run
+whenever `--run` is absent, so `recorded` is `None` on every fresh invocation and
+the refusal is unconditional. Driven through the real dispatcher, an explicitly
+gated verb returns `10 DECISION_REQUIRED` to the first drive AND to the second,
+and returns `0 OK` only after the decision is recorded and the run is resumed with
+`--run`. Assertion 3 therefore asserted that an explicit gate must **not** be
+honoured, which is the precise inverse of R34, and it had done so since it was
+written. It was never caught because no landed entry declares an explicit gate:
+fifteen do, and all fifteen are planned, so the branch was never driven.
+
+**Defect two: a verb with two gates, no explicit flag required.** The assertion
+drove once per DECLARED gate and answered only that one gate, on a fresh run
+every time. A verb carrying two gates therefore refused at whichever gate the
+current drive had not answered, so both iterations exited `DECISION_REQUIRED`
+and the entry could never pass. Reproduced against a two-gate synthetic with
+both gates plain: the old assertion returns `10` for the second drive on both
+iterations. `restore.run`, `name.apply`, `route.inbox` and `adopt.apply` all
+carry two gates and were blocked by this independently of R34.
+
+The cost was paid by four units in one wave, each concluding independently that
+its CLI verb "cannot land" and parking the obligation on a different unit, which
+produced five incompatible workarounds for a phantom.
+
+**Fixed** on `fix/conformance-3-and-soft-delete-reader`. Assertion 3 now answers
+gates CUMULATIVELY, one drive per gate reached rather than one per gate declared,
+which is the single change that covers both defects. An ordinary gate accumulates
+a flag and keeps the one-command path unchanged. An explicit gate takes R34's two
+acts: the first drive refuses, an inline answer refuses AGAIN and records nothing,
+and `OK` comes only after `run decide` writes the decision with its actor and the
+verb resumes under `--run`. A second gate is then reached with the first still
+answered, in both orderings.
+
+All three branches ship DRIVEN against synthetic entries, the real `profile.set`
+with its gate promoted and with a second gate added, so they are proved before the
+first real one arrives rather than by the unit that lands it. That is precisely
+how both defects survived: the code path existed and nothing exercised it.
+
+A gate an entry declares but never reaches is no longer asserted about, because
+`write.cloudsync.unreadable` fires only when the sync state is unreadable and
+demanding a refusal the environment cannot produce would have been a third wall
+of the same kind.
+
+**The register bookkeeping done in response should be reverted at merge.** Three
+places now carry reasoning that is false: the `ROUTING_CLI_UNIT` comment in
+`src/cratekit/cli/registry.py`, the `cratekit.write.routing_cli` entry in
+`tests/_pending.py`, and
+`test_the_routing_verbs_name_a_unit_that_can_actually_land_them` in
+`tests/test_deferred_routing.py`. All three say U19 could not land the module
+because a gated verb cannot exit `OK`, and the gate half of that is the phantom.
+Whether U20 should still own the routing CLI is a separate question with its own
+good answer, so this is a correction to the stated reason and not automatically a
+re-point. Left untouched here because those files belong to landed units and to
+branches in flight, and rewriting another unit's reasoning inside a fix branch is
+how one correction becomes four merge conflicts.
+
+**What is left of the wall is real and smaller.** A verb that writes the database
+still has to succeed to exit `OK`, and it cannot succeed on a machine with no
+database. That half stands, and it is what the closing condition below addresses.
+A verb with an explicit gate and no database write, `session.ack` being the
+clearest, is landable today.
+
 **Closes when:** conformance 3 can be satisfied against a disposable database
 fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather
 than skips, so the battery runs either way and a supplied fixture strengthens it.
