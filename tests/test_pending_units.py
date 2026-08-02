@@ -36,7 +36,6 @@ TESTS_DIR = Path(__file__).resolve().parent
 # the second place is a test that a reviewer reads.
 EXPECTED_PENDING = frozenset(
     {
-        "cratekit.write.rbxml",  # U17, the XML bridge
         "cratekit.write.trees",  # U18, the tree writers
         "cratekit.intake.collection_xml",  # U37, the COLLECTION emitter
         "cratekit.core.restore",  # U32, the KTD21b replace

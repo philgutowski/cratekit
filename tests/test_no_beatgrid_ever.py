@@ -321,6 +321,50 @@ def test_a_rekordbox_authored_grid_survives_verbatim():
     assert _no_bare_lf(analysed)
 
 
+def test_the_byte_patcher_refuses_a_tempo_attribute_in_either_direction():
+    """The generic attribute patcher is the one primitive that could do both.
+
+    It takes the attribute NAME as an argument, so the source scan above cannot
+    see it: that scan reads string CONSTANTS, subscript keys and dict keys, and a
+    name arriving as a call argument is none of those. Two reachable calls, one
+    per direction. Writing the track's own average tempo SEEDS a grid rekordbox
+    reads on import. Passing a range that bounds the whole track element rather
+    than its open tag reaches the tempo element inside it, and rewrites the grid
+    the user's own analysis produced. Both refuse.
+    """
+    from cratekit.write import rbxml
+
+    content = bytearray(
+        _xml_doc(
+            collection=['  <COLLECTION Entries="1">', *_ml_track(101, "One", analyzed=True),
+                        "  </COLLECTION>"],
+            root_children=['      <NODE Name="INBOX" Type="0" Count="0">', "      </NODE>"],
+        )
+    )
+    before = bytes(content)
+    track = rbxml.find_collection_track(content, 101)
+    assert track is not None
+
+    with pytest.raises(ValueError, match="R17"):
+        rbxml.patch_attribute(
+            content, "AverageBpm", "128.00", start=track.tag_start, end=track.tag_end
+        )
+    with pytest.raises(ValueError, match="R17"):
+        rbxml.patch_attribute(
+            content, "Bpm", "63.00", start=track.tag_start, end=track.end
+        )
+    # Case is not a way around it, and the attribute a legitimate caller wants
+    # still goes through.
+    with pytest.raises(ValueError, match="R17"):
+        rbxml.patch_attribute(
+            content, "averagebpm", "128.00", start=track.tag_start, end=track.tag_end
+        )
+    assert bytes(content) == before
+    assert rbxml.patch_attribute(
+        content, "Tonality", "02A", start=track.tag_start, end=track.tag_end
+    )
+
+
 def test_our_own_track_shape_is_gridless():
     """The same builder, without the analysed flag, is what our emitters imitate."""
     ours = _xml_doc(

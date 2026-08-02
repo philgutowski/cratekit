@@ -45,6 +45,15 @@ _ID = re.compile(r"^[a-z][a-z0-9_]*$")
 
 SUPPORTED_SCHEMA_VERSIONS = frozenset({1})
 
+# How many levels a declared routing tree may nest: a root child, a folder, and a
+# sub-playlist (KTD14). Named here rather than written as a literal in the check
+# and again in its message, because it is the SAME number the XML bridge's
+# indentation encodes as ``cratekit.write.rbxml.TREE_DEPTH``. The bridge cannot
+# be imported from here, since it imports this module, so the two are pinned
+# equal by a test instead. One number in two files with nothing holding them
+# together is how a template starts loading at a depth the writer cannot emit.
+SUPPORTED_TREE_DEPTH = 3
+
 # The name of the packaged default. Read-only data inside the wheel; a library's
 # ACTIVE template is a copy in its own state root (seam decision S6), which is
 # what lets one library be self-describing and lets a snapshot roll the taxonomy
@@ -426,10 +435,11 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
     # KTD14: the XML bridge's indentation constants encode exactly three levels.
     # A template that declares another depth is refused BY NAME here, rather than
     # emitting bytes that rekordbox reads as a different tree.
-    if tree_depth != 3:
+    if tree_depth != SUPPORTED_TREE_DEPTH:
         problems.append(
-            f"[tree] depth is {tree_depth}, and only 3 is supported: the XML bridge's "
-            f"indentation encodes a root child, a folder, and a sub-playlist (KTD14)"
+            f"[tree] depth is {tree_depth}, and only {SUPPORTED_TREE_DEPTH} is "
+            f"supported: the XML bridge's indentation encodes a root child, a "
+            f"folder, and a sub-playlist (KTD14)"
         )
 
     energy, energy_problems = _build_energy(data.get("energy") or {})
