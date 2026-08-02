@@ -133,13 +133,6 @@ PENDING: dict[str, tuple[str, str]] = {
         "U28",
         "the shipped operator skills the skills lint runs over",
     ),
-    "cratekit.cli.exit_codes": (
-        "U38",
-        "that every structured refusal cause the standalone utilities raise has "
-        "a reserved exit code and a remediation, which is the S4 obligation "
-        "applied to this unit: a refusal with no reserved code collapses to a "
-        "bare status at the process boundary and cannot be recovered downstream",
-    ),
     # APPENDED RATHER THAN FILED BESIDE A SIBLING, deliberately, for the reason
     # the verb registry gives for the same choice: two entries inserted into the
     # middle of one mapping by two units auto-merge, and an append conflicts

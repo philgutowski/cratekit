@@ -45,7 +45,6 @@ EXPECTED_PENDING = frozenset(
         "cratekit.intake",  # U37, path repair proposals as review items
         "cratekit.cli.doctor",  # U27, the health check
         "path:skills",  # U28, the shipped operator skills
-        "cratekit.cli.exit_codes",  # U38, the reserved exit-code vocabulary
         "cratekit.write.routing_cli",  # U20, the route.* verbs and the gated close
     }
 )

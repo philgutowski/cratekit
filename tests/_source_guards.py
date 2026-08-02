@@ -295,3 +295,156 @@ def package_modules(package_root) -> list[tuple[str, str]]:
         (path.name, path.read_text())
         for path in sorted(package_root.rglob("*.py"))
     ]
+
+
+# ---------------------------------------------------------------------------
+# U38: the two shapes that bypass the reserved exit-code table.
+#
+# APPENDED rather than filed beside its relatives, for the reason the verb
+# registry and the reason registry both give: several units land against this
+# file at once, and two additions inserted into the middle auto-merge while two
+# appends conflict textually, which is a conflict somebody reads.
+#
+# These ask a different question of a different module than ``ReviewImports``
+# does, so they are a sibling rather than a duplicate, and they answer it the
+# same way: against the name the source actually BOUND, never against a bare
+# attribute name. A guard that matched the text ``ExitCode`` would be satisfied
+# by anybody's class of that name and defeated by one ``as`` keyword, which is
+# the exact pair of failures the armed review guards already shipped once.
+# ---------------------------------------------------------------------------
+
+#: The module that owns the status vocabulary, and the package it sits in.
+EXIT_CODE_MODULE = "cratekit.core.exit_codes"
+EXIT_CODE_PACKAGE = "cratekit.core"
+
+
+class ExitCodeImports:
+    """How one source file reaches ``ExitCode``, in every import shape.
+
+    Five shapes are recognized, and they are every shape this repository's own
+    modules use between them::
+
+        import cratekit.core.exit_codes             # ...exit_codes.ExitCode.OK
+        import cratekit.core.exit_codes as ec       # ec.ExitCode.OK
+        from cratekit.core import exit_codes        # exit_codes.ExitCode.OK
+        from cratekit.core.exit_codes import ExitCode        # ExitCode.OK
+        from cratekit.core.exit_codes import ExitCode as EC  # EC.OK
+
+    ``from cratekit.cli import exit_codes`` is deliberately NOT one of them. That
+    name binds the reservation table, and reading the table is the sanctioned
+    path rather than the shape being hunted.
+    """
+
+    def __init__(self, tree: ast.AST) -> None:
+        #: Local names that ARE the vocabulary module.
+        self.module_names: set[str] = set()
+        #: Local names that ARE the ``ExitCode`` class itself.
+        self.class_names: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == EXIT_CODE_MODULE:
+                        self.module_names.add(alias.asname or EXIT_CODE_MODULE)
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                names_the_module = module == EXIT_CODE_MODULE or (
+                    node.level > 0 and module.split(".")[-2:] == ["core", "exit_codes"]
+                )
+                names_the_package = module == EXIT_CODE_PACKAGE or (
+                    node.level > 0 and module.split(".")[-1:] == ["core"]
+                )
+                if names_the_module:
+                    for alias in node.names:
+                        if alias.name == "ExitCode":
+                            self.class_names.add(alias.asname or "ExitCode")
+                elif names_the_package:
+                    for alias in node.names:
+                        if alias.name == "exit_codes":
+                            self.module_names.add(alias.asname or "exit_codes")
+
+    def names_a_code(self, node: ast.AST) -> bool:
+        """Whether ``node`` is a member of the ``ExitCode`` this source imported."""
+        dotted = _dotted(node)
+        if dotted is None:
+            return False
+        parts = dotted.split(".")
+        if len(parts) >= 2 and ".".join(parts[:-1]) in self.class_names:
+            return True
+        return len(parts) >= 3 and ".".join(parts[:-2]) in self.module_names and parts[-2] == "ExitCode"
+
+
+def _bound_module_names(tree: ast.AST, module: str) -> set[str]:
+    """Local names bound to a standard-library module, aliases included."""
+    return {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+        if alias.name == module
+    }
+
+
+def reserved_code_tables(source: str, causes: frozenset[str]) -> list[str]:
+    """Every mapping in this source that gives a RESERVED cause an exit code.
+
+    A second table is how two answers to one question appear, and the repository
+    has already paid for that shape once in its taxonomy resolvers. The keys are
+    supplied by the caller from the live registry rather than matched by a
+    pattern, so this cannot go stale against a cause added later.
+
+    Two value shapes count, and both are the defect: an ``ExitCode`` member,
+    which is a second opinion in the right vocabulary, and a bare integer, which
+    is a second opinion in no vocabulary at all. A dict mapping the same keys to
+    SENTENCES is ordinary correct code and is not reported, because a guard that
+    fires on correct code gets routed around (P7).
+    """
+    tree = ast.parse(source)
+    codes = ExitCodeImports(tree)
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, value in zip(node.keys, node.values):
+            if not (isinstance(key, ast.Constant) and key.value in causes):
+                continue
+            if isinstance(value, ast.Constant) and isinstance(value.value, int):
+                found.append(f"line {key.lineno}: {key.value!r} -> bare status {value.value}")
+            elif codes.names_a_code(value):
+                found.append(f"line {key.lineno}: {key.value!r} -> {ast.unparse(value)}")
+    return found
+
+
+def process_status_literals(source: str) -> list[str]:
+    """Every place this source turns a bare integer into a process status.
+
+    ``sys.exit(21)`` bypasses the whole vocabulary: nothing imports, nothing
+    looks anything up, and the integer arrives at the shell meaning whatever the
+    author believed that day. The module is bound through the import graph, so
+    ``import sys as system`` is caught and ``runner.exit(21)`` on somebody's own
+    object is not.
+
+    Zero is excluded. ``sys.exit(0)`` is success spelled plainly and is not a
+    refusal, and reporting it would be the false positive that gets the whole
+    guard suppressed.
+    """
+    tree = ast.parse(source)
+    sys_names = _bound_module_names(tree, "sys")
+    os_names = _bound_module_names(tree, "os")
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or len(node.args) != 1:
+            continue
+        argument = node.args[0]
+        if not (isinstance(argument, ast.Constant) and isinstance(argument.value, int)):
+            continue
+        if argument.value == 0 or isinstance(argument.value, bool):
+            continue
+        target = _dotted(node.func)
+        names_an_exit = (
+            target in {f"{name}.exit" for name in sys_names}
+            or target in {f"{name}._exit" for name in os_names}
+            or (isinstance(node.func, ast.Name) and node.func.id == "SystemExit")
+        )
+        if names_an_exit:
+            found.append(f"line {node.lineno}: {ast.unparse(node)}")
+    return found

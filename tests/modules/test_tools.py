@@ -38,7 +38,6 @@ from cratekit.core.naming import MarkerRule, NameTemplate
 from cratekit.core.taxonomy import default_taxonomy
 from cratekit.modules import tools
 from cratekit.modules.tools import backup, mastering, setbuilder
-from tests._pending import requires
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -298,9 +297,12 @@ def test_the_destructive_verb_is_wired_to_the_destructive_session_gates():
     ), "the session module is imported but no gate is asserted"
 
 
-@requires("cratekit.cli.exit_codes")
 def test_every_refusal_cause_has_a_reserved_exit_code():
-    """S4 applied to this unit: a refusal with no reserved code is a bare status."""
+    """S4 applied to this unit: a refusal with no reserved code is a bare status.
+
+    ARMED by U38. The assertion body is the one that was ported and gated; only
+    the skip came off, which is what deleting the register entry is for.
+    """
     import cratekit.cli.exit_codes as exit_codes
 
     reserved = set(exit_codes.RESERVED_CAUSES)
