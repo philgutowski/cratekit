@@ -1,71 +1,130 @@
 # Handoff: where Cratekit stands
 
 Written 2026-08-01 so a session with no memory of the build can pick it up.
-Revised the same day, after the three pending branches merged and the U7
-hardening landed.
+Revised the same day, twice: once after the three pending branches merged and
+the U7 hardening landed, and again after U8 and U17.
 
 ## State
 
-`main` carries U1, U2, U3, U4, U5, U6, U7, U10, U13, U14, U15, U31, U35, plus
-the W1 through W6 hardening and the A4 whitelist addition. Pushed to the private
-remote. 2602 passed, 76 skipped, ruff clean, `scan_repo` clean.
+`main` carries U1, U2, U3, U4, U5, U6, U7, U8, U10, U13, U14, U15, U17, U31 and
+U35, plus the W1 through W6 hardening, the A4 whitelist addition, and U9's
+verdicts. Pushed to the private remote. **2812 passed, 29 skipped**, ruff clean,
+`scan_repo` clean.
 
-**There are no unmerged branches and no worktrees.** The wave that was pending
-in the previous revision of this document is landed.
+**There are no unmerged branches and no worktrees.**
 
-## What the last merge cost, because the pattern is the point
-
-Four collisions, and every one of them passed the test suite. A clean auto-merge
-is still not evidence of compatibility.
-
-1. **Two rekordbox process guards that disagreed about Windows.** The writer asks
-   pyrekordbox, which strips the executable suffix; the backup module asked the
-   platform directly and matched the bare name, because it must work on a slim
-   install with the rekordbox extra absent. Both reasons are good, so the
-   duplicated MECHANISM stays. On Windows, where psutil reports `rekordbox.exe`,
-   the backup guard saw nothing running and would have snapshotted a database the
-   application was actively writing. `core/processes.py` now owns the one list
-   and the one matching rule.
-2. **Sixteen remediation tokens the canonical vocabulary had never heard of.**
-   The conformance test named `config` alone, because config was the only module
-   declaring its own `Remedy` on the day it was written. Four more landed and
-   none was a subset, so every one of their refusals rendered as the exit code's
-   generic summary: a user told to store a credential read "an unexpected
-   failure". The test now derives the module set by walking the package.
-3. **A `.venv` symlink committed pointing at an absolute path**, on a tree where
-   `scan_repo` exited 0. Structural: every rule reads a file's CONTENT and a
-   symlink has none, so it was skipped before any rule saw it. The scan now
-   judges symlink targets, and `.gitignore` had the matching gap, since `.venv/`
-   with a trailing slash matches a directory only.
-4. **The pre-commit scan was running Python 2.7.** `entry: python` resolved
-   through PATH to an old installer's interpreter, so the R1 secret and
-   portability scan died with a SyntaxError instead of scanning. Pinned to
-   `python3`. All 139 tracked files were scanned afterwards and were clean.
-
-## Finish a merge like this
-
-Merge one branch at a time, and after each one run the full battery on the
-COMBINED tree before touching the next:
+The battery is:
 
     .venv/bin/ruff check src tests scripts
     .venv/bin/python -m pytest
     .venv/bin/python scripts/scan_repo.py
 
+## What U8 and U17 changed
+
+**U8, the destructive-session boundary.** `core/snapshot.py` is the KTD21b
+capture, deriving every path from the state inventory and spelling no file
+suffix anywhere. `core/session.py` is the boundary: three gates in one order,
+and the order is the property. Volume, then acknowledgment, then lock, because
+the first two are read-only and the lock is the only gate that creates a file,
+which is what makes "a refused session writes nothing" true on the disk rather
+than approximately true.
+
+It closed three pieces of standing debt. R-8, so both halves of the backup
+restore now run inside the gates. R-5's quarter, so conformance assertion 6 is
+behaviour rather than an existence check. And the runtime half of W4, which
+fingerprints every analysis file a session could touch and refuses if one moved,
+because the source scan sees only the symbols this package spells and cannot see
+a grid rewritten through a handle the binding already returned.
+
+**U17, the tree registry and the XML bridge.** `core/tree_registry.py` records
+per tree the mode, the cutover date, and the adopted root's identifier. All trees
+start on the bridge. `write/rbxml.py` ports the byte writer whole, with two
+changes: indentation is derived from node depth rather than pinned, and the
+byte-level LOCATES are consolidated rather than only the writes. Thirteen
+distinct locate shapes were inventoried across the two byte engines and the eight
+call sites in the source system, and each is named against the primitive that
+covers it. Without that, "the guard lives inside the shared byte-writer
+primitives" is a coverage claim that is simply false, because a guard in the
+writers sees nothing a call site finds for itself.
+
+## What the review found, because the pattern is the point
+
+Both units passed their own author's battery. Three independent adversarial
+reviewers per unit then found twenty-three defects that survived judgment, and
+two of them were blocking. Neither was visible to a green suite.
+
+**U8: the committed-unverified latch condemned its own remedy.** A session whose
+post-commit read-back disagrees refuses with `restore-from-snapshot`. A restore
+is itself a destructive session. So the product told the user to restore and then
+refused the restore. The fix is `session.Intent`: a RECOVERY session is exempt
+from that one latch and from nothing else, with volume, acknowledgment and lock
+all still asserted. The second half surfaced only while fixing the first: the
+session log is `SURVIVES_ROLLBACK`, so the condemning record outlives the restore
+that answers it, and without `resolve_unverified_session` a user who did exactly
+what the refusal asked would find the next write still refused with the remedy
+already spent.
+
+**U17: one unescaped angle bracket un-anchored the whole document.**
+`matching_close` and `depth_of` bounded a NODE open tag with a plain search for
+the next `>`, which is the exact shape the module's own comment says neither tag
+can be bounded by. A display name carrying an angle bracket made `root_node`
+return None, so every emitter reported "ROOT node not found" while writing
+nothing, and a splice that still reported success landed in a different folder.
+Both walks now use the quote-aware matcher `node_at` already had.
+
+Three more from U17 could lose data outright: three writers picked the child to
+replace or delete by display name alone, so a root-level playlist named after a
+tree replaced that entire tree and returned success; `patch_attribute` would
+write a track's average tempo, which the R17 source scan cannot see because the
+attribute name arrives as a call argument; and the splice's create-missing path
+never deduplicated, so whether a duplicate survived depended on whether the
+sub-playlist happened to exist yet.
+
+Two from U8 failed OPEN, which is the direction that matters:
+`assert_no_unresolved_session` read the log through the tolerant reporting
+scanner, so a bumped schema version on one file made an unresolved commit vanish
+and admitted the next destructive session; and `holder_alive` judged a live
+process dead whenever the platform would not report its start time, so
+`release_stale_lock` would clear a running session's claim.
+
+**The lesson to carry:** an author's own battery is not a review. Every one of
+these passed 2600 tests written by the person who wrote the defect.
+
+## Finish a merge like this
+
+Merge one branch at a time, and after each one run the full battery on the
+COMBINED tree before touching the next. A clean auto-merge is still not evidence
+of compatibility.
+
 Then hunt what a green suite cannot see. The two shapes this repository keeps
-producing are a duplicate key in a mapping that three branches all appended to,
+producing are a duplicate key in a mapping that several branches all appended to,
 and one symbol meaning two things in two modules. For the first, parse the dict
-literal and compare its key count against the runtime length, because every
-other test iterates the runtime dict and is blind to a shadowed key. For the
-second, walk the package and look for a name defined in more than one module.
+or set literal and compare its element count against the runtime length, because
+every other test iterates the runtime object and is blind to an entry collapsed
+at parse time. For the second, walk the package and look for a name defined in
+more than one module, then JUDGE each hit rather than trusting the list: most are
+one idea correctly specialised per module.
+
+That hunt earned its keep this wave. It found `"cratekit.core.session"` written
+twice in `EXPECTED_PENDING`, which a set made harmless and which nothing else
+could see. U8 removed it and added
+`test_the_intended_pending_set_has_no_duplicate_element`, so the shape cannot
+return silently.
+
+One arithmetic check is worth doing and is cheap: the merged counts should be
+exactly additive against the two branches. This wave went 2602 to 2812 passed
+(+115 and +95) and 76 to 29 skipped (-24 and -23), which are exact. A number that
+does not add up means a test was lost or double-counted by the merge.
 
 **A note on worktrees.** Do NOT symlink `.venv` into a worktree. The editable
 install names the MAIN checkout's `src`, so a worktree runs its own tests against
 the main tree's package: a worker verifies code it cannot see and gets false
-results in both directions. `pyproject.toml` now carries `pythonpath = ["src"]`
-under `[tool.pytest.ini_options]`, which resolves from pytest's rootdir and fixes
-it. Symlinking the venv is also what committed the `.venv` symlink above and
-destroyed the real virtualenv when the merge replaced the directory with a
-self-referential link.
+results in both directions. `pyproject.toml` carries `pythonpath = ["src"]` under
+`[tool.pytest.ini_options]`, which resolves from pytest's rootdir and fixes it
+FOR PYTEST ONLY. An ad-hoc `python -c "import cratekit"` in a worktree still
+imports the main tree, so set `PYTHONPATH=src` for those. Symlinking the venv is
+also what committed a `.venv` symlink and destroyed the real virtualenv when a
+merge replaced the directory with a self-referential link.
 
 ## Where the reasoning lives
 
@@ -98,38 +157,83 @@ decision recorded in the A4 solutions entry, and U21 is rescoped to it.
 
 **A3 is INFERRED**, with no staleness check needed. The cross-check is deleted.
 
-## What is blocked, and on what
+## What is unblocked, and what is not
 
-U18, U20 and U21 were gated on U9 and are unblocked. U8 and U32 were gated on
-the writer and are unblocked. U11 and U12 were gated on the job engine and are
-unblocked.
+U8 and U17 between them unblocked five units:
+
+| Unit | Title | Note |
+|---|---|---|
+| U18 | Tree writers | The gateway to the library-writing phase. Every dependency is landed. |
+| U21 | Metadata writers | Rescoped by A4: the writer may never author a key value. |
+| U27 | Setup wizard and doctor | Closes R-1, R-4 and R-7, and unblocks U28. |
+| U30 | DJ_tools overlap changes | Owns moving the old system's lock, which is the real half of AE19. |
+| U32 | Restore, retention, reconciliation | U8 registered three items against it; see below. |
+
+U11 and U12 were already unblocked by the job engine and still are. U11 is the
+one to weigh against U18: it alone unblocks U16, U23, U24 and U34.
+
+Still blocked: U16 on U11; U19 on U18; U20 on U19, U30 and U36; U22 on U16; U23
+and U24 on U11; U25 on U12; U26 on U16, U22 and U24; U28 on U27; U33 on U21 and
+U24; U34 on U11; U36 on U18; U37 on U16 and U19.
 
 `tests/_pending.py` is the register. Each entry names the unit that owes the
-work, so a gate that cannot run today is a countdown rather than a hole.
+work, so a gate that cannot run today is a countdown rather than a hole. U8 and
+U17 each added one entry while clearing their own: U18 now owes calling the
+session spine rather than rebuilding half of it, including supplying the roots
+the analysis watch defaults to not watching, and U32 owes the bare-metal recovery
+path.
 
 ## Open items that are not code
 
 1. **The rekordbox application pin is deliberately not bumped.** The mechanism is
    correct and S2 is satisfied: an unset pin refuses, a drifted pin refuses and
    names its remediation, and the wizard may propose but only an explicit named
-   decision records. The source system's pin is older than the installed
-   application, so its writers refuse. Re-validating a pin against a real write
-   is the author's deliberate act and never a number an agent edits.
+   decision records. Re-validating a pin against a real write is the author's
+   deliberate act and never a number an agent edits.
 2. **The vendored downloader has never been smoke-tested end to end.** Clone,
    install, authorize, download one track, confirm the file carries no tempo tag.
    That last check is the only end-to-end proof of the beatgrid patch, and the
-   upstream wrote a tempo tag in three containers before it was patched.
-3. **Two naming decisions are recorded rather than resolved**, because both are
-   persisted-slug migrations rather than tidy-ups. `authenticate-provider`,
-   `reauthenticate` and `reauthenticate-provider` may be one idea. `Decision`
-   means two different things in `core/rb_writer.py` and `cli/gates.py`, and
-   `FEATURES` means two different things in `cli/registry.py` and
-   `modules/tools/__init__.py`.
-4. **The ANLZ guard's honest gap is closed but worth knowing.** `read_anlz_files`
-   is legal and returns live objects, so the name scan also forbids the tag
-   setters, derived from the binding. The runtime half, comparing ANLZ
-   modification times across a write session, is registered against U8.
-5. `docs/residual-findings.md` carries nine recorded items with what closes each.
+   upstream wrote a tempo tag in three containers before it was patched. It needs
+   Tidal authorization at the machine, so it is an attended step.
+3. **Naming decisions recorded rather than resolved.** `authenticate-provider`,
+   `reauthenticate` and `reauthenticate-provider` may be one idea; all three keep
+   their original slugs because a slug is persisted inside a stored cause.
+   `Decision` means two different things in `core/rb_writer.py` and
+   `cli/gates.py`, and `FEATURES` means two different things in `cli/registry.py`
+   and `modules/tools/__init__.py`.
+
+   **Three more joined the list this wave, and two of them are cheap to resolve
+   in a way the first three are not**, because nothing outside this repository
+   has ever seen them:
+
+   - `Gates` now means a resolver with a `require` method in `cli/gates.py` and a
+     frozen value object in `core/session.py`. Both are exported, and both
+     modules are ABOUT gates, so the module prefix does less disambiguating work
+     here than it does elsewhere. Recorded rather than renamed for consistency
+     with `Decision`, which is the same collision between the same two areas.
+   - `STATE_KEY` means an inventory key in `core/backup_facts.py` and a record
+     field name in `core/session.py`. Deliberately not renamed: session's spelling
+     mirrors `RunStateVocabulary.state_key`, which is the field it populates, and
+     breaking that mirror to fix a name would trade a real correspondence for a
+     cosmetic one.
+   - `Band` means a decade of the exit-code vocabulary in `core/exit_codes.py`
+     and an energy band in `core/taxonomy.py`. Pre-existing, not from this wave.
+
+   Judged and NOT defects, listed so the next hunt does not re-litigate them:
+   `TERMINAL_STATES`, `lock_path`, `log_path` and `path_for` are each one idea
+   correctly specialised per module, as are `load`, `save`, `get`, `record` and
+   `show`. `Remedy` in six modules is the S4 subset pattern and is asserted as
+   such. `rekordbox_processes_running` exists in `core/processes.py` returning a
+   tuple with an injectable lister and in `core/rb_writer.py` returning a
+   comma-joined string from its own probes; the divergence is deliberate and
+   `tests/test_process_guard.py` asserts both, but note the return types differ,
+   so a caller importing the wrong one gets a string where it expected a tuple
+   and `", ".join(...)` on it produces character-joined output rather than an
+   error.
+4. **The ANLZ guard's honest gap is closed on both halves now.**
+   `read_anlz_files` stays legal and returns live objects, so the name scan also
+   forbids the tag setters. The runtime half landed with U8.
+5. `docs/residual-findings.md` carries the recorded items with what closes each.
 
 ## Four verification gates need the library volume
 
@@ -148,7 +252,7 @@ The conventions are `CRATEKIT_TEST_DB` for a database snapshot and
 rather than skip: the battery runs either way and a supplied fixture strengthens
 it.
 
-## Three hazards worth carrying forward
+## Hazards worth carrying forward
 
 **Autoflush in the guard path.** Giving the cloud canary a real predicate turned
 it from reading nothing into running a query, and an ORM query autoflushes: a
@@ -167,8 +271,29 @@ in code unrelated to the guard. Catching the exception does not undo it. Read th
 instance dictionary instead. This cost twenty-three database tests in files the
 change never touched.
 
+**The binding's update buffer is process-global.** It is a class attribute, not a
+per-session one. Reading it without an open handle attributes another caller's
+writes to yours, and a guard that refuses correct code is one people route around.
+
 **Closing a database does not release it.** The binding closes the session and
 leaves the engine's pooled connection open, so the process still holds the file
-and both sidecars. Restoring over them then produces a disk I/O error against a
-database that is perfectly intact, which is a terrifying message at exactly the
-wrong moment. Fixed here by disposing the engine; still live in the source.
+and both sidecars. Restoring over them then produces a disk input-output error
+against a database that is perfectly intact, which is a terrifying message at
+exactly the wrong moment. Fixed here by disposing the engine; still live in the
+source.
+
+**A gate that reads its own state through a tolerant reader fails open.** U8's
+`assert_no_unresolved_session` swallowed four exception types because it shared a
+scanner with a REPORTING path, where dropping an unreadable record is correct.
+For a gate it is not: an unreadable record is a record that has not been cleared.
+One scan now returns both halves, and the two callers disagree on purpose.
+
+**A liveness question and an identity question are not the same question.** U8's
+`holder_alive` returned False when the platform would not report a process start
+time, conflating "this holder is gone" with "I cannot tell". Three answers, not
+two: False clears the lock, None refuses to.
+
+**A byte writer cannot bound a tag by searching for the next angle bracket.**
+Attribute values contain them. U17's depth walks did exactly what the module's
+own comment forbids, and one display name would have un-anchored every emitter at
+once while they all reported success.
