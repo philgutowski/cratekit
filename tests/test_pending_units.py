@@ -39,16 +39,51 @@ EXPECTED_PENDING = frozenset(
         "cratekit.write.rbxml",  # U17, the XML bridge
         "cratekit.write.trees",  # U18, the tree writers
         "cratekit.intake.collection_xml",  # U37, the COLLECTION emitter
-        "cratekit.core.snapshot",  # U8, the KTD21b capture
         "cratekit.core.restore",  # U32, the KTD21b replace
         "cratekit.core.review",  # U11, the review queue
-        "cratekit.core.session",  # U8, the destructive-session gates
         "cratekit.cli.doctor",  # U27, the health check
         "path:skills",  # U28, the shipped operator skills
         "cratekit.cli.exit_codes",  # U5, the reserved exit-code vocabulary
-        "cratekit.core.session",  # U8, the destructive-session gates
     }
 )
+
+# U8's two entries were removed here when ``cratekit.core.snapshot`` and
+# ``cratekit.core.session`` landed, which is the countdown working as designed.
+# ``cratekit.core.session`` appeared TWICE in the literal above. A set makes a
+# duplicate harmless, so nothing failed, and it is the same shape as the
+# duplicate-key defect this repository has already shipped once with the whole
+# suite green: every test over a mapping or a set iterates the RUNTIME object and
+# is blind to an entry that was collapsed at parse time. The test below counts
+# the literal's elements against the runtime length, which is the only check that
+# can see it.
+
+
+def test_the_intended_pending_set_has_no_duplicate_element():
+    """A duplicate in the literal is silent, and silence is the whole problem.
+
+    ``EXPECTED_PENDING`` exists to be READ in a diff, so an entry written twice
+    means a reviewer sees one deletion and believes the countdown is finished
+    while the second occurrence is still there. It collapsed harmlessly here
+    because a set deduplicates; the same shape in the reason registry did not.
+    """
+    import ast
+    import inspect
+
+    literal = None
+    for node in ast.walk(ast.parse(inspect.getsource(__import__(__name__, fromlist=["x"])))):
+        target = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = getattr(node.targets[0], "id", None)
+        if target == "EXPECTED_PENDING":
+            literal = node.value
+
+    assert literal is not None, "EXPECTED_PENDING is no longer a module-level assignment"
+    # ``frozenset({...})``: the set is the call's first argument.
+    elements = literal.args[0].elts if isinstance(literal, ast.Call) else literal.elts
+    written = [element.value for element in elements]
+    duplicates = sorted({key for key in written if written.count(key) > 1})
+    assert not duplicates, f"written twice and collapsed at parse time: {duplicates}"
+    assert len(written) == len(EXPECTED_PENDING)
 
 # Guards that are repository-wide and work against the tree as it stands today.
 # None of these may EVER be gated on a pending unit: they are what makes the

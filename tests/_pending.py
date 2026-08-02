@@ -49,18 +49,18 @@ PENDING: dict[str, tuple[str, str]] = {
     ),
     "cratekit.write.trees": (
         "U18",
-        "the tree writers whose exact output bytes the golden files pin",
+        "the tree writers whose exact output bytes the golden files pin, AND that "
+        "those writers reach for U8's destructive-session spine rather than "
+        "rebuilding half of it: the three gates, a verified capture to commit "
+        "behind, and the analysis-file watch that is the runtime half of R17's "
+        "fifth surface. That watch takes the roots it should watch from its "
+        "caller and defaults to watching nothing, which is a softening path, so "
+        "it is closed here against the unit that owes the roots rather than in a "
+        "docstring hoping somebody supplies them (P5)",
     ),
     "cratekit.intake.collection_xml": (
         "U37",
         "the COLLECTION TRACK emitter that must never emit a <TEMPO> element",
-    ),
-    "cratekit.core.snapshot": (
-        "U8",
-        "that the KTD21b capture set is DERIVED from the state inventory rather "
-        "than hand-listed, and that it therefore includes the rekordbox "
-        "database's -wal and -shm sidecars, without which a capture is a "
-        "database silently missing every uncheckpointed transaction",
     ),
     "cratekit.core.restore": (
         "U32",
@@ -73,29 +73,6 @@ PENDING: dict[str, tuple[str, str]] = {
         "that a verb declaring it adjudicates produces PERSISTED review items "
         "with stable identifiers, rather than writing a CSV for a human to hand "
         "edit, which is what fourteen files in the source system already are",
-    ),
-    "cratekit.core.session": (
-        "U8",
-        "that every destructive verb refuses without the library lock, the "
-        "backup acknowledgment, and a matching volume identity, with three "
-        "distinct codes and no writes on any of the three paths (KTD24, R38). "
-        "Note the case that makes the binding non-obvious: a backup restore "
-        "replaces a live database and its sidecars while writing no database "
-        "row, so a rule binding the gates to database WRITES alone would leave "
-        "the one operation that destroys a library outside the safety spine "
-        "entirely. The gates bind to destructive sessions, not to write sessions. "
-        "It ALSO guards the field U7's snapshot-protection scan reads: the "
-        "session log has to record the snapshot path of the run it belongs to, "
-        "and it has to spell the state field and the terminal set the way U7's "
-        "default vocabulary expects. The source system's equivalent got all "
-        "three wrong and nothing failed, because a scan that matches nothing "
-        "returns nothing, so every snapshot was prunable while a comment said "
-        "otherwise. U8 ALSO owes the runtime half of R17's fifth surface: a "
-        "write session compares the modification time of every ANLZ file it "
-        "could touch before and after, and refuses if one moved, because the "
-        "source scan in tests/test_no_beatgrid_ever.py sees only the symbols "
-        "this package spells and cannot see a grid rewritten through a handle "
-        "the binding already returned"
     ),
     "cratekit.cli.doctor": (
         "U27",

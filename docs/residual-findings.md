@@ -137,16 +137,38 @@ registered in `tests/_pending.py` against the unit that lands it, so the skip is
 a countdown rather than a hole, and `tests/test_pending_units.py` fails the build
 the moment one of those modules appears.
 
-**Still open:** the four gated assertions are currently EXISTENCE checks against
-the module they need (does the review store expose a listing, does the session
-module expose its gate assertion). The behavioural half, driving a verb into
-each refusal and asserting three distinct codes with zero writes, is written in
-the docstrings and cannot be executed against a module that has not been
-designed yet.
+**Two of the four are now closed.**
 
-**Closes when:** each of U8, U10, U11, and U27 lands. The unit that lands the
-module owns turning its assertion from existence into behaviour, in the same
-commit that removes the pending entry.
+*U10's* landed with the job engine. Assertion 5 drives the engine rather than
+importing it.
+
+*U8's is closed here (2026-08-01).* Assertion 6 was an existence check
+(`hasattr(session, "assert_gates")`) and is now behaviour. For every verb the
+registry declares destructive, derived by iterating the registry rather than
+listed, it drives all three refusals and asserts three distinct codes: a lock
+held elsewhere is 20, a missing acknowledgment is 32, and a volume whose
+recorded identity does not match is 22. "Zero writes" is asserted against the
+FILESYSTEM, by fingerprinting the library root, the installation state directory
+and the config directory either side of each call and comparing. That is what
+made the gate ORDER load-bearing rather than stylistic: volume, then
+acknowledgment, then lock, because the lock is the only gate that creates a file
+and it therefore has to go last for the property to be true rather than
+approximately true.
+
+**What is honestly NOT covered, and why.** Every destructive registry entry
+still carries a `planned_in` marker, so there is no landed destructive verb to
+invoke through the dispatcher. What assertion 6 drives is the shared gate every
+one of them must pass through, once per declared verb and under that verb's own
+name. `tests/test_write_session.py` additionally drives the same three refusals
+through a real destructive OPERATION, the backup restore, which does exist. The
+end-to-end drive through `cli.run` waits on the first destructive verb landing.
+
+**Still open:** U11's and U27's assertions remain existence checks against the
+review store and the doctor check registry.
+
+**Closes when:** U11 and U27 land. The unit that lands the module owns turning
+its assertion from existence into behaviour, in the same commit that removes the
+pending entry.
 
 ---
 
@@ -196,21 +218,54 @@ provider trashes on delete has the per-remote option set. Both land in U27.
 
 ## R-8. The backup restore is not yet bound to the destructive-session gates
 
-**Found:** during U35.
+**Found:** during U35. **CLOSED 2026-08-01, by U8.**
 
 A restore replaces a live rekordbox database and its sidecars. KTD24 binds the
 library lock, the backup acknowledgment, and the volume identity assertion to
 any operation that can destroy user data, whether or not it writes a database
 row, and a restore is squarely one.
 
-**Why it is not bound here:** the session boundary is U8 and is not present. The
-verb is declared `destructive=True`, and the restore path already refuses on the
-two conditions it can check alone: an unconfirmed decision and a live rekordbox
-process.
+**Why it was not bound at U35:** the session boundary is U8 and was not present.
+The verb was declared `destructive=True`, and the restore path already refused on
+the two conditions it could check alone: an unconfirmed decision and a live
+rekordbox process.
 
-**Closes when:** U8 lands. The dependency is registered in `tests/_pending.py`
-against `cratekit.core.session`, and the guard there fails the build the moment
-that module exists and the restore path is still unwired.
+**How it is closed.** `modules/tools/backup.py` imports `cratekit.core.session`,
+which is a downward import from the modules layer and therefore legal, and both
+halves of a restore now run inside `session.assert_gates`:
+
+- `plan_restore` enters the gates around its whole planning body. The one check
+  that stays ahead of them is `_require_destinations`, which reads configuration
+  and resolves no path; everything after it resolves paths on the library volume,
+  and a destructive session has to refuse before it resolves one.
+- `run_restore` enters them again around the execution, and its `cfg` is a
+  REQUIRED positional rather than an optional keyword, so there is no call shape
+  that reaches the destructive half with nothing to gate on. An optional one
+  would be exactly the softening path P5 says to close in the commit that creates
+  it.
+
+The module's existing refusals are kept, not replaced: an unconfirmed decision
+and a live rekordbox process still refuse by name and in this module's own
+vocabulary. `runner` and `process_lister` stay injectable and a third seam,
+`gates`, joins them, so this module's own battery stays hermetic while the wiring
+itself is asserted with the real guard in place.
+
+**The ordering question P6 asks, decided.** A dry run is NOT exempt from the
+gates, and the test asserts that. Three reasons, in order of weight. The lock is
+the one that matters: a rehearsal that runs while another destructive session is
+writing describes a library that is changing underneath it, so its preview is a
+report about a world that no longer exists, which is worse than no preview.
+Second, the reason the plan and the run are one pair of functions is that a
+preview built by a second code path can be wrong about the run it previews, and a
+preview that skipped a guard the run does not skip is that divergence wearing a
+different hat. Third, a rehearsal that passes is then evidence the real run will
+reach its work, which is most of what a person rehearses for. What a dry run
+still skips is the sidecar CLEARING, which is unchanged and is a different
+question: clearing is itself destructive, so a rehearsal that cleared and then
+transferred nothing would do the damage and skip the repair.
+
+**Still open:** nothing for this finding. The verb that calls either function
+lands with U32, which owns `restore.list` and `restore.run`.
 
 ---
 
