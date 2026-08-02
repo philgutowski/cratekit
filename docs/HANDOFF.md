@@ -5,6 +5,16 @@ Revised the same day, twice: once after the three pending branches merged and
 the U7 hardening landed, and again after U8 and U17. Revised 2026-08-02 after
 U18.
 
+## The work is tracked on a board now
+
+`docs/BOARD.md` names it: https://github.com/users/philgutowski/projects/2
+
+All 37 units, the 11 residual findings, and the attended items are issues on
+`philgutowski/cratekit`, and the issue number matches the unit number. Each unit
+issue carries its full brief from the plan, so a unit can be picked up without
+the plan document. Eight units are Ready, twelve are Blocked, and the board says
+which blocks which. Read BOARD.md for what to update when a merge lands.
+
 ## State
 
 `main` carries U1, U2, U3, U4, U5, U6, U7, U8, U10, U13, U14, U15, U17, U18,
