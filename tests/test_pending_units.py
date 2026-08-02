@@ -38,7 +38,8 @@ EXPECTED_PENDING = frozenset(
     {
         "cratekit.intake.collection_xml",  # U37, the COLLECTION emitter
         "cratekit.core.restore",  # U32, the KTD21b replace
-        "cratekit.core.review",  # U11, the review queue
+        "cratekit.acquire.match_cli",  # U16, R11's three states, split as U11 declared
+        "cratekit.deletion.cli",  # U24, declines and tombstones through the decision stores
         "cratekit.cli.doctor",  # U27, the health check
         "path:skills",  # U28, the shipped operator skills
         "cratekit.cli.exit_codes",  # U5, the reserved exit-code vocabulary

@@ -68,11 +68,22 @@ PENDING: dict[str, tuple[str, str]] = {
         "honestly with mount-library-volume, and refusing honestly is not the "
         "same as serving it",
     ),
-    "cratekit.core.review": (
-        "U11",
-        "that a verb declaring it adjudicates produces PERSISTED review items "
-        "with stable identifiers, rather than writing a CSV for a human to hand "
-        "edit, which is what fourteen files in the source system already are",
+    "cratekit.acquire.match_cli": (
+        "U16",
+        "that R11's three states are split the way U11 declared them: the "
+        "NEEDS REVIEW state becomes persisted review items in the version-match "
+        "queue, while matched and missing stay a plain match result, and neither "
+        "of those two ever reaches the queue. Registered here rather than "
+        "asserted in a docstring because U11 settled the split and U16 is the "
+        "first unit that can violate it (P5)",
+    ),
+    "cratekit.deletion.cli": (
+        "U24",
+        "that a declined file and a tombstoned version are recorded through the "
+        "decision stores U11 shipped, and are therefore REVOCABLE: R35 says a "
+        "declined file is never offered again until the decline is revoked and "
+        "R36 says a tombstone is listable and revocable, and both sentences are "
+        "false if the deletion pass keeps its own file instead",
     ),
     "cratekit.cli.doctor": (
         "U27",
