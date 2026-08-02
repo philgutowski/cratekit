@@ -42,11 +42,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # value -> (unit that lands it, one line saying what the guard asserts)
 # ---------------------------------------------------------------------------
 PENDING: dict[str, tuple[str, str]] = {
-    "cratekit.write.rbxml": (
-        "U17",
-        "the XML byte rules: CRLF-only emission, PLAYLISTS-scoped anchoring, "
-        "Entries arithmetic, and the no-partial-write failure path",
-    ),
     "cratekit.write.trees": (
         "U18",
         "the tree writers whose exact output bytes the golden files pin",

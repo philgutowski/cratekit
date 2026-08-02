@@ -23,33 +23,21 @@ The four rules, and the incident behind each:
   position first, then patched Entries, then wrote at the stale offset, corrupted
   the file tail. Ten tracks was the threshold, which is why it survived testing.
 
-WHY THIS FILE IS SKIPPED TODAY. The XML bridge lands in U17. The assertions are
-ported complete, nothing is stubbed to make them green, and
-tests/test_pending_units.py fails the moment U17 lands unless the skip is
-removed. Porting the byte rules before the byte writer is what makes the
-incremental cutover safe: the first version of the writer is measured against
-these, not reviewed against a memory of them.
+THIS FILE WAS SKIPPED UNTIL U17 LANDED THE BRIDGE. The assertions were ported
+complete before the writer existed, nothing was stubbed to make them green, and
+tests/test_pending_units.py would have failed the build the moment the module
+appeared unless the gate came off. That ordering is what made the cutover safe:
+the first version of the writer was measured against these, not reviewed against
+a memory of them. Every assertion below is now armed.
 """
 
 from __future__ import annotations
 
 import re
 
-from tests._pending import requires
+from cratekit.core.locations import location_to_path, location_url
+from cratekit.write import rbxml
 from tests.xml_fixtures import _no_bare_lf, _routing_xml, _xml_doc
-
-# Gate the module. See tests/test_rb_writer_guard.py for why the import below is
-# tolerant rather than hard: a collection-time ImportError precedes any skip mark.
-pytestmark = requires("cratekit.write.rbxml")
-
-try:  # pragma: no cover - the success branch arrives with U17
-    from cratekit.write import rbxml
-
-    from cratekit.core.locations import location_to_path, location_url
-except ImportError:  # pragma: no cover - the state until U17 lands
-    rbxml = None
-    location_to_path = location_url = None
-
 
 # ── escaping ─────────────────────────────────────────────────────────────────
 

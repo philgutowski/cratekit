@@ -196,7 +196,6 @@ def test_the_fixtures_the_goldens_were_produced_from_still_build():
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@requires("cratekit.write.rbxml")
 def test_splice_tracks_into_subplaylist_golden():
     from cratekit.write.rbxml import splice_into_subplaylist
 
@@ -211,7 +210,6 @@ def test_splice_tracks_into_subplaylist_golden():
     assert b'            <TRACK Key="900000001"/>\r\n' in out
 
 
-@requires("cratekit.write.rbxml")
 def test_name_collision_current_behaviour():
     """Characterizes the collision case so the scoped fix yields a reviewed diff.
 
