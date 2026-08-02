@@ -67,7 +67,7 @@ import re
 import socket
 import sys
 from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from pathlib import Path
@@ -76,7 +76,14 @@ from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.cli import output
 from cratekit.core import backup_facts, config, preflight, rb_writer
-from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
+from cratekit.core.cause import (
+    Cause,
+    CratekitError,
+    Remediation,
+    Scope,
+    refuse,
+    widest_scope,
+)
 from cratekit.core.exit_codes import Remedy
 
 logger = logging.getLogger(__name__)
@@ -336,9 +343,31 @@ def log_dir(cfg: config.Config) -> Path:
     return config.state_path("session_log", cfg)
 
 
+#: Everything outside this set is replaced before an identifier becomes a
+#: filename. Deliberately a WHITELIST: a blacklist of the characters one
+#: filesystem rejects is a blacklist that is wrong on the next filesystem.
+_UNSAFE_IN_A_FILENAME = re.compile(r"[^A-Za-z0-9._-]")
+
+
 def log_path(session_id: str, cfg: config.Config) -> Path:
-    """One session's record. The identifier is generated, so it needs no escaping."""
-    return log_dir(cfg) / f"{session_id}.json"
+    """One session's record, under a name every filesystem this library can sit on accepts.
+
+    THE IDENTIFIER AND THE FILENAME ARE DIFFERENT QUESTIONS. The identifier keeps
+    the shape the run identifier space uses, colons and all, because that is what
+    makes a session addressable in the same breath as a run. The filename may not:
+    this path is composed on whatever filesystem the USER's library lives on, and
+    this store is library-scoped. exFAT and FAT are ordinary choices for a library
+    volume, because that is what a CDJ reads, and a colon is not a legal character
+    on either; on Windows it is the alternate-data-stream separator rather than a
+    character at all. ``snapshot.new_stamp`` reaches the same conclusion from the
+    other side and states the same reason.
+
+    Sanitising also closes a second hole. ``open_session`` accepts a supplied
+    identifier, and a path separator inside one would compose a record OUTSIDE the
+    directory the pruning scan reads: a session that protects no capture and that
+    no gate can see.
+    """
+    return log_dir(cfg) / f"{_UNSAFE_IN_A_FILENAME.sub('-', session_id)}.json"
 
 
 def new_session_id(now: datetime | None = None) -> str:
@@ -381,6 +410,38 @@ def read_record(session_id: str, cfg: config.Config) -> SessionRecord:
     return SessionRecord.from_json(json.loads(raw.decode("utf-8")))
 
 
+def scan_log(cfg: config.Config) -> tuple[tuple[SessionRecord, ...], tuple[Path, ...]]:
+    """Read the log once and return BOTH halves: what parsed, and what did not.
+
+    ONE SCAN WITH TWO CONSUMERS, rather than two scans that can disagree about
+    one directory, which is the defect class this module exists to abolish. What
+    differs between the consumers is the POLICY they apply to the second half,
+    and the policies are opposites for good reasons:
+
+    * reporting drops what it cannot read, because a single damaged file must not
+      stop the product describing every other session;
+    * a GATE may not, because a scan that drops what it cannot read fails OPEN.
+      A bumped schema version or a state value a later build introduced would
+      make an unresolved commit invisible and admit the very write the refusal
+      exists to stop.
+
+    Returning both halves is what lets each consumer say which one it is.
+    """
+    try:
+        entries = sorted(log_dir(cfg).glob("*.json"))
+    except OSError:
+        return (), ()
+    parsed: list[SessionRecord] = []
+    unreadable: list[Path] = []
+    for entry in entries:
+        try:
+            parsed.append(SessionRecord.from_json(json.loads(entry.read_text())))
+        except (OSError, ValueError, KeyError, TypeError, CratekitError) as exc:
+            logger.debug("session record %s could not be read: %s", entry, exc)
+            unreadable.append(entry)
+    return tuple(parsed), tuple(unreadable)
+
+
 def records(cfg: config.Config) -> tuple[SessionRecord, ...]:
     """Every readable session record, newest identifier last.
 
@@ -388,18 +449,11 @@ def records(cfg: config.Config) -> tuple[SessionRecord, ...]:
     reason the writer's own scan skips one: a single damaged file must not stop
     the product reporting on every other session, and the directory is shared
     with whatever a later build writes there.
+
+    THAT POLICY IS FOR REPORTING AND FOR NOTHING ELSE. A gate that borrowed it
+    would fail open; see :func:`scan_log` and :func:`assert_no_unresolved_session`.
     """
-    try:
-        entries = sorted(log_dir(cfg).glob("*.json"))
-    except OSError:
-        return ()
-    out: list[SessionRecord] = []
-    for entry in entries:
-        try:
-            out.append(SessionRecord.from_json(json.loads(entry.read_text())))
-        except (OSError, ValueError, KeyError, CratekitError) as exc:
-            logger.debug("skipping unreadable session record %s: %s", entry, exc)
-    return tuple(out)
+    return scan_log(cfg)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -483,6 +537,29 @@ def process_started(pid: int) -> str:
         return UNKNOWN_IDENTITY
 
 
+def process_exists(pid: int) -> bool | None:
+    """Whether a process with this identifier exists, or None when this cannot say.
+
+    THE LIVENESS QUESTION, SPLIT OFF FROM THE IDENTITY ONE. ``process_started``
+    deliberately collapses "no such process" into "cannot answer" and says the
+    caller discriminates separately; this is that discrimination, and without it
+    the collapse is a defect rather than a simplification. A caller comparing
+    start times alone reads an unanswerable start time as a mismatch, and a
+    mismatch reads as DEAD, which is how a live holder's claim on the library
+    gets cleared out from under it.
+
+    Three answers, not two. None is not False: a platform that cannot say must
+    not be read as a platform saying no.
+    """
+    try:
+        import psutil
+
+        return bool(psutil.pid_exists(pid))
+    except Exception as exc:  # noqa: BLE001 - an unanswerable question is not a failure
+        logger.debug("process existence is unavailable for %s: %s", pid, exc)
+        return None
+
+
 def current_holder() -> Holder:
     """This process, as the lock file will record it."""
     pid = os.getpid()
@@ -498,14 +575,21 @@ def holder_alive(holder: Holder, *, here: Holder | None = None) -> bool:
     """Whether a recorded holder is still running.
 
     FAILS TOWARDS ALIVE, deliberately, on every question this process cannot
-    answer: a holder on another host, a holder from another boot of this host, or
-    a platform that cannot report a start time. Guessing "dead" would let one
-    machine clear another machine's lock, and the operation the lock protects is
-    the one that removes files.
+    answer: a holder on another host, a holder from another boot of this host, a
+    holder whose record carries no start time, or a live process whose start time
+    this platform will not report. Guessing "dead" would let one machine clear
+    another machine's lock, and the operation the lock protects is the one that
+    removes files.
 
-    The start time is compared as well as the identifier, because identifiers are
-    recycled: without it, a record left by a crashed run names whatever process
-    later inherited that number, and clearing on that basis is exactly backwards.
+    "DOES IT EXIST" AND "IS IT THE SAME PROCESS" ARE ASKED SEPARATELY, and that
+    separation is the whole correctness of the last two lines. The start time is
+    compared as well as the identifier because identifiers are recycled: without
+    it, a record left by a crashed run names whatever process later inherited
+    that number, and clearing on that basis is exactly backwards. But an
+    unanswerable start time is not a mismatch. A shared machine that refuses to
+    report another account's process start time would otherwise make every one of
+    its live holders read as dead, and the remedy a caller then prints is
+    "release the stale lock" against a session that is writing right now.
     """
     reference = here or current_holder()
     if holder.host != reference.host or holder.boot != reference.boot:
@@ -514,7 +598,15 @@ def holder_alive(holder: Holder, *, here: Holder | None = None) -> bool:
         return True
     if holder.started == UNKNOWN_IDENTITY:
         return True
-    return process_started(holder.pid) == holder.started
+    exists = process_exists(holder.pid)
+    if exists is not True:
+        # False is a confident "gone", which is the one answer that may clear a
+        # claim. None is "this platform will not say", which may not.
+        return exists is None
+    observed = process_started(holder.pid)
+    if observed == UNKNOWN_IDENTITY:
+        return True
+    return observed == holder.started
 
 
 # ---------------------------------------------------------------------------
@@ -918,12 +1010,29 @@ def _shown_ages(cfg: config.Config, now: datetime) -> tuple[ShownAge, ...]:
     before the riskiest operation in the product. Asking it a second way would
     give two answers to one question, which is the drift this whole layer exists
     to remove.
+
+    AN UNREADABLE FACT FILE REFUSES RATHER THAN SHOWING NOTHING. Returning an
+    empty tuple would write an acknowledgment whose ``shown`` list is empty,
+    which is byte for byte what a library declaring no portions at all would
+    write, and ``backup_facts`` argues at length that "could not read" must never
+    collapse into any other answer because the remedies differ. It matters more
+    here than anywhere: this record is the evidence that a person decided, and an
+    acknowledgment with no age is a click rather than a decision. An ABSENT file
+    is untouched by this and still mints normally, as every library does before
+    its first backup.
     """
     try:
         reported = backup_facts.ages(cfg, now=now)
     except backup_facts.BackupFactsUnreadable as exc:
-        logger.warning("the backup fact file could not be read: %s", exc)
-        return ()
+        raise refuse(
+            "backup-facts-unreadable",
+            f"the backup ages this acknowledgment has to show cannot be read: "
+            f"{exc}. Recording an acknowledgment now would say a person was shown "
+            f"a clean sheet they were never shown",
+            remedy=Remedy.REPAIR_BACKUP_FACTS,
+            scope=Scope.RUN,
+            detail={"path": str(exc.path), "library": str(cfg.library.root)},
+        ) from exc
     return tuple(
         ShownAge(
             portion=str(entry.portion),
@@ -1114,6 +1223,26 @@ def assert_volume_identity(
 # ---------------------------------------------------------------------------
 
 
+class Intent(StrEnum):
+    """What a destructive session is FOR. Two answers, differing on exactly one gate.
+
+    NOT A FLAG AND NOT AN OVERRIDE. The volume assertion, the acknowledgment and
+    the lock apply to both answers unchanged: a recovery still has to be the
+    right disk, still has to be acknowledged by a person, and still has to be the
+    only session running. The single difference is the unresolved-session latch,
+    and the reason is that the latch's own remedy is a recovery.
+
+    A latch that condemned its own remedy would be a library with no exit. The
+    refusal a ``committed-unverified`` session raises names
+    ``restore-from-snapshot``, and a restore is itself a destructive session, so
+    without this declaration the product tells a user to restore and then refuses
+    the restore, with the only way out being to hand-edit a file in the log.
+    """
+
+    WRITE = "write"
+    RECOVERY = "recovery"
+
+
 @dataclass(frozen=True, slots=True)
 class Gates:
     """What passing the gates established, handed to the body of the session."""
@@ -1122,6 +1251,7 @@ class Gates:
     lock: Path
     acknowledgment: Acknowledgment
     volume: preflight.MountStatus
+    intent: Intent = Intent.WRITE
 
 
 def assert_no_unresolved_session(cfg: config.Config) -> None:
@@ -1132,26 +1262,77 @@ def assert_no_unresolved_session(cfg: config.Config) -> None:
     write is refuse it until a person has looked. Enforced HERE, at the gate
     every destructive session passes through, rather than in each workflow: a
     refusal a caller can forget is a refusal that is eventually forgotten.
+
+    IT READS THE LOG STRICTLY, which is the difference between this and every
+    reporting caller. An entry this build cannot parse is counted, not skipped:
+    a gate whose scan silently drops what it cannot read fails OPEN, so bumping
+    the schema version on one file, or a state value a later build introduced,
+    would make an unresolved commit vanish from the scan and admit the next
+    destructive session against a library nobody can vouch for.
     """
+    parsed, unreadable = scan_log(cfg)
     unresolved = [
-        record for record in records(cfg) if record.state is SessionState.COMMITTED_UNVERIFIED
+        record for record in parsed if record.state is SessionState.COMMITTED_UNVERIFIED
     ]
-    if not unresolved:
-        return
-    first = unresolved[0]
-    raise refuse(
-        "session-committed-unverified",
-        f"session {first.session_id} committed and its read-back through a fresh "
-        f"connection disagreed, so what this library holds cannot be vouched for; "
-        f"every further write is refused until a person resolves it",
-        remedy=Remedy.RESTORE_FROM_SNAPSHOT,
-        scope=Scope.RUN,
-        detail={
-            "sessions": [record.session_id for record in unresolved],
-            "snapshot_path": first.snapshot_path,
-            "change": first.change.to_json(),
-        },
-    )
+    if unresolved:
+        first = unresolved[0]
+        raise refuse(
+            "session-committed-unverified",
+            f"session {first.session_id} committed and its read-back through a "
+            f"fresh connection disagreed, so what this library holds cannot be "
+            f"vouched for; every further write is refused until a person resolves "
+            f"it. A recovery is not a further write and is not refused here",
+            remedy=Remedy.RESTORE_FROM_SNAPSHOT,
+            scope=Scope.RUN,
+            detail={
+                "sessions": [record.session_id for record in unresolved],
+                "snapshot_path": first.snapshot_path,
+                "change": first.change.to_json(),
+            },
+        )
+    if unreadable:
+        raise refuse(
+            "internal-error",
+            f"the session log holds {len(unreadable)} entr"
+            + ("y" if len(unreadable) == 1 else "ies")
+            + " this build cannot read, so this gate cannot vouch that no session "
+            "ended unresolved; refusing rather than writing against a log it "
+            "cannot read",
+            remedy=Remedy.REPORT_DEFECT,
+            scope=Scope.RUN,
+            detail={"unreadable": [str(path) for path in unreadable]},
+        )
+
+
+def resolve_unverified_session(
+    session_id: str, cfg: config.Config, *, now: datetime | None = None
+) -> SessionRecord:
+    """Close one ``committed-unverified`` record, once a person has dealt with it.
+
+    THE LATCH SURVIVES ITS OWN REMEDY, which is the whole reason this is a
+    separate act. The session log is declared ``SURVIVES_ROLLBACK``, deliberately
+    and for a good reason: rolling it back would erase the record of which
+    sessions are restorable, which is exactly what a user needs in order to
+    restore again. The consequence is that restoring the library from the capture
+    the record names does not remove the record. Without this, a user who did
+    precisely what the refusal asked would find the next write still refused,
+    with the remedy already spent and nothing left to spend.
+
+    It refuses on any other state. Ending somebody else's OPEN session from
+    outside would release a capture a live run is still writing behind, and
+    ending a CLOSED one is a no-op dressed as an action.
+    """
+    record = read_record(session_id, cfg)
+    if record.state is not SessionState.COMMITTED_UNVERIFIED:
+        raise refuse(
+            "internal-error",
+            f"session {session_id} is {str(record.state)!r}, not "
+            f"{str(SessionState.COMMITTED_UNVERIFIED)!r}; only a session that "
+            f"committed behind a read-back that disagreed is resolved this way",
+            remedy=Remedy.REPORT_DEFECT,
+            detail={"session_id": session_id, "state": str(record.state)},
+        )
+    return close_session(record, cfg, state=SessionState.ABANDONED, now=now)
 
 
 @contextmanager
@@ -1159,6 +1340,7 @@ def assert_gates(
     cfg: config.Config | None = None,
     *,
     workflow: str,
+    intent: Intent = Intent.WRITE,
     now: datetime | None = None,
     lock: Path | str | None = None,
     holder: Holder | None = None,
@@ -1178,6 +1360,11 @@ def assert_gates(
     ``workflow`` is the caller's name for the operation and is recorded in the
     session log. It arrives as a parameter because this layer names no verb (D2);
     the layer that owns verb names supplies one.
+
+    ``intent`` is a DECLARATION, not an override, and it changes exactly one of
+    the gates: a ``RECOVERY`` session is not held by the unresolved-session latch,
+    because a recovery is what the latch's own refusal names as the remedy. See
+    :class:`Intent`. All three of the gates below apply to it unchanged.
 
     THE ORDER IS ARGUED IN THE MODULE DOCSTRING and is not the order the plan
     lists them in. Volume, then acknowledgment, then lock: the first two read
@@ -1200,13 +1387,18 @@ def assert_gates(
         identity_provider=identity_provider,
         mount_enumerator=mount_enumerator,
     )
-    assert_no_unresolved_session(resolved)
+    if intent is not Intent.RECOVERY:
+        assert_no_unresolved_session(resolved)
     acknowledgment = assert_backup_acknowledged(resolved, now=now)
     watched = list(analysis_roots)
     with session_lock(resolved, path=lock, holder=holder) as held:
         with analysis_files_unmoved(watched) if watched else nullcontext():
             yield Gates(
-                workflow=workflow, lock=held, acknowledgment=acknowledgment, volume=volume
+                workflow=workflow,
+                lock=held,
+                acknowledgment=acknowledgment,
+                volume=volume,
+                intent=intent,
             )
 
 
@@ -1279,6 +1471,14 @@ def commit_sources(
     ``run_one`` returns the change summary for the source it committed. It raises
     to refuse, and whatever it raised is carried underneath the refusal this
     produces rather than replaced by it (KTD25).
+
+    THE SCOPE IS WIDENED, NEVER NARROWED. This wrapper knows that ONE SOURCE
+    refused and knows nothing about how much the underlying cause condemns, so it
+    may add its own scope and may not replace a wider one. A drive that was
+    ejected mid-run raises at ``Scope.RUN``; rewriting that to ``Scope.SOURCE``
+    would tell the aggregate at boundary 4 that only this source is condemned,
+    and the watermark it then advances for the sources beside it is advanced
+    against a library that is no longer mounted.
     """
     for source in source_ids:
         if record.sources.get(source) == str(SourceState.COMMITTED):
@@ -1298,7 +1498,7 @@ def commit_sources(
                         f"sources already committed are untouched"
                     ),
                     remediation=exc.cause.remediation,
-                    scope=Scope.SOURCE,
+                    scope=widest_scope(exc.cause.scope, Scope.SOURCE),
                     retryable=exc.cause.retryable,
                     origin=(*exc.cause.origin, "session"),
                     detail={
@@ -1430,6 +1630,21 @@ def assert_database_surface_allowed(record: SessionRecord) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _chained(outer: Cause | None, beneath: Cause | None) -> Cause | None:
+    """Hang one cause at the TAIL of another's chain, displacing nothing.
+
+    A cause that collapses at any hop cannot be recovered downstream, and the
+    cheap way to collapse one is to attach a second fact where a first already
+    sits. Appending keeps both, in the order a reader wants them: most specific
+    first, most general last.
+    """
+    if outer is None:
+        return beneath
+    if beneath is None:
+        return outer
+    return replace(outer, inner=_chained(outer.inner, beneath))
+
+
 def verify_commit(
     record: SessionRecord,
     cfg: config.Config,
@@ -1459,16 +1674,40 @@ def verify_commit(
     SEPARATELY, carried underneath this cause rather than replacing it, because
     "the read-back disagreed" and "the application is open" are different facts
     with different fixes and the second may well explain the first.
+
+    A READ-BACK THAT COULD NOT RUN IS A THIRD FACT and it travels too, as the
+    first link of that same chain. It still ends the session unverified, because
+    a commit landed and nothing has confirmed what it landed; what it must not do
+    is arrive as "the database disagrees" when the truth is that the volume was
+    ejected, the pin drifted, or the file could not be opened at all. Those are
+    recoverable and this one is not, and collapsing the first into the second is
+    the exact loss the cause chain exists to prevent.
     """
     open_fresh = reopen or (lambda: rb_writer.open_db(cfg=cfg))
     agreed = False
     handle = None
+    failure: Cause | None = None
     try:
         handle = open_fresh()
         agreed = bool(expect(handle))
+    except CratekitError as exc:
+        # A TYPED read-back failure is the most specific fact in the whole
+        # chain and is the one that says what to do. Logging it and throwing it
+        # away would report "the drive is unplugged" as "the database disagrees",
+        # which is a recoverable condition wearing an unrecoverable one's face,
+        # and is exactly the collapse KTD25 exists to stop.
+        logger.warning("the post-commit read-back could not run: %s", exc)
+        failure = exc.cause
     except Exception as exc:  # noqa: BLE001 - a read-back that cannot run has not agreed
         logger.warning("the post-commit read-back could not run: %s", exc)
-        agreed = False
+        failure = Cause(
+            reason="internal-error",
+            message=f"the post-commit read-back could not run: {exc}",
+            remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
+            scope=Scope.RUN,
+            origin=("session",),
+            detail={"session_id": record.session_id, "error": str(exc)},
+        )
     finally:
         if handle is not None:
             rb_writer.close_db(handle)
@@ -1476,11 +1715,16 @@ def verify_commit(
     if agreed:
         return True
 
-    inner: Cause | None = None
+    # BOTH facts, in one chain, and neither displacing the other. A read-back
+    # that could not run and an application holding the database open are
+    # different facts with different fixes, and the second may well explain the
+    # first. The probe goes at the TAIL so a typed read-back failure keeps
+    # whatever chain it arrived with.
+    inner: Cause | None = failure
     try:
         rb_writer.assert_rekordbox_closed("verifying a commit")
     except CratekitError as exc:
-        inner = exc.cause
+        inner = _chained(inner, exc.cause)
 
     record.state = SessionState.COMMITTED_UNVERIFIED
     record.ended = output.timestamp(now)
@@ -1602,22 +1846,41 @@ def analysis_files_unmoved(roots: Iterable[Path | str]) -> Iterator[dict[str, tu
     The refusal is deliberate about its remedy: a grid that has already been
     rewritten cannot be un-rewritten from here, and the capture the session is
     running behind is the undo.
+
+    THE COMPARISON RUNS ON BOTH PATHS, and the failing one is the path that
+    matters more. A body that raised is a body the user will RETRY, so a grid
+    rewritten before an unrelated refusal would be re-rewritten on the next
+    attempt and never once reported. Putting the comparison after a bare yield
+    would skip it for exactly those runs: the guard would watch only the sessions
+    that had nothing to hide. Whatever the body raised is carried underneath this
+    refusal rather than replaced by it, because "the smoke test failed" and "a
+    beat grid moved" are two facts and only one of them is the inviolable rule.
     """
     watched = list(analysis_files_under(roots))
     before = fingerprint_analysis_files(watched)
-    yield before
-    after = fingerprint_analysis_files(analysis_files_under(roots))
-    drift = analysis_drift(before, after)
-    if not drift:
-        return
-    raise refuse(
-        "anlz-modified",
-        "rekordbox analysis files moved during this session, and the beat grid "
-        "lives in those files:\n  - " + "\n  - ".join(drift),
-        remedy=Remedy.RESTORE_FROM_SNAPSHOT,
-        scope=Scope.SESSION,
-        detail={"changed": list(drift), "watched": len(watched)},
-    )
+    raised: BaseException | None = None
+    try:
+        yield before
+    except BaseException as exc:
+        raised = exc
+        raise
+    finally:
+        drift = analysis_drift(
+            before, fingerprint_analysis_files(analysis_files_under(roots))
+        )
+        if drift:
+            refusal = refuse(
+                "anlz-modified",
+                "rekordbox analysis files moved during this session, and the beat "
+                "grid lives in those files:\n  - " + "\n  - ".join(drift),
+                remedy=Remedy.RESTORE_FROM_SNAPSHOT,
+                scope=Scope.SESSION,
+                detail={"changed": list(drift), "watched": len(watched)},
+                inner=raised.cause if isinstance(raised, CratekitError) else None,
+            )
+            if raised is not None:
+                raise refusal from raised
+            raise refusal
 
 
 __all__ = [
@@ -1635,6 +1898,7 @@ __all__ = [
     "ChangeSummary",
     "Gates",
     "Holder",
+    "Intent",
     "SessionComposition",
     "SessionRecord",
     "SessionState",
@@ -1667,6 +1931,7 @@ __all__ = [
     "new_session_id",
     "open_session",
     "pending_import",
+    "process_exists",
     "process_started",
     "read_acknowledgment",
     "read_lock_holder",
@@ -1674,6 +1939,8 @@ __all__ = [
     "record_acknowledgment",
     "records",
     "release_stale_lock",
+    "resolve_unverified_session",
+    "scan_log",
     "session_lock",
     "verify_commit",
     "write_record",

@@ -66,7 +66,23 @@ PENDING: dict[str, tuple[str, str]] = {
         "U32",
         "that a restore replaces exactly the derived coupled set, and that it "
         "keeps the source system's sidecar asymmetry: clear both live sidecars "
-        "first, write back the -wal, never the -shm",
+        "first, write back the -wal, never the -shm. THREE MORE OBLIGATIONS "
+        "arrive with U8's destructive-session gates and are registered here "
+        "because U32 owns the verb that spends them (P5). One: the verb holds "
+        "ONE session across the plan and the run, passing its own open guard in "
+        "as backup.plan_restore's and backup.run_restore's `gates`, because the "
+        "default shape takes the lock twice and a second process can commit in "
+        "the window between them, leaving the run to copy a snapshot over a "
+        "commit its plan was built before. Two: the verb RESOLVES the session "
+        "record after a successful restore, through "
+        "session.resolve_unverified_session, because the session log is declared "
+        "SURVIVES_ROLLBACK and the committed-unverified record therefore outlives "
+        "the restore that answers it. Three: bare-metal recovery, where the "
+        "library volume itself is gone, needs a path of its own; every gate U8 "
+        "publishes is library-scoped by KTD21, so the lock, the acknowledgment "
+        "and the log all sit on the disk that just died. Today that case refuses "
+        "honestly with mount-library-volume, and refusing honestly is not the "
+        "same as serving it",
     ),
     "cratekit.core.review": (
         "U11",

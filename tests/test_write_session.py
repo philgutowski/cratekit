@@ -38,6 +38,7 @@ import json
 import os
 import re
 import stat
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -45,7 +46,7 @@ import pytest
 
 from cratekit.core import config, preflight, rb_writer, session, snapshot
 from cratekit.core.cause import CratekitError, refuse
-from cratekit.core.exit_codes import ExitCode
+from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.tools import backup
 from tests._pending import requires
 from tests.test_config import valid_data
@@ -457,7 +458,11 @@ def test_no_blanket_affirmative_satisfies_the_acknowledgment(cfg):
     3. An ENVIRONMENT VARIABLE cannot satisfy something the code never reads, so
        the whole acknowledgment path is scanned for an environment read. That is
        structural on purpose: a behavioural test would have to guess the variable
-       name, and the one that mattered would be the name nobody guessed.
+       name, and the one that mattered would be the name nobody guessed. BOTH
+       HALVES of the path are scanned: the CONSULT, which a session runs, and
+       the MINT, which writes the record a session consults. Scanning only the
+       consult would leave a variable free to decide who the record says was
+       here, which is the same gate answered one step earlier.
     """
     from cratekit.core import profiles
 
@@ -485,6 +490,9 @@ def test_no_blanket_affirmative_satisfies_the_acknowledgment(cfg):
             session.assert_backup_acknowledged,
             session.read_acknowledgment,
             session.ack_path,
+            session.record_acknowledgment,
+            session._shown_ages,
+            session.Acknowledgment.to_json,
         )
         if "environ" in inspect.getsource(function) or "getenv" in inspect.getsource(function)
     ]
@@ -638,10 +646,18 @@ def test_a_read_back_that_disagrees_ends_committed_unverified_and_advances_nothi
     record.change = session.ChangeSummary((session.TreeChange("tree-one", created=4),))
     session.write_record(record, cfg)
 
-    closed: list[object] = []
+    disposed: list[str] = []
+
+    class Engine:
+        def dispose(self):
+            disposed.append("engine")
 
     class Handle:
-        pass
+        session = object()
+        engine = Engine()
+
+        def close(self):
+            disposed.append("session")
 
     with pytest.raises(CratekitError) as excinfo:
         session.verify_commit(
@@ -661,7 +677,11 @@ def test_a_read_back_that_disagrees_ends_committed_unverified_and_advances_nothi
     assert persisted.sources["two"] == str(session.SourceState.PENDING), (
         "a source was marked done behind a read-back that disagreed"
     )
-    assert closed == []
+    assert disposed == ["session", "engine"], (
+        "the read-back handle was not fully released on the DISAGREEING path, "
+        "which is the path a restore follows, so the restore would meet a file "
+        "this process still holds open"
+    )
 
 
 def test_the_read_back_releases_the_database_completely(cfg):
@@ -1012,3 +1032,531 @@ def test_the_destructive_half_of_a_restore_has_no_ungated_call_shape():
     parameters = inspect.signature(backup.run_restore).parameters
     assert parameters["cfg"].default is inspect.Parameter.empty
     assert parameters["cfg"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The latch has an exit, the log fails CLOSED, and the guards run on both paths
+#
+# Everything below was found by an adversarial read of this unit's own diff.
+# Each one is a property the tests above asserted the happy half of and left the
+# other half free to move.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _condemn(cfg):
+    """Leave this library with one unresolved ``committed-unverified`` session."""
+    record = session.open_session(cfg, workflow="a-destructive-workflow")
+    session.attach_capture(record, "/captures/one/master.db", cfg)
+    with pytest.raises(CratekitError):
+        session.verify_commit(record, cfg, expect=lambda _db: False, reopen=object)
+    return record
+
+
+def test_a_condemned_library_still_admits_the_recovery_its_remedy_names(cfg):
+    """The latch may not condemn its own way out.
+
+    ``verify_commit`` refuses with ``restore-from-snapshot``. A restore is itself
+    a destructive session, so a latch that refused every destructive session
+    would refuse the remedy it had just printed, and the library would have no
+    exit but a hand-edited file in its own log.
+    """
+    acknowledge(cfg)
+    condemned = _condemn(cfg)
+
+    with pytest.raises(CratekitError) as refused:
+        with session.assert_gates(cfg, workflow="a-destructive-workflow", **open_gates(cfg)):
+            pass
+    assert refused.value.cause.reason == "session-committed-unverified"
+
+    with session.assert_gates(
+        cfg,
+        workflow="a-recovery-workflow",
+        intent=session.Intent.RECOVERY,
+        **open_gates(cfg),
+    ) as held:
+        assert held.intent is session.Intent.RECOVERY
+    assert condemned.session_id
+
+
+def test_a_recovery_session_is_exempt_from_the_latch_and_from_nothing_else(cfg):
+    """One gate, not three. A recovery is still gated on all three.
+
+    Declaring the intent buys exactly one thing. If it bought the acknowledgment
+    too it would be the blanket affirmative R34 forbids, wearing a different
+    word.
+    """
+    _condemn(cfg)
+    recovery = {
+        "workflow": "a-recovery-workflow",
+        "intent": session.Intent.RECOVERY,
+    }
+
+    with pytest.raises(CratekitError) as no_ack:
+        with session.assert_gates(cfg, **recovery, **open_gates(cfg)):
+            pass
+    assert no_ack.value.cause.code is ExitCode.ACK_REQUIRED
+
+    acknowledge(cfg)
+    with pytest.raises(CratekitError) as wrong_disk:
+        with session.assert_gates(
+            cfg, **recovery, identity_provider=foreign_identity, mount_enumerator=lambda: ()
+        ):
+            pass
+    assert wrong_disk.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
+
+    contender = open(session.lock_path(cfg), "a+")
+    try:
+        rb_writer._acquire_exclusive(contender)
+        with pytest.raises(CratekitError) as busy:
+            with session.assert_gates(cfg, **recovery, **open_gates(cfg)):
+                pass
+    finally:
+        contender.close()
+    assert busy.value.cause.code is ExitCode.LIBRARY_BUSY
+
+
+def test_the_restore_is_the_recovery_and_reaches_its_own_refusals(volume_matches, cfg, tmp_path):
+    """End to end through the real module, which is where the deadlock was.
+
+    Before the intent existed, a condemned library refused ``plan_restore`` with
+    the very reason whose remedy is a restore.
+    """
+    acknowledge(cfg)
+    _condemn(cfg)
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg,
+            target=tmp_path,
+            confirmed=False,
+            runner=lambda command: backup.CommandResult(returncode=0),
+            process_lister=lambda: (),
+        )
+    assert excinfo.value.refusal is backup.Refusal.RESTORE_NOT_CONFIRMED
+
+
+def test_resolving_the_record_is_what_clears_the_latch_not_the_restore(cfg):
+    """The session log SURVIVES a rollback, deliberately, so the record outlives it.
+
+    A user who did exactly what the refusal asked would otherwise find the next
+    write still refused, with the remedy already spent.
+    """
+    acknowledge(cfg)
+    condemned = _condemn(cfg)
+
+    resolved = session.resolve_unverified_session(condemned.session_id, cfg)
+    assert resolved.state is session.SessionState.ABANDONED
+    assert resolved.terminal
+
+    with session.assert_gates(cfg, workflow="a-destructive-workflow", **open_gates(cfg)):
+        pass
+
+
+def test_resolving_refuses_any_state_but_the_one_it_is_for(cfg):
+    """Ending somebody else's OPEN session releases a capture a live run needs."""
+    record = session.open_session(cfg, workflow="a-destructive-workflow")
+    with pytest.raises(CratekitError) as excinfo:
+        session.resolve_unverified_session(record.session_id, cfg)
+    assert excinfo.value.cause.remediation.remedy is Remedy.REPORT_DEFECT
+    assert session.read_record(record.session_id, cfg).state is session.SessionState.OPEN
+
+
+def test_the_latch_refuses_a_record_this_build_cannot_read(cfg):
+    """The gate reads the log STRICTLY. A tolerant reader fails OPEN.
+
+    A schema bump on one file, or a state value a later build introduced, would
+    otherwise make an unresolved commit vanish from the scan and admit the next
+    destructive session against a library nobody can vouch for. Both shapes are
+    driven, because they fail through different exceptions.
+    """
+    acknowledge(cfg)
+    condemned = _condemn(cfg)
+    path = session.log_path(condemned.session_id, cfg)
+
+    for damage in ({"schema_version": 2}, {"state": "committed-unverified-partially"}):
+        written = json.loads(path.read_text())
+        written.update(damage)
+        path.write_text(json.dumps(written))
+
+        assert session.records(cfg) == (), "the tolerant reader should still skip it"
+        with pytest.raises(CratekitError) as excinfo:
+            with session.assert_gates(
+                cfg, workflow="a-destructive-workflow", **open_gates(cfg)
+            ):
+                raise AssertionError("the gates admitted a session against an unreadable log")
+        assert excinfo.value.cause.detail["unreadable"] == [str(path)], damage
+
+
+def test_the_session_log_filename_is_legal_on_a_library_volume(cfg):
+    """The store is LIBRARY scoped, so its filenames land on the user's own disk.
+
+    exFAT and FAT are ordinary choices for a library volume because that is what
+    a CDJ reads, and neither accepts a colon; on Windows a colon is the
+    alternate-data-stream separator. ``snapshot.new_stamp`` says exactly this in
+    the same package. The identifier keeps its colons, because addressability and
+    filename legality are different questions.
+    """
+    identifier = session.new_session_id()
+    assert ":" in identifier, "the identifier space is the run identifier space"
+
+    name = session.log_path(identifier, cfg).name
+    assert not (set(name) & set(r'<>:"/\|?* ')), name
+    assert name.isascii()
+
+    # And the identifier the record carries is the un-sanitised one, so a support
+    # conversation still refers to one identifier space.
+    record = session.open_session(cfg, workflow="a-destructive-workflow")
+    written = json.loads(session.log_path(record.session_id, cfg).read_text())
+    assert written["session_id"] == record.session_id
+    assert session.read_record(record.session_id, cfg).session_id == record.session_id
+
+
+def test_a_supplied_identifier_cannot_compose_a_path(cfg):
+    """``open_session`` accepts one, and a separator in it would escape the store.
+
+    A record outside the directory the pruning scan reads is a session that
+    protects no capture and that no gate can see.
+    """
+    record = session.open_session(
+        cfg, workflow="a-destructive-workflow", session_id="../../escaped"
+    )
+    written = session.log_path(record.session_id, cfg)
+    assert written.parent == session.log_dir(cfg)
+    assert written.exists()
+    assert session.records(cfg)[0].session_id == "../../escaped"
+
+
+def test_a_per_source_refusal_widens_the_scope_and_never_narrows_it(cfg):
+    """The blast radius is DECLARED, and a wrapper knows less than the thing it wraps.
+
+    ``commit_sources`` knows one source refused. It does not know how much the
+    underlying cause condemns. A drive ejected mid-run condemns the whole run,
+    and rewriting that to one source tells the aggregate at boundary 4 that the
+    sources beside it may advance their watermarks against a library that is no
+    longer mounted.
+    """
+    from cratekit.core.cause import Scope
+
+    def refusing_at(scope):
+        record = session.open_session(
+            cfg, workflow="a-destructive-workflow", sources=("one",)
+        )
+
+        def run_one(_source):
+            raise refuse("refused-by-policy", "not this time", scope=scope)
+
+        with pytest.raises(CratekitError) as excinfo:
+            session.commit_sources(record, ("one",), run_one, cfg=cfg)
+        return excinfo.value.cause
+
+    assert refusing_at(Scope.RUN).scope is Scope.RUN
+    assert refusing_at(Scope.SESSION).scope is Scope.SESSION
+    assert refusing_at(Scope.ITEM).scope is Scope.SOURCE, "the wrapper's own scope applies"
+    assert refusing_at(Scope.SOURCE).scope is Scope.SOURCE
+
+
+def test_a_read_back_that_could_not_run_says_so_rather_than_saying_it_disagreed(cfg):
+    """Three facts, one chain, and the recoverable one must not wear the other's face.
+
+    An ejected volume, a drifted pin and a database that will not open are all
+    recoverable. "The read-back disagreed" is not. Logging the first and
+    reporting the second sends a user to restore a snapshot because a drive is
+    unplugged.
+    """
+    record = session.open_session(cfg, workflow="a-destructive-workflow")
+
+    def cannot_open():
+        raise refuse("library-directory-missing", "the volume went away")
+
+    with pytest.raises(CratekitError) as excinfo:
+        session.verify_commit(record, cfg, expect=lambda _db: True, reopen=cannot_open)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "session-committed-unverified"
+    assert cause.inner is not None
+    assert cause.inner.reason == "library-directory-missing", (
+        "the typed read-back failure was swallowed into a log line"
+    )
+    assert session.read_record(record.session_id, cfg).state is (
+        session.SessionState.COMMITTED_UNVERIFIED
+    ), "a commit landed and nothing confirmed it, so the session is still unverified"
+
+
+def test_both_the_read_back_failure_and_a_live_rekordbox_travel_together(cfg, monkeypatch):
+    """Neither displaces the other; the general fact goes at the tail."""
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
+    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
+    record = session.open_session(cfg, workflow="a-destructive-workflow")
+
+    def cannot_open():
+        raise refuse("database-open-failed", "held by something")
+
+    with pytest.raises(CratekitError) as excinfo:
+        session.verify_commit(record, cfg, expect=lambda _db: True, reopen=cannot_open)
+
+    chain = []
+    cause = excinfo.value.cause
+    while cause is not None:
+        chain.append(cause.reason)
+        cause = cause.inner
+    assert chain == [
+        "session-committed-unverified",
+        "database-open-failed",
+        "rekordbox-running",
+    ]
+
+
+def test_an_unreadable_backup_fact_file_refuses_the_mint(cfg):
+    """"Could not read" must never be recorded as "nothing to show" (KTD18).
+
+    An acknowledgment whose ``shown`` list is empty is byte for byte what a
+    library declaring no portions at all would write, and the remedies for those
+    two are unrelated. An acknowledgment with no age is a click, not a decision.
+    """
+    from cratekit.core import backup_facts
+
+    damaged = backup_facts.path_for(cfg)
+    damaged.parent.mkdir(parents=True, exist_ok=True)
+    damaged.write_text("{ this is not json")
+    with pytest.raises(CratekitError) as excinfo:
+        acknowledge(cfg)
+    cause = excinfo.value.cause
+    assert cause.reason == "backup-facts-unreadable"
+    assert cause.code is ExitCode.ACK_REQUIRED
+    assert cause.remediation.remedy is Remedy.REPAIR_BACKUP_FACTS
+    assert session.read_acknowledgment(cfg) is None, "a refused mint wrote a record"
+
+    # And the remedy works: an ABSENT file is normal and still mints.
+    damaged.unlink()
+    assert acknowledge(cfg).shown
+
+
+def test_the_analysis_watch_runs_even_when_the_session_body_refuses(cfg, tmp_path):
+    """The failing path is the one that matters MORE, not the one to skip.
+
+    A session that refused is a session the user retries, so a grid rewritten
+    before an unrelated refusal would be rewritten again on the next attempt and
+    never once reported. The source scan cannot see this write by construction,
+    which is the whole reason the runtime half exists.
+    """
+    written = _analysis_tree(tmp_path / "library")
+    victim = written[0]
+
+    with pytest.raises(CratekitError) as excinfo:
+        with session.analysis_files_unmoved([tmp_path / "library"]):
+            victim.write_bytes(b"a rewritten grid")
+            moved = victim.stat()
+            os.utime(victim, ns=(moved.st_atime_ns, moved.st_mtime_ns + 10**9))
+            raise refuse("refused-by-policy", "the smoke test failed")
+
+    cause = excinfo.value.cause
+    assert cause.reason == "anlz-modified", (
+        "the body's refusal hid a moved beat grid, which is the one rule the "
+        "project calls inviolable"
+    )
+    assert cause.inner is not None and cause.inner.reason == "refused-by-policy", (
+        "the body's own refusal was replaced rather than carried"
+    )
+
+
+def test_a_body_that_refuses_with_no_drift_keeps_its_own_refusal(cfg, tmp_path):
+    """P7. The watch must not rewrite a refusal it has nothing to say about."""
+    _analysis_tree(tmp_path / "library")
+    with pytest.raises(CratekitError) as excinfo:
+        with session.analysis_files_unmoved([tmp_path / "library"]):
+            raise refuse("refused-by-policy", "the smoke test failed")
+    assert excinfo.value.cause.reason == "refused-by-policy"
+
+
+def test_an_appearing_analysis_file_refuses_too(cfg, tmp_path):
+    """rekordbox analysing while a session runs is what the process guard forbids.
+
+    All three kinds of drift count, and this is the third.
+    """
+    _analysis_tree(tmp_path / "library")
+    fresh = tmp_path / "library" / "PIONEER" / "USBANLZ" / "one" / "ANLZ0002.DAT"
+    with pytest.raises(CratekitError) as excinfo:
+        with session.analysis_files_unmoved([tmp_path / "library"]):
+            fresh.write_bytes(b"analysed mid session")
+    assert excinfo.value.cause.detail["changed"] == [f"{fresh} appeared"]
+
+
+def test_a_rewrite_inside_one_tick_of_the_clock_is_caught_by_the_size(cfg, tmp_path):
+    """The reason the fingerprint carries two signals rather than one.
+
+    A filesystem's timestamp granularity is not infinite, and a grid rewrite
+    almost always changes the length of the tag it lives in. The modification
+    time is put back deliberately so only the size can carry the assertion.
+    """
+    written = _analysis_tree(tmp_path / "library")
+    victim = written[3]
+    original = victim.stat()
+
+    with pytest.raises(CratekitError) as excinfo:
+        with session.analysis_files_unmoved([tmp_path / "library"]):
+            victim.write_bytes(b"a rewritten grid, longer than what was there")
+            os.utime(victim, ns=(original.st_atime_ns, original.st_mtime_ns))
+    assert excinfo.value.cause.reason == "anlz-modified"
+    assert victim.stat().st_mtime_ns == original.st_mtime_ns, "the mtime moved after all"
+
+
+def test_a_live_holder_this_platform_will_not_describe_is_assumed_alive(cfg, monkeypatch):
+    """The third documented case, which the code did not implement.
+
+    A shared machine that refuses to report another account's process start time
+    would otherwise make every live holder read as dead, and the remedy printed
+    is "release the stale lock" against a session that is writing right now.
+    """
+    here = session.current_holder()
+    monkeypatch.setattr(session, "process_started", lambda _pid: session.UNKNOWN_IDENTITY)
+    assert session.holder_alive(here) is True
+
+    with pytest.raises(CratekitError) as excinfo:
+        session.release_stale_lock(cfg, path=_lock_recording(cfg, here))
+    assert excinfo.value.cause.remediation.remedy is Remedy.WAIT_FOR_HOLDER
+
+
+def test_a_holder_whose_process_is_gone_is_still_judged_dead(cfg):
+    """The other side of the same change, so failing towards alive stays bounded.
+
+    "This platform will not say" and "there is no such process" are different
+    answers, and only the second may clear another run's claim on the library.
+    Both probes are the real ones here: a genuinely finished process is used
+    rather than a stubbed answer, because a stub would prove only that the stub
+    was consulted.
+    """
+    import subprocess
+
+    finished = subprocess.Popen([sys.executable, "-c", "pass"])
+    finished.wait()
+    assert session.process_exists(finished.pid) is False
+
+    here = session.current_holder()
+    gone = session.Holder(
+        host=here.host, boot=here.boot, pid=finished.pid, started="1.000"
+    )
+    assert session.holder_alive(gone) is False
+
+    cleared = session.release_stale_lock(cfg, path=_lock_recording(cfg, gone))
+    assert cleared == gone
+    assert session.read_lock_holder(session.lock_path(cfg)) is None
+
+
+def _lock_recording(cfg, holder):
+    """Write a lock file naming ``holder``, and return its path."""
+    path = session.lock_path(cfg)
+    config.atomic_write_bytes(
+        json.dumps({"holder": holder.to_json()}).encode("utf-8"), path
+    )
+    return path
+
+
+def test_the_recorded_actor_is_the_derived_one_and_not_a_name_from_anywhere_else(
+    cfg, monkeypatch
+):
+    """R34's sharpest clause, asserted as BEHAVIOUR rather than as a signature.
+
+    A signature scan sees a parameter. It does not see an environment read, and
+    an agent driving the command line would use an environment read.
+    """
+    monkeypatch.setattr(session, "derive_actor", lambda: "the-derived-actor")
+    recorded = acknowledge(cfg)
+    assert recorded.actor == "the-derived-actor"
+    assert json.loads(session.ack_path(cfg).read_text())["actor"] == "the-derived-actor"
+
+
+def test_the_terminal_probe_the_mint_uses_by_default_is_the_real_one(cfg, monkeypatch):
+    """The seam is for the battery. The DEFAULT is what ships.
+
+    Every other test hands ``terminal=`` a lambda, so all of them together prove
+    only that the parameter is honoured. This pins the binding underneath it.
+    """
+    asked: list[bool] = []
+
+    def probe():
+        asked.append(True)
+        return False
+
+    monkeypatch.setattr(session, "has_controlling_terminal", probe)
+    with pytest.raises(CratekitError) as excinfo:
+        session.record_acknowledgment(cfg)
+    assert asked, "the mint did not consult the real probe"
+    assert excinfo.value.cause.reason == "backup-acknowledgment-no-terminal"
+
+
+def test_the_real_terminal_probe_answers_no_when_there_is_no_terminal(monkeypatch):
+    """And the probe itself, driven, so it cannot become ``return True``."""
+    monkeypatch.setattr(os, "ctermid", lambda: str(Path("/nonexistent") / "tty"))
+    assert session.has_controlling_terminal() is False
+
+
+def test_the_volume_is_judged_before_a_restore_resolves_its_target(cfg, tmp_path):
+    """``plan_restore``'s headline ordering claim, driven in the direction it claims.
+
+    With the wrong disk at the configured root, the refusal has to be the
+    volume's. Every other refusal in that body is reached by resolving a path,
+    and resolving a path against the wrong volume is already the damage.
+    """
+    with pytest.raises(CratekitError) as excinfo:
+        backup.plan_restore(
+            cfg,
+            target=tmp_path / "a-target-that-does-not-exist",
+            confirmed=True,
+            snapshot="2026-08-01T000000Z",
+            runner=lambda command: (_ for _ in ()).throw(AssertionError("the remote was read")),
+            process_lister=lambda: (),
+            gates=lambda: session.assert_gates(
+                cfg,
+                workflow=backup.RESTORE_WORKFLOW,
+                intent=session.Intent.RECOVERY,
+                identity_provider=foreign_identity,
+                mount_enumerator=lambda: (),
+            ),
+        )
+    cause = excinfo.value.cause
+    assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
+    assert cause.reason == "library-volume-mismatch", (
+        "a restore reached its own target check before the volume gate"
+    )
+
+
+def test_a_gate_refused_restore_deletes_nothing_and_transfers_nothing(
+    volume_matches, cfg, tmp_path
+):
+    """A refusal is asserted everywhere. ZERO WRITES is the half that gets skipped.
+
+    The real destructive half is driven with real gates, a ``clears`` tuple
+    naming files that exist, and a recorder in place of the transfer. Moving the
+    guard after the clearing loop leaves every other test in this file green and
+    leaves a user's database without the write-ahead log it needs.
+    """
+    target = tmp_path / "scratch"
+    database_target = backup.database_target_for(cfg, target)
+    database_target.parent.mkdir(parents=True, exist_ok=True)
+    sidecars = tuple(
+        database_target.with_name(database_target.name + sidecar.suffix)
+        for sidecar in config.state_file("rekordbox_db").sidecars
+    )
+    for sidecar in sidecars:
+        sidecar.write_bytes(b"the live write-ahead log")
+
+    invoked: list[backup.Command] = []
+    plan = backup.RestorePlan(
+        target=target,
+        database_target=database_target,
+        snapshot="2026-08-01T000000Z",
+        clears=sidecars,
+        commands=(backup.Command(label=backup.RESTORE_DATABASE, argv=("rclone", "copy")),),
+    )
+
+    def recorder(command):
+        invoked.append(command)
+        return backup.CommandResult(returncode=0)
+
+    with pytest.raises(CratekitError) as excinfo:
+        backup.run_restore(plan, cfg, runner=recorder, dry_run=False)
+
+    assert excinfo.value.cause.code is ExitCode.ACK_REQUIRED
+    assert invoked == [], "a refused restore ran a transfer"
+    for sidecar in sidecars:
+        assert sidecar.exists(), f"a refused restore unlinked {sidecar.name}"
+        assert sidecar.read_bytes() == b"the live write-ahead log"

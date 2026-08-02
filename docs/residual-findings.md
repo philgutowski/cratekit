@@ -264,8 +264,37 @@ still skips is the sidecar CLEARING, which is unchanged and is a different
 question: clearing is itself destructive, so a rehearsal that cleared and then
 transferred nothing would do the damage and skip the repair.
 
-**Still open:** nothing for this finding. The verb that calls either function
-lands with U32, which owns `restore.list` and `restore.run`.
+**Still open, and all three belong to the verb rather than to the wiring.** An
+adversarial read of this commit found them; each is registered in
+`tests/_pending.py` against `cratekit.core.restore` so it is a countdown rather
+than a note.
+
+1. **The plan and the run each take the lock and give it back.** With `gates`
+   left at its default, `plan_restore` enters the guard, builds the plan, and
+   releases on the way out; `run_restore` then enters it again. A second process
+   can pass the same gates and commit in that window, and the run then copies a
+   snapshot over a commit its plan was built before. The `GateGuard` seam exists
+   so a caller can hold ONE session across both halves, and the verb must: a plan
+   is a value and cannot own a live context manager, so the composition is the
+   caller's to make.
+2. **The record outlives the restore that answers it.** The session log is
+   declared `SURVIVES_ROLLBACK`, deliberately, because rolling it back would
+   erase the record of which sessions are restorable. So a
+   `committed-unverified` record is still there after the restore that resolves
+   it, and the verb has to call `session.resolve_unverified_session` on success.
+   The function landed with U8; naming it in the verb's success path is U32's.
+3. **Bare-metal recovery, where the library volume itself is gone, has no path.**
+   Every gate is library-scoped by KTD21, on purpose: the lock, the
+   acknowledgment and the session log all sit beside the library so a second
+   machine contends with the first instead of holding an invisible lock of its
+   own. The cost is that all three are unreachable when that disk is the thing
+   that died, so the restore refuses with `library-volume-unmounted` and tells
+   the user to mount a drive that no longer exists. Moving the volume assertion
+   onto the restore TARGET does not fix this and should not be attempted: the
+   refusal would simply move to the acknowledgment, which lives on the same dead
+   volume, and the live case would lose a real check. What this needs is a
+   recovery path that does not read its gates from the library it is rebuilding,
+   which is a decision U32 owns.
 
 ---
 

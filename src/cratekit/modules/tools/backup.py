@@ -199,10 +199,19 @@ def _restore_gates(cfg: config.Config, gates: GateGuard | None) -> AbstractConte
     can afford, and the volume identity assertion stops a restore landing on a
     disk that is not the library it was recorded for. None of those is a database
     write, which is exactly why binding them to writes would have missed this.
+
+    IT DECLARES ITSELF A RECOVERY, and that declaration buys exactly one thing:
+    a library latched by a session that ended ``committed-unverified`` does not
+    refuse this. It cannot, because a restore is what that latch's own refusal
+    names as the remedy, and a latch that condemned its remedy would leave a
+    library with no exit but a hand-edited file. All three gates above still
+    apply here, unchanged.
     """
     if gates is not None:
         return gates()
-    return session.assert_gates(cfg, workflow=RESTORE_WORKFLOW)
+    return session.assert_gates(
+        cfg, workflow=RESTORE_WORKFLOW, intent=session.Intent.RECOVERY
+    )
 
 
 @dataclass(frozen=True, slots=True)

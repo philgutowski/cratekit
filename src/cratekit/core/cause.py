@@ -46,12 +46,32 @@ class Scope(StrEnum):
     Read by the aggregate at boundary 4 to decide whether a watermark may
     advance. It is DECLARED, never derived from the exit code: one unavailable
     track and an expired credential can share a code and must not share a scope.
+
+    THE DECLARATION ORDER IS THE BLAST RADIUS, narrowest first, and
+    :func:`widest_scope` is the only thing that may compare two of them. A
+    ``StrEnum`` compares as TEXT, and the text order is wrong: ``"run"`` sorts
+    before ``"session"`` while condemning strictly more, so a ``max()`` over the
+    members would silently pick the narrower of the two.
     """
 
     ITEM = "item"
     SOURCE = "source"
     SESSION = "session"
     RUN = "run"
+
+
+def widest_scope(*scopes: Scope) -> Scope:
+    """The widest of the given scopes, by the declaration order above.
+
+    A WRAPPER MAY WIDEN WHAT IT WRAPS AND MAY NEVER NARROW IT. A layer that
+    re-raises somebody else's cause under its own scope is asserting a blast
+    radius it did not observe: if the inner cause condemned the whole run,
+    reporting the wrapper's own narrower scope tells the aggregate that
+    everything else may proceed, and the watermark it then advances is the
+    damage.
+    """
+    order = list(Scope)
+    return max(scopes, key=order.index)
 
 
 class Outcome(StrEnum):
@@ -223,6 +243,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # slug, because "record one" and "you are not the one who can" are
         # different sentences to the same user.
         "backup-acknowledgment-no-terminal": ExitCode.ACK_REQUIRED,
+        # U8. The acknowledgment cannot be minted because the ages it must SHOW
+        # cannot be read. Same code again, because the answer is still "this gate
+        # is not satisfied"; a third slug, because the remedy is a different act
+        # entirely. ``backup_facts`` argues at length that an unreadable fact
+        # file must never collapse into "nothing recorded", and an acknowledgment
+        # minted against one would record a person as having been shown a clean
+        # sheet they were never shown.
+        "backup-facts-unreadable": ExitCode.ACK_REQUIRED,
         # ── Upstream ────────────────────────────────────────────────────────
         "auth-failed": ExitCode.UPSTREAM_AUTH,
         "adapter-broken": ExitCode.UPSTREAM_UNAVAILABLE,
@@ -415,4 +443,5 @@ __all__ = [
     "Scope",
     "UnknownReason",
     "refuse",
+    "widest_scope",
 ]
