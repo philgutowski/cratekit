@@ -42,7 +42,7 @@ EXPECTED_PENDING = frozenset(
         "cratekit.deletion.cli",  # U24, declines and tombstones through the decision stores
         "cratekit.cli.doctor",  # U27, the health check
         "path:skills",  # U28, the shipped operator skills
-        "cratekit.cli.exit_codes",  # U5, the reserved exit-code vocabulary
+        "cratekit.cli.exit_codes",  # U38, the reserved exit-code vocabulary
     }
 )
 

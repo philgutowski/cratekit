@@ -96,7 +96,7 @@ PENDING: dict[str, tuple[str, str]] = {
         "the shipped operator skills the skills lint runs over",
     ),
     "cratekit.cli.exit_codes": (
-        "U5",
+        "U38",
         "that every structured refusal cause the standalone utilities raise has "
         "a reserved exit code and a remediation, which is the S4 obligation "
         "applied to this unit: a refusal with no reserved code collapses to a "
