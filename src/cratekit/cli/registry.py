@@ -321,6 +321,26 @@ DEFERRED_MODULES: frozenset[str] = frozenset({"web", "desktop"})
 #: obligation itself is registered there, against U20 (P5).
 ROUTING_CLI_UNIT = "U20"
 
+#: The unit that lands ``cratekit.write.converge_cli``, named ONCE so both
+#: entries that carry it move together.
+#:
+#: IT WAS U36 AND IT IS NOW U20, by the same reasoning and for the same reason
+#: the constant above records. U36 built the convergence ENGINE:
+#: ``cratekit.core.convergence`` holds the record and the two assertions, and
+#: ``cratekit.write.tree_rebuild`` holds the derivation, the check and the
+#: rebuild. It could not land the command-line surface. Conformance 3 requires a
+#: landed gated verb to exit OK once its gate is answered, and ``rebuild``
+#: writes ``db_tree`` and is destructive, which cannot exit OK on a machine with
+#: no rekordbox database at all. U20 flips trees to database-native, so it is the
+#: first unit that must ship a destructive database surface anyway, and these two
+#: ride with it exactly as the four route verbs already do.
+#:
+#: THE MARKER IS NOT THE RECORD. ``scripts/board.py`` reads ``tests/_pending.py``
+#: and nothing else, so this constant is a convenience for the reader and the
+#: obligation itself is registered there, against U20 (P5). Leaving the marker
+#: pointing at a unit that has closed would leave the obligation owned by nobody.
+CONVERGE_CLI_UNIT = "U20"
+
 
 # ---------------------------------------------------------------------------
 # The verbs
@@ -534,7 +554,7 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
         doctor_checks=("library.mounted",),
-        planned_in="U36",
+        planned_in=CONVERGE_CLI_UNIT,
     ),
     Entry(
         name="rebuild",
@@ -551,7 +571,7 @@ ENTRIES: tuple[Entry, ...] = (
         destructive=True,
         doctor_checks=("library.mounted", "library.identity", "rekordbox.closed"),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
-        planned_in="U36",
+        planned_in=CONVERGE_CLI_UNIT,
     ),
     # ── Jobs ────────────────────────────────────────────────────────────────
     # U10 landed these against ``cratekit.cli.jobs`` rather than the

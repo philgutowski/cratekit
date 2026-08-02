@@ -487,6 +487,17 @@ all queue behind it. Recorded here rather than acted on, because relaxing a
 conformance rule that four waves have honored is a deliberate act and not a
 side effect of landing a CLI.
 
+**U36 hit the same wall and was resolved the same way, 2026-08-02.** `converge`
+and `rebuild` were declared against `cratekit.write.converge_cli` with
+`planned_in="U36"`, and U36's brief names no CLI module it could have landed:
+`rebuild` writes `db_tree` and is destructive, so it is squarely behind the wall
+above. U36 landed the whole engine instead, `cratekit.core.convergence` and
+`cratekit.write.tree_rebuild`, and re-pointed both markers through a
+`CONVERGE_CLI_UNIT` constant naming **U20**, with the obligation registered in
+`tests/_pending.py` where the board audit reads it. Two verbs is now six waiting
+on the same wall, which is the count that decides how urgent the close condition
+below is.
+
 **Closes when:** conformance 3 can be satisfied against a disposable database
 fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather
 than skips, so the battery runs either way and a supplied fixture strengthens it.

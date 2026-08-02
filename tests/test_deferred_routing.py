@@ -553,6 +553,7 @@ def _registry(mode: tree_registry.Mode, *, root_id: str | None = ADOPTED_ROOT):
                     mode=mode,
                     cutover_on=date(2026, 8, 1),
                     root_id=root_id,
+                    source=tree_registry.DerivationSource.TAXONOMY,
                 ),
             )
         )

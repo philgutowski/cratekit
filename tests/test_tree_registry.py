@@ -118,6 +118,11 @@ NEW_PLAYLIST = "Batch 001 & 002"
 CUTOVER_ON = date(2026, 8, 1)
 ADOPTED_ROOT = "root-row-7788"
 
+#: The derivation source every cutover in this file records. U36 made it a
+#: required part of a native record, so a fixture that omitted it would be
+#: exercising a shape the registry now refuses to construct.
+DERIVATION = tree_registry.DerivationSource.TAXONOMY
+
 #: A track key the fixture sub-playlist already holds. Present so the REMOVAL
 #: emitter has something to remove: driven against an empty self-closing sub it
 #: returns before it reaches its scope, and every guard assertion about it then
@@ -164,6 +169,7 @@ def _registry(mode: tree_registry.Mode | None) -> tree_registry.Registry:
                     mode=mode,
                     cutover_on=CUTOVER_ON,
                     root_id=ADOPTED_ROOT,
+                    source=tree_registry.DerivationSource.TAXONOMY,
                 ),
             )
         )
@@ -200,7 +206,9 @@ def test_a_record_carries_the_mode_the_date_and_the_adopted_root(cfg):
     The date places the flip against the snapshots either side of it, and the
     adopted root is what a later write compares the live library against.
     """
-    tree_registry.record_cutover(cfg, TREE_ID, root_id=ADOPTED_ROOT, on=CUTOVER_ON)
+    tree_registry.record_cutover(
+        cfg, TREE_ID, root_id=ADOPTED_ROOT, on=CUTOVER_ON, source=DERIVATION
+    )
     record = tree_registry.read(cfg).record(TREE_ID)
     assert record is not None
     assert record.mode is tree_registry.Mode.DATABASE
@@ -227,8 +235,12 @@ def test_a_native_record_without_an_adopted_root_cannot_be_constructed():
 
 def test_a_cutover_leaves_every_other_tree_alone(cfg):
     """Trees cut over one at a time, so a whole-file overwrite would erase the rest."""
-    tree_registry.record_cutover(cfg, "first_tree", root_id="root-1", on=CUTOVER_ON)
-    tree_registry.record_cutover(cfg, "second_tree", root_id="root-2", on=CUTOVER_ON)
+    tree_registry.record_cutover(
+        cfg, "first_tree", root_id="root-1", on=CUTOVER_ON, source=DERIVATION
+    )
+    tree_registry.record_cutover(
+        cfg, "second_tree", root_id="root-2", on=CUTOVER_ON, source=DERIVATION
+    )
     after = tree_registry.read(cfg)
     assert after.tree_ids() == ("first_tree", "second_tree")
     assert after.is_database_native("first_tree")
@@ -242,7 +254,9 @@ def test_the_persisted_record_is_keyed_on_the_identifier_not_the_display_name(cf
     on its old name is orphaned, and an orphaned record reads as "still on the
     bridge", which sends the next write to the wrong medium.
     """
-    tree_registry.record_cutover(cfg, TREE_ID, root_id=ADOPTED_ROOT, on=CUTOVER_ON)
+    tree_registry.record_cutover(
+        cfg, TREE_ID, root_id=ADOPTED_ROOT, on=CUTOVER_ON, source=DERIVATION
+    )
     raw = tree_registry.path_for(cfg).read_text(encoding="utf-8")
     assert TREE_ID in raw
     assert TREE_DISPLAY not in raw, "a display name reached the persisted record"

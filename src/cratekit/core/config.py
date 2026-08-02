@@ -1093,6 +1093,30 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="tree_registry_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="tree_registry.lock",
+        why=(
+            "Recording a cutover reads the registry, adds one tree's record, and "
+            "writes the whole file back, because trees flip one at a time and a "
+            "whole-file overwrite would erase every other tree's record. That "
+            "cycle is not made atomic by the atomic rename at the end of it: two "
+            "processes that both read, both add and both rename leave one flip "
+            "on the floor while the call that lost it returns a registry "
+            "reporting success, and a tree whose cutover was lost then takes its "
+            "next write through the XML bridge, which under U9's A2 verdict "
+            "replaces the database-native tree on import. Library-scoped because "
+            "the registry is: a lock under the installation root is invisible to "
+            "a second machine writing the same library."
+            " NEVER_RESTORED for the inode reason every lock here shares, and it "
+            "matters more than usual because the registry is COUPLED: a restore "
+            "replaces the directory holding it, so a lock beside it would have "
+            "its inode swapped under every process holding it."
+        ),
+    ),
+    StateFile(
         key="routing_intents",
         snapshot=SnapshotRole.COUPLED,
         root=StateRoot.LIBRARY,
@@ -1134,6 +1158,53 @@ STATE_FILES: tuple[StateFile, ...] = (
             "restore that replaced the directory holding this file would swap "
             "the inode a live lock is held on, and every process holding the old "
             "one would keep believing it had exclusive access."
+        ),
+    ),
+    StateFile(
+        key="tree_convergence",
+        snapshot=SnapshotRole.COUPLED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="tree_convergence.json",
+        why=(
+            "R39. Three facts about THIS library's database-native trees: the "
+            "fingerprint of the database as Cratekit last left it, which tree is "
+            "unconverged and why, and the playlist row identifiers a previous "
+            "rebuild wrote each declared destination into. All three name rows in "
+            "one person's database, so a second installation inheriting them would "
+            "compare its own library against another one's counts and rebuild into "
+            "row identifiers it does not have. New state: the source system has no "
+            "convergence concept at all, which is the gap R39 names."
+            " COUPLED, and every one of the three fails differently if it is not. "
+            "A fingerprint that survived a rollback would report the restore it "
+            "was rolled back by as an out-of-band one, so Cratekit's own restore "
+            "would mark every native tree unconverged. A node map that survived "
+            "would point a rebuild at playlist rows the restore removed, and the "
+            "rebuild would create them again beside the real ones. An unconverged "
+            "flag that survived would outlive the damage it describes, exactly as "
+            "the committed-unverified session record did before U8 gave it a way "
+            "to be resolved."
+        ),
+    ),
+    StateFile(
+        key="tree_convergence_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="tree_convergence.lock",
+        why=(
+            "The document beside it is read, modified and written by the rebuild, "
+            "by the convergence check, and by every governed write that records a "
+            "fingerprint at its close, which is several processes against one "
+            "file. Two of those interleaving discards an unconverged flag that was "
+            "fully recorded, and the next sync then runs over a tree nothing "
+            "believes is damaged. Library-scoped because the document is: a lock "
+            "under the installation root is invisible to a second machine writing "
+            "the same library."
+            " NEVER_RESTORED for the inode reason every lock here shares, and it "
+            "matters more than usual because the document it guards is COUPLED: a "
+            "restore replaces the directory holding it, so a lock beside it would "
+            "have its inode swapped under every process holding it."
         ),
     ),
     StateFile(

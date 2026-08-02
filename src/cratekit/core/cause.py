@@ -368,6 +368,29 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # what this is: the tree the library holds and the tree the taxonomy
         # declares have come apart, and only a person can say which is right.
         "routing-destination-renamed": ExitCode.UNCONVERGED,
+        # U36. The record of which governed trees are converged exists and
+        # cannot be understood. LIBRARY_UNREADABLE rather than UNCONVERGED, and
+        # the difference is the point: UNCONVERGED means a specific tree is known
+        # to be short and names the rebuild that repairs it, while this means
+        # nothing at all can be said about any tree, which no rebuild answers.
+        # It shares the code and the doctor remedy with the other state
+        # documents that can be corrupt, and keeps its own slug because the file
+        # to repair is a different file.
+        "tree-convergence-unusable": ExitCode.LIBRARY_UNREADABLE,
+        # U36. This library's taxonomy declares part of a governed tree that the
+        # rebuild has no way to derive, so a rebuild would silently produce a
+        # tree missing that whole dimension and then report it converged. A
+        # LIBRARY_PREREQUISITE for the same reason the undeclared catalog tree is
+        # one: the library declares a structure and the missing half is a fact
+        # about the declaration rather than about anything the run did.
+        "rebuild-derivation-incomplete": ExitCode.LIBRARY_PREREQUISITE,
+        # U36. The three numbers that say WHICH database this is could not be
+        # read, so whether it is the one Cratekit last wrote to cannot be
+        # answered either way. LIBRARY_UNREADABLE with the other "the database is
+        # there and cannot be trusted to read as expected" slugs, and its own
+        # slug because the file to look at is the database rather than one of the
+        # state documents.
+        "library-fingerprint-unreadable": ExitCode.LIBRARY_UNREADABLE,
     }
 )
 

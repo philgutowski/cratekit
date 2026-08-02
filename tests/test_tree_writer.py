@@ -95,6 +95,7 @@ def _registry(mode: tree_registry.Mode, *, root_id: str | None = ADOPTED_ROOT):
                     mode=mode,
                     cutover_on=date(2026, 8, 1),
                     root_id=root_id,
+                    source=tree_registry.DerivationSource.TAXONOMY,
                 ),
             )
         )
@@ -232,6 +233,7 @@ def test_the_default_tree_is_governed_so_a_cutover_refuses_the_sweep():
                 mode=tree_registry.Mode.DATABASE,
                 cutover_on=date(2026, 8, 1),
                 root_id=ADOPTED_ROOT,
+                source=tree_registry.DerivationSource.TAXONOMY,
             ),
         )
     )

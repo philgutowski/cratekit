@@ -79,7 +79,13 @@ _LAYER_RULES: tuple[tuple[str, str], ...] = (
         "foundation",
     ),
     (r"^cratekit\.core\.(taxonomy|routing|match|identity|tombstone)$", "domain"),
-    (r"^cratekit\.core\.tree_registry$", "write"),
+    #     * the convergence record joins it for the same reason and by the same
+    #       argument the registry's own docstring makes: it is a WRITE concern
+    #       living under core/ so that the assertion every database tree writer
+    #       is required to make ships below the writers that make it. A check
+    #       that lived with each writer would be several implementations of one
+    #       rule, which is how they come to disagree.
+    (r"^cratekit\.core\.(tree_registry|convergence)$", "write"),
     (r"^cratekit\.core\.", "infrastructure"),
     (r"^cratekit\.write\.", "write"),
     (r"^cratekit\.cli\.", "cli"),
@@ -432,8 +438,10 @@ def test_layer_ladder_is_the_ktd23_order():
         ("cratekit.core.rb_writer", "infrastructure"),
         ("cratekit.core.session", "infrastructure"),
         ("cratekit.core.tree_registry", "write"),
+        ("cratekit.core.convergence", "write"),
         ("cratekit.write.rbxml", "write"),
         ("cratekit.write.trees", "write"),
+        ("cratekit.write.tree_rebuild", "write"),
         ("cratekit.acquire.download", "modules"),
         ("cratekit.intake.collection_xml", "modules"),
         ("cratekit.cli.sync", "cli"),

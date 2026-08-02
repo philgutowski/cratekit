@@ -62,6 +62,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from cratekit.core import (
     cause,
     config,
+    convergence,
     locations,
     rb_writer,
     session,
@@ -732,6 +733,7 @@ def write_tree_membership(
     analysis_roots: Iterable[Path | str],
     prefix_map: Sequence[locations.PrefixRule] | None = None,
     workflow: str = MEMBERSHIP_WORKFLOW,
+    purpose: convergence.Purpose = convergence.Purpose.ROUTINE,
 ) -> MembershipReport:
     """Write membership for a database-native tree, for rows that already exist.
 
@@ -770,6 +772,13 @@ def write_tree_membership(
     hole U32 already registered: a caller supplying its own factory can supply
     one that names no analysis roots, and the argument above would be undone by
     the parameter meant to make it flexible.
+
+    ``purpose`` IS A DECLARATION AND NOT A BYPASS. Its default is the restrictive
+    answer, and the one thing declaring a rebuild changes is the pair of
+    convergence latches whose own remedy is a rebuild. See
+    :class:`cratekit.core.convergence.Purpose`. Everything above stays: the
+    medium check, the anchored root, all three session gates, the verified
+    capture, the analysis watch, and the guarded commit.
     """
     watched = [Path(root) for root in analysis_roots]
     if not watched:
@@ -780,6 +789,13 @@ def write_tree_membership(
             "touch (R17's fifth surface, runtime half)"
         )
     root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
+    # THE CONVERGENCE GATE, and it is here rather than in a command-line module
+    # for the reason the medium check above is: this is the one call every
+    # database membership write goes through, so a guard placed here cannot be
+    # bypassed by a caller that forgot it. It runs BEFORE the session opens,
+    # takes no lock and writes nothing on the passing path, and refuses a tree a
+    # restore left short rather than quietly adding to it and reporting clean.
+    convergence.assert_tree_writable(cfg, db, tree_id, registry, purpose=purpose)
     resolved_map = (
         [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
         if prefix_map is None
@@ -849,6 +865,16 @@ def write_tree_membership(
             # cleanup, never a place that decides an error is survivable.
             _rollback_quietly(db)
             raise
+
+        # THE FINGERPRINT IS TAKEN AT THE CLOSE, AFTER THE COMMIT. It is what
+        # lets the next run tell a database recovered out of band from one this
+        # product changed itself, and taking it before the commit would record a
+        # database this session then moved, so the next run would read its own
+        # write as somebody else's restore. It sits outside the try above because
+        # by here the commit has landed and there is nothing pending to roll
+        # back; a failure now is a state write that failed, not a database write
+        # that half happened.
+        convergence.record_fingerprint(cfg, db)
 
     return MembershipReport(
         tree_id=tree_id,

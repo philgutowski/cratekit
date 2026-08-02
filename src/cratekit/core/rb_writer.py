@@ -349,6 +349,23 @@ def assert_binding_version(cfg: config.Config | None = None) -> None:
 # ---------------------------------------------------------------------------
 
 
+def db_schema_version(db: Any) -> str | None:
+    """The schema version the database stores, or None when it holds no property row.
+
+    ONE READER, because there are now two callers. The pin below refuses on drift
+    from it and the convergence fingerprint records it, and two spellings of
+    "read the property table" is two chances to reach for a different column when
+    the schema moves. It RAISES rather than returning None on a table it cannot
+    read, and the distinction is the whole reason it is not a defaulting
+    accessor: no property row at all is a database this build has never seen
+    written, while a table that will not answer is evidence of a migration.
+    """
+    from pyrekordbox.db6 import tables
+
+    row = db.session.query(tables.DjmdProperty).first()
+    return None if row is None else str(row.DBVersion)
+
+
 def assert_schema_version(
     db: Any, *, force: bool = False, cfg: config.Config | None = None
 ) -> None:
@@ -369,12 +386,9 @@ def assert_schema_version(
     flag that reaches it belongs to the command-line layer, which is why nothing
     here names one (D2).
     """
-    from pyrekordbox.db6 import tables
-
     pin = pinned_db_version(cfg)
     try:
-        row = db.session.query(tables.DjmdProperty).first()
-        found = None if row is None else str(row.DBVersion)
+        found = db_schema_version(db)
     except Exception as exc:  # noqa: BLE001 - an unreadable property table IS drift
         raise _unavailable(
             "db-schema-pin-drift",
@@ -2333,6 +2347,7 @@ __all__ = [
     "clear_registry_buffer",
     "commit_guarded",
     "content_writable_columns",
+    "db_schema_version",
     "db_sidecar_suffixes",
     "default_protected_snapshot_paths",
     "ensure_folder",

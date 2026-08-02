@@ -168,7 +168,37 @@ PENDING: dict[str, tuple[str, str]] = {
         "node identifiers a previous write used, which is the shape the tree "
         "registry already has for a tree's adopted root, and U20 is the unit "
         "that owns that record. Building a second one inside the routing pass "
-        "would give two answers to which node a destination is",
+        "would give two answers to which node a destination is. THAT MAP NOW "
+        "EXISTS: U36 landed it as cratekit.core.convergence.DestinationNode, "
+        "recorded per tree and read back through "
+        "cratekit.write.tree_rebuild.resolve_destinations, so the obligation on "
+        "U20 narrowed from building the record to READING it. Building a second "
+        "one would still give two answers",
+    ),
+    "cratekit.write.converge_cli": (
+        "U20",
+        "the command-line surface for the two convergence verbs, converge and "
+        "rebuild. RE-POINTED FROM U36 TO U20 by the reasoning that re-pointed "
+        "the routing CLI, and registered here rather than left as a planned_in "
+        "marker for the reason the entry above gives: scripts/board.py reads "
+        "this file and nothing else, so an obligation carried only by a marker "
+        "on a closing unit is owned by nobody the moment that unit closes (P5). "
+        "U36 landed the whole engine, cratekit.core.convergence and "
+        "cratekit.write.tree_rebuild, and could not land the surface: "
+        "conformance 3 requires a landed gated verb to exit OK once its gate is "
+        "answered, and rebuild writes db_tree and is destructive, which cannot "
+        "exit OK on a machine with no rekordbox database. U20 is the unit that "
+        "flips trees to database-native and must therefore ship a destructive "
+        "database surface anyway. TWO OBLIGATIONS RIDE ON THE SURFACE ITSELF. "
+        "One: converge is READ ONLY and must stay so, because it is what a "
+        "person is told to run when a tree is already refusing every write, and "
+        "a diagnostic that needed the gates the flag is holding shut is a "
+        "diagnostic nobody can reach. Two: the operator disposition that clears "
+        "a refusal for one tree is an EXPLICIT, LOGGED act by a named person, "
+        "never a flag that clears every tree and never an answer derived from "
+        "the environment; cratekit.core.convergence.Disposition refuses an empty "
+        "actor, and the verb must carry a real one rather than inventing the "
+        "process owner",
     ),
 }
 
