@@ -48,7 +48,6 @@ from cratekit.core import config, preflight, rb_writer, session, snapshot
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.tools import backup
-from tests._pending import requires
 from tests.test_config import valid_data
 
 UTC = timezone.utc
@@ -897,7 +896,6 @@ def test_the_gates_can_arm_the_analysis_watch_for_the_body_of_a_session(cfg, tmp
     assert excinfo.value.cause.reason == "anlz-modified"
 
 
-@requires("cratekit.write.trees")
 def test_the_tree_writers_reach_for_the_session_spine(cfg):
     """P5. The countdown that closes this unit's own softening path.
 

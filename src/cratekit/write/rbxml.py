@@ -1462,6 +1462,195 @@ def insert_intake_playlist(
     return None
 
 
+def insert_empty_subplaylist(
+    content: bytearray,
+    folder_name: str,
+    sub_name: str,
+    *,
+    tree: Tree | None = None,
+    close_indent: int | None = None,
+) -> SpliceResult:
+    """Insert an EMPTY sub-playlist as the last child of a folder inside a tree.
+
+    The one write no other emitter here can make, and it exists because rekordbox
+    has no import path that creates an empty playlist. A splice needs somewhere to
+    splice INTO, so a routing sub that no track has landed in yet has to be
+    created before the first track can be routed to it, and
+    :func:`splice_into_subplaylist` cannot do it: with no track keys there is
+    nothing to insert, and it returns early rather than emitting a node.
+
+    Idempotent, and that is the property the caller depends on: a folder that
+    already carries the sub is left byte-identical, so a re-run after a new folder
+    appears touches only the new one.
+
+    The indent is derived from the located folder's own depth rather than pinned,
+    so a shallower tree gets a sub at the indent its own document uses. The
+    override exists for a caller assembling a document at a shape this tree does
+    not describe, and defaults to None rather than to a number so that "derive it"
+    stays the answer nobody has to opt into.
+    """
+    _refuse_wrong_medium(tree)
+    scope = _tree_scope(content, tree)
+    if isinstance(scope, str):
+        return SpliceResult(warning=scope)
+    scope_start, scope_end = scope
+
+    folder = find_node(
+        content, folder_name, start=scope_start, end=scope_end, node_type=FOLDER_TYPE
+    )
+    if folder is None:
+        return SpliceResult(warning=f"genre folder not found: {folder_name}")
+
+    existing = _direct_child(content, folder, sub_name, PLAYLIST_TYPE)
+    if isinstance(existing, str):
+        return SpliceResult(warning=existing)
+    if existing is not None:
+        return SpliceResult()
+    if folder.self_closing:
+        return SpliceResult(warning=f"cannot find close tag for genre folder: {folder_name}")
+
+    indent = indent_at(folder.depth + 1) if close_indent is None else close_indent
+    node = ("\r\n" + empty_playlist(sub_name, indent)).encode("utf-8")
+    at = line_start(content, folder.close_start) - len(CRLF)
+    content[at:at] = bytearray(node)
+    _bump_count(content, folder, +1)
+    return SpliceResult(created=True, entries_after=0)
+
+
+def _catalog_block(
+    folder_name: str, playlists: Sequence[tuple[str, Sequence[object]]], indent: int
+) -> str:
+    """One folder holding one ready-made playlist per pair, fully populated.
+
+    A pure emitter over the shared string builders, so the only thing the caller
+    below has to get right is where the bytes go.
+    """
+    out = [folder_open(folder_name, len(playlists), indent)]
+    for name, track_ids in playlists:
+        ids = list(track_ids)
+        out.append(playlist_open(name, len(ids), indent + INDENT_STEP))
+        out.append(track_key_lines(ids, indent + 2 * INDENT_STEP))
+        out.append(node_close(indent + INDENT_STEP))
+    out.append(node_close(indent))
+    return "".join(out)
+
+
+def insert_catalog_folder(
+    content: bytearray,
+    folder_name: str,
+    playlists: Sequence[tuple[str, Sequence[object]]],
+    *,
+    tree: Tree | None = None,
+) -> str | None:
+    """Insert a whole populated folder into a tree, creating the tree when absent.
+
+    The only writer here that emits a subtree rather than a node, because it
+    serves the one workflow that produces a whole catalog at once: a label's
+    releases, grouped into a playlist per year. Everything else in this module
+    adds to a tree somebody already has.
+
+    Where the bytes go, and why each choice rather than the other:
+
+    * **A new folder goes in FIRST, not last**, which is the reverse of every
+      other insert here. The caller orders its playlists newest first, and a
+      catalog whose newest year sits at the top of the folder while its newest
+      folder sits at the bottom of the tree is ordered two ways at once. This
+      preserves the byte layout the system being replaced produced, which a
+      golden pins.
+    * **An existing folder of that name is REPLACED IN PLACE**, so a re-crawl
+      refreshes a label rather than growing a second copy of it, and refreshing
+      does not reshuffle a tree the user reads. The system being replaced always
+      inserted, so its second run duplicated the whole label and its first run's
+      tracks stayed behind in the stale copy. No golden covers that path, because
+      that system had no test that ran twice.
+    * **The tree's own node is created when it is missing**, as the playlist
+      root's first child. A catalog tree is not a taxonomy tree: nobody's setup
+      created it, and the first write is the thing that brings it into existence.
+
+    Returns a warning naming what stopped it, or None on success. A failure
+    writes nothing at all.
+    """
+    _refuse_wrong_medium(tree)
+    if playlists_span(content) is None:
+        return f"{PLAYLISTS_SECTION} section not found"
+    root = root_node(content)
+    if root is None:
+        return "ROOT node not found"
+
+    # With no tree named the enclosing node is inferred exactly as it is
+    # everywhere else here, and inference refuses rather than guesses. With one
+    # named, an absent node is not a failure: this writer creates it.
+    created_tree = False
+    if tree is None:
+        inferred = _tree_node(content, None)
+        if isinstance(inferred, str):
+            return inferred
+        parent: NodeSpan | None = inferred
+    else:
+        found = _direct_child(content, root, tree.display, FOLDER_TYPE)
+        if isinstance(found, str):
+            return found
+        parent = found
+        created_tree = found is None
+
+    if created_tree:
+        assert tree is not None  # created_tree is only reachable on the named branch
+        block = (
+            folder_open(tree.display, 1, indent_at(1))
+            + _catalog_block(folder_name, playlists, indent_at(2))
+            + node_close(indent_at(1))
+        )
+        at = _first_child_offset(content, root)
+        if at is None:
+            return f"the {tree.display!r} tree cannot be created: ROOT is not line terminated"
+        content[at:at] = bytearray(block.encode("utf-8"))
+        _bump_count(content, root, +1)
+        return None
+
+    assert parent is not None  # every other branch either returned or found one
+    if parent.self_closing:
+        return f"cannot find close tag for folder: {parent.name}"
+
+    existing = _direct_child(content, parent, folder_name, FOLDER_TYPE)
+    if isinstance(existing, str):
+        return existing
+
+    block = _catalog_block(folder_name, playlists, indent_at(parent.depth + 1)).encode("utf-8")
+    if existing is not None:
+        # Replaced across its own lines, trailing break included, so the block
+        # that lands is exactly as line terminated as the one that left. The
+        # count does not move: one child went out and one came in.
+        start = existing.line_start
+        end = existing.close_end
+        if bytes(content[end : end + len(CRLF)]) == CRLF:
+            end += len(CRLF)
+        content[start:end] = bytearray(block)
+        return None
+
+    at = _first_child_offset(content, parent)
+    if at is None:
+        return f"the folder {parent.name!r} is not line terminated"
+    content[at:at] = bytearray(block)
+    _bump_count(content, parent, +1)
+    return None
+
+
+def _first_child_offset(content: bytes, parent: NodeSpan) -> int | None:
+    """Where a first child's own line begins, or None when there is no such place.
+
+    A node's body starts immediately after its open tag's ``>``, and what follows
+    in this format is the break that ends that line. A block emitted at the body
+    start would land ON the open tag's line; a block emitted after the break lands
+    on its own. None rather than a guess when the break is absent, because the
+    only way to write there anyway is to invent a line ending, and inventing one
+    is how a bare LF got into an export in the first place.
+    """
+    at = parent.body_start
+    if bytes(content[at : at + len(CRLF)]) != CRLF:
+        return None
+    return at + len(CRLF)
+
+
 def _bump_count(content: bytearray, node: NodeSpan, delta: int) -> None:
     """Move a folder's child count by ``delta``, never below zero."""
     span = attribute_span(content, "Count", start=node.tag_start, end=node.tag_end)
@@ -1503,6 +1692,8 @@ __all__ = [
     "find_node",
     "folder_open",
     "indent_at",
+    "insert_catalog_folder",
+    "insert_empty_subplaylist",
     "insert_genre_folder",
     "insert_intake_playlist",
     "insert_root_playlist",

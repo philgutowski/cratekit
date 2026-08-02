@@ -53,6 +53,14 @@ depth = 3
 id = "inbox"
 display = "INBOX"
 
+# The catalog tree (R19): where a whole-catalog import lands, one folder per
+# catalogued source holding one playlist per release year. Optional, unlike the
+# two above. Delete this section and a catalog import refuses by name instead of
+# inventing a folder; the routing tree and the intake flow are unaffected.
+[catalog]
+id = "record_labels"
+display = "Record Labels"
+
 [fallback]
 bucket = "electronica_other"
 # Routing must always land somewhere; tagging must never blanket-fall-back, or

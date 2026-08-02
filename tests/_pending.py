@@ -42,17 +42,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # value -> (unit that lands it, one line saying what the guard asserts)
 # ---------------------------------------------------------------------------
 PENDING: dict[str, tuple[str, str]] = {
-    "cratekit.write.trees": (
-        "U18",
-        "the tree writers whose exact output bytes the golden files pin, AND that "
-        "those writers reach for U8's destructive-session spine rather than "
-        "rebuilding half of it: the three gates, a verified capture to commit "
-        "behind, and the analysis-file watch that is the runtime half of R17's "
-        "fifth surface. That watch takes the roots it should watch from its "
-        "caller and defaults to watching nothing, which is a softening path, so "
-        "it is closed here against the unit that owes the roots rather than in a "
-        "docstring hoping somebody supplies them (P5)",
-    ),
     "cratekit.intake.collection_xml": (
         "U37",
         "the COLLECTION TRACK emitter that must never emit a <TEMPO> element",
