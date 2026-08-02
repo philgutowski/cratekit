@@ -2,16 +2,83 @@
 
 Written 2026-08-01 so a session with no memory of the build can pick it up.
 Revised the same day, twice: once after the three pending branches merged and
-the U7 hardening landed, and again after U8 and U17.
+the U7 hardening landed, and again after U8 and U17. Revised 2026-08-02 after
+U18.
 
 ## State
 
-`main` carries U1, U2, U3, U4, U5, U6, U7, U8, U10, U13, U14, U15, U17, U31 and
-U35, plus the W1 through W6 hardening, the A4 whitelist addition, and U9's
-verdicts. Pushed to the private remote. **2812 passed, 29 skipped**, ruff clean,
-`scan_repo` clean.
+`main` carries U1, U2, U3, U4, U5, U6, U7, U8, U10, U13, U14, U15, U17, U18,
+U31 and U35, plus the W1 through W6 hardening, the A4 whitelist addition, and
+U9's verdicts. Pushed to the private remote. **2874 passed, 17 skipped**, ruff
+clean, `scan_repo` clean.
 
 **There are no unmerged branches and no worktrees.**
+
+## What U18 changed
+
+**The bridge half.** `write/trees.py` collapses the five splice implementations
+the source system carried across four files, plus its two copies of the rating
+writer, into one module. All nine goldens matched on the first pass and have
+matched through every fix since, which is the evidence the collapse changed no
+bytes. Two emitters U17 had not shipped went into `rbxml` rather than being
+hand-rolled at the call site: an empty sub-playlist, which no other writer can
+emit and which the vocal routing has nowhere to write without, and a populated
+catalog folder, the only write that creates its own tree. Hand-rolling either
+would have made U17's coverage claim false in its first consumer.
+
+**The database half.** Membership for rows that already exist, reaching the
+medium check through `tree_registry.anchored_root` rather than spelling it
+again, matching rows on the active-row rule with both sides normalized through
+the shared primitives and the volume prefix map, and skipping and surfacing two
+active rows on one location rather than writing to both.
+
+**The catalog tree is declared taxonomy now.** R19 forbids a playlist display
+name below the modules layer, so the tree a catalog import writes into sits in
+the template beside the routing tree and the intake flow. Optional: a template
+declaring none refuses by name rather than inventing a folder in a library.
+
+## What the review found, because the pattern is the point, again
+
+Seven reviewers. **Nine defects, none visible to a green suite**, and the two
+worst were both a guard that was never armed rather than a guard that failed.
+
+**The emitter guard was disarmed at the two entry points that build their own
+tree.** `add_vox_playlists` and `insert_record_labels_tree` defaulted to
+`rbxml.Tree(display=...)`, which carries no id and no registry and is therefore
+UNGOVERNED, and the guard returns on its first line for an ungoverned tree
+because most playlists in a real library are somebody's own. Reproduced against
+a registry marking the routing tree native: the governed call refused, the
+default call wrote. Under A2 that export replaces the database-native tree on
+import. **The lesson is narrower than "check the guard fires": naming a tree
+without the registry that governs it is naming nothing, and a test that asserts
+a `tree=` keyword is present cannot tell the two apart.**
+
+**The adopted root was asserted and then ignored.** `anchored_root` refuses a
+tree whose root the library lacks, and the write then resolved its folder
+globally by name, so the assertion held while the folder was created at the
+database root beside the tree. That is the silent parallel tree the registry
+exists to prevent, arriving through the check meant to prevent it.
+
+The rest, shorter: `_first_child_offset` handed back a position OUTSIDE a
+self-closed node, because its body start lands past the closing slash and the
+bytes there are the break ending the node's own line; the vocal sweep
+enumerated direct children and then wrote by a body-wide search, which resolves
+to a nested namesake; the row index was rebuilt per plan entry, which is an
+N times M walk and, worse, silently matches nothing after the first entry when
+the caller's rows are a database cursor; every emitter warning was dropped; a
+mid-loop failure left objects pending on the caller's handle to ride out on
+whatever committed next; a declared-but-empty `[catalog]` table is falsy, so a
+truthiness check skipped the validation its own comment promised; and a
+hand-rebuilt `Taxonomy` in a test silently zeroed its four derived indexes.
+
+**One shape is worth carrying forward on its own.** A countdown test this unit
+armed asserted that three tokens appeared in `trees.py`'s SOURCE TEXT. The
+module's own docstring explains why it calls all three, so the test passed and
+would have kept passing with every call deleted. **A docstring that satisfies
+the test written to check the docstring's claim is not a countdown; it is the
+softening path wearing the guard's clothes.** It walks the syntax tree now, like
+its sibling in `test_tree_registry.py` already did. When you arm a pending
+guard, check what it actually asserts before believing it.
 
 The battery is:
 
@@ -163,25 +230,34 @@ U8 and U17 between them unblocked five units:
 
 | Unit | Title | Note |
 |---|---|---|
-| U18 | Tree writers | The gateway to the library-writing phase. Every dependency is landed. |
+| U19 | Deferred routing | Unblocked by U18. Golden-pinned like the rest of the bridge. |
+| U36 | Tree rebuild and convergence check | Unblocked by U18. Owns the convergence verb. |
 | U21 | Metadata writers | Rescoped by A4: the writer may never author a key value. |
 | U27 | Setup wizard and doctor | Closes R-1, R-4 and R-7, and unblocks U28. |
 | U30 | DJ_tools overlap changes | Owns moving the old system's lock, which is the real half of AE19. |
 | U32 | Restore, retention, reconciliation | U8 registered three items against it; see below. |
 
-U11 and U12 were already unblocked by the job engine and still are. U11 is the
-one to weigh against U18: it alone unblocks U16, U23, U24 and U34.
+U11 and U12 were already unblocked by the job engine and still are. U11 alone
+unblocks U16, U23, U24 and U34, so it is the one to weigh against U19.
 
-Still blocked: U16 on U11; U19 on U18; U20 on U19, U30 and U36; U22 on U16; U23
-and U24 on U11; U25 on U12; U26 on U16, U22 and U24; U28 on U27; U33 on U21 and
-U24; U34 on U11; U36 on U18; U37 on U16 and U19.
+Still blocked: U16 on U11; U20 on U19, U30 and U36; U22 on U16; U23 and U24 on
+U11; U25 on U12; U26 on U16, U22 and U24; U28 on U27; U33 on U21 and U24; U34
+on U11; U37 on U16 and U19.
+
+**U26 is the first production caller `write/trees.py` will have.** Nothing under
+`src/` imports it yet, so every contract U18 settled is a promise to that unit
+rather than a live workflow. Two of them are worth knowing before you write it:
+the bridge entry points take a `registry` and will refuse to guess, and
+`write_tree_membership` owns its own session, because R29 declares the boundary
+as one source per run and a caller-supplied gates factory would reopen the
+analysis-roots hole U8 registered against this unit.
 
 `tests/_pending.py` is the register. Each entry names the unit that owes the
-work, so a gate that cannot run today is a countdown rather than a hole. U8 and
-U17 each added one entry while clearing their own: U18 now owes calling the
-session spine rather than rebuilding half of it, including supplying the roots
-the analysis watch defaults to not watching, and U32 owes the bare-metal recovery
-path.
+work, so a gate that cannot run today is a countdown rather than a hole. U18
+cleared its own entry, which is the countdown firing as designed: it calls the
+session spine rather than rebuilding half of it, and it names the analysis roots
+the watch defaults to not watching. Six entries remain, against U37, U32, U11,
+U27, U28 and U5.
 
 ## Open items that are not code
 
@@ -297,3 +373,23 @@ two: False clears the lock, None refuses to.
 Attribute values contain them. U17's depth walks did exactly what the module's
 own comment forbids, and one display name would have un-anchored every emitter at
 once while they all reported success.
+
+**A self-closed node has no body, and the arithmetic does not notice.** Its body
+start lands just past the closing slash, and the bytes there are the break ending
+the node's OWN line, so an offset computed from it succeeds and points OUTSIDE the
+node. U18's catalog writer would have written a whole tree beside a childless
+playlist ROOT and reported success. Every new offset helper needs the
+self-closing question asked of it explicitly, because nothing about the
+arithmetic raises.
+
+**Two writers that resolve the same name differently will disagree about which
+node they mean.** U18's vocal sweep enumerated the tree's DIRECT folder children
+and then wrote to each through a search over the tree's whole body, which resolves
+a shared name to whichever node carries it first in document order. The
+enumeration and the write have to use one locate or they are two locates.
+
+**An iterable consumed once and reused looks like an empty library.** U18's row
+index was rebuilt per plan entry. Handed a list it was merely quadratic; handed a
+database cursor, which is the natural way to pass every content row, entry one
+consumed the whole thing and every entry after it reported its tracks absent while
+the run reported clean.
