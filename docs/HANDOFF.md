@@ -3,7 +3,7 @@
 Written 2026-08-01 so a session with no memory of the build can pick it up.
 Revised the same day, twice: once after the three pending branches merged and
 the U7 hardening landed, and again after U8 and U17. Revised 2026-08-02 after
-U18.
+U18, and again the same day after U11 and U19 landed together.
 
 ## The work is tracked on a board now
 
@@ -17,12 +17,86 @@ which blocks which. Read BOARD.md for what to update when a merge lands.
 
 ## State
 
-`main` carries U1, U2, U3, U4, U5, U6, U7, U8, U10, U13, U14, U15, U17, U18,
-U31 and U35, plus the W1 through W6 hardening, the A4 whitelist addition, and
-U9's verdicts. Pushed to the private remote. **2874 passed, 17 skipped**, ruff
-clean, `scan_repo` clean.
+`main` carries U1 to U8, U10, U11, U13, U14, U15, U17, U18, U19, U31 and U35,
+plus the W1 through W6 hardening, the A4 whitelist addition, and U9's verdicts.
+Pushed to the private remote. **3131 passed, 16 skipped**, ruff clean,
+`scan_repo` clean.
 
 **There are no unmerged branches and no worktrees.**
+
+## What U11 and U19 changed
+
+**U11, the review queue and decision stores.** `core/review.py` is one persisted,
+addressable adjudication surface replacing fourteen hand-edited files. An item
+carries a stable identifier, a kind, a payload, candidates and a verdict, and it
+survives process exit, so a decision reached in one process is seen by another
+and is never re-asked. `core/jobs.py` is the pattern it mirrors, which is why the
+two share `SCHEMA_VERSION`, `open_store`, `queue_path` and `store_dir` as one
+idea specialised per module. The decision stores for declines and tombstones
+share the storage shape and are revocable.
+
+**U19, deferred routing.** `write/routing_pass.py` persists each track's intended
+routing at the moment it is decided, and a track becomes routed only after the
+commit and after its smoke expectations pass. That order IS the unit. The reverse
+strands memberships permanently, and a crash in the window re-runs and converges
+on membership deduplication. Routing-pending is derived from per-track status
+rather than a stored flag, and the readiness signal is database row presence, so
+running the verb before an import resolves nothing and marks nothing.
+
+## What the reviews found, because the pattern held again
+
+Two units, two independent reviewers, **twenty-one defects, three of them
+blocking, none visible to a green suite.** Both units passed their own author's
+battery first. That is four waves in a row.
+
+**The two reviewers converged on one shape without seeing each other's unit: an
+unlocked read-modify-write over a JSON document.** U11's decision stores lost 122
+of 200 decisions recorded by eight real processes, and every losing call returned
+a record reporting success. U19's ledger let a concurrent writer erase a fully
+recorded intent, after which nothing was outstanding and the run closed clean
+over a track that had been decided and never written down. `core/config.py`
+already shipped an `fcntl.flock` class whose docstring names this exact hazard,
+one package away from both. Both hold it now, and both locks live in their own
+declared `NEVER_RESTORED` state entry, because a lock beside the document it
+guards has its inode swapped by a restore.
+
+**U11's worst was a reader that could not tell a wrong document from an empty
+one.** Only `json.loads` raising was caught, so a top-level list, a scalar, a null
+`decisions` field, or records under a newer version's key all read as an empty
+store. The next `record` then wrote that empty document back and permanently
+deleted every prior decline. The module had been stamping a `version` into every
+document and never reading it, while both of its sibling readers refuse on a
+version mismatch. It recognizes positively field by field now, and refuses
+everything else.
+
+**U19's worst was a ledger keyed by file while the close gate asked per session.**
+A second run deferring the same file took ownership of the first run's record, so
+the first closed reporting a placed track that reached no playlist, and released
+its capture. Marking matched on track alone, so run B could mark run A routed to
+a destination B never wrote. A record is identified by the pair of session and
+track now.
+
+**One lesson generalizes past both units.** U11's two new countdown guards matched
+bare attribute NAMES with no binding to the review module, so a module that
+hand-edited a CSV and never touched the queue satisfied all three, through one
+dead reference and an unrelated `.offer()` method. `import csv as spreadsheet`
+also defeated `_constructs_a_csv_writer`, which was ARMED over every adjudicating
+verb at the time; its self-test checked `import csv` and `from csv import
+DictWriter` and never the alias. In the other direction, correct code written as
+`from cratekit.core.review import offer` FAILED the countdown, which is P7 and is
+how a guard gets switched off. **Running a guard against correct code is half the
+job. The other half is running it against the evasion, and that is the half that
+keeps getting skipped.** All of them bind through the import graph in four import
+shapes now and ship fixtures for both directions.
+
+**And one caller quietly opted out of a guard the previous unit had built.** U18
+gave `trees.ContentRow.deleted` no default on purpose, because a default of False
+means active, which is the permissive answer for a soft-delete marker. U19's
+`content_rows` handed that default straight back through
+`getattr(row, "rb_local_deleted", 0)`, so a track deleted in rekordbox would be
+placed, marked routed, and closed over. A required field is only required where
+somebody constructs it directly, and a producer with a defaulting accessor is
+outside that protection.
 
 ## What U18 changed
 
@@ -236,38 +310,62 @@ decision recorded in the A4 solutions entry, and U21 is rescoped to it.
 
 ## What is unblocked, and what is not
 
-U8 and U17 between them unblocked five units:
+Ask the board rather than this table, because the board recomputes and this does
+not:
+
+    .venv/bin/python scripts/board.py next
+
+U11 and U19 between them unblocked four units. **U16 is the one to take next**:
+it is the only unblocked unit that gates a whole phase, since U22, U26 and U37
+all wait behind it.
 
 | Unit | Title | Note |
 |---|---|---|
-| U19 | Deferred routing | Unblocked by U18. Golden-pinned like the rest of the bridge. |
-| U36 | Tree rebuild and convergence check | Unblocked by U18. Owns the convergence verb. |
+| U16 | Three-state match and missing review | Unblocked by U11. Gates U22, U26 and U37. U11 registered a countdown against it: the needs-review state becomes queue items, and matched and missing stay a plain match result. |
+| U23 | Library adoption | Unblocked by U11. U11 registered the adoption surface against it. |
+| U24 | Track deletion and tombstones | Unblocked by U11. U11 registered the declines and tombstones countdown against it. |
+| U34 | Read-only library reports | Unblocked by U11. |
+| U36 | Tree rebuild and convergence check | Still unblocked, still unwritten. Must exist before the first cutover. |
 | U21 | Metadata writers | Rescoped by A4: the writer may never author a key value. |
 | U27 | Setup wizard and doctor | Closes R-1, R-4 and R-7, and unblocks U28. |
 | U30 | DJ_tools overlap changes | Owns moving the old system's lock, which is the real half of AE19. |
-| U32 | Restore, retention, reconciliation | U8 registered three items against it; see below. |
+| U32 | Restore, retention, reconciliation | U8 registered three items against it, and R-12 proposes a fourth. |
 
-U11 and U12 were already unblocked by the job engine and still are. U11 alone
-unblocks U16, U23, U24 and U34, so it is the one to weigh against U19.
+U12 was already unblocked by the job engine and still is.
 
-Still blocked: U16 on U11; U20 on U19, U30 and U36; U22 on U16; U23 and U24 on
-U11; U25 on U12; U26 on U16, U22 and U24; U28 on U27; U33 on U21 and U24; U34
-on U11; U37 on U16 and U19.
+Still blocked: U20 on U30 and U36; U22 on U16; U25 on U12; U26 on U16, U22 and
+U24; U28 on U27; U33 on U21 and U24; U37 on U16.
 
-**U26 is the first production caller `write/trees.py` will have.** Nothing under
-`src/` imports it yet, so every contract U18 settled is a promise to that unit
-rather than a live workflow. Two of them are worth knowing before you write it:
-the bridge entry points take a `registry` and will refuse to guess, and
+**U19 is now the first production caller of `write/trees.py`, and U26 will be the
+second.** Two contracts are worth knowing before you write against it: the bridge
+entry points take a `registry` and will refuse to guess, and
 `write_tree_membership` owns its own session, because R29 declares the boundary
 as one source per run and a caller-supplied gates factory would reopen the
 analysis-roots hole U8 registered against this unit.
 
 `tests/_pending.py` is the register. Each entry names the unit that owes the
-work, so a gate that cannot run today is a countdown rather than a hole. U18
-cleared its own entry, which is the countdown firing as designed: it calls the
-session spine rather than rebuilding half of it, and it names the analysis roots
-the watch defaults to not watching. Six entries remain, against U37, U32, U11,
-U27, U28 and U5.
+work, so a gate that cannot run today is a countdown rather than a hole. It is
+also the file `scripts/board.py audit` reads to catch a contradiction, meaning an
+issue closed while the repository still says that unit owes a module, so an entry
+here is the one check on the board's single unverified input.
+
+U11 cleared its own entry, which is the countdown firing as designed. Eleven
+entries remain, and the growth is the mechanism working rather than debt piling
+up: U11 and U19 between them added five, each one an obligation that used to live
+in a docstring.
+
+| Unit | Target | Owes |
+|---|---|---|
+| U16 | `cratekit.acquire.match_cli` | the needs-review state becomes queue items; matched and missing stay a plain match result |
+| U20 | `cratekit.write.routing_cli` | the routing CLI, plus closing through `close_run` and converging after a rename. See R-13: U20 is an inference, not a decision |
+| U23 | `cratekit.adopt` | the adoption review surface |
+| U24 | `cratekit.deletion.cli` | declines and tombstones go through the revocable decision store |
+| U27 | `cratekit.cli.doctor` | a database acknowledged outside the library root is reported every run |
+| U28 | `path:skills` | the shipped skills tree |
+| U32 | `cratekit.core.restore` | the restore verb, and the three obligations U8 registered against it |
+| U34 | `cratekit.modules.reports` | the duplicates review surface |
+| U37 | `cratekit.intake`, `cratekit.intake.collection_xml` | record routing intents at the decision, close through `close_run`, and never emit a `<TEMPO>` element |
+| U38 | `cratekit.cli.exit_codes` | the reserved exit-code registry |
 
 ## Open items that are not code
 

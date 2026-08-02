@@ -398,3 +398,81 @@ this is outside its letter. Recorded rather than changed because the string is
 already baked into a committed golden file, so changing it means regenerating
 that golden. **Closes when:** the author decides D1's intent is broader than its
 three nouns, and both fixtures move to an invented label in one pass.
+
+---
+
+## R-12. The membership write takes a snapshot that nothing protects
+
+**Found:** during U19, 2026-08-02, by the unit that became `write/trees.py`'s
+first caller. Confirmed independently against the two modules before it was
+recorded.
+
+`write_tree_membership` takes a capture through `snapshot.capture` and asserts it
+through `snapshot.assert_verified`, but it never opens a `SessionRecord`. There
+is no `open_session`, no `attach_capture`, and no `close_session` anywhere in
+`write/trees.py`.
+
+`rb_writer.default_protected_snapshot_paths` derives its protected set by reading
+`session_log` and keeping the captures named by records whose state is not
+terminal. A capture with no record is named by nothing, so it is unprotected from
+the moment it is taken, and a concurrent or subsequent `prune_snapshots` is free
+to delete the capture that an in-flight membership write is the undo for. That is
+the guarantee R30 states in one sentence: a snapshot an unfinished run may
+restore from is not old, whatever its position in the retention order.
+
+This is the same shape the RESTART note warned about when U8 was written, arriving
+from the other side. U8 was told to write into `session_log` rather than the
+installation-scoped `runs/` directory precisely so the protection scan would stop
+matching nothing. It does match now, and the membership writer simply never
+enrolls.
+
+The second consequence is quieter. U32's `restore.list` reports timestamp,
+workflow, and a change summary naming the affected trees and per-tree counts. A
+membership write that records no session produces no `ChangeSummary`, so the one
+database write this product makes to a governed tree is absent from the list of
+things a person can restore, even though `MembershipReport` already carries the
+exact `TreeChange(tree, created, updated)` numbers that listing wants.
+
+**Not fixed here** because the fix is not a line in the caller. Enrolling the
+membership write in a session means deciding how it composes with R29's one
+source per run when the caller already owns a session, and U19 deliberately does
+not pass its own gates factory in, because that reopens the analysis-roots hole
+U8 registered against U26. Choosing that composition is a unit's work, not a
+merge's.
+
+**Closes when:** `write_tree_membership` opens a session record around its
+capture, so the capture is protected for the life of the write and the write
+appears in `restore.list` with its per-tree counts. The natural owner is U32,
+which owns the restore verb and already carries three registered obligations, or
+U26, which is the first workflow that will call the membership writer in anger.
+
+---
+
+## R-13. Four routing verbs name a CLI module no unit's file list declares
+
+**Found:** during U19, 2026-08-02, and confirmed by its review.
+
+`route.inbox`, `route.unplaced` and `route.resort` were declared in the registry
+against module `cratekit.write.routing_cli` with `planned_in="U19"`, and U19 added
+`route.pending` beside them. U19's declared file list never contained a CLI
+module, and the unit could not land one: `test_conformance_3` requires a landed
+gated verb to exit `OK` once its gate is answered, and every verb writing
+`db_tree` must declare the cloud-sync gate, so a destructive database verb cannot
+pass conformance on a machine with no database.
+
+Left alone, closing issue #19 would have made all four markers name a unit that
+had already landed, and nothing would have noticed. `test_cli_contract.py` only
+fires when the module appears, and `scripts/board.py` reads `tests/_pending.py`
+alone, so the obligation would have been owned by no mechanism at all.
+
+**Fixed far enough to be safe:** `cratekit.write.routing_cli` is now registered in
+`tests/_pending.py`, which is the file the board audit actually reads, so the
+obligation is tracked whichever unit ends up holding it. All four `planned_in`
+markers go through one `ROUTING_CLI_UNIT` constant and currently name **U20**,
+on the reasoning that U20 flips trees to database-native and therefore has to
+ship a destructive database CLI surface anyway.
+
+**Still open:** U20 is an inference, not a decision. Nothing in the plan assigns
+the routing CLI to it. **Closes when:** Phillip names the unit that owns
+`cratekit.write.routing_cli`, and the constant plus the register entry move to it
+in one edit. Both were written to make that a one-line change.
