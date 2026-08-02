@@ -80,6 +80,15 @@ _LAYER_RULES: tuple[tuple[str, str], ...] = (
     ),
     (r"^cratekit\.core\.(taxonomy|routing|match|identity|tombstone)$", "domain"),
     (r"^cratekit\.core\.tree_registry$", "write"),
+    # The restore takes the SAME exception, for the same reason and with the same
+    # cost. It lives under core/ because the pending register and the state
+    # inventory both name it there, and it is a WRITE concern: it reads the tree
+    # registry to decide which trees a pre-cutover restore leaves unconverged, and
+    # a module ranked below the registry cannot ask it. Nothing beneath the write
+    # layer imports it, which is what keeps the exception free: the session
+    # boundary underneath reaches ``core.reconcile``, which is infrastructure and
+    # deliberately does not touch the registry at all.
+    (r"^cratekit\.core\.restore$", "write"),
     (r"^cratekit\.core\.", "infrastructure"),
     (r"^cratekit\.write\.", "write"),
     (r"^cratekit\.cli\.", "cli"),

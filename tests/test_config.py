@@ -751,7 +751,6 @@ def test_the_capture_unit_derives_its_source_set_rather_than_listing_it():
     )
 
 
-@requires("cratekit.core.restore")
 def test_the_restore_unit_derives_its_target_set_rather_than_listing_it():
     """The symmetric half, and the one the plan's top-ranked risk turns on.
 

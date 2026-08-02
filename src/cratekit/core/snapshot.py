@@ -36,10 +36,13 @@ has no coupled directory yet. Every one of those paths is copied only if it is
 there, and the manifest records which were and which were not, because "this was
 not captured" and "this was captured empty" call for different restores.
 
-CAPACITY AND RETENTION BELONG TO U32. Nothing here prunes, bounds, or refuses on
-free space. ``rb_writer.prune_snapshots`` already exists and already spares a
-capture an open session references; this module's job is to make what it spares
-real.
+RETENTION BELONGS TO U32 AND CAPACITY ARRIVED WITH IT. Nothing here prunes or
+bounds; ``rb_writer.prune_snapshots`` already exists, ``core.restore`` gives it
+the count, age and byte bounds R30 asks for, and this module's job is to make
+what it spares real. What DID land here is the capacity refusal, and it landed
+here rather than beside the retention policy because this is the function that
+writes: a check placed anywhere else is a check some future caller reaches the
+copy without. See :func:`assert_room_for_capture`.
 
 LAYER: infrastructure. It reads configuration, does input and output, and
 carries remediation TOKENS rather than any text a user types (D2).
@@ -298,6 +301,128 @@ def _verify(database: Path, verifier: Verifier | None) -> bool:
         return False
 
 
+#: How much more room than the capture needs must be free before one is taken.
+#:
+#: A copy is not the only thing that lands: the manifest goes in beside it, the
+#: engine checkpoint can grow the database file just before it is read, and a
+#: filesystem driven to zero free bytes fails in ways that have nothing to do
+#: with this write and are much harder to read afterwards. Ten percent is small
+#: enough that it never refuses a capture a disk could genuinely hold.
+CAPACITY_HEADROOM = 1.10
+
+
+def _size_of(path: Path) -> int:
+    """Bytes at ``path``, walking a directory, and zero for anything absent.
+
+    Absence is normal rather than exceptional here, exactly as it is everywhere
+    else in this module: a database just folded in by the engine has no companion
+    files, and a library that has never run a sweep has no coupled directory yet.
+    A missing source contributes nothing to the estimate because it will
+    contribute nothing to the copy.
+    """
+    try:
+        if path.is_dir():
+            total = 0
+            for current, _directories, files in os.walk(path):
+                here = Path(current)
+                for name in files:
+                    try:
+                        total += (here / name).stat().st_size
+                    except OSError:
+                        continue
+            return total
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
+def _free_bytes(root: Path) -> int | None:
+    """Free space on the filesystem that will hold ``root``, or None if unknowable.
+
+    The capture directory does not exist yet, and neither may its parent, so the
+    question is asked of the nearest ancestor that DOES exist. Asking about a
+    path that is not there answers about nothing.
+
+    None is not zero. A platform that will not report free space has not reported
+    a full disk, and refusing on it would make the product unusable somewhere it
+    would otherwise work perfectly.
+    """
+    probe = root
+    while True:
+        if probe.exists():
+            try:
+                return shutil.disk_usage(probe).free
+            except OSError:
+                return None
+        if probe.parent == probe:
+            return None
+        probe = probe.parent
+
+
+def assert_room_for_capture(
+    cfg: config.Config,
+    *,
+    root: Path | str | None = None,
+    headroom: float = CAPACITY_HEADROOM,
+    free_bytes: int | None = None,
+) -> int:
+    """Refuse BEFORE a capture is taken when the store cannot hold one.
+
+    Returns the estimate, so a caller that wants to report it does not have to
+    compute it a second way.
+
+    THE REFUSAL HAS TO COME FIRST, and that is the whole property. A copy that
+    runs out of room part way leaves a truncated database inside a directory that
+    looks like a capture, and the session then commits behind it. The integrity
+    check would catch that particular file, but only after the partial write has
+    already consumed the last of the disk and only if the truncation happens to
+    land somewhere the check reads. Refusing up front costs one stat per source
+    and leaves the store byte for byte as it was found.
+
+    THE ESTIMATE IS DERIVED FROM THE SAME DECLARATION THE COPY USES. It walks
+    ``database_paths`` and ``config.snapshot_sources``, which is exactly what
+    :func:`capture` copies, so an entry added to the inventory is measured
+    without anybody remembering to add it here (P4). It is deliberately an upper
+    bound rather than an exact figure: the coupled directory is measured whole
+    even though the writer will have taken the database out of it already, and
+    over-estimating refuses a capture that would have just fitted while
+    under-estimating writes the truncated copy this exists to prevent.
+    """
+    destination_root = Path(root) if root is not None else store_root(cfg)
+    sources = {*database_paths(cfg), *config.snapshot_sources(cfg)}
+    playlist = config.state_path(DATABASE_KEY, cfg).parent / rb_writer.MASTER_PLAYLIST_XML
+    sources.add(playlist)
+    needed = sum(_size_of(source) for source in sorted(sources))
+    available = free_bytes if free_bytes is not None else _free_bytes(destination_root)
+    if available is None:
+        logger.debug(
+            "free space on %s is unavailable on this platform, so the capacity "
+            "check cannot refuse and does not",
+            destination_root,
+        )
+        return needed
+    required = int(needed * headroom)
+    if available >= required:
+        return needed
+    raise refuse(
+        "snapshot-store-full",
+        f"the capture store at {destination_root} has {available} bytes free and "
+        f"one capture of this library needs about {required}; refusing before the "
+        f"copy rather than writing a truncated capture and committing behind it",
+        steps=(
+            "free space on the volume holding the capture store, or prune older "
+            "captures, and run this again",
+        ),
+        scope=Scope.SESSION,
+        detail={
+            "root": str(destination_root),
+            "free_bytes": available,
+            "required_bytes": required,
+            "estimated_bytes": needed,
+        },
+    )
+
+
 def capture(
     cfg: config.Config,
     *,
@@ -321,6 +446,9 @@ def capture(
     behind it, whichever function produced it.
     """
     destination_root = Path(root) if root is not None else store_root(cfg)
+    # BEFORE the collision check and before anything is created, because a
+    # refusal that has already made a directory is a refusal that did something.
+    assert_room_for_capture(cfg, root=destination_root)
     chosen = stamp or new_stamp(now)
     destination = destination_root / chosen
     if destination.exists():
@@ -489,6 +617,7 @@ def assert_verified(record: Capture) -> None:
 
 
 __all__ = [
+    "CAPACITY_HEADROOM",
     "DATABASE_KEY",
     "MANIFEST_NAME",
     "MANIFEST_SCHEMA_VERSION",
@@ -496,6 +625,7 @@ __all__ = [
     "Capture",
     "CapturedSource",
     "Verifier",
+    "assert_room_for_capture",
     "assert_verified",
     "capture",
     "database_paths",

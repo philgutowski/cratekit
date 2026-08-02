@@ -58,28 +58,6 @@ PENDING: dict[str, tuple[str, str]] = {
         "cratekit.core.session.close_session, because the gate is opt-in and its "
         "bypass is the exported call",
     ),
-    "cratekit.core.restore": (
-        "U32",
-        "that a restore replaces exactly the derived coupled set, and that it "
-        "keeps the source system's sidecar asymmetry: clear both live sidecars "
-        "first, write back the -wal, never the -shm. THREE MORE OBLIGATIONS "
-        "arrive with U8's destructive-session gates and are registered here "
-        "because U32 owns the verb that spends them (P5). One: the verb holds "
-        "ONE session across the plan and the run, passing its own open guard in "
-        "as backup.plan_restore's and backup.run_restore's `gates`, because the "
-        "default shape takes the lock twice and a second process can commit in "
-        "the window between them, leaving the run to copy a snapshot over a "
-        "commit its plan was built before. Two: the verb RESOLVES the session "
-        "record after a successful restore, through "
-        "session.resolve_unverified_session, because the session log is declared "
-        "SURVIVES_ROLLBACK and the committed-unverified record therefore outlives "
-        "the restore that answers it. Three: bare-metal recovery, where the "
-        "library volume itself is gone, needs a path of its own; every gate U8 "
-        "publishes is library-scoped by KTD21, so the lock, the acknowledgment "
-        "and the log all sit on the disk that just died. Today that case refuses "
-        "honestly with mount-library-volume, and refusing honestly is not the "
-        "same as serving it",
-    ),
     "cratekit.acquire.match_cli": (
         "U16",
         "that R11's three states are split the way U11 declared them: the "
@@ -169,6 +147,52 @@ PENDING: dict[str, tuple[str, str]] = {
         "registry already has for a tree's adopted root, and U20 is the unit "
         "that owns that record. Building a second one inside the routing pass "
         "would give two answers to which node a destination is",
+    ),
+    "cratekit.session.restore_cli": (
+        "U27",
+        "the command-line surface for the two restore verbs, which the registry "
+        "declares against this module and which U32 could not land. REGISTERED "
+        "HERE RATHER THAN LEFT AS A planned_in MARKER for the reason the routing "
+        "CLI above gives at length: scripts/board.py reads this file and nothing "
+        "else, so an obligation carried only by a marker on a closing unit is "
+        "owned by nobody the moment that unit closes (P5). WHY U32 COULD NOT LAND "
+        "IT, stated so a human can judge whether to move this: conformance 3 "
+        "requires a landed gated verb to exit OK once its gate is answered, and "
+        "restore.run is destructive, writes db_tree, and would have to perform a "
+        "real restore of a real capture against a real database to exit OK at "
+        "all. The two verbs name one module, so landing either lands both. "
+        "RE-POINTED TO U27 rather than to any other open unit, and the reasoning "
+        "is left legible because it is a judgement somebody may want to move "
+        "again: U27 owns the operator-facing surface, must already solve exactly "
+        "this problem for doctor.repair-paths, which is destructive and carries "
+        "the same marker, and ships the status verb whose own summary promises to "
+        "report open runs and unconverged trees, which are the two things "
+        "cratekit.core.restore and cratekit.core.reconcile now record. A SECOND "
+        "OBLIGATION rides on the same module because the same module owns the "
+        "composition: the verb holds ONE session across the whole restore, "
+        "through cratekit.core.restore.recovery_session, and passes that value's "
+        "`guard` in as backup.plan_restore's and backup.run_restore's `gates`. "
+        "The default shape takes the library lock twice and a second process can "
+        "commit in the window between them, leaving the run to copy a snapshot "
+        "over a commit its plan was built before. U32 landed and tested the "
+        "composition; what is left is the one wiring call, and it is left here "
+        "because core may not import the modules layer",
+    ),
+    "cratekit.write.rebuild": (
+        "U36",
+        "that an unconverged tree is cleared ONLY through a convergence check "
+        "reporting no difference, never by a bare disposition. "
+        "cratekit.core.reconcile records a tree marker and refuses every "
+        "ordinary destructive session while one is open, and it exposes one "
+        "`disposition` call because effects and trees share a store. That call "
+        "is the softening path: a rebuild unit that closed a tree marker with a "
+        "verdict and no convergence check would satisfy every test in this "
+        "repository while leaving the tree exactly as short as it was. "
+        "Registered here rather than asserted in a docstring because U32 built "
+        "the store and U36 is the first unit that can violate it (P5). R39's own "
+        "escape hatch is not this: an explicit, logged operator disposition that "
+        "scopes the refusal to one tree is U36's to design, and it is a different "
+        "act from a rebuild reporting success",
     ),
 }
 

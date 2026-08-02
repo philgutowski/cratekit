@@ -297,7 +297,23 @@ def read(cfg: config.Config) -> Registry:
     file the writers never read, which is a check and a consumer disagreeing
     about their input.
     """
-    path = path_for(cfg)
+    return read_path(path_for(cfg))
+
+
+def read_path(path: Path) -> Registry:
+    """The registry held at one named file. The reader, given an explicit target.
+
+    :func:`read` is the one every runtime consumer uses, and it resolves the path
+    from configuration for the reason P2 states. This exists for the one caller
+    that legitimately means a DIFFERENT file: a restore compares the registry
+    inside a capture against the live one, because that comparison is the exact
+    record of which trees had cut over when the capture was taken. Doing it by
+    date arithmetic instead is wrong by up to a day in both directions.
+
+    Split out rather than added as an optional argument to :func:`read`, so a
+    caller cannot pass a path by accident and quietly validate a file nothing
+    else reads. Reaching for this one is a deliberate act with a visible name.
+    """
     try:
         raw = path.read_bytes()
     except FileNotFoundError:
@@ -577,6 +593,7 @@ __all__ = [
     "anchored_root",
     "path_for",
     "read",
+    "read_path",
     "record_cutover",
     "refuse_bridge_write",
     "refuse_database_write",

@@ -37,7 +37,6 @@ TESTS_DIR = Path(__file__).resolve().parent
 EXPECTED_PENDING = frozenset(
     {
         "cratekit.intake.collection_xml",  # U37, the COLLECTION emitter
-        "cratekit.core.restore",  # U32, the KTD21b replace
         "cratekit.acquire.match_cli",  # U16, R11's three states, split as U11 declared
         "cratekit.deletion.cli",  # U24, declines and tombstones through the decision stores
         "cratekit.modules.reports",  # U34, R26's duplicate audit as review items
@@ -47,6 +46,8 @@ EXPECTED_PENDING = frozenset(
         "path:skills",  # U28, the shipped operator skills
         "cratekit.cli.exit_codes",  # U38, the reserved exit-code vocabulary
         "cratekit.write.routing_cli",  # U20, the route.* verbs and the gated close
+        "cratekit.session.restore_cli",  # U27, the restore verbs and the one held session
+        "cratekit.write.rebuild",  # U36, an unconverged tree clears only on convergence
     }
 )
 

@@ -452,6 +452,45 @@ class SnapshotRole(StrEnum):
     NEVER_RESTORED = "never-restored"
 
 
+class RollbackEffect(StrEnum):
+    """What a COUPLED entry's records caused OUTSIDE the set a restore replaces.
+
+    A restore returns the database and its coupled state to a matched earlier
+    point. That is internally consistent and it is not the whole world. Some of
+    the records being discarded had an effect somewhere a rename cannot reach: a
+    playlist renamed at the provider, a file written to the music volume, a file
+    moved to the Trash. Rolling the record back does not undo the effect, so the
+    two disagree from the moment the restore lands, and nothing downstream can
+    tell.
+
+    DECLARED ON THE ENTRY, never listed in the module that reconciles them, for
+    the reason ``decision_store`` gives one line further down and ``sidecars``
+    gives above: a companion list is the drift this schema exists to remove, and
+    a derivation that covers 90 percent of the real set is worse than an honest
+    list because it invites trust (P4). A state entry added later with a real
+    out-of-band effect and no declaration here would simply never be reconciled,
+    and the silence would look like convergence.
+
+    ``NONE`` is a real answer and is spelled rather than left implicit. Most
+    coupled entries describe database rows and nothing else, and saying so is
+    what makes the set derivable: ``tests/test_restore.py`` parses this literal
+    and requires every COUPLED entry to name its answer, so "nobody decided" and
+    "somebody decided nothing happens" cannot look alike.
+    """
+
+    #: Nothing outside the coupled set. The records describe database rows.
+    NONE = "none"
+    #: A playlist or folder was renamed at the provider, so the marker that says
+    #: "already taken" lives on somebody else's server and does not roll back.
+    REMOTE_PLAYLIST_PREFIX = "remote-playlist-prefix"
+    #: Audio landed on the music volume. The rows go; the bytes stay, and the
+    #: next pass reads them as owned.
+    DOWNLOADED_FILE = "downloaded-file"
+    #: A file was moved to the Trash. Rolling the record back does not move it
+    #: out, and the library then holds a row for a file nobody can open.
+    TRASHED_FILE = "trashed-file"
+
+
 #: One subdirectory per role, so an entry's physical location is DERIVED from the
 #: answer it already gave rather than typed a second time. A relative path spelled
 #: per entry could disagree with the entry's own declared role; this cannot.
@@ -569,6 +608,16 @@ class StateFile:
     #: it, and a store REMOVED from the inventory would leave the module resolving
     #: a path nobody declared a root for.
     decision_store: bool = False
+    #: What this entry's records caused OUTSIDE the set a restore replaces. See
+    #: :class:`RollbackEffect`. Left empty on everything that is not COUPLED,
+    #: where the question does not arise at all.
+    #:
+    #: A TUPLE rather than one value, because one record can reach outside in
+    #: more than one direction at once: a label watermark advancing means both
+    #: that audio landed on the volume and that a playlist was renamed at the
+    #: provider, and a person dispositions those separately because the acts
+    #: that repair them are different acts.
+    rollback_effects: tuple[RollbackEffect, ...] = ()
 
 
 STATE_FILES: tuple[StateFile, ...] = (
@@ -780,6 +829,11 @@ STATE_FILES: tuple[StateFile, ...] = (
     StateFile(
         key="rekordbox_db",
         snapshot=SnapshotRole.COUPLED,
+        # The database IS the coupled set's centre, and every row in it is
+        # replaced wholesale by the file copy. Nothing about that reaches
+        # outside; what reaches outside is recorded by the entries below, which
+        # is why they carry the effects and this one does not.
+        rollback_effects=(RollbackEffect.NONE,),
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
         # Composed from library.db_path rather than from a relative literal: the
@@ -875,6 +929,10 @@ STATE_FILES: tuple[StateFile, ...] = (
     StateFile(
         key="favorites_state",
         snapshot=SnapshotRole.COUPLED,
+        # The reverse half of the favorites sweep hearts a track at the
+        # provider. Rolling this file back forgets that it did, and the heart
+        # stays on somebody else's server.
+        rollback_effects=(RollbackEffect.REMOTE_PLAYLIST_PREFIX,),
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
         relative="favorites_state.json",
@@ -1001,6 +1059,9 @@ STATE_FILES: tuple[StateFile, ...] = (
     StateFile(
         key="playlist_parole_ledger",
         snapshot=SnapshotRole.COUPLED,
+        # First-seen dates for database rows, and nothing else leaves the
+        # database.
+        rollback_effects=(RollbackEffect.NONE,),
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
         relative="playlist_parole.json",
@@ -1032,6 +1093,9 @@ STATE_FILES: tuple[StateFile, ...] = (
     StateFile(
         key="review_queue",
         snapshot=SnapshotRole.COUPLED,
+        # Items and verdicts about this library's own candidates. An item is
+        # a question, and asking one changes nothing outside.
+        rollback_effects=(RollbackEffect.NONE,),
         root=StateRoot.LIBRARY,
         medium=Medium.DIRECTORY,
         relative="review",
@@ -1047,6 +1111,10 @@ STATE_FILES: tuple[StateFile, ...] = (
     StateFile(
         key="label_outcomes",
         snapshot=SnapshotRole.COUPLED,
+        # What a sweep actually landed: the audio is on the music volume and
+        # the rows that named it are about to go, so the next pass reads those
+        # files as owned by nobody.
+        rollback_effects=(RollbackEffect.DOWNLOADED_FILE,),
         root=StateRoot.LIBRARY,
         medium=Medium.DIRECTORY,
         relative="label_outcomes",
@@ -1062,6 +1130,14 @@ STATE_FILES: tuple[StateFile, ...] = (
     StateFile(
         key="label_watermarks",
         snapshot=SnapshotRole.COUPLED,
+        # BOTH directions at once, which is why this field is a tuple. An
+        # advanced watermark means audio landed on the volume, and it means the
+        # provider playlist it consumed was renamed with the taken marker. The
+        # rows roll back; neither of those does.
+        rollback_effects=(
+            RollbackEffect.DOWNLOADED_FILE,
+            RollbackEffect.REMOTE_PLAYLIST_PREFIX,
+        ),
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
         relative="label_watermarks.json",
@@ -1078,6 +1154,11 @@ STATE_FILES: tuple[StateFile, ...] = (
     StateFile(
         key="tree_registry",
         snapshot=SnapshotRole.COUPLED,
+        # A cutover's effect is entirely inside the database it adopted, so
+        # nothing here reaches outside. The tree still needs reconciling after a
+        # pre-cutover restore, and that is a different question with its own
+        # marker: see cratekit.core.reconcile.
+        rollback_effects=(RollbackEffect.NONE,),
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
         relative="tree_registry.json",
@@ -1095,6 +1176,8 @@ STATE_FILES: tuple[StateFile, ...] = (
     StateFile(
         key="routing_intents",
         snapshot=SnapshotRole.COUPLED,
+        # Intents and marks, both about database rows.
+        rollback_effects=(RollbackEffect.NONE,),
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
         relative="routing_intents.json",
@@ -1139,6 +1222,10 @@ STATE_FILES: tuple[StateFile, ...] = (
     StateFile(
         key="tombstones",
         snapshot=SnapshotRole.COUPLED,
+        # A tombstone is written when a file is removed, and removal here means
+        # the Trash. The record rolls back; the file does not walk out of the
+        # Trash on its own.
+        rollback_effects=(RollbackEffect.TRASHED_FILE,),
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
         relative="tombstones.json",
@@ -1153,6 +1240,9 @@ STATE_FILES: tuple[StateFile, ...] = (
     StateFile(
         key="declines",
         snapshot=SnapshotRole.COUPLED,
+        # A decline suppresses an acquisition that never happened, so there is
+        # nothing outside to undo.
+        rollback_effects=(RollbackEffect.NONE,),
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
         relative="declines.json",
@@ -1195,6 +1285,10 @@ STATE_FILES: tuple[StateFile, ...] = (
     StateFile(
         key="deletion_watermark",
         snapshot=SnapshotRole.COUPLED,
+        # How far the deletion pass read. The deletions themselves are recorded
+        # as tombstones above, which is where the Trash effect is declared; this
+        # is a position, and a position has no effect of its own.
+        rollback_effects=(RollbackEffect.NONE,),
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
         relative="deletion_watermark.json",
@@ -1269,6 +1363,9 @@ STATE_FILES: tuple[StateFile, ...] = (
     StateFile(
         key="taxonomy_active",
         snapshot=SnapshotRole.COUPLED,
+        # A declaration of the tree this library means. Nothing outside the
+        # database reads it.
+        rollback_effects=(RollbackEffect.NONE,),
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
         relative="taxonomy.toml",
@@ -1319,6 +1416,88 @@ STATE_FILES: tuple[StateFile, ...] = (
             "music as Cratekit state, and a future 'clear this library's state' "
             "built off the inventory would target user content. NEVER_RESTORED "
             "because a stage artifact belongs to a run, not to the database."
+        ),
+    ),
+    # ── U32's three entries, appended ───────────────────────────────────────
+    #
+    # APPENDED RATHER THAN FILED BESIDE THEIR SIBLINGS, deliberately, and for the
+    # reason the verb registry and the reason registry both give for the same
+    # choice: several units land against this literal at once, two entries
+    # inserted into different halves of it auto-merge, and a duplicate key is
+    # then resolved silently by whichever line comes last. An append conflicts
+    # textually, which is a conflict somebody reads.
+    StateFile(
+        key="restore_reconciliation",
+        snapshot=SnapshotRole.SURVIVES_ROLLBACK,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="restore_reconciliation.json",
+        why=(
+            "What a restore left behind that the restore itself could not undo, "
+            "and whether a person has dispositioned each one. A restore rolls the "
+            "database and its coupled state back together, which makes them agree "
+            "with each other and says nothing about the world: the audio the "
+            "discarded run downloaded is still on the volume, the playlist it "
+            "renamed at the provider is still renamed, and the file it moved to "
+            "the Trash is still in the Trash. Library-scoped because every one of "
+            "those facts is about THIS library, and a second machine restoring "
+            "the same session must see the same outstanding list rather than a "
+            "clean sheet. New state: the source system has no restore that "
+            "reconciles anything."
+            " It SURVIVES a rollback, for the reason the session log does and "
+            "one more. Rolling it back would erase the record of what is owed at "
+            "exactly the moment it is owed, and a second restore run against an "
+            "earlier point would wipe the first restore's outstanding list while "
+            "adding its own. It also holds the unconverged trees a pre-cutover "
+            "restore marks, and those must outlive every later rollback, because "
+            "the rebuild that clears them has not run yet."
+        ),
+    ),
+    StateFile(
+        key="restore_reconciliation_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="restore_reconciliation.lock",
+        why=(
+            "The sibling lock for the document above, which is read then written "
+            "as one cycle by a restore recording markers and by whoever "
+            "dispositions them. The rename at the end of that cycle is atomic and "
+            "the cycle is not: two processes both read the same set, both add "
+            "their own record, and the second rename discards the first one's "
+            "while the losing call returns a record reporting success. Two units "
+            "shipped exactly that bug before it was caught."
+            " NEVER_RESTORED for the inode reason every lock in this inventory "
+            "shares, and it matters here more than anywhere else in the file: the "
+            "process that replaces directories during a restore is the process "
+            "holding this lock. A lock inside a directory a restore replaces has "
+            "its inode swapped underneath every holder, and both then believe "
+            "they have exclusive access with nothing raised. The role-derived "
+            "layout is what enforces the separation rather than a convention: "
+            "NEVER_RESTORED resolves under the local directory and the document "
+            "resolves under the history directory, so the two cannot end up "
+            "beside each other by an edit to a relative path."
+        ),
+    ),
+    StateFile(
+        key="recovery_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="recovery.lock",
+        why=(
+            "The ONE gate a bare-metal recovery can still take. Every gate KTD21 "
+            "publishes is library-scoped on purpose, so that a second machine "
+            "contends with the first instead of holding an invisible lock of its "
+            "own. The cost is that all of them are unreachable when the library "
+            "volume is the thing that died, which is the one case a recovery "
+            "exists for. This is the substitute, and it is installation-scoped "
+            "because with the library gone the only contention that can exist is "
+            "between processes on this machine: there is no shared volume left "
+            "for two machines to contend over."
+            " NEVER_RESTORED for the inode reason every lock here shares, and "
+            "trivially so: it is installation-scoped, and a library snapshot has "
+            "no business reaching outside the library at all."
         ),
     ),
 )
@@ -1420,6 +1599,30 @@ def coupled_state_files() -> tuple[StateFile, ...]:
     plan's top-ranked risk: the registry rolling back while the database does not.
     """
     return tuple(s for s in STATE_FILES if s.snapshot is SnapshotRole.COUPLED)
+
+
+def out_of_band_effects() -> tuple[tuple[StateFile, RollbackEffect], ...]:
+    """Every coupled entry that reaches outside the set a restore replaces, paired
+    with each effect it declares.
+
+    DERIVED FROM THE SAME PREDICATE ``coupled_state_files`` uses, so the set a
+    restore reconciles and the set a restore replaces can never be two different
+    sets. A reconciler carrying its own list would answer about entries the
+    inventory no longer declares, and would say nothing at all about the next
+    entry somebody adds, which is the direction that fails silently.
+
+    ``RollbackEffect.NONE`` is filtered here rather than at each call site. It is
+    declared on the entry because "somebody decided nothing leaves the database"
+    and "nobody decided" have to look different in the source; it is dropped here
+    because a marker for it would ask a person to disposition an effect that does
+    not exist.
+    """
+    return tuple(
+        (entry, effect)
+        for entry in coupled_state_files()
+        for effect in entry.rollback_effects
+        if effect is not RollbackEffect.NONE
+    )
 
 
 def sidecar_paths(key: str, config: Config, *, restored_only: bool = False) -> tuple[Path, ...]:
@@ -2737,6 +2940,7 @@ __all__ = [
     "ProfileConfig",
     "RekordboxConfig",
     "Remedy",
+    "RollbackEffect",
     "Sidecar",
     "SnapshotRole",
     "StateFile",
@@ -2755,6 +2959,7 @@ __all__ = [
     "load",
     "load_from_path",
     "migrate",
+    "out_of_band_effects",
     "rekey_records",
     "reset_cache",
     "save",

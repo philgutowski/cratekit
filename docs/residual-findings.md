@@ -264,10 +264,15 @@ still skips is the sidecar CLEARING, which is unchanged and is a different
 question: clearing is itself destructive, so a rehearsal that cleared and then
 transferred nothing would do the damage and skip the repair.
 
-**Still open, and all three belong to the verb rather than to the wiring.** An
-adversarial read of this commit found them; each is registered in
-`tests/_pending.py` against `cratekit.core.restore` so it is a countdown rather
-than a note.
+**All three were still open, and all three are CLOSED 2026-08-02, by U32.** Each
+was registered in `tests/_pending.py` against `cratekit.core.restore` so it was a
+countdown rather than a note, and clearing that entry is what armed the guard.
+What closed each is recorded beneath it. One residue survives, and it is the
+wiring rather than the mechanism: the two restore verbs still have no
+command-line module, so the composition in item 1 is proven at the seam and is
+not yet called by anything a user can type. That obligation moved to
+`cratekit.session.restore_cli` in the same register, with the reasoning for
+re-pointing it left legible.
 
 1. **The plan and the run each take the lock and give it back.** With `gates`
    left at its default, `plan_restore` enters the guard, builds the plan, and
@@ -277,12 +282,24 @@ than a note.
    so a caller can hold ONE session across both halves, and the verb must: a plan
    is a value and cannot own a live context manager, so the composition is the
    caller's to make.
+
+   **Closed by** `restore.recovery_session`, which enters the gates once and
+   yields a `Held` whose `guard` is a pass-through the modules layer passes in as
+   `gates`. Holding the value is not the same as being inside the block, so
+   `restore.plan` and `restore.run` both assert that this process still holds the
+   lock at the moment they are called rather than merely that it once did.
 2. **The record outlives the restore that answers it.** The session log is
    declared `SURVIVES_ROLLBACK`, deliberately, because rolling it back would
    erase the record of which sessions are restorable. So a
    `committed-unverified` record is still there after the restore that resolves
    it, and the verb has to call `session.resolve_unverified_session` on success.
    The function landed with U8; naming it in the verb's success path is U32's.
+
+   **Closed by** a `resolve-session` step in the restore's own ordered plan, one
+   per condemning record, placed last because it is the claim that the work is
+   done. Every such record is answered rather than only the one being restored
+   to: the library now holds a capture that passed its integrity check, so no
+   earlier unverified commit condemns these bytes either.
 3. **Bare-metal recovery, where the library volume itself is gone, has no path.**
    Every gate is library-scoped by KTD21, on purpose: the lock, the
    acknowledgment and the session log all sit beside the library so a second
@@ -295,6 +312,22 @@ than a note.
    volume, and the live case would lose a real check. What this needs is a
    recovery path that does not read its gates from the library it is rebuilding,
    which is a decision U32 owns.
+
+   **Closed by** `restore.bare_metal_session`, which substitutes one gate at a
+   time and says what each substitute is worth. The volume assertion becomes two:
+   that the configured library is genuinely UNREACHABLE, refusing on "mounted
+   elsewhere" and on "this platform cannot say" because neither is the same
+   question; and that the target is a real filesystem rather than the empty
+   folder an unmounted volume leaves behind at its own mount point, which is the
+   failure that would otherwise write a whole library onto the internal disk. The
+   lock becomes an installation-scoped one, and nothing is lost, because with the
+   library gone there is no shared volume for two machines to contend over. The
+   acknowledgment becomes an explicit decision by a derived actor at a
+   controlling terminal, and that substitute is WEAKER than the gate it replaces:
+   the recorded acknowledgment R34 asks for lives on the volume that died. That
+   is stated rather than papered over. The advice not to move the volume
+   assertion onto the target was followed: the target assertions are additional
+   to the unreachability assertion, not a replacement for it.
 
 ---
 
