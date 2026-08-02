@@ -492,3 +492,69 @@ fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather
 than skips, so the battery runs either way and a supplied fixture strengthens it.
 The natural owner is U27, which lands doctor and is the unit that makes a machine
 ready.
+
+---
+
+## R-14. Analysis-file paths are share-relative, and the wrong join finds nothing
+
+**Found:** during the DJ_tools staging repair, 2026-08-02. Issue #52.
+
+A rekordbox library on an external volume has **two** directory trees ending in
+`PIONEER/USBANLZ`, and only one is the analysis store. The one under
+`PIONEER/Master/share/` is UUID-keyed, holds the beat grids, and every local row
+resolves into it. The one at the volume root is the USB-export cache, a different
+key shape, regenerable, and **zero rows resolve into it**.
+
+`djmdContent.AnalysisDataPath` is stored **share-relative**. Joining it to the
+library root resolves zero of 10,070 rows and reads as "the analysis files are
+missing", which is a measurement artifact rather than a defect.
+
+This matters to U23, which adopts an existing library and must resolve analysis
+data to judge what it is adopting; to U32, because a database restored without its
+analysis tree brings back rows without their grids and the failure is silent; and
+to `modules/tools/backup.py`, which documents the database path and says nothing
+about the share.
+
+It cost the source repository twice: once carried as a false open item, and once as
+a grid-rollback step that named the wrong tree and would have protected regenerable
+device output while leaving every grid it existed for uncovered.
+
+**Not fixed here** because U23 and U32 are unwritten. This is a constraint to write
+them against, not a patch to apply after.
+
+**Closes when:** every place that resolves, backs up or verifies analysis data joins
+to the share, and a test pins the join so the wrong one cannot come back.
+
+---
+
+## R-15. Guard whitelists assert what is forbidden, never what is permitted
+
+**Found:** during the DJ_tools staging repair, 2026-08-02. Issue #53.
+
+The guard tests assert what must **not** be whitelisted, and that every entry is a
+real table in the binding. Nothing asserts **exact membership**.
+
+Those are different questions, and only exact membership catches a widening. Adding
+a table or a column is a two-word diff that raises the ceiling for every writer in
+the repository, present and future, and it passes a green suite as long as it is not
+one of the specifically-named forbidden entries. Verified in the source repository:
+sneaking one column into the content allow-list turned two tests red where the same
+edit had previously passed twenty-four green.
+
+The bookkeeping set needs this most, and for a subtler reason. Entries there are
+IGNORED when judging a modification, so an addition does not grant a write, it stops
+the guard from looking at one. Quieter than widening the allow-list, and worse,
+because the resulting session passes the guard rather than being permitted by it.
+
+Related and cheap: `Rekordbox6Database(db_dir=...)` does not open the database in
+that directory, and with `path` unset it falls back to the configured live library.
+`core/rb_writer.py` passes `path=` correctly and is the only such call today; an AST
+assertion would keep it that way. The general form is worth stating in the guard's
+own terms: refusing the live path as an argument is not the same as not reading it.
+
+**Not fixed here** because it is test work in a module three waves are queued behind,
+and the pins are worth writing deliberately rather than alongside something else.
+
+**Closes when:** the permitted-tables set, the content-column allow-list and the
+bookkeeping set each carry an exact-membership assertion, each verified to fail on a
+deliberate widening rather than merely existing.

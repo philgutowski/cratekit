@@ -340,6 +340,18 @@ by design:
 Read the seam decisions before implementing anything. Part 5 in particular is
 seven failure shapes learned the expensive way, and they apply to every unit.
 
+One piece of reasoning lives **in this repository**, because it is rekordbox
+behaviour rather than that system's paths and it survived the portability guard
+once its volume names were stripped:
+
+- `docs/rekordbox-live-fire-2026-08-02.md`, seven findings from repairing 1,357
+  collection rows on a real library in one attended session. Four bear on units
+  here. Two became R-14 and R-15. The others are knowledge rather than work:
+  where analysis files actually live, that rekordbox marks missing files lazily
+  so a marker count measures what the application has checked rather than what is
+  broken, exactly which columns a relocate writes, and which menu item sits one
+  row below `Relocate` and destroys the row.
+
 ## What the U9 gate changed
 
 **A1 is CLEAN, CONDITIONAL, and it moved a boundary.** rekordbox accepts,
