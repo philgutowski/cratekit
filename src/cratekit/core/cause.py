@@ -368,6 +368,19 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # what this is: the tree the library holds and the tree the taxonomy
         # declares have come apart, and only a person can say which is right.
         "routing-destination-renamed": ExitCode.UNCONVERGED,
+        # U23. One of adoption's two documents exists and cannot be understood:
+        # the record of which plan entries have already been applied, or the
+        # record of what each file's tag held before adoption overwrote it.
+        # Deliberately NOT collapsed into "no records", which is the reading that
+        # makes both of them dangerous rather than merely absent: an empty
+        # applied ledger re-applies a plan from its first entry, and an empty
+        # revert log reports that nothing can be undone about writes that are
+        # sitting in the user's files. One slug for both, on the same code as its
+        # two siblings above, because what differs between the ways either file
+        # can be wrong is the REMEDY, and the remedy travels on the remediation:
+        # a document from a newer build asks for an upgrade and a corrupt one
+        # asks for the doctor.
+        "adoption-ledger-unusable": ExitCode.PRECONDITION,
     }
 )
 

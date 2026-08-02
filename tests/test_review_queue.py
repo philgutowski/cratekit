@@ -2152,6 +2152,15 @@ def test_every_new_adjudication_surface_is_owed_by_a_registered_unit():
     only in this module's own table. R26 named the duplicate audit and the
     adoption plan as review items, and both obligations lived in a ``why`` string
     until this test, which is the shape P5 forbids by name.
+
+    A SURFACE IS OWED IN ONE OF TWO WAYS, and the second one only became
+    reachable when U23 landed the first of these producers. Either the pending
+    register still counts down to it, or the producer HAS landed and actually
+    offers into that queue. Requiring the register alone would have made a queue
+    stop being covered on the day its producer arrived, which is the countdown
+    expiring into a hole rather than into a guard. The queue constant's own name
+    is derived from the enum member rather than spelled, so a queue renamed in
+    one place cannot be checked against the other's old name.
     """
     declared = {
         surface.queue
@@ -2164,9 +2173,18 @@ def test_every_new_adjudication_surface_is_owed_by_a_registered_unit():
         f"{sorted(set(NEW_SURFACE_OWED_BY) - declared)}"
     )
     for queue, key in NEW_SURFACE_OWED_BY.items():
-        assert key in _pending.PENDING, (
-            f"{queue} is owed by {key}, which is not in the pending register, so "
-            f"nothing counts down to it"
+        if key in _pending.PENDING:
+            continue
+        assert not _pending._is_absent(key), (
+            f"{queue} is owed by {key}, which is neither in the pending register "
+            f"nor present in the tree, so nothing counts down to it and nothing "
+            f"produces it"
+        )
+        constant = f"Queue.{review.Queue(queue).name}"
+        assert _package_offers_into(key, constant), (
+            f"{key} has landed and its countdown is gone, and nothing in it "
+            f"offers into {constant}; the surface is now declared with no "
+            f"producer at all, which is the state this test exists to forbid"
         )
 
 
@@ -2231,9 +2249,19 @@ def _package_offers_into(package: str, queue: str) -> bool:
 
     Walked rather than named, because a countdown pointed at one file inside a
     package is satisfied by that file and blind to the rest of the unit (P3).
+
+    A SINGLE MODULE IS ACCEPTED TOO. Two of the four registered producers name a
+    module rather than a package, and a walk over a path that is not a directory
+    finds nothing and answers False, which reads exactly like "the producer does
+    not offer into the queue". Those two are still pending today, so nothing
+    would have failed; the answer would simply have been wrong on the day either
+    of them landed, which is the worst time to discover it.
     """
     root = SRC_ROOT.joinpath(*package.split("."))
-    return any(offers_into(source, queue) for _name, source in package_modules(root))
+    if root.is_dir():
+        return any(offers_into(source, queue) for _name, source in package_modules(root))
+    single = root.with_suffix(".py")
+    return single.is_file() and offers_into(single.read_text(), queue)
 
 
 @requires("cratekit.modules.reports")
@@ -2249,14 +2277,17 @@ def test_the_duplicate_audit_offers_its_pairs_into_the_duplicates_queue():
     assert _package_offers_into("cratekit.modules.reports", "Queue.DUPLICATES")
 
 
-@requires("cratekit.adopt")
 def test_the_adoption_plan_becomes_review_items_rather_than_a_file():
-    """U23's obligation, and the other half of R26.
+    """U23's obligation, ARMED: the module landed and the countdown expired.
 
     R26 says adoption presents its whole plan for review and applies it
     incrementally and resumably. Resumable across sessions is precisely what a
     plan file cannot be, because the verdicts have to outlive the process that
     collected them.
+
+    Walked over the whole package rather than pointed at one file, because a
+    countdown satisfied by one module inside a package is blind to the rest of
+    the unit (P3).
     """
     assert _package_offers_into("cratekit.adopt", "Queue.ADOPTION")
 

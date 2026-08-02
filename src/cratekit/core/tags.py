@@ -53,6 +53,7 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Sequence
 
 log = logging.getLogger(__name__)
 
@@ -272,6 +273,64 @@ def write_tags(path: Path, fields: dict[str, object]) -> bool:
 def write_genre(path: Path, genre: str) -> bool:
     """Write just the genre field. The one genre writer."""
     return write_tags(path, {"genre": genre})
+
+
+def clear_tags(path: Path, fields: Sequence[str]) -> bool:
+    """Remove logical fields from ``path``. Absent ones are already correct.
+
+    THE UNDO OF :func:`write_tags`, AND IT CANNOT BE EXPRESSED THROUGH IT.
+    ``write_tags`` skips a None value on purpose, so that a caller may pass
+    everything it might have detected without filtering first. That default is
+    right for a detection pass and it leaves one operation unreachable: putting a
+    field back to ABSENT. The two are different facts about a file, and a revert
+    that wrote an empty string where a field had never existed would leave a tag
+    the user never had while reporting the file restored exactly (U23's revert
+    ledger is the caller that needs the difference).
+
+    It lives HERE rather than in the module that needs it, for seam decision S5's
+    reason: the reader and the writer classify containers through one table and
+    one ``_open``, so they are incapable of disagreeing about where a field
+    lives. A deletion written anywhere else would be a third classification, and
+    the AIFF corruption this module exists to prevent came from exactly one
+    caller guessing at a container for itself.
+
+    Returns True on success and False on any failure, matching its sibling: one
+    awkward file must not abort a batch. An unknown FIELD still raises, because
+    that is the beat-grid rule's enforcement point and a deletion path that
+    accepted an unknown name would be a way around the table.
+    """
+    unknown = set(fields) - set(FIELDS)
+    if unknown:
+        raise ValueError(
+            f"unknown tag fields: {sorted(unknown)}. The writable field set is a "
+            f"module constant, not configuration, because a configurable field "
+            f"set would reopen the beat-grid rule through the config file (R17)."
+        )
+    if not fields:
+        return True
+
+    suffix = path.suffix.lower()
+    dialect = dialect_of(suffix)
+    try:
+        handle = _open(path)
+        if dialect is Dialect.VORBIS:
+            for name in fields:
+                handle.pop(FIELDS[name].vorbis, None)
+        elif dialect is Dialect.MP4:
+            for name in fields:
+                handle.pop(FIELDS[name].mp4, None)
+        else:
+            if handle.tags is None:
+                # Nothing to remove, and adding a tag block in order to delete
+                # from it would write a change where the file already agrees.
+                return True
+            for name in fields:
+                handle.tags.pop(FIELDS[name].id3, None)
+        handle.save()
+        return True
+    except Exception as exc:  # noqa: BLE001 - one bad file must not abort a batch
+        log.debug("tag clear failed for %s: %s", path, exc)
+        return False
 
 
 # ---------------------------------------------------------------------------

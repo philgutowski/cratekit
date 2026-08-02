@@ -99,14 +99,6 @@ PENDING: dict[str, tuple[str, str]] = {
         "defect. Registered here because U11 declared the surface and nothing "
         "else forces it to exist (P5)",
     ),
-    "cratekit.adopt": (
-        "U23",
-        "that the adoption plan is presented as review items rather than as a "
-        "plan file, which is the other half of R26. A plan approved 30 percent "
-        "through and resumed in a later session needs verdicts that outlive the "
-        "process that collected them, which is exactly what a file the user edits "
-        "cannot give it",
-    ),
     "cratekit.intake": (
         "U37",
         "that a path repair proposal is offered into the queue U11 declared for "
