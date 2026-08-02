@@ -34,6 +34,7 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -1275,25 +1276,218 @@ def test_conformance_2_no_module_builds_an_exit_code_from_a_bare_integer():
     assert not offenders, f"ExitCode built from a literal: {offenders}"
 
 
-@pytest.mark.parametrize("entry", LANDED, ids=lambda e: e.name)
-def test_conformance_3_every_declared_gate_refuses_and_then_proceeds(entry, configured):
-    positional = _sample_arguments(entry)
-    for spec in entry.gates:
-        code, out, _ = drive(["--output", "json", *entry.path, *positional])
-        assert code == int(ExitCode.DECISION_REQUIRED)
+def _conformance_3(entry: registry.Entry, positional: list[str]) -> list[str]:
+    """Drive one gated verb to OK the way R34 says it is reached, and say how.
+
+    Returns the gates it actually refused at, in the order it refused at them.
+
+    A gate this entry DECLARES but never reaches is not asserted about, and that
+    omission is deliberate. ``write.cloudsync.unreadable`` is raised by the
+    guarded writer only when rekordbox's sync state cannot be read, so requiring
+    every declared gate to fire would demand a refusal the environment cannot
+    produce, which is a wall of exactly the kind this function was rewritten to
+    remove. What is asserted instead is stronger where it counts: every gate it
+    DOES reach is one it declared, each is answered the way its own class of gate
+    permits, and the verb exits OK only afterwards.
+    """
+    declared = {spec.name: spec for spec in entry.gates}
+    answered: list[str] = []
+    reached: list[str] = []
+    run_id: str | None = None
+
+    # One drive per gate, plus the one that succeeds. A verb that refuses more
+    # often than it has gates is refusing at something it did not declare, and
+    # falling out of the loop rather than spinning is what makes that visible.
+    for _ in range(len(declared) + 1):
+        resume = ["--run", run_id] if run_id is not None else []
+        argv = ["--output", "json", *answered, *resume, *entry.path, *positional]
+        code, out, err = drive(argv)
+        if code == int(ExitCode.OK):
+            return reached
+        assert code == int(ExitCode.DECISION_REQUIRED), err or out
+
         envelope = json.loads(out)
         # The gate and its options ride on the CAUSE, not on
         # ``pending_human_action``: that field means a person must act OUTSIDE
         # the tool, and the envelope asserts it implies status PENDING_HUMAN in
         # both directions. A decision is answerable in the tool, so putting it
         # there would make the two fields contradict each other.
-        assert envelope["cause"]["detail"]["gate"] == spec.name
-        assert envelope["cause"]["detail"]["options"] == list(spec.options)
-
-        code, _, _ = drive(
-            ["-d", f"{spec.name}={spec.options[0]}", *entry.path, *positional]
+        detail = envelope["cause"]["detail"]
+        assert detail["gate"] in declared, (
+            f"{entry.name} refused at {detail['gate']!r}, which it does not "
+            f"declare; a gate outside the registry is invisible to every "
+            f"conformance assertion"
         )
-        assert code == int(ExitCode.OK)
+        spec = declared[detail["gate"]]
+        assert detail["options"] == list(spec.options)
+        assert detail["explicit"] is spec.explicit
+        assert envelope["resumable"] is True
+        reached.append(spec.name)
+
+        if not spec.explicit:
+            # ONE ACT. An ordinary gate is answerable in the invocation that
+            # discovered it, and the flags accumulate rather than replacing each
+            # other so a second gate further in is reached with the first still
+            # answered.
+            answered += ["-d", f"{spec.name}={spec.options[0]}"]
+            continue
+
+        # TWO ACTS (R34). The inline answer is refused AGAIN, because an
+        # explicit gate is satisfiable only by a deliberate, separate act
+        # recorded with its actor. Asserting OK here instead, which is what this
+        # function did for four waves, asserts that an explicit gate must NOT be
+        # honoured, and every verb declaring one was unlandable by construction.
+        run_id = envelope["run_id"]
+        inline = ["-d", f"{spec.name}={spec.options[0]}"]
+        code, _, _ = drive([*answered, *inline, "--run", run_id, *entry.path, *positional])
+        assert code == int(ExitCode.DECISION_REQUIRED), (
+            f"{spec.name} is explicit, and an inline answer satisfied it. R34's "
+            f"whole content is that this class of decision cannot be typed onto "
+            f"the command that was already running"
+        )
+        assert spec.name not in gates.load(run_id).decisions, (
+            "the refused inline answer was recorded anyway, so the second act "
+            "would find the gate already answered by the first"
+        )
+
+        code, _, err = drive(
+            ["run", "decide", run_id, spec.name, spec.options[0], "--actor", "a-person"]
+        )
+        assert code == int(ExitCode.OK), err
+        assert gates.load(run_id).decisions[spec.name].actor == "a-person", (
+            "an explicit decision names who asserted it, or the record cannot "
+            "tell a person's answer from the process asking itself"
+        )
+
+    raise AssertionError(
+        f"{entry.name} still refuses after every gate it declares was answered"
+    )
+
+
+@pytest.mark.parametrize("entry", LANDED, ids=lambda e: e.name)
+def test_conformance_3_every_gate_refuses_and_then_the_verb_proceeds(entry, configured):
+    """Assertion 3, rewritten: a gate refuses, and OK comes only after R34's acts.
+
+    WHAT WAS WRONG. The previous version drove every gate the same way: refuse,
+    then hand the answer back on ``-d`` in a fresh invocation, then assert OK.
+    For an ordinary gate that is the contract. For an EXPLICIT one it is the
+    opposite of the contract. ``Gates.require`` refuses an inline answer whenever
+    nothing is recorded against the run, and ``cli.run`` mints a new run whenever
+    ``--run`` is absent, so an explicitly gated verb refuses the second drive too,
+    every time, by design. Asserting OK there asserted that R34 must be violated.
+
+    Nothing caught it because no landed entry declares an explicit gate. Fifteen
+    declare one and all fifteen are planned, so the branch was never driven, and
+    four units in one wave independently concluded their verb "cannot land" and
+    parked the obligation somewhere else. The test below drives the branch against
+    a synthetic entry so it is proved before the first real one arrives.
+    """
+    if not entry.gates:
+        return
+    _conformance_3(entry, _sample_arguments(entry))
+
+
+def _swap_in(monkeypatch, promoted: registry.Entry) -> None:
+    """Put a modified entry in front of the dispatcher, everywhere it is looked up.
+
+    ``_BY_NAME`` is patched alongside ``ENTRIES`` because ``run decide`` resolves
+    the owning entry BY NAME to find the gate it is answering, so a swap that
+    reached only the parser would leave the second act looking at the unmodified
+    spec and quietly prove nothing.
+    """
+    monkeypatch.setattr(
+        registry,
+        "ENTRIES",
+        tuple(promoted if e.name == promoted.name else e for e in registry.ENTRIES),
+    )
+    monkeypatch.setattr(
+        registry, "_BY_NAME", {**dict(registry._BY_NAME), promoted.name: promoted}
+    )
+
+
+def test_conformance_3_admits_an_explicitly_gated_verb(configured, monkeypatch):
+    """The branch above, driven, before any landed verb declares an explicit gate.
+
+    Fifteen planned entries declare one and none has landed, so assertion 3's
+    explicit half would otherwise ship untested and be discovered by the unit
+    that lands the first one. That is precisely how the defect it replaces
+    survived four waves.
+
+    The synthetic entry is the REAL ``profile.set`` with its one gate promoted to
+    explicit, rather than a verb invented here. A verb invented for the test
+    proves the test can invent a verb; promoting a real one means the dispatcher,
+    the run record, ``run decide`` and the resume path are all the shipped ones,
+    and the single difference is the flag under examination.
+    """
+    base = registry.entry("profile.set")
+    promoted = replace(base, gates=(replace(base.gates[0], explicit=True),))
+    _swap_in(monkeypatch, promoted)
+
+    assert _conformance_3(promoted, ["slim"]) == ["profile.set.apply"]
+    config.reset_cache()
+    assert config.load().profile.name == "slim", (
+        "the verb reported OK without doing its work, so the two acts bought a "
+        "status rather than a profile change"
+    )
+
+
+#: A second gate to hang on a one-gate verb, so the two-gate shape is driven
+#: rather than assumed. Explicit, because that is the shape four registry entries
+#: carry: their own confirmation plus the shared cloud-sync decision.
+_SECOND_GATE = registry.GateSpec(
+    name="profile.set.second",
+    options=("go", "abort"),
+    prompt="A second decision on the same verb?",
+    explicit=True,
+)
+
+
+def _require_every_gate(ctx):
+    """A handler that reaches all of its entry's gates, in declaration order."""
+    for spec in ctx.entry.gates:
+        ctx.gate.require(spec)
+    return ctx.envelope(data={"checks": [], "summary": {}})
+
+
+@pytest.mark.parametrize(
+    "explicit_first", [False, True], ids=["plain-then-explicit", "explicit-then-explicit"]
+)
+def test_conformance_3_admits_a_verb_carrying_two_gates(
+    explicit_first, configured, monkeypatch
+):
+    """The OTHER half of what assertion 3 could not express, driven both ways.
+
+    The previous version drove once per DECLARED gate and answered only that one
+    gate, on a fresh run every time. A verb with two gates therefore refused on
+    whichever gate the current drive had not answered, so it exited
+    DECISION_REQUIRED for both iterations and could never pass, with no explicit
+    flag involved at all. Four registry entries carry two gates, ``restore.run``,
+    ``name.apply``, ``route.inbox`` and ``adopt.apply``, and every one of them was
+    unlandable for this reason on top of the R34 one.
+
+    ``_conformance_3`` answers gates CUMULATIVELY instead, which is what makes one
+    loop cover both shapes: an ordinary gate accumulates a flag and the next drive
+    reaches past it, an explicit one takes its two acts and the run carries the
+    answer forward under ``--run``. Both orderings are driven because they are not
+    the same path. Plain-then-explicit has to carry an inline answer across the
+    switch to a resumed run, and explicit-then-explicit has to record two separate
+    decisions against one run without the first being re-asked.
+
+    The handler is the one piece that cannot be borrowed, because no landed verb
+    declares two gates and a verb that declares them without reaching them proves
+    nothing. Everything else on the path is shipped: the parser, the dispatcher,
+    the run record, ``run decide``, and the resume.
+    """
+    base = registry.entry("profile.set")
+    first = replace(base.gates[0], explicit=explicit_first)
+    promoted = replace(base, gates=(first, _SECOND_GATE))
+    _swap_in(monkeypatch, promoted)
+    monkeypatch.setattr("cratekit.cli.verbs.profile.apply_profile", _require_every_gate)
+
+    assert _conformance_3(promoted, ["slim"]) == [first.name, _SECOND_GATE.name], (
+        "the verb reached OK without both of its gates refusing first, so one of "
+        "them was answered by something other than a decision"
+    )
 
 
 def test_the_csv_writer_guard_bites_and_stays_quiet_on_correct_code():
