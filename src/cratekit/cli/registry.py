@@ -736,7 +736,10 @@ ENTRIES: tuple[Entry, ...] = (
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
-        planned_in="U21",
+        #: U21 landed the per-field policy this verb applies, not the verb. The
+        #: shell renames files on disk and rewrites name fields, which is the
+        #: naming half of intake, so it travels with U37 beside the verb above it.
+        planned_in="U37",
     ),
     # ── Acquisition ─────────────────────────────────────────────────────────
     Entry(
@@ -1000,7 +1003,10 @@ ENTRIES: tuple[Entry, ...] = (
         taxonomy_terms=("with_vox",),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
-        planned_in="U21",
+        #: This verb writes My Tags rather than content columns, so U21's per-field
+        #: policy does not govern it at all. It is the vocal module's own surface
+        #: and belongs with U25, beside the entry above it.
+        planned_in="U25",
     ),
     # ── Sync ────────────────────────────────────────────────────────────────
     Entry(
