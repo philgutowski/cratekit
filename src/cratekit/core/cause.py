@@ -215,6 +215,15 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # to. The cannot-read case is above, under the decision codes.
         "cloud-sync-active": ExitCode.EXTERNAL_WRITER,
         "mytag-category-template-missing": ExitCode.LIBRARY_PREREQUISITE,
+        # U18. A catalog import was asked to write a tree this library's declared
+        # taxonomy does not name. Same code as the My Tag template above and for
+        # the same reason that code exists: the operation mirrors a structure the
+        # library declares rather than fabricating one, and there is nothing here
+        # to mirror. Its own slug because the remedy is a different act entirely,
+        # and the class remedy is wrong for it: nobody fixes this in rekordbox,
+        # they declare the tree in the template, so a cause built here carries
+        # the configuration token instead.
+        "catalog-tree-undeclared": ExitCode.LIBRARY_PREREQUISITE,
         # ── This installation ───────────────────────────────────────────────
         "doctor-check-failed": ExitCode.PRECONDITION,
         # One slug for every way configuration can be unusable, because the

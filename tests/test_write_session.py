@@ -48,7 +48,6 @@ from cratekit.core import config, preflight, rb_writer, session, snapshot
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.tools import backup
-from tests._pending import requires
 from tests.test_config import valid_data
 
 UTC = timezone.utc
@@ -897,7 +896,6 @@ def test_the_gates_can_arm_the_analysis_watch_for_the_body_of_a_session(cfg, tmp
     assert excinfo.value.cause.reason == "anlz-modified"
 
 
-@requires("cratekit.write.trees")
 def test_the_tree_writers_reach_for_the_session_spine(cfg):
     """P5. The countdown that closes this unit's own softening path.
 
@@ -912,16 +910,43 @@ def test_the_tree_writers_reach_for_the_session_spine(cfg):
     The third is the one that matters most, because the default is to watch
     nothing and a default that silently does nothing is exactly the shape a
     docstring assertion fails to prevent.
+
+    ARMED AGAINST THE SYNTAX TREE, NOT THE SOURCE TEXT, and that distinction is
+    the whole guard. Written as a substring search this passed the moment the
+    module's own docstring explained why it calls these three, which is exactly
+    what a module documenting its obligations does. The guard would then have
+    survived every one of the calls being deleted. A docstring that satisfies
+    the test written to check the docstring's claim is not a countdown, it is
+    the softening path wearing the guard's clothes. The sibling obligation in
+    tests/test_tree_registry.py already walks calls for this reason; this one
+    now matches it.
     """
+    import ast
     import importlib
 
     trees = importlib.import_module("cratekit.write.trees")
-    source = Path(trees.__file__).read_text()
-    for obligation in ("assert_gates", "analysis_roots", "assert_verified"):
-        assert obligation in source, (
-            f"the tree writers do not reach for {obligation!r}, so the "
+    module = ast.parse(Path(trees.__file__).read_text(encoding="utf-8"))
+
+    called: set[str] = set()
+    keywords: set[str] = set()
+    for node in ast.walk(module):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Attribute):
+            called.add(node.func.attr)
+        elif isinstance(node.func, ast.Name):
+            called.add(node.func.id)
+        keywords.update(kw.arg for kw in node.keywords if kw.arg)
+
+    for obligation in ("assert_gates", "assert_verified"):
+        assert obligation in called, (
+            f"the tree writers do not CALL {obligation!r}, so the "
             f"destructive-session spine is optional for the unit that needs it most"
         )
+    assert "analysis_roots" in keywords, (
+        "the tree writers never pass analysis_roots to anything, so the watch "
+        "that is the runtime half of R17's fifth surface watches nothing"
+    )
 
 
 def test_the_watched_set_is_never_narrower_than_the_binding_recognises():

@@ -41,7 +41,7 @@ from pathlib import Path
 
 import pytest
 
-from tests._pending import requires
+from cratekit.core import tree_registry
 from tests.xml_fixtures import _fresh_xml, _no_bare_lf, _routing_xml, _xml_doc
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
@@ -233,7 +233,6 @@ def test_name_collision_current_behaviour():
     ) in out
 
 
-@requires("cratekit.write.trees")
 def test_route_into_energy_sub_golden():
     from cratekit.write import trees
 
@@ -246,7 +245,6 @@ def test_route_into_energy_sub_golden():
     assert b'            <TRACK Key="101"/>\r\n' in out
 
 
-@requires("cratekit.write.trees")
 def test_entries_count_matches_tracks_actually_inserted():
     """Entries is not decorative. rekordbox trusts it over the child count."""
     from cratekit.write import trees
@@ -258,7 +256,6 @@ def test_entries_count_matches_tracks_actually_inserted():
     assert out.count(b'<TRACK Key="') == 3
 
 
-@requires("cratekit.write.trees")
 def test_unplaced_existing_sub_golden():
     """The regression guard for the bare-LF insert.
 
@@ -275,7 +272,6 @@ def test_unplaced_existing_sub_golden():
     assert _no_bare_lf(out)
 
 
-@requires("cratekit.write.trees")
 def test_unplaced_new_sub_golden():
     from cratekit.write import trees
 
@@ -300,7 +296,6 @@ def _rating_fixture(track_id: int, rating: int) -> bytes:
     )
 
 
-@requires("cratekit.write.trees")
 def test_rating_write_golden():
     from cratekit.write import trees
 
@@ -312,7 +307,6 @@ def test_rating_write_golden():
     assert _no_bare_lf(out), "the rating writer must not disturb CRLF"
 
 
-@requires("cratekit.write.trees")
 def test_second_rating_writer_golden():
     """The source system carried TWO copies of the rating writer.
 
@@ -342,28 +336,25 @@ def _vox_fixture() -> bytes:
     )
 
 
-@requires("cratekit.write.trees")
 def test_add_vocal_playlists_golden():
     from cratekit.write.trees import add_vox_playlists
 
-    out, modified = add_vox_playlists(_vox_fixture())
+    out, modified = add_vox_playlists(_vox_fixture(), registry=tree_registry.EMPTY)
     assert modified == ["Deep House"]
     _check("create_vox_playlists", out)
     assert _no_bare_lf(out)
     assert b'<NODE Name="with vox" Type="1" KeyType="0" Entries="0"/>' in out
 
 
-@requires("cratekit.write.trees")
 def test_add_vocal_playlists_is_idempotent():
     from cratekit.write.trees import add_vox_playlists
 
-    once, _ = add_vox_playlists(_vox_fixture())
-    twice, modified = add_vox_playlists(once)
+    once, _ = add_vox_playlists(_vox_fixture(), registry=tree_registry.EMPTY)
+    twice, modified = add_vox_playlists(once, registry=tree_registry.EMPTY)
     assert modified == []
     assert twice == once
 
 
-@requires("cratekit.write.trees")
 def test_label_subtree_golden(tmp_path):
     """The fifth duplicated splicer, and the only one that writes a whole tree."""
     from cratekit.write import trees
@@ -375,7 +366,9 @@ def test_label_subtree_golden(tmp_path):
         2025: [{"track_ids": [900000001, 900000002]}],
         2024: [{"track_ids": [900000003]}],
     }
-    trees.insert_record_labels_tree(source, "Kompakt", buckets, out_path)
+    trees.insert_record_labels_tree(
+        source, "Kompakt", buckets, out_path, registry=tree_registry.EMPTY
+    )
     out = out_path.read_bytes()
     _check("label_library_insert", out)
     assert _no_bare_lf(out)

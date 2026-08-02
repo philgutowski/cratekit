@@ -301,6 +301,19 @@ class Taxonomy:
     label_gate: LabelGate
     family: FamilyAffinity
 
+    # The tree a whole-catalog import writes into: one folder per catalogued
+    # source, each holding one playlist per year. It sits here beside the routing
+    # tree and the intake flow rather than in the writer that emits it, because
+    # R19 puts every playlist display name in the declared template and the write
+    # layer is forbidden from carrying one at all.
+    #
+    # OPTIONAL, unlike the other two, and that is a decision rather than an
+    # omission. A library that never imports a catalog has no such tree, and a
+    # template declaring none is complete rather than deficient. The writer
+    # refuses by name when asked to write a tree nobody declared, which beats
+    # inventing a folder in somebody's library from a default they never saw.
+    catalog: Node | None = None
+
     # Indexes, built once at construction. They are derived data, so they can
     # never disagree with the declaration they came from.
     _by_id: Mapping[str, Bucket] = field(repr=False, default_factory=dict)
@@ -427,7 +440,26 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
     tree = Node(str(tree_raw.get("id", "")), str(tree_raw.get("display", "")))
     intake = Node(str(intake_raw.get("id", "")), str(intake_raw.get("display", "")))
     tree_depth = int(tree_raw.get("depth", 0))
-    for node, label in ((tree, "tree"), (intake, "intake")):
+    # Declared or absent, never half declared. A section carrying an id and no
+    # display, or the reverse, is validated exactly as strictly as the two
+    # mandatory trees: an optional section is optional to WRITE, not optional to
+    # get right, and a half-declared tree would reach a writer as a folder named
+    # the empty string.
+    # Keyed on PRESENCE, never on truthiness. An empty ``[catalog]`` table is a
+    # declaration, and it is falsy, so a truthiness test reads "the user wrote a
+    # section" as "the user wrote no section" and skips the very validation the
+    # paragraph above promises. That is the shape this whole block exists to
+    # refuse, arriving through the check meant to enforce it.
+    catalog_raw = data.get("catalog") if "catalog" in data else None
+    catalog = (
+        Node(str(catalog_raw.get("id", "")), str(catalog_raw.get("display", "")))
+        if catalog_raw is not None
+        else None
+    )
+    declared_nodes = [(tree, "tree"), (intake, "intake")]
+    if catalog is not None:
+        declared_nodes.append((catalog, "catalog"))
+    for node, label in declared_nodes:
         if not _ID.match(node.id):
             problems.append(f"[{label}] id {node.id!r} must match {_ID.pattern}")
         if not node.display:
@@ -487,6 +519,7 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
         suggest=suggest,
         label_gate=gate,
         family=family,
+        catalog=catalog,
         _by_id=by_id,
         _by_display={b.display: b.id for b in buckets},
         _routing_alias=routing_alias,

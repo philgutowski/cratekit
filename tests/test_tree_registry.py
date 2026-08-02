@@ -46,7 +46,6 @@ import pytest
 
 from cratekit.core import config, taxonomy, tree_registry
 from cratekit.write import rbxml
-from tests._pending import requires
 from tests.xml_fixtures import _ml_track, _no_bare_lf, _xml_doc
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -629,6 +628,8 @@ _CALLABLE_EMITTERS = frozenset(
         "splice_into_subplaylist",
         "remove_tracks_from_subplaylist",
         "insert_genre_folder",
+        "insert_empty_subplaylist",
+        "insert_catalog_folder",
         "remove_folder_node",
         "insert_intake_playlist",
     }
@@ -653,6 +654,17 @@ def _invoke(name: str, content: bytearray, tree: rbxml.Tree | None):
         )
     if name == "insert_genre_folder":
         return rbxml.insert_genre_folder(content, NEW_FOLDER, [SUB_DISPLAY], tree=tree)
+    if name == "insert_empty_subplaylist":
+        # A name the fixture does NOT already carry. Handed the seeded one this
+        # writer is correctly idempotent and does nothing, which passes the
+        # refusal assertions while proving nothing about them.
+        return rbxml.insert_empty_subplaylist(
+            content, FOLDER_DISPLAY, NEW_PLAYLIST, tree=tree
+        )
+    if name == "insert_catalog_folder":
+        return rbxml.insert_catalog_folder(
+            content, NEW_FOLDER, [(NEW_PLAYLIST, [901])], tree=tree
+        )
     if name == "remove_folder_node":
         return rbxml.remove_folder_node(content, FOLDER_DISPLAY, tree=tree)
     if name == "insert_intake_playlist":
@@ -919,7 +931,6 @@ def _imports_module(module: ast.Module, dotted: str) -> bool:
     return False
 
 
-@requires("cratekit.write.trees")
 def test_the_database_tree_writer_uses_the_shared_anchor_assertion():
     """P5: a docstring saying a later unit will call this is a wish.
 
@@ -947,7 +958,6 @@ def test_the_database_tree_writer_uses_the_shared_anchor_assertion():
     )
 
 
-@requires("cratekit.write.trees")
 def test_every_bridge_call_in_the_tree_writers_names_the_tree_it_targets():
     """The other half of P5, and the half the guard's whole value rests on.
 

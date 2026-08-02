@@ -1383,17 +1383,35 @@ def _is_folder(playlist: Any) -> bool:
     return int(getattr(playlist, "Attribute", -1)) == 1
 
 
-def ensure_folder(db: Any, name: str) -> Any:
-    """Find or create a playlist FOLDER by name.
+def ensure_folder(db: Any, name: str, parent: Any = None) -> Any:
+    """Find or create a playlist FOLDER by name, optionally under a parent.
 
     ``name`` has no default. The source defaulted it to one feature's folder,
     which put a taxonomy display name into the one module that must not carry
     one (R19).
+
+    ``parent`` scopes the match exactly as :func:`ensure_playlist` scopes its
+    own, and for the same reason: two trees may legitimately hold folders of one
+    name, and a global match returns whichever the query happens to yield first.
+    The asymmetry this closes was live: a caller that had gone to the trouble of
+    asserting which root its tree adopted then resolved the folder globally, so
+    the assertion held while the write landed somewhere else entirely.
+
+    Unscoped stays available and stays the default, because a caller writing a
+    top-level folder has no parent to name and requiring one would be a
+    ceremony that answers nothing.
     """
+    if parent is None:
+        for playlist in db.get_playlist(Name=name):
+            if _is_folder(playlist):
+                return playlist
+        return db.create_playlist_folder(name)
+
+    parent_id = str(parent.ID)
     for playlist in db.get_playlist(Name=name):
-        if _is_folder(playlist):
+        if _is_folder(playlist) and str(getattr(playlist, "ParentID", "")) == parent_id:
             return playlist
-    return db.create_playlist_folder(name)
+    return db.create_playlist_folder(name, parent=parent)
 
 
 def ensure_playlist(db: Any, name: str, parent: Any) -> Any:

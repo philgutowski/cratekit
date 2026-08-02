@@ -317,3 +317,84 @@ builds.
 **Closes when:** the author configures a remote and runs the backup verb once
 with its dry run, then for real, and records the outcome. That is an attended
 step, like the other live-hardware gates in this plan.
+
+---
+
+## R-10. Membership insertion is one database round trip per track
+
+**Found:** during U18 review, by the efficiency reviewer, confirmed against the
+code it names.
+
+`write_tree_membership` calls `rb_writer.add_membership` once per resolved track,
+and that helper runs its own `get_playlist_songs(PlaylistID=..., ContentID=...)`
+query before deciding whether to insert. A sweep over a few hundred sub-playlists
+therefore issues hundreds to low thousands of individual select-then-maybe-insert
+round trips inside one locked write session. One query per PLAYLIST, building the
+set of content ids already in it and diffing in memory, would answer the same
+question.
+
+**Not fixed here, and the reason is the same argument this unit makes twice
+elsewhere.** The idempotency check lives in `add_membership`, which is U7's. To
+batch it from the caller, this unit would have to ask the database what a
+playlist already holds and decide for itself what is new, which is a second
+implementation of the rule `add_membership` owns. Two implementations of one rule
+is how they come to disagree, and the disagreement here is a track silently
+inserted twice or silently skipped. The same reasoning is why the medium check
+goes through `tree_registry.anchored_root` rather than being spelled again.
+
+It is also bounded by tracks per playlist rather than by library size, against a
+local SQLite file, inside a session that is already holding a lock. The N times M
+walk that WAS unbounded, the row index rebuilt per plan entry, was fixed in this
+unit rather than recorded.
+
+**Closes when:** `rb_writer` grows a batch membership primitive that takes a
+playlist and many content ids and returns which ones it inserted. Then one call
+replaces the loop and the rule stays in one place. That belongs to whichever unit
+next has a reason to touch that module.
+
+**One more of the same shape, found by the U18 performance review.**
+`ensure_folder` and `ensure_playlist` are re-queried once per plan entry, so
+entries sharing a folder re-issue the same lookup. Bounded to a few hundred extra
+local queries per sweep, sub-second, and it closes with the same batch primitive.
+
+
+---
+
+## R-11. Four accepted findings from the U18 review
+
+Seven reviewers ran over U18. Six findings were fixed in the unit, all of them
+invisible to a green suite, and these four were judged and accepted instead.
+
+**The CRLF-adjacency absorption is written out four times.** `insert_root_playlist`,
+`remove_folder_node` and `insert_intake_playlist` each check for a break beside a
+node and extend their range to swallow it, and U18's `insert_catalog_folder` adds
+a fourth. A shared helper is the obvious answer and the goldens make the refactor
+safe to verify. It was not done here because three of the four are landed writers
+whose exact bytes nine goldens pin, and rewriting them is not this unit's work.
+**Closes when:** any unit with a reason to touch those writers extracts the
+helper and re-runs the golden suite unchanged.
+
+**`apply_rating_changes` names one idea in two modules.** `trees` wraps
+`rbxml`'s, adding only a mapping coercion. Judged and kept, on the same footing
+as the collisions the handoff already records: the return types agree, so
+importing the wrong one is harmless, and the wrapper is the entry point the
+goldens name while the emitter is the byte primitive. Worth revisiting if the
+wrapper ever grows behaviour, because then the two would genuinely diverge.
+
+**The analysis watch refuses an empty root LIST, not an empty walk.** A reviewer
+argued it should refuse when the walk finds no analysis files. It should not: a
+library that genuinely holds none is ordinary, and refusing it would fire on
+correct code, which is how a guard gets switched off (P7). What the review did
+surface correctly is that no test names a root that actually holds an analysis
+file, so the watch is armed and watching nothing in the battery. **Closes when:**
+a database-half test seeds a real analysis file, rewrites it inside the session,
+and asserts the `anlz-modified` refusal.
+
+**A real record label is used as fixture data.** `tests/test_tree_writer.py` and
+the pre-existing `tests/test_xml_splice_golden.py` both use a real label name,
+which is in the author's own favourites list. D1 forbids a shipped artifact
+naming a real volume, person, or track, and a label is none of those three, so
+this is outside its letter. Recorded rather than changed because the string is
+already baked into a committed golden file, so changing it means regenerating
+that golden. **Closes when:** the author decides D1's intent is broader than its
+three nouns, and both fixtures move to an invented label in one pass.
