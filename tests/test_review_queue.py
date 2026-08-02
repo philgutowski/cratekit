@@ -2170,14 +2170,19 @@ def test_every_new_adjudication_surface_is_owed_by_a_registered_unit():
         )
 
 
-@requires("cratekit.acquire.match_cli")
 def test_the_match_verb_sends_only_the_middle_state_to_the_queue():
-    """U16's obligation, registered here because U11 settled the split.
+    """U11's obligation on U16, ARMED now that the match verb has landed.
 
     R11 resolves each track to matched, needs review, or missing. U11 declared
     the first and the last as OUTPUTS and the middle one as the version match
     queue, and that declaration is only worth having if the first unit able to
     contradict it is held to it.
+
+    This is the static half. The behavioural half lives in
+    tests/test_match_states.py, which drives the real verb over a real library
+    and asserts that a matched track and a missing one leave the queue empty.
+    Both are needed: this one cannot see what the verb does at run time, and
+    that one cannot see a second producer added later that writes a file.
     """
     source = (SRC_ROOT / "cratekit" / "acquire" / "match_cli.py").read_text()
     assert calls_review(source, "offer"), (

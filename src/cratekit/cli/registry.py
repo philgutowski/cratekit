@@ -778,7 +778,6 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"match"}),
         output_schema="match/1",
         adjudicates=True,
-        planned_in="U16",
     ),
     # ── Routing and audits ──────────────────────────────────────────────────
     Entry(

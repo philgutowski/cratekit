@@ -80,15 +80,6 @@ PENDING: dict[str, tuple[str, str]] = {
         "honestly with mount-library-volume, and refusing honestly is not the "
         "same as serving it",
     ),
-    "cratekit.acquire.match_cli": (
-        "U16",
-        "that R11's three states are split the way U11 declared them: the "
-        "NEEDS REVIEW state becomes persisted review items in the version-match "
-        "queue, while matched and missing stay a plain match result, and neither "
-        "of those two ever reaches the queue. Registered here rather than "
-        "asserted in a docstring because U11 settled the split and U16 is the "
-        "first unit that can violate it (P5)",
-    ),
     "cratekit.modules.reports": (
         "U34",
         "that the duplicate audit's pairs become review items in the queue U11 "
@@ -121,7 +112,17 @@ PENDING: dict[str, tuple[str, str]] = {
         "decision stores U11 shipped, and are therefore REVOCABLE: R35 says a "
         "declined file is never offered again until the decline is revoked and "
         "R36 says a tombstone is listable and revocable, and both sentences are "
-        "false if the deletion pass keeps its own file instead",
+        "false if the deletion pass keeps its own file instead. A SECOND "
+        "OBLIGATION arrives with U16 and is registered here because U24 owns the "
+        "pass that writes the records (P5): a tombstone is recorded under "
+        "cratekit.acquire.match.TOMBSTONE_KIND and against the mapping "
+        "cratekit.acquire.match.version_identity returns, because a suppression "
+        "identifier is a hash of the store key, the kind, and the identity, so a "
+        "deletion pass spelling any of the three its own way records a tombstone "
+        "the acquisition side can never find. Nothing raises when that happens: "
+        "the match reports the version missing, acquisition goes and gets it, and "
+        "the deletion somebody made on purpose is undone with the whole suite "
+        "green",
     ),
     "cratekit.cli.doctor": (
         "U27",

@@ -368,6 +368,19 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # what this is: the tree the library holds and the tree the taxonomy
         # declares have come apart, and only a person can say which is right.
         "routing-destination-renamed": ExitCode.UNCONVERGED,
+        # ── U16's refusal, appended for the reason given above ──────────────
+        #
+        # The external list a match was asked to resolve is not a list this
+        # build reads: the path names nothing, it names a web address rather
+        # than a file, it is not the document format this build speaks, or one
+        # pasted line carries no artist. ONE SLUG for all of them, the third
+        # time this mapping makes that choice, and for the same reason: what
+        # differs is the sentence, and the sentence travels on the remediation.
+        # PRECONDITION rather than USAGE, because USAGE belongs to the argument
+        # parser and to nothing else, and the argument parser accepted this
+        # command line perfectly: the path was well formed and what it points at
+        # is the problem.
+        "intake-list-unusable": ExitCode.PRECONDITION,
     }
 )
 

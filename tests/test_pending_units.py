@@ -38,7 +38,6 @@ EXPECTED_PENDING = frozenset(
     {
         "cratekit.intake.collection_xml",  # U37, the COLLECTION emitter
         "cratekit.core.restore",  # U32, the KTD21b replace
-        "cratekit.acquire.match_cli",  # U16, R11's three states, split as U11 declared
         "cratekit.deletion.cli",  # U24, declines and tombstones through the decision stores
         "cratekit.modules.reports",  # U34, R26's duplicate audit as review items
         "cratekit.adopt",  # U23, R26's adoption plan as review items
