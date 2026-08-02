@@ -109,7 +109,7 @@ MODULE_PACKAGES = frozenset(
     {
         "acquire", "intake", "analysis", "vocals", "label", "favorites",
         "setbuilder", "reports", "backup", "web", "desktop", "sync",
-        "maintenance", "tagging", "master",
+        "maintenance", "tagging", "master", "deletion",
     }
 )
 

@@ -492,3 +492,24 @@ fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather
 than skips, so the battery runs either way and a supplied fixture strengthens it.
 The natural owner is U27, which lands doctor and is the unit that makes a machine
 ready.
+
+**2026-08-02: U24 hit the same wall, and it hit a second one beside it.** The
+deletion engine landed in full; `cratekit.deletion.cli` did not, and both
+`delete.review` and `tombstone.list` are re-pointed to **U27** through one
+`DELETION_CLI_UNIT` constant, with the obligation registered in
+`tests/_pending.py` where the board actually reads it. The second wall is worth
+recording because it is not about databases at all: `delete.review` declares an
+**explicit** gate, R34 says an explicit gate is answerable only by a separate
+recorded act and never inline in the invocation that discovered it, and
+conformance 3 drives exactly that inline answer and then requires exit `OK`. So
+no verb with an explicit gate can pass conformance 3 as it is written today,
+whatever fixture is supplied. Every explicit gate in the registry belongs to an
+unlanded verb, so this is a wall in front of `session.ack`, `session.release`,
+`restore.run`, `adopt.apply`, `doctor.repair-paths` and the four routing verbs
+as well. The fixture closes the database half; the explicit half needs
+conformance 3 to answer an explicit gate the way the product says it must be
+answered, which is through `run.decide` against a recorded run.
+
+U24's OWN countdown is discharged rather than moved. The guard asserting that
+declines and tombstones go through U11's revocable decision stores is armed and
+runs unconditionally over `cratekit.deletion`; only the shell is outstanding.

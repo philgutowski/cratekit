@@ -3,7 +3,8 @@
 Written 2026-08-01 so a session with no memory of the build can pick it up.
 Revised the same day, twice: once after the three pending branches merged and
 the U7 hardening landed, and again after U8 and U17. Revised 2026-08-02 after
-U18, and again the same day after U11 and U19 landed together.
+U18, again the same day after U11 and U19 landed together, and again after U21
+and U24.
 
 ## The work is tracked on a board now
 
@@ -17,10 +18,55 @@ which blocks which. Read BOARD.md for what to update when a merge lands.
 
 ## State
 
-`main` carries U1 to U8, U10, U11, U13, U14, U15, U17, U18, U19, U31 and U35,
-plus the W1 through W6 hardening, the A4 whitelist addition, and U9's verdicts.
-Pushed to the private remote. **3131 passed, 16 skipped**, ruff clean,
+`main` carries U1 to U8, U10, U11, U13, U14, U15, U17, U18, U19, U21, U24, U31
+and U35, plus the W1 through W6 hardening, the A4 whitelist addition, and U9's
+verdicts. Pushed to the private remote. **3249 passed, 15 skipped**, ruff clean,
 `scan_repo` clean.
+
+## What U24 changed
+
+**Track deletion and tombstones, engine only.** `src/cratekit/deletion/` is six
+modules and the split is by what each one can be WRONG about: `library` reads the
+collection and writes nothing (KTD15); `candidates` decides from the filesystem
+rather than from a string comparison whether a removed row's file is genuinely
+unreferenced (R37); `trash` performs the only destructive act R18 permits on a
+music file and refuses when the volume has no Trash rather than falling back to
+an unlink; `stores` records declines and tombstones on U11's revocable decision
+stores; `watermark` remembers how far this library has been read, bound to the
+database identity it was measured against; and `run` is the order those are used
+in, which is the unit.
+
+**The proof is the point.** A candidate is deletable only when its device and
+inode match no active row's resolved file AND its size matches the size the
+removed row recorded. That covers a case-only difference, a composition-form
+difference, a hard link, a symbolic link and a path later reclaimed by a
+different track, without knowing about any of them. The reference set must be
+COMPLETE before any of it means anything: an active row that will not resolve or
+will not stat contributes no inode, so the proof would pass on absence of
+evidence, and the run refuses instead of offering a smaller set.
+
+**`cratekit.core.tombstone` is a new domain module, in a slot the layering rules
+had already reserved.** It owns the version identity both halves of R36 need: the
+deletion pass records a suppression, an acquisition pass consults it, and neither
+may import the other because deletion is a toggleable module and a slim install
+without it still has to be able to ask. The ISRC is deliberately NOT in the
+identity, because a row usually has one and a provider candidate usually does
+not, and an identity may only contain fields both sides always have.
+
+**The CLI did not land, and that is R-13's wall rather than a gap in this unit.**
+`delete.review` declares an explicit gate, which R34 says is answerable only by a
+separate recorded act, while conformance 3 drives an inline answer and requires
+exit `OK`; and it is destructive besides. Both verbs are re-pointed to U27
+through one `DELETION_CLI_UNIT` constant, and the obligation is registered in
+`tests/_pending.py`, which is the file the board audit reads. U24's own countdown
+is DISCHARGED: the guard that declines and tombstones go through the revocable
+stores is armed and now runs over the whole package.
+
+**One rule that had two producers now has one implementation.**
+`trees.soft_delete_marker` is the single read of rekordbox's soft-delete marker,
+beside the field whose missing default it defends. The routing pass and the
+deletion pass ask opposite questions of that column, and one of the two
+directions they could disagree in trashes a live file.
 
 **There are no unmerged branches and no worktrees.**
 
@@ -323,18 +369,16 @@ all wait behind it.
 |---|---|---|
 | U16 | Three-state match and missing review | Unblocked by U11. Gates U22, U26 and U37. U11 registered a countdown against it: the needs-review state becomes queue items, and matched and missing stay a plain match result. |
 | U23 | Library adoption | Unblocked by U11. U11 registered the adoption surface against it. |
-| U24 | Track deletion and tombstones | Unblocked by U11. U11 registered the declines and tombstones countdown against it. |
 | U34 | Read-only library reports | Unblocked by U11. |
 | U36 | Tree rebuild and convergence check | Still unblocked, still unwritten. Must exist before the first cutover. |
-| U21 | Metadata writers | Rescoped by A4: the writer may never author a key value. |
-| U27 | Setup wizard and doctor | Closes R-1, R-4 and R-7, and unblocks U28. |
+| U27 | Setup wizard and doctor | Closes R-1, R-4 and R-7, and unblocks U28. It now also owes the deletion CLI shell and, underneath it, R-13's conformance-3 wall. |
 | U30 | DJ_tools overlap changes | Owns moving the old system's lock, which is the real half of AE19. |
 | U32 | Restore, retention, reconciliation | U8 registered three items against it, and R-12 proposes a fourth. |
 
 U12 was already unblocked by the job engine and still is.
 
-Still blocked: U20 on U30 and U36; U22 on U16; U25 on U12; U26 on U16, U22 and
-U24; U28 on U27; U33 on U21 and U24; U37 on U16.
+Still blocked: U20 on U30 and U36; U22 on U16; U25 on U12; U28 on U27; U37 on
+U16. **U24 unblocked U26 and U33**, and U26 still waits on U16 and U22.
 
 **U19 is now the first production caller of `write/trees.py`, and U26 will be the
 second.** Two contracts are worth knowing before you write against it: the bridge
@@ -359,8 +403,8 @@ in a docstring.
 | U16 | `cratekit.acquire.match_cli` | the needs-review state becomes queue items; matched and missing stay a plain match result |
 | U20 | `cratekit.write.routing_cli` | the routing CLI, plus closing through `close_run` and converging after a rename. See R-13: U20 is an inference, not a decision |
 | U23 | `cratekit.adopt` | the adoption review surface |
-| U24 | `cratekit.deletion.cli` | declines and tombstones go through the revocable decision store |
 | U27 | `cratekit.cli.doctor` | a database acknowledged outside the library root is reported every run |
+| U27 | `cratekit.deletion.cli` | the deletion CLI shell. RE-POINTED from U24, which landed the engine and could not land a verb with an explicit gate (R-13) |
 | U28 | `path:skills` | the shipped skills tree |
 | U32 | `cratekit.core.restore` | the restore verb, and the three obligations U8 registered against it |
 | U34 | `cratekit.modules.reports` | the duplicates review surface |

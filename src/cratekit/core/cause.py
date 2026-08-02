@@ -368,6 +368,42 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # what this is: the tree the library holds and the tree the taxonomy
         # declares have come apart, and only a person can say which is right.
         "routing-destination-renamed": ExitCode.UNCONVERGED,
+        # ── U24's refusals, appended for the reason the block above gives ────
+        #
+        # The deletion watermark is present and cannot be understood: not valid
+        # JSON, a document that is not this one, a version this build does not
+        # know, or a sequence that is not a number. ONE SLUG, exactly as the
+        # routing ledger and the tree registry take one each, because what
+        # differs between the shapes is the REMEDY and the remedy travels on the
+        # remediation. Refusing rather than treating it as unset matters more
+        # here than for either sibling: an unreadable watermark read as "never
+        # run" presents a whole library's historical removals as if they had
+        # just happened, and the answer to that question moves files.
+        "deletion-watermark-unusable": ExitCode.PRECONDITION,
+        # An active row that will not resolve, or that resolves and will not
+        # stat. It contributes no filesystem identity, so the proof that a
+        # candidate's file is unreferenced would pass on absence of evidence
+        # (R37). Its own slug rather than the doctor's because the pass names
+        # exactly which rows are missing from the set and how many, and because
+        # this is the one refusal a friend with cloud-backed or online-only
+        # files meets while the author's own library never does.
+        "deletion-reference-set-incomplete": ExitCode.PRECONDITION,
+        # The volume holding a confirmed file has no Trash this account can use,
+        # or has one on a different device, which a rename cannot reach. R18
+        # permits exactly one destructive act on a music file and it is the move
+        # to the system Trash, so there is no fallback to fall back to: an
+        # unlink here would be the product doing the one thing it promised never
+        # to do, at the one moment nobody could check it afterwards.
+        "trash-unavailable": ExitCode.PRECONDITION,
+        # A row rekordbox soft-deleted that cannot report the update sequence
+        # the removal was stamped with. Its own slug beside
+        # ``soft-delete-marker-unreadable`` and on the same code, for the same
+        # reason that one exists: the database is present and readable in every
+        # other respect, and what cannot be read is one specific fact whose
+        # absence has no safe default. Guessing low re-offers every removal in
+        # the library on every run; guessing high marks the row handled and
+        # nobody is ever asked about it.
+        "removal-sequence-unreadable": ExitCode.LIBRARY_UNREADABLE,
     }
 )
 

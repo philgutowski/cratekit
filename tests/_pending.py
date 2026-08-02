@@ -87,7 +87,14 @@ PENDING: dict[str, tuple[str, str]] = {
         "queue, while matched and missing stay a plain match result, and neither "
         "of those two ever reaches the queue. Registered here rather than "
         "asserted in a docstring because U11 settled the split and U16 is the "
-        "first unit that can violate it (P5)",
+        "first unit that can violate it (P5). A SECOND OBLIGATION arrives with "
+        "U24 and is registered here because U16 owns the match that owes it: a "
+        "candidate the tombstone store suppresses is REPORTED as suppressed "
+        "rather than omitted (R36), and the question is asked through "
+        "cratekit.core.tombstone.version_identity rather than by comparing "
+        "artist and title some other way, because the recorder and the "
+        "consulter agreeing without coordinating is the only thing that makes a "
+        "tombstone match anything at all",
     ),
     "cratekit.modules.reports": (
         "U34",
@@ -116,18 +123,35 @@ PENDING: dict[str, tuple[str, str]] = {
         "edited",
     ),
     "cratekit.deletion.cli": (
-        "U24",
-        "that a declined file and a tombstoned version are recorded through the "
-        "decision stores U11 shipped, and are therefore REVOCABLE: R35 says a "
-        "declined file is never offered again until the decline is revoked and "
-        "R36 says a tombstone is listable and revocable, and both sentences are "
-        "false if the deletion pass keeps its own file instead",
+        "U27",
+        "the command-line surface for delete.review and tombstone.list, which the "
+        "registry declares and no unit has landed. RE-POINTED FROM U24 TO U27 "
+        "when U24 landed the deletion ENGINE, and the reasoning is left legible "
+        "because it is a judgement a human may want to move again. U24's own "
+        "obligation, that a declined file and a tombstoned version are recorded "
+        "through the revocable decision stores U11 shipped, is DISCHARGED: the "
+        "package landed and the guard in tests/test_review_queue.py that asserts "
+        "it now runs unconditionally over cratekit.deletion. What could not land "
+        "with it is the shell, and the reason is R-13's wall rather than anything "
+        "about deletion: conformance 3 requires a landed gated verb to exit OK "
+        "once its gate is answered, delete.review declares an EXPLICIT gate that "
+        "R34 forbids answering inline in the invocation that hit it, and it is "
+        "destructive besides, so it cannot exit OK on a machine with no library "
+        "volume and no database. U27 lands doctor and is the unit R-13 already "
+        "names as the natural owner of the fixture that brings the wall down",
     ),
     "cratekit.cli.doctor": (
         "U27",
         "that a database acknowledged outside the library root is REPORTED on "
         "every run, so the snapshot that is a copy rather than an atomic commit "
-        "stays visible long after the date somebody accepted it",
+        "stays visible long after the date somebody accepted it. A SECOND "
+        "OBLIGATION arrives with U24 and is registered here because U27 owns the "
+        "check that owes it: doctor reports whether the library volume has a "
+        "usable Trash, through cratekit.deletion.trash.probe, with create=False "
+        "so the check cannot pass by having run. R35 says a confirmed file moves "
+        "to the system Trash and never an unlink, so deletion refuses on a "
+        "volume with no Trash; a person meets that refusal in the middle of a "
+        "deletion unless something tells them first",
     ),
     "path:skills": (
         "U28",

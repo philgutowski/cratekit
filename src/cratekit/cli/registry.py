@@ -321,6 +321,27 @@ DEFERRED_MODULES: frozenset[str] = frozenset({"web", "desktop"})
 #: obligation itself is registered there, against U20 (P5).
 ROUTING_CLI_UNIT = "U20"
 
+#: The unit that lands ``cratekit.deletion.cli``, named ONCE so both entries that
+#: carry it move together.
+#:
+#: IT WAS U24 AND IT IS NOW U27, for the reason recorded against R-13 and for the
+#: same shape the routing constant above records. U24 landed the deletion engine:
+#: the reference-set proof, the trash move, the watermark, and the revocable
+#: declines and tombstones. It could not land these two verbs. ``delete.review``
+#: declares an EXPLICIT gate, which R34 says is answerable only by a separate
+#: recorded act and never inline in the invocation that discovered it, while
+#: conformance 3 drives exactly that inline answer and requires exit OK; and the
+#: verb is destructive besides, so it refuses on volume identity and on a missing
+#: database long before it could exit OK on a machine with neither.
+#: ``tombstone.list`` could stand on its own and rides with its sibling rather
+#: than being split into a second module, because the registry declares one module
+#: for both and splitting a surface to land half of it costs more than it buys.
+#:
+#: THE MARKER IS NOT THE RECORD. ``scripts/board.py`` reads ``tests/_pending.py``
+#: and nothing else, so this constant is a convenience for the reader and the
+#: obligation itself is registered there, against U27 (P5).
+DELETION_CLI_UNIT = "U27"
+
 
 # ---------------------------------------------------------------------------
 # The verbs
@@ -1178,7 +1199,7 @@ ENTRIES: tuple[Entry, ...] = (
                 digest_source="plan",
             ),
         ),
-        planned_in="U24",
+        planned_in=DELETION_CLI_UNIT,
     ),
     Entry(
         name="tombstone.list",
@@ -1190,7 +1211,7 @@ ENTRIES: tuple[Entry, ...] = (
         module_id="deletion",
         emits=frozenset({"review_set"}),
         output_schema="review_set/1",
-        planned_in="U24",
+        planned_in=DELETION_CLI_UNIT,
     ),
     Entry(
         name="export.playlist",

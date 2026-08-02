@@ -2196,34 +2196,181 @@ def test_the_match_verb_sends_only_the_middle_state_to_the_queue():
     )
 
 
-@requires("cratekit.deletion.cli")
-def test_the_deletion_verb_records_declines_and_tombstones_where_they_are_revocable():
-    """U24's obligation. R35 and R36 both require revocability by name.
+def _package_methods_on(package: str, wanted: str) -> set[str]:
+    """Every method called on something ANY module in a package built from ``wanted``.
+
+    The union across modules rather than per module, for the reason
+    :func:`_package_offers_into` is walked: the subject of the countdown is the
+    UNIT, not one file in it, and a unit that puts its store access in one module
+    and its queue access in another has done the ordinary thing.
+    """
+    reached: set[str] = set()
+    root = SRC_ROOT.joinpath(*package.split("."))
+    for _name, source in package_modules(root):
+        reached |= methods_on_review_construction(source, wanted)
+    return reached
+
+
+def _package_constructs(package: str, wanted: str) -> bool:
+    root = SRC_ROOT.joinpath(*package.split("."))
+    return any(constructs_review(source, wanted) for _name, source in package_modules(root))
+
+
+def test_the_deletion_pass_records_declines_and_tombstones_where_they_are_revocable():
+    """U24's obligation, ARMED. R35 and R36 both require revocability by name.
 
     A deletion pass keeping its own file would satisfy "remembered" and fail
     "until the decline is revoked", and nothing about a green suite would show it.
+
+    IT WALKS THE PACKAGE RATHER THAN ONE FILE, and the change is deliberate. The
+    entry was registered against ``cratekit.deletion.cli`` because that was the
+    only module name the plan had spelled at the time. What R35 and R36 require
+    is a property of the UNIT: a countdown pointed at one file inside a package
+    is satisfied by that file and blind to the rest, which is P3, and it is also
+    how the obligation would have been read as met by a shell that merely called
+    something. The shape here is the one U34's and U23's countdowns already use.
     """
-    source = (SRC_ROOT / "cratekit" / "deletion" / "cli.py").read_text()
-    reached = methods_on_review_construction(source, "DecisionStore")
-    assert constructs_review(source, "DecisionStore"), (
-        "the deletion verb does not reach the decision stores at all"
+    reached = _package_methods_on("cratekit.deletion", "DecisionStore")
+    assert _package_constructs("cratekit.deletion", "DecisionStore"), (
+        "the deletion pass does not reach the decision stores at all"
     )
     assert "record" in reached, (
-        "the deletion verb never records a suppression through a store it built "
+        "the deletion pass never records a suppression through a store it built "
         "from this module, so a declined file is offered again on the next run "
         "(R35)"
     )
     assert "revoke" in reached, (
-        "the deletion surface records suppressions and offers no way to revoke "
-        "one; R36 says a tombstone is listable AND revocable"
+        "the deletion pass records suppressions and offers no way to revoke one; "
+        "R36 says a tombstone is listable AND revocable"
     )
-    assert offers_into(source, "Queue.DELETION"), (
+    assert _package_offers_into("cratekit.deletion", "Queue.DELETION"), (
         "R35 presents a removed row's file for review, and U11 declared the "
         "queue that presentation goes through"
     )
-    assert not constructs_a_csv_writer(source), (
-        "the deletion verb writes a comma separated file for a person to edit"
+    root = SRC_ROOT / "cratekit" / "deletion"
+    for name, source in package_modules(root):
+        assert not constructs_a_csv_writer(source), (
+            f"{name} writes a comma separated file for a person to edit"
+        )
+
+
+#: A package that does everything the countdown asks, SPLIT ACROSS TWO MODULES,
+#: which is the shape the landed unit actually has and the shape a per-file guard
+#: would have failed on. Assembled here rather than asserted against the real
+#: package alone, because a guard proved only against the code it was written for
+#: is a guard nobody has proved anything about (P7).
+_CORRECT_SPLIT_PACKAGE = {
+    "stores.py": """
+from cratekit.core import review
+
+
+def tombstones(cfg):
+    return review.DecisionStore("tombstones", cfg)
+
+
+def record(cfg, identity):
+    store = tombstones(cfg)
+    return store.record(kind="version", identity=identity, actor="cli")
+
+
+def undo(cfg, suppression_id):
+    store = tombstones(cfg)
+    return store.revoke(suppression_id, actor="cli")
+""",
+    "run.py": """
+from cratekit.core import review
+
+
+def present(store, identity):
+    return review.offer(
+        store, queue=review.Queue.DELETION, kind="removed-file",
+        identity=identity, payload={},
     )
+""",
+}
+
+#: The same package with the store replaced by a private ledger and the queue
+#: replaced by one that is not this one. Every method name still matches, which is
+#: exactly what the name-matching version of this guard was satisfied by.
+_EVASIVE_SPLIT_PACKAGE = {
+    "stores.py": """
+class _Ledger:
+    def record(self, row):
+        ...
+
+    def revoke(self, row):
+        ...
+
+
+def keep(rows):
+    ledger = _Ledger()
+    for row in rows:
+        ledger.record(row)
+        ledger.revoke(row)
+""",
+    "run.py": """
+from cratekit.core import review
+
+
+def present(store, identity):
+    return review.offer(
+        store, queue=review.Queue.GENRE, kind="removed-file",
+        identity=identity, payload={},
+    )
+""",
+}
+
+
+def _assemble(root: Path, files: dict[str, str]) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "__init__.py").write_text("")
+    for name, source in files.items():
+        (root / name).write_text(source)
+    return root
+
+
+def _package_answers(root: Path) -> tuple[bool, set[str], bool]:
+    """The three questions the countdown asks, over an assembled package."""
+    modules = package_modules(root)
+    reached: set[str] = set()
+    for _name, source in modules:
+        reached |= methods_on_review_construction(source, "DecisionStore")
+    return (
+        any(constructs_review(source, "DecisionStore") for _name, source in modules),
+        reached,
+        any(offers_into(source, "Queue.DELETION") for _name, source in modules),
+    )
+
+
+def test_the_deletion_countdown_bites_a_package_that_evades_it(tmp_path):
+    """P7's first half, on the guard's own shape rather than on one file's."""
+    constructs, reached, offers = _package_answers(
+        _assemble(tmp_path / "evasive", _EVASIVE_SPLIT_PACKAGE)
+    )
+    assert not constructs, (
+        "a private ledger with methods named record and revoke answers for the "
+        "decision stores, so R35's revocability is unenforced"
+    )
+    assert reached == set()
+    assert not offers, (
+        "offering into some other queue satisfies the deletion countdown, so the "
+        "surface U11 declared for R35 is unenforced"
+    )
+
+
+def test_the_deletion_countdown_stays_quiet_on_a_correct_package(tmp_path):
+    """P7's second half, which is the half that keeps getting skipped.
+
+    The correct package here SPLITS the store access and the queue access across
+    two modules. A guard that reads one file would fail this, and a guard that
+    fails correct code is a guard somebody routes around.
+    """
+    constructs, reached, offers = _package_answers(
+        _assemble(tmp_path / "correct", _CORRECT_SPLIT_PACKAGE)
+    )
+    assert constructs
+    assert {"record", "revoke"} <= reached
+    assert offers
 
 
 def _package_offers_into(package: str, queue: str) -> bool:
