@@ -63,9 +63,17 @@ that is true.
 
     .venv/bin/python scripts/board.py audit
 
-Exit 1 means the board is lying about something. `board.py sync` fixes it. Run the
-audit even when you changed nothing, because the cheapest time to catch drift is
-before it is load-bearing.
+Two failure modes, and they are not the same thing:
+
+- **Exit 1, drift.** A derived value fell out of date. `board.py sync` repairs it.
+- **Exit 2, contradiction.** A unit's issue is closed while `tests/_pending.py`
+  still owes it a module, so the board says work landed that the repository says
+  did not. `sync` deliberately will not touch these, because repairing them
+  automatically means picking one source of truth to overwrite, which is how the
+  wrong one wins silently. Either reopen the issue or clear the register entry.
+
+Run the audit even when you changed nothing, because the cheapest time to catch
+drift is before it is load-bearing.
 
 ## The battery
 

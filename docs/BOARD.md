@@ -45,7 +45,7 @@ numbered one.
 | `board.py show 11` | one issue's brief |
 | `board.py start 11` | branch, mark In Progress, print the closing trailer |
 | `board.py sync` | make the board match the repository, idempotent |
-| `board.py audit` | report drift, exit 1 if the board is lying |
+| `board.py audit` | report drift and contradictions, exit 1 or 2 |
 
 `next` ranks by **transitive** reach rather than direct dependents. A unit whose
 one dependent is the gateway to a whole phase outranks a unit with three dead-end
@@ -76,6 +76,20 @@ keep if only one can be kept, because the labels are what the queue is derived
 from and the card is the view of it. Adding a `BOARD_TOKEN` repository secret with
 `project` scope moves the cards too. Running `board.py sync` locally always does
 both, because Phillip's own token carries that scope.
+
+**The one input nothing else checks.** Every value the board derives comes from
+issue closure state, so a close is the board's single unverified claim, and it
+cascades: one wrong close moved four units from blocked to ready in under a
+minute, correctly, off a false premise. `tests/_pending.py` already holds the
+answer, because an entry there is the repository asserting in an enforced file
+that a named unit has not finished. `audit` reads it and flags any unit whose
+issue is closed while the register still owes it a module.
+
+Those are reported as **contradictions**, separately from drift, and `sync` will
+not touch them. Drift is a derived value that fell out of date. A contradiction is
+two sources of truth disagreeing, and repairing that automatically means picking
+one to overwrite, which is how the wrong one wins silently. Exit 1 is drift, exit
+2 is a contradiction.
 
 **Derived values are not edited by hand.** `ready`, `blocked`, Status, and
 Unblocks are all computed from issue closure state and the dependency graph. Do
