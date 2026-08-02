@@ -40,8 +40,8 @@ import pytest
 
 from cratekit import cli
 from cratekit.cli import gates, output, registry, render
-from cratekit.core import config, profiles, taxonomy
-from cratekit.core.cause import REASONS, Cause, Outcome, Remediation, Scope
+from cratekit.core import config, profiles, rb_writer, taxonomy
+from cratekit.core.cause import REASONS, Cause, CratekitError, Outcome, Remediation, Scope
 from cratekit.core.exit_codes import (
     BANDS,
     MAX_CODE,
@@ -1308,23 +1308,107 @@ def test_conformance_5_long_work_is_queued_rather_than_run_inline(entry):
     assert hasattr(jobs, "get")
 
 
-@requires("cratekit.core.session")
+def _state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
+    """Size and modification time of every file under each root.
+
+    "Zero writes" is asserted against the FILESYSTEM rather than assumed from
+    reading the code, because the whole class of defect this guards is a refusal
+    that already wrote something before it decided to refuse. A fingerprint taken
+    either side of the call is the only thing that can see that.
+    """
+    found: dict[str, tuple[int, int]] = {}
+    for root in roots:
+        base = Path(root)
+        if not base.is_dir():
+            continue
+        for current, _directories, files in os.walk(base):
+            for name in files:
+                path = Path(current) / name
+                try:
+                    stat = path.stat()
+                except OSError:  # pragma: no cover - a file that vanished mid-walk
+                    continue
+                found[str(path)] = (stat.st_size, stat.st_mtime_ns)
+    return found
+
+
 @pytest.mark.parametrize(
     "entry", [e for e in ALL_ENTRIES if e.destructive], ids=lambda e: e.name
 )
-def test_conformance_6_destructive_verbs_refuse_without_the_session_gates(entry):
-    """Assertion 6, armed when the write session lands.
+def test_conformance_6_destructive_verbs_refuse_without_the_session_gates(
+    entry, configured, tmp_path
+):
+    """Assertion 6, now that the write session has landed (U8, R-5).
 
     Three refusals, three distinct codes, zero writes each time: a lock held
     elsewhere is 20, a missing backup acknowledgment is 32, and a volume whose
     recorded identity does not match is 22. Per KTD24 the trigger is
     ``destructive``, not ``writes``, so a verb that trashes files while writing
     no database row is still covered.
+
+    WHAT IS DRIVEN, STATED PLAINLY. Every one of these entries carries a
+    ``planned_in`` marker, so there is no landed destructive verb to invoke
+    through the dispatcher yet. What is driven instead is the shared gate that
+    every one of them must pass through, once per declared destructive verb and
+    under that verb's own name. That is behaviour rather than an existence check,
+    and it is the strongest thing available until the first destructive verb
+    lands; ``tests/test_write_session.py`` drives the same three refusals through
+    a real destructive OPERATION, the backup restore, which does exist.
     """
     import importlib
 
     session = importlib.import_module("cratekit.core.session")
     assert hasattr(session, "assert_gates")
+
+    right = configured.library.volume_id
+    matching = lambda _path: right  # noqa: E731 - one line, and naming it adds nothing
+    roots = (
+        configured.library.root,
+        config.installation_state_dir(),
+        config.config_dir(),
+    )
+
+    def refuse_with(**gate_arguments) -> ExitCode:
+        before = _state_fingerprint(*roots)
+        with pytest.raises(CratekitError) as excinfo:
+            with session.assert_gates(configured, workflow=entry.name, **gate_arguments):
+                raise AssertionError("the gates admitted a session they should have refused")
+        assert _state_fingerprint(*roots) == before, (
+            f"{entry.name} wrote to the state tree on a refused path; a refusal "
+            f"that leaves a trace is a refusal that has already done something"
+        )
+        return excinfo.value.cause.code
+
+    # 1. A volume whose recorded identity does not match. Checked FIRST because
+    #    it is the one refusal that must happen before any path is resolved.
+    wrong_volume = refuse_with(
+        identity_provider=lambda _path: "0000-0000", mount_enumerator=lambda: ()
+    )
+
+    # 2. No backup acknowledgment. The volume now matches, and nothing has been
+    #    recorded, which is the state of every library before a person answers.
+    no_acknowledgment = refuse_with(identity_provider=matching)
+
+    # 3. The lock held elsewhere. The acknowledgment is minted first so this
+    #    refusal is reached, and the lock is taken on a separate handle so it
+    #    looks exactly like another process holding it.
+    session.record_acknowledgment(configured, terminal=lambda: True)
+    lock = session.lock_path(configured)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    contender = open(lock, "a+")
+    try:
+        rb_writer._acquire_exclusive(contender)
+        held = refuse_with(identity_provider=matching)
+    finally:
+        contender.close()
+
+    codes = (held, no_acknowledgment, wrong_volume)
+    assert codes == (
+        ExitCode.LIBRARY_BUSY,
+        ExitCode.ACK_REQUIRED,
+        ExitCode.LIBRARY_UNAVAILABLE,
+    )
+    assert len(set(codes)) == 3, "three refusals that cannot be told apart is one refusal"
 
 
 TAXONOMY_IDS = frozenset(

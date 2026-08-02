@@ -1206,9 +1206,17 @@ class RunStateVocabulary:
     and the result was that no snapshot was ever protected while a comment said
     they were.
 
-    The unit that owns the session log (U8) supplies its own instance. The
-    defaults here are provisional and are held accountable by a guard registered
-    against that unit rather than by a hope written into a docstring (P5).
+    The unit that owns the session log (U8) supplies its own instance. These
+    defaults were provisional and are no longer: ``core.session`` has landed and
+    publishes ``RUN_STATE_VOCABULARY``, derived from its own state enumeration
+    rather than restated, and it matches these values exactly.
+
+    Two guards hold that. One compares the two vocabularies, which is the weak
+    half, because the version of this that failed agreed with itself perfectly.
+    The other builds a REAL session record through the session module, writes it
+    to the directory the session module chooses, reads it with the scan below,
+    and asserts the capture comes back protected. Changing a default here without
+    changing it there fails the second one.
     """
 
     state_key: str = "state"
@@ -2165,6 +2173,14 @@ def write_session_lock(path: Path | str | None = None, *, cfg: config.Config | N
     THE FILE IS NEVER UNLINKED. Unlinking it to "clean up" races a live holder
     that is holding a lock on the inode, and the second process then creates a
     fresh file and locks that instead, so both believe they hold it.
+
+    NOT THE SAME LOCK AS THE SESSION LOCK, and the difference is scope rather
+    than mechanism. This one is narrow: it is held from capture through smoke
+    test so two writers cannot interleave. ``core.session`` holds a wider one on
+    its own file for a whole destructive session, so a second process refuses at
+    the door instead of part way through. Both call the same two acquisition
+    helpers below, deliberately: a second implementation of one primitive is a
+    second chance for the two to differ on a platform nobody tests.
     """
     target = Path(path) if path is not None else write_lock_path(cfg)
     # The directory mode is part of the file mode: a private lock file inside a

@@ -46,12 +46,32 @@ class Scope(StrEnum):
     Read by the aggregate at boundary 4 to decide whether a watermark may
     advance. It is DECLARED, never derived from the exit code: one unavailable
     track and an expired credential can share a code and must not share a scope.
+
+    THE DECLARATION ORDER IS THE BLAST RADIUS, narrowest first, and
+    :func:`widest_scope` is the only thing that may compare two of them. A
+    ``StrEnum`` compares as TEXT, and the text order is wrong: ``"run"`` sorts
+    before ``"session"`` while condemning strictly more, so a ``max()`` over the
+    members would silently pick the narrower of the two.
     """
 
     ITEM = "item"
     SOURCE = "source"
     SESSION = "session"
     RUN = "run"
+
+
+def widest_scope(*scopes: Scope) -> Scope:
+    """The widest of the given scopes, by the declaration order above.
+
+    A WRAPPER MAY WIDEN WHAT IT WRAPS AND MAY NEVER NARROW IT. A layer that
+    re-raises somebody else's cause under its own scope is asserting a blast
+    radius it did not observe: if the inner cause condemned the whole run,
+    reporting the wrapper's own narrower scope tells the aggregate that
+    everything else may proceed, and the watermark it then advances is the
+    damage.
+    """
+    order = list(Scope)
+    return max(scopes, key=order.index)
 
 
 class Outcome(StrEnum):
@@ -183,6 +203,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "tree-unconverged": ExitCode.UNCONVERGED,
         "database-open-failed": ExitCode.LIBRARY_UNREADABLE,
         "canary-read-failed": ExitCode.LIBRARY_UNREADABLE,
+        # U8. A commit landed and the read-back through a fresh connection did
+        # not agree. Post-commit rollback does not exist, so what the library
+        # holds cannot be vouched for and every further write refuses until a
+        # person has looked. It shares this code with the two above because all
+        # three mean "the database is there and cannot be trusted to read as
+        # expected", and the slug is what keeps the three apart where that
+        # matters, which is the envelope rather than the process status.
+        "session-committed-unverified": ExitCode.LIBRARY_UNREADABLE,
         # Genuinely ON, which is the case ``DISABLE_CLOUD_SYNC`` is the answer
         # to. The cannot-read case is above, under the decision codes.
         "cloud-sync-active": ExitCode.EXTERNAL_WRITER,
@@ -206,6 +234,23 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "job-unknown": ExitCode.PRECONDITION,
         "job-schema-mismatch": ExitCode.PRECONDITION,
         "backup-acknowledgment-missing": ExitCode.ACK_REQUIRED,
+        # U8. The acknowledgment cannot be MINTED here, which is a different
+        # condition from it being absent when a session consulted it. Minting is
+        # a person's act at a controlling terminal, and an invocation with no
+        # terminal is usually a detached job or an agent driving the command
+        # line, which is exactly the caller R34 forbids from satisfying this
+        # gate. Same code, because the class of answer is the same; a separate
+        # slug, because "record one" and "you are not the one who can" are
+        # different sentences to the same user.
+        "backup-acknowledgment-no-terminal": ExitCode.ACK_REQUIRED,
+        # U8. The acknowledgment cannot be minted because the ages it must SHOW
+        # cannot be read. Same code again, because the answer is still "this gate
+        # is not satisfied"; a third slug, because the remedy is a different act
+        # entirely. ``backup_facts`` argues at length that an unreadable fact
+        # file must never collapse into "nothing recorded", and an acknowledgment
+        # minted against one would record a person as having been shown a clean
+        # sheet they were never shown.
+        "backup-facts-unreadable": ExitCode.ACK_REQUIRED,
         # ── Upstream ────────────────────────────────────────────────────────
         "auth-failed": ExitCode.UPSTREAM_AUTH,
         "adapter-broken": ExitCode.UPSTREAM_UNAVAILABLE,
@@ -222,6 +267,15 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "unavailable-permanent": ExitCode.REFUSED_BY_POLICY,
         "refused-by-policy": ExitCode.REFUSED_BY_POLICY,
         "whitelist-violation": ExitCode.REFUSED_BY_POLICY,
+        # U8, and the runtime half of R17's fifth surface. The name scan over
+        # this package's source forbids every symbol that serialises a rekordbox
+        # analysis file, and reading one stays legal by decision, so a grid
+        # rewritten through a handle the binding already returned names none of
+        # those symbols. A destructive session compares the files themselves and
+        # refuses when one moved. Its own slug rather than the whitelist's,
+        # because the whitelist governs database ROWS and cannot see a
+        # filesystem write at all.
+        "anlz-modified": ExitCode.REFUSED_BY_POLICY,
         "lossy-refused": ExitCode.REFUSED_BY_POLICY,
         # ── Lifecycle ───────────────────────────────────────────────────────
         "cancelled": ExitCode.INTERRUPTED,
@@ -389,4 +443,5 @@ __all__ = [
     "Scope",
     "UnknownReason",
     "refuse",
+    "widest_scope",
 ]

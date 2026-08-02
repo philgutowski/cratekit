@@ -39,7 +39,6 @@ import pytest
 
 from cratekit.core import config
 from cratekit.core import rb_writer as W
-from tests._pending import requires
 from tests.test_config import valid_data
 
 
@@ -385,14 +384,13 @@ def test_the_default_provider_protects_nothing_without_configuration():
     assert W.default_protected_snapshot_paths() == set()
 
 
-@requires("cratekit.core.session")
 def test_the_session_log_declares_the_vocabulary_this_scan_reads():
-    """The countdown on U8, written now so it cannot be forgotten later (P5).
+    """The countdown on U8, armed now that the session log has landed (P5).
 
     The writer cannot import the run-state store, so its vocabulary carries
-    provisional defaults. The moment that store lands, this asserts the two
-    agree. Without it, U8 could name its state field anything and protection
-    would go back to being a comment, silently, exactly as it was before.
+    provisional defaults. Now that the store exists, this asserts the two agree.
+    Without it, U8 could name its state field anything and protection would go
+    back to being a comment, silently, exactly as it was before.
     """
     session = importlib.import_module("cratekit.core.session")
     declared = getattr(session, "RUN_STATE_VOCABULARY", None)
@@ -406,3 +404,31 @@ def test_the_session_log_declares_the_vocabulary_this_scan_reads():
         "Update rb_writer.RunStateVocabulary's defaults to match, or pass the "
         "session log's instance into default_protected_snapshot_paths."
     )
+
+
+def test_a_real_session_record_makes_its_capture_protected_from_pruning():
+    """The assertion that would have caught the source system's defect.
+
+    Comparing three field names proves the two modules AGREE, and the version
+    that failed agreed with itself perfectly: the names looked right, the scan
+    matched nothing, and every capture stayed prunable while a comment said
+    otherwise. So this derives the agreement instead. A real session record is
+    built by the session module, written to the directory the session module
+    chooses, and read by the writer's real scan, and the capture has to come back
+    protected. Nothing here restates a field name.
+    """
+    session = importlib.import_module("cratekit.core.session")
+    library = Path(os.environ["CRATEKIT_LIBRARY_ROOT"])
+    (library / "db").mkdir(parents=True, exist_ok=True)
+    cfg = config.from_dict(valid_data(library))
+
+    capture_path = library / "captures" / "one" / "master.db"
+    record = session.open_session(cfg, workflow="a-destructive-workflow")
+    session.attach_capture(record, capture_path, cfg)
+
+    assert W.default_protected_snapshot_paths(cfg) == {capture_path.resolve()}
+
+    # And a finished session RELEASES it, which is the other half: a terminal
+    # state that did not release would keep every capture forever.
+    session.close_session(record, cfg)
+    assert W.default_protected_snapshot_paths(cfg) == set()

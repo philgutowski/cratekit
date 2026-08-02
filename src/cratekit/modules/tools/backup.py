@@ -48,18 +48,26 @@ WHAT THIS PORT CHANGES, beyond translating the shell.
 * **Sidecar suffixes are derived** from the state inventory rather than typed
   here, so the set of files that travel with the database cannot drift from the
   set the snapshot unit captures.
+* **The restore passes the destructive-session gates** (R-8, KTD24). A restore
+  replaces a live database and the files beside it while writing no database
+  row, so a rule that bound the library lock, the backup acknowledgment and the
+  volume identity assertion to database WRITES would leave the single most
+  destructive thing this product does outside the safety spine. The gates bind
+  to destruction. Both halves of a restore pass them, and both take the guard as
+  an injected seam so this module's own battery stays hermetic.
 """
 
 from __future__ import annotations
 
 import sys
 from collections.abc import Callable, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
 
-from cratekit.core import backup_facts, binaries, config
+from cratekit.core import backup_facts, binaries, config, session
 from cratekit.core.processes import (
     REKORDBOX_PROCESSES,
     ProcessLister,
@@ -170,6 +178,40 @@ class CommandResult:
 Runner = Callable[[Command], CommandResult]
 # ``ProcessLister`` is imported from ``core.processes`` above, so the injection
 # point both guards accept is one type rather than two identical ones.
+
+#: The destructive-session gates, as an injectable seam. A zero-argument callable
+#: returning a context manager, so a caller can supply the real gates, a
+#: pass-through for a battery that is testing something else, or its own already
+#: open guard.
+GateGuard = Callable[[], AbstractContextManager[object]]
+
+#: What the session log calls a restore. A workflow LABEL rather than a verb
+#: name: this module does not decide what the command-line layer calls itself,
+#: and the log records what happened rather than what was typed.
+RESTORE_WORKFLOW = "backup-restore"
+
+
+def _restore_gates(cfg: config.Config, gates: GateGuard | None) -> AbstractContextManager[object]:
+    """The gates a restore runs behind, real unless the caller injected otherwise.
+
+    KTD24 in one function. The library lock stops a second process restoring over
+    this one, the backup acknowledgment stops a restore nobody has confirmed they
+    can afford, and the volume identity assertion stops a restore landing on a
+    disk that is not the library it was recorded for. None of those is a database
+    write, which is exactly why binding them to writes would have missed this.
+
+    IT DECLARES ITSELF A RECOVERY, and that declaration buys exactly one thing:
+    a library latched by a session that ended ``committed-unverified`` does not
+    refuse this. It cannot, because a restore is what that latch's own refusal
+    names as the remedy, and a latch that condemned its remedy would leave a
+    library with no exit but a hand-edited file. All three gates above still
+    apply here, unchanged.
+    """
+    if gates is not None:
+        return gates()
+    return session.assert_gates(
+        cfg, workflow=RESTORE_WORKFLOW, intent=session.Intent.RECOVERY
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -780,8 +822,9 @@ def plan_restore(
     include_mirror: bool = False,
     runner: Runner = subprocess_runner,
     process_lister: ProcessLister | None = None,
+    gates: GateGuard | None = None,
 ) -> RestorePlan:
-    """Decide a restore. Refuses rather than prompting (R33).
+    """Decide a restore. Refuses rather than prompting (R33), and behind the gates.
 
     ``confirmed`` is a NAMED DECISION the caller passes, not a question this asks.
     A restore overwrites a live database, and the source system gates it on a
@@ -798,9 +841,48 @@ def plan_restore(
     match the remote by DELETING anything the remote does not have, and the
     target of a restore is frequently a partially-recovered volume holding files
     the user salvaged by other means. Copy adds and overwrites; it never removes.
+
+    THE GATES COME BEFORE EVERY CHECK BUT ONE, and the exception is deliberate.
+    ``_require_destinations`` reads configuration, resolves no path and touches
+    no volume, so running it first costs nothing and gives a user with an
+    unconfigured remote the message that actually applies to them. Everything
+    after that point resolves paths on the library volume, and a destructive
+    session must refuse before it resolves a single path: resolving against the
+    wrong volume is already the damage.
+
+    THE EXISTING REFUSALS STAY. The gates are added to them rather than replacing
+    them; an unconfirmed decision and a live rekordbox process are still refused
+    here and are still refused in this module's own vocabulary.
     """
     _require_destinations(cfg)
-    target = Path(target)
+    with _restore_gates(cfg, gates):
+        return _plan_restore_inside_the_gates(
+            cfg,
+            target=Path(target),
+            confirmed=confirmed,
+            snapshot=snapshot,
+            include_mirror=include_mirror,
+            runner=runner,
+            process_lister=process_lister,
+        )
+
+
+def _plan_restore_inside_the_gates(
+    cfg: config.Config,
+    *,
+    target: Path,
+    confirmed: bool,
+    snapshot: str | None,
+    include_mirror: bool,
+    runner: Runner,
+    process_lister: ProcessLister | None,
+) -> RestorePlan:
+    """The planning body, split out so the gate wraps it as one block.
+
+    A separate function rather than an indented body, because the alternative is
+    re-indenting a hundred lines every time the guard changes shape, and a diff
+    that moves every line is a diff nobody reads.
+    """
     if not confirmed:
         raise BackupRefused(
             Refusal.RESTORE_NOT_CONFIRMED,
@@ -884,7 +966,12 @@ def plan_restore(
 
 
 def run_restore(
-    plan: RestorePlan, *, runner: Runner = subprocess_runner, dry_run: bool = False
+    plan: RestorePlan,
+    cfg: config.Config,
+    *,
+    runner: Runner = subprocess_runner,
+    dry_run: bool = False,
+    gates: GateGuard | None = None,
 ) -> tuple[CommandResult, ...]:
     """Clear the stale sidecars, then copy. In that order, always.
 
@@ -902,15 +989,32 @@ def run_restore(
     rehearsal that cleared them and then transferred nothing would leave the
     user's database without the log it needs: a "preview" that did the damage
     and skipped the repair.
+
+    A DRY RUN IS NOT EXEMPT FROM THE GATES, and that is a decision rather than an
+    oversight. Three reasons, in order of weight. The lock is the one that
+    matters: a rehearsal that runs while another destructive session is writing
+    describes a library that is changing underneath it, so its preview is a
+    report about a world that no longer exists, which is worse than no preview.
+    Second, the whole reason the plan and the run are one pair of functions is
+    that a preview built by a second code path can be wrong about the run it
+    previews, and a preview that skipped a guard the run does not skip is exactly
+    that divergence wearing a different hat. Third, a rehearsal that passes is
+    then evidence the real run will reach its work, which is most of what a
+    person rehearses for. The cost is one acknowledgment, which they need
+    anyway.
+
+    ``cfg`` is required rather than optional, so there is no call shape that
+    reaches the destructive half with nothing to resolve the gates against.
     """
-    if dry_run:
-        return tuple(
-            runner(Command(label=c.label, argv=dry_run_argv(c))) for c in plan.commands
-        )
-    plan.database_target.parent.mkdir(parents=True, exist_ok=True)
-    for stale in plan.clears:
-        stale.unlink(missing_ok=True)
-    return tuple(runner(command) for command in plan.commands)
+    with _restore_gates(cfg, gates):
+        if dry_run:
+            return tuple(
+                runner(Command(label=c.label, argv=dry_run_argv(c))) for c in plan.commands
+            )
+        plan.database_target.parent.mkdir(parents=True, exist_ok=True)
+        for stale in plan.clears:
+            stale.unlink(missing_ok=True)
+        return tuple(runner(command) for command in plan.commands)
 
 
 # ---------------------------------------------------------------------------
@@ -962,8 +1066,10 @@ __all__ = [
     "PAYLOAD_VERSION",
     "REFUSALS",
     "REKORDBOX_PROCESSES",
+    "RESTORE_WORKFLOW",
     "VOLUME_EXCLUDES",
     "BackupOutcome",
+    "GateGuard",
     "BackupPlan",
     "BackupRefused",
     "Command",

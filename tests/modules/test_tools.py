@@ -27,6 +27,7 @@ import re
 import shutil
 import stat
 import subprocess
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -48,6 +49,25 @@ UTC = timezone.utc
 # ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+@contextmanager
+def _open_gates():
+    """A destructive-session guard that is already satisfied."""
+    yield None
+
+
+def open_gates():
+    """The gates seam, injected wherever a test is asserting something else.
+
+    R-8 binds the library lock, the backup acknowledgment and the volume identity
+    assertion to a restore. Those need a real volume identity and a person's
+    recorded acknowledgment, neither of which belongs in a test about the ORDER
+    the sidecars are cleared in. Injecting the seam here is what keeps this file
+    hermetic while the gate itself is asserted, with the real guard restored, in
+    the tests further down that exist for it.
+    """
+    return _open_gates()
 
 
 @pytest.fixture
@@ -247,20 +267,17 @@ def test_every_declared_verb_is_in_the_static_registry():
     )
 
 
-@requires("cratekit.core.session")
 def test_the_destructive_verb_is_wired_to_the_destructive_session_gates():
-    """KTD24 and R38, armed the moment the session boundary lands.
+    """KTD24 and R38, armed now that the session boundary has landed (R-8).
 
     A backup restore replaces a live database and its sidecars while writing no
     database row, so a rule binding the gates to database writes alone would
-    leave it outside the entire safety spine. The gates do not exist yet, which
-    is why this is a countdown rather than an assertion today: the moment U8
-    lands, this goes red until the restore path takes the library lock, the
-    backup acknowledgment, and the volume identity assertion.
+    leave it outside the entire safety spine.
 
-    The check is on THIS unit's source rather than on U8's API, because what has
+    The check is on THIS unit's source rather than on U8's API, because what had
     to change is here: U8 provides the gates, and the destructive verb declared
-    here has to go through them.
+    here goes through them. The behavioural half, driving a restore into a gate
+    refusal, is in ``tests/test_write_session.py``.
     """
     source = (SRC_ROOT / "cratekit" / "modules" / "tools" / "backup.py").read_text()
     tree = ast.parse(source)
@@ -1621,11 +1638,10 @@ def test_restore_removes_stale_sidecars_before_copying(cfg, tmp_path, rclone_on_
         confirmed=True,
         snapshot="2026-08-01T000000Z",
         runner=runner,
-        process_lister=no_processes,
-    )
+        process_lister=no_processes, gates=open_gates)
     assert set(plan.clears) == set(stale)
 
-    backup.run_restore(plan, runner=runner)
+    backup.run_restore(plan, cfg, runner=runner, gates=open_gates)
 
     assert not any(p.exists() for p in stale), "stale sidecars survived the restore"
     assert observed, "no copy command was issued"
@@ -1654,9 +1670,8 @@ def test_a_rehearsed_restore_does_not_clear_the_live_sidecars(cfg, tmp_path, rcl
     recorder = Recorder()
     plan = backup.plan_restore(
         cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
-        runner=recorder, process_lister=no_processes,
-    )
-    backup.run_restore(plan, runner=recorder, dry_run=True)
+        runner=recorder, process_lister=no_processes, gates=open_gates)
+    backup.run_restore(plan, cfg, runner=recorder, dry_run=True, gates=open_gates)
 
     assert all(p.exists() for p in sidecars), "a rehearsal deleted the live sidecars"
     issued = [c for c in recorder.commands if c.label == backup.RESTORE_DATABASE]
@@ -1680,8 +1695,7 @@ def test_restore_writes_back_the_log_and_never_the_shared_memory_index(
         confirmed=True,
         snapshot="2026-08-01T000000Z",
         runner=Recorder(),
-        process_lister=no_processes,
-    )
+        process_lister=no_processes, gates=open_gates)
     sources = [c.argv[c.argv.index("copy") + 1] for c in plan.commands]
     restored = {s.suffix for s in config.SQLITE_SIDECARS if s.restored}
     for suffix in (s.suffix for s in config.SQLITE_SIDECARS):
@@ -1702,8 +1716,7 @@ def test_the_file_half_of_a_restore_copies_and_never_syncs(cfg, tmp_path, rclone
     backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
     plan = backup.plan_restore(
         cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
-        include_mirror=True, runner=Recorder(), process_lister=no_processes,
-    )
+        include_mirror=True, runner=Recorder(), process_lister=no_processes, gates=open_gates)
     mirror = [c for c in plan.commands if c.label == backup.RESTORE_MIRROR]
     assert len(mirror) == 1
     assert "copy" in mirror[0].argv and "sync" not in mirror[0].argv
@@ -1721,8 +1734,7 @@ def test_the_file_half_is_off_by_default(cfg, tmp_path, rclone_on_path):
     backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
     plan = backup.plan_restore(
         cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
-        runner=Recorder(), process_lister=no_processes,
-    )
+        runner=Recorder(), process_lister=no_processes, gates=open_gates)
     assert backup.RESTORE_MIRROR not in [c.label for c in plan.commands]
 
 
@@ -1747,9 +1759,8 @@ def test_the_sidecars_are_cleared_before_the_mirror_too(cfg, tmp_path, rclone_on
 
     plan = backup.plan_restore(
         cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
-        include_mirror=True, runner=runner, process_lister=no_processes,
-    )
-    backup.run_restore(plan, runner=runner)
+        include_mirror=True, runner=runner, process_lister=no_processes, gates=open_gates)
+    backup.run_restore(plan, cfg, runner=runner, gates=open_gates)
     assert observed[0][0] == backup.RESTORE_MIRROR
     assert all(present is False for _, present in observed)
 
@@ -1763,8 +1774,7 @@ def test_restore_is_a_named_decision_and_never_a_prompt(cfg, tmp_path, rclone_on
     with pytest.raises(backup.BackupRefused) as excinfo:
         backup.plan_restore(
             cfg, target=tmp_path, confirmed=False, runner=Recorder(),
-            process_lister=no_processes,
-        )
+            process_lister=no_processes, gates=open_gates)
     assert excinfo.value.refusal is backup.Refusal.RESTORE_NOT_CONFIRMED
 
 
@@ -1785,8 +1795,7 @@ def test_restore_refuses_while_rekordbox_holds_the_database(cfg, tmp_path, rclon
     with pytest.raises(backup.BackupRefused) as excinfo:
         backup.plan_restore(
             cfg, target=tmp_path, confirmed=True, runner=Recorder(),
-            process_lister=rekordbox_running,
-        )
+            process_lister=rekordbox_running, gates=open_gates)
     assert excinfo.value.refusal is backup.Refusal.REKORDBOX_RUNNING
 
 
@@ -1806,8 +1815,7 @@ def test_a_restore_with_no_snapshot_available_refuses_by_name(cfg, tmp_path, rcl
     with pytest.raises(backup.BackupRefused) as excinfo:
         backup.plan_restore(
             cfg, target=tmp_path, confirmed=True, runner=Recorder(),
-            process_lister=no_processes,
-        )
+            process_lister=no_processes, gates=open_gates)
     assert excinfo.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
 
 
@@ -1826,8 +1834,7 @@ def test_an_absent_restore_target_refuses_rather_than_creating_one(cfg, tmp_path
     with pytest.raises(backup.BackupRefused) as excinfo:
         backup.plan_restore(
             cfg, target=tmp_path / "not-mounted", confirmed=True, runner=Recorder(),
-            process_lister=no_processes,
-        )
+            process_lister=no_processes, gates=open_gates)
     assert excinfo.value.refusal is backup.Refusal.RESTORE_TARGET_ABSENT
 
 

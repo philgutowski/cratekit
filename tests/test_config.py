@@ -714,7 +714,6 @@ def test_an_entry_with_no_sidecars_resolves_to_no_sidecar_paths(cfg):
 # ── Nothing yet holds the consumers to the derivation, so the register does ──
 
 
-@requires("cratekit.core.snapshot")
 def test_the_capture_unit_derives_its_source_set_rather_than_listing_it():
     """``snapshot_sources`` being correct is worth nothing if U8 ignores it.
 
