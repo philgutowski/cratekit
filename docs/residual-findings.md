@@ -472,7 +472,23 @@ markers go through one `ROUTING_CLI_UNIT` constant and currently name **U20**,
 on the reasoning that U20 flips trees to database-native and therefore has to
 ship a destructive database CLI surface anyway.
 
-**Still open:** U20 is an inference, not a decision. Nothing in the plan assigns
-the routing CLI to it. **Closes when:** Phillip names the unit that owns
-`cratekit.write.routing_cli`, and the constant plus the register entry move to it
-in one edit. Both were written to make that a one-line change.
+**Settled 2026-08-02: U20 owns it, by Phillip's decision.** The inference is now
+the answer, on the reasoning it was made for: U20 flips trees to database-native,
+so it has to ship a destructive database CLI surface regardless, and the four
+routing verbs ride along on work that unit already owes. `ROUTING_CLI_UNIT` and
+the `tests/_pending.py` entry both name U20 and need no edit.
+
+**This entry stays open only for the thing underneath it.** Conformance 3
+requires a landed gated verb to exit `OK` once its gate is answered, and every
+verb writing `db_tree` must declare the cloud-sync gate, so **no destructive
+database verb can land on a machine without a database**. That is not a fact about
+the routing CLI, it is a wall in front of every such verb, and U21, U24 and U32
+all queue behind it. Recorded here rather than acted on, because relaxing a
+conformance rule that four waves have honored is a deliberate act and not a
+side effect of landing a CLI.
+
+**Closes when:** conformance 3 can be satisfied against a disposable database
+fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather
+than skips, so the battery runs either way and a supplied fixture strengthens it.
+The natural owner is U27, which lands doctor and is the unit that makes a machine
+ready.
