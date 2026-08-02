@@ -1,0 +1,79 @@
+# Keeps the build board true to the repository without anybody remembering to.
+#
+# The chain is: a merge commit ending `Closes #11` lands on main, GitHub closes
+# issue 11, this workflow fires, and every unit that was waiting on 11 flips from
+# blocked to ready. Nothing in that chain is a step a session can forget, because
+# the only human act in it is writing the trailer, and `board.py start` prints the
+# exact line to write.
+#
+# On the token. GITHUB_TOKEN is repository-scoped and cannot reach a USER-owned
+# project, so with it this runs `--labels-only`: the ready and blocked labels stay
+# true, the cards do not move. That is the right half to keep if only one can be
+# kept, because the labels are what the queue is derived from and the card is the
+# view of it. Adding a BOARD_TOKEN secret with `project` scope moves the cards too.
+# The job says which mode it ran in rather than looking identical either way.
+
+name: Board
+
+on:
+  issues:
+    types: [closed, reopened, deleted]
+  schedule:
+    # Monday morning UTC. The event triggers above cover every ordinary change;
+    # this catches the ones nothing fires for, such as an issue body edited to
+    # change a dependency, and it is the check that notices the workflow itself
+    # has been silently failing.
+    - cron: "0 12 * * 1"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+# Two issues closed in quick succession would otherwise race, and the loser would
+# write a graph it read before the winner's close. Serialize instead.
+concurrency:
+  group: board
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync the board
+        env:
+          GH_TOKEN: ${{ secrets.BOARD_TOKEN || secrets.GITHUB_TOKEN }}
+          HAS_BOARD_TOKEN: ${{ secrets.BOARD_TOKEN != '' }}
+        run: |
+          if [ "$HAS_BOARD_TOKEN" = "true" ]; then
+            echo "Running with BOARD_TOKEN: labels and cards." >> "$GITHUB_STEP_SUMMARY"
+            python scripts/board.py sync | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "Running with GITHUB_TOKEN: **labels only**, cards were not moved."
+              echo ""
+              echo "A repository-scoped token cannot write to a user-owned project."
+              echo "Add a \`BOARD_TOKEN\` secret with \`project\` scope to move cards too,"
+              echo "or run \`scripts/board.py sync\` locally, which does both."
+            } >> "$GITHUB_STEP_SUMMARY"
+            python scripts/board.py sync --labels-only | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Report the queue
+        env:
+          GH_TOKEN: ${{ secrets.BOARD_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo ""
+            echo "## Ready now"
+            echo ""
+            echo '```'
+            python scripts/board.py next 2>&1 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
