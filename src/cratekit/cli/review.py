@@ -211,7 +211,7 @@ def build_list(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
         "--limit",
         type=int,
         default=review.DEFAULT_PAGE,
-        help="how many items this page holds",
+        help="how many items this page holds; at least one",
     )
     parser.add_argument(
         "--after",
@@ -418,35 +418,82 @@ def build_import(parser: argparse.ArgumentParser, entry: registry.Entry) -> None
     parser.set_defaults(_handler=import_items)
 
 
+#: What each conflict reason means to the person who ran the verb. One sentence
+#: each, because the remedies genuinely differ: re-export from the build that
+#: wrote the file, repair the file, or settle a disagreement by hand.
+#:
+#: Every reason the core can report has an entry, and ``tests/test_review_queue``
+#: derives that set rather than listing it, so a fifth reason cannot arrive
+#: without a sentence.
+CONFLICT_SENTENCES: Mapping[str, str] = {
+    review.CONFLICT_LOCAL_VERDICT_STANDS: (
+        "is already settled here and the export disagrees; the local verdict "
+        "stands and the incoming one was not applied"
+    ),
+    review.CONFLICT_VERDICT_UNREADABLE: (
+        "carries a verdict this build has no representation for; it was reported "
+        "rather than read as undecided, because reading it as undecided would "
+        "discard a decision somebody made"
+    ),
+    review.CONFLICT_ITEM_UNUSABLE: (
+        "is not a shape this queue can take in, so nothing about it was applied; "
+        "export again rather than editing the file by hand"
+    ),
+    review.CONFLICT_NOT_APPLIED: (
+        "was taken in and its verdict was not: the verdict names a candidate the "
+        "item does not offer, or another process settled the item first"
+    ),
+}
+
+
 def import_items(ctx: "Context") -> Envelope:
+    """Take an export back in, and report what landed rather than what was tried.
+
+    WHAT THIS USED TO DO. It concatenated the inserted, the resolved and the
+    CONFLICTED identifiers and looked each one up locally. A conflict need not
+    exist locally at all: an item carrying a verdict this build cannot read is
+    reported before anything is inserted. So a document with one applicable
+    verdict and one item from a newer build applied the good verdict and then
+    exited 30 with "no review item has that identifier" and a remediation telling
+    the user to list the queue and take an identifier from it. Verdicts written,
+    failure reported, nothing said about what landed, and re-running could never
+    succeed because the good half was already in.
+    """
     document = _read_document(ctx.args.path)
     cfg = config.load()
     with review.open_store(cfg) as store:
         result = review.import_document(store, document, actor=ctx.args.actor)
-        touched = [*result.inserted, *result.resolved, *result.conflicts]
+        # What CHANGED, each identifier once. An item that was inserted and whose
+        # verdict then could not be applied is in both lists, and it is one item.
         data = _payload(
             store,
             queue=None,
-            items=[_summary(review.get(store, item_id)) for item_id in touched],
+            items=[_summary(review.get(store, item_id)) for item_id in result.applied],
         )
     warnings = [
         {
             "code": "review-verdict-conflict",
-            "message": (
-                f"{item_id} is already settled here and the export disagrees; the "
-                f"local verdict stands and the incoming one was not applied"
-            ),
+            "message": f"{item_id} {_conflict_sentence(result.reasons.get(item_id))}",
         }
         for item_id in result.conflicts
     ]
     return ctx.envelope(
         data=data,
-        outcome=Outcome.OK if touched else Outcome.NO_OP,
+        outcome=Outcome.OK if result.applied or result.conflicts else Outcome.NO_OP,
         warnings=warnings,
     )
 
 
+def _conflict_sentence(reason: str | None) -> str:
+    return CONFLICT_SENTENCES.get(
+        reason or "",
+        "could not be applied, and this build has no sentence for the reason it "
+        "reported, which is a defect in the reporting rather than in the file",
+    )
+
+
 __all__ = [
+    "CONFLICT_SENTENCES",
     "EVERY_QUEUE",
     "PAYLOAD_PREFIX",
     "build_clear",

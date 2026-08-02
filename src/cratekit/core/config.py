@@ -559,6 +559,16 @@ class StateFile:
     #: disk at all. The source system copies each one only if it exists, and so
     #: must anything reading this field.
     sidecars: tuple[Sidecar, ...] = ()
+    #: True when this entry is one of R35 and R36's DECISION STORES: a revocable
+    #: set of suppressions that ``core.review`` reads and writes as one document.
+    #:
+    #: Declared on the entry rather than listed in the module that opens them, for
+    #: the reason every other field here is declared. The review module carried a
+    #: literal pair with a docstring saying it came from this inventory, which is a
+    #: list in disguise (P3): a store added to the inventory would not appear in
+    #: it, and a store REMOVED from the inventory would leave the module resolving
+    #: a path nobody declared a root for.
+    decision_store: bool = False
 
 
 STATE_FILES: tuple[StateFile, ...] = (
@@ -1088,6 +1098,7 @@ STATE_FILES: tuple[StateFile, ...] = (
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
         relative="tombstones.json",
+        decision_store=True,
         why=(
             "R36. A suppressed acquisition is a fact about what this library has "
             "deliberately declined to hold. New state; the source system has no "
@@ -1101,11 +1112,40 @@ STATE_FILES: tuple[StateFile, ...] = (
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
         relative="declines.json",
+        decision_store=True,
         why=(
             "R36's other half: candidates a human rejected. Library-scoped so the "
             "rejection is not re-asked from a second machine. New state."
             " COUPLED, named by R30, and paired with the review queue: the two "
             "roll back together or an item ends up both open and decided."
+        ),
+    ),
+    StateFile(
+        key="decision_store_locks",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.DIRECTORY,
+        relative="decision_locks",
+        why=(
+            "One sibling lock per decision store, serializing the read then write "
+            "each of them performs on its document. Without it two processes both "
+            "read the same set, both add their own record, and the second rename "
+            "discards the first one's while the call that lost reports success: "
+            "eight processes recording two hundred decisions left seventy one on "
+            "disk. A lost record re-offers a declined file and re-acquires a "
+            "tombstoned version, and a lost revocation leaves a suppression "
+            "standing forever with nothing to notice it. Library-scoped for the "
+            "reason the stores are: a lock in a per-installation directory is "
+            "invisible to a second machine, so both would edit one library's "
+            "record at once."
+            " NEVER_RESTORED for the inode reason every lock here shares, and it "
+            "is why this is a directory of its own rather than a file beside each "
+            "store: the stores are COUPLED, so a restore replaces the directory "
+            "holding them, and a lock inside it would have its inode swapped "
+            "under every process holding it."
+            " A DIRECTORY rather than one entry per store, so the lock a store "
+            "uses is derived from the store's own key and a third decision store "
+            "cannot arrive without one."
         ),
     ),
     StateFile(
