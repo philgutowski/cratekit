@@ -3,7 +3,7 @@
 Written 2026-08-01 so a session with no memory of the build can pick it up.
 Revised the same day, twice: once after the three pending branches merged and
 the U7 hardening landed, and again after U8 and U17. Revised 2026-08-02 after
-U18, and again the same day after U11 and U19 landed together.
+U18, again the same day after U11 and U19 landed together, and again after U21.
 
 ## The work is tracked on a board now
 
@@ -17,12 +17,60 @@ which blocks which. Read BOARD.md for what to update when a merge lands.
 
 ## State
 
-`main` carries U1 to U8, U10, U11, U13, U14, U15, U17, U18, U19, U31 and U35,
-plus the W1 through W6 hardening, the A4 whitelist addition, and U9's verdicts.
-Pushed to the private remote. **3131 passed, 16 skipped**, ruff clean,
+`main` carries U1 to U8, U10, U11, U13, U14, U15, U17, U18, U19, U21, U31 and
+U35, plus the W1 through W6 hardening, the A4 whitelist addition, and U9's
+verdicts. Pushed to the private remote. **3164 passed, 16 skipped**, ruff clean,
 `scan_repo` clean.
 
 **There are no unmerged branches and no worktrees.**
+
+## What U21 changed
+
+**The per-field metadata policy, and the registration that inverts it.**
+`write/metadata.py` is the only place feature operation names appear. U17 had
+already landed the decision layer in core, generalized so no core module names a
+feature, so this unit is the registration side rather than a second
+implementation. Three operations declare their fields, and
+`rb_writer.content_writable_columns` becomes the union of what is enabled. A slim
+install with no metadata features enabled has no writable content column at all,
+which is R14 implemented rather than described.
+
+**The key field is refused at registration, not merely absent.** Absence already
+yields `skip_unowned`, which is correct and fragile: one plausible looking entry
+in a later unit undoes it, and the person adding it would not know what they
+undid. `UNWRITABLE_FIELDS` refuses `KeyID`, `ColorID` and `Commnt` before a
+policy can reach the registry, each with its argument attached. A4 proved
+rekordbox leaves an externally authored lookup row completely untouched across a
+launch cycle, but that permission is a ceiling and not a licence, so no resolve
+then create path for keys exists to be widened later.
+
+**The countdown walks the syntax tree, and the negative control earned its
+keep.** The first version of the guard checked `ast.Name`, `ast.Attribute` and
+`ast.alias`, and passed every positive control except `def resolve_key_id(...)`,
+which is a `FunctionDef`. The brief's words are that the shape "does not exist",
+and a module can define one without ever naming it again. The lesson from U18's
+docstring countdown holds here twice over: this module documents at length why it
+never authors a key value, so a source-text check would be green for the wrong
+reason forever.
+
+**Two fixes not asked for by the brief.** The genre lookup returns the first
+ACTIVE row rather than the first row, because a soft-deleted namesake sorts ahead
+often enough to matter and the source's shape reports "no such genre" for a genre
+the library plainly has. And padding runs through `naming.pad_head` rather than a
+fourth hand-rolled regex; the source's two copies disagreed with each other, and
+one prepended a second head onto titles that already had one.
+
+**Its verification gate is DEFERRED, not passed.** The brief asks for key padding
+run database-direct against a snapshot, passing the live rekordbox gate. The
+library volume has been offline since 2026-08-01. Everything landed is pure or
+duck-typed and needs no database, but that is not the same as having run.
+
+**Two registry entries were repointed.** `name.apply` and
+`metadata.mytags-vocals` carried `planned_in="U21"` while the brief and the plan
+both name only two files, neither a CLI shell. They now name U37 and U25, each
+beside a neighbour already marked for that unit. Both modules stay absent and the
+contract suite still asserts they are, so the countdown survives against the
+units that now genuinely owe them.
 
 ## What U11 and U19 changed
 
