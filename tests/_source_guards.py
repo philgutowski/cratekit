@@ -1,10 +1,11 @@
-"""Source analysis shared by the guards that hold a LATER unit to what U11 settled.
+"""Source analysis shared by the guards that hold a LATER unit to what an earlier one settled.
 
-Two files ask these questions, ``tests/test_review_queue.py`` and
-``tests/test_cli_contract.py``, and they used to ask them with two copies of the
-same walk. One copy learned to recognize an aliased import and the other did not,
-which is the second opinion that eventually disagrees. There is one
-implementation now, and every fixture that proves it bites lives beside it.
+Three files ask these questions, ``tests/test_review_queue.py``,
+``tests/test_cli_contract.py`` and ``tests/test_pool_sizing.py``, and the first
+two used to ask them with two copies of the same walk. One copy learned to
+recognize an aliased import and the other did not, which is the second opinion
+that eventually disagrees. There is one implementation now, and every fixture
+that proves it bites lives beside it.
 
 WHY THESE WALK THE IMPORT GRAPH RATHER THAN MATCHING A NAME. A guard that looks
 for an attribute called ``offer`` is satisfied by any object in the language that
@@ -53,10 +54,10 @@ def _dotted(node: ast.AST) -> str | None:
     return None
 
 
-class ReviewImports:
-    """How one source file reaches the review module, if it reaches it at all.
+class ImportsOf:
+    """How one source file reaches ONE named module, if it reaches it at all.
 
-    Three shapes are recognized, and they are the three this repository's own
+    Four shapes are recognized, and they are the four this repository's own
     modules use between them::
 
         import cratekit.core.review            # cratekit.core.review.offer(...)
@@ -67,41 +68,51 @@ class ReviewImports:
     A relative import is recognized too. Nothing in the package uses one today,
     and a guard that failed the first module to do so would be a guard somebody
     routes around rather than a defect anybody fixes.
+
+    PARAMETERIZED BY MODULE, because the review queue is no longer the only
+    obligation a countdown holds a later unit to. U12 asks the same question
+    about ``cratekit.core.pool``, and asking it with a second copy of this walk
+    is exactly the drift this file was created to end: the copy that learned to
+    recognize an aliased import and the copy that did not.
     """
 
-    def __init__(self, tree: ast.AST) -> None:
+    def __init__(self, tree: ast.AST, module: str) -> None:
+        self.module = module
+        package, _, leaf = module.rpartition(".")
         #: Local names that ARE the module.
         self.module_names: set[str] = set()
         #: Local name -> the module attribute it was imported as.
         self.symbols: dict[str, str] = {}
+        tail = module.split(".")[-2:]
+        package_tail = package.split(".")[-1:]
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    if alias.name == REVIEW_MODULE:
-                        self.module_names.add(alias.asname or REVIEW_MODULE)
+                    if alias.name == module:
+                        self.module_names.add(alias.asname or module)
             elif isinstance(node, ast.ImportFrom):
-                module = node.module or ""
-                names_the_module = module == REVIEW_MODULE or (
-                    node.level > 0 and module.split(".")[-2:] == ["core", "review"]
+                imported = node.module or ""
+                names_the_module = imported == module or (
+                    node.level > 0 and imported.split(".")[-2:] == tail
                 )
-                names_the_package = module == REVIEW_PACKAGE or (
-                    node.level > 0 and module.split(".")[-1:] == ["core"]
+                names_the_package = imported == package or (
+                    node.level > 0 and imported.split(".")[-1:] == package_tail
                 )
                 if names_the_module:
                     for alias in node.names:
                         self.symbols[alias.asname or alias.name] = alias.name
                 elif names_the_package:
                     for alias in node.names:
-                        if alias.name == "review":
-                            self.module_names.add(alias.asname or "review")
+                        if alias.name == leaf:
+                            self.module_names.add(alias.asname or leaf)
 
     @property
-    def reaches_review(self) -> bool:
-        """Whether this source imports the review module at all, in any shape."""
+    def reaches(self) -> bool:
+        """Whether this source imports the module at all, in any shape."""
         return bool(self.module_names or self.symbols)
 
     def resolves(self, node: ast.AST, wanted: str) -> bool:
-        """Whether ``node`` names the review module's ``wanted`` attribute.
+        """Whether ``node`` names the module's ``wanted`` attribute.
 
         ``wanted`` may itself be dotted, so ``Queue.VERSION_MATCH`` is one
         question rather than two, and it is answered the same way whether the
@@ -119,6 +130,40 @@ class ReviewImports:
         if symbol is None:
             return False
         return (f"{symbol}.{rest}" if rest else symbol) == wanted
+
+
+class ReviewImports(ImportsOf):
+    """:class:`ImportsOf` fixed to the review module, which is what U11 declared.
+
+    Kept as its own name because the review questions below read better for it
+    and because the file's callers already spell it, but it is the general walk
+    with one argument filled in rather than a second implementation.
+    """
+
+    def __init__(self, tree: ast.AST) -> None:
+        super().__init__(tree, REVIEW_MODULE)
+
+    @property
+    def reaches_review(self) -> bool:
+        """Whether this source imports the review module at all, in any shape."""
+        return self.reaches
+
+
+def calls_attribute(source: str, module: str, wanted: str) -> bool:
+    """Whether this source CALLS ``module``'s ``wanted`` function, in any import shape.
+
+    The general form of :func:`calls_review`. A call on something that merely has
+    a function of the same name is not an answer, which is the whole reason this
+    binds through the import graph.
+    """
+    tree = ast.parse(source)
+    imports = ImportsOf(tree, module)
+    if not imports.reaches:
+        return False
+    return any(
+        isinstance(node, ast.Call) and imports.resolves(node.func, wanted)
+        for node in ast.walk(tree)
+    )
 
 
 def _assignments(tree: ast.AST) -> list[tuple[str, ast.AST]]:
@@ -144,14 +189,7 @@ def _assignments(tree: ast.AST) -> list[tuple[str, ast.AST]]:
 
 def calls_review(source: str, wanted: str) -> bool:
     """Whether this source CALLS the review module's ``wanted`` function."""
-    tree = ast.parse(source)
-    imports = ReviewImports(tree)
-    if not imports.reaches_review:
-        return False
-    return any(
-        isinstance(node, ast.Call) and imports.resolves(node.func, wanted)
-        for node in ast.walk(tree)
-    )
+    return calls_attribute(source, REVIEW_MODULE, wanted)
 
 
 def offers_into(source: str, queue: str) -> bool:

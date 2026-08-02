@@ -144,6 +144,19 @@ PENDING: dict[str, tuple[str, str]] = {
     # the verb registry gives for the same choice: two entries inserted into the
     # middle of one mapping by two units auto-merge, and an append conflicts
     # textually, which is a conflict somebody reads.
+    "cratekit.analysis": (
+        "U25",
+        "that both analysis pools are sized by cratekit.core.pool and by nothing "
+        "else, which is R23 turned from a claim about a module into a claim about "
+        "a run. U12 ships the sizing and nothing that uses it, so until the heavy "
+        "passes land there is no pool in this product to exhaust anything. The "
+        "source system derives BOTH of its pool widths from the core count, and a "
+        "port that carries that arithmetic across reproduces the nine-worker kill "
+        "with every test U12 wrote still green. Registered here rather than left "
+        "in a docstring because the repository-wide guard U12 arms can only see a "
+        "module building its OWN pool: sizing through the right seam from the "
+        "wrong number passes it (P5)",
+    ),
     "cratekit.write.routing_cli": (
         "U20",
         "the command-line surface for the four route.* verbs, and the obligation "
