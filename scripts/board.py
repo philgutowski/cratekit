@@ -29,11 +29,13 @@ run before.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import subprocess
 import sys
 from collections import deque
+from pathlib import Path
 
 PROJECT_NUMBER = "2"
 
@@ -164,6 +166,39 @@ def derive_status(node: dict, current: str | None) -> str:
         # is how a session loses track of work already underway.
         return "In Progress"
     return "Blocked" if node["open_deps"] else "Ready"
+
+
+def pending_units() -> dict[int, list[str]]:
+    """Which units the pending register still says owe a module.
+
+    `tests/_pending.py` is the countdown for guards written before the code they
+    govern. An entry there is the repository asserting, in a file the suite
+    enforces, that a unit has not landed. Read by ast rather than imported, so an
+    audit never executes test-tree code.
+    """
+    source = Path(__file__).resolve().parent.parent / "tests" / "_pending.py"
+    if not source.exists():
+        return {}
+    tree = ast.parse(source.read_text())
+    owed: dict[int, list[str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.AnnAssign) and not isinstance(node, ast.Assign):
+            continue
+        targets = [node.target] if isinstance(node, ast.AnnAssign) else node.targets
+        if not any(isinstance(t, ast.Name) and t.id == "PENDING" for t in targets):
+            continue
+        if not isinstance(node.value, ast.Dict):
+            continue
+        for key, value in zip(node.value.keys, node.value.values):
+            if not isinstance(value, ast.Tuple) or not value.elts:
+                continue
+            unit = value.elts[0]
+            name = key.value if isinstance(key, ast.Constant) else "?"
+            if isinstance(unit, ast.Constant) and isinstance(unit.value, str):
+                match = re.match(r"U(\d+)$", unit.value)
+                if match:
+                    owed.setdefault(int(match.group(1)), []).append(str(name))
+    return owed
 
 
 # --------------------------------------------------------------------------
@@ -349,6 +384,32 @@ def cmd_start(args) -> int:
     return 0
 
 
+def contradictions(graph: dict) -> list[str]:
+    """What the repository and the board disagree about, that a sync cannot fix.
+
+    Every value the board derives comes from issue closure state, so closure
+    state is the one INPUT and nothing checks it. `tests/_pending.py` is the
+    repository asserting, in a file the suite enforces, that a named unit has not
+    finished. A closed issue for such a unit is the board claiming work landed
+    that the repository says did not, and it cascades: one wrong close moved four
+    units to Ready.
+
+    This is kept apart from drift on purpose. Drift is a derived value that fell
+    out of date and `sync` repairs it. A contradiction is two sources of truth
+    disagreeing, and repairing it automatically would mean picking one to
+    overwrite, which is how the wrong one wins silently.
+    """
+    found = []
+    for uid, modules in sorted(pending_units().items()):
+        node = graph.get(uid)
+        if node and node["unit"] and node["closed"]:
+            found.append(
+                f"#{uid} {node['title'][:44]}\n"
+                f"      closed, but tests/_pending.py still owes it {', '.join(modules)}"
+            )
+    return found
+
+
 def reconcile(owner: str, apply: bool, labels_only: bool = False) -> list[str]:
     """Compare the board against the repository. Returns the drift found.
 
@@ -363,6 +424,12 @@ def reconcile(owner: str, apply: bool, labels_only: bool = False) -> list[str]:
     items = {} if labels_only else project_items(owner)
     name = repo_slug()[1]
     drift: list[str] = []
+
+    # The one thing the board cannot derive from itself. Every other value here
+    # is computed from closure state, so closure state is the input and nothing
+    # checks it. A closed issue whose unit still owes a module in the pending
+    # register is the board claiming work landed that the repository says did
+    # not, and it cascades: four units went Ready off one such close.
 
     for number, node in sorted(graph.items()):
         item = items.get(number)
@@ -438,16 +505,30 @@ def cmd_audit(args) -> int:
     done = sum(1 for n in units if n["closed"])
     ready = sum(1 for n in units if not n["closed"] and not n["open_deps"])
     print(f"{len(units)} units: {done} done, {ready} ready, {len(units) - done - ready} blocked")
-    if not drift:
+    clashes = contradictions(graph)
+
+    if drift:
+        print()
+        print(f"DRIFT, {len(drift)} item(s). Derived values that fell out of date:")
+        for line in drift:
+            print(f"  {line}")
+        print()
+        print("Fix it with: .venv/bin/python scripts/board.py sync")
+
+    if clashes:
+        print()
+        print(f"CONTRADICTION, {len(clashes)} item(s). A sync cannot fix these:")
+        for line in clashes:
+            print(f"  {line}")
+        print()
+        print("Each one is a decision, not a repair. Either reopen the issue because")
+        print("the unit is not finished, or clear its tests/_pending.py entry because")
+        print("it is. Overwriting one from the other would let the wrong one win.")
+
+    if not drift and not clashes:
         print("The board matches the repository.")
         return 0
-    print()
-    print(f"DRIFT, {len(drift)} item(s). The board is lying about the following:")
-    for line in drift:
-        print(f"  {line}")
-    print()
-    print("Fix it with: .venv/bin/python scripts/board.py sync")
-    return 1
+    return 2 if clashes else 1
 
 
 def main() -> int:
