@@ -303,6 +303,24 @@ POLICY_ROWS: Mapping[int, str] = MappingProxyType(
 #: deferred module from one whose verb somebody forgot to gate.
 DEFERRED_MODULES: frozenset[str] = frozenset({"web", "desktop"})
 
+#: The unit that lands ``cratekit.write.routing_cli``, named ONCE so all four
+#: entries that carry it move together.
+#:
+#: IT WAS U19 AND IT IS NOW U20, and the reasoning is written down rather than
+#: implied, because it is a judgement somebody may want to move again. U19 built
+#: the deferred-routing ENGINE and its declared file list never contained a
+#: command-line module. It could not have landed one either: conformance 3
+#: requires a landed gated verb to exit OK once its gate is answered, and every
+#: verb here writes ``db_tree`` and is destructive, which cannot exit OK on a
+#: machine with no database. U20 flips trees to database-native, so it is the
+#: first unit that must ship a destructive database surface anyway, and these
+#: four ride with it.
+#:
+#: THE MARKER IS NOT THE RECORD. ``scripts/board.py`` reads ``tests/_pending.py``
+#: and nothing else, so this constant is a convenience for the reader and the
+#: obligation itself is registered there, against U20 (P5).
+ROUTING_CLI_UNIT = "U20"
+
 
 # ---------------------------------------------------------------------------
 # The verbs
@@ -783,7 +801,7 @@ ENTRIES: tuple[Entry, ...] = (
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
-        planned_in="U19",
+        planned_in=ROUTING_CLI_UNIT,
     ),
     Entry(
         name="route.unplaced",
@@ -800,7 +818,7 @@ ENTRIES: tuple[Entry, ...] = (
         taxonomy_terms=("genre_energy",),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
-        planned_in="U19",
+        planned_in=ROUTING_CLI_UNIT,
     ),
     Entry(
         name="route.resort",
@@ -819,7 +837,7 @@ ENTRIES: tuple[Entry, ...] = (
         taxonomy_terms=("genre_energy", "low", "med", "high"),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
-        planned_in="U19",
+        planned_in=ROUTING_CLI_UNIT,
     ),
     Entry(
         name="audit.coverage",
@@ -1308,8 +1326,10 @@ ENTRIES: tuple[Entry, ...] = (
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
         # The same module its three ``route.*`` siblings name, so all four expire
         # on one countdown. The engine behind it landed with U19; the CLI module
-        # did not, and U19's declared file list never contained one.
-        planned_in="U19",
+        # did not, and U19's declared file list never contained one. See
+        # ``ROUTING_CLI_UNIT`` for why the countdown now runs against U20, and
+        # ``tests/_pending.py`` for the register entry that actually owns it.
+        planned_in=ROUTING_CLI_UNIT,
     ),
 )
 

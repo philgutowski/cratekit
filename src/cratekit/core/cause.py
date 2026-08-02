@@ -322,6 +322,52 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "lossy-refused": ExitCode.REFUSED_BY_POLICY,
         # ── Lifecycle ───────────────────────────────────────────────────────
         "cancelled": ExitCode.INTERRUPTED,
+        # ── U19's remaining refusals, appended ──────────────────────────────
+        #
+        # APPENDED RATHER THAN FILED UNDER THEIR SECTIONS, deliberately, and for
+        # the reason the verb registry gives for the same choice: several units
+        # land against this mapping at once, and two entries inserted into
+        # different halves of one literal auto-merge, so a duplicate key is
+        # resolved silently by whichever line comes last. An append conflicts
+        # textually, which is a conflict somebody reads.
+        #
+        # S4 is why they exist at all. The unit's own vocabulary has to cover
+        # EVERY refusal it raises, or the refusal reaches the command line as an
+        # internal defect and the remedy it was carrying is discarded.
+        #
+        # The routing ledger is present and cannot be understood: not valid
+        # JSON, no schema version, two records for one run and one track, or a
+        # version this build does not know. ONE SLUG FOR ALL OF THEM, exactly as
+        # ``config-unusable`` takes one slug for five ways a config can be
+        # unusable, because what differs between them is the REMEDY and the
+        # remedy travels on the remediation rather than on the code. A ledger
+        # from a newer build asks for an upgrade; a corrupt one asks for the
+        # doctor.
+        "routing-ledger-unusable": ExitCode.PRECONDITION,
+        # The tree registry is present and cannot be understood. Its sibling
+        # above already argues the shape: one slug for every way one file can be
+        # unusable, and the remedy travels on the remediation because a file
+        # from a newer build and a corrupt one need different acts. It is here
+        # rather than left alone because fixing two of the three refusals in
+        # that module and not the third is the same lesson applied in one place
+        # and not the other, which is the shape P5 names.
+        "tree-registry-unusable": ExitCode.PRECONDITION,
+        # The collection row could not say whether it is a tombstone. The column
+        # is not exposed, or it is exposed and holds nothing. Its own slug on
+        # the library-unreadable code rather than a shared one, because the
+        # database is present and readable in every other respect and what
+        # cannot be read is one specific fact whose permissive default would let
+        # a deleted track be placed and a run close over it.
+        "soft-delete-marker-unreadable": ExitCode.LIBRARY_UNREADABLE,
+        # The deferred placement's destination folder is not under the tree's
+        # adopted root, and the track already sits under that root in a folder
+        # the active taxonomy does not declare. Somebody renamed the folder, in
+        # rekordbox or in the template, between the decision and the write.
+        # Writing would create the destination a second time under the taxonomy
+        # name and file the track twice. UNCONVERGED because that is exactly
+        # what this is: the tree the library holds and the tree the taxonomy
+        # declares have come apart, and only a person can say which is right.
+        "routing-destination-renamed": ExitCode.UNCONVERGED,
     }
 )
 

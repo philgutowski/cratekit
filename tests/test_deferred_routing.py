@@ -59,8 +59,8 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import CratekitError
-from cratekit.core.exit_codes import ExitCode
+from cratekit.core.cause import REASONS, CratekitError
+from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import routing_pass, trees
 from tests._pending import requires
 from tests.test_config import valid_data
@@ -249,7 +249,7 @@ def test_outstanding_is_derived_from_status_rather_than_from_a_stored_flag(
     track = routing_pass.read(cfg).for_session(SESSION_ID)[0].track
 
     assert [entry.track for entry in routing_pass.read(cfg).outstanding(SESSION_ID)] == [track]
-    routing_pass.mark(cfg, [track], routing_pass.TrackState.ROUTED)
+    routing_pass.mark(cfg, [track], routing_pass.TrackState.ROUTED, session_id=SESSION_ID)
     assert routing_pass.read(cfg).outstanding(SESSION_ID) == ()
 
     document = json.loads(routing_pass.path_for(cfg).read_text())
@@ -348,7 +348,7 @@ def test_acknowledging_without_a_named_actor_is_refused(cfg, declared):
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     track = routing_pass.read(cfg).for_session(SESSION_ID)[0].track
     with pytest.raises(ValueError):
-        routing_pass.acknowledge(cfg, [track], actor="   ")
+        routing_pass.acknowledge(cfg, [track], session_id=SESSION_ID, actor="   ")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -481,13 +481,18 @@ def test_a_location_that_resolves_to_no_path_is_not_reported_as_a_missing_import
     An unmapped volume prefix reaches no row for a reason importing cannot fix,
     so counting it as evidence that the import has not happened would send a
     person round the same loop forever.
+
+    THE READINESS ASSERTION HERE USED TO SAY ``NOT_READY``, which is the sentence
+    this docstring forbids, written one line below it. That is finding eight, and
+    the answer is now its own member: the pass still writes nothing, and it no
+    longer tells anybody to import a track whose location maps nowhere.
     """
     intent = replace(
         _intent(cfg, declared, PLAIN), location="/somewhere/nothing/maps/onto/x.flac"
     )
     placed = _placements(cfg, declared, [intent], [_row(cfg, PLAIN, "1")])
     assert placed[0].placement is routing_pass.Placement.UNRESOLVED
-    assert routing_pass.readiness(placed) is routing_pass.Readiness.NOT_READY
+    assert routing_pass.readiness(placed) is routing_pass.Readiness.UNANSWERABLE
 
 
 def test_a_recorded_prefix_the_map_covers_resolves_to_its_row(cfg, declared):
@@ -638,11 +643,21 @@ def adopted_root(db):
     return folder
 
 
-def _route(cfg, db, adopted, declared_taxonomy, *, rows=None, registry=None, **kwargs):
+def _route(
+    cfg,
+    db,
+    adopted,
+    declared_taxonomy,
+    *,
+    rows=None,
+    registry=None,
+    session_id=SESSION_ID,
+    **kwargs,
+):
     return routing_pass.route(
         cfg,
         db,
-        session_id=SESSION_ID,
+        session_id=session_id,
         registry=registry
         if registry is not None
         else _registry(tree_registry.Mode.DATABASE, root_id=str(adopted.ID)),
@@ -1000,7 +1015,9 @@ def test_a_surfaced_track_closes_the_run_only_after_it_is_acknowledged(
         routing_pass.close_run(record, cfg)
 
     track = routing_pass.read(cfg).for_session(SESSION_ID)[0].track
-    routing_pass.acknowledge(cfg, [track], actor="a-person", note="removed in rekordbox")
+    routing_pass.acknowledge(
+        cfg, [track], session_id=SESSION_ID, actor="a-person", note="removed in rekordbox"
+    )
 
     closed = routing_pass.close_run(record, cfg)
     assert closed.state is session.SessionState.CLOSED
@@ -1132,34 +1149,105 @@ def test_one_real_run_imports_routes_and_closes(cfg, gates_pass, declared, monke
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def _module_string_constants(tree: ast.AST) -> frozenset[str]:
+    """Every module-level name bound to a plain string in this source.
+
+    ``actor=ACTOR`` reads like a value and is a literal with a name on it, which
+    is the cheapest way past a guard that only looks at the argument node.
+    """
+    named: set[str] = set()
+    for node in tree.body if isinstance(tree, ast.Module) else []:
+        targets: list[ast.expr] = []
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        value = getattr(node, "value", None)
+        if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name):
+                named.add(target.id)
+    return frozenset(named)
+
+
+def _is_invented(node: ast.expr | None, constants: frozenset[str]) -> bool:
+    """True when this expression's value was chosen by the code, not by a person.
+
+    RECURSIVE, because every bypass found in review was one wrapper away from a
+    literal: an f-string with no substitution, a conditional between two
+    literals, two literals concatenated, a module constant. An expression
+    carrying a runtime value is not invented, which is why an f-string WITH a
+    substitution and a plain parameter both pass.
+    """
+    if node is None:
+        return False
+    if isinstance(node, ast.Constant):
+        return isinstance(node.value, str)
+    if isinstance(node, ast.JoinedStr):
+        # An f-string with nothing substituted into it is a literal wearing a
+        # prefix. One with a substitution carries a value from somewhere.
+        return not any(isinstance(part, ast.FormattedValue) for part in node.values)
+    if isinstance(node, ast.IfExp):
+        return _is_invented(node.body, constants) and _is_invented(node.orelse, constants)
+    if isinstance(node, ast.BinOp):
+        return _is_invented(node.left, constants) and _is_invented(node.right, constants)
+    if isinstance(node, ast.Name):
+        return node.id in constants
+    return False
+
+
 def _made_up_actors(source: str) -> list[str]:
-    """Every ``acknowledge`` call whose actor is a literal the caller invented.
+    """Every ``acknowledge`` call whose actor is a value the caller invented.
 
     An AST walk rather than a text search. The rule is about the ARGUMENT, and a
     text search cannot tell a call from the word appearing in a docstring, which
     is the shape that gets a guard muted rather than obeyed (P7).
+
+    IT LOOKS THROUGH FOUR WRAPPERS AND ONE UNPACKING, because matching only a
+    bare constant left the guard passable by ``actor=f"cli"``, ``actor=ACTOR``,
+    ``actor="cli" if x else "cli"`` and ``**{"actor": "cli"}``. Every one of those
+    records the product acknowledging a track to itself, which is what R34
+    forbids for a decision of this class. The other direction is asserted too:
+    a caller passing a parameter, an attribute, an f-string with a substitution,
+    or a mapping this walk cannot see is left alone, because a guard that fires
+    on correct code gets routed around and then protects nothing.
     """
+    tree = ast.parse(source)
+    constants = _module_string_constants(tree)
     found: list[str] = []
-    for node in ast.walk(ast.parse(source)):
+    for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        name = node.func.attr if isinstance(node.func, ast.Attribute) else (
-            node.func.id if isinstance(node.func, ast.Name) else ""
+        name = (
+            node.func.attr
+            if isinstance(node.func, ast.Attribute)
+            else (node.func.id if isinstance(node.func, ast.Name) else "")
         )
         if name != "acknowledge":
             continue
         for keyword in node.keywords:
-            if keyword.arg == "actor" and isinstance(keyword.value, ast.Constant):
-                found.append(ast.unparse(node))
+            if keyword.arg == "actor":
+                if _is_invented(keyword.value, constants):
+                    found.append(ast.unparse(node))
+                continue
+            if keyword.arg is None and isinstance(keyword.value, ast.Dict):
+                # ``**{"actor": ...}``: the same argument, spelled so a check on
+                # keyword names never sees it.
+                for key, value in zip(keyword.value.keys, keyword.value.values):
+                    if (
+                        isinstance(key, ast.Constant)
+                        and key.value == "actor"
+                        and _is_invented(value, constants)
+                    ):
+                        found.append(ast.unparse(node))
     return found
 
 
-def test_the_made_up_actor_guard_bites():
-    """The fixture half. A guard that has never fired is a guard nobody has run."""
-    assert _made_up_actors('routing_pass.acknowledge(cfg, t, actor="cli")')
-    assert _made_up_actors("acknowledge(cfg, t, actor='cli')")
-    assert _made_up_actors("routing_pass.acknowledge(cfg, t, actor=decision.actor)") == []
-    assert _made_up_actors('"acknowledge with actor=... somewhere in prose"') == []
+# The fixture half of this guard, in both directions, is at the end of this file
+# under finding 11. It was four assertions in one test and is now two
+# parametrized sets, because a bypass that a reviewer found has to be a named
+# case somebody can read rather than one more line in a list.
 
 
 def test_no_caller_acknowledges_a_track_with_an_actor_it_invented():
@@ -1219,3 +1307,876 @@ def test_the_intake_pipeline_records_its_routing_intents_at_the_decision():
         "the intake pipeline never records a routing intent, so no run ever has "
         "anything deferred and the deferred-routing mechanism has no subject"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 5: the defects an adversarial review found in the shape above
+#
+# Every test below was written against the DEFECT and observed failing before
+# the fix beside it existed. They are grouped by the finding they close rather
+# than by the part of the module they touch, because what has to stay true is
+# the property, and the property is what the finding named.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _second_destination(declared_taxonomy):
+    """A second bucket the shipped template declares, DERIVED rather than named.
+
+    The pair of destinations is what makes "two runs, one file" a real test: two
+    runs that happened to decide the same folder prove nothing about whose record
+    is whose.
+    """
+    bucket = declared_taxonomy.buckets[1]
+    sub = routing.energy_sub(declared_taxonomy, bucket.id, declared_taxonomy.energy.scale_max)
+    assert sub is not None, "the shipped template's second bucket declares no sub"
+    return bucket.id, sub.id
+
+
+def _where(db, content_id: str) -> list[tuple[str | None, str]]:
+    """Every (folder, playlist) pair this content row actually sits in.
+
+    Walked UP from the membership rows, never down by name, for the reason
+    ``membership_proven`` gives: a lookup by name finds a namesake anywhere.
+    """
+    found: list[tuple[str | None, str]] = []
+    for membership in db.get_playlist_songs(ContentID=str(content_id)):
+        playlist = db.get_playlist(ID=str(membership.PlaylistID))
+        if playlist is None:
+            continue
+        folder = db.get_playlist(ID=str(playlist.ParentID))
+        found.append((folder.Name if folder is not None else None, playlist.Name))
+    return found
+
+
+# ── Finding 1: the ledger is keyed per file, the close gate asks per run ─────
+
+
+def test_a_second_run_deferring_one_file_does_not_take_over_the_first_runs_record(
+    cfg, gates_pass, declared
+):
+    """One record per RUN and file, never one record per file.
+
+    Two runs touching one path is ordinary: a re-download to the same location, a
+    resumed intake, one track acquired twice from two sources. A ledger that can
+    hold only one record for the path lets the second run take ownership of the
+    first run's obligation, and the first run then closes reporting a placed
+    track that is in no playlist at all.
+    """
+    first = session.open_session(
+        cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id="run-one"
+    )
+    routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-one")])
+    routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-two")])
+
+    ledger = routing_pass.read(cfg)
+    owners = sorted(entry.session_id for entry in ledger.intents)
+    assert owners == ["run-one", "run-two"], (
+        f"the ledger holds {owners}; one run's decision replaced the other's"
+    )
+    assert len(ledger.outstanding("run-one")) == 1
+    assert len(ledger.outstanding("run-two")) == 1
+    with pytest.raises(CratekitError) as excinfo:
+        routing_pass.close_run(first, cfg)
+    assert excinfo.value.cause.reason == "routing-outstanding"
+
+
+def test_marking_one_runs_track_leaves_another_runs_record_alone(cfg, declared):
+    """A mark is scoped to the run that made the decision it settles.
+
+    Matching on the track alone lets one run's pass report a placement into ITS
+    destination and settle a different run's record, whose destination was never
+    written. The two records name the same file and mean different playlists.
+    """
+    routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-one")])
+    routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-two")])
+    track = routing_pass.read(cfg).for_session("run-two")[0].track
+
+    routing_pass.mark(cfg, [track], routing_pass.TrackState.ROUTED, session_id="run-two")
+    assert routing_pass.read(cfg).outstanding("run-two") == ()
+    assert len(routing_pass.read(cfg).outstanding("run-one")) == 1
+
+
+def test_two_overlapping_runs_over_one_file_each_reach_their_own_destination(
+    cfg, gates_pass, db, adopted_root, declared
+):
+    """Both runs driven to completion, and neither closes while it still owes work.
+
+    This is the whole of finding one in one drive: two runs decide two different
+    destinations for one file, each pass writes ITS destination, each run refuses
+    to close until its own record settles, and both destinations are in the
+    library at the end.
+    """
+    first = session.open_session(
+        cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id="run-one"
+    )
+    second = session.open_session(
+        cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id="run-two"
+    )
+    other_bucket, other_sub = _second_destination(declared)
+    routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-one")])
+    routing_pass.record_intents(
+        cfg,
+        [
+            replace(
+                _intent(cfg, declared, PLAIN, session_id="run-two"),
+                bucket=other_bucket,
+                sub=other_sub,
+            )
+        ],
+    )
+    first_destination = routing_pass.destination(declared, *_destination(declared))
+    second_destination = routing_pass.destination(declared, other_bucket, other_sub)
+    assert first_destination != second_destination
+
+    # Run one places its track. Run two still owes its own.
+    _route(cfg, db, adopted_root, declared, session_id="run-one")
+    assert routing_pass.close_run(first, cfg).state is session.SessionState.CLOSED
+    with pytest.raises(CratekitError) as excinfo:
+        routing_pass.close_run(second, cfg)
+    assert excinfo.value.cause.reason == "routing-outstanding"
+
+    _route(cfg, db, adopted_root, declared, session_id="run-two")
+    assert routing_pass.close_run(second, cfg).state is session.SessionState.CLOSED
+
+    landed = sorted(_where(db, "2"))
+    assert landed == sorted([first_destination, second_destination]), (
+        f"the library holds {landed}; each run's own destination has to be written"
+    )
+
+
+# ── Finding 2: the soft-delete marker must never default to "active" ─────────
+
+
+def test_a_row_that_cannot_report_the_soft_delete_marker_refuses(cfg):
+    """U18 gave ``ContentRow.deleted`` no default. The producer must not supply one.
+
+    A default of False means active, which is the permissive answer, so a binding
+    that stops exposing the column hands every tombstone to the matcher as a live
+    row. The pass then places a track the user deleted on purpose, marks it
+    routed, and the run closes over it.
+    """
+
+    class Row:
+        ID = "9"
+        FolderPath = "/somewhere/nothing.flac"
+
+    class Blind:
+        def get_content(self):
+            return [Row()]
+
+    with pytest.raises(CratekitError) as excinfo:
+        list(routing_pass.content_rows(Blind()))
+    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNREADABLE
+
+
+def test_a_soft_delete_marker_that_reads_as_nothing_refuses(cfg):
+    """An exposed column holding no value is the same hazard wearing a value.
+
+    ``bool(None)`` is False, which is the permissive answer again, so a column
+    that is present and null must refuse exactly as a missing one does.
+    """
+
+    class Row:
+        ID = "9"
+        FolderPath = "/somewhere/nothing.flac"
+        rb_local_deleted = None
+
+    class Blind:
+        def get_content(self):
+            return [Row()]
+
+    with pytest.raises(CratekitError):
+        list(routing_pass.content_rows(Blind()))
+
+
+# ── Finding 3: one stale destination must not abort the whole pass ───────────
+
+
+def test_a_destination_the_taxonomy_no_longer_declares_is_its_own_placement(
+    cfg, declared
+):
+    """``Placement`` had five members and none of them meant this.
+
+    A ledger naming a sub the active template dropped is a real state: somebody
+    edited the taxonomy between the decision and the import. It is not a missing
+    row and it is not a defect, and reporting it as either sends a person to the
+    wrong remedy.
+    """
+    stale = replace(_intent(cfg, declared, PLAIN), sub="a-sub-this-library-dropped")
+    placed = _placements(cfg, declared, [stale], [_row(cfg, PLAIN, "1")])
+    assert placed[0].placement is routing_pass.Placement.UNDECLARED
+    assert placed[0].placement not in routing_pass.WRITABLE
+
+
+def test_one_stale_destination_does_not_stop_the_other_tracks_in_the_run(
+    cfg, gates_pass, db, adopted_root, declared
+):
+    """The good track is placed, and the bad one is reported rather than raised.
+
+    ``assert_settled`` promises the pass "places every track the library now holds
+    a row for, and reports one reason per track it could not place". A bare
+    ``KeyError`` out of the whole pass places none and reports no reason, so the
+    documented remedy is spent and the run can never close.
+    """
+    good = _intent(cfg, declared, PLAIN)
+    stale = replace(_intent(cfg, declared, COMPOSED), sub="a-sub-this-library-dropped")
+    routing_pass.record_intents(cfg, [good, stale])
+
+    report = _route(cfg, db, adopted_root, declared)
+
+    assert _memberships(db, "2") == 1, "the good track was blocked by the stale one"
+    assert report.routed == (good.track,)
+    reasons = {item.intent.track: item.placement for item in report.placed}
+    assert reasons[stale.track] is routing_pass.Placement.UNDECLARED
+    outstanding = routing_pass.read(cfg).outstanding(SESSION_ID)
+    assert [entry.track for entry in outstanding] == [stale.track]
+
+
+# ── Finding 4: the recovery primitive is keyed on a mutable display name ─────
+
+
+class _CrashOnce:
+    """A mark that dies the first time and works afterwards.
+
+    Replacing the mark outright would also undo the platform seams this whole
+    file runs behind, and the run would then fail on the machine rather than on
+    the property under test.
+    """
+
+    def __init__(self, real):
+        self.real = real
+        self.armed = True
+
+    def __call__(self, *args, **kwargs):
+        if self.armed:
+            self.armed = False
+            raise RuntimeError("the process was killed between the commit and the mark")
+        return self.real(*args, **kwargs)
+
+
+def _crash_between_the_commit_and_the_mark(cfg, db, adopted, declared_taxonomy, monkeypatch):
+    routing_pass.record_intents(cfg, [_intent(cfg, declared_taxonomy, PLAIN)])
+    monkeypatch.setattr(routing_pass, "mark", _CrashOnce(routing_pass.mark))
+    with pytest.raises(RuntimeError, match="between the commit and the mark"):
+        _route(cfg, db, adopted, declared_taxonomy)
+    assert _memberships(db, "2") == 1
+    assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
+
+
+def test_a_recovery_run_after_a_rekordbox_rename_refuses_rather_than_duplicating(
+    cfg, gates_pass, db, adopted_root, declared, monkeypatch
+):
+    """R19 claims renaming a folder in rekordbox changes nothing, and re-running is the remedy.
+
+    The module rests on "a re-run is cheap because membership deduplicates", and
+    the dedup targets by DISPLAY NAME. Rename the folder between the crash and the
+    recovery and the recovery re-creates the folder under the taxonomy name, adds
+    the track a second time, and marks it routed. D5 forbids keying a persisted
+    record by a display name; this is the same lesson on the recovery path.
+    """
+    from pyrekordbox.db6 import tables
+
+    _crash_between_the_commit_and_the_mark(cfg, db, adopted_root, declared, monkeypatch)
+    folder_display, _sub_display = routing_pass.destination(declared, *_destination(declared))
+    row = db.session.query(tables.DjmdPlaylist).filter_by(Name=folder_display).one()
+    row.Name = "A Name Of Their Own"
+    db.session.commit()
+
+    with pytest.raises(CratekitError) as excinfo:
+        _route(cfg, db, adopted_root, declared)
+    assert excinfo.value.cause.reason == "routing-destination-renamed"
+    assert _memberships(db, "2") == 1, "the recovery run duplicated the membership"
+    assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
+
+
+def _taxonomy_with_the_first_bucket_renamed(new_display: str):
+    """The shipped template, REBUILT, with one bucket's display name changed.
+
+    Rebuilt through the real parser rather than patched onto the frozen object,
+    because ``Taxonomy`` carries derived lookups beside its fields and a
+    dataclass replacement leaves them describing the template that was there
+    before. A test that edited the object in place would prove that the guard
+    reads a stale index, which is not the property under test.
+    """
+    import tomllib
+    from importlib import resources
+
+    source = resources.files("cratekit") / "templates" / taxonomy.DEFAULT_TEMPLATE
+    data = tomllib.loads(source.read_text(encoding="utf-8"))
+    data["bucket"][0]["display"] = new_display
+    return taxonomy.build_taxonomy(data)
+
+
+def test_a_recovery_run_after_a_taxonomy_rename_refuses_rather_than_duplicating(
+    cfg, gates_pass, db, adopted_root, declared, monkeypatch
+):
+    """The same failure from the other side: the template moved, not the library."""
+    _crash_between_the_commit_and_the_mark(cfg, db, adopted_root, declared, monkeypatch)
+    renamed = _taxonomy_with_the_first_bucket_renamed("A Bucket Renamed")
+    assert renamed.buckets[0].id == declared.buckets[0].id
+
+    with pytest.raises(CratekitError) as excinfo:
+        _route(cfg, db, adopted_root, renamed)
+    assert excinfo.value.cause.reason == "routing-destination-renamed"
+    assert _memberships(db, "2") == 1
+
+
+@requires("cratekit.write.routing_cli")
+def test_a_recovery_run_after_a_rename_converges_once_the_tree_layer_can(
+    cfg, gates_pass, db, adopted_root, declared, monkeypatch
+):
+    """P5's countdown for the refusal above, so it cannot become permanent.
+
+    Refusing is correct and it is not service. What makes the re-run converge is
+    a persisted map from the stable destination identifiers to the node
+    identifiers a previous write used, which is the tree layer's record to own
+    and the reason this obligation is registered against the unit that owns it
+    rather than asserted in a docstring. When that lands, this file's rename
+    scenario must end with one membership and no refusal.
+    """
+    from pyrekordbox.db6 import tables
+
+    _crash_between_the_commit_and_the_mark(cfg, db, adopted_root, declared, monkeypatch)
+    folder_display, _sub_display = routing_pass.destination(declared, *_destination(declared))
+    row = db.session.query(tables.DjmdPlaylist).filter_by(Name=folder_display).one()
+    row.Name = "A Name Of Their Own"
+    db.session.commit()
+
+    report = _route(cfg, db, adopted_root, declared)
+    assert len(report.routed) == 1
+    assert _memberships(db, "2") == 1, "the recovery run duplicated the membership"
+    assert routing_pass.read(cfg).outstanding(SESSION_ID) == ()
+
+
+def test_a_bucket_folder_that_does_not_exist_yet_is_not_mistaken_for_a_rename(
+    cfg, gates_pass, db, adopted_root, declared
+):
+    """P7, the other direction. A guard that fires on correct code gets routed around.
+
+    A track already filed in one declared bucket, being placed into a second
+    declared bucket whose folder this library has never held, is the ordinary
+    case. The refusal above must not touch it.
+    """
+    other_bucket, other_sub = _second_destination(declared)
+    routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-one")])
+    _route(cfg, db, adopted_root, declared, session_id="run-one")
+    routing_pass.record_intents(
+        cfg,
+        [
+            replace(
+                _intent(cfg, declared, PLAIN, session_id="run-two"),
+                bucket=other_bucket,
+                sub=other_sub,
+            )
+        ],
+    )
+
+    report = _route(cfg, db, adopted_root, declared, session_id="run-two")
+    assert len(report.routed) == 1
+    assert _memberships(db, "2") == 2
+
+
+# ── Finding 5: the ledger's read-modify-write takes no lock ──────────────────
+
+
+_CONCURRENT_WRITER = '''
+import sys
+from pathlib import Path
+
+from cratekit.core import config
+from cratekit.write import routing_pass
+from tests.test_config import valid_data
+
+root = Path(sys.argv[1])
+run = sys.argv[2]
+count = int(sys.argv[3])
+cfg = config.from_dict(valid_data(root))
+for index in range(count):
+    location = f"{root}/Music/{run}-{index}.flac"
+    routing_pass.record_intents(
+        cfg,
+        [
+            routing_pass.RoutingIntent(
+                track=routing_pass.track_id(location),
+                session_id=run,
+                location=location,
+                tree="a_tree",
+                bucket="a_bucket",
+                sub="a_sub",
+                decided="2026-08-02T00:00:00+00:00",
+            )
+        ],
+    )
+'''
+
+
+def test_two_processes_recording_intents_lose_none_of_them(cfg, library, tmp_path):
+    """REAL PROCESSES, not threads, because the hazard is a real process boundary.
+
+    Two writers interleaving an unlocked read-modify-write erases a fully recorded
+    decision. Nothing is then outstanding for it, the run closes clean, and a
+    track that was decided sits in no ledger at all: the one shape this whole
+    module exists to prevent, arriving through the writer rather than the reader.
+    A thread test would prove something about one interpreter's scheduler; the
+    ledger is documented as accumulating several runs from several sources.
+    """
+    import subprocess
+    import sys
+
+    script = tmp_path / "concurrent_writer.py"
+    script.write_text(_CONCURRENT_WRITER)
+    each = 60
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = os.pathsep.join([str(SRC_ROOT), str(REPO_ROOT)])
+
+    processes = [
+        subprocess.Popen(
+            [sys.executable, str(script), str(library), run, str(each)],
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        for run in ("run-one", "run-two")
+    ]
+    for process in processes:
+        _out, errors = process.communicate(timeout=300)
+        assert process.returncode == 0, errors.decode()
+
+    recorded = routing_pass.read(cfg).intents
+    assert len(recorded) == 2 * each, (
+        f"{2 * each} decisions were recorded and {len(recorded)} survived; an "
+        f"unlocked read-modify-write erased the rest"
+    )
+
+
+def test_the_lock_is_a_declared_state_entry_that_a_restore_never_replaces(cfg):
+    """A path composed under a state root is a file nothing walks or backs up.
+
+    And the role is not a detail: a restore that replaced the directory holding
+    this file would swap the inode a live lock is held on, and both holders would
+    go on believing they had exclusive access with nothing raised. That is the
+    argument the write lock and the session lock already record.
+    """
+    entry = config.state_file(routing_pass.LOCK_KEY)
+    assert entry.root is config.StateRoot.LIBRARY
+    assert entry.snapshot is config.SnapshotRole.NEVER_RESTORED
+    assert config.library_coupled_dir(cfg) not in routing_pass.lock_path(cfg).parents
+
+
+def test_everything_this_module_creates_is_private_under_any_umask(cfg, declared):
+    """P1 and P3 together: walk the tree, do not name the files in it.
+
+    The version of this test that named the ledger was already blind to the lock
+    beside it on the day the lock landed, which is the shape P3 exists to stop. A
+    walk covers whatever the next writer adds without anybody remembering, and
+    both halves are asserted because a 0600 record inside a world-writable
+    directory can be unlinked and replaced by any local account.
+    """
+    previous = os.umask(0o000)
+    try:
+        routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
+        track = routing_pass.read(cfg).for_session(SESSION_ID)[0].track
+        routing_pass.mark(
+            cfg, [track], routing_pass.TrackState.ROUTED, session_id=SESSION_ID
+        )
+    finally:
+        os.umask(previous)
+
+    root = config.library_state_dir(cfg)
+    permissive: list[str] = []
+    for current, directories, files in os.walk(root):
+        for name in directories:
+            path = Path(current) / name
+            if stat.S_IMODE(path.stat().st_mode) != config.PRIVATE_DIR_MODE:
+                permissive.append(f"{path} is {oct(stat.S_IMODE(path.stat().st_mode))}")
+        for name in files:
+            path = Path(current) / name
+            if stat.S_IMODE(path.stat().st_mode) != config.PRIVATE_FILE_MODE:
+                permissive.append(f"{path} is {oct(stat.S_IMODE(path.stat().st_mode))}")
+    assert stat.S_IMODE(root.stat().st_mode) == config.PRIVATE_DIR_MODE
+    assert not permissive, f"created under umask 000 at a permissive mode: {permissive}"
+
+
+# ── Finding 6: a run whose export was never imported must not close ──────────
+
+
+def test_a_run_whose_export_was_never_imported_refuses_to_close(cfg, gates_pass):
+    """The other state in which somebody still owes an act.
+
+    The unit's thesis is that a run cannot close while somebody still owes an
+    act. It enforced that for the routing half and not for the import half, so a
+    run sitting in ``awaiting-import`` with its pending action still attached
+    closed and released its capture, while the session spine went on refusing a
+    database surface for that same record.
+    """
+    record = session.open_session(cfg, workflow="an-intake-workflow", session_id=SESSION_ID)
+    pending = session.pending_import(
+        record,
+        artifact=cfg.library.root / "an-export.xml",
+        summary="import this export into rekordbox",
+        verify_verb="a-verify-verb",
+    )
+    session.mark_awaiting_import(record, pending, cfg)
+
+    with pytest.raises(CratekitError) as excinfo:
+        routing_pass.close_run(session.read_record(SESSION_ID, cfg), cfg)
+    assert excinfo.value.cause.reason == "awaiting-import"
+    assert excinfo.value.cause.code is ExitCode.PENDING_HUMAN
+    assert session.read_record(SESSION_ID, cfg).state is session.SessionState.AWAITING_IMPORT
+
+
+def test_abandoning_a_run_whose_export_was_never_imported_is_still_allowed(cfg, gates_pass):
+    """The escape stays open, for the reason the routing gate leaves it open.
+
+    A refusal with no way past it is how people learn to edit state files by
+    hand, and abandoning is the claim that the run did NOT finish.
+    """
+    record = session.open_session(cfg, workflow="an-intake-workflow", session_id=SESSION_ID)
+    pending = session.pending_import(
+        record,
+        artifact=cfg.library.root / "an-export.xml",
+        summary="import this export into rekordbox",
+        verify_verb="a-verify-verb",
+    )
+    session.mark_awaiting_import(record, pending, cfg)
+
+    abandoned = routing_pass.close_run(
+        session.read_record(SESSION_ID, cfg), cfg, state=session.SessionState.ABANDONED
+    )
+    assert abandoned.state is session.SessionState.ABANDONED
+
+
+# ── Finding 7: every refusal has to carry its remedy to the boundary ─────────
+
+
+def test_an_unreadable_ledger_carries_its_remedy_to_the_boundary(cfg):
+    """S4. A refusal that is not a ``CratekitError`` reaches the user as a defect report.
+
+    The command-line boundary converts anything that is not a structured cause
+    into ``internal-error`` with ``report-defect``, discarding the remedy the
+    exception was carrying. ``session.py`` already converts an unreadable backup
+    fact file correctly, and this follows that precedent.
+    """
+    path = routing_pass.path_for(cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{ not json")
+
+    with pytest.raises(routing_pass.RoutingLedgerUnreadable) as excinfo:
+        routing_pass.read(cfg)
+    assert isinstance(excinfo.value, CratekitError)
+    assert excinfo.value.cause.remediation.remedy is Remedy.RUN_DOCTOR
+    assert excinfo.value.cause.reason in REASONS
+
+
+def test_a_ledger_from_a_newer_build_carries_the_upgrade_remedy(cfg):
+    """The same slug, a different remedy, which is why the remedy travels on the cause."""
+    path = routing_pass.path_for(cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"schema_version": routing_pass.SCHEMA_VERSION + 1, "intents": []})
+    )
+    with pytest.raises(CratekitError) as excinfo:
+        routing_pass.read(cfg)
+    assert excinfo.value.cause.remediation.remedy is Remedy.UPGRADE_CRATEKIT
+
+
+def test_a_tree_still_on_the_bridge_carries_its_remedy_to_the_boundary(
+    cfg, gates_pass, db, adopted_root, declared
+):
+    """The other refusal this unit can raise, and it came from the same shape."""
+    routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
+    with pytest.raises(tree_registry.TreeModeRefused) as excinfo:
+        _route(cfg, db, adopted_root, declared, registry=_registry(tree_registry.Mode.XML))
+    assert isinstance(excinfo.value, CratekitError)
+    assert excinfo.value.cause.remediation.remedy is excinfo.value.remedy
+
+
+def test_every_refusal_this_module_raises_is_a_structured_cause():
+    """P3. The set is DERIVED by walking the module rather than listed.
+
+    A guard that names today's two exception types stops covering the third the
+    day it is added, which is the same shape as a test that enumerates the files
+    it claims to quantify over.
+    """
+    import inspect
+
+    raised: set[str] = set()
+    for node in ast.walk(ast.parse(inspect.getsource(routing_pass))):
+        if not isinstance(node, ast.Raise) or node.exc is None:
+            continue
+        thrown = node.exc
+        name = ""
+        if isinstance(thrown, ast.Call):
+            name = (
+                thrown.func.attr
+                if isinstance(thrown.func, ast.Attribute)
+                else (thrown.func.id if isinstance(thrown.func, ast.Name) else "")
+            )
+        elif isinstance(thrown, ast.Name):
+            name = thrown.id
+        if name:
+            raised.add(name)
+
+    # ``ValueError`` is a programming-error guard on a constructor, not a refusal
+    # a user can act on, and ``refuse`` already returns a structured cause.
+    exempt = {"refuse", "ValueError"}
+    checked = 0
+    for name in sorted(raised - exempt):
+        candidate = getattr(routing_pass, name, None)
+        if not isinstance(candidate, type) or not issubclass(candidate, BaseException):
+            continue
+        checked += 1
+        assert issubclass(candidate, CratekitError), (
+            f"{name} is raised as a refusal and is not a CratekitError, so the "
+            f"command-line boundary will flatten it to a defect report and throw "
+            f"away the remedy it carries (S4)"
+        )
+    assert checked, "the walk found no raised exception type, so it proves nothing"
+
+
+def test_every_refusal_the_pass_propagates_carries_its_remedy_too():
+    """The same rule, over the module this pass RAISES THROUGH rather than from.
+
+    DERIVED, by asking which exception types carry a remedy at all rather than by
+    naming the two the review found. A type that goes to the trouble of holding a
+    ``Remedy`` is a refusal somebody is meant to act on, and the only way that
+    remedy survives the command-line boundary is a structured cause. Fixing the
+    two named types and leaving a third beside them is precisely the shape P5
+    calls out: the same lesson applied in one place and not the other, and the
+    third one is invisible until somebody hits it.
+    """
+    import inspect
+
+    checked = 0
+    for _name, candidate in inspect.getmembers(tree_registry, inspect.isclass):
+        if not issubclass(candidate, BaseException):
+            continue
+        if candidate.__module__ != tree_registry.__name__:
+            continue
+        signature = inspect.signature(candidate.__init__)
+        holds_a_remedy = "remedy" in signature.parameters or "Remedy" in (
+            inspect.getsource(candidate)
+        )
+        if not holds_a_remedy:
+            continue
+        checked += 1
+        assert issubclass(candidate, CratekitError), (
+            f"{candidate.__name__} carries a remedy and is not a CratekitError, "
+            f"so the command-line boundary flattens it to a defect report and "
+            f"the remedy it holds never reaches the person who needs it (S4)"
+        )
+    assert checked >= 2, "the walk found nothing carrying a remedy, so it proves nothing"
+
+
+# ── Finding 8: readiness had two answers where the module argues for three ───
+
+
+def test_a_run_whose_locations_all_resolve_to_nothing_is_not_told_to_import(
+    cfg, declared
+):
+    """``readiness`` forbids the conflation the module docstring endorsed.
+
+    An unresolvable location reaches no row for a configuration reason importing
+    cannot fix. Answering "the import has not happened" sends a person round the
+    same loop forever, and the file said both things at once.
+    """
+    intent = replace(
+        _intent(cfg, declared, PLAIN), location="/somewhere/nothing/maps/onto/x.flac"
+    )
+    placed = _placements(cfg, declared, [intent], [_row(cfg, PLAIN, "1")])
+    assert placed[0].placement is routing_pass.Placement.UNRESOLVED
+    assert routing_pass.readiness(placed) is routing_pass.Readiness.UNANSWERABLE
+    assert routing_pass.readiness(placed) is not routing_pass.Readiness.NOT_READY
+
+
+def test_a_run_whose_destinations_are_all_undeclared_is_not_told_to_import(cfg, declared):
+    """The second answerless placement, and it must not read as a missing import either."""
+    stale = replace(_intent(cfg, declared, PLAIN), sub="a-sub-this-library-dropped")
+    placed = _placements(cfg, declared, [stale], [_row(cfg, PLAIN, "1")])
+    assert routing_pass.readiness(placed) is routing_pass.Readiness.UNANSWERABLE
+
+
+def test_every_readiness_answer_except_ready_writes_nothing(
+    cfg, gates_pass, db, adopted_root, declared, monkeypatch
+):
+    """DERIVED over the enum, so a member added later cannot acquire the writing answer.
+
+    The direction is the property, exactly as it is for the settled and
+    outstanding halves: only ``READY`` may write, and everything else, including a
+    member nobody has classified yet, must leave the library alone.
+    """
+    routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
+    for answer in routing_pass.Readiness:
+        if answer is routing_pass.Readiness.READY:
+            continue
+        monkeypatch.setattr(routing_pass, "readiness", lambda _placed, _held=answer: _held)
+        report = _route(cfg, db, adopted_root, declared)
+        assert report.readiness is answer
+        assert report.routed == ()
+        assert report.memberships == ()
+        assert _memberships(db, "2") == 0, f"{answer} wrote to the library"
+
+
+def test_the_readiness_answers_are_three_rather_than_two():
+    """One file cannot argue both sides of the same question.
+
+    The module docstring endorsed the conflation and ``readiness`` forbade it. The
+    contradiction is resolved in the direction the function argued for, which
+    needs an answer that is neither ready nor not-ready to exist at all.
+    """
+    assert len(routing_pass.Readiness) >= 3
+    assert routing_pass.Readiness.UNANSWERABLE not in (
+        routing_pass.Readiness.READY,
+        routing_pass.Readiness.NOT_READY,
+    )
+
+
+# ── Findings 9 and 10: the obligations a later unit owes ─────────────────────
+
+
+def test_the_routing_verbs_name_a_unit_that_can_actually_land_them():
+    """DERIVED from the registry, so a fifth entry cannot be added under the old unit.
+
+    U19 shipped the engine and never had a command-line module in its file list.
+    Conformance 3 requires a landed gated verb to exit OK once its gate is
+    answered, and a destructive ``db_tree`` verb cannot do that on a machine with
+    no database, which is why U19 could not land one.
+    """
+    from cratekit.cli import registry as cli_registry
+
+    planned = {
+        entry.name: entry.planned_in
+        for entry in cli_registry.ENTRIES
+        if entry.module == "cratekit.write.routing_cli"
+    }
+    assert planned, "no entry names the routing command-line module any more"
+    assert set(planned.values()) == {"U20"}, (
+        f"the routing verbs are planned in {sorted(set(planned.values()))}; U19 is "
+        f"closing and cannot own an obligation nobody will read"
+    )
+
+
+def test_the_routing_command_line_module_is_owed_in_the_register():
+    """P5. A later unit's obligation goes in the register, never in a docstring.
+
+    ``scripts/board.py`` reads ``tests/_pending.py`` and nothing else, so an
+    obligation recorded only as a ``planned_in`` marker is owned by nobody the
+    moment the unit that carried the marker closes.
+    """
+    from tests import _pending
+
+    assert "cratekit.write.routing_cli" in _pending.PENDING
+    unit, what = _pending.PENDING["cratekit.write.routing_cli"]
+    assert unit == "U20"
+    assert "close_run" in what
+    assert "CONVERGE" in what, (
+        "the register entry does not carry the convergence obligation, so the "
+        "refusal this unit ships in its place becomes permanent by default"
+    )
+
+
+@requires("cratekit.write.routing_cli")
+def test_the_routing_verbs_close_their_runs_through_the_gated_close():
+    """P5's countdown for the close gate, armed when the surface that spends it lands.
+
+    ``session.close_session`` is exported and bypasses the routing gate entirely.
+    This unit has zero production callers, so nothing today obliges the first one
+    to close through ``routing_pass.close_run``, and a verb that closed through
+    the session spine would release its capture over a track sitting nowhere.
+    """
+    module = SRC_ROOT / "cratekit" / "write" / "routing_cli.py"
+    sources = (
+        [module]
+        if module.exists()
+        else sorted((SRC_ROOT / "cratekit" / "write" / "routing_cli").rglob("*.py"))
+    )
+    bypassed: list[str] = []
+    gated = False
+    for path in sources:
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.Call):
+                continue
+            name = (
+                node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else (node.func.id if isinstance(node.func, ast.Name) else "")
+            )
+            if name == "close_session":
+                bypassed.append(ast.unparse(node))
+            if name == "close_run":
+                gated = True
+    assert gated, "the routing verbs never close a run through the gated close"
+    assert not bypassed, (
+        f"the routing verbs close through the session spine directly: {bypassed}. "
+        f"That releases the capture without asking whether the run still holds a "
+        f"track that reached no playlist."
+    )
+
+
+@requires("cratekit.intake.collection_xml")
+def test_the_intake_pipeline_closes_its_runs_through_the_gated_close():
+    """The same obligation against the unit that CREATES the deferred work."""
+    package = SRC_ROOT / "cratekit" / "intake"
+    bypassed: list[str] = []
+    for path in sorted(package.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.Call):
+                continue
+            name = (
+                node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else (node.func.id if isinstance(node.func, ast.Name) else "")
+            )
+            if name == "close_session":
+                bypassed.append(f"{path.name}: {ast.unparse(node)}")
+    assert not bypassed, (
+        f"intake closes runs through the session spine directly: {bypassed}. A run "
+        f"that deferred a placement must close through routing_pass.close_run."
+    )
+
+
+# ── Finding 11: the made-up-actor guard was bypassable four ways ─────────────
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'routing_pass.acknowledge(cfg, t, actor="cli")',
+        "acknowledge(cfg, t, actor='cli')",
+        'routing_pass.acknowledge(cfg, t, actor=f"cli")',
+        'ACTOR = "cli"\nrouting_pass.acknowledge(cfg, t, actor=ACTOR)',
+        'routing_pass.acknowledge(cfg, t, actor="cli" if x else "cli")',
+        'routing_pass.acknowledge(cfg, t, **{"actor": "cli"})',
+        'routing_pass.acknowledge(cfg, t, actor="cl" + "i")',
+    ],
+)
+def test_the_made_up_actor_guard_bites_each_evasion(source):
+    """P7's first half. Four documented bypasses, and each one has to fail.
+
+    A guard that only matched a bare literal was satisfied by an f-string, a
+    module constant, a conditional between two literals, and a dictionary
+    unpacked into the call. All of them record the product acknowledging a track
+    to itself, which is exactly what the guard exists to forbid.
+    """
+    assert _made_up_actors(source), f"the guard did not bite: {source}"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "routing_pass.acknowledge(cfg, t, actor=decision.actor)",
+        "def f(actor):\n    routing_pass.acknowledge(cfg, t, actor=actor)",
+        'routing_pass.acknowledge(cfg, t, actor=f"{decision.actor}")',
+        "routing_pass.acknowledge(cfg, t, **decided)",
+        "routing_pass.acknowledge(cfg, t, actor=record.actor or holder.name)",
+        '"acknowledge with actor=... somewhere in prose"',
+        "acknowledge_receipt(cfg, t, actor='cli')",
+    ],
+)
+def test_the_made_up_actor_guard_does_not_fire_on_correct_code(source):
+    """P7's second half, and the half that decides whether the guard survives.
+
+    A guard with false positives gets suppressed, and a suppressed guard protects
+    nothing. Every line here is a caller doing exactly the right thing.
+    """
+    assert _made_up_actors(source) == [], f"the guard fired on correct code: {source}"

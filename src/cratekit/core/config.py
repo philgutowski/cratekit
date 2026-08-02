@@ -1106,6 +1106,27 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="routing_intents_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="routing_intents.lock",
+        why=(
+            "The ledger beside it accumulates several runs from several sources, "
+            "and every writer of it reads, modifies and writes. Two of those "
+            "interleaving erases a decision that was fully recorded, and the run "
+            "that made it then closes clean over a track sitting in no playlist. "
+            "Library-scoped for the same reason the write lock is: a "
+            "per-installation lock is invisible to a second install and to the "
+            "old system during the overlap, so neither can contend for a file "
+            "that only ever had one copy."
+            " NEVER_RESTORED for the inode reason the write lock records: a "
+            "restore that replaced the directory holding this file would swap "
+            "the inode a live lock is held on, and every process holding the old "
+            "one would keep believing it had exclusive access."
+        ),
+    ),
+    StateFile(
         key="tombstones",
         snapshot=SnapshotRole.COUPLED,
         root=StateRoot.LIBRARY,
