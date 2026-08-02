@@ -53,6 +53,7 @@ from pathlib import Path
 from typing import Callable
 
 from cratekit.core import config
+from cratekit.core.cause import Cause, CratekitError, Remediation, Scope
 from cratekit.core.exit_codes import Remedy
 
 #: The state entry this module owns. Named once, so the resolver and every caller
@@ -87,22 +88,36 @@ MODES: tuple[str, ...] = tuple(m.value for m in Mode)
 DEFAULT_MODE: Mode = Mode.XML
 
 
-class TreeRegistryUnreadable(Exception):
+class TreeRegistryUnreadable(CratekitError):
     """The registry file exists and cannot be understood.
 
     Deliberately NOT collapsed into "no record", which would be read as "every
     tree is still on the bridge" and would send a byte write at a tree the
     database already owns. That is precisely the failure this module exists to
     prevent, so an unreadable file has to be its own answer.
+
+    A ``CratekitError`` for the reason its two siblings below give. One slug
+    covers every way this file can be unusable and the REMEDY is what differs:
+    a registry from a newer build asks for an upgrade and a corrupt one asks for
+    the doctor, and neither survives being flattened into a defect report.
     """
 
     def __init__(self, message: str, *, path: Path, remedy: Remedy) -> None:
-        super().__init__(message)
+        super().__init__(
+            Cause(
+                reason="tree-registry-unusable",
+                message=message,
+                remediation=Remediation(remedy=remedy),
+                scope=Scope.RUN,
+                origin=("tree_registry",),
+                detail={"path": str(path)},
+            )
+        )
         self.path = path
         self.remedy = remedy
 
 
-class TreeModeRefused(Exception):
+class TreeModeRefused(CratekitError):
     """A write in the wrong medium for the tree it targets.
 
     One exception type for both directions, carrying which direction it was, so
@@ -110,6 +125,14 @@ class TreeModeRefused(Exception):
     hierarchies that drift. ``tree_id`` is always populated: a refusal that does
     not name the tree leaves the reader to guess which of several a sweep was on
     when it stopped.
+
+    A ``CratekitError`` RATHER THAN A PLAIN EXCEPTION, and that is S4 rather than
+    tidiness. The command-line boundary converts anything that is not a
+    structured cause into an internal defect with "report a defect" attached, so
+    a refusal that carries a remedy and is not one of these arrives with its
+    remedy discarded and its reader told to file a bug. Both directions carry
+    DIFFERENT remedies, which is exactly why the remedy travels on the cause
+    rather than being derived from the slug.
     """
 
     def __init__(
@@ -121,24 +144,47 @@ class TreeModeRefused(Exception):
         attempted: str,
         remedy: Remedy,
     ) -> None:
-        super().__init__(message)
+        super().__init__(
+            Cause(
+                reason="tree-unconverged",
+                message=message,
+                remediation=Remediation(remedy=remedy),
+                scope=Scope.RUN,
+                origin=("tree_registry",),
+                detail={"tree_id": tree_id, "mode": str(mode), "attempted": str(attempted)},
+            )
+        )
         self.tree_id = tree_id
         self.mode = mode
         self.attempted = attempted
         self.remedy = remedy
 
 
-class RegistrySkew(Exception):
+class RegistrySkew(CratekitError):
     """The registry and the database disagree about a tree that has cut over.
 
     The concrete case: a library restored from a snapshot taken before the
     cutover, beside a registry that was not rolled back with it. The mode says
     native, the adopted root is not there, and a writer that trusted the mode
     alone would create a second root beside the real one and report success.
+
+    A ``CratekitError`` for the reason :class:`TreeModeRefused` gives. It is
+    raised by the same anchoring call, reaches the same callers, and its remedy
+    is not the class default for its code, so flattening it at the boundary
+    would replace "restore from a snapshot" with "report a defect".
     """
 
     def __init__(self, message: str, *, tree_id: str, root_id: str | None) -> None:
-        super().__init__(message)
+        super().__init__(
+            Cause(
+                reason="tree-unconverged",
+                message=message,
+                remediation=Remediation(remedy=Remedy.RESTORE_FROM_SNAPSHOT),
+                scope=Scope.RUN,
+                origin=("tree_registry",),
+                detail={"tree_id": tree_id, "root_id": root_id},
+            )
+        )
         self.tree_id = tree_id
         self.root_id = root_id
         self.remedy = Remedy.RESTORE_FROM_SNAPSHOT

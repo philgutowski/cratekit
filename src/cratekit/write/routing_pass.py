@@ -30,8 +30,14 @@ when it did not.
 **Readiness is row presence, read-only, and fail-safe.** Run the pass before the
 import and it resolves nothing, marks nothing, and says so. Nothing is opened,
 no session is taken, and the state tree is left byte for byte as it was found. A
-pass that cannot tell whether the import happened must behave exactly like a pass
-that knows it has not.
+pass that cannot tell whether the import happened BEHAVES exactly like a pass
+that knows it has not, and REPORTS something else entirely. The two halves of
+that sentence used to be one, and the conflation is a loop with no exit: a
+location that reaches no row because no prefix maps it, or a destination the
+template no longer declares, is answered by fixing configuration and never by
+importing, so telling that person the import has not happened sends them round
+the same act forever. Behaving the same is the fail-safe direction; reporting
+the same is a wrong answer, so the question has three answers rather than two.
 
 WHAT IS SURFACED RATHER THAN SKIPPED. rekordbox soft-deletes, so a track the user
 imported and then removed still has a row, carrying the removal marker. Its
@@ -60,7 +66,7 @@ from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.cli import output
 from cratekit.core import config, locations, session, taxonomy, tree_registry
-from cratekit.core.cause import Scope, refuse
+from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import trees
 
@@ -69,6 +75,11 @@ logger = logging.getLogger(__name__)
 #: The state entry this module owns. Named once, so the resolver and every caller
 #: cannot disagree about which file is meant.
 STATE_KEY = "routing_intents"
+
+#: The lock that serializes every read-modify-write of the entry above. A second
+#: declared entry rather than a suffix computed from the first, because a path
+#: composed under a state root is a file the inventory does not know about.
+LOCK_KEY = "routing_intents_lock"
 
 #: Bumped only when the on-disk shape changes incompatibly. A file written by a
 #: newer build is refused rather than guessed at: a misread here decides whether
@@ -109,7 +120,7 @@ OUTSTANDING: frozenset[TrackState] = frozenset(TrackState) - SETTLED
 class Placement(StrEnum):
     """Why one intent did or did not reach a single active row this pass.
 
-    Five answers rather than placed-or-not, because four of these are different
+    Six answers rather than placed-or-not, because five of these are different
     problems with different answers and fusing any two of them reports one as the
     other. The pair that matters most is ``NOT_IMPORTED`` against ``WITHDRAWN``:
     the first is answered by importing and the second never will be.
@@ -129,6 +140,14 @@ class Placement(StrEnum):
     #: failure, never a missing import, and reporting it as one sends a person to
     #: import something they have already imported.
     UNRESOLVED = "unresolved"
+    #: The destination this ledger names is not one the active taxonomy declares
+    #: any more. Somebody edited the template between the decision and the
+    #: import, which is an ordinary act, and it says nothing at all about rows.
+    #: IT IS PER TRACK, and that is the whole reason it exists: resolving the
+    #: display names used to raise out of the pass, so one stale record left
+    #: every other track in the run unplaced, still outstanding, and unable to
+    #: close, with no reason reported for any of them.
+    UNDECLARED = "undeclared"
 
 
 #: The placements a membership write may be built from. One member today, named
@@ -144,15 +163,36 @@ IMPORTED: frozenset[Placement] = frozenset(
     {Placement.RESOLVED, Placement.WITHDRAWN, Placement.AMBIGUOUS}
 )
 
+#: The placements that say NOTHING about whether the import happened. Derived as
+#: everything that is neither evidence of an import nor the one member that means
+#: "no row exists and one could have", so a member added later lands here rather
+#: than being counted as a missing import (P3). The direction is the property: a
+#: new member wrongly counted as evidence would let a pass write, and a new member
+#: wrongly counted as a missing import would tell a person to repeat an import
+#: they have already done.
+ANSWERLESS: frozenset[Placement] = (
+    frozenset(Placement) - IMPORTED - {Placement.NOT_IMPORTED}
+)
+
 
 class Readiness(StrEnum):
-    """Whether the library holds rows for the tracks this run is waiting on."""
+    """Whether the library holds rows for the tracks this run is waiting on.
+
+    THREE ANSWERS, because two of them collapsed a question with two different
+    remedies into one. ``NOT_READY`` is a claim about the world: the rows are not
+    there yet and importing is what puts them there. ``UNANSWERABLE`` is a claim
+    about this pass: nothing reached a row and at least one intent could not even
+    be asked the question, because its location maps to no path or its
+    destination is not declared any more. Both write nothing, which is the
+    fail-safe half they share; only one of them is answered by importing.
+    """
 
     READY = "ready"
     NOT_READY = "not-ready"
+    UNANSWERABLE = "unanswerable"
 
 
-class RoutingLedgerUnreadable(Exception):
+class RoutingLedgerUnreadable(CratekitError):
     """The ledger exists and cannot be understood.
 
     Deliberately NOT collapsed into "no records". An empty ledger reads as
@@ -160,10 +200,27 @@ class RoutingLedgerUnreadable(Exception):
     to refuse, so an unreadable file has to be its own answer. This is the same
     shape as a gate reading its own state through a tolerant reader: an
     unreadable record is a record that has not been settled.
+
+    A ``CratekitError`` RATHER THAN A PLAIN EXCEPTION (S4). It has always carried
+    a remedy, and the command-line boundary converts anything that is not a
+    structured cause into an internal defect with "report a defect" attached, so
+    the remedy it carried was being discarded at the last hop. One slug covers
+    every way the file can be unusable and the REMEDY is what differs between
+    them, exactly as ``config-unusable`` works: a file from a newer build asks for
+    an upgrade and a corrupt one asks for the doctor.
     """
 
     def __init__(self, message: str, *, path: Path, remedy: Remedy) -> None:
-        super().__init__(message)
+        super().__init__(
+            Cause(
+                reason="routing-ledger-unusable",
+                message=message,
+                remediation=Remediation(remedy=remedy),
+                scope=Scope.RUN,
+                origin=("routing_pass",),
+                detail={"path": str(path)},
+            )
+        )
         self.path = path
         self.remedy = remedy
 
@@ -266,6 +323,21 @@ class RoutingIntent:
         )
 
 
+def _key(intent: RoutingIntent) -> tuple[str, str]:
+    """What identifies one record: the RUN and the track, never the track alone.
+
+    A ledger keyed on the track alone cannot represent "run A owes this file" and
+    "run B owes this file" at once, and two runs touching one file is ordinary: a
+    re-download to the same path, a resumed intake, one track acquired from two
+    sources. With one record per file the second run takes ownership of the
+    first run's obligation, so the first run's close gate sees nothing
+    outstanding and closes over a track that is in no playlist. The same key is
+    what stops one run's mark from settling another run's record, whose
+    destination was never written.
+    """
+    return (intent.session_id, intent.track)
+
+
 @dataclass(frozen=True, slots=True)
 class Ledger:
     """Every deferred placement this library holds, settled or not.
@@ -278,9 +350,14 @@ class Ledger:
 
     intents: tuple[RoutingIntent, ...] = ()
 
-    def intent(self, track: str) -> RoutingIntent | None:
+    def intent(self, session_id: str, track: str) -> RoutingIntent | None:
+        """One run's record for one track. BOTH halves of the key are required.
+
+        A lookup by track alone would return whichever run's record happened to
+        be first, and the two records mean different destinations.
+        """
         for entry in self.intents:
-            if entry.track == track:
+            if entry.session_id == session_id and entry.track == track:
                 return entry
         return None
 
@@ -301,31 +378,39 @@ class Ledger:
         )
 
     def with_intents(self, intents: Iterable[RoutingIntent]) -> Ledger:
-        """This ledger plus ``intents``, replacing any record for the same track.
+        """This ledger plus ``intents``, replacing any record for the same run and track.
 
         Pure, so a caller can compose a change and inspect it before anything
         reaches the disk. Replacing rather than appending is what makes recording
-        the same decision twice a no-op instead of a duplicate.
+        the same decision twice a no-op instead of a duplicate, and keying the
+        replacement on :func:`_key` is what stops a second run's decision from
+        being a replacement at all.
         """
-        merged = {entry.track: entry for entry in self.intents}
+        merged = {_key(entry): entry for entry in self.intents}
         for entry in intents:
-            merged[entry.track] = entry
-        return Ledger(tuple(sorted(merged.values(), key=lambda e: e.track)))
+            merged[_key(entry)] = entry
+        return Ledger(tuple(sorted(merged.values(), key=_key)))
 
     def marked(
         self,
         tracks: Iterable[str],
         state: TrackState,
         *,
+        session_id: str,
         when: str,
         actor: str | None = None,
         note: str | None = None,
     ) -> Ledger:
-        """This ledger with ``tracks`` moved to ``state``. Unknown tracks are ignored.
+        """One run's ``tracks`` moved to ``state``. Unknown tracks are ignored.
 
         Ignored rather than refused, because the caller that asks is a pass
         reporting what it just wrote, and a track that has since been removed
         from the ledger by another process is not this pass's problem to raise.
+
+        ``session_id`` IS REQUIRED, not defaulted and not optional. A mark that
+        matched on the track alone settled every run's record for that file,
+        including a run whose destination was never written, and the settled
+        record is what the close gate reads.
         """
         wanted = frozenset(str(track) for track in tracks)
         return Ledger(
@@ -337,7 +422,7 @@ class Ledger:
                     actor=actor if actor is not None else entry.actor,
                     note=note if note is not None else entry.note,
                 )
-                if entry.track in wanted
+                if entry.session_id == session_id and entry.track in wanted
                 else entry
                 for entry in self.intents
             )
@@ -411,7 +496,7 @@ def read(cfg: config.Config) -> Ledger:
         )
 
     records: list[RoutingIntent] = []
-    seen: set[str] = set()
+    seen: set[tuple[str, str]] = set()
     for entry in entries:
         if not isinstance(entry, dict):
             raise RoutingLedgerUnreadable(
@@ -430,18 +515,18 @@ def read(cfg: config.Config) -> Ledger:
                 path=path,
                 remedy=Remedy.RUN_DOCTOR,
             ) from exc
-        if record.track in seen:
+        if _key(record) in seen:
             raise RoutingLedgerUnreadable(
-                f"{path} holds two records for the track {record.track!r}; a "
-                f"ledger that gives two answers for one track cannot say whether "
-                f"it settled, and resolving that by line order decides whether a "
-                f"run closes",
+                f"{path} holds two records for the track {record.track!r} in the "
+                f"run {record.session_id!r}; a ledger that gives two answers for "
+                f"one run's track cannot say whether it settled, and resolving "
+                f"that by line order decides whether a run closes",
                 path=path,
                 remedy=Remedy.RUN_DOCTOR,
             )
-        seen.add(record.track)
+        seen.add(_key(record))
         records.append(record)
-    return Ledger(tuple(sorted(records, key=lambda e: e.track)))
+    return Ledger(tuple(sorted(records, key=_key)))
 
 
 def write(cfg: config.Config, ledger: Ledger) -> Path:
@@ -457,7 +542,7 @@ def write(cfg: config.Config, ledger: Ledger) -> Path:
         "schema_version": SCHEMA_VERSION,
         # Sorted so the bytes are a function of the content alone. An unordered
         # dump makes every write a difference even when nothing changed.
-        "intents": [entry.to_json() for entry in sorted(ledger.intents, key=lambda e: e.track)],
+        "intents": [entry.to_json() for entry in sorted(ledger.intents, key=_key)],
     }
     path = path_for(cfg)
     config.atomic_write_bytes(
@@ -466,15 +551,38 @@ def write(cfg: config.Config, ledger: Ledger) -> Path:
     return path
 
 
+def lock_path(cfg: config.Config) -> Path:
+    """Where the ledger's exclusive lock lives, resolved through the inventory.
+
+    A DECLARED entry rather than a path composed here, for the reason every other
+    state file is declared: a file the inventory does not know about is a file
+    nothing walks, backs up, or clears. It sits in the never-restored half
+    alongside the two other locks, because a restore that replaced the directory
+    holding it would swap the inode a live lock is held on and both holders would
+    go on believing they had exclusive access.
+    """
+    return config.state_path(LOCK_KEY, cfg)
+
+
 def record_intents(cfg: config.Config, intents: Iterable[RoutingIntent]) -> Ledger:
     """Write down what this run means to place, AT THE MOMENT IT IS DECIDED.
 
     Read, modify, write, rather than a whole-file overwrite, because several runs
     and several sources accumulate in one ledger and a writer that replaced the
     file would erase every other run's outstanding work on each call.
+
+    UNDER AN EXCLUSIVE LOCK, because a read-modify-write is not atomic and this
+    one is documented as being performed by several processes against one file.
+    Two of them interleaving erases a decision that was fully recorded: nothing
+    is then outstanding for it, the run that made it closes clean, and the track
+    it decided on is in no ledger at all. That is the same failure this module
+    exists to prevent, arriving through the writer rather than through the
+    reader, and the same ``fcntl`` primitive the config migration takes is used
+    rather than a third implementation of one idea.
     """
-    updated = read(cfg).with_intents(intents)
-    write(cfg, updated)
+    with config._exclusive_lock(lock_path(cfg)):
+        updated = read(cfg).with_intents(intents)
+        write(cfg, updated)
     return updated
 
 
@@ -483,19 +591,29 @@ def mark(
     tracks: Iterable[str],
     state: TrackState,
     *,
+    session_id: str,
     now: datetime | None = None,
     actor: str | None = None,
     note: str | None = None,
 ) -> Ledger:
-    """Move tracks to ``state`` and persist immediately.
+    """Move ONE RUN's tracks to ``state`` and persist immediately.
 
-    Re-reads before it writes, so a mark never carries a stale view of the rest
-    of the ledger forward over another process's work.
+    Re-reads before it writes, under the same exclusive lock ``record_intents``
+    takes and for the same reason, so a mark never carries a stale view of the
+    rest of the ledger forward over another process's work.
+
+    ``session_id`` is required. See :meth:`Ledger.marked`.
     """
-    updated = read(cfg).marked(
-        tracks, state, when=output.timestamp(now), actor=actor, note=note
-    )
-    write(cfg, updated)
+    with config._exclusive_lock(lock_path(cfg)):
+        updated = read(cfg).marked(
+            tracks,
+            state,
+            session_id=session_id,
+            when=output.timestamp(now),
+            actor=actor,
+            note=note,
+        )
+        write(cfg, updated)
     return updated
 
 
@@ -503,6 +621,7 @@ def acknowledge(
     cfg: config.Config,
     tracks: Iterable[str],
     *,
+    session_id: str,
     actor: str,
     note: str = "",
     now: datetime | None = None,
@@ -514,6 +633,10 @@ def acknowledge(
     that could settle a track it failed to place would make "surfaced for
     acknowledgment" and "auto-skipped" the same thing, and the whole point of
     surfacing is that somebody is told.
+
+    Scoped to one run, like every other mark. A person answering for the run in
+    front of them must not settle a second run's obligation over the same file,
+    which they were never shown and never asked about.
     """
     if not str(actor).strip():
         raise ValueError(
@@ -521,12 +644,26 @@ def acknowledge(
             "is gone; an acknowledgment with no actor is the product asserting "
             "something about itself, which is what it must never do here"
         )
-    return mark(cfg, tracks, TrackState.ACKNOWLEDGED, now=now, actor=actor, note=note)
+    return mark(
+        cfg,
+        tracks,
+        TrackState.ACKNOWLEDGED,
+        session_id=session_id,
+        now=now,
+        actor=actor,
+        note=note,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Reading the library: one walk, partitioned by the soft-delete marker
 # ---------------------------------------------------------------------------
+
+
+#: What "the row could not answer" looks like, distinct from every value the
+#: column can legitimately hold. A plain default would be the permissive answer
+#: wearing a sentinel's clothes.
+_MARKER_ABSENT = object()
 
 
 def content_rows(db: Any) -> Iterator[trees.ContentRow]:
@@ -540,12 +677,36 @@ def content_rows(db: Any) -> Iterator[trees.ContentRow]:
     A row with no recorded path is not dropped here. It resolves to no path one
     step along and drops out of the index there, which keeps the decision about
     what a path is in the one module that owns it.
+
+    THE SOFT-DELETE MARKER IS READ, NEVER DEFAULTED, AND A ROW THAT CANNOT
+    REPORT IT REFUSES. ``trees.ContentRow.deleted`` has no default on purpose,
+    and its comment gives the reason: False means active, which is the permissive
+    answer, so a producer that supplies it hands every tombstone to the matcher
+    as a live row. This is that producer. Supplying the default through
+    ``getattr`` re-introduced exactly what U18 refused, and the cost is concrete:
+    against a real database with one row genuinely soft-deleted, a binding that
+    stops exposing the column makes the pass place the deleted track, mark it
+    routed, and close the run over it. ``None`` is refused alongside a missing
+    attribute because ``bool(None)`` is the same permissive answer.
     """
     for row in db.get_content():
+        marker = getattr(row, "rb_local_deleted", _MARKER_ABSENT)
+        if marker is _MARKER_ABSENT or marker is None:
+            raise refuse(
+                "soft-delete-marker-unreadable",
+                f"the collection row {getattr(row, 'ID', '?')!r} cannot say "
+                f"whether it is a tombstone, and treating that as 'not deleted' "
+                f"would place a track somebody removed from their library on "
+                f"purpose and then report the run as finished",
+                remedy=Remedy.RUN_DOCTOR,
+                scope=Scope.RUN,
+                origin=("routing_pass",),
+                detail={"content_id": str(getattr(row, "ID", "")), "column": "rb_local_deleted"},
+            )
         yield trees.ContentRow(
             content_id=str(row.ID),
             recorded=str(getattr(row, "FolderPath", "") or ""),
-            deleted=bool(getattr(row, "rb_local_deleted", 0)),
+            deleted=bool(marker),
         )
 
 
@@ -697,7 +858,26 @@ def resolve_placements(
 
     out: list[Placed] = []
     for intent, alive, removed in zip(intents, live, dead):
-        folder, sub = destination(declared, intent.bucket, intent.sub)
+        try:
+            folder, sub = destination(declared, intent.bucket, intent.sub)
+        except KeyError:
+            # PER TRACK, never out of the pass. Resolving the display names used
+            # to raise from here, and this loop runs over every intent including
+            # the ones whose placement will never be written, so one record
+            # naming a sub the template dropped aborted the whole pass: nothing
+            # placed, nothing reported, every track still outstanding, and a run
+            # that can never close. The refusal that gate raises promises the
+            # pass "reports one reason per track it could not place", and this is
+            # that reason for this track.
+            out.append(
+                Placed(
+                    intent=intent,
+                    placement=Placement.UNDECLARED,
+                    folder="",
+                    sub="",
+                )
+            )
+            continue
         if alive.outcome is trees.MatchOutcome.MATCHED:
             placement, content_id, ids = Placement.RESOLVED, alive.content_id, ()
         elif alive.outcome is trees.MatchOutcome.AMBIGUOUS:
@@ -738,15 +918,122 @@ def readiness(placed: Sequence[Placed]) -> Readiness:
     indistinguishable, and a run with nothing left to place would be refused on
     the grounds that an import it does not need has not happened.
 
-    An unresolvable location is deliberately NOT evidence of an import. It
-    reaches no row for a configuration reason, and counting it as "the import has
-    not happened" would send a person back to import something they already have.
+    AN ANSWERLESS PLACEMENT IS ITS OWN ANSWER, and this is the contradiction the
+    two-member version carried. An unresolvable location reaches no row because
+    no prefix maps it, and a destination the template dropped reaches no row
+    because it was never asked; neither says anything about whether an import
+    happened, and both are answered by fixing configuration. Returning not-ready
+    for them tells a person to import a track they already imported, and they
+    will be told the same thing next time. So a run that reached no row at all,
+    and could not even ask the question for one of its tracks, gets the third
+    answer. It writes exactly as little as not-ready does.
     """
     if not placed:
         return Readiness.READY
     if any(item.placement in IMPORTED for item in placed):
         return Readiness.READY
+    if any(item.placement in ANSWERLESS for item in placed):
+        return Readiness.UNANSWERABLE
     return Readiness.NOT_READY
+
+
+# ---------------------------------------------------------------------------
+# The recovery path, and the one thing a display name cannot survive
+# ---------------------------------------------------------------------------
+
+
+def _folders_holding(db: Any, content_id: str | None, *, root_id: str) -> set[str]:
+    """The folders DIRECTLY under ``root_id`` whose playlists already hold this row.
+
+    The same walk :func:`membership_proven` makes and for the same reason: it
+    starts from a membership row that exists and climbs, so it cannot be fooled
+    by a namesake somewhere else in the library.
+    """
+    found: set[str] = set()
+    if content_id is None:
+        return found
+    for membership in db.get_playlist_songs(ContentID=str(content_id)):
+        playlist = db.get_playlist(ID=str(membership.PlaylistID))
+        if playlist is None:
+            continue
+        folder = db.get_playlist(ID=str(playlist.ParentID))
+        if folder is None or str(folder.ParentID) != str(root_id):
+            continue
+        found.add(str(folder.Name))
+    return found
+
+
+def assert_destinations_are_not_renamed(
+    db: Any,
+    group: Sequence[Placed],
+    declared: taxonomy.Taxonomy,
+    *,
+    tree_id: str,
+    root_id: str,
+) -> None:
+    """Refuse a write that would file a track twice under two names for one place.
+
+    THE RECOVERY PRIMITIVE IS "RE-RUN", AND IT IS KEYED ON A DISPLAY NAME. The
+    whole module rests on a crash between the commit and the mark costing nothing
+    because membership deduplicates, and the dedup happens in the find-or-create
+    helpers, which target by the name rekordbox shows. Rename that folder, in
+    rekordbox or in the template, and the next run finds nothing by the new name,
+    creates the destination a second time, adds the track again, and marks it
+    routed. R19 says renaming a folder changes nothing and D5 forbids keying a
+    persisted record by a display name; this is the same lesson arriving on the
+    recovery path.
+
+    CONVERGING PROPERLY IS THE TREE LAYER'S, NOT THIS ONE'S. What would make the
+    re-run converge is a persisted map from the stable destination identifiers to
+    the node identifiers a previous write used, which is the shape the tree
+    registry already has for a tree's adopted root. Inventing a second one here
+    would give two answers to "which node is this destination". So this refuses
+    instead, and the obligation to converge is registered against the unit that
+    owns the tree layer's records rather than asserted in a docstring (P5).
+
+    THE CONDITION IS NARROW ON PURPOSE (P7). It fires only when the destination
+    folder is not under the adopted root AND the track already sits under that
+    root inside a folder the taxonomy declares no bucket for. A track being
+    placed into a second, genuinely new bucket while it sits in a first, declared
+    one is the ordinary case and is untouched. What remains is a person's own
+    folder under a governed tree root holding this exact track at the moment its
+    bucket folder is first created, and refusing there is honest rather than
+    silent.
+    """
+    children = {str(row.Name) for row in db.get_playlist(ParentID=str(root_id))}
+    for item in group:
+        if item.folder in children:
+            continue
+        orphaned = sorted(
+            name
+            for name in _folders_holding(db, item.content_id, root_id=root_id)
+            if declared.bucket_for_display(name) is None
+        )
+        if not orphaned:
+            continue
+        raise refuse(
+            "routing-destination-renamed",
+            f"the track already sits in the tree {tree_id!r} under {orphaned!r}, "
+            f"which this library's taxonomy names no bucket for, and the "
+            f"destination it was decided for is not there at all; writing it now "
+            f"would create that destination a second time and file one track in "
+            f"both, so the pass refuses rather than duplicating it",
+            remedy=Remedy.REBUILD_TREE,
+            steps=(
+                "a folder renamed in rekordbox is renamed back, or the taxonomy "
+                "is edited to declare the name the library now uses",
+                "a track that belongs in the folder under its new name is moved "
+                "there by hand, and the run's record is then acknowledged",
+            ),
+            scope=Scope.RUN,
+            origin=("routing_pass",),
+            detail={
+                "tree_id": tree_id,
+                "track": item.intent.track,
+                "session_id": item.intent.session_id,
+                "found_under": orphaned,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -857,6 +1144,20 @@ def route(
     what the writer is handed. A caller's rows are a database cursor in the shape
     that matters, and a second walk of an exhausted one reports every track
     absent while the run reports clean.
+
+    THE RE-RUN CONVERGES OR IT REFUSES, and it never quietly duplicates. The
+    sentence above about a re-run being free rests on the find-or-create helpers
+    deduplicating, and those target by display name, so a folder renamed between
+    the commit and the recovery makes the recovery create the destination a
+    second time and file the track twice.
+    :func:`assert_destinations_are_not_renamed` runs over every tree's plan
+    BEFORE the first write, for exactly that case.
+
+    IT PLACES WHAT IT CAN AND REPORTS THE REST, one reason per track. A record
+    whose destination the taxonomy no longer declares is one entry in the report
+    rather than an exception out of the pass: the refusal the close gate raises
+    promises a person a reason per track, and a pass that aborted on the first
+    such record placed none of the good ones and gave no reason for any of them.
     """
     watched = [Path(root) for root in analysis_roots]
     pending = read(cfg).outstanding(session_id)
@@ -869,16 +1170,39 @@ def route(
     index = index_rows(rows, root=cfg.library.root, prefix_map=rules)
     placed = resolve_placements(pending, index, declared, root=cfg.library.root, prefix_map=rules)
     state = readiness(placed)
-    if state is Readiness.NOT_READY:
+    if state is not Readiness.READY:
         # Nothing is opened, nothing is locked, nothing is marked. Returning here
         # rather than entering the loop with an empty plan is what makes that
         # true on the disk rather than approximately true.
+        #
+        # WRITTEN AS "not READY" RATHER THAN AS "is NOT_READY", which is the same
+        # direction the settled and outstanding halves are derived in: only the
+        # one answer that means the library is ready may write, so an answer
+        # added later cannot acquire the writing behaviour by nobody having
+        # classified it.
         return RoutingReport(session_id=session_id, readiness=state, placed=placed)
 
     by_tree: dict[str, list[Placed]] = {}
     for item in placed:
         if item.placement in WRITABLE:
             by_tree.setdefault(item.intent.tree, []).append(item)
+
+    # READ-ONLY, AND BEFORE THE FIRST WRITE OF THE FIRST TREE. Checking inside
+    # the loop would leave a refusal on the second tree standing beside a first
+    # tree that was already committed and marked, and the whole point of this
+    # refusal is that nothing gets filed twice.
+    anchored = {
+        tree_id: tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
+        for tree_id in sorted(by_tree)
+    }
+    for tree_id in sorted(by_tree):
+        assert_destinations_are_not_renamed(
+            db,
+            by_tree[tree_id],
+            declared,
+            tree_id=tree_id,
+            root_id=anchored[tree_id],
+        )
 
     routed: list[str] = []
     reports: list[trees.MembershipReport] = []
@@ -910,7 +1234,13 @@ def route(
             item for item in group if membership_proven(db, item, root_id=report.root_id)
         ]
         if proven:
-            mark(cfg, [item.intent.track for item in proven], TrackState.ROUTED, now=now)
+            mark(
+                cfg,
+                [item.intent.track for item in proven],
+                TrackState.ROUTED,
+                session_id=session_id,
+                now=now,
+            )
             routed.extend(item.intent.track for item in proven)
         if len(proven) != len(group):
             logger.warning(
@@ -971,6 +1301,9 @@ def assert_settled(cfg: config.Config, session_id: str) -> None:
             "a track it reports as unresolvable needs the volume prefix map "
             "fixing, and a track it reports as claimed by two rows needs one of "
             "them removing",
+            "a track it reports as going somewhere this library's taxonomy no "
+            "longer declares needs that destination declaring again, or the "
+            "record acknowledging by a named person",
             "a track it reports as removed from the library is settled the only "
             "way it can be, by a named person acknowledging that it is gone",
         ),
@@ -983,6 +1316,45 @@ def assert_settled(cfg: config.Config, session_id: str) -> None:
     )
 
 
+def assert_import_settled(record: session.SessionRecord) -> None:
+    """Refuse while this run's export is still sitting there un-imported.
+
+    THE SECOND OF THE TWO STATES IN WHICH SOMEBODY STILL OWES AN ACT, and the
+    gate below used to cover only the first. ``awaiting-import`` is a first-class
+    session state precisely because a run whose XML half is written and whose
+    import has not happened is not finished, and
+    :func:`cratekit.core.session.close_session` only ever asked whether the state
+    being closed into is terminal. So a run in that state closed, released its
+    capture, and left its pending action attached, while the session spine went
+    on refusing a database surface for the very same record. One record cannot be
+    both finished and owed.
+
+    It reuses the ``awaiting-import`` slug rather than minting one, because it is
+    the same fact about the same run that
+    :func:`cratekit.core.session.assert_database_surface_allowed` reports; what
+    differs is which act is being refused, and the message says which.
+    """
+    if record.state is not session.SessionState.AWAITING_IMPORT:
+        return
+    pending = record.pending
+    raise refuse(
+        "awaiting-import",
+        f"run {record.session_id} has an export that has not been imported, so "
+        f"closing it would report the run as finished and release its capture "
+        f"while the rows that import creates do not exist",
+        remedy=Remedy.COMPLETE_PENDING_ACTION,
+        steps=tuple(pending.steps) if pending is not None else (),
+        scope=Scope.RUN,
+        origin=("routing_pass",),
+        detail={
+            "session_id": record.session_id,
+            "pending_id": pending.id if pending is not None else None,
+            "verify_verb": pending.verify_verb if pending is not None else None,
+            "artifact": pending.artifact if pending is not None else None,
+        },
+    )
+
+
 def close_run(
     record: session.SessionRecord,
     cfg: config.Config,
@@ -990,10 +1362,15 @@ def close_run(
     state: session.SessionState = session.SessionState.CLOSED,
     now: datetime | None = None,
 ) -> session.SessionRecord:
-    """Close a run, refusing while its routing is outstanding.
+    """Close a run, refusing while anybody still owes it an act.
+
+    TWO GATES, BECAUSE THERE ARE TWO SUCH ACTS. A track whose placement was
+    decided and never landed is one; an export nobody has imported is the other.
+    Enforcing one of the two would be the same defect either way round: a run
+    reporting itself finished with work outstanding and its capture released.
 
     CLOSING IS GATED AND ABANDONING IS NOT, deliberately. Closing is the claim
-    that the run finished, and the routing is what has to back that claim up.
+    that the run finished, and both gates are what have to back that claim up.
     Abandoning is the opposite claim, so gating it would leave somebody with a
     run they can neither finish nor give up on, and a refusal with no way past it
     is how people learn to edit state files by hand.
@@ -1003,13 +1380,16 @@ def close_run(
     writes is what releases the capture.
     """
     if state is session.SessionState.CLOSED:
+        assert_import_settled(record)
         assert_settled(cfg, record.session_id)
     return session.close_session(record, cfg, state=state, now=now)
 
 
 __all__ = [
+    "ANSWERLESS",
     "EMPTY",
     "IMPORTED",
+    "LOCK_KEY",
     "OUTSTANDING",
     "ROUTING_WORKFLOW",
     "SCHEMA_VERSION",
@@ -1026,8 +1406,11 @@ __all__ = [
     "RowIndex",
     "TrackState",
     "acknowledge",
+    "assert_destinations_are_not_renamed",
+    "assert_import_settled",
     "assert_settled",
     "close_run",
+    "lock_path",
     "content_rows",
     "destination",
     "index_rows",

@@ -52,7 +52,11 @@ PENDING: dict[str, tuple[str, str]] = {
         "the run. U19's whole mechanism hangs off that one call. Without it "
         "nothing is ever deferred, every run closes with no outstanding tracks "
         "because none were ever recorded, and the deferred-routing suite stays "
-        "green over a feature that never runs",
+        "green over a feature that never runs. A THIRD OBLIGATION, same unit and "
+        "same reason: a run that deferred a placement closes through "
+        "cratekit.write.routing_pass.close_run, never through "
+        "cratekit.core.session.close_session, because the gate is opt-in and its "
+        "bypass is the exported call",
     ),
     "cratekit.core.restore": (
         "U32",
@@ -135,6 +139,36 @@ PENDING: dict[str, tuple[str, str]] = {
         "a reserved exit code and a remediation, which is the S4 obligation "
         "applied to this unit: a refusal with no reserved code collapses to a "
         "bare status at the process boundary and cannot be recovered downstream",
+    ),
+    # APPENDED RATHER THAN FILED BESIDE A SIBLING, deliberately, for the reason
+    # the verb registry gives for the same choice: two entries inserted into the
+    # middle of one mapping by two units auto-merge, and an append conflicts
+    # textually, which is a conflict somebody reads.
+    "cratekit.write.routing_cli": (
+        "U20",
+        "the command-line surface for the four route.* verbs, and the obligation "
+        "that every one of them closes its run through "
+        "cratekit.write.routing_pass.close_run rather than through the exported "
+        "cratekit.core.session.close_session, because the close gate is opt-in "
+        "and its bypass is the public call. REGISTERED HERE RATHER THAN LEFT AS "
+        "A planned_in MARKER because scripts/board.py reads this file and "
+        "nothing else, so an obligation carried only by a marker on a closing "
+        "unit is owned by nobody the moment that unit closes (P5). RE-POINTED "
+        "FROM U19 TO U20, and the reasoning is left legible because it is a "
+        "judgement a human may want to move again: U19 could not land the "
+        "module because conformance 3 requires a landed gated verb to exit OK "
+        "once its gate is answered, and a destructive db_tree verb cannot do "
+        "that on a machine with no database. U20 is the unit that flips trees "
+        "to database-native and therefore must ship a destructive database "
+        "surface anyway. A SECOND OBLIGATION rides on the same unit because the "
+        "same unit owns the records it needs: a re-run of the routing pass after "
+        "somebody renames a destination folder must CONVERGE rather than refuse. "
+        "U19 refuses today, which is correct but is not service. Converging "
+        "needs a persisted map from the stable destination identifiers to the "
+        "node identifiers a previous write used, which is the shape the tree "
+        "registry already has for a tree's adopted root, and U20 is the unit "
+        "that owns that record. Building a second one inside the routing pass "
+        "would give two answers to which node a destination is",
     ),
 }
 
