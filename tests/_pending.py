@@ -89,16 +89,6 @@ PENDING: dict[str, tuple[str, str]] = {
         "asserted in a docstring because U11 settled the split and U16 is the "
         "first unit that can violate it (P5)",
     ),
-    "cratekit.modules.reports": (
-        "U34",
-        "that the duplicate audit's pairs become review items in the queue U11 "
-        "declared for them, which is half of R26. The source system's audit "
-        "prints and never records, so a pair somebody already judged an "
-        "intentional alternate is reported again on every run, and a private "
-        "ignore file beside the report would satisfy the brief and re-create the "
-        "defect. Registered here because U11 declared the surface and nothing "
-        "else forces it to exist (P5)",
-    ),
     "cratekit.adopt": (
         "U23",
         "that the adoption plan is presented as review items rather than as a "

@@ -1177,6 +1177,7 @@ def test_the_fingerprint_does_not_depend_on_key_order(library):
         ("rekordbox", "pinned_app_version", "7.2.17.0000"),
         ("backup", "remote", "somewhere"),
         ("profile", "name", "full"),
+        ("reports", "intake_stale_days", 45),
     ],
 )
 def test_the_fingerprint_changes_when_any_value_changes(library, section, key, value):

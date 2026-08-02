@@ -276,6 +276,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # have carried between machines, and the fix is about that file rather
         # than about this installation's configuration.
         "review-file-unusable": ExitCode.PRECONDITION,
+        # U34. A collection export that is not one, or is one and is truncated.
+        # Its own slug rather than the review file above, because that file is
+        # something this product WROTE and this one is something rekordbox wrote:
+        # the remedy is to export again, and pointing a person at a queue export
+        # they never made would be a sentence about the wrong file. Same code,
+        # because the class of answer is the same, which is the whole reason a
+        # slug exists separately from a code.
+        "library-export-unusable": ExitCode.PRECONDITION,
         "backup-acknowledgment-missing": ExitCode.ACK_REQUIRED,
         # U8. The acknowledgment cannot be MINTED here, which is a different
         # condition from it being absent when a session consulted it. Minting is
