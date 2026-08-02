@@ -213,6 +213,30 @@ def test_two_folders_of_one_name_are_refused_rather_than_half_served():
     assert FOLDER_DISPLAY in str(excinfo.value)
 
 
+def test_a_playlist_wearing_the_trees_name_refuses_rather_than_walking_nothing():
+    """The wrong-type collision, which "not found" would have hidden.
+
+    A root-level PLAYLIST named after the tree is not an absent tree. Reported as
+    absent, the sweep walks zero folders, returns an empty modified list, and
+    reads to the user exactly like a library that was already up to date.
+    """
+    document = _xml_doc(
+        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
+        root_children=[
+            f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="1" KeyType="0" Entries="0"/>',
+        ],
+    )
+    with pytest.raises(trees.TreeUnreachable) as excinfo:
+        trees.add_vox_playlists(document, tree=_ungoverned())
+    assert "playlist" in str(excinfo.value)
+
+
+def test_a_sweep_over_a_document_with_no_such_tree_refuses(tmp_path):
+    """The other half. An absent tree is a mistake, not a quiet no-op."""
+    with pytest.raises(trees.TreeUnreachable):
+        trees.add_vox_playlists(_fresh_xml(), tree=_ungoverned())
+
+
 def test_the_vocal_sweep_touches_only_the_folders_that_lack_the_playlist():
     """Idempotence per FOLDER, not per document.
 
@@ -460,6 +484,33 @@ def test_a_soft_deleted_row_beside_one_active_row_resolves_cleanly():
     )
     assert match.outcome is trees.MatchOutcome.MATCHED
     assert match.content_id == "47"
+
+
+def test_a_sweep_matches_every_entry_against_rows_supplied_as_a_cursor():
+    """The library is walked ONCE, and a one-shot iterator survives the sweep.
+
+    The natural way to hand over "every content row" for a library this size is a
+    database cursor, not a materialized list. A sweep that rebuilt its index per
+    plan entry would consume the whole cursor on the first entry and see an
+    exhausted iterable on every entry after it, reporting each of those tracks as
+    absent while the run reported itself clean. That is the shape this pins: the
+    same rows, supplied as a generator, matched twice.
+    """
+    rows = [
+        trees.ContentRow("50", f"{ROOT}/Music/a.flac"),
+        trees.ContentRow("51", f"{ROOT}/Music/b.flac"),
+    ]
+    cursor = (row for row in rows)
+    index = trees.index_active_rows(cursor, root=ROOT, prefix_map=_rules())
+
+    (first,) = trees.match_indexed_rows(
+        [f"{ROOT}/Music/a.flac"], index, root=ROOT, prefix_map=_rules()
+    )
+    (second,) = trees.match_indexed_rows(
+        [f"{ROOT}/Music/b.flac"], index, root=ROOT, prefix_map=_rules()
+    )
+    assert first.content_id == "50"
+    assert second.content_id == "51", "the second entry matched against a spent iterator"
 
 
 def test_two_active_rows_on_one_location_are_skipped_and_both_surfaced():

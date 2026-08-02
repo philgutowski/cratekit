@@ -317,3 +317,37 @@ builds.
 **Closes when:** the author configures a remote and runs the backup verb once
 with its dry run, then for real, and records the outcome. That is an attended
 step, like the other live-hardware gates in this plan.
+
+---
+
+## R-10. Membership insertion is one database round trip per track
+
+**Found:** during U18 review, by the efficiency reviewer, confirmed against the
+code it names.
+
+`write_tree_membership` calls `rb_writer.add_membership` once per resolved track,
+and that helper runs its own `get_playlist_songs(PlaylistID=..., ContentID=...)`
+query before deciding whether to insert. A sweep over a few hundred sub-playlists
+therefore issues hundreds to low thousands of individual select-then-maybe-insert
+round trips inside one locked write session. One query per PLAYLIST, building the
+set of content ids already in it and diffing in memory, would answer the same
+question.
+
+**Not fixed here, and the reason is the same argument this unit makes twice
+elsewhere.** The idempotency check lives in `add_membership`, which is U7's. To
+batch it from the caller, this unit would have to ask the database what a
+playlist already holds and decide for itself what is new, which is a second
+implementation of the rule `add_membership` owns. Two implementations of one rule
+is how they come to disagree, and the disagreement here is a track silently
+inserted twice or silently skipped. The same reasoning is why the medium check
+goes through `tree_registry.anchored_root` rather than being spelled again.
+
+It is also bounded by tracks per playlist rather than by library size, against a
+local SQLite file, inside a session that is already holding a lock. The N times M
+walk that WAS unbounded, the row index rebuilt per plan entry, was fixed in this
+unit rather than recorded.
+
+**Closes when:** `rb_writer` grows a batch membership primitive that takes a
+playlist and many content ids and returns which ones it inserted. Then one call
+replaces the loop and the rule stays in one place. That belongs to whichever unit
+next has a reason to touch that module.

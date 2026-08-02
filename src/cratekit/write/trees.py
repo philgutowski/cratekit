@@ -164,6 +164,25 @@ class MembershipReport:
     playlists: tuple[str, ...] = field(default=())
 
 
+class TreeUnreachable(ValueError):
+    """The tree a sweep was pointed at is not there, or is not a folder.
+
+    Raised rather than reported as an empty walk, because the two readings are
+    indistinguishable to a caller and only one of them is harmless. A sweep over
+    a tree that genuinely holds no folders changed nothing and is correct; a
+    sweep that could not find the tree at all changed nothing and is a mistake
+    somebody has to fix. Returning the same answer for both is how a run reports
+    success over a document it never touched, which is the failure the system
+    being ported shipped: its splicers warned and continued, and the user saw a
+    green run and an empty playlist.
+    """
+
+    def __init__(self, tree_display: str, reason: str) -> None:
+        self.tree_display = tree_display
+        self.reason = reason
+        super().__init__(f"the tree {tree_display!r} cannot be written: {reason}")
+
+
 class DuplicateFolders(ValueError):
     """Two folders in one tree carry one display name.
 
@@ -296,20 +315,22 @@ def _tree_folders(content: bytes, tree_display: str) -> tuple[str, ...]:
     describes the document as it no longer is. Re-locating by name on each write
     is what makes the loop correct, and the duplicate check is what makes
     re-locating by name safe.
+
+    The tree itself is found through the shared locate rather than through a
+    filter written here. Spelling ``name and type`` as one condition would be a
+    second implementation of that locate, and it would lose the answer that
+    matters: a PLAYLIST carrying the tree's name is not "no tree", it is a tree
+    this write cannot reach, and reporting it as absent means the sweep walks
+    zero folders and tells the user it changed nothing.
     """
     root = rbxml.root_node(content)
     if root is None:
-        return ()
-    node = next(
-        (
-            child
-            for child in rbxml.child_nodes(content, root)
-            if child.name == tree_display and child.node_type == rbxml.FOLDER_TYPE
-        ),
-        None,
-    )
+        raise TreeUnreachable(tree_display, "the document has no playlist ROOT node")
+    node = rbxml.direct_child(content, root, tree_display, rbxml.FOLDER_TYPE)
+    if isinstance(node, str):
+        raise TreeUnreachable(tree_display, node)
     if node is None:
-        return ()
+        raise TreeUnreachable(tree_display, "no folder of that name sits under ROOT")
     names = [
         child.name
         for child in rbxml.child_nodes(content, node)
@@ -448,28 +469,25 @@ def _comparable(recorded: str, *, root: Path | str, prefix_map: Sequence[locatio
     )
 
 
-def match_active_rows(
-    requested: Iterable[Path | str],
+def index_active_rows(
     rows: Iterable[ContentRow],
     *,
     root: Path | str,
     prefix_map: Sequence[locations.PrefixRule] = (),
-) -> tuple[RowMatch, ...]:
-    """Resolve each requested file to the ONE active row that holds it.
+) -> dict[str, tuple[str, ...]]:
+    """Every ACTIVE row, grouped by the location it resolves to.
 
     THE ACTIVE-ROW RULE. rekordbox soft-deletes: a removed track keeps its row and
-    gains a marker. Those rows are excluded before anything is compared, so a
+    gains a marker. Those rows are dropped here, before anything is compared, so a
     tombstone sitting beside the live row for the same file resolves cleanly
     rather than looking like a collision.
 
-    TWO ACTIVE ROWS ON ONE LOCATION ARE SKIPPED AND SURFACED, never written to
-    both. It happens: an import that ran twice against a renamed volume leaves
-    two live rows for one file, and membership written to both puts one track in
-    a playlist twice under two identities, which the user then cannot remove by
-    removing it once.
-
-    Takes rows rather than a database handle, so the rule is testable without one
-    and this module does no input of its own.
+    Public and separate from the matching below, because a sweep matches many
+    plan entries against ONE library. Folding the walk into the match would make
+    a sweep re-read every row per entry, and it would do something worse than
+    that: a caller whose rows are a database cursor rather than a list would get
+    the whole library on the first entry and an exhausted iterator on the second,
+    with every track after that reported as absent and the run reported clean.
     """
     by_location: dict[str, list[str]] = {}
     for row in rows:
@@ -479,7 +497,46 @@ def match_active_rows(
         if resolved.path is None:
             continue
         by_location.setdefault(resolved.path, []).append(row.content_id)
+    return {location: tuple(ids) for location, ids in by_location.items()}
 
+
+def match_active_rows(
+    requested: Iterable[Path | str],
+    rows: Iterable[ContentRow],
+    *,
+    root: Path | str,
+    prefix_map: Sequence[locations.PrefixRule] = (),
+) -> tuple[RowMatch, ...]:
+    """Resolve each requested file to the ONE active row that holds it.
+
+    TWO ACTIVE ROWS ON ONE LOCATION ARE SKIPPED AND SURFACED, never written to
+    both. It happens: an import that ran twice against a renamed volume leaves
+    two live rows for one file, and membership written to both puts one track in
+    a playlist twice under two identities, which the user then cannot remove by
+    removing it once.
+
+    Takes rows rather than a database handle, so the rule is testable without one
+    and this module does no input of its own. A caller matching several times
+    against one library builds the index once with :func:`index_active_rows` and
+    passes it to :func:`match_indexed_rows` instead.
+    """
+    return match_indexed_rows(
+        requested,
+        index_active_rows(rows, root=root, prefix_map=prefix_map),
+        root=root,
+        prefix_map=prefix_map,
+    )
+
+
+def match_indexed_rows(
+    requested: Iterable[Path | str],
+    index: Mapping[str, Sequence[str]],
+    *,
+    root: Path | str,
+    prefix_map: Sequence[locations.PrefixRule] = (),
+) -> tuple[RowMatch, ...]:
+    """Match against an index already built, so a sweep walks the library once."""
+    by_location = index
     out: list[RowMatch] = []
     for entry in requested:
         text = str(entry)
@@ -489,7 +546,7 @@ def match_active_rows(
                 RowMatch(text, MatchOutcome.UNRESOLVED, resolution=resolved.resolution)
             )
             continue
-        candidates = by_location.get(resolved.path, [])
+        candidates = tuple(by_location.get(resolved.path, ()))
         if not candidates:
             out.append(
                 RowMatch(text, MatchOutcome.ABSENT, resolution=resolved.resolution)
@@ -499,7 +556,7 @@ def match_active_rows(
                 RowMatch(
                     text,
                     MatchOutcome.AMBIGUOUS,
-                    content_ids=tuple(candidates),
+                    content_ids=candidates,
                     resolution=resolved.resolution,
                 )
             )
@@ -581,6 +638,13 @@ def write_tree_membership(
         else list(prefix_map)
     )
 
+    # ONE walk of the library, before the loop, and it is not only about speed.
+    # Rebuilding it per plan entry would re-normalize every row once per entry,
+    # and it would silently break the first caller whose rows are a database
+    # cursor rather than a list: entry one would consume the whole iterator and
+    # every entry after it would match nothing and be reported absent.
+    index = index_active_rows(rows, root=cfg.library.root, prefix_map=resolved_map)
+
     added = 0
     already_present = 0
     skipped: list[RowMatch] = []
@@ -591,8 +655,8 @@ def write_tree_membership(
         snapshot.assert_verified(capture)
 
         for (folder_display, sub_display), requested in sorted(plan.items()):
-            matches = match_active_rows(
-                requested, rows, root=cfg.library.root, prefix_map=resolved_map
+            matches = match_indexed_rows(
+                requested, index, root=cfg.library.root, prefix_map=resolved_map
             )
             resolved_ids = [
                 match.content_id
@@ -635,11 +699,14 @@ __all__ = [
     "MembershipReport",
     "RouteReport",
     "RowMatch",
+    "TreeUnreachable",
     "add_vox_playlists",
     "apply_playlist_changes",
     "apply_rating_changes",
     "apply_unplaced_changes",
+    "index_active_rows",
     "insert_record_labels_tree",
     "match_active_rows",
+    "match_indexed_rows",
     "write_tree_membership",
 ]

@@ -1013,13 +1013,22 @@ def _type_name(node_type: str) -> str:
     return "folder" if node_type == FOLDER_TYPE else "playlist"
 
 
-def _direct_child(
+def direct_child(
     content: bytes, parent: NodeSpan, name: str, node_type: str
 ) -> NodeSpan | str | None:
     """The direct child of ``parent`` named ``name``, of that TYPE, or a warning.
 
     Three answers: the node, None when no child carries the name, and a warning
     when one does at the other type.
+
+    PUBLIC, and it is a locate rather than a writer, so it carries no tree and no
+    guard. It is public because the alternative is a caller writing the same
+    ``name and type`` filter over :func:`child_nodes` for itself, and that copy
+    loses the third answer: a filter that tests name and type in one condition
+    reports a wrong-type collision as "not found", so a sweep walks nothing and
+    reports success. This module's claim is that consolidating the LOCATES is
+    what makes the guard's coverage real, and a locate a call site cannot reach
+    is a locate it re-implements.
 
     The type half is not pedantry, it is the same defence :func:`find_node`
     carries. A folder and a playlist routinely share a name, and every writer
@@ -1303,7 +1312,7 @@ def insert_root_playlist(
     if root is None:
         return "ROOT node not found"
 
-    existing = _direct_child(content, root, name, PLAYLIST_TYPE)
+    existing = direct_child(content, root, name, PLAYLIST_TYPE)
     if isinstance(existing, str):
         return existing
     if existing is not None:
@@ -1347,7 +1356,7 @@ def insert_genre_folder(
     parent = _tree_node(content, tree)
     if isinstance(parent, str):
         return parent
-    existing = _direct_child(content, parent, folder_name, FOLDER_TYPE)
+    existing = direct_child(content, parent, folder_name, FOLDER_TYPE)
     if isinstance(existing, str):
         return existing
     if existing is not None:
@@ -1395,7 +1404,7 @@ def remove_folder_node(
     parent = _tree_node(content, tree)
     if isinstance(parent, str):
         return parent
-    target = _direct_child(content, parent, folder_name, FOLDER_TYPE)
+    target = direct_child(content, parent, folder_name, FOLDER_TYPE)
     if isinstance(target, str):
         return target
     if target is None:
@@ -1434,7 +1443,7 @@ def insert_intake_playlist(
         return f"cannot find close tag for folder: {parent.name}"
 
     replaced = False
-    existing = _direct_child(content, parent, name, PLAYLIST_TYPE)
+    existing = direct_child(content, parent, name, PLAYLIST_TYPE)
     if isinstance(existing, str):
         return existing
     if existing is not None:
@@ -1501,7 +1510,7 @@ def insert_empty_subplaylist(
     if folder is None:
         return SpliceResult(warning=f"genre folder not found: {folder_name}")
 
-    existing = _direct_child(content, folder, sub_name, PLAYLIST_TYPE)
+    existing = direct_child(content, folder, sub_name, PLAYLIST_TYPE)
     if isinstance(existing, str):
         return SpliceResult(warning=existing)
     if existing is not None:
@@ -1579,39 +1588,40 @@ def insert_catalog_folder(
 
     # With no tree named the enclosing node is inferred exactly as it is
     # everywhere else here, and inference refuses rather than guesses. With one
-    # named, an absent node is not a failure: this writer creates it.
-    created_tree = False
+    # named, an absent node is not a failure: this writer creates it, and the
+    # creation happens INSIDE this branch rather than under a flag read further
+    # down, so ``tree`` is known to be present where its display name is used
+    # and no assertion has to stand in for that.
     if tree is None:
         inferred = _tree_node(content, None)
         if isinstance(inferred, str):
             return inferred
-        parent: NodeSpan | None = inferred
+        parent = inferred
     else:
-        found = _direct_child(content, root, tree.display, FOLDER_TYPE)
+        found = direct_child(content, root, tree.display, FOLDER_TYPE)
         if isinstance(found, str):
             return found
+        if found is None:
+            block = (
+                folder_open(tree.display, 1, indent_at(1))
+                + _catalog_block(folder_name, playlists, indent_at(2))
+                + node_close(indent_at(1))
+            )
+            at = _first_child_offset(content, root)
+            if at is None:
+                return (
+                    f"the {tree.display!r} tree cannot be created: "
+                    f"ROOT is not line terminated"
+                )
+            content[at:at] = bytearray(block.encode("utf-8"))
+            _bump_count(content, root, +1)
+            return None
         parent = found
-        created_tree = found is None
 
-    if created_tree:
-        assert tree is not None  # created_tree is only reachable on the named branch
-        block = (
-            folder_open(tree.display, 1, indent_at(1))
-            + _catalog_block(folder_name, playlists, indent_at(2))
-            + node_close(indent_at(1))
-        )
-        at = _first_child_offset(content, root)
-        if at is None:
-            return f"the {tree.display!r} tree cannot be created: ROOT is not line terminated"
-        content[at:at] = bytearray(block.encode("utf-8"))
-        _bump_count(content, root, +1)
-        return None
-
-    assert parent is not None  # every other branch either returned or found one
     if parent.self_closing:
         return f"cannot find close tag for folder: {parent.name}"
 
-    existing = _direct_child(content, parent, folder_name, FOLDER_TYPE)
+    existing = direct_child(content, parent, folder_name, FOLDER_TYPE)
     if isinstance(existing, str):
         return existing
 
@@ -1687,6 +1697,7 @@ __all__ = [
     "collection_tracks",
     "dedupe_track_ids",
     "depth_of",
+    "direct_child",
     "empty_playlist",
     "find_collection_track",
     "find_node",
