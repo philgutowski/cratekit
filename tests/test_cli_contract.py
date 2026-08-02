@@ -52,6 +52,7 @@ from cratekit.core.exit_codes import (
     meaning_of,
 )
 from tests._pending import requires
+from tests._source_guards import constructs_a_csv_writer
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -1295,60 +1296,31 @@ def test_conformance_3_every_declared_gate_refuses_and_then_proceeds(entry, conf
         assert code == int(ExitCode.OK)
 
 
-#: The two constructors that produce a comma separated writer. Named here so the
-#: two files that need this question ask it the same way.
-CSV_WRITER_NAMES = frozenset({"writer", "DictWriter"})
-
-
-def _constructs_a_csv_writer(source: str) -> list[str]:
-    """Every place this source builds a comma separated WRITER.
-
-    Two narrowings, and each one is there so the guard cannot fire on correct
-    code, which is how a guard gets routed around (P7).
-
-    WRITING ONLY. Reading stays legal. The anti-pattern R12 names is "a file the
-    user must hand edit", which is a file this product WROTE for them to edit. A
-    tracklist somebody pastes in from elsewhere is legitimate intake, and a guard
-    that refused it would be refusing the feature.
-
-    THE MODULE IS NAMED, not just the attribute. ``xml.writer`` and
-    ``something.DictWriter`` are perfectly ordinary names for things that are not
-    this, so the match requires either ``csv.<name>`` or a bare ``<name>`` in a
-    module that imported it from ``csv``.
-    """
-    tree = ast.parse(source)
-    imported = {
-        alias.asname or alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module == "csv"
-        for alias in node.names
-        if alias.name in CSV_WRITER_NAMES
-    }
-    found: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if isinstance(func, ast.Attribute) and func.attr in CSV_WRITER_NAMES:
-            if isinstance(func.value, ast.Name) and func.value.id == "csv":
-                found.append(f"line {node.lineno}: {ast.unparse(func)}")
-        elif isinstance(func, ast.Name) and func.id in imported:
-            found.append(f"line {node.lineno}: {func.id}")
-    return found
-
-
 def test_the_csv_writer_guard_bites_and_stays_quiet_on_correct_code():
     """P7's own instruction: run a guard against correct code before shipping it.
 
-    Both import shapes are caught, and the two shapes that look like it and are
-    not, an unrelated attribute of the same name and a READ, are left alone.
+    THE HALF THAT WAS SKIPPED. This assertion was armed over every adjudicating
+    verb through conformance 4, and its self-test checked ``import csv`` and
+    ``from csv import DictWriter`` and never the aliased import. A reviewer
+    switched the whole guard off with one keyword, ``import csv as spreadsheet``,
+    so "run it against correct code" had been done and "run it against the
+    evasion" had not. Every import shape the language offers is checked here now,
+    in both directions.
+
+    The shapes that look like it and are not, an unrelated attribute of the same
+    name and a READ, are still left alone.
     """
-    assert _constructs_a_csv_writer("import csv\ncsv.writer(handle)\n")
-    assert _constructs_a_csv_writer("from csv import DictWriter\nDictWriter(handle, [])\n")
-    assert not _constructs_a_csv_writer("import xml\nxml.writer(handle)\n")
-    assert not _constructs_a_csv_writer("import csv\nfor row in csv.reader(handle):\n    pass\n")
+    assert constructs_a_csv_writer("import csv\ncsv.writer(handle)\n")
+    assert constructs_a_csv_writer("from csv import DictWriter\nDictWriter(handle, [])\n")
+    assert constructs_a_csv_writer("import csv as spreadsheet\nspreadsheet.writer(handle)\n"), (
+        "an aliased import switches the guard off, which is the evasion it was "
+        "armed against"
+    )
+    assert constructs_a_csv_writer("from csv import writer as w\nw(handle)\n")
+    assert not constructs_a_csv_writer("import xml\nxml.writer(handle)\n")
+    assert not constructs_a_csv_writer("import csv\nfor row in csv.reader(handle):\n    pass\n")
     for _path, source in package_sources():
-        assert not _constructs_a_csv_writer(source), (
+        assert not constructs_a_csv_writer(source), (
             "the guard fires somewhere in the tree it is meant to leave alone"
         )
 
@@ -1423,7 +1395,7 @@ def test_conformance_4_adjudication_goes_through_the_review_queue(entry, configu
 
     path = SRC_ROOT / Path(*entry.module.split(".")).with_suffix(".py")
     if path.is_file():
-        offenders = _constructs_a_csv_writer(path.read_text())
+        offenders = constructs_a_csv_writer(path.read_text())
         assert not offenders, (
             f"{entry.name} declares that it adjudicates and writes a comma "
             f"separated file for a person to edit: {offenders}. Adjudication is a "

@@ -580,6 +580,16 @@ def test_the_locks_and_the_snapshot_store_are_not_in_the_coupled_set():
         "session_log",
     ):
         assert key not in coupled, f"{key} must not roll back with the database"
+    # DERIVED as well as named (P3). The list above is the set that existed when
+    # this was written, and the inode argument applies to every lock this product
+    # ever adds, including the ones nobody has thought of yet.
+    for entry in config.STATE_FILES:
+        if any(part.startswith("lock") for part in entry.key.split("_")):
+            assert entry.key not in coupled, (
+                f"{entry.key} is a lock inside the coupled set, so a restore "
+                f"swaps the inode a live lock is held on and every holder keeps "
+                f"believing it has exclusive access"
+            )
 
 
 def test_the_snapshot_store_and_the_session_log_survive_a_rollback():
