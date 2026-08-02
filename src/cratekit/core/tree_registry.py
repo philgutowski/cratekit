@@ -303,6 +303,7 @@ def read(cfg: config.Config) -> Registry:
         )
 
     records: list[TreeRecord] = []
+    seen: set[str] = set()
     for entry in entries:
         if not isinstance(entry, dict):
             raise TreeRegistryUnreadable(
@@ -318,6 +319,23 @@ def read(cfg: config.Config) -> Registry:
                 path=path,
                 remedy=Remedy.RUN_DOCTOR,
             )
+        if tree_id in seen:
+            # Two answers for one tree is a file to refuse, not a shape to
+            # resolve by position. The sort below is stable, so resolving it
+            # would silently mean "whichever record was written first", and a
+            # file that a merge or a restore concatenated would then report a
+            # tree as still on the bridge while another record in the same file
+            # says the database owns it. That is the wrong medium, chosen by
+            # line order.
+            raise TreeRegistryUnreadable(
+                f"{path} holds two records for the tree {tree_id!r}; a registry "
+                f"that gives two answers for one tree cannot say which medium "
+                f"owns it, and guessing decides which writer runs against a "
+                f"real library",
+                path=path,
+                remedy=Remedy.RUN_DOCTOR,
+            )
+        seen.add(tree_id)
         stamp = entry.get("cutover_on")
         cutover: date | None = None
         if stamp is not None:

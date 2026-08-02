@@ -143,6 +143,39 @@ def test_splice_create_missing_sub():
     assert _no_bare_lf(out)
 
 
+def test_splice_dedups_on_the_run_that_CREATES_the_sub_too():
+    """The same batch, into a sub that exists and into one that does not.
+
+    The create path once wrote the ids straight through, so whether a duplicate
+    survived depended on whether the playlist happened to exist yet: the run that
+    created it kept both copies permanently, and the run that found it kept one.
+    ``norm_by_tid`` was accepted and discarded on that path, which is the same
+    recording under two identifiers landing twice, forever.
+    """
+    by_tid = {"201": "artist song", "202": "artist song", "203": "other tune"}
+    content = bytearray(_routing_xml())
+    created = rbxml.splice_into_subplaylist(
+        content,
+        "Deep House",
+        "Low Energy",
+        [201, 201, 202, 203],
+        create_missing=True,
+        norm_by_tid=by_tid,
+    )
+    out = bytes(content)
+    assert created.created and created.inserted == 2 and created.entries_after == 2
+    assert out.count(b'<TRACK Key="201"/>') == 1
+    assert b'<TRACK Key="202"/>' not in out, "the same recording landed under two ids"
+    assert b'<NODE Name="Low Energy" Type="1" KeyType="0" Entries="2">' in out
+    assert _no_bare_lf(out)
+
+    existing = bytearray(_routing_xml())
+    found = rbxml.splice_into_subplaylist(
+        existing, "Deep House", "High Energy", [201, 201, 202, 203], norm_by_tid=by_tid
+    )
+    assert (found.inserted, found.entries_after) == (created.inserted, created.entries_after)
+
+
 def test_splice_warnings_and_no_partial_writes():
     """A failed splice writes NOTHING. Not most of it, nothing.
 
@@ -279,6 +312,9 @@ def test_insert_root_playlist_and_idempotent_replace():
     content = bytearray(_routing_xml())
     assert rbxml.insert_root_playlist("Sets and Long Tracks", [7, 8], content) is None
     first = bytes(content)
+    # A new child, so the root's own count moves with it. Replacing on the second
+    # run adds no child, so it must not move again.
+    assert b'<NODE Type="0" Name="ROOT" Count="2">' in first
     assert b'<NODE Name="Sets and Long Tracks" Type="1" KeyType="0" Entries="2">' in first
     assert b'        <TRACK Key="7"/>\r\n' in first
     assert _no_bare_lf(first)
@@ -289,7 +325,64 @@ def test_insert_root_playlist_and_idempotent_replace():
     assert b'Entries="1">' in second and b'<TRACK Key="9"/>' in second
     assert b'<TRACK Key="7"/>' not in second
     assert _no_bare_lf(second)
+    assert b'<NODE Type="0" Name="ROOT" Count="2">' in second, "a replace bumped the count"
     assert re.search(rb"\r\n    </NODE>\r\n  </PLAYLISTS>", second), "ROOT closed wrong"
+
+
+# ── a folder and a playlist sharing one name ─────────────────────────────────
+
+
+def test_a_writer_refuses_to_replace_a_node_of_the_other_type():
+    """The data-loss guard, on the three writers that replace or delete by name.
+
+    A folder and a playlist routinely share a name, and the trees this product
+    writes are root-level folders whose display names come from a taxonomy the
+    user can edit. Matched on the name alone, a root-level playlist named after a
+    tree replaced that entire tree with a flat playlist, taking every sub-playlist
+    and every track key under it, and the run returned success. Each of these
+    refuses with a warning and writes nothing instead.
+    """
+    shelf = [
+        '      <NODE Name="Shelf" Type="0" Count="1">',
+        '        <NODE Name="Loud Room" Type="0" Count="1">',
+        '          <NODE Name="Med" Type="1" KeyType="0" Entries="1">',
+        '            <TRACK Key="404"/>',
+        "          </NODE>",
+        "        </NODE>",
+        "      </NODE>",
+    ]
+    base = _xml_doc(
+        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
+        root_children=shelf,
+    )
+
+    # A root-level playlist named after a root-level FOLDER.
+    content = bytearray(base)
+    warning = rbxml.insert_root_playlist("Shelf", [777], content)
+    assert warning is not None and "already there" in warning
+    assert bytes(content) == base, "a whole tree was replaced by a flat playlist"
+
+    # A folder removal aimed at a PLAYLIST of that name.
+    keepers = _xml_doc(
+        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
+        root_children=[
+            '      <NODE Name="Shelf" Type="0" Count="1">',
+            '        <NODE Name="Keepers" Type="1" KeyType="0" Entries="1">',
+            '          <TRACK Key="1"/>',
+            "        </NODE>",
+            "      </NODE>",
+        ],
+    )
+    content = bytearray(keepers)
+    warning = rbxml.remove_folder_node(content, "Keepers")
+    assert warning is not None and "already there" in warning
+    assert bytes(content) == keepers, "a track-bearing playlist was deleted as a folder"
+
+    # An intake playlist named after a FOLDER that already holds one.
+    content = bytearray(base)
+    warning = rbxml.insert_intake_playlist(content, "Loud Room", [9])
+    assert warning is not None and "already there" in warning
+    assert bytes(content) == base, "a folder was replaced by a flat playlist"
 
 
 # ── whole-folder lifecycle ───────────────────────────────────────────────────

@@ -119,19 +119,34 @@ NEW_PLAYLIST = "Batch 001 & 002"
 CUTOVER_ON = date(2026, 8, 1)
 ADOPTED_ROOT = "root-row-7788"
 
+#: A track key the fixture sub-playlist already holds. Present so the REMOVAL
+#: emitter has something to remove: driven against an empty self-closing sub it
+#: returns before it reaches its scope, and every guard assertion about it then
+#: compares an unchanged document to an unchanged document.
+SEEDED_TRACK = 900
+
 
 def _esc(value: str) -> str:
     return rbxml.xml_escape_attr(value)
 
 
+def _sub_lines(indent: str = "          ") -> list[str]:
+    """The fixture sub-playlist, holding one track key."""
+    return [
+        f'{indent}<NODE Name="{_esc(SUB_DISPLAY)}" Type="1" KeyType="0" Entries="1">',
+        f'{indent}  <TRACK Key="{SEEDED_TRACK}"/>',
+        f"{indent}</NODE>",
+    ]
+
+
 def _tree_doc() -> bytes:
-    """One tree holding one folder holding one empty sub-playlist."""
+    """One tree holding one folder holding one track-bearing sub-playlist."""
     return _xml_doc(
         collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
         root_children=[
             f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="0" Count="1">',
             f'        <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="1">',
-            f'          <NODE Name="{_esc(SUB_DISPLAY)}" Type="1" KeyType="0" Entries="0"/>',
+            *_sub_lines(),
             "        </NODE>",
             "      </NODE>",
         ],
@@ -373,6 +388,38 @@ def test_a_record_with_an_unknown_mode_is_refused_rather_than_dropped(cfg):
         tree_registry.read(cfg)
 
 
+def test_two_records_for_one_tree_are_refused_rather_than_resolved_by_position(cfg):
+    """A registry that gives two answers for one tree cannot be read at all.
+
+    The concrete file: a merge conflict resolved by keeping both sides, or a
+    restore that concatenated two registries. Records are sorted on the way in
+    and Python's sort is stable, so resolving this would silently mean "whichever
+    line came first", and the first line saying a tree is still on the bridge
+    would send a byte splice at a tree the database already owns while a later
+    line in the same file said so.
+    """
+    path = tree_registry.path_for(cfg)
+    config.atomic_write_bytes(
+        json.dumps(
+            {
+                "schema_version": tree_registry.SCHEMA_VERSION,
+                "trees": [
+                    {"tree": TREE_ID, "mode": "xml"},
+                    {
+                        "tree": TREE_ID,
+                        "mode": "database",
+                        "cutover_on": CUTOVER_ON.isoformat(),
+                        "root": ADOPTED_ROOT,
+                    },
+                ],
+            }
+        ).encode(),
+        path,
+    )
+    with pytest.raises(tree_registry.TreeRegistryUnreadable, match="two records"):
+        tree_registry.read(cfg)
+
+
 def test_the_bytes_are_a_function_of_the_content_alone(cfg):
     """Two writes of the same registry produce identical bytes.
 
@@ -403,32 +450,56 @@ def _public_functions() -> dict[str, object]:
     }
 
 
-def _byte_writers_by_annotation() -> frozenset[str]:
+#: Methods that mutate the buffer they are called on. A function that calls one
+#: of these on one of its own parameters is writing bytes, and it is doing it
+#: without a subscript assignment anywhere for the syntax walk to catch.
+_MUTATING_METHODS = frozenset(
+    {"extend", "insert", "append", "clear", "pop", "remove", "__setitem__"}
+)
+
+
+def _byte_writers_by_annotation(
+    functions: dict[str, object] | None = None,
+) -> frozenset[str]:
     """Every public function that takes a MUTABLE buffer.
 
-    The first of two independent readings of the same question. A parameter
-    annotated ``bytearray`` is a buffer the function may write; the locates take
-    ``bytes`` and cannot.
+    The first of two independent readings of the same question. A parameter whose
+    annotation MENTIONS ``bytearray`` is a buffer the function may write; the
+    locates take ``bytes`` and cannot.
+
+    Mentions, not equals. An annotation of ``bytes | bytearray`` is a mutable
+    buffer with a permissive reading annotation, and an exact match let exactly
+    that spelling through: the emitter was then invisible to this reading, and
+    invisible to the other one too if it mutated through a method call.
     """
     found = set()
-    for name, obj in _public_functions().items():
+    for name, obj in (_public_functions() if functions is None else functions).items():
         for parameter in inspect.signature(obj).parameters.values():
-            if parameter.annotation == "bytearray":
+            annotation = parameter.annotation
+            if isinstance(annotation, str) and "bytearray" in annotation:
                 found.add(name)
     return frozenset(found)
 
 
-def _byte_writers_by_source() -> frozenset[str]:
+def _byte_writers_by_source(source: str | None = None) -> frozenset[str]:
     """Every public function that mutates a parameter, directly or through another.
 
     The second reading, and it is deliberately structural rather than declared: a
-    function that assigns into or deletes from one of its own parameters is
-    writing bytes whatever its annotation says. The transitive step matters,
-    because the rating writer mutates nothing itself, it delegates to the shared
-    attribute patcher, and a reading that stopped at direct mutation would call
-    it a locate.
+    function that assigns into, deletes from, or calls a mutating METHOD on one
+    of its own parameters is writing bytes whatever its annotation says. The
+    transitive step matters, because the rating writer mutates nothing itself, it
+    delegates to the shared attribute patcher, and a reading that stopped at
+    direct mutation would call it a locate.
+
+    The method call arm matters for the same reason from the other side. Both
+    readings once looked only for a subscript assignment or a delete, so one
+    ``buf.extend(...)`` was a byte write neither of them could see, and an
+    emitter written that way would have shipped unguarded with a green build,
+    which is the exact claim this file makes.
     """
-    tree = ast.parse(Path(rbxml.__file__).read_text(encoding="utf-8"))
+    tree = ast.parse(
+        Path(rbxml.__file__).read_text(encoding="utf-8") if source is None else source
+    )
     functions = {
         node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
     }
@@ -451,8 +522,16 @@ def _byte_writers_by_source() -> frozenset[str]:
                     and target.value.id in parameters
                 ):
                     direct.add(name)
-            if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name):
-                called.add(inner.func.id)
+            if isinstance(inner, ast.Call):
+                if isinstance(inner.func, ast.Name):
+                    called.add(inner.func.id)
+                elif (
+                    isinstance(inner.func, ast.Attribute)
+                    and isinstance(inner.func.value, ast.Name)
+                    and inner.func.value.id in parameters
+                    and inner.func.attr in _MUTATING_METHODS
+                ):
+                    direct.add(name)
         calls[name] = called
 
     mutating = set(direct)
@@ -468,6 +547,33 @@ def _byte_writers_by_source() -> frozenset[str]:
 
 def _guarded_writers() -> frozenset[str]:
     return _byte_writers_by_annotation() - rbxml.UNGOVERNED_WRITERS
+
+
+def probe_buffer_mutation(buf: "bytes | bytearray", marker: bytes) -> None:
+    """Not a writer and not a test: the shape both readings once missed.
+
+    A permissive annotation and a mutation through a METHOD rather than through a
+    subscript. Added to this file rather than to the package, because its whole
+    job is to be something both derivations have to catch.
+    """
+    buf.extend(marker)  # type: ignore[union-attr]
+
+
+def test_both_readings_catch_a_buffer_mutated_through_a_method_call():
+    """The hole that made the coverage claim false, pinned from both sides.
+
+    An emitter spelled this way passed the annotation reading, because the
+    annotation was not exactly ``bytearray``, and passed the source reading,
+    because it assigned into nothing. It would have landed unguarded with a green
+    build, which is precisely what point two of this file says cannot happen.
+    """
+    source = inspect.getsource(probe_buffer_mutation)
+    assert "probe_buffer_mutation" in _byte_writers_by_source(source), (
+        "the syntax walk sees only subscript writes, so a method call is invisible"
+    )
+    assert "probe_buffer_mutation" in _byte_writers_by_annotation(
+        {"probe_buffer_mutation": probe_buffer_mutation}
+    ), "the signature reading demands an exact annotation, so a union slips past"
 
 
 def test_the_two_readings_of_what_writes_bytes_agree():
@@ -522,7 +628,6 @@ _CALLABLE_EMITTERS = frozenset(
     {
         "splice_into_subplaylist",
         "remove_tracks_from_subplaylist",
-        "insert_root_playlist",
         "insert_genre_folder",
         "remove_folder_node",
         "insert_intake_playlist",
@@ -531,17 +636,21 @@ _CALLABLE_EMITTERS = frozenset(
 
 
 def _invoke(name: str, content: bytearray, tree: rbxml.Tree | None):
-    """Drive one emitter against the fixture document."""
+    """Drive one emitter against the fixture document.
+
+    Every call here has to CHANGE the document, or the guard assertions below
+    prove nothing about it. The removal is the one that had to be arranged: it
+    is given the key the fixture actually holds, because asking it to remove an
+    absent key is a no-op that passes every one of them.
+    """
     if name == "splice_into_subplaylist":
         return rbxml.splice_into_subplaylist(
             content, FOLDER_DISPLAY, SUB_DISPLAY, [901], tree=tree
         )
     if name == "remove_tracks_from_subplaylist":
         return rbxml.remove_tracks_from_subplaylist(
-            content, FOLDER_DISPLAY, SUB_DISPLAY, [901], tree=tree
+            content, FOLDER_DISPLAY, SUB_DISPLAY, [SEEDED_TRACK], tree=tree
         )
-    if name == "insert_root_playlist":
-        return rbxml.insert_root_playlist(NEW_PLAYLIST, [901], content, tree=tree)
     if name == "insert_genre_folder":
         return rbxml.insert_genre_folder(content, NEW_FOLDER, [SUB_DISPLAY], tree=tree)
     if name == "remove_folder_node":
@@ -582,9 +691,16 @@ def test_a_byte_write_at_a_database_native_tree_is_refused_by_name(emitter):
 
 @pytest.mark.parametrize("emitter", sorted(_CALLABLE_EMITTERS))
 def test_a_byte_write_at_a_tree_still_on_the_bridge_passes(emitter):
-    """The other half. A guard that refused everything would also pass the first test."""
+    """The other half. A guard that refused everything would also pass the first test.
+
+    The document has to actually CHANGE. Without that assertion an emitter whose
+    fixture call happens to do nothing passes this, passes the ungoverned case,
+    and passes the byte-for-byte comparison below, all by never writing anything.
+    """
     content = bytearray(_tree_doc())
+    before = bytes(content)
     _invoke(emitter, content, _governed(tree_registry.Mode.XML))
+    assert bytes(content) != before, f"{emitter} was driven into doing nothing"
     assert _no_bare_lf(bytes(content))
 
 
@@ -632,38 +748,71 @@ def test_a_tree_cannot_carry_an_identifier_without_the_registry_that_governs_it(
         rbxml.Tree(display=TREE_DISPLAY, registry=tree_registry.EMPTY)
 
 
+def _two_tree_doc() -> bytes:
+    """Two trees, each holding a folder of the same name holding a sub of the same
+    name, each sub holding the same track key. Nothing but the tree tells them
+    apart, which is the point."""
+    return _xml_doc(
+        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
+        root_children=[
+            '      <NODE Name="Other Shelf" Type="0" Count="1">',
+            f'        <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="1">',
+            *_sub_lines(),
+            "        </NODE>",
+            "      </NODE>",
+            f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="0" Count="1">',
+            f'        <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="1">',
+            *_sub_lines(),
+            "        </NODE>",
+            "      </NODE>",
+        ],
+    )
+
+
 def test_a_governed_tree_scopes_the_folder_search_to_its_own_subtree():
     """Naming the tree narrows the anchor as well as arming the guard.
 
     Two trees may each hold a folder of the same name, and a search across the
     whole playlist section finds whichever comes first in the document.
     """
-    doc = _xml_doc(
-        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
-        root_children=[
-            '      <NODE Name="Other Shelf" Type="0" Count="1">',
-            f'        <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="1">',
-            f'          <NODE Name="{_esc(SUB_DISPLAY)}" Type="1" KeyType="0" Entries="0"/>',
-            "        </NODE>",
-            "      </NODE>",
-            f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="0" Count="1">',
-            f'        <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="1">',
-            f'          <NODE Name="{_esc(SUB_DISPLAY)}" Type="1" KeyType="0" Entries="0"/>',
-            "        </NODE>",
-            "      </NODE>",
-        ],
-    )
-    content = bytearray(doc)
+    content = bytearray(_two_tree_doc())
     result = rbxml.splice_into_subplaylist(
         content, FOLDER_DISPLAY, SUB_DISPLAY, [901], tree=_governed(tree_registry.Mode.XML)
     )
     assert result.warning is None and result.inserted == 1
     out = bytes(content)
-    # The write landed in the SECOND tree, so the first one still reads zero.
+    # The write landed in the SECOND tree, so the first one still reads one.
     first = out.index(b'Name="Other Shelf"')
     second = out.index(_esc(TREE_DISPLAY).encode("utf-8"))
-    assert b'Entries="0"' in out[first:second]
-    assert b'Entries="1"' in out[second:]
+    assert b'Entries="1"' in out[first:second]
+    assert b'Entries="2"' in out[second:]
+
+
+def test_a_governed_tree_scopes_a_REMOVAL_to_its_own_subtree_too():
+    """The same narrowing, on the writer that DELETES.
+
+    Splicing into the wrong tree adds a track somebody can see and remove. A
+    removal scoped to the wrong tree takes a track out of a playlist nobody was
+    looking at, and the only evidence is a count that went down.
+    """
+    content = bytearray(_two_tree_doc())
+    removed, warning = rbxml.remove_tracks_from_subplaylist(
+        content,
+        FOLDER_DISPLAY,
+        SUB_DISPLAY,
+        [SEEDED_TRACK],
+        tree=_governed(tree_registry.Mode.XML),
+    )
+    assert warning is None and removed == 1
+    out = bytes(content)
+    first = out.index(b'Name="Other Shelf"')
+    second = out.index(_esc(TREE_DISPLAY).encode("utf-8"))
+    assert f'<TRACK Key="{SEEDED_TRACK}"/>'.encode("utf-8") in out[first:second], (
+        "the removal reached into the tree it was not given"
+    )
+    assert b'Entries="1"' in out[first:second]
+    assert f'<TRACK Key="{SEEDED_TRACK}"/>'.encode("utf-8") not in out[second:]
+    assert b'Entries="0"' in out[second:]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -736,27 +885,99 @@ def test_the_anchor_check_refuses_a_tree_on_the_bridge_before_it_looks_anything_
     assert looked_up == []
 
 
+def _called_names(module: ast.Module) -> set[str]:
+    """Every name that is CALLED in a module, by attribute or by bare name.
+
+    Calls rather than mentions. A guard satisfied by a mention is satisfied by a
+    local variable of that name, which is the hand-rolled duplicate it exists to
+    forbid, wearing the right label.
+    """
+    out: set[str] = set()
+    for node in ast.walk(module):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Attribute):
+            out.add(node.func.attr)
+        elif isinstance(node.func, ast.Name):
+            out.add(node.func.id)
+    return out
+
+
+def _imports_module(module: ast.Module, dotted: str) -> bool:
+    """True when ``module`` imports ``dotted``, by either import form."""
+    package, _, leaf = dotted.rpartition(".")
+    for node in ast.walk(module):
+        if isinstance(node, ast.Import):
+            if any(alias.name == dotted for alias in node.names):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            source = node.module or ""
+            if source == dotted:
+                return True
+            if source == package and any(alias.name == leaf for alias in node.names):
+                return True
+    return False
+
+
 @requires("cratekit.write.trees")
 def test_the_database_tree_writer_uses_the_shared_anchor_assertion():
     """P5: a docstring saying a later unit will call this is a wish.
 
     This is the countdown. The moment the tree writers land, this arms and fails
-    unless they call the shared assertion rather than hand-rolling their own
+    unless they CALL the shared assertion rather than hand-rolling their own
     check. Two implementations of one rule is how they come to disagree, and the
     disagreement here costs a user a duplicated tree.
+
+    A call, and an import of the module the call has to come from. Asserting that
+    the token appears somewhere in the syntax tree would be satisfied by a local
+    variable named after it, which is exactly the hand-rolled check this forbids.
     """
     from cratekit.write import trees
 
-    source = Path(trees.__file__).read_text(encoding="utf-8")
-    named = {
-        node.attr if isinstance(node, ast.Attribute) else node.id
-        for node in ast.walk(ast.parse(source))
-        if isinstance(node, (ast.Attribute, ast.Name))
-    }
-    assert "anchored_root" in named, (
+    module = ast.parse(Path(trees.__file__).read_text(encoding="utf-8"))
+    assert _imports_module(module, "cratekit.core.tree_registry"), (
+        "the database tree writers must reach the shared assertion through "
+        "cratekit.core.tree_registry, since a check spelled locally is a second "
+        "implementation of one rule"
+    )
+    assert "anchored_root" in _called_names(module), (
         "the database tree writers must assert the anchored root through "
         "cratekit.core.tree_registry.anchored_root before writing membership, "
         "so a restored pre-cutover database refuses rather than forking the tree"
+    )
+
+
+@requires("cratekit.write.trees")
+def test_every_bridge_call_in_the_tree_writers_names_the_tree_it_targets():
+    """The other half of P5, and the half the guard's whole value rests on.
+
+    The emitter guard only fires when a call site passes ``tree=``. Every emitter
+    defaults it to None, correctly, because most playlists in a real library are
+    somebody's own and are governed by nothing. The consequence is that a routing
+    splice which simply omits the argument is refused by nothing at all, and after
+    a cutover it keeps splicing an export for a tree the database owns. Recording
+    that obligation in a docstring is a wish; this is the countdown that collects
+    it the moment the call sites land.
+    """
+    from cratekit.write import trees
+
+    guarded = _guarded_writers()
+    module = ast.parse(Path(trees.__file__).read_text(encoding="utf-8"))
+    unnamed: list[str] = []
+    for node in ast.walk(module):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Attribute):
+            called = node.func.attr
+        elif isinstance(node.func, ast.Name):
+            called = node.func.id
+        else:
+            continue
+        if called in guarded and not any(kw.arg == "tree" for kw in node.keywords):
+            unnamed.append(called)
+    assert not unnamed, (
+        f"these calls into guarded emitters name no tree, so the emitter guard "
+        f"cannot fire on any of them: {sorted(set(unnamed))}"
     )
 
 
@@ -779,16 +1000,38 @@ def test_a_taxonomy_nesting_deeper_than_the_bridge_encodes_is_refused_by_name():
     assert declared.tree.id in message
     assert str(rbxml.TREE_DEPTH) in message and str(rbxml.TREE_DEPTH + 1) in message
     with pytest.raises(rbxml.TreeTooDeep):
-        rbxml.routing_tree(deeper)
+        rbxml.routing_tree(deeper, tree_registry.EMPTY)
 
 
-def test_a_shallower_taxonomy_is_served_rather_than_refused():
-    """The indent is derived from the depth, so a template that drops a dimension
-    is a case this serves rather than a case it refuses."""
+def test_the_depth_the_bridge_encodes_and_the_depth_a_template_may_declare_are_one():
+    """Two modules, one number, and nothing but this holding them together.
+
+    The taxonomy loader refuses a template at any other depth and blames the XML
+    bridge's indentation for it; the bridge encodes that indentation. They cannot
+    import each other, since the bridge already imports the taxonomy, so the pair
+    is pinned here. Let them drift and a template loads at a depth the writer
+    emits at an indent no later locate finds, with each module's own tests green.
+    """
+    assert rbxml.TREE_DEPTH == taxonomy.SUPPORTED_TREE_DEPTH
+
+
+def test_the_bridge_refuses_only_deeper_and_the_template_loader_owns_the_rest():
+    """The bridge's own comparison is one sided, on purpose.
+
+    Deeper would emit at an indent no later locate finds, so the bridge refuses
+    it. Shallower is findable, because the indent is derived from the depth
+    rather than pinned, so the bridge does not refuse it and this asserts that it
+    does not. How many levels a TEMPLATE may declare is a different question with
+    a different owner: the loader takes one depth and refuses every other, which
+    is asserted where the loader lives. A ``Taxonomy`` is still a value a caller
+    can build without the loader, which is why this guard is not redundant.
+    """
     declared = taxonomy.default_taxonomy()
     shallower = replace(declared, tree_depth=rbxml.TREE_DEPTH - 1)
     rbxml.assert_bridge_can_serve(shallower)
-    assert rbxml.routing_tree(shallower).display == declared.tree.display
+    assert rbxml.routing_tree(shallower, tree_registry.EMPTY).display == (
+        declared.tree.display
+    )
 
 
 def test_the_intake_tree_is_pinned_and_survives_a_taxonomy_the_bridge_refuses():
@@ -800,9 +1043,29 @@ def test_the_intake_tree_is_pinned_and_survives_a_taxonomy_the_bridge_refuses():
     """
     declared = taxonomy.default_taxonomy()
     deeper = replace(declared, tree_depth=rbxml.TREE_DEPTH + 4)
-    intake = rbxml.intake_tree(deeper)
+    intake = rbxml.intake_tree(deeper, tree_registry.EMPTY)
     assert intake.display == declared.intake.display
     assert rbxml.INTAKE_DEPTH < rbxml.TREE_DEPTH
+
+
+def test_the_two_tree_constructors_cannot_produce_an_ungoverned_tree_by_default():
+    """These build the exact trees the registry exists to govern.
+
+    A default registry would hand a caller who omitted one argument a tree with
+    no governance at all, which passes the emitter guard in silence. That is the
+    same hole ``Tree.__post_init__`` refuses one level down, so offering it here
+    would be refusing the shape in one place and manufacturing it in the other.
+    A caller with nothing loaded yet says ``EMPTY``, which reads "nothing is
+    recorded, so every tree is still on the bridge" and can be checked.
+    """
+    declared = taxonomy.default_taxonomy()
+    for factory in (rbxml.routing_tree, rbxml.intake_tree):
+        with pytest.raises(TypeError):
+            factory(declared)
+        assert factory(declared, tree_registry.EMPTY).governed
+    with pytest.raises(TypeError):
+        rbxml.tree_for(declared.tree)
+    assert rbxml.tree_for(declared.tree, tree_registry.EMPTY).governed
 
 
 def test_the_intake_playlist_lands_at_the_pinned_indent():
@@ -933,6 +1196,54 @@ def test_every_locate_shape_names_a_primitive_that_exists():
             assert callable(getattr(rbxml, name, None)), (
                 f"the shape {shape!r} names {name!r}, which this module does not provide"
             )
+
+
+def test_the_section_probe_answers_from_the_document_and_not_from_a_constant():
+    """The one cover in the inventory nothing else exercises.
+
+    A cover proved only to be callable is a cover that can answer -1 for every
+    document ever handed to it and still be listed as the reason a call site does
+    not need its own scan.
+    """
+    doc = _tree_doc()
+    assert rbxml.playlists_start(doc) == doc.index(b"<PLAYLISTS>")
+    assert rbxml.playlists_start(b"<DJ_PLAYLISTS>\r\n</DJ_PLAYLISTS>\r\n") == -1
+
+
+def test_a_raw_angle_bracket_in_a_display_name_does_not_unanchor_the_document():
+    """The character class the depth walks used to be bounded by.
+
+    An attribute value may legally carry a '>', and an export written by an
+    escaper that handles only the other three characters carries one. Bounding an
+    open tag with a plain search for the next '>' stops inside the NAME, reads a
+    self closed node as an opening, and hands back a close tag belonging to an
+    ancestor. Both halves of the damage are asserted: the document stops
+    resolving at all, and a splice that still reports success lands in a DIFFERENT
+    folder from the one it was given.
+    """
+    doc = _xml_doc(
+        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
+        root_children=[
+            f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="0" Count="2">',
+            f'        <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="1">',
+            '          <NODE Name="Warmup > Peak" Type="1" KeyType="0" Entries="0"/>',
+            "        </NODE>",
+            '        <NODE Name="Quiet Room" Type="0" Count="1">',
+            f'          <NODE Name="{_esc(SUB_DISPLAY)}" Type="1" KeyType="0" Entries="0"/>',
+            "        </NODE>",
+            "      </NODE>",
+        ],
+    )
+    root = rbxml.root_node(doc)
+    assert root is not None, "one unescaped angle bracket un-anchored the whole document"
+    assert [child.name for child in rbxml.child_nodes(doc, root)] == [TREE_DISPLAY]
+
+    content = bytearray(doc)
+    result = rbxml.splice_into_subplaylist(content, FOLDER_DISPLAY, SUB_DISPLAY, [901])
+    assert result.warning is not None and result.inserted == 0, (
+        "the sub belongs to the OTHER folder, so this must warn rather than write"
+    )
+    assert bytes(content) == doc
 
 
 def test_a_name_search_is_never_allowed_to_default_to_byte_zero():
