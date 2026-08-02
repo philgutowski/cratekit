@@ -177,6 +177,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "awaiting-import": ExitCode.PENDING_HUMAN,
         "awaiting-human-action": ExitCode.PENDING_HUMAN,
         "blocked-by-pending-action": ExitCode.PENDING_HUMAN,
+        # U19. A run still holds tracks whose placement was decided and never
+        # landed, so closing it would report placed tracks that sit in no
+        # playlist. Its own slug rather than ``awaiting-import``: that one means
+        # a person has an export still to import, and this one means the routing
+        # pass has not been run, or has run and surfaced something nobody has
+        # answered for. Same code and same remediation token as its neighbours,
+        # because all three are the tool waiting on an act outside this process.
+        "routing-outstanding": ExitCode.PENDING_HUMAN,
         # ── The library's state ─────────────────────────────────────────────
         "session-lock-held": ExitCode.LIBRARY_BUSY,
         # The guarded writer's cross-process write lock. Distinct from the

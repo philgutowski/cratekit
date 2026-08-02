@@ -44,7 +44,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PENDING: dict[str, tuple[str, str]] = {
     "cratekit.intake.collection_xml": (
         "U37",
-        "the COLLECTION TRACK emitter that must never emit a <TEMPO> element",
+        "the COLLECTION TRACK emitter that must never emit a <TEMPO> element. "
+        "A SECOND OBLIGATION arrives with U19 and is registered here because U37 "
+        "owns the pipeline that owes it (P5): intake must record each new track's "
+        "routing intent AT THE MOMENT the placement is decided, through "
+        "cratekit.write.routing_pass.record_intents, rather than at the end of "
+        "the run. U19's whole mechanism hangs off that one call. Without it "
+        "nothing is ever deferred, every run closes with no outstanding tracks "
+        "because none were ever recorded, and the deferred-routing suite stays "
+        "green over a feature that never runs",
     ),
     "cratekit.core.restore": (
         "U32",

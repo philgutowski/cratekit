@@ -1083,6 +1083,29 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="routing_intents",
+        snapshot=SnapshotRole.COUPLED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="routing_intents.json",
+        why=(
+            "Where each new track's intended placement is written down at the "
+            "moment it is decided, which is long before the library holds a row "
+            "for that track. It describes ONE library's files and one library's "
+            "playlist rows, so a second installation inheriting it would try to "
+            "place tracks that library has never seen, and a reinstall must find "
+            "it beside the library rather than beside the installation that "
+            "recorded it. New state: the source system decides placement and "
+            "writes it in one pass and therefore has nothing to persist."
+            " COUPLED, and this is the entry where the coupling is the entire "
+            "point. A track is marked routed only after its membership row is "
+            "committed, so a restore that rolled the membership back while the "
+            "mark survived would leave a run reporting placed tracks that sit in "
+            "no playlist at all, with nothing left on disk that knows to place "
+            "them again."
+        ),
+    ),
+    StateFile(
         key="tombstones",
         snapshot=SnapshotRole.COUPLED,
         root=StateRoot.LIBRARY,

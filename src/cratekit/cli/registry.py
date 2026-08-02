@@ -1237,6 +1237,32 @@ ENTRIES: tuple[Entry, ...] = (
         output_schema="diagnostic/1",
         planned_in="U28",
     ),
+    # ── Deferred routing (U19) ──────────────────────────────────────────────
+    #
+    # APPENDED HERE RATHER THAN BESIDE ITS THREE SIBLINGS, deliberately. Several
+    # units land against this table at once, and a middle insertion is the shape
+    # a merge resolves silently: two entries appended to different halves of one
+    # tuple auto-merge, and the only thing that catches a name collision is the
+    # import-time check below plus the conformance suite's length assertion.
+    # An append conflicts textually, which is a conflict somebody reads.
+    Entry(
+        name="route.pending",
+        summary="place tracks whose routing was decided before the library held a row for them",
+        module="cratekit.write.routing_cli",
+        builder="build_pending",
+        handler_key="route.pending",
+        feature_rows=(13,),
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        writes=frozenset({"db_tree"}),
+        destructive=True,
+        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
+        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
+        # The same module its three ``route.*`` siblings name, so all four expire
+        # on one countdown. The engine behind it landed with U19; the CLI module
+        # did not, and U19's declared file list never contained one.
+        planned_in="U19",
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that
