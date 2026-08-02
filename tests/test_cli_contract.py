@@ -1189,7 +1189,12 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
     Decisions are kept separate below rather than mixed in here, because they are
     flags on the ROOT parser: a gate answer belongs to the invocation, not to the
     subcommand, so that one command can answer gates raised anywhere in it.
+
+    Every caller runs under the ``configured`` fixture, which is what lets the
+    file-taking verbs be handed a path inside the configured library rather than
+    a literal one this repository would then be shipping (R1).
     """
+    library = config.load().library.root
     return {
         "profile.show": [],
         "profile.set": ["slim"],
@@ -1203,6 +1208,18 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "job.show": ["no-such-job"],
         "job.resume": ["no-such-job"],
         "job.cancel": ["no-such-job"],
+        # U11. Same shape as the job verbs above: an identifier that is
+        # deliberately absent, so each verb must refuse with a code from the
+        # vocabulary rather than with a traceback, and an empty queue is the
+        # state a fresh install is genuinely in. The two file verbs take a path
+        # under the CONFIGURED library rather than a literal, because a literal
+        # here would be a real path on somebody's machine (R1).
+        "review.list": [],
+        "review.show": ["no-such-item"],
+        "review.resolve": ["no-such-item", "--verdict", "accepted"],
+        "review.clear": ["no-such-item"],
+        "review.export": [str(library / "review-export.json")],
+        "review.import": [str(library / "no-such-export.json")],
     }[entry.name]
 
 
@@ -1278,22 +1295,140 @@ def test_conformance_3_every_declared_gate_refuses_and_then_proceeds(entry, conf
         assert code == int(ExitCode.OK)
 
 
-@requires("cratekit.core.review")
+#: The two constructors that produce a comma separated writer. Named here so the
+#: two files that need this question ask it the same way.
+CSV_WRITER_NAMES = frozenset({"writer", "DictWriter"})
+
+
+def _constructs_a_csv_writer(source: str) -> list[str]:
+    """Every place this source builds a comma separated WRITER.
+
+    Two narrowings, and each one is there so the guard cannot fire on correct
+    code, which is how a guard gets routed around (P7).
+
+    WRITING ONLY. Reading stays legal. The anti-pattern R12 names is "a file the
+    user must hand edit", which is a file this product WROTE for them to edit. A
+    tracklist somebody pastes in from elsewhere is legitimate intake, and a guard
+    that refused it would be refusing the feature.
+
+    THE MODULE IS NAMED, not just the attribute. ``xml.writer`` and
+    ``something.DictWriter`` are perfectly ordinary names for things that are not
+    this, so the match requires either ``csv.<name>`` or a bare ``<name>`` in a
+    module that imported it from ``csv``.
+    """
+    tree = ast.parse(source)
+    imported = {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "csv"
+        for alias in node.names
+        if alias.name in CSV_WRITER_NAMES
+    }
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr in CSV_WRITER_NAMES:
+            if isinstance(func.value, ast.Name) and func.value.id == "csv":
+                found.append(f"line {node.lineno}: {ast.unparse(func)}")
+        elif isinstance(func, ast.Name) and func.id in imported:
+            found.append(f"line {node.lineno}: {func.id}")
+    return found
+
+
+def test_the_csv_writer_guard_bites_and_stays_quiet_on_correct_code():
+    """P7's own instruction: run a guard against correct code before shipping it.
+
+    Both import shapes are caught, and the two shapes that look like it and are
+    not, an unrelated attribute of the same name and a READ, are left alone.
+    """
+    assert _constructs_a_csv_writer("import csv\ncsv.writer(handle)\n")
+    assert _constructs_a_csv_writer("from csv import DictWriter\nDictWriter(handle, [])\n")
+    assert not _constructs_a_csv_writer("import xml\nxml.writer(handle)\n")
+    assert not _constructs_a_csv_writer("import csv\nfor row in csv.reader(handle):\n    pass\n")
+    for _path, source in package_sources():
+        assert not _constructs_a_csv_writer(source), (
+            "the guard fires somewhere in the tree it is meant to leave alone"
+        )
+
+
 @pytest.mark.parametrize(
     "entry", [e for e in ALL_ENTRIES if e.adjudicates], ids=lambda e: e.name
 )
-def test_conformance_4_adjudication_goes_through_the_review_queue(entry):
-    """Assertion 4, armed when the review queue lands.
+def test_conformance_4_adjudication_goes_through_the_review_queue(entry, configured):
+    """Assertion 4, armed now that the review queue has landed (U11).
 
-    It asserts against the STORE rather than against an import, because an import
-    proves nothing about use, and it additionally forbids a CSV under the run
-    directory: fourteen hand-edited review files are the anti-pattern this
-    replaces, and a regression would be visible as a file.
+    WHAT IS DRIVEN, STATED PLAINLY, in the same shape assertion 6 uses for the
+    destructive verbs. Every adjudicating verb here carries a ``planned_in``
+    marker, so there is no landed one to invoke. What is driven instead is the
+    shared surface all of them must go through, once per declared adjudicating
+    verb and UNDER THAT VERB'S OWN handler key: an item is offered, it is
+    addressable by that key alone, a real command line resolves it, and a third
+    independent open of the store sees the verdict. That is behaviour rather than
+    an existence check, and it is the strongest thing available until the first
+    adjudicating verb lands.
+
+    The static half is what bites afterwards, with no edit to this file: the
+    moment a verb's module exists, its own source is walked for a comma separated
+    writer. The previous version of this test asserted ``hasattr(review,
+    "list_items")``, which its own docstring already claimed was an assertion
+    against the store; an attribute lookup would have passed with every call site
+    deleted.
     """
     import importlib
 
     review = importlib.import_module("cratekit.core.review")
-    assert hasattr(review, "list_items")
+
+    queue = review.adjudicated_queues()[0]
+    with review.open_store(configured) as store:
+        item = review.offer(
+            store,
+            queue=queue,
+            kind="conformance",
+            identity={"handler": entry.handler_key},
+            payload={"handler": entry.handler_key},
+            options=(review.Option(option_id="opt-one", summary="the one candidate"),),
+            handler_key=entry.handler_key,
+        )
+        assert item.verdict is None
+        addressed = review.list_items(store, handler_key=entry.handler_key).items
+        assert [held.item_id for held in addressed] == [item.item_id], (
+            f"{entry.name} declares that it adjudicates, and the queue cannot "
+            f"show what it produced under its own key"
+        )
+
+    code, out, err = drive(
+        [
+            "--output", "json", "review", "resolve", item.item_id,
+            "--verdict", "accepted", "--option", "opt-one",
+        ]
+    )
+    assert code == int(ExitCode.OK), err or out
+
+    with review.open_store(configured) as store:
+        settled = review.get(store, item.item_id)
+        assert settled.verdict is review.Verdict.ACCEPTED
+        assert review.count_unresolved(store) == 0
+
+    # The replacement must not be the thing it replaces. Derived by WALKING the
+    # declared review directory rather than by naming the database, so a second
+    # file added beside it is covered on the day it appears (P3).
+    for current, _directories, files in os.walk(config.state_path("review_queue", configured)):
+        for name in files:
+            assert not name.endswith(".csv"), (
+                f"the review queue itself wrote {name}, which is the hand edited "
+                f"file this whole surface replaces"
+            )
+
+    path = SRC_ROOT / Path(*entry.module.split(".")).with_suffix(".py")
+    if path.is_file():
+        offenders = _constructs_a_csv_writer(path.read_text())
+        assert not offenders, (
+            f"{entry.name} declares that it adjudicates and writes a comma "
+            f"separated file for a person to edit: {offenders}. Adjudication is a "
+            f"persisted review item (R12)."
+        )
 
 
 @pytest.mark.parametrize(

@@ -242,6 +242,32 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # to one would be worse than saying the sentence.
         "job-unknown": ExitCode.PRECONDITION,
         "job-schema-mismatch": ExitCode.PRECONDITION,
+        # U11, the review queue. Six slugs on one code, and the code is right for
+        # all six: none of them is the library refusing, none is upstream, and
+        # none is a command line the parser could have rejected. What differs is
+        # the SENTENCE, which is the whole reason a slug exists separately from a
+        # code: "no item has that identifier" and "that item is already decided"
+        # send a person to two different places.
+        "review-item-unknown": ExitCode.PRECONDITION,
+        # Not an error in the ordinary sense. It is the queue refusing to
+        # overwrite a decision somebody already made, and its remediation is to
+        # clear the verdict first, which is a deliberate second act.
+        "review-already-resolved": ExitCode.PRECONDITION,
+        # The split between an adjudication surface and a plain output, enforced.
+        # An output pushed into the queue would ask a person to confirm a result,
+        # and a queue nobody declared is a surface with no recorded reasoning.
+        "review-queue-undeclared": ExitCode.PRECONDITION,
+        "review-option-unknown": ExitCode.PRECONDITION,
+        "review-schema-mismatch": ExitCode.PRECONDITION,
+        # A selection that names nothing, names two things, or carries an empty
+        # identity. All three are "this does not pick out what you meant", and the
+        # empty-predicate case is the sharp one: it would answer a whole backlog.
+        "review-selection-invalid": ExitCode.PRECONDITION,
+        # An export or a decision store that cannot be read or written. Its own
+        # slug rather than the config one because the file is data a person may
+        # have carried between machines, and the fix is about that file rather
+        # than about this installation's configuration.
+        "review-file-unusable": ExitCode.PRECONDITION,
         "backup-acknowledgment-missing": ExitCode.ACK_REQUIRED,
         # U8. The acknowledgment cannot be MINTED here, which is a different
         # condition from it being absent when a session consulted it. Minting is

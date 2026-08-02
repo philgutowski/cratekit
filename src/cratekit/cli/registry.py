@@ -589,25 +589,30 @@ ENTRIES: tuple[Entry, ...] = (
         output_schema="job_state/1",
     ),
     # ── Review ──────────────────────────────────────────────────────────────
+    #
+    # U11 landed these against ``cratekit.cli.review`` rather than the
+    # ``cratekit.core.review_cli`` this table originally named, for the same
+    # reason U10 moved the job verbs: a verb module imports this registry, and
+    # KTD23 ranks anything under ``core`` below the CLI, so the original path
+    # could not have been written without an upward import. The plan's own file
+    # list for U11 says ``src/cratekit/cli/review.py``, which is what landed.
     Entry(
         name="review.list",
         summary="list every item awaiting a person's decision",
-        module="cratekit.core.review_cli",
+        module="cratekit.cli.review",
         builder="build_list",
         handler_key="review.list",
         emits=frozenset({"review_set"}),
         output_schema="review_set/1",
-        planned_in="U11",
     ),
     Entry(
         name="review.resolve",
         summary="record a verdict on a review item so it is never asked again",
-        module="cratekit.core.review_cli",
+        module="cratekit.cli.review",
         builder="build_resolve",
         handler_key="review.resolve",
         emits=frozenset({"review_set"}),
         output_schema="review_set/1",
-        planned_in="U11",
     ),
     # ── Intake ──────────────────────────────────────────────────────────────
     Entry(
@@ -1236,6 +1241,49 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
         planned_in="U28",
+    ),
+    # ── The rest of the review surface (U11) ────────────────────────────────
+    #
+    # Appended here rather than beside their two siblings above so that a branch
+    # landing beside this one conflicts TEXTUALLY rather than auto-merging into a
+    # tuple whose contents nobody re-read. The four verbs are what the plan's
+    # approach names beyond list and resolve: addressing one item, revoking a
+    # verdict, and the file for anyone who genuinely wants one.
+    Entry(
+        name="review.show",
+        summary="show one review item whole: its payload, its candidates, its verdict",
+        module="cratekit.cli.review",
+        builder="build_show",
+        handler_key="review.show",
+        emits=frozenset({"review_set"}),
+        output_schema="review_set/1",
+    ),
+    Entry(
+        name="review.clear",
+        summary="revoke a verdict, so a rejected item is asked about again",
+        module="cratekit.cli.review",
+        builder="build_clear",
+        handler_key="review.clear",
+        emits=frozenset({"review_set"}),
+        output_schema="review_set/1",
+    ),
+    Entry(
+        name="review.export",
+        summary="write the queue to a versioned file, verdicts included",
+        module="cratekit.cli.review",
+        builder="build_export",
+        handler_key="review.export",
+        emits=frozenset({"review_set"}),
+        output_schema="review_set/1",
+    ),
+    Entry(
+        name="review.import",
+        summary="take an exported queue back in, never overwriting a local verdict",
+        module="cratekit.cli.review",
+        builder="build_import",
+        handler_key="review.import",
+        emits=frozenset({"review_set"}),
+        output_schema="review_set/1",
     ),
 )
 
