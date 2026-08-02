@@ -321,6 +321,37 @@ DEFERRED_MODULES: frozenset[str] = frozenset({"web", "desktop"})
 #: obligation itself is registered there, against U20 (P5).
 ROUTING_CLI_UNIT = "U20"
 
+#: Where ``doctor.repair-paths`` lives, and the unit that lands it.
+#:
+#: IT WAS ``cratekit.cli.doctor`` AND U27, AND IT IS NOW NEITHER. The reasoning is
+#: written down rather than implied, in the same shape and for the same reason as
+#: ``ROUTING_CLI_UNIT`` above, because it is a judgement somebody may want to move
+#: again.
+#:
+#: The MODULE moved because the countdown that expires a ``planned_in`` marker
+#: keys on the module, not on the verb: the moment ``cratekit.cli.doctor`` exists,
+#: every entry naming it must lose its marker and satisfy the whole conformance
+#: suite. Doctor and status can; this one cannot, and not for a reason effort
+#: fixes. It declares the cloud-sync gate, which is ``explicit``, and conformance
+#: 3 requires a declared gate to refuse once and then to exit OK when it is
+#: answered. R34 makes an explicit gate answerable only by a separate recorded
+#: act, never inline in the invocation that discovered it, so the second drive
+#: refuses exactly like the first. It also writes ``db_metadata`` against a
+#: database that does not exist on a machine with no library, which is the same
+#: wall U19 hit and the reason the four routing verbs moved to U20.
+#:
+#: The UNIT is U37 because that is where path repair already lives:
+#: ``tests/_pending.py`` registers, against U37 and ``cratekit.intake``, that a
+#: path repair proposal is offered into the review queue rather than applied.
+#: Splitting the verb from the obligation that governs it would leave two units
+#: owning one feature row.
+#:
+#: THE MARKER IS NOT THE RECORD. ``scripts/board.py`` reads ``tests/_pending.py``
+#: and nothing else, and that file already carries U37's path-repair obligation,
+#: so this constant is a convenience for the reader (P5).
+REPAIR_CLI_MODULE = "cratekit.intake.repair_cli"
+REPAIR_CLI_UNIT = "U37"
+
 
 # ---------------------------------------------------------------------------
 # The verbs
@@ -393,7 +424,6 @@ ENTRIES: tuple[Entry, ...] = (
         interactive=True,
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
-        planned_in="U27",
     ),
     Entry(
         name="doctor",
@@ -404,12 +434,11 @@ ENTRIES: tuple[Entry, ...] = (
         feature_rows=(28,),
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
-        planned_in="U27",
     ),
     Entry(
         name="doctor.repair-paths",
         summary="repair recorded file paths the library can no longer resolve",
-        module="cratekit.cli.doctor",
+        module=REPAIR_CLI_MODULE,
         builder="build_repair_paths",
         handler_key="doctor.repair-paths",
         feature_rows=(17,),
@@ -422,7 +451,7 @@ ENTRIES: tuple[Entry, ...] = (
         destructive=True,
         doctor_checks=("library.mounted", "rekordbox.pins"),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
-        planned_in="U27",
+        planned_in=REPAIR_CLI_UNIT,
     ),
     Entry(
         name="status",
@@ -433,7 +462,6 @@ ENTRIES: tuple[Entry, ...] = (
         feature_rows=(28,),
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
-        planned_in="U27",
     ),
     Entry(
         name="login",
@@ -446,7 +474,6 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
         doctor_checks=("keychain.reachable",),
-        planned_in="U27",
     ),
     # ── The write session and its safety spine ──────────────────────────────
     Entry(
@@ -1415,6 +1442,9 @@ __all__ = [
     "ENTRIES",
     "FEATURES",
     "POLICY_ROWS",
+    "REPAIR_CLI_MODULE",
+    "REPAIR_CLI_UNIT",
+    "ROUTING_CLI_UNIT",
     "VERB_NAMES",
     "WRITE_SURFACES",
     "Entry",

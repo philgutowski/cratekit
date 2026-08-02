@@ -10,7 +10,7 @@ Each entry says what was found, why it was not fixed here, and what closes it.
 
 ## R-1. The commit hook is off by default on a fresh clone
 
-**Found:** during U6 verification, 2026-08-01.
+**Found:** during U6 verification, 2026-08-01. **CLOSED 2026-08-02, by U27.**
 
 `scripts/scan_repo.py` is wired as a pre-commit hook and as a CI job. The hook
 is the one that matters, because a personal literal or a credential that reaches
@@ -26,12 +26,23 @@ so.
 **Partly fixed here:** a `dev` extra now carries pre-commit, pytest, and ruff, so
 `pip install -e '.[dev]'` makes the documented setup executable.
 
-**Still open:** nothing verifies the hook is actually installed in a given clone.
-Installing the tool is not the same as installing the hook.
+**How it is closed.** Doctor's `repo.commit_hook` check resolves the git
+directory that owns the checkout, looks for `hooks/pre-commit`, and refuses when
+it is absent or does not dispatch to this repository's pre-commit configuration,
+naming the command that fixes it.
 
-**Closes when:** the doctor verb checks that `.git/hooks/pre-commit` exists and
-dispatches to this repository's configuration, and reports the exact command
-when it does not. Doctor lands in U27.
+Two details are worth carrying, because both are ways the same check gets
+written wrongly:
+
+- **It follows a worktree pointer.** A worktree's `.git` is a FILE naming a
+  per-worktree git directory, and that directory names the COMMON one, which is
+  where hooks actually live. A check that looked only for `.git/hooks` would
+  report every worktree as unhooked while the hook was installed and running,
+  and a guard that fires on correct setups is one people route around (P7).
+- **It says nothing at all on an installed package.** The answer is derived from
+  whether a `.git` sits beside the source tree, so a user who installed a wheel
+  gets an `info` line rather than a red report about a developer tool they do
+  not have. Noise is what stops a report being read.
 
 ---
 
@@ -137,7 +148,7 @@ registered in `tests/_pending.py` against the unit that lands it, so the skip is
 a countdown rather than a hole, and `tests/test_pending_units.py` fails the build
 the moment one of those modules appears.
 
-**Two of the four are now closed.**
+**Three of the four are now closed.**
 
 *U10's* landed with the job engine. Assertion 5 drives the engine rather than
 importing it.
@@ -163,11 +174,19 @@ name. `tests/test_write_session.py` additionally drives the same three refusals
 through a real destructive OPERATION, the backup restore, which does exist. The
 end-to-end drive through `cli.run` waits on the first destructive verb landing.
 
-**Still open:** U11's and U27's assertions remain existence checks against the
-review store and the doctor check registry.
+*U27's is closed here (2026-08-02).* Assertion 8's second half was
+`declared <= set(doctor.CHECK_KEYS)`, which is an existence check over a table
+and would have passed with every check function deleted. It now RUNS the doctor
+against the configured fixture and requires every key any verb declares to come
+back with an answer, and `tests/test_doctor.py` holds the stronger property
+underneath it: every run answers every declared key, in the declared order, so a
+check cannot quietly stop being reached.
 
-**Closes when:** U11 and U27 land. The unit that lands the module owns turning
-its assertion from existence into behaviour, in the same commit that removes the
+**Still open:** U11's assertion remains an existence check against the review
+store.
+
+**Closes when:** U11 lands. The unit that lands the module owns turning its
+assertion from existence into behaviour, in the same commit that removes the
 pending entry.
 
 ---
@@ -194,7 +213,7 @@ remembered.
 
 ## R-7. Backup pruning reclaims space only if the remote is configured to
 
-**Found:** during U35, porting the backup script.
+**Found:** during U35, porting the backup script. **CLOSED 2026-08-02, by U27.**
 
 The source system's prune passes a Google Drive option so the deleted archive
 folders bypass the provider's trash and stop counting against the quota
@@ -207,12 +226,23 @@ flag is meaningless on most providers and wrong on some. Baking a
 one-provider option into a command built for every provider is the shape this
 port exists to remove.
 
-**Still open:** nothing tells a user of that provider to set the equivalent.
-rclone supports the option per remote in its own configuration, so the setting
-exists; what is missing is the prompt.
+**How it is closed.** Doctor reports rather than the wizard asking, and the
+difference is deliberate: the wizard would ask once, at the moment a user is
+least likely to have configured a remote at all, while doctor asks the question
+again every time the answer could have changed.
 
-**Closes when:** the setup wizard asks, or doctor reports, that a remote whose
-provider trashes on delete has the per-remote option set. Both land in U27.
+The `backup.remote` check reads rclone's OWN configuration through
+`rclone config dump`, looks the configured remote up by name, and refuses when
+its type is one that trashes on delete and the per-remote no-trash option is not
+set. Reading the dump rather than `listremotes` is the part that makes it a real
+check: the question is not only whether the remote exists but how it is set up,
+and `listremotes` cannot answer that.
+
+**Three states that are not failures**, because a check that fires on correct
+installs is one people learn to ignore (P7): the backup module switched off, no
+remote configured at all, and rclone absent or its configuration unreadable. The
+first two are notes; the third is a note here and a failure under
+`binary.rclone`, which is the check that owns it.
 
 ---
 
@@ -487,8 +517,75 @@ all queue behind it. Recorded here rather than acted on, because relaxing a
 conformance rule that four waves have honored is a deliberate act and not a
 side effect of landing a CLI.
 
-**Closes when:** conformance 3 can be satisfied against a disposable database
-fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather
-than skips, so the battery runs either way and a supplied fixture strengthens it.
-The natural owner is U27, which lands doctor and is the unit that makes a machine
-ready.
+**U27 met the wall and did NOT close it, and found a second layer in it
+(2026-08-02).** `doctor.repair-paths` was declared against module
+`cratekit.cli.doctor` with `planned_in="U27"`, so landing doctor would have
+forced that verb to land too: the countdown that expires a `planned_in` marker
+keys on the MODULE, not on the verb. It could not land, and a database fixture
+would not have been enough.
+
+The second layer is the gate itself. `CLOUD_SYNC_UNREADABLE_GATE` is `explicit`,
+and R34 makes an explicit gate answerable only by a separate recorded act, never
+inline in the invocation that discovered it. Conformance 3 answers with
+`-d <gate>=<option>` on the same invocation, so `Gates.require` refuses it and
+the second drive returns `DECISION_REQUIRED` exactly like the first, on any
+machine, with or without a database. **Every verb writing `db_tree` carries that
+gate**, so the wall is two walls: one needs a disposable database, and the other
+needs conformance 3 to answer an explicit gate the way R34 says it must be
+answered, through a recorded decision and a resumed run.
+
+**What U27 did instead.** `doctor.repair-paths` now names module
+`cratekit.intake.repair_cli` and `planned_in="U37"`, through the
+`REPAIR_CLI_MODULE` and `REPAIR_CLI_UNIT` constants, on the reasoning that
+`tests/_pending.py` already registers path repair against U37 and
+`cratekit.intake`: splitting the verb from the obligation that governs it would
+have left two units owning one Feature Inventory row.
+
+**Closes when:** conformance 3 can drive BOTH halves. The database half is the
+`CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather than skips, so the
+battery runs either way and a supplied fixture strengthens it. The gate half is
+the assertion recording the decision through `crate run decide` and re-running
+with `--run`, which is the mechanism R34 declares and which nothing exercises
+end to end today. The natural owner is now U20, the first unit that must ship a
+destructive database verb regardless.
+
+---
+
+## R-14. Three read-modify-write cycles over one document, none of them locked
+
+**Found:** during U27, while hunting the shape the last two waves both shipped.
+
+`core/config.py` ships an `fcntl.flock` class whose docstring names this exact
+hazard, and the two units that ignored it lost real records. Three cycles in
+landed code have the same shape. None of them is new to this unit, and U27's own
+verbs sit on top of all three, which is why it is recorded here rather than
+carried in somebody's head:
+
+1. **`crate setup`.** Read the configuration, ask, write it back. Two concurrent
+   wizards each read the same document and the second write erases the first
+   set of answers while reporting success.
+2. **`crate profile set`.** The same cycle through `config.save`, landed in U5.
+   A lock taken by setup alone would not help: the two verbs would have to agree
+   on the lock, and only one of them would be holding it.
+3. **`secrets._index_add` / `_index_remove`.** The credential presence index is
+   the file doctor reads to answer "is this credential recorded" without
+   retrieving a value. Two `crate login` runs in parallel can lose an entry, and
+   the visible symptom is doctor reporting a credential the keychain does hold
+   as missing, which sends the user to record it again.
+
+**Not fixed here, and the reasoning is the point.** The right lock is around
+`config.save`'s whole cycle rather than around one caller, which is a change to a
+foundation module three other units are editing in this wave. And the obvious
+placement is wrong in a specific way: the wizard PROMPTS in the middle of its
+cycle, so a lock held across it would block a second process on a human typing.
+The correct shape is the one `load_from_path` already uses and documents, which
+is to decide once outside the lock and re-decide under it.
+
+**How likely, honestly.** All three are foreground interactive acts on a
+single-user installation. The damage is real and the window is small, which is
+exactly the profile of the two defects that shipped.
+
+**Closes when:** the configuration read-modify-write goes through one locked
+helper that every writer uses, and the credential index gets a declared lock
+entry in `STATE_FILES` beside the file it guards, in the shape `core/jobs.py`
+and `core/review.py` already use for theirs.

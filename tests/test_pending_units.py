@@ -43,13 +43,16 @@ EXPECTED_PENDING = frozenset(
         "cratekit.modules.reports",  # U34, R26's duplicate audit as review items
         "cratekit.adopt",  # U23, R26's adoption plan as review items
         "cratekit.intake",  # U37, path repair proposals as review items
-        "cratekit.cli.doctor",  # U27, the health check
         "path:skills",  # U28, the shipped operator skills
         "cratekit.cli.exit_codes",  # U38, the reserved exit-code vocabulary
         "cratekit.write.routing_cli",  # U20, the route.* verbs and the gated close
     }
 )
 
+# U27 removed ``cratekit.cli.doctor`` when the health check landed, which armed
+# the two guards gated on it: the containment report in ``tests/test_config.py``
+# and conformance assertion 8 in ``tests/test_cli_contract.py``.
+#
 # U8's two entries were removed here when ``cratekit.core.snapshot`` and
 # ``cratekit.core.session`` landed, which is the countdown working as designed.
 # ``cratekit.core.session`` appeared TWICE in the literal above. A set makes a

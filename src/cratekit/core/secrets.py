@@ -200,6 +200,20 @@ def _env_override(name: str) -> str | None:
     return os.environ.get(_env_name(name)) or None
 
 
+def environment_value(name: str) -> str | None:
+    """The opt-in environment value for ``name``, or None when it is not opted in.
+
+    Public so that a caller who needs to know whether the fallback has a value,
+    rather than whether the credential resolves, asks THIS module instead of
+    re-reading the two variables itself. There is exactly one rule about when the
+    environment may supply a credential, and a second reader spelling it again is
+    a second rule that will eventually disagree with this one: the fallback would
+    then be on for one caller and off for another with nothing in the config to
+    explain it.
+    """
+    return _env_override(str(name))
+
+
 def get(name: str) -> str:
     """Return the credential, or raise. Never returns None, never returns "".
 
@@ -416,6 +430,7 @@ __all__ = [
     "Remedy",
     "backend_available",
     "delete",
+    "environment_value",
     "exists",
     "get",
     "get_json",

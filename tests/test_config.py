@@ -902,18 +902,17 @@ def test_the_library_state_layout_carries_no_migration_because_nothing_wrote_ano
     )
 
 
-@requires("cratekit.cli.doctor")
 def test_doctor_reports_a_database_that_sits_outside_the_library_root(
     library, tmp_path, monkeypatch
 ):
-    """The other half of the containment rule, and the half U2 cannot arm alone.
+    """ARMED by U27. The other half of the containment rule.
 
     Refusing at load makes the consequence visible at setup, which is when the
     user can still move the database. It does nothing about the install where
     somebody accepted the consequence eighteen months ago and has since forgotten
     that their snapshots are copies across two filesystems rather than atomic
-    commits. Doctor is the run that has to keep saying so, and until it lands this
-    is registered against U27 rather than left as a hope.
+    commits. Doctor is the run that has to keep saying so, and it was registered
+    against U27 in the pending register rather than left as a hope in a docstring.
     """
     from cratekit.cli import doctor
 

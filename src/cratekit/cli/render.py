@@ -16,7 +16,7 @@ anything.
 
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Mapping
 
 from cratekit.cli import registry
 from cratekit.cli.output import Envelope
@@ -120,34 +120,112 @@ def install_command(entry: registry.Entry) -> str:
     return f"pip install '{registry.DISTRIBUTION}[{entry.extras}]'"
 
 
+def remedy_text(remedy: Remedy) -> str | None:
+    """The words for one token: a command when there is one, else the advice.
+
+    Extracted from :func:`remediation_line` so a caller holding a bare token can
+    reach the same rendering rather than growing a second table. The doctor is
+    that caller: it reports many findings at once, each with its own token, and a
+    private copy of this mapping in that module would be the second place a token
+    becomes words, which is exactly what D2 exists to prevent.
+
+    None when the token has neither, which is a defect this module's own
+    completeness test already fails on rather than a state a caller must handle.
+    """
+    return _COMMANDS.get(remedy) or _ADVICE.get(remedy)
+
+
 def remediation_line(cause: Cause) -> str:
     """One line telling the user what to do, built from the token."""
     remedy = cause.remediation.remedy
     if remedy is not None:
-        command = _COMMANDS.get(remedy)
-        if command:
-            return f"  fix: {command}"
-        advice = _ADVICE.get(remedy)
-        if advice:
-            return f"  fix: {advice}"
+        words = remedy_text(remedy)
+        if words:
+            return f"  fix: {words}"
     if cause.remediation.steps:
         return "  fix: " + cause.remediation.steps[0]
     return f"  fix: {meaning_of(cause.code).summary}"
 
 
-def render_cause(cause: Cause) -> list[str]:
-    """The human form of a failure: what happened, what to do, what caused it."""
-    lines = [f"{cause.reason}: {cause.message}", remediation_line(cause)]
+def render_cause(cause: Cause, *, summary_only: bool = False) -> list[str]:
+    """The human form of a failure: what happened, what to do, what caused it.
+
+    ``summary_only`` drops the remediation line and the steps, for the one caller
+    that is about to print the same information in a better shape immediately
+    below. A diagnostic verb whose payload carries checks lists every failure with
+    its own fix in the check table, so the remediation line above it, which falls
+    back to the FIRST step when the cause carries no token, prints one of those
+    failures a second time and reads as though it were the only one.
+    """
+    lines = [f"{cause.reason}: {cause.message}"]
+    if summary_only:
+        return lines + _inner_chain(cause)
+    lines.append(remediation_line(cause))
     for step in cause.remediation.steps:
         lines.append(f"    - {step}")
     if cause.remediation.doc:
         lines.append(f"  see: {cause.remediation.doc}")
+    return lines + _inner_chain(cause)
+
+
+def _inner_chain(cause: Cause) -> list[str]:
+    """The wrapped causes beneath this one, deepest last.
+
+    Always rendered, even in the summary form: a cause arriving at the boundary
+    with things under it means some layer added context, and dropping that is
+    dropping the only record of where the failure actually started.
+    """
+    lines: list[str] = []
     inner = cause.inner
     depth = 1
     while inner is not None:
         lines.append(f"  {'  ' * depth}caused by {inner.reason}: {inner.message}")
         inner = inner.inner
         depth += 1
+    return lines
+
+
+#: How a check's status is coloured in words. Statuses come from the payload, so
+#: an unrecognised one renders as itself rather than being dropped: a consumer
+#: that invented a fourth status is a defect to see, not a row to hide.
+_CHECK_MARK: Mapping[str, str] = {"ok": "ok  ", "fail": "FAIL", "info": "note"}
+
+
+def render_checks(envelope: Envelope) -> list[str]:
+    """The check table for a diagnostic verb, or nothing at all.
+
+    The five structured surfaces are rendered by this module rather than carried
+    as prose inside the envelope (R32), and the diagnostic surface is the one a
+    person reads directly: a doctor whose human output says only "failed" sends
+    the reader to parse JSON to find out what failed.
+
+    Gated on the schema rather than on the presence of a ``checks`` key, so a
+    later surface that happens to have one is not rendered in a shape that was
+    never designed for it.
+    """
+    if not envelope.schema.startswith("diagnostic/"):
+        return []
+    checks = envelope.data.get("checks")
+    if not isinstance(checks, (list, tuple)) or not checks:
+        return []
+    lines = [""]
+    for check in checks:
+        if not isinstance(check, Mapping):  # pragma: no cover - a malformed payload
+            continue
+        status = str(check.get("status", "?"))
+        lines.append(
+            f"  [{_CHECK_MARK.get(status, status)}] {check.get('key', '?')}: "
+            f"{check.get('detail', '')}"
+        )
+        token = check.get("remedy")
+        if not token:
+            continue
+        try:
+            words = remedy_text(Remedy(str(token)))
+        except ValueError:  # pragma: no cover - a token outside the vocabulary
+            words = None
+        if words:
+            lines.append(f"         fix: {words}")
     return lines
 
 
@@ -176,9 +254,11 @@ def render(envelope: Envelope) -> str:
         if pending.blocks:
             lines.append(f"  blocks: {', '.join(pending.blocks)}")
 
+    checks = render_checks(envelope)
     if envelope.cause is not None:
         lines.append("")
-        lines += render_cause(envelope.cause)
+        lines += render_cause(envelope.cause, summary_only=bool(checks))
+    lines += checks
 
     for warning in envelope.warnings:
         lines.append(f"warning [{warning.get('code', '?')}]: {warning.get('message', '')}")
@@ -216,4 +296,12 @@ def render_gate(cause: Cause) -> str:
     return "\n".join(lines) + "\n"
 
 
-__all__ = ["install_command", "remediation_line", "render", "render_cause", "render_gate"]
+__all__ = [
+    "install_command",
+    "remediation_line",
+    "remedy_text",
+    "render",
+    "render_cause",
+    "render_checks",
+    "render_gate",
+]

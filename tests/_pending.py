@@ -123,12 +123,6 @@ PENDING: dict[str, tuple[str, str]] = {
         "R36 says a tombstone is listable and revocable, and both sentences are "
         "false if the deletion pass keeps its own file instead",
     ),
-    "cratekit.cli.doctor": (
-        "U27",
-        "that a database acknowledged outside the library root is REPORTED on "
-        "every run, so the snapshot that is a copy rather than an atomic commit "
-        "stays visible long after the date somebody accepted it",
-    ),
     "path:skills": (
         "U28",
         "the shipped operator skills the skills lint runs over",

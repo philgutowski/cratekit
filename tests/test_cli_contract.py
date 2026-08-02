@@ -51,7 +51,6 @@ from cratekit.core.exit_codes import (
     band_of,
     meaning_of,
 )
-from tests._pending import requires
 from tests._source_guards import constructs_a_csv_writer
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -1221,6 +1220,19 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "review.clear": ["no-such-item"],
         "review.export": [str(library / "review-export.json")],
         "review.import": [str(library / "no-such-export.json")],
+        # U27. The wizard and the two reports take no positional argument at all:
+        # every answer the wizard needs is already recorded by the ``configured``
+        # fixture, so a drive here resolves each one from the file and reaches no
+        # prompt, which is the property that makes the ONE interactive verb
+        # scriptable rather than a hole in the non-interactive contract.
+        "setup": [],
+        "doctor": [],
+        "status": [],
+        # Named without a source on purpose. The value is never a command-line
+        # argument, so the drive exercises the refusal that names both ways of
+        # supplying one rather than a success that would have had to put a
+        # credential in the process listing.
+        "login": ["provider-session"],
     }[entry.name]
 
 
@@ -1575,15 +1587,25 @@ def test_conformance_8_anything_that_writes_declares_a_doctor_precondition(entry
         )
 
 
-@requires("cratekit.cli.doctor")
-def test_conformance_8_every_declared_check_key_exists_in_the_doctor_registry():
-    """Armed when doctor lands. Until then the keys are declarations only."""
+def test_conformance_8_every_declared_check_key_exists_in_the_doctor_registry(configured):
+    """ARMED by U27, as BEHAVIOUR rather than as an existence check.
+
+    Two halves, and the second is the one that matters. The first is static: a
+    verb may not declare a precondition nobody wrote, or it satisfies assertion 8
+    with a non-empty tuple while depending on nothing at all. The second RUNS the
+    doctor and requires every declared key to come back with an answer, because a
+    key that exists in a table and is never reached by a real run is the same
+    hole wearing the table's clothes.
+    """
     import importlib
 
     doctor = importlib.import_module("cratekit.cli.doctor")
     known = set(doctor.CHECK_KEYS)
     declared = {key for entry in registry.entries() for key in entry.doctor_checks}
     assert declared <= known, sorted(declared - known)
+
+    answered = {finding.key for finding in doctor.run(configured).findings}
+    assert declared <= answered, sorted(declared - answered)
 
 
 # ── parity ───────────────────────────────────────────────────────────────────
