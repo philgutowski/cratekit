@@ -13,7 +13,8 @@ choice, the profile, and the credentials are what stands between a fresh clone
 and a first successful write, and before this verb existed the only way to
 produce them was to hand-write a TOML file against a validation error message.
 
-FOUR PROPERTIES, EACH ANSWERING A WAY A WIZARD GOES WRONG.
+SIX PROPERTIES, EACH ANSWERING A WAY A WIZARD GOES WRONG. The last two arrived
+from a review that found the first four were not enough on their own.
 
 **Every answer has the same four sources, in one order: a flag, the existing
 configuration, a derived probe, then a question.** So a re-run changes nothing it
@@ -36,6 +37,28 @@ identity on every run would quietly re-record whatever disk happened to be
 mounted, which is the clone case arriving through the thing meant to catch it. An
 identity already recorded is kept unless the user names a new one explicitly.
 
+**And it is derived from a volume that actually HOLDS the configured root.**
+Guarding the re-derive alone was not enough, and the gap cost the whole
+assertion. ``preflight.containing_mount`` walks up to the deepest EXISTING
+ancestor, which is what makes it right for a library root that is a subdirectory
+of a mount and lethal here: with the drive unplugged the configured root does not
+exist, the walk climbs past the empty mount point to the boot disk, and the boot
+disk's identity is recorded as the library's. Every destructive verb's identity
+precondition then passes against the boot disk, and doctor reports four greens
+over it. So the derive refuses unless the configured root exists, and the only
+other way to record an identity is to name one.
+
+**NOTHING LIBRARY-SCOPED IS WRITTEN UNTIL THE VOLUME IS ASSERTED.** The active
+taxonomy is the one thing this verb writes beside the library, and it used to be
+written before anything checked which disk was there. Two consequences, both
+real: on macOS an occupied ``/Volumes/NAME`` makes the real volume mount at
+``/Volumes/NAME 1`` on its next attach, so a directory created there is
+permanently the wrong mount point; and the copied template is coupled state
+landing on a filesystem no snapshot of that library captures and no rollback
+reverts. The mount is resolved first now, through the same seams doctor answers
+with, and a volume the product cannot recognise as this library's is a refusal to
+write rather than a write somewhere else.
+
 **The rekordbox pin is PROPOSED and never adopted.** S2: a pin the software
 copies from whatever is installed refuses nothing, forever. The wizard reads the
 installed version and asks; an answer that is not a deliberate yes leaves the pin
@@ -55,13 +78,12 @@ import argparse
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
-from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from cratekit.cli import doctor, output, prompt, registry
 from cratekit.cli.output import Envelope
-from cratekit.core import config, preflight, profiles, rb_writer, secrets
+from cratekit.core import config, preflight, profiles, rb_writer, secrets, taxonomy
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope
 from cratekit.core.exit_codes import ExitCode, Remedy
 
@@ -91,7 +113,16 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
     )
     parser.add_argument("--staging", help="where fresh downloads land before they are moved")
     parser.add_argument("--profile", choices=profiles.PROFILE_NAMES, help="the module preset")
-    parser.add_argument("--taxonomy", help="which shipped taxonomy template to adopt")
+    # A CLOSED SET, exactly like the profile beside it. Without the choices, a
+    # typed name reached validation, was written to the configuration file, and
+    # was then RETURNED by the next run before any guard looked at it, so the
+    # only escape from one transposed letter was to hand-edit the TOML this verb
+    # exists to abolish.
+    parser.add_argument(
+        "--taxonomy",
+        choices=taxonomy.shipped_template_names(),
+        help="which shipped taxonomy template to adopt",
+    )
     parser.set_defaults(_handler=setup)
 
 
@@ -107,19 +138,19 @@ def template_names() -> tuple[str, ...]:
     template is offered on the day it is added and no edit is needed here (P3).
     The short name is the stable identifier configuration records; the display
     names inside the template belong to the template (R19).
+
+    The walk itself moved DOWN to ``core/taxonomy`` and this is now one line over
+    it. Doctor asks the same question, to refuse a configuration naming a
+    template nothing ships, and it cannot import this module: the wizard imports
+    doctor, so the arrow only runs one way. Two walks would let the wizard offer
+    a name the check rejects.
     """
-    found = []
-    for item in (resources.files("cratekit") / "templates").iterdir():
-        name = item.name
-        if name.startswith("taxonomy.") and name.endswith(".toml"):
-            found.append(name[len("taxonomy.") : -len(".toml")])
-    return tuple(sorted(found))
+    return taxonomy.shipped_template_names()
 
 
 def template_text(name: str) -> str:
     """The packaged text of one template. Raises when the name is not shipped."""
-    source = resources.files("cratekit") / "templates" / f"taxonomy.{name}.toml"
-    return source.read_text(encoding="utf-8")
+    return taxonomy.shipped_template_text(name)
 
 
 # ---------------------------------------------------------------------------
@@ -128,11 +159,23 @@ def template_text(name: str) -> str:
 
 
 def _refuse(
-    message: str, *, remedy: Remedy, detail: Mapping[str, Any] | None = None
+    message: str,
+    *,
+    remedy: Remedy,
+    detail: Mapping[str, Any] | None = None,
+    reason: str = "config-unusable",
 ) -> CratekitError:
+    """A refusal from the wizard, under a declared reason.
+
+    ``reason`` is a parameter because not everything this verb refuses is a
+    problem with the configuration document. Recording a volume identity for a
+    root that is not there is a fact about the LIBRARY, and it carries the slug
+    and therefore the exit code that already means exactly that, rather than
+    being filed under the config's.
+    """
     return CratekitError(
         Cause(
-            reason="config-unusable",
+            reason=reason,
             message=message,
             remediation=Remediation(remedy=remedy),
             scope=Scope.RUN,
@@ -279,13 +322,40 @@ class _Wizard:
         something: one of them reads another application's settings files. Passing
         the result would run every probe on every run, including the runs where
         the answer was recorded months ago and nothing needed asking.
+
+        A CLOSED SET IS CHECKED AGAINST EVERY SOURCE, not only against the
+        derived default. A recorded value outside the set was returned ahead of
+        the guard, so one transposed letter in a taxonomy name was written to the
+        file and then handed back by every later run: setup refused, its remedy
+        was to run setup, and the only way out was to hand-edit the document this
+        verb exists to abolish. A recorded value the set does not contain is
+        therefore treated as UNANSWERED, which is what makes a re-run repair it.
         """
         if flag:
+            if choices is not None and flag not in choices:
+                raise _refuse(
+                    f"{dotted} was given as {flag!r}, which is not one of "
+                    f"{', '.join(choices)}",
+                    remedy=Remedy.FIX_COMMAND_LINE,
+                    detail={"key": dotted, "given": flag, "choices": list(choices)},
+                )
             self.asked.append(f"{dotted} (from the command line)")
             return flag
         recorded = _get(self.document, dotted)
         if isinstance(recorded, str) and recorded.strip():
-            return recorded
+            if choices is None or recorded in choices:
+                return recorded
+            self.note(
+                f"setup.{dotted}",
+                f"recorded {dotted}",
+                doctor.Status.INFO,
+                (
+                    f"the recorded value {recorded!r} is not one of "
+                    f"{', '.join(choices)} and was replaced rather than kept; a "
+                    f"value outside the set cannot be corrected by any flag this "
+                    f"verb offers"
+                ),
+            )
         if default is None and probe is not None:
             default = probe()
         if choices is not None and default not in choices:
@@ -358,16 +428,50 @@ def _probe_db_path() -> str | None:
     return None
 
 
-def _resolve_volume_id(wizard: _Wizard, root: str, flag: str | None) -> str:
+def _resolve_volume_id(
+    wizard: _Wizard, root: str, flag: str | None, machine: doctor.Probes
+) -> str:
+    """The library's identity: named, kept, or read off the volume holding it.
+
+    Two guards rather than one, and the second is the one that was missing.
+
+    NEVER RE-DERIVED, because re-reading the identity on every run records
+    whatever disk is mounted, which is the restored clone arriving through the
+    check meant to catch it.
+
+    AND NEVER DERIVED FROM A VOLUME THAT DOES NOT HOLD THE ROOT.
+    ``containing_mount`` climbs to the deepest EXISTING ancestor, so an absent
+    library root does not fail the read, it succeeds against whatever is mounted
+    further up, which on every platform this ships for is the boot disk. Recorded
+    once, that identity is what every destructive verb then asserts, against the
+    disk holding the user's operating system. The configured root must therefore
+    exist before an identity is read from it, and a root that does not exist is a
+    refusal naming both ways forward: attach the volume, or supply the identity.
+
+    The identity provider comes from the run's ``Probes`` rather than from the
+    platform default here, so the volume this wizard reads is the volume doctor
+    reports on three lines later. Two probes for one disk is how one run says two
+    things about it.
+    """
     recorded = _get(wizard.document, "library.volume_id")
     if not flag and isinstance(recorded, str) and recorded.strip():
-        # NEVER re-derived. See the module docstring: re-reading the identity on
-        # every run is how a restored clone gets recorded as the library.
         return recorded
     if flag:
         wizard.asked.append("library.volume_id (from the command line)")
         return flag
-    provider = preflight.default_identity_provider()
+    provider = machine.identity_provider or preflight.default_identity_provider()
+    if not Path(root).is_dir():
+        raise _refuse(
+            f"the library root {root} does not exist, so there is no volume to "
+            f"read an identity from. Reading one anyway would record the identity "
+            f"of whatever filesystem is mounted above it, which on this machine "
+            f"is the boot disk, and every destructive refusal would then pass "
+            f"against that disk. Attach the library volume and run setup again, "
+            f"or supply the identity with --volume-id",
+            remedy=Remedy.MOUNT_LIBRARY_VOLUME,
+            detail={"key": "library.volume_id", "root": root},
+            reason="library-volume-unmounted",
+        )
     observed = provider(preflight.containing_mount(Path(root)))
     if observed:
         wizard.asked.append("library.volume_id (read from the mounted volume)")
@@ -382,14 +486,58 @@ def _resolve_volume_id(wizard: _Wizard, root: str, flag: str | None) -> str:
     )
 
 
-def _seed_taxonomy(wizard: _Wizard, cfg: config.Config) -> None:
+def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) -> None:
     """Copy the chosen template beside the database, once (S6).
 
     The shipped template is read-only packaged data; the ACTIVE one is a copy,
     which is what makes a library self-describing: a reinstall or a second
     machine resolves the same tree without re-answering the wizard, and a
     snapshot rolls the taxonomy back with the database it describes.
+
+    THE VOLUME IS ASSERTED BEFORE THE WRITE, and this is the only place in this
+    verb where that matters, because this is the only thing it writes beside the
+    library. Writing first and checking last put a ``.cratekit`` directory and a
+    coupled state file onto whatever filesystem happened to be at the configured
+    path, and then reported the copy green. Two costs, both permanent: the
+    directory becomes a leftover mount point, which is the first of the three
+    states ``core/preflight`` exists to tell apart and which makes the real
+    volume mount somewhere else on its next attach; and the template is coupled
+    state on a disk no snapshot of this library captures and no rollback reverts.
+
+    ``resolve_mount_state`` rather than ``assert_library_mounted``: this wants
+    the diagnosis rather than an exception, and the suite neutralizes the
+    asserting entry point everywhere, so a guard written on top of that one would
+    be a guard no test could see. What the diagnosis MEANS is
+    ``preflight.library_state_is_reachable``, which is the same call doctor makes
+    before reporting on this file: one rule, so the write and the report about
+    the write cannot disagree. It is why the rule is not "the state must be OK".
+    A platform with no identity adapter answers "identity unavailable" for every
+    volume it will ever see, so that rule would lock every such platform out of
+    its own library state, permanently, which is a guard firing on a correct
+    setup (P7).
     """
+    status = preflight.resolve_mount_state(
+        cfg.library.root,
+        cfg.library.volume_id,
+        identity_provider=machine.identity_provider,
+        mount_enumerator=machine.mount_enumerator,
+    )
+    if not preflight.library_state_is_reachable(status):
+        wizard.note(
+            "setup.taxonomy",
+            "active taxonomy template",
+            doctor.Status.FAIL,
+            (
+                f"nothing was written under {cfg.library.root}: the volume "
+                f"recorded for this library is not the one mounted there "
+                f"({status.state.value}, recorded {status.recorded_identity}, "
+                f"observed {status.observed_identity or 'nothing'}). The active "
+                f"template is state that belongs to the library, and this run "
+                f"would have put it on whichever filesystem is at that path"
+            ),
+            Remedy.MOUNT_LIBRARY_VOLUME,
+        )
+        return
     name = cfg.taxonomy.template
     path = config.state_path("taxonomy_active", cfg)
     try:
@@ -546,6 +694,12 @@ def setup(ctx: "Context") -> Envelope:
     document, provenance = existing_document()
     wizard = _Wizard(document, prompt.Prompter())
     args = ctx.args
+    # ONE description of this machine for the whole run. The wizard reads the
+    # volume identity through it, refuses to write library state through it, and
+    # hands it to doctor at the end, so the disk setup recorded, the disk it
+    # wrote to, and the disk doctor reports on are one disk observed once. Two
+    # probes over one run is how a report and the act it describes come apart.
+    machine = doctor.Probes()
 
     # Only when there is none. A document that arrived with a version has already
     # been through the migration ladder above, and stamping the current number
@@ -560,7 +714,11 @@ def setup(ctx: "Context") -> Envelope:
         question="Where is the music library",
     )
     _put(document, "library.root", root)
-    _put(document, "library.volume_id", _resolve_volume_id(wizard, root, args.volume_id))
+    _put(
+        document,
+        "library.volume_id",
+        _resolve_volume_id(wizard, root, args.volume_id, machine),
+    )
     _put(
         document,
         "library.db_path",
@@ -633,10 +791,10 @@ def setup(ctx: "Context") -> Envelope:
         f"{provenance} configuration written to {written}",
     )
 
-    _seed_taxonomy(wizard, cfg)
+    _seed_taxonomy(wizard, cfg, machine)
     _capture_credentials(wizard, cfg)
 
-    report = doctor.run(cfg)
+    report = doctor.run(cfg, probes=machine)
     findings = tuple(wizard.notes) + report.findings
     payload = {
         "checks": [finding.to_json() for finding in findings],

@@ -152,6 +152,22 @@ CONFIG_FILENAME = "config.toml"
 #: renamed, and nothing fails.
 VOLUME_IDENTITY_KEY = "library.volume_id"
 
+#: The key naming which SHIPPED taxonomy template a library adopted (S6).
+#:
+#: This module validates its SHAPE and never its membership, and the split is
+#: deliberate rather than lazy. Membership is "does a template of that name ship
+#: in this wheel", which only the taxonomy module can answer, and that module
+#: sits a layer above this one: a foundation file that imported it would invert
+#: the import direction the layering guard exists to keep. So the closed set is
+#: enforced where it can be, by the wizard offering the shipped names as choices
+#: and by doctor refusing a name nothing ships, and what is enforced here is the
+#: one property those two cannot recover from: a value shaped like a path, which
+#: is composed into a packaged resource name by the reader.
+TAXONOMY_TEMPLATE_KEY = "taxonomy.template"
+
+#: A shipped template's short name: a bare token, never a path fragment.
+_TEMPLATE_NAME_SHAPE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
 # Environment overrides. Exactly three, mirroring the source system's three,
 # and each one RELOCATES a configured value. None of them SUPPLIES one.
 #
@@ -714,6 +730,23 @@ STATE_FILES: tuple[StateFile, ...] = (
             "without retrieving one, which on macOS would raise the keychain's "
             "authorization prompt during a health check that is supposed to be "
             "unattended."
+        ),
+    ),
+    StateFile(
+        key="credential_index_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="credential_index.lock",
+        why=(
+            "A sibling lock serializing the read-modify-write of the presence "
+            "index beside it, for the reason the identification counter's lock "
+            "gives: a lock under a different root than the file it protects is a "
+            "lock two processes can each hold while both edit that file. Measured "
+            "before it existed: two processes recording one credential each left "
+            "the keychain holding both and the index naming one, in 23 of 25 "
+            "trials, and a lost name reads as 'not recorded', which sends a user "
+            "to re-record a credential the keychain already holds."
         ),
     ),
     StateFile(
@@ -1981,6 +2014,17 @@ def validate(data: Mapping) -> list[str]:
                 f"instead of passing it (R38)."
             )
 
+    template = _dig(data, TAXONOMY_TEMPLATE_KEY)
+    if template is not None and (
+        not isinstance(template, str) or not _TEMPLATE_NAME_SHAPE.match(template)
+    ):
+        problems.append(
+            f"{TAXONOMY_TEMPLATE_KEY} must be the short name of a shipped "
+            f"template, letters, digits, underscores and dashes only, found "
+            f"{template!r}. The name is composed into a packaged resource path, "
+            f"so a value carrying a separator would read some other file."
+        )
+
     profile_name = _dig(data, "profile.name")
     if profile_name is not None and profile_name not in profiles.PROFILE_NAMES:
         problems.append(
@@ -2715,6 +2759,7 @@ __all__ = [
     "SET_WORKSPACE_DIRNAME",
     "SQLITE_SIDECARS",
     "STATE_FILES",
+    "TAXONOMY_TEMPLATE_KEY",
     "VOLUME_IDENTITY_KEY",
     "AcquisitionConfig",
     "AnalysisConfig",

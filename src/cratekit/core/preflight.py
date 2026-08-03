@@ -369,6 +369,59 @@ def resolve_mount_state(
     )
 
 
+#: Whether the configured root may be treated as this library's own storage, per
+#: mount outcome. A TOTAL mapping over the enum, and three values rather than two.
+#:
+#: ``True`` and ``False`` are the obvious ones. ``None`` means the identity
+#: question could not be ASKED, which is not the same as being answered wrongly:
+#: a platform with no identity adapter answers None for every volume, mounted or
+#: not, so a two-valued table would either lock that platform out of its own
+#: library state entirely or hand it the same blanket yes it hands a machine with
+#: the wrong disk attached. For those two states the fallback is the only signal
+#: left, which is whether the configured root exists at all.
+_STATE_REACHABLE: dict[MountState, bool | None] = {
+    MountState.OK: True,
+    # The volume matched and the ROOT is not on it. Nothing library-scoped is
+    # under a path that is not there.
+    MountState.LIBRARY_PATH_MISSING: False,
+    MountState.NOT_MOUNTED: False,
+    MountState.MOUNTED_ELSEWHERE: False,
+    MountState.FOREIGN_VOLUME: False,
+    MountState.IDENTITY_UNAVAILABLE: None,
+    MountState.IDENTITY_NOT_RECORDED: None,
+}
+
+
+def library_state_is_reachable(status: MountStatus) -> bool:
+    """Whether library-scoped state at the configured root can be read or written.
+
+    ONE RULE WITH TWO CALLERS, and they are on opposite sides of the same
+    hazard. The wizard asks before it copies the active taxonomy beside the
+    library, because writing library state onto whatever filesystem happens to be
+    at that path creates a leftover mount point on the boot disk and leaves
+    coupled state where no snapshot of that library will ever capture it. Doctor
+    asks before it reports on the same file and on the session log, because a
+    path that is not there and a path on a disk that is not there produce
+    identical bytes, none, and reading the second as "nothing to report" is a
+    positive claim about a disk nobody looked at.
+
+    Two implementations of that rule would be two answers to one question, and
+    the disagreement would be a report that is green about a write it did not
+    make.
+
+    It is deliberately more permissive than the destructive gate:
+    ``assert_library_volume`` already treats an unreadable identity as tolerable
+    for non-destructive work, on the argument that the worst case there is a
+    wrong report rather than deleted music. Reading a template and copying one
+    are in that class. Deciding a DELETION is not, and that decision still goes
+    through the assertion above, which is stricter on purpose.
+    """
+    verdict = _STATE_REACHABLE[status.state]
+    if verdict is None:
+        return Path(status.configured_root).is_dir()
+    return verdict
+
+
 def assert_library_volume(
     configured_root: Path | str,
     recorded_identity: str | None,

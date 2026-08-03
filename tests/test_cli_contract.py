@@ -51,6 +51,7 @@ from cratekit.core.exit_codes import (
     band_of,
     meaning_of,
 )
+from tests import doctor_machines as machines
 from tests._source_guards import constructs_a_csv_writer
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -1588,14 +1589,13 @@ def test_conformance_8_anything_that_writes_declares_a_doctor_precondition(entry
 
 
 def test_conformance_8_every_declared_check_key_exists_in_the_doctor_registry(configured):
-    """ARMED by U27, as BEHAVIOUR rather than as an existence check.
+    """ARMED by U27, and the static half is all this one is.
 
-    Two halves, and the second is the one that matters. The first is static: a
-    verb may not declare a precondition nobody wrote, or it satisfies assertion 8
-    with a non-empty tuple while depending on nothing at all. The second RUNS the
-    doctor and requires every declared key to come back with an answer, because a
-    key that exists in a table and is never reached by a real run is the same
-    hole wearing the table's clothes.
+    A verb may not declare a precondition nobody wrote, or it satisfies assertion
+    8 above with a non-empty tuple while depending on nothing at all. That is a
+    table lookup and it is honest about being one; the behaviour is asserted by
+    the test below, which is a different property and was not one until the
+    review said so.
     """
     import importlib
 
@@ -1604,8 +1604,127 @@ def test_conformance_8_every_declared_check_key_exists_in_the_doctor_registry(co
     declared = {key for entry in registry.entries() for key in entry.doctor_checks}
     assert declared <= known, sorted(declared - known)
 
-    answered = {finding.key for finding in doctor.run(configured).findings}
-    assert declared <= answered, sorted(declared - answered)
+
+def test_conformance_8_every_declared_precondition_can_pass_and_can_refuse(configured):
+    """The behaviour half, written so a doctor that does no work cannot pass it.
+
+    WHAT THIS REPLACED WAS A TAUTOLOGY. ``CHECK_KEYS`` is derived from ``CHECKS``,
+    ``run`` is one finding per check, and every check returns its own key, so
+    "every declared key comes back with an answer" is identically the existence
+    check on the line above it, computed the expensive way. A stub doctor
+    emitting one empty ``Finding`` per key satisfied both halves while observing
+    nothing at all, and the same property was already asserted in
+    ``tests/test_doctor.py``.
+
+    So the assertion is now a COMPARISON BETWEEN TWO RUNS over the same
+    configuration, on two machines that differ only in their seams:
+
+    * on a machine where nothing is broken, no declared precondition refuses, or
+      the check fires on a correct install and gets worked around (P7);
+    * on a machine where each of those preconditions IS broken, every one of them
+      refuses. That is this module's own sentence, "a check that cannot fail is
+      not a check", applied to the exact set of keys some verb has declared it
+      depends on.
+
+    Neither half can be satisfied by a constant. A check that always answers OK
+    fails the second, one that always refuses fails the first, and one that
+    answers with an empty finding fails the shape assertion under both.
+    """
+    import importlib
+
+    doctor = importlib.import_module("cratekit.cli.doctor")
+    declared = {key for entry in registry.entries() for key in entry.doctor_checks}
+    assert declared, "no verb declares a precondition; the walk is broken, not the tree"
+
+    # The shared fixture is a machine that has been SET UP, which is deliberately
+    # not the same as one that is healthy: it records no rekordbox pin, because
+    # a pin is never adopted on a user's behalf (S2). The healthy run needs one,
+    # so it is added here rather than in the fixture, where it would quietly make
+    # every other conformance drive assert against a state a fresh install is not
+    # in.
+    document = dict(configured.to_toml_dict())
+    document["rekordbox"] = {
+        "pinned_app_version": machines.INSTALLED_APP_VERSION,
+        "validated_on": "2026-08-01",
+    }
+    cfg = config.from_dict(document)
+
+    healthy = {f.key: f for f in doctor.run(cfg, probes=machines.green()).findings}
+    broken = {f.key: f for f in doctor.run(cfg, probes=machines.hostile()).findings}
+
+    assert _precondition_problems(declared, healthy, broken) == []
+
+
+def _precondition_problems(declared, healthy, broken) -> list[str]:
+    """Every way two reports fail to show a precondition that did work.
+
+    A function rather than a loop inside the assertion so the guard itself can be
+    driven against the evasion it exists to reject, which is the half of a guard
+    that keeps getting skipped: running it against correct code proves it does
+    not fire, and proves nothing about what it catches.
+    """
+    from cratekit.cli.doctor import Status
+
+    problems: list[str] = []
+    for key in sorted(declared):
+        if key not in healthy or key not in broken:
+            problems.append(f"{key} was not answered on both machines")
+            continue
+        for finding in (healthy[key], broken[key]):
+            if not finding.title.strip():
+                problems.append(f"{key} answered with no title")
+            if len(finding.detail.strip()) <= 20:
+                problems.append(
+                    f"{key} answered with nothing that says what was observed: "
+                    f"{finding.detail!r}"
+                )
+        if healthy[key].status is Status.FAIL:
+            problems.append(
+                f"{key} refuses on a machine where nothing is broken, so it fires "
+                f"on a correct install: {healthy[key].detail}"
+            )
+        if broken[key].status is not Status.FAIL:
+            problems.append(
+                f"{key} is declared as a precondition by "
+                f"{sorted(e.name for e in registry.entries() if key in e.doctor_checks)} "
+                f"and does not refuse on a machine where it is broken, so no verb "
+                f"declaring it is gated on anything: {broken[key].detail}"
+            )
+        elif broken[key].remedy is None:
+            problems.append(f"{key} refuses with no remedy")
+    return problems
+
+
+def test_conformance_8_rejects_a_doctor_that_answers_without_working():
+    """The evasion, run against the guard.
+
+    A doctor emitting one empty ``Finding`` per key satisfied the assertion this
+    replaced: the keys all came back, the report had the right length, and
+    nothing had been observed. Three stubs here, one per way of answering without
+    working, and the guard has to reject all three.
+    """
+    from cratekit.cli.doctor import Finding, Status
+
+    declared = {key for entry in registry.entries() for key in entry.doctor_checks}
+
+    def stub(status: Status, detail: str = "", title: str = "") -> dict:
+        return {
+            key: Finding(key=key, title=title, status=status, detail=detail)
+            for key in declared
+        }
+
+    empty = stub(Status.OK)
+    assert _precondition_problems(declared, empty, empty), "an empty answer passed"
+
+    always_green = stub(Status.OK, detail="everything is fine on this machine", title="t")
+    assert _precondition_problems(declared, always_green, always_green), (
+        "a check that can never refuse passed"
+    )
+
+    always_red = stub(Status.FAIL, detail="everything is broken on this machine", title="t")
+    assert _precondition_problems(declared, always_red, always_red), (
+        "a check that fires on a correct install passed"
+    )
 
 
 # ── parity ───────────────────────────────────────────────────────────────────

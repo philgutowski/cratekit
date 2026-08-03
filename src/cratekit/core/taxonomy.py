@@ -54,11 +54,18 @@ SUPPORTED_SCHEMA_VERSIONS = frozenset({1})
 # together is how a template starts loading at a depth the writer cannot emit.
 SUPPORTED_TREE_DEPTH = 3
 
+# How a shipped template is named on disk. The short name between the two is the
+# stable identifier configuration records, so both halves are declared once and
+# the walk below and the reader below cannot disagree about which files count.
+_TEMPLATE_PREFIX = "taxonomy."
+_TEMPLATE_SUFFIX = ".toml"
+
 # The name of the packaged default. Read-only data inside the wheel; a library's
 # ACTIVE template is a copy in its own state root (seam decision S6), which is
 # what lets one library be self-describing and lets a snapshot roll the taxonomy
 # back alongside the database it describes.
-DEFAULT_TEMPLATE = "taxonomy.default.toml"
+DEFAULT_TEMPLATE_NAME = "default"
+DEFAULT_TEMPLATE = f"{_TEMPLATE_PREFIX}{DEFAULT_TEMPLATE_NAME}{_TEMPLATE_SUFFIX}"
 
 
 class TaxonomyError(ValueError):
@@ -415,8 +422,39 @@ def default_taxonomy() -> Taxonomy:
     cannot vary at runtime. A library's active template is read by the caller and
     passed to :func:`load_taxonomy` as text.
     """
-    source = resources.files("cratekit") / "templates" / DEFAULT_TEMPLATE
-    return load_taxonomy(source.read_text(encoding="utf-8"))
+    return load_taxonomy(shipped_template_text(DEFAULT_TEMPLATE_NAME))
+
+
+def shipped_template_names() -> tuple[str, ...]:
+    """Every taxonomy template that ships in the wheel, by its short name.
+
+    Walked rather than listed, so a second template is offered by the wizard and
+    accepted by the health check on the day it is added (P3).
+
+    It lives HERE rather than in the wizard that first needed it because two
+    layers ask the same question and the answers have to be one answer: the
+    wizard offers the shipped names as a closed set, and doctor refuses a
+    configuration naming a template that is not one of them. A copy of this walk
+    in the CLI would let a name be offered that the check rejects, or accepted by
+    the check with nothing shipping it.
+    """
+    found = []
+    for item in (resources.files("cratekit") / "templates").iterdir():
+        name = item.name
+        if name.startswith(_TEMPLATE_PREFIX) and name.endswith(_TEMPLATE_SUFFIX):
+            found.append(name[len(_TEMPLATE_PREFIX) : -len(_TEMPLATE_SUFFIX)])
+    return tuple(sorted(found))
+
+
+def shipped_template_text(name: str) -> str:
+    """The packaged text of one template, by its short name.
+
+    Raises ``FileNotFoundError`` when nothing ships under that name, which is the
+    answer a caller wants: the shipped set is read-only data, so a name outside
+    it is a configuration error rather than a transient failure.
+    """
+    source = resources.files("cratekit") / "templates" / f"{_TEMPLATE_PREFIX}{name}{_TEMPLATE_SUFFIX}"
+    return source.read_text(encoding="utf-8")
 
 
 def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:

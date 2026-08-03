@@ -41,13 +41,15 @@ from cratekit.cli.verbs import login as login_verb
 from cratekit.core import backup_facts, binaries, config, profiles, secrets, session
 from cratekit.core.cause import CratekitError, Outcome
 from cratekit.core.exit_codes import ExitCode, Remedy
+from tests import doctor_machines
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
 
-#: A synthetic volume identity. Shaped like a real one and belonging to nobody,
-#: because R1 forbids a shipped artifact from carrying a real library string.
-VOLUME = "F1E2-D3C4"
+#: A synthetic volume identity, from the shared machine description so the two
+#: suites cannot describe two different disks. R1 forbids a shipped artifact from
+#: carrying a real library string, which is why it is invented rather than read.
+VOLUME = doctor_machines.VOLUME
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -125,27 +127,16 @@ def probes(**overrides) -> doctor.Probes:
     started from the real machine would pass or fail on whatever happens to be
     installed on it.
 
-    Built from the class captured at IMPORT time, so a test that replaces
-    ``doctor.Probes`` to feed a synthetic machine through the real dispatcher does
-    not thereby replace the thing this function calls to build one.
+    The baseline itself moved to ``tests/doctor_machines.py`` when the verb
+    conformance suite needed the same one: two copies of a machine description
+    are two machines, and the property conformance 8 asserts is a comparison
+    BETWEEN two runs, so the green one it compares against has to be this green
+    one. The module holds the class captured at import time for the reason this
+    function did, which is that a test replacing ``doctor.Probes`` to drive a
+    synthetic machine through the real dispatcher must not thereby replace the
+    thing that builds one.
     """
-    defaults = dict(
-        now=datetime(2026, 8, 2, tzinfo=timezone.utc),
-        python_version=(3, 12, 4),
-        requires_python=">=3.12,<3.14",
-        find_binary=lambda name: f"/opt/probe/bin/{name}",
-        identity_provider=lambda _path: VOLUME,
-        mount_enumerator=lambda: (),
-        process_lister=lambda: (),
-        keychain_available=lambda: True,
-        credential_recorded=lambda _name: True,
-        installed_app_version=lambda _cfg: "7.0.1",
-        binding_pin_problem=lambda _cfg: None,
-        rclone_remotes=lambda _rclone: {},
-        checkout_root=lambda: None,
-    )
-    defaults.update(overrides)
-    return RealProbes(**defaults)
+    return doctor_machines.green(**overrides)
 
 
 def seed_taxonomy(cfg: config.Config) -> None:
@@ -486,7 +477,17 @@ def test_an_adapter_missing_a_contract_member_is_refused(library, monkeypatch):
         ((3, 12, 1), "!=3.12.1", False),
         ((3, 12, 1), "~=3.12", None),
         ((3, 12, 1), ">=3.12.*", None),
-        ((3, 12, 1), "", True),
+        # A specifier that yields NO clause compares nothing, so it answers
+        # nothing. Returning True for these was the initialisation showing
+        # through: ``verdict`` started at True and a loop that ran no comparison
+        # handed it straight back, which made "this bound says nothing" and "this
+        # version satisfies it" the same answer.
+        ((3, 12, 1), "", None),
+        ((3, 12, 1), "   ", None),
+        ((3, 12, 1), ",,", None),
+        # And a bound that DOES compare still answers, including when only one of
+        # several clauses is meaningful.
+        ((3, 12, 1), ">=3.12,", True),
     ],
 )
 def test_the_interpreter_specifier_parser_answers_or_says_it_cannot(
@@ -497,6 +498,19 @@ def test_the_interpreter_specifier_parser_answers_or_says_it_cannot(
     guessing at a shape is how a bound stops being a bound.
     """
     assert doctor.satisfies(version, specifier) is expected
+
+
+def test_a_specifier_that_compares_nothing_is_not_a_pass():
+    """The evasion, run against the initialisation that permitted it.
+
+    ``verdict = True`` at the top of the loop meant any specifier the parser
+    walked without executing a comparison returned True. It is degenerate for a
+    real build backend, which is exactly why nothing caught it, and it is the
+    same shape as every other defect in this unit's review: a positive claim
+    reached by falling through rather than by observing anything.
+    """
+    for specifier in ("", "   ", ",", " , ", "\t"):
+        assert doctor.satisfies((3, 12, 5), specifier) is None, specifier
 
 
 def test_an_unsupported_interpreter_fails_and_an_unreadable_bound_does_not(library):
@@ -675,6 +689,36 @@ def test_a_backup_module_with_no_destination_is_a_note_rather_than_a_failure(lib
     assert finding.status is doctor.Status.INFO
 
 
+#: What pre-commit's own installer writes, reduced to the lines that decide
+#: whether the hook dispatches: the tool's hook implementation, the stage it was
+#: installed for, and the configuration it reads.
+INSTALLED_HOOK = (
+    "#!/usr/bin/env bash\n"
+    "# File generated by pre-commit: https://pre-commit.com\n"
+    "ARGS=(hook-impl --config=.pre-commit-config.yaml --hook-type=pre-commit)\n"
+    'exec pre-commit "${ARGS[@]}"\n'
+)
+
+
+def hooked_checkout(root: Path, body: str = INSTALLED_HOOK, *, config_file: bool = True):
+    """A synthetic checkout with a git directory, a hook, and its configuration."""
+    (root / ".git" / "hooks").mkdir(parents=True, exist_ok=True)
+    (root / ".git" / "hooks" / "pre-commit").write_text(body)
+    if config_file:
+        (root / ".pre-commit-config.yaml").write_text("repos: []\n")
+    return root
+
+
+def hook_finding(library, checkout) -> doctor.Finding:
+    return find(
+        doctor.run(
+            config.from_dict(document_for(library)),
+            probes=probes(checkout_root=lambda: checkout),
+        ),
+        "repo.commit_hook",
+    )
+
+
 def test_the_commit_hook_check_says_nothing_on_an_installed_package(library):
     """R-1 is a developer check. Reporting a missing developer tool to somebody
     who is not a developer is noise, and noise is what stops the report being read.
@@ -687,25 +731,73 @@ def test_the_commit_hook_check_says_nothing_on_an_installed_package(library):
 
     bare = library / "checkout"
     (bare / ".git" / "hooks").mkdir(parents=True)
-    missing = find(
-        doctor.run(
-            config.from_dict(document_for(library)),
-            probes=probes(checkout_root=lambda: bare),
-        ),
-        "repo.commit_hook",
-    )
+    missing = hook_finding(library, bare)
     assert missing.status is doctor.Status.FAIL
     assert "pre-commit install" in missing.detail
 
-    (bare / ".git" / "hooks" / "pre-commit").write_text("# generated by pre-commit\n")
-    present = find(
-        doctor.run(
-            config.from_dict(document_for(library)),
-            probes=probes(checkout_root=lambda: bare),
-        ),
-        "repo.commit_hook",
-    )
+    present = hook_finding(library, hooked_checkout(bare))
     assert present.status is doctor.Status.OK
+
+
+@pytest.mark.parametrize(
+    "body, config_file, because",
+    [
+        # The EVASION the substring test admitted: a hook whose entire content is
+        # a mention of the word. It runs nothing.
+        ("#!/bin/sh\n# pre-commit\nexit 0\n", True, "hook-impl"),
+        # A hook installed for a different stage, copied into this file.
+        (
+            "ARGS=(hook-impl --config=.pre-commit-config.yaml --hook-type=pre-push)\n",
+            True,
+            "--hook-type=pre-commit",
+        ),
+        # A hook that dispatches to ANOTHER repository's configuration, so these
+        # commits are scanned by somebody else's rules or by none.
+        (
+            "ARGS=(hook-impl --config=/elsewhere/.pre-commit-config.yaml "
+            "--hook-type=pre-commit)\n",
+            True,
+            "outside",
+        ),
+        # A hook naming a configuration this repository does not have.
+        (
+            "ARGS=(hook-impl --config=.pre-commit-other.yaml --hook-type=pre-commit)\n",
+            False,
+            "does not exist",
+        ),
+    ],
+)
+def test_a_hook_that_does_not_dispatch_to_this_repository_is_refused(
+    library, tmp_path, body, config_file, because
+):
+    """R-1's own sentence, made true.
+
+    The check CLAIMED it refused when the hook "does not dispatch to this
+    repository's pre-commit configuration" and tested ``"pre-commit" in body``,
+    which is satisfied by a comment. Each row here is a hook that passes that
+    substring and runs no scan over this repository's commits.
+    """
+    checkout = hooked_checkout(tmp_path / "checkout", body, config_file=config_file)
+    finding = hook_finding(library, checkout)
+    assert finding.status is doctor.Status.FAIL, finding.detail
+    assert because in finding.detail
+
+
+def test_the_repositorys_own_installed_hook_passes_the_check(library):
+    """The other half of every guard: it must also pass on correct code.
+
+    Run against this checkout's REAL hook when there is one, because a guard
+    tightened until only its fixtures pass it is a guard that fires on the
+    correct setup, and those get worked around rather than fixed (P7).
+    """
+    root = doctor._checkout_root()
+    if root is None:  # pragma: no cover - an installed wheel has no checkout
+        return
+    git_dir = doctor._git_dir(root)
+    hook = git_dir / "hooks" / "pre-commit" if git_dir else None
+    if hook is None or not hook.is_file():  # pragma: no cover - a clone with no hook
+        return
+    assert doctor._hook_dispatch_problem(hook.read_text(), root) is None
 
 
 def test_a_worktree_finds_the_hook_in_the_common_git_directory(tmp_path):
@@ -716,7 +808,7 @@ def test_a_worktree_finds_the_hook_in_the_common_git_directory(tmp_path):
     """
     common = tmp_path / "main" / ".git"
     (common / "hooks").mkdir(parents=True)
-    (common / "hooks" / "pre-commit").write_text("# generated by pre-commit\n")
+    (common / "hooks" / "pre-commit").write_text(INSTALLED_HOOK)
     per_tree = common / "worktrees" / "w1"
     per_tree.mkdir(parents=True)
     (per_tree / "commondir").write_text("../..\n")
@@ -945,11 +1037,13 @@ def test_the_wizard_never_re_derives_a_volume_identity_it_already_recorded(confi
     the act of running setup again.
     """
     wizard = setup_verb._Wizard(dict(configured.to_toml_dict()), silent())
-    kept = setup_verb._resolve_volume_id(wizard, str(configured.library.root), None)
+    kept = setup_verb._resolve_volume_id(
+        wizard, str(configured.library.root), None, probes()
+    )
     assert kept == VOLUME
 
     overridden = setup_verb._resolve_volume_id(
-        wizard, str(configured.library.root), "1111-2222"
+        wizard, str(configured.library.root), "1111-2222", probes()
     )
     assert overridden == "1111-2222", "an explicit answer is the only thing that replaces it"
 
@@ -1023,12 +1117,12 @@ def test_the_active_taxonomy_is_copied_once_and_never_overwritten(configured):
     run must not replace a template the user edited.
     """
     wizard = setup_verb._Wizard({}, silent())
-    setup_verb._seed_taxonomy(wizard, configured)
+    setup_verb._seed_taxonomy(wizard, configured, probes())
     path = config.state_path("taxonomy_active", configured)
     assert path.is_file()
 
     path.write_text("# edited by hand\n" + path.read_text())
-    setup_verb._seed_taxonomy(wizard, configured)
+    setup_verb._seed_taxonomy(wizard, configured, probes())
     assert path.read_text().startswith("# edited by hand")
 
 
@@ -1412,6 +1506,13 @@ def test_a_seam_default_is_a_plain_function_and_never_a_bound_method():
     """
     import types
 
+    # The two seams the review added answer through the module that owns the
+    # rule, rather than through a copy of it here. Asserted by identity, because
+    # a second reader of the same environment variables is a second rule that
+    # will eventually disagree with the first.
+    assert RealProbes().environment_credential is secrets.environment_value
+    assert RealProbes().binary_override_problem is binaries.override_problem
+
     for holder in (RealProbes(), prompt.Prompter()):
         for field_name in holder.__dataclass_fields__:
             value = getattr(holder, field_name)
@@ -1432,3 +1533,589 @@ def test_the_interactive_allowlist_still_holds_exactly_one_file():
 
     assert INTERACTIVE_ALLOWLIST == frozenset({"cratekit/cli/prompt.py"})
     assert (SRC_ROOT / "cratekit" / "cli" / "prompt.py").is_file()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. What the review found: a positive claim reached by falling through
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Every defect in this section has one shape. Something reported OK by arriving
+# at the end of a function rather than by observing the thing it claims, and each
+# one is asserted here against the machine that produced the false green as well
+# as against the machine where the answer really is yes.
+
+
+def test_the_wizard_will_not_read_an_identity_from_a_volume_that_is_not_there(tmp_path):
+    """BLOCKING. The reproduction: derive with the drive unplugged.
+
+    ``containing_mount`` climbs to the deepest EXISTING ancestor, so an absent
+    library root does not fail the read, it succeeds against the boot disk. That
+    identity was then recorded as the library's, and doctor reported four greens
+    over it: mounted, identity, taxonomy and containment, all true of the boot
+    disk. Every destructive verb's identity precondition passes there too, which
+    is R38 pointed at the wrong disk.
+    """
+    absent = tmp_path / "Volumes" / "not-attached"
+    boot = "BOOT-DISK-IDENTITY"
+    wizard = setup_verb._Wizard({}, silent())
+
+    with pytest.raises(CratekitError) as excinfo:
+        setup_verb._resolve_volume_id(
+            wizard, str(absent), None, probes(identity_provider=lambda _p: boot)
+        )
+
+    assert excinfo.value.cause.remediation.remedy is Remedy.MOUNT_LIBRARY_VOLUME
+    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
+    assert boot not in str(excinfo.value.cause.message), "the wrong identity was still read"
+    assert "--volume-id" in excinfo.value.cause.message
+
+
+def test_an_identity_is_derived_when_the_root_really_is_on_the_volume(tmp_path):
+    """The other half. A guard that also refuses the correct case is not shipped."""
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    wizard = setup_verb._Wizard({}, silent())
+
+    derived = setup_verb._resolve_volume_id(
+        wizard, str(root), None, probes(identity_provider=lambda _p: VOLUME)
+    )
+    assert derived == VOLUME
+    assert any("read from the mounted volume" in line for line in wizard.asked)
+
+
+def test_setup_refuses_end_to_end_rather_than_recording_the_boot_disk(tmp_path, monkeypatch):
+    """The same reproduction through the real dispatcher, with nothing written.
+
+    A refusal that still saved the document would be the defect with an error
+    message attached: the next run would read the recorded identity back and keep
+    it, because an identity already recorded is never re-derived.
+    """
+    absent = tmp_path / "Volumes" / "not-attached"
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(absent))
+    monkeypatch.setattr(doctor, "Probes", lambda: probes(identity_provider=lambda _p: "BOOT"))
+
+    code, _out, _err = drive(
+        [
+            "--output", "json", "setup",
+            "--library-root", str(absent),
+            "--db-path", str(absent / "db" / "master.db"),
+            "--staging", str(tmp_path / "staging"),
+            "--profile", "slim",
+            "--taxonomy", "default",
+        ]
+    )
+    assert code == int(ExitCode.LIBRARY_UNAVAILABLE)
+    with pytest.raises(config.ConfigMissing):
+        config.reset_cache()
+        config.load()
+
+
+def test_setup_writes_nothing_beside_the_library_until_the_volume_is_asserted(
+    tmp_path, monkeypatch
+):
+    """BLOCKING. The wizard wrote library state first and checked last.
+
+    Two permanent costs, and neither is visible in the report the run printed. On
+    macOS an occupied ``/Volumes/NAME`` sends the real volume to
+    ``/Volumes/NAME 1`` on its next attach, so the directory this created IS the
+    leftover mount point ``core/preflight`` names as the first of the three
+    states it exists to tell apart. And the copied template is COUPLED state on a
+    filesystem no snapshot of that library captures and no rollback reverts.
+    """
+    root = tmp_path / "Volumes" / "library"
+    (root / "Music").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    # The recorded identity is supplied, so BLOCKING 1 is not in play: what is
+    # under test is the write, against a disk that is not the recorded one.
+    monkeypatch.setattr(doctor, "Probes", lambda: probes(identity_provider=lambda _p: "0000"))
+
+    code, out, _err = drive(
+        [
+            "--output", "json", "setup",
+            "--library-root", str(root),
+            "--volume-id", VOLUME,
+            "--db-path", str(root / "db" / "master.db"),
+            "--staging", str(tmp_path / "staging"),
+            "--profile", "slim",
+            "--taxonomy", "default",
+        ]
+    )
+
+    assert code == int(ExitCode.PRECONDITION)
+    assert not (root / config.from_dict(document_for(root)).library.state_dirname).exists(), (
+        "setup created its own state directory on a volume it had not asserted"
+    )
+    assert not config.state_path("taxonomy_active", config.load()).exists()
+    checks = {c["key"]: c for c in json.loads(out)["data"]["checks"]}
+    assert checks["setup.taxonomy"]["status"] == "fail"
+    assert checks["setup.taxonomy"]["remedy"] == str(Remedy.MOUNT_LIBRARY_VOLUME)
+
+
+def test_the_wizard_still_writes_on_a_platform_that_reports_no_volume_identity(
+    configured,
+):
+    """The correct case on the platform the guard could most easily lock out.
+
+    ``preflight.null_volume_identity`` is what every platform with no adapter
+    resolves to and it answers None for every volume, so a guard demanding
+    MountState.OK would refuse to write the active taxonomy on that platform
+    forever, with nothing wrong. The configured root existing is the signal that
+    is actually available there, and it is the one used.
+    """
+    from cratekit.core import preflight
+
+    wizard = setup_verb._Wizard({}, silent())
+    setup_verb._seed_taxonomy(
+        wizard, configured, probes(identity_provider=preflight.null_volume_identity)
+    )
+    assert config.state_path("taxonomy_active", configured).is_file()
+    assert all(note.status is not doctor.Status.FAIL for note in wizard.notes)
+
+
+def test_the_wizard_writes_the_active_template_once_the_volume_is_the_recorded_one(
+    tmp_path, monkeypatch
+):
+    """The correct case still writes, or the guard is just a refusal to work."""
+    root = tmp_path / "Volumes" / "library"
+    (root / "Music").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    monkeypatch.setattr(doctor, "Probes", lambda: probes())
+
+    drive(
+        [
+            "--output", "json", "setup",
+            "--library-root", str(root),
+            "--volume-id", VOLUME,
+            "--db-path", str(root / "db" / "master.db"),
+            "--staging", str(tmp_path / "staging"),
+            "--profile", "slim",
+            "--taxonomy", "default",
+        ]
+    )
+    assert config.state_path("taxonomy_active", config.load()).is_file()
+
+
+# ── session.unresolved: an empty scan is not an answer ───────────────────────
+
+
+def test_an_unresolved_session_is_never_reported_clean_because_its_disk_is_gone(
+    configured, tmp_path
+):
+    """BLOCKING. The library holds a condemning record and doctor said none.
+
+    ``scan_log`` returns two empty tuples for a directory that does not exist and
+    for one it cannot read, which is the same pair it returns for a library that
+    has never opened a session. Turning that into "0 recorded sessions, none of
+    them open" is a positive claim about a disk nobody looked at, and it is the
+    exact shape the identity check was already fixed for.
+    """
+    record = session.SessionRecord(
+        session_id="s-9",
+        workflow="route.inbox",
+        started="2026-08-02T00:00:00+00:00",
+        state=session.SessionState.COMMITTED_UNVERIFIED,
+    )
+    session.write_record(record, configured)
+    mounted = find(doctor.run(configured, probes=probes()), "session.unresolved")
+    assert mounted.status is doctor.Status.FAIL
+    assert mounted.remedy is Remedy.RESTORE_FROM_SNAPSHOT
+
+    # THE VOLUME GOES AWAY, taking the log with it. The reproduction exactly: the
+    # record still exists, on a disk that is no longer at the configured path, so
+    # the scan finds no files and the old branch turned that into "0 recorded
+    # sessions, none of them open" over a library that cannot be vouched for.
+    configured.library.root.rename(tmp_path / "detached")
+    for machine in (
+        probes(),  # the identity still matches further up: the ROOT is missing
+        probes(identity_provider=lambda _p: "0000-0000", mount_enumerator=lambda: ()),
+    ):
+        finding = find(doctor.run(configured, probes=machine), "session.unresolved")
+        assert finding.status is not doctor.Status.OK, finding.detail
+        assert "not asserted" in finding.detail
+        assert "none of them open" not in finding.detail
+
+
+def test_an_unreadable_session_log_directory_is_not_an_empty_one(configured):
+    """The half no mount state can answer: the right disk, and no permission."""
+    log = session.log_dir(configured)
+    log.mkdir(parents=True, exist_ok=True)
+    (log / "s-1.json").write_text("{}")
+    log.chmod(0o000)
+    try:
+        finding = find(doctor.run(configured, probes=probes()), "session.unresolved")
+    finally:
+        log.chmod(0o700)
+    assert finding.status is doctor.Status.FAIL
+    assert str(log) in finding.detail
+
+
+def test_a_library_with_no_sessions_still_reports_a_clean_log(configured):
+    """And the OK says what it established, rather than what it failed to find."""
+    finding = find(doctor.run(configured, probes=probes()), "session.unresolved")
+    assert finding.status is doctor.Status.OK
+    assert "mounted" in finding.detail and "read" in finding.detail
+
+
+def test_whether_library_state_can_be_reached_is_total_over_the_mount_states():
+    """One table over a closed enum, three values, and only one of them is a yes.
+
+    Written as a table rather than as a branch for the reason the identity
+    verdict is: a chain of branches acquires a fall-through, and the fall-through
+    is what claims something about a disk nobody observed.
+
+    The third value is the interesting one. Two states mean the identity could
+    not be ASKED, not that it was answered wrongly, and a platform with no
+    identity adapter answers that way for every volume it will ever see. A
+    two-valued table would either lock that platform out of its own library state
+    forever or hand it the same yes it hands a machine with the wrong disk
+    attached, so those two fall back to the only signal left, which is whether the
+    configured root exists.
+    """
+    from cratekit.core import preflight
+
+    table = preflight._STATE_REACHABLE
+    assert set(table) == set(preflight.MountState)
+    assert [state for state, verdict in table.items() if verdict is True] == [
+        preflight.MountState.OK
+    ]
+    assert {state for state, verdict in table.items() if verdict is None} == {
+        preflight.MountState.IDENTITY_UNAVAILABLE,
+        preflight.MountState.IDENTITY_NOT_RECORDED,
+    }
+
+
+@pytest.mark.parametrize(
+    "state",
+    ["IDENTITY_UNAVAILABLE", "IDENTITY_NOT_RECORDED"],
+)
+def test_a_platform_with_no_identity_adapter_still_reaches_its_own_library(
+    tmp_path, state
+):
+    """The guard must not fire on the correct case, and this is the correct case.
+
+    ``null_volume_identity`` is what every platform without an adapter resolves
+    to, and it answers None for every volume, mounted or not. Under a rule that
+    demanded MountState.OK, such a machine could never write its active taxonomy
+    and doctor could never report on it, forever, with nothing wrong.
+    """
+    from cratekit.core import preflight
+
+    present = tmp_path / "library"
+    present.mkdir()
+    absent = tmp_path / "detached"
+
+    for root, expected in ((present, True), (absent, False)):
+        status = preflight.MountStatus(
+            state=getattr(preflight.MountState, state), configured_root=root
+        )
+        assert preflight.library_state_is_reachable(status) is expected
+
+
+# ── taxonomy.active: two claims, neither of them checked ─────────────────────
+
+
+def test_a_configured_template_that_ships_nowhere_is_refused(configured):
+    """The check said "template X is active" while comparing nothing to X.
+
+    ``config.validate`` accepts any bare token, so a transposed letter reached
+    the file and doctor reported it green with a bucket count read from whatever
+    copy happened to be beside the database.
+    """
+    seed_taxonomy(configured)
+    document = document_for(configured.library.root)
+    document["taxonomy"] = {"template": "no-such-template"}
+    finding = find(
+        doctor.run(config.from_dict(document), probes=probes()), "taxonomy.active"
+    )
+    assert finding.status is doctor.Status.FAIL
+    assert "no-such-template" in finding.detail
+    assert finding.remedy is Remedy.RUN_SETUP
+
+
+def test_the_active_template_is_not_reported_at_all_when_its_disk_is_absent(configured):
+    """FAIL here would send the user to setup, and setup would then copy a
+    template onto whatever filesystem is at that path, which is the write this
+    unit had to be stopped from making.
+    """
+    seed_taxonomy(configured)
+    gone = probes(identity_provider=lambda _p: "0000-0000", mount_enumerator=lambda: ())
+    finding = find(doctor.run(configured, probes=gone), "taxonomy.active")
+    assert finding.status is doctor.Status.INFO
+    assert finding.remedy is None
+
+
+def test_an_active_template_on_the_recorded_volume_reports_what_it_verified(configured):
+    seed_taxonomy(configured)
+    finding = find(doctor.run(configured, probes=probes()), "taxonomy.active")
+    assert finding.status is doctor.Status.OK
+    assert "on the recorded library volume" in finding.detail
+    assert "'default'" in finding.detail
+
+
+def test_a_taxonomy_typo_is_repaired_by_the_verb_whose_remedy_names_it(configured):
+    """The remedy has to be true. A recorded value outside the closed set was
+    returned by ``resolve`` ahead of the guard, so every re-run produced the same
+    refusal and the only escape was to hand-edit the TOML this verb abolishes.
+    """
+    document = dict(configured.to_toml_dict())
+    document["taxonomy"] = {"template": "defualt"}
+    wizard = setup_verb._Wizard(document, silent())
+
+    answer = wizard.resolve(
+        "taxonomy.template",
+        flag=None,
+        question="Which taxonomy template",
+        default="default",
+        choices=setup_verb.template_names(),
+    )
+    assert answer == "default"
+    assert any("is not one of" in note.detail for note in wizard.notes)
+
+
+def test_the_taxonomy_flag_is_a_closed_set_like_the_profile_beside_it(capsys):
+    """argparse refuses the typo before anything can persist it.
+
+    Executed against the build without the choices: ``--taxonomy defualt`` exited
+    30, wrote the misspelling into config.toml, and then every re-run with no
+    flag at all read it back and failed the same way forever.
+    """
+    code, _out, _err = drive(["setup", "--taxonomy", "defualt"])
+    assert code == int(ExitCode.USAGE)
+    # argparse owns this message and writes it to the process's own stream, which
+    # is the one thing in the product that is allowed to (KTD25 reserves status 2
+    # for it alone).
+    assert "invalid choice: 'defualt'" in capsys.readouterr().err
+
+
+def test_a_template_name_shaped_like_a_path_is_a_configuration_problem(library):
+    """What the foundation CAN assert about a name it may not resolve.
+
+    Membership is the taxonomy module's question and that module sits above
+    config, so validation asserts the shape instead: the name is composed into a
+    packaged resource path, and a separator in it would read some other file.
+    """
+    document = document_for(library)
+    document["taxonomy"] = {"template": "../../etc/passwd"}
+    assert any(config.TAXONOMY_TEMPLATE_KEY in p for p in config.validate(document))
+    assert config.validate(document_for(library)) == []
+
+
+# ── backup.remote: every provider nobody had gotten around to adding ─────────
+
+
+@pytest.mark.parametrize("kind", ["onedrive", "box", "pcloud", "dropbox"])
+def test_a_provider_with_a_recycle_bin_is_no_longer_green_by_default(configured, kind):
+    """The one-row table reported OK for every type that was not in it.
+
+    R-7 is entirely about providers that trash on delete, and four of them read
+    green over the exact condition the check exists to find, because the branch
+    said "no row, therefore fine".
+    """
+    document = document_for(configured.library.root)
+    document["backup"] = {"remote": "archive:"}
+    cfg = config.from_dict(document)
+    finding = find(
+        doctor.run(cfg, probes=probes(rclone_remotes=lambda _r: {"archive": {"type": kind}})),
+        "backup.remote",
+    )
+    assert finding.status is not doctor.Status.OK, finding.detail
+
+
+def test_a_provider_whose_no_trash_option_is_set_the_other_way_round_is_read_correctly(
+    configured,
+):
+    """Drive's option must be false and OneDrive's must be true. One shared "is
+    it false" test read one of the two backwards in both directions.
+    """
+    document = document_for(configured.library.root)
+    document["backup"] = {"remote": "archive:"}
+    cfg = config.from_dict(document)
+
+    hardened = probes(
+        rclone_remotes=lambda _r: {"archive": {"type": "onedrive", "hard_delete": "true"}}
+    )
+    assert find(doctor.run(cfg, probes=hardened), "backup.remote").status is doctor.Status.OK
+
+    trashing = probes(
+        rclone_remotes=lambda _r: {"archive": {"type": "onedrive", "hard_delete": "false"}}
+    )
+    assert find(doctor.run(cfg, probes=trashing), "backup.remote").failed
+
+
+def test_a_remote_type_with_no_row_says_so_rather_than_passing(configured):
+    document = document_for(configured.library.root)
+    document["backup"] = {"remote": "archive:"}
+    cfg = config.from_dict(document)
+    finding = find(
+        doctor.run(
+            cfg, probes=probes(rclone_remotes=lambda _r: {"archive": {"type": "s3"}})
+        ),
+        "backup.remote",
+    )
+    assert finding.status is doctor.Status.INFO
+    assert "no row" in finding.detail
+
+
+def test_a_remote_where_a_delete_is_a_delete_is_the_one_that_reports_green(configured):
+    document = document_for(configured.library.root)
+    document["backup"] = {"remote": "archive:"}
+    cfg = config.from_dict(document)
+    finding = find(
+        doctor.run(
+            cfg, probes=probes(rclone_remotes=lambda _r: {"archive": {"type": "local"}})
+        ),
+        "backup.remote",
+    )
+    assert finding.status is doctor.Status.OK
+
+
+def test_the_remote_path_form_resolves_to_the_remote_it_names(configured):
+    """``remote:path`` is rclone's own spelling. Stripping the trailing colon
+    left the path attached, so a correct destination failed as an unknown remote.
+    """
+    document = document_for(configured.library.root)
+    document["backup"] = {"remote": "archive:library/archive"}
+    cfg = config.from_dict(document)
+    finding = find(
+        doctor.run(
+            cfg,
+            probes=probes(rclone_remotes=lambda _r: {"archive": {"type": "drive", "use_trash": "false"}}),
+        ),
+        "backup.remote",
+    )
+    assert finding.status is doctor.Status.OK
+
+
+def test_an_unknown_remote_is_not_sent_to_a_verb_that_cannot_fix_it(configured):
+    """The wizard has no question, no flag and no code path for backup.remote."""
+    document = document_for(configured.library.root)
+    document["backup"] = {"remote": "archive:"}
+    cfg = config.from_dict(document)
+    finding = find(
+        doctor.run(cfg, probes=probes(rclone_remotes=lambda _r: {"other": {"type": "local"}})),
+        "backup.remote",
+    )
+    assert finding.status is doctor.Status.FAIL
+    assert finding.remedy is Remedy.FIX_CONFIG_VALUES
+    assert not any(
+        "backup" in argument for entry in registry.entries() if entry.name == "setup"
+        for argument in entry.doctor_checks
+    )
+
+
+# ── a broken override, a headless machine, and the metadata bound ────────────
+
+
+def test_a_set_but_broken_binary_override_gets_the_remedy_that_exists_for_it(
+    configured, tmp_path, monkeypatch
+):
+    """``binaries.Remedy.FIX_BINARY_OVERRIDE`` existed, ``render`` carried its
+    sentence, and no check ever emitted it. Reported as "not found on PATH,
+    install it", a user installs a binary they already have and the override
+    keeps winning, because ``find`` deliberately does not fall through.
+    """
+    broken = tmp_path / "not-executable"
+    broken.write_text("")
+    monkeypatch.setenv(binaries.env_var("ffmpeg"), str(broken))
+
+    # The REAL rule, from the module that owns it, against a real variable. The
+    # green machine answers this seam with None like every other, so a test that
+    # let it stand would be asserting about the fake.
+    machine = probes(
+        find_binary=lambda _n: None, binary_override_problem=binaries.override_problem
+    )
+    finding = find(doctor.run(configured, probes=machine), "binary.ffmpeg")
+    assert finding.status is doctor.Status.FAIL
+    assert finding.remedy is Remedy.FIX_BINARY_OVERRIDE
+    assert str(broken) in finding.detail
+
+
+def test_a_binary_that_is_simply_absent_still_says_install_it(configured):
+    finding = find(
+        doctor.run(configured, probes=probes(find_binary=lambda _n: None)), "binary.ffmpeg"
+    )
+    assert finding.remedy is Remedy.INSTALL_BINARY
+
+
+def test_a_headless_machine_that_opted_into_the_environment_fallback_is_not_red(
+    configured, monkeypatch
+):
+    """The check names the fallback as the alternative and never asked whether it
+    was in use, so a machine set up the documented way reported a failing keychain
+    beside two green credentials and exited PRECONDITION on the whole run.
+    """
+    monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
+    for credential in secrets.Credential:
+        monkeypatch.setenv(
+            f"CRATEKIT_CREDENTIAL_{str(credential).upper().replace('-', '_')}", "value"
+        )
+    seed_taxonomy(configured)
+
+    machine = probes(
+        keychain_available=lambda: False,
+        environment_credential=secrets.environment_value,
+    )
+    report = doctor.run(configured, probes=machine)
+    keychain = find(report, "keychain.reachable")
+    assert keychain.status is doctor.Status.INFO
+    assert not report.failures, [f.key for f in report.failures]
+
+
+def test_a_machine_with_no_keychain_and_no_fallback_is_still_red(configured):
+    finding = find(
+        doctor.run(configured, probes=probes(keychain_available=lambda: False)),
+        "keychain.reachable",
+    )
+    assert finding.status is doctor.Status.FAIL
+    assert finding.remedy is Remedy.INSTALL_KEYCHAIN_BACKEND
+
+
+def test_a_fallback_supplying_only_some_of_what_is_needed_is_still_red(
+    configured, monkeypatch
+):
+    """Half a credential set is not a working machine, and saying so is the
+    difference between a note and a report that hides a missing value.
+    """
+    monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
+    monkeypatch.setenv("CRATEKIT_CREDENTIAL_PROVIDER_SESSION", "value")
+
+    machine = probes(
+        keychain_available=lambda: False,
+        environment_credential=secrets.environment_value,
+    )
+    finding = find(doctor.run(configured, probes=machine), "keychain.reachable")
+    assert finding.status is doctor.Status.FAIL
+    assert "identify-key" in finding.detail
+
+
+# ── the containment report, which nothing in this file asserted at all ───────
+
+
+def test_a_database_outside_the_library_root_is_reported_on_every_run(
+    library, tmp_path, monkeypatch
+):
+    """The four-wave obligation ``tests/_pending.py`` held against this unit.
+
+    Refusing at load makes the consequence visible at setup, when the database
+    can still be moved, and does nothing at all about the install where somebody
+    accepted it eighteen months ago and has forgotten that their snapshots are
+    copies across two filesystems rather than one atomic commit.
+    """
+    document = document_for(library)
+    document["library"]["db_path"] = str(tmp_path / "elsewhere" / "master.db")
+    document["library"]["db_outside_root_acknowledged_on"] = "2026-08-01"
+    finding = find(
+        doctor.run(config.from_dict(document), probes=probes()), "library.db_containment"
+    )
+
+    assert finding.status is doctor.Status.INFO
+    assert str(tmp_path / "elsewhere" / "master.db") in finding.detail
+    assert str(library) in finding.detail
+    assert "2026-08-01" in finding.detail
+    assert "two filesystems" in finding.detail
+
+
+def test_a_contained_database_says_the_snapshot_commits_with_a_rename(configured):
+    finding = find(doctor.run(configured, probes=probes()), "library.db_containment")
+    assert finding.status is doctor.Status.OK
+    assert "under library.root" in finding.detail

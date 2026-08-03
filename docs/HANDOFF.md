@@ -19,8 +19,11 @@ which blocks which. Read BOARD.md for what to update when a merge lands.
 
 `main` carries U1 to U8, U10, U11, U13, U14, U15, U17, U18, U19, U31 and U35,
 plus the W1 through W6 hardening, the A4 whitelist addition, and U9's verdicts.
-Pushed to the private remote. **3131 passed, 16 skipped**, ruff clean,
-`scan_repo` clean.
+Pushed to the private remote. **3164 passed, 16 skipped**, ruff clean,
+`scan_repo` clean. (This line read 3131 until 2026-08-02: it was a count from an
+earlier revision that was never updated, and U27's own delta was then reported
+against it and overstated by 33. A number nobody re-measures is a number that
+becomes a claim.)
 
 **There are no unmerged branches and no worktrees.**
 

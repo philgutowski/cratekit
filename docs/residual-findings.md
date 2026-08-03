@@ -31,7 +31,17 @@ directory that owns the checkout, looks for `hooks/pre-commit`, and refuses when
 it is absent or does not dispatch to this repository's pre-commit configuration,
 naming the command that fixes it.
 
-Two details are worth carrying, because both are ways the same check gets
+**That last claim was prose before it was code, and the review said so.** The
+test was `"pre-commit" in body`, which a hook whose entire content is the comment
+`# pre-commit` satisfies, and so does a hook dispatching to a completely
+different repository's configuration. Both reported green while nothing scanned
+the commit, which is the state this finding exists to end. Three positive
+requirements now: the body invokes pre-commit's own `hook-impl`, it carries
+`--hook-type=pre-commit` so it is the stage it claims to be, and the
+configuration file it names resolves INSIDE this checkout and exists. Each is
+driven against a hook that passes the old substring and runs nothing.
+
+Two more details are worth carrying, because both are ways the same check gets
 written wrongly:
 
 - **It follows a worktree pointer.** A worktree's `.git` is a FILE naming a
@@ -174,13 +184,33 @@ name. `tests/test_write_session.py` additionally drives the same three refusals
 through a real destructive OPERATION, the backup restore, which does exist. The
 end-to-end drive through `cli.run` waits on the first destructive verb landing.
 
-*U27's is closed here (2026-08-02).* Assertion 8's second half was
-`declared <= set(doctor.CHECK_KEYS)`, which is an existence check over a table
-and would have passed with every check function deleted. It now RUNS the doctor
-against the configured fixture and requires every key any verb declares to come
-back with an answer, and `tests/test_doctor.py` holds the stronger property
-underneath it: every run answers every declared key, in the declared order, so a
-check cannot quietly stop being reached.
+*U27's is closed here (2026-08-02), and the first attempt at closing it was
+itself an existence check in disguise.* Assertion 8's second half was
+`declared <= set(doctor.CHECK_KEYS)`, an existence check over a table that would
+have passed with every check function deleted. Replacing it with "run the doctor
+and require every declared key to come back with an answer" changed nothing:
+`CHECK_KEYS` is derived from `CHECKS`, `run` returns one finding per check, and
+every check returns its own key, so the set of keys answered is the set of keys
+declared, always, on every machine. The replacement was the same lookup computed
+the expensive way, and a stub doctor emitting one empty `Finding` per key passed
+both halves while observing nothing.
+
+**What it asserts now is a comparison between two runs.** The same configuration
+is driven against two machines that differ only in their seams: one where nothing
+is broken, and one where every precondition is. Every key some verb declares must
+answer with a real title and a real detail on both, must NOT refuse on the
+healthy machine, and MUST refuse, with a remedy, on the broken one. That is this
+product's own sentence, "a check that cannot fail is not a check", applied to the
+exact set of keys a verb has declared it depends on. A check that always answers
+OK fails the second half, one that always refuses fails the first, and an empty
+finding fails both. The guard is driven against all three of those stubs in
+`test_conformance_8_rejects_a_doctor_that_answers_without_working`, because a
+guard exercised only against correct code proves nothing about what it catches.
+
+**What is still honestly not covered:** 9 of the doctor's 23 keys are declared by
+some verb, so 14 are outside this assertion entirely. Their behaviour is asserted
+in `tests/test_doctor.py` per check, but nothing forces a NEW check to be
+reachable or refusable unless a verb declares it.
 
 **Still open:** U11's assertion remains an existence check against the review
 store.
@@ -237,6 +267,18 @@ its type is one that trashes on delete and the per-remote no-trash option is not
 set. Reading the dump rather than `listremotes` is the part that makes it a real
 check: the question is not only whether the remote exists but how it is set up,
 and `listremotes` cannot answer that.
+
+**The first version of that table had one row and the check said OK for
+everything not in it**, which is the same defect wearing R-7's own clothes: every
+provider with a recycle bin that nobody had gotten around to adding, OneDrive,
+Box, pCloud and Dropbox among them, reported green over the exact condition this
+exists to find. The table is declared in both directions now. A type is either
+declared to trash, with the option that disables it AND the value that means
+disabled, because Drive's `use_trash` must be false while OneDrive's
+`hard_delete` must be true; or declared not to trash at all; or it has no row,
+and then the answer is "not asserted" rather than "fine". Two providers are
+declared to trash with no per-remote escape at all, which is a note naming the
+consequence rather than a refusal the user cannot act on.
 
 **Three states that are not failures**, because a check that fires on correct
 installs is one people learn to ignore (P7): the backup module switched off, no
@@ -487,8 +529,9 @@ against module `cratekit.write.routing_cli` with `planned_in="U19"`, and U19 add
 `route.pending` beside them. U19's declared file list never contained a CLI
 module, and the unit could not land one: `test_conformance_3` requires a landed
 gated verb to exit `OK` once its gate is answered, and every verb writing
-`db_tree` must declare the cloud-sync gate, so a destructive database verb cannot
-pass conformance on a machine with no database.
+`db_tree` must declare the cloud-sync gate, so a destructive database verb could
+not pass conformance. That was read at the time as a property of the product. It
+is not; see below.
 
 Left alone, closing issue #19 would have made all four markers name a unit that
 had already landed, and nothing would have noticed. `test_cli_contract.py` only
@@ -509,30 +552,36 @@ routing verbs ride along on work that unit already owes. `ROUTING_CLI_UNIT` and
 the `tests/_pending.py` entry both name U20 and need no edit.
 
 **This entry stays open only for the thing underneath it.** Conformance 3
-requires a landed gated verb to exit `OK` once its gate is answered, and every
-verb writing `db_tree` must declare the cloud-sync gate, so **no destructive
-database verb can land on a machine without a database**. That is not a fact about
-the routing CLI, it is a wall in front of every such verb, and U21, U24 and U32
-all queue behind it. Recorded here rather than acted on, because relaxing a
-conformance rule that four waves have honored is a deliberate act and not a
-side effect of landing a CLI.
+requires a landed gated verb to exit `OK` once its gate is answered, and it
+answers with `-d <gate>=<option>` on the same invocation that hit the gate. Every
+verb writing `db_tree` declares the cloud-sync gate, which is `explicit`, and R34
+says an explicit gate is answerable only by a separate recorded act and never
+inline. **So the assertion asks for a thing R34 forbids**, and it does so on any
+machine, with or without a database.
 
-**U27 met the wall and did NOT close it, and found a second layer in it
+That is a defect in the assertion rather than a wall in the product: the product
+behaves exactly as R34 says it must, and the drive is written against a rule that
+predates it. Naming it "a wall no destructive database verb can pass" was the
+wrong diagnosis, and it matters which one is recorded, because a wall gets worked
+around and an assertion gets fixed. U21, U24 and U32 all queue behind it either
+way.
+
+A separate branch is correcting `test_conformance_3` on exactly that reading. The
+DATABASE half of the wall is real and is unchanged: a destructive database verb
+still needs a disposable database to be driven end to end, which is what the
+`CRATEKIT_TEST_DB` convention substitutes for.
+
+**U27 met it and did NOT close it, and found the second half above
 (2026-08-02).** `doctor.repair-paths` was declared against module
 `cratekit.cli.doctor` with `planned_in="U27"`, so landing doctor would have
 forced that verb to land too: the countdown that expires a `planned_in` marker
 keys on the MODULE, not on the verb. It could not land, and a database fixture
-would not have been enough.
+would not have been enough, which is how the assertion defect above was found.
 
-The second layer is the gate itself. `CLOUD_SYNC_UNREADABLE_GATE` is `explicit`,
-and R34 makes an explicit gate answerable only by a separate recorded act, never
-inline in the invocation that discovered it. Conformance 3 answers with
-`-d <gate>=<option>` on the same invocation, so `Gates.require` refuses it and
-the second drive returns `DECISION_REQUIRED` exactly like the first, on any
-machine, with or without a database. **Every verb writing `db_tree` carries that
-gate**, so the wall is two walls: one needs a disposable database, and the other
-needs conformance 3 to answer an explicit gate the way R34 says it must be
-answered, through a recorded decision and a resumed run.
+`CLOUD_SYNC_UNREADABLE_GATE` is `explicit` and **every verb writing `db_tree`
+carries it**, so this is not one verb's problem. What has to change is the drive:
+it must record the decision through `crate run decide` and re-run, which is the
+mechanism R34 declares and which nothing exercises end to end today.
 
 **What U27 did instead.** `doctor.repair-paths` now names module
 `cratekit.intake.repair_cli` and `planned_in="U37"`, through the
@@ -551,41 +600,78 @@ destructive database verb regardless.
 
 ---
 
-## R-14. Three read-modify-write cycles over one document, none of them locked
+## R-16. Three read-modify-write cycles over one document, none of them locked
 
 **Found:** during U27, while hunting the shape the last two waves both shipped.
+**Renumbered from R-14 on 2026-08-02**, because `main` already carries an R-14
+and an R-15 from a commit this branch predates, and two findings under one
+number is a reference that resolves to the wrong thing. Nothing in the repository
+parses this document, so nothing caught the collision.
+
+**One of the three is CLOSED here. Two remain, and they are the two the
+reasoning below actually covers.**
 
 `core/config.py` ships an `fcntl.flock` class whose docstring names this exact
 hazard, and the two units that ignored it lost real records. Three cycles in
-landed code have the same shape. None of them is new to this unit, and U27's own
+landed code had the same shape. None of them was new to this unit, and U27's own
 verbs sit on top of all three, which is why it is recorded here rather than
-carried in somebody's head:
+carried in somebody's head.
 
-1. **`crate setup`.** Read the configuration, ask, write it back. Two concurrent
-   wizards each read the same document and the second write erases the first
-   set of answers while reporting success.
-2. **`crate profile set`.** The same cycle through `config.save`, landed in U5.
-   A lock taken by setup alone would not help: the two verbs would have to agree
-   on the lock, and only one of them would be holding it.
-3. **`secrets._index_add` / `_index_remove`.** The credential presence index is
-   the file doctor reads to answer "is this credential recorded" without
-   retrieving a value. Two `crate login` runs in parallel can lose an entry, and
-   the visible symptom is doctor reporting a credential the keychain does hold
-   as missing, which sends the user to record it again.
+**Closed here: the credential presence index.** `secrets._index_add` and
+`_index_remove` now hold an exclusive lock across the read and the write, and
+`credential_index_lock` is declared in `STATE_FILES` beside the file it guards,
+in the shape `core/jobs.py` and `core/review.py` already use. Three things made
+it separable from the two below rather than part of them: it is in a different
+file that no unit in this wave is editing, its cycle contains no prompt, and it
+is four lines. What made it the URGENT one is that its loss makes a report LIE.
+`secrets.exists` is doctor's `credential_recorded` probe, so an entry lost to a
+race becomes `credential.provider: not recorded` for a credential the keychain is
+holding, and the remedy sends the user to record it again. Measured before the
+fix: two processes recording one credential each left the keychain holding both
+and the index naming one in 23 of 25 trials, with both calls returning normally;
+three concurrent adds lost at least one in 40 of 40.
 
-**Not fixed here, and the reasoning is the point.** The right lock is around
-`config.save`'s whole cycle rather than around one caller, which is a change to a
-foundation module three other units are editing in this wave. And the obvious
-placement is wrong in a specific way: the wizard PROMPTS in the middle of its
-cycle, so a lock held across it would block a second process on a human typing.
-The correct shape is the one `load_from_path` already uses and documents, which
-is to decide once outside the lock and re-decide under it.
+**STILL OPEN, and both are the same document:**
 
-**How likely, honestly.** All three are foreground interactive acts on a
-single-user installation. The damage is real and the window is small, which is
-exactly the profile of the two defects that shipped.
+1. **`crate setup`.** Read the configuration, ask, write it back.
+   `cli/setup.py:201` reads through `config.load`, `cli/setup.py:778` writes
+   through `config.save`, and the questions are in between. Two concurrent
+   wizards each read the same document and the second write erases the first set
+   of answers while reporting success.
+2. **`crate profile set`.** The same cycle over the same file, landed in U5:
+   `cli/verbs/profile.py:40` reads through `config.load` and
+   `cli/verbs/profile.py:156` writes through `config.save`. A lock taken by setup
+   alone would not help, because the two verbs would have to agree on the lock and
+   only one of them would be holding it. That is what makes `config.save` the
+   placement rather than either caller.
+
+The call sites are given with file and line so the closing unit does not re-run
+the hunt. They will drift; the two functions will not.
+
+**Why not fixed here.** The right lock is around `config.save`'s whole cycle
+rather than around one caller, and that is a change to a foundation file three
+units are editing in this wave. The loss rate is comparable to the two defects
+that shipped in the last wave rather than worse than them.
+
+**A REQUIREMENT ON THE FIX, not a note about it.** `config.save` may not hold the
+lock across the wizard's prompt. Setup reads, asks a person questions, and then
+writes, so a lock spanning that cycle blocks a second process on somebody typing,
+for as long as they take. The closing change is therefore the decide-outside,
+re-decide-under-the-lock shape that `core/config.py:load_from_path` already uses
+and documents at length: answer the caller from the first pass, then take the
+lock, re-read what is actually on disk, and re-decide from that. Any fix that
+holds one lock from the first read to the final write satisfies the letter of
+this finding and is not shippable.
+
+**How likely, honestly.** Both are foreground interactive acts on a single-user
+installation. The damage is real and the window is small, which is exactly the
+profile of the two defects that shipped.
 
 **Closes when:** the configuration read-modify-write goes through one locked
-helper that every writer uses, and the credential index gets a declared lock
-entry in `STATE_FILES` beside the file it guards, in the shape `core/jobs.py`
-and `core/review.py` already use for theirs.
+helper that every writer uses, in the re-decide-under-the-lock shape above, with
+a test that drives two writers over one document and asserts neither set of
+answers is lost.
+
+**No unit owns this.** Deliberately not assigned: inventing an owner for an
+obligation nobody accepted is the inference R-13 spent a wave undoing. It needs
+an issue of its own.

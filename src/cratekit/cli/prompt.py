@@ -24,12 +24,21 @@ treat differently for a REQUIRED answer than for an optional one. Without that,
 a wizard driven from a detached job dies with a traceback naming an assertion in
 a test fixture instead of refusing with a remedy.
 
-**A secret is read without echoing it.** ``getpass`` is imported here and
-nowhere else, for the same reason the whole module is allowlisted. A credential
-typed at a visible prompt is a credential in a screen recording, and a
-credential passed on a command line is one in the process listing, which is why
-``crate login`` takes a file or an opted-in environment variable and never a
-value argument.
+**A secret is read without echoing it, WHERE THE PLATFORM CAN MANAGE THAT.**
+``getpass`` is imported here and nowhere else, for the same reason the whole
+module is allowlisted. A credential typed at a visible prompt is a credential in
+a screen recording, and a credential passed on a command line is one in the
+process listing, which is why ``crate login`` takes a file or an opted-in
+environment variable and never a value argument.
+
+The honest limit, inherited from ``getpass.getpass`` and not fixable here: on a
+host with no controlling terminal it falls back to reading standard input with
+ECHO ON, having warned on standard error. So the no-echo property is the
+terminal's, not this module's, and the guarantee this module actually makes is
+narrower and still worth making: the value never reaches a command line, a shell
+history, a log record, or any structured output. A caller that needs a secret on
+a host with no terminal should supply it through the file or the environment
+fallback rather than through a prompt that may echo.
 
 Layer note: CLI. It renders text a person reads, which is the one layer allowed
 to (D2).

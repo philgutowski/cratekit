@@ -81,6 +81,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -327,11 +328,22 @@ class Probes:
     python_version: tuple[int, ...] = field(default_factory=lambda: sys.version_info[:3])
     requires_python: str | None = field(default_factory=_declared_python_bound)
     find_binary: Callable[[str], str | None] = binaries.find
+    #: Why a binary was not found, when the reason is an override the user set.
+    #: A SECOND seam over the same subject rather than a richer return from the
+    #: first, because ``find`` is used by everything that runs a binary and its
+    #: contract is a path or nothing. What differs here is the REMEDY, and the
+    #: two answers are produced by one rule in the module that owns it.
+    binary_override_problem: Callable[[str], str | None] = binaries.override_problem
     identity_provider: preflight.IdentityProvider | None = None
     mount_enumerator: preflight.MountEnumerator | None = None
     process_lister: processes.ProcessLister | None = None
     keychain_available: Callable[[], bool] = secrets.backend_available
     credential_recorded: Callable[[str], bool] = secrets.exists
+    #: Whether the opted-in environment fallback is SUPPLYING a credential.
+    #: Asked through the module that owns the rule rather than by re-reading the
+    #: two variables here, so there is one answer to "may the environment supply
+    #: this" rather than one per reader.
+    environment_credential: Callable[[str], str | None] = secrets.environment_value
     installed_app_version: Callable[[config.Config | None], str | None] = (
         lambda cfg: rb_writer.read_installed_app_version(cfg=cfg)
     )
@@ -456,9 +468,16 @@ def satisfies(version: Sequence[int], specifier: str) -> bool | None:
     recognise returns None, which the caller reports as "could not be checked"
     rather than as a pass: guessing at a specifier shape is how a bound stops
     being a bound.
+
+    THE VERDICT STARTS AT "NOTHING WAS COMPARED" rather than at True, which is
+    the same rule one level down. Initialised True, a specifier that produced no
+    clause at all, an empty string or a run of separators, returned True having
+    compared nothing, so the answer for "this bound says nothing" was
+    indistinguishable from the answer for "this version satisfies it". Only a
+    clause that actually ran a comparison may make this anything but None.
     """
     running = tuple(version)
-    verdict = True
+    verdict: bool | None = None
     for clause in specifier.split(","):
         clause = clause.strip()
         if not clause:
@@ -471,7 +490,8 @@ def satisfies(version: Sequence[int], specifier: str) -> bool | None:
                 width = max(len(running), len(bound))
                 left = running + (0,) * (width - len(running))
                 right = bound + (0,) * (width - len(bound))
-                verdict = verdict and _COMPARATORS[symbol](left, right)
+                outcome = _COMPARATORS[symbol](left, right)
+                verdict = outcome if verdict is None else (verdict and outcome)
                 break
         else:
             return None
@@ -679,9 +699,17 @@ def _check_library_identity(inputs: _Inputs) -> Finding:
             f"{status.observed_identity}: {_MOUNT_DETAIL[status.state]}"
         )
     elif verdict is Status.INFO:
+        # The OBSERVED identity is named even here, where it is not the answer.
+        # ``--volume-id`` is the only way to replace a recorded identity, by
+        # design, and a user whose configuration carries the wrong one has no
+        # other way to learn what the right one is: nothing else in the product
+        # prints a volume's identity. A refusal that cannot be acted on is a
+        # refusal people work around.
         detail = (
             f"nothing at the configured root to compare: {_MOUNT_DETAIL[status.state]}. "
-            f"The recorded identity {status.recorded_identity} is intact"
+            f"The recorded identity {status.recorded_identity} is intact; the "
+            f"filesystem at {status.mount_point} reports "
+            f"{status.observed_identity or 'no identity'}"
         )
     else:
         detail = _MOUNT_DETAIL[status.state]
@@ -728,10 +756,59 @@ def _check_db_containment(inputs: _Inputs) -> Finding:
     )
 
 
+def _library_state_unreachable(inputs: _Inputs, what: str) -> str | None:
+    """Why library-scoped state may not be read here, or None when it may.
+
+    Both callers below report on a file that sits under the library root by
+    construction, and for both of them "the file is not there" and "the disk the
+    file lives on is not there" produce the same bytes: none. The rule for
+    telling those apart is ``core/preflight``'s, because that is the module that
+    owns what a mount outcome means, and because the wizard applies the same rule
+    before it WRITES one of these files. Two copies would be two answers.
+
+    The caller reports it as INFO, for the reason the mount check gives when it
+    defers to the identity check: the volume is one problem and it is reported
+    once, by the checks that own it. Reporting a missing template here would also
+    attach the wrong remedy, since running setup against an absent volume is the
+    write this unit had to be stopped from making.
+    """
+    status = inputs.mount()
+    if status is None or preflight.library_state_is_reachable(status):
+        return None
+    return (
+        f"not asserted: {what} lives on the library volume, and the volume "
+        f"question is unanswered ({status.state.value}), so nothing at the "
+        f"configured root could be read and nothing may be written there. The "
+        f"volume is reported by its own checks"
+    )
+
+
 def _check_taxonomy(inputs: _Inputs) -> Finding:
     key, title = "taxonomy.active", "active taxonomy template"
     if inputs.cfg is None:
         return _unchecked(key, title)
+    unreachable = _library_state_unreachable(inputs, "the active template")
+    if unreachable is not None:
+        return Finding(key=key, title=title, status=Status.INFO, detail=unreachable)
+    shipped = taxonomy.shipped_template_names()
+    named = inputs.cfg.taxonomy.template
+    if named not in shipped:
+        # ASSERTED rather than assumed, and it was assumed. The OK branch below
+        # claimed the configured template "is active" while comparing nothing to
+        # that name, so a configuration naming a template that does not ship read
+        # green: nothing rejected the name, and the file beside the database is
+        # whatever was copied there once, under whatever name.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"taxonomy.template names {named!r} and no template ships under "
+                f"that name; shipped: {', '.join(shipped)}. A re-run of setup "
+                f"replaces a recorded name the shipped set does not contain"
+            ),
+            remedy=Remedy.RUN_SETUP,
+        )
     path = config.state_path("taxonomy_active", inputs.cfg)
     try:
         text = path.read_text(encoding="utf-8")
@@ -765,8 +842,9 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
         title=title,
         status=Status.OK,
         detail=(
-            f"template {inputs.cfg.taxonomy.template!r} is active with "
-            f"{len(declared.buckets)} declared buckets"
+            f"an active template at {path}, on the recorded library volume, "
+            f"parses and declares {len(declared.buckets)} buckets; "
+            f"taxonomy.template names the shipped {named!r}"
         ),
     )
 
@@ -874,6 +952,28 @@ def _check_keychain(inputs: _Inputs) -> Finding:
             status=Status.OK,
             detail="a keychain backend that can store a credential is available",
         )
+    # THE FALLBACK THIS CHECK'S OWN MESSAGE NAMES IS ASKED ABOUT, rather than
+    # named and then ignored. A headless machine that opted in by name and set
+    # every variable is the documented shape for exactly this case, and it was
+    # painted red: the credential checks read green through the same fallback
+    # while this one failed the whole run on PRECONDITION. A check that refuses a
+    # configuration the product documents is one people learn to work around.
+    needed = _required_credentials(inputs)
+    supplied = [name for name in needed if inputs.probes.environment_credential(name)]
+    if needed and len(supplied) == len(needed):
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"no keychain backend resolves here and every credential this "
+                f"profile needs is supplied by the opted-in environment fallback "
+                f"({', '.join(needed)}). Nothing can be RECORDED until a backend "
+                f"is installed, which is what {secrets.ENV_ALLOW_ENV_CREDENTIALS} "
+                f"is for"
+            ),
+        )
+    outstanding = [name for name in needed if name not in supplied]
     return Finding(
         key=key,
         title=title,
@@ -882,6 +982,12 @@ def _check_keychain(inputs: _Inputs) -> Finding:
             "no keychain backend resolves on this machine. Credentials are never "
             "written to a plain file, so this installation cannot hold one until a "
             "backend is installed or the environment fallback is opted into by name"
+            + (
+                f". The fallback is supplying {', '.join(supplied)} and not "
+                f"{', '.join(outstanding)}"
+                if supplied
+                else ""
+            )
         ),
         remedy=Remedy.INSTALL_KEYCHAIN_BACKEND,
     )
@@ -913,6 +1019,21 @@ _CREDENTIAL_REMEDY: Mapping[str, Remedy] = MappingProxyType(
         "credential.recognition": Remedy.SET_CREDENTIAL,
     }
 )
+
+
+def _required_credentials(inputs: _Inputs) -> tuple[str, ...]:
+    """Every credential name some verb this profile switches on will spend.
+
+    Derived from the same table and the same registry question the per-credential
+    checks use, so the keychain check and the credential checks cannot disagree
+    about what this installation actually needs.
+    """
+    return tuple(
+        str(name)
+        for check, names in sorted(CREDENTIALS_BY_CHECK.items())
+        if inputs.required(check)
+        for name in names
+    )
 
 
 def _check_credential(key: str, inputs: _Inputs) -> Finding:
@@ -966,6 +1087,26 @@ def _check_binary(key: str, inputs: _Inputs) -> Finding:
     if found:
         return Finding(key=key, title=title, status=Status.OK, detail=found)
     override = binaries.env_var(name)
+    broken = inputs.probes.binary_override_problem(name)
+    if broken is not None:
+        # A SET override that does not point at an executable is its own failure
+        # and has its own remediation, which existed in the vocabulary and in the
+        # rendered advice and was emitted by nothing. Reported as "not found on
+        # PATH, install it", a user installs a binary they already have and the
+        # override keeps winning over it, because ``find`` deliberately does not
+        # fall through to PATH once an override is set.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL if inputs.required(key) else Status.INFO,
+            detail=(
+                f"{override} is set to {broken!r}, which is not an executable "
+                f"file. Nothing falls through to PATH while it is set, because "
+                f"silently running a different binary than the one you named is "
+                f"worse than finding none"
+            ),
+            remedy=Remedy.FIX_BINARY_OVERRIDE,
+        )
     if name in binaries.PLATFORM_BINARIES:
         return Finding(
             key=key,
@@ -1146,13 +1287,55 @@ def _check_backup_portion(key: str, inputs: _Inputs) -> Finding:
     )
 
 
-#: rclone remote types whose provider moves a deleted object to a trash that keeps
-#: counting against the quota. R-7: pruning a backup archive on one of these
-#: reclaims nothing for the trash retention period unless the remote's own
-#: no-trash option is set, and the source system solved it by passing a provider
-#: flag from inside the prune, which is the one-provider assumption this port
-#: removed.
-_TRASHING_REMOTE_TYPES: Mapping[str, str] = MappingProxyType({"drive": "use_trash"})
+@dataclass(frozen=True, slots=True)
+class TrashPolicy:
+    """What one rclone remote type does with a deleted object, as a declaration.
+
+    ``option`` is the per-remote setting that turns trashing off, and ``disabled``
+    is the value of that setting which MEANS off. Both are needed because the
+    providers disagree about the sense: Drive's ``use_trash`` has to be false,
+    while OneDrive's ``hard_delete`` and Dropbox's ``permanent_delete`` have to be
+    true. One shared "is it false" test read the two backwards, which would have
+    reported a correctly configured remote as trashing and a trashing one as
+    correct.
+
+    ``option`` is None for a provider that trashes and offers no per-remote escape
+    at all. That is a real state and it is not a failure: there is nothing for the
+    user to set, so reporting red every run would train them past it (P7). It is a
+    note naming the consequence.
+    """
+
+    option: str | None
+    disabled: str = "false"
+
+
+#: What each rclone remote type does on delete. R-7: pruning a backup archive on a
+#: provider that trashes reclaims nothing for the retention period unless the
+#: remote's own option says otherwise, and the source system solved it by passing
+#: a Drive flag from inside the prune, which is the one-provider assumption this
+#: port removed.
+#:
+#: DECLARED IN BOTH DIRECTIONS, and that is the fix. The table used to hold one
+#: row and the check reported OK for every type that was not in it, so every
+#: provider with a recycle bin that nobody had gotten around to adding, OneDrive,
+#: Box, pCloud and Dropbox among them, read green over the exact condition this
+#: check exists to find. A type with no row here is now "not asserted" rather than
+#: "fine", and the only way to reach OK is a row that says so.
+_REMOTE_TRASH_POLICY: Mapping[str, TrashPolicy] = MappingProxyType(
+    {
+        "drive": TrashPolicy(option="use_trash", disabled="false"),
+        "onedrive": TrashPolicy(option="hard_delete", disabled="true"),
+        "dropbox": TrashPolicy(option="permanent_delete", disabled="true"),
+        # Both keep a recycle bin and neither exposes a per-remote way out.
+        "box": TrashPolicy(option=None),
+        "pcloud": TrashPolicy(option=None),
+    }
+)
+
+#: Remote types where a delete is an unlink and a prune therefore reclaims space
+#: immediately. Named rather than assumed, because "assumed" is what the single
+#: row above was doing for everything else.
+_NON_TRASHING_REMOTE_TYPES: frozenset[str] = frozenset({"local", "sftp", "ftp"})
 
 
 def _check_backup_remote(inputs: _Inputs) -> Finding:
@@ -1204,52 +1387,134 @@ def _check_backup_remote(inputs: _Inputs) -> Finding:
             status=Status.INFO,
             detail=f"backup.remote is {remote!r}; rclone's configuration could not be read",
         )
-    settings = remotes.get(remote.rstrip(":"))
+    # ``remote:path`` is rclone's own spelling and is what a user writes for an
+    # archive under a remote. Trimming the trailing colon alone left the path
+    # attached, so a perfectly configured destination looked up as a remote name
+    # nobody had, and the check reported the one FAIL in this function against a
+    # correct configuration.
+    named = remote.split(":", 1)[0]
+    settings = remotes.get(named)
     if settings is None:
         return Finding(
             key=key,
             title=title,
             status=Status.FAIL,
             detail=(
-                f"backup.remote names {remote!r} and rclone has no remote by that "
-                f"name; it knows {', '.join(sorted(remotes)) or 'none'}"
+                f"backup.remote names {remote!r} and rclone has no remote called "
+                f"{named!r}; it knows {', '.join(sorted(remotes)) or 'none'}"
             ),
-            remedy=Remedy.RUN_SETUP,
+            # NOT run-setup. The wizard has no question, no flag and no code path
+            # for backup.remote at all, so sending a user there is sending them to
+            # a verb that cannot change the value. The remote is named in the
+            # configuration file and created in rclone's own configuration, and
+            # this token is the one that says so.
+            remedy=Remedy.FIX_CONFIG_VALUES,
         )
     kind = str(settings.get("type", ""))
-    option = _TRASHING_REMOTE_TYPES.get(kind)
-    if option is None:
+    if kind in _NON_TRASHING_REMOTE_TYPES:
         return Finding(
             key=key,
             title=title,
             status=Status.OK,
-            detail=f"{remote!r} is configured as a {kind or 'typeless'} remote",
+            detail=(
+                f"{named!r} is a {kind} remote, where a delete is a delete, so a "
+                f"prune reclaims its space immediately"
+            ),
         )
-    if str(settings.get(option, "")).lower() == "false":
+    policy = _REMOTE_TRASH_POLICY.get(kind)
+    if policy is None:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"{named!r} is a {kind or 'typeless'} remote, which this check has "
+                f"no row for, so nothing was asserted about whether a pruned "
+                f"archive keeps counting against the quota. Providers that trash "
+                f"on delete are named one by one here rather than assumed absent"
+            ),
+        )
+    if policy.option is None:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"{named!r} is a {kind} remote. That provider moves a deleted "
+                f"object to a recycle bin and offers no per-remote option to stop "
+                f"it, so a pruned archive keeps counting against the quota until "
+                f"the provider's own retention expires. There is nothing to set; "
+                f"emptying it is done at the provider"
+            ),
+        )
+    if str(settings.get(policy.option, "")).lower() == policy.disabled:
         return Finding(
             key=key,
             title=title,
             status=Status.OK,
-            detail=f"{remote!r} is a {kind} remote with {option} disabled, so a prune reclaims space",
+            detail=(
+                f"{named!r} is a {kind} remote with {policy.option} set to "
+                f"{policy.disabled}, so a prune reclaims space"
+            ),
         )
     return Finding(
         key=key,
         title=title,
         status=Status.FAIL,
         detail=(
-            f"{remote!r} is a {kind} remote and its {option} option is not disabled. "
-            f"A pruned archive folder goes to the provider's trash and keeps "
-            f"counting against the quota for the retention period, which is the "
-            f"whole point of pruning. Set {option} to false on that remote in "
-            f"rclone's own configuration"
+            f"{named!r} is a {kind} remote and its {policy.option} option is not "
+            f"{policy.disabled}. A pruned archive folder goes to the provider's "
+            f"trash and keeps counting against the quota for the retention period, "
+            f"which is the whole point of pruning. Set {policy.option} to "
+            f"{policy.disabled} on that remote in rclone's own configuration"
         ),
     )
+
+
+def _log_directory_unreadable(cfg: config.Config) -> Path | None:
+    """The session log directory when it exists and cannot be listed, else None.
+
+    The mount question answers "is the disk there". This answers the other half,
+    which no mount state can: a directory that IS on the right volume and that
+    this account cannot open. ``scan_log`` swallows that into the same empty pair
+    it returns for a library that has simply never opened a session, and the
+    difference between those two is the difference between "nothing to resolve"
+    and "cannot tell".
+    """
+    directory = session.log_dir(cfg)
+    if not directory.exists():
+        return None
+    try:
+        # Listed rather than stat-ed. A directory with no execute bit stats fine
+        # and cannot be read, which is exactly the state that produced an empty
+        # scan and a green report.
+        next(iter(directory.iterdir()), None)
+    except OSError:
+        return directory
+    return None
 
 
 def _check_unresolved_session(inputs: _Inputs) -> Finding:
     key, title = "session.unresolved", "destructive sessions"
     if inputs.cfg is None:
         return _unchecked(key, title)
+    unreachable = _library_state_unreachable(inputs, "the session log")
+    if unreachable is not None:
+        return Finding(key=key, title=title, status=Status.INFO, detail=unreachable)
+    unreadable_directory = _log_directory_unreadable(inputs.cfg)
+    if unreadable_directory is not None:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"the session log directory {unreadable_directory} exists and "
+                f"cannot be listed by this account, so whether a destructive "
+                f"session is still open is unknown. An unreadable log is not an "
+                f"empty one, and the next destructive run refuses on what is in it"
+            ),
+            remedy=Remedy.REPORT_DEFECT,
+        )
     parsed, unreadable = session.scan_log(inputs.cfg)
     if unreadable:
         # A gate reading its own state through a tolerant reader fails OPEN, which
@@ -1273,7 +1538,10 @@ def _check_unresolved_session(inputs: _Inputs) -> Finding:
             key=key,
             title=title,
             status=Status.OK,
-            detail=f"{len(parsed)} recorded session(s), none of them open",
+            detail=(
+                f"the recorded library volume is mounted and its session log was "
+                f"read: {len(parsed)} recorded session(s), none of them open"
+            ),
         )
     condemning = [
         record
@@ -1301,6 +1569,60 @@ def _check_unresolved_session(inputs: _Inputs) -> Finding:
             f"{', '.join(f'{r.session_id} ({r.state})' for r in open_records)}"
         ),
     )
+
+
+#: The configuration file pre-commit reads when the hook names none.
+_HOOK_CONFIG_DEFAULT = ".pre-commit-config.yaml"
+
+#: What a generated pre-commit hook actually contains: a call into the tool's own
+#: hook implementation, bound to the stage it was installed for.
+_HOOK_DISPATCH = "hook-impl"
+_HOOK_STAGE = "--hook-type=pre-commit"
+
+#: Which configuration file that call names. Optional in the hook, so its absence
+#: means the default above rather than a defect.
+_HOOK_CONFIG_FLAG = re.compile(r"--config[= ](\S+)")
+
+
+def _hook_dispatch_problem(body: str, root: Path) -> str | None:
+    """Why this hook does not run THIS repository's pre-commit, or None.
+
+    Substring-matching ``pre-commit`` was the whole test before, and it is
+    satisfied by a hook whose entire content is the comment ``# pre-commit``, and
+    by a hook that dispatches to a completely different repository's
+    configuration. Both report green while nothing scans the commit, which is the
+    state R-1 exists to end, and the check's own message already CLAIMED it
+    refused when the hook "does not dispatch to this repository's pre-commit
+    configuration". This makes the claim and the code agree.
+
+    Three positive requirements, each killing one of those:
+
+    * the body calls pre-commit's own hook implementation;
+    * it was installed for the pre-commit STAGE, not for some other hook type
+      that happens to have been copied into this file;
+    * the configuration it names resolves INSIDE this checkout and exists. A hook
+      pointing at another repository's configuration runs that repository's
+      checks over these commits.
+    """
+    if _HOOK_DISPATCH not in body:
+        return f"it never invokes pre-commit's {_HOOK_DISPATCH}"
+    if _HOOK_STAGE not in body:
+        return f"it does not carry {_HOOK_STAGE}"
+    match = _HOOK_CONFIG_FLAG.search(body)
+    named = match.group(1) if match else _HOOK_CONFIG_DEFAULT
+    # Relative names are resolved by pre-commit against the repository it runs
+    # in, which is this one.
+    configured = Path(named)
+    resolved = configured if configured.is_absolute() else root / configured
+    try:
+        resolved = resolved.resolve()
+    except OSError:  # pragma: no cover - a path that cannot be resolved at all
+        return f"the configuration it names, {named}, cannot be resolved"
+    if root.resolve() not in resolved.parents and resolved != root.resolve():
+        return f"the configuration it names, {named}, is outside {root}"
+    if not resolved.is_file():
+        return f"the configuration it names, {named}, does not exist"
+    return None
 
 
 def _check_commit_hook(inputs: _Inputs) -> Finding:
@@ -1348,22 +1670,26 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
                 f"history unchallenged. Run `pre-commit install` in {root}"
             ),
         )
-    if "pre-commit" not in body:
+    problem = _hook_dispatch_problem(body, root)
+    if problem is not None:
         return Finding(
             key=key,
             title=title,
             status=Status.FAIL,
             detail=(
                 f"the hook at {hook} does not dispatch to this repository's "
-                f"pre-commit configuration, so the scan it is supposed to run does "
-                f"not run. Run `pre-commit install` in {root}"
+                f"pre-commit configuration ({problem}), so the scan it is supposed "
+                f"to run does not run. Run `pre-commit install` in {root}"
             ),
         )
     return Finding(
         key=key,
         title=title,
         status=Status.OK,
-        detail=f"{hook} dispatches to the repository's pre-commit configuration",
+        detail=(
+            f"{hook} invokes pre-commit's hook implementation for the pre-commit "
+            f"stage against this repository's own {_HOOK_CONFIG_DEFAULT}"
+        ),
     )
 
 

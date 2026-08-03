@@ -913,20 +913,35 @@ def test_doctor_reports_a_database_that_sits_outside_the_library_root(
     that their snapshots are copies across two filesystems rather than atomic
     commits. Doctor is the run that has to keep saying so, and it was registered
     against U27 in the pending register rather than left as a hope in a docstring.
+
+    WRITTEN AS THE EVASION FAILED IT. The first version of this guard asked
+    whether any finding contained both "db_path" and "atomic", and the OK branch
+    of the very check under test says "library.db_path sits under library.root,
+    so a snapshot commits atomically with a rename": ``atomic`` is inside
+    ``atomically``, so a check that reported the CONTAINED answer unconditionally
+    passed this test against a database that is not contained. The assertion is
+    now on the finding for the key, on the status that means "outside", and on
+    the two paths and the acceptance date, none of which the OK branch can
+    produce.
     """
     from cratekit.cli import doctor
 
+    outside = tmp_path / "elsewhere" / "master.db"
     data = valid_data(library)
-    data["library"]["db_path"] = str(tmp_path / "elsewhere" / "master.db")
+    data["library"]["db_path"] = str(outside)
     data["library"]["db_outside_root_acknowledged_on"] = "2026-08-01"
     acknowledged = config.from_dict(data)
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: acknowledged)
 
     report = doctor.run()
 
-    assert any(
-        "db_path" in str(finding) and "atomic" in str(finding) for finding in report.findings
-    ), report
+    finding = next(f for f in report.findings if f.key == "library.db_containment")
+    assert finding.status is doctor.Status.INFO, finding.detail
+    assert str(outside) in finding.detail
+    assert str(library) in finding.detail
+    assert "2026-08-01" in finding.detail
+    assert "two filesystems" in finding.detail
+    assert "commits atomically with a rename" not in finding.detail
 
 
 def test_credentials_are_not_a_file_at_all(cfg):
@@ -1766,6 +1781,117 @@ def test_the_backend_refusal_names_the_opt_in_rather_than_taking_it(monkeypatch)
     with pytest.raises(secrets.CredentialBackendUnavailable) as excinfo:
         secrets.get(secrets.Credential.IDENTIFY_KEY)
     assert secrets.ENV_ALLOW_ENV_CREDENTIALS in str(excinfo.value)
+
+
+def test_the_presence_index_cycle_is_held_under_an_exclusive_lock():
+    """MEASURED before it was fixed: two processes, one credential each, and the
+    keychain held both while ``exists`` reported one, in 23 of 25 trials.
+
+    The read and the write are a cycle, and an unlocked cycle over a shared
+    document loses whatever the other writer put there between them. What makes
+    this one worse than the two cycles left in the residual is that the loss
+    makes a REPORT lie: ``exists`` is what doctor asks, so a name that never
+    landed reads as ``not recorded`` for a credential the keychain holds, and the
+    remedy sends the user to record it again.
+
+    A second lock attempt inside the cycle stands in for the second process.
+    ``flock`` is held per open file description, so a fresh descriptor from this
+    process contends exactly as another process's would, which is the same
+    substitution the destructive-session conformance drive makes.
+    """
+    import fcntl
+
+    lock_path = config.state_path("credential_index_lock")
+    # Created here so that a build which never takes the lock fails on the
+    # CONTENTION assertion rather than on a missing file, which reads as a
+    # fixture problem and hides what is being asserted.
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.touch()
+    contended: list[bool] = []
+    real_write = secrets._index_write
+
+    def _contend(names):
+        with open(lock_path, "a+") as contender:
+            try:
+                fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                contended.append(False)
+                fcntl.flock(contender, fcntl.LOCK_UN)
+            except BlockingIOError:
+                contended.append(True)
+        return real_write(names)
+
+    secrets._index_write = _contend
+    try:
+        secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
+        secrets.delete(secrets.Credential.IDENTIFY_KEY)
+    finally:
+        secrets._index_write = real_write
+
+    assert contended == [True, True], "the read then write cycle ran unlocked"
+    # And the lock is not held afterwards, or the next writer would block on a
+    # descriptor nobody closed.
+    with open(lock_path, "a+") as after:
+        fcntl.flock(after, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(after, fcntl.LOCK_UN)
+
+
+def test_the_presence_index_lock_lives_beside_the_file_it_guards(cfg):
+    """A lock under a different root than the file it protects is a lock two
+    processes can each hold while both edit that file.
+    """
+    entry = config.state_file("credential_index_lock")
+    assert entry.root is config.state_file("credential_index").root
+    assert entry.snapshot is config.SnapshotRole.NEVER_RESTORED
+    assert config.state_path("credential_index_lock").parent == (
+        config.state_path("credential_index").parent
+    )
+
+
+def test_a_credential_index_that_cannot_be_locked_refuses_rather_than_writing(
+    monkeypatch,
+):
+    """Proceeding unlocked IS the defect, so it is not the degradation.
+
+    ``core/review`` made the same decision for the same reason: degrading to the
+    broken behaviour on the platform where the fix cannot be applied leaves
+    exactly the defect, reachable by anybody on that platform. The refusal is its
+    own type because its remediation is neither "install a backend" nor "record
+    the credential": this installation's own sidecar is what needs repairing.
+    """
+    real_open = os.open
+
+    def refuse(path, *args, **kwargs):
+        if str(path).endswith("credential_index.lock"):
+            raise PermissionError("no")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", refuse)
+    with pytest.raises(secrets.CredentialIndexUnusable) as excinfo:
+        secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
+
+    assert excinfo.value.remedy is secrets.Remedy.REPAIR_CREDENTIAL_STORE
+    assert not config.state_path("credential_index").exists()
+
+
+def test_a_backend_message_never_reaches_the_refusal_a_user_reads(monkeypatch):
+    """Hardening. The refusal is interpolated into a check table, into standard
+    error and into the JSON envelope, and a keychain backend is third-party code
+    whose exception text is not ours to bound.
+
+    Demonstrated with a backend that raises with the value it was handed, which
+    put the secret into all three. Only the exception TYPE is named now, which is
+    what tells the failures apart; the message is what could carry a secret.
+    """
+
+    def leaky(_service, _name, password):
+        raise RuntimeError(f"could not store {password}")
+
+    monkeypatch.setattr(keyring, "set_password", leaky)
+    with pytest.raises(secrets.CredentialBackendUnavailable) as excinfo:
+        secrets.set(secrets.Credential.IDENTIFY_KEY, "NOT-A-REAL-SECRET")
+
+    assert "NOT-A-REAL-SECRET" not in str(excinfo.value)
+    assert "RuntimeError" in str(excinfo.value)
 
 
 def test_the_keychain_service_is_not_namespaced_per_library():

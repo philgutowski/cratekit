@@ -49,9 +49,28 @@ EXPECTED_PENDING = frozenset(
     }
 )
 
-# U27 removed ``cratekit.cli.doctor`` when the health check landed, which armed
-# the two guards gated on it: the containment report in ``tests/test_config.py``
-# and conformance assertion 8 in ``tests/test_cli_contract.py``.
+# U27 removed ``cratekit.cli.doctor`` when the health check landed. That UNGATED
+# the two guards waiting on it, and ungating is not arming: as first written,
+# neither of them could fail.
+#
+# The containment report in ``tests/test_config.py`` asked whether any finding
+# contained both "db_path" and "atomic", and the OK branch of the very check
+# under test says "library.db_path sits under library.root, so a snapshot commits
+# atomically with a rename". ``atomic`` is inside ``atomically``, so a check that
+# reported the CONTAINED answer unconditionally passed the guard against a
+# database that is not contained.
+#
+# Conformance assertion 8 in ``tests/test_cli_contract.py`` ran the doctor and
+# required every declared key to come back with an answer, which is identically
+# the existence check it replaced: the keys are derived from the check table and
+# every check returns its own key, so a stub emitting one empty finding per key
+# passed while observing nothing.
+#
+# Both are behaviour now, and each is driven against the evasion that satisfied
+# its first version as well as against correct code. The lesson is the one this
+# file already teaches from the other side: deleting an entry from the register
+# is the moment to read the guard it releases, because until that moment nothing
+# has ever run it.
 #
 # U8's two entries were removed here when ``cratekit.core.snapshot`` and
 # ``cratekit.core.session`` landed, which is the countdown working as designed.
