@@ -616,13 +616,37 @@ rather than a third attempt.**
    `Path.write_bytes` and `cp` both truncate in place and keep it, so an inode
    match does not mean the content is unchanged.
 
-**Fixed far enough to be safe.** Two of the three legitimate cases are closed
-properly rather than heuristically. The byte-identical restore is recognized by a
-digest recorded at write time, and the interrupted pass is eliminated
-structurally: each record is dropped from the ledger as its file is restored, so
-an interrupted pass leaves exactly the records it never reached. The remaining
-case refuses, names the single record it refused, and `force` takes a list of
-`(path, field)` pairs so overriding one never touches another.
+4. The third version, in the same round that recorded this entry, wrote the
+   digest down and then never asked it. It accepted "size and modification time
+   unchanged" as its own definitive answer and returned before the digest was
+   consulted, so the one piece of evidence a replacement cannot forge sat unread
+   while the two it can forge decided. Measured in round 4: different audio
+   written to the path, padded to the recorded size and stamped back to the
+   recorded time with `os.utime`, restored anyway, `restored: 1  failed: {}`.
+   Fixed in round 4. The digest is now asked whenever one was recorded, and size
+   and time may stand alone only where there is no digest or where the file's
+   bytes are not on this machine.
+
+**A second instance of the same wall, named because the module contemplates it in
+writing.** `_key`'s own docstring says adoption may write more than one field to
+one file, and the ledger keys on the file AND the field so that it can. It can
+record them; it cannot revert the first of them. The second field's write moves
+the bytes, so the first record's digest no longer matches and that record refuses
+on every pass. Measured with `genre` then `title` through
+`write_tag_with_record`: `restored: 1  failed: 1`, and the failure is always the
+alphabetically first field because the ledger sorts by key. Nothing shipped
+reaches it, because `apply_plan` writes `ADOPTED_TAG_FIELD` and nothing else, but
+a second field is a supported call away and it is the same wall as the analysis
+write above rather than a separate defect.
+
+**Fixed far enough to be safe.** The byte-identical restore is recognized by a
+digest recorded at write time, and the digest is now consulted whenever one
+exists rather than being shortcut past. The remaining cases refuse, name the
+single record they refused, and `force` takes a list of `(path, field)` pairs so
+overriding one never touches another.
+
+**One claim in this entry was too strong and is corrected here.** The interrupted
+pass is NARROWED rather than eliminated. See R-24.
 
 **Closes when:** the record carries a digest of the DECODED AUDIO rather than of
 the file, which a tag write does not change and a replacement does, or every
@@ -663,3 +687,45 @@ and marks it applied.
 **Closes when:** the plan can carry an acknowledged exclusion, which is a review
 queue verdict rather than a flag, so a person who knows a `.aac` will never be
 tagged can settle it once instead of reading it in every report.
+
+---
+
+## R-24. An interrupted revert pass still strands one record, and round 3 called it eliminated
+
+**Found:** during U23's fourth round, 2026-08-03, by driving the claim rather
+than reading it.
+
+Round 3 moved the ledger drop from the end of the pass to immediately after each
+record's own restore, and wrote it up in `revert_tags`' docstring and in R-22 as
+eliminating the interrupted pass STRUCTURALLY. It does not. It narrows the window
+from the whole pass to one record.
+
+A run that dies between a restore landing on disk and that record's drop reaching
+the disk leaves one record describing bytes its own successful restore has
+already replaced. On every retry that record is refused, because the evidence it
+carries is a digest of what adoption left and the file now holds the original
+that was put back. Measured: a two record pass, killed at the first ledger write
+after the first restore, retries with `restored: 1  failed: 1` forever.
+
+It is a narrowing worth having. Batching was worse by a whole pass, because it
+stranded every record the run had already restored rather than one.
+
+**Why it is a residual and not a defect.** The damage is BOUNDED, which is the
+whole argument for accepting it. The refused record names itself for `force`, and
+forcing it writes the same original onto a file that already holds it, so the
+cost of the residue is one override and never a wrong value. That is asserted
+rather than argued, in
+`test_a_pass_that_dies_BEFORE_THE_LEDGER_WRITE_still_strands_that_one_record`,
+which pins the real behaviour so the stronger claim cannot drift back in off a
+green suite.
+
+**Why it cannot be closed from here.** The surviving state after such a crash is
+a file whose bytes are not the recorded ones and a record that cannot tell that
+apart from a replacement without decoding the audio, which is R-22's wall. Doing
+the drop BEFORE the restore is strictly worse: a crash in that window loses the
+only copy of the original permanently.
+
+**Closes when:** the pass writes an intent record naming the record it is about
+to restore, so a retry can tell "I was in the middle of this one" from "somebody
+replaced this file". That is a journal, it belongs with the destructive session
+the apply command line opens (R-20), and it is the same unit's work.

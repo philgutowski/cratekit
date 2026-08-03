@@ -187,10 +187,14 @@ class TagSnapshot:
     write did not complete, which is the crash seam and is treated as
     unverifiable rather than as a mismatch.
 
-    ALL THREE ARE ABOUT THE BYTES, and that is the whole of the design. ``size``
-    and ``mtime_ns`` say the file has not been touched at all. ``digest`` is over
-    the file exactly as adoption left it, and it is the only evidence that
-    survives those same bytes being copied back from somewhere else.
+    ONLY ``digest`` IS ABOUT THE BYTES, and confusing the other two for it is the
+    mistake that shipped. ``size`` and ``mtime_ns`` are metadata that CORRELATE
+    with the bytes: they are cheap, they are what an unstamped or older record has
+    instead of a digest, and either of them can be set to any value by any tool
+    that copies a file. ``digest`` is over the file exactly as adoption left it,
+    it is the only one of the three a replacement cannot forge, and it is also the
+    only evidence that survives those same bytes being copied back from somewhere
+    else. :func:`_changed_since_adoption` therefore asks it whenever it is there.
 
     TWO THINGS THAT LOOK LIKE IDENTITY AND ARE NOT. Each was proposed as proof
     and each is measured wrong, which is why they are named here rather than
@@ -761,8 +765,8 @@ def restore_tag(path: Path, tag_field: str, original: tuple[str, ...] | None) ->
 def _changed_since_adoption(record: TagSnapshot, target: Path) -> str | None:
     """Why this file is not the one adoption wrote to, or None when it is.
 
-    IT ACCEPTS ONLY EVIDENCE ABOUT THE BYTES, and the two ways this function has
-    been wrong before are both the same mistake: reaching for something that
+    IT ACCEPTS ONLY EVIDENCE ABOUT THE BYTES, and the three ways this function
+    has been wrong before are all the same mistake: reaching for something that
     correlates with identity and calling it identity.
 
     * **The field's own value is not identity.** ``record.written`` is a taxonomy
@@ -775,16 +779,44 @@ def _changed_since_adoption(record: TagSnapshot, target: Path) -> str | None:
       ship. The same inode is the same FILE and says nothing about its CONTENT:
       ``Path.write_bytes`` and ``cp`` both truncate in place and keep it, measured
       True for both, and that is how a track is actually replaced.
+    * **THE MODIFICATION TIME IS NOT IDENTITY, AND THAT ONE DID SHIP.** The
+      previous version accepted "size and time unchanged" as its own definitive
+      answer and returned before the digest it had recorded was ever consulted.
+      ``st_mtime_ns`` is metadata, not content: ``os.utime``, ``touch -r``,
+      ``cp -p``, ``rsync -a``, ``tar -x`` and every tag editor with a preserve
+      modification time option all set it to whatever they are told. Measured
+      against a genuinely different recording written to the path, padded to the
+      recorded size and stamped back to the recorded time: size matched, time
+      matched, THE RECORDED DIGEST DID NOT, and the revert restored anyway,
+      overwrote the replacement's own genre and dropped the record. That is
+      verbatim the harm this function's own refusal message names, reached while
+      definitive contrary evidence sat unread in the record.
 
-    So there are exactly two acceptances, both definitive:
+    So the recorded digest, WHEN THERE IS ONE, is the answer and nothing shortcuts
+    it. There are three acceptances and only the first is unconditional:
 
-    1. **Size and time unchanged.** The file has not been touched since adoption
-       left it. One ``stat``, no read.
-    2. **The bytes are the ones adoption left.** Only asked when the size still
-       matches, because different sizes cannot be the same bytes, so the one
-       branch that reads the file is also the only one that could ever succeed.
-       This is what a backup restore, an rsync without timestamps and a cloud
-       re-download all look like: same content, new time.
+    1. **The bytes are the ones adoption left.** Asked whenever a digest was
+       recorded and the size still matches, because different sizes cannot be the
+       same bytes. This is what an untouched file, a backup restore, an rsync
+       without timestamps and a cloud re-download all look like.
+    2. **Size and time unchanged, on a record carrying NO digest.** Older
+       documents and the rare write whose stamping read failed have nothing
+       better, so the cheap evidence is all there is rather than a shortcut past
+       something stronger.
+    3. **Size and time unchanged, on a file whose bytes are not on this machine.**
+       A cloud-evicted file cannot be read without fetching the whole thing from
+       a provider, which is what the census refuses to do per file across a
+       library (:data:`cratekit.adopt.scan.DATALESS_FLAG`). Eviction is also not a
+       rewrite: a local write faults the file in and clears the flag. Refusing
+       instead would strand every evicted file behind an override.
+
+    THE READ COSTS NOTHING THIS PASS WAS NOT ALREADY SPENDING, which is what
+    retires the argument that talked the previous version out of it. Accepting is
+    immediately followed by :func:`restore_tag`, which opens the same file with
+    mutagen and REWRITES it. A sequential read of a file about to be rewritten is
+    strictly cheaper than the write behind it, and it happens only for records
+    that were going to be spent. "The guard opens no audio file" was true of the
+    guard and irrelevant to the pass.
 
     WHAT IS DELIBERATELY NOT COVERED, and it used to be. A later write of another
     field this module owns, ``energylevel`` for the analysis workflow, changes the
@@ -807,17 +839,26 @@ def _changed_since_adoption(record: TagSnapshot, target: Path) -> str | None:
     if record.size is None or record.mtime_ns is None:
         return None
     info = target.stat()
-    if info.st_size == record.size and info.st_mtime_ns == record.mtime_ns:
+    untouched = info.st_size == record.size and info.st_mtime_ns == record.mtime_ns
+    if not record.digest:
+        # Nothing stronger was recorded, so the metadata is not a shortcut past
+        # better evidence, it is the only evidence.
+        return None if untouched else _replaced(record, _NOT_THE_RECORDED_BYTES)
+    if info.st_size != record.size:
+        return _replaced(record, _NOT_THE_RECORDED_BYTES)
+    if getattr(info, "st_flags", 0) & DATALESS_FLAG:
+        # Reading it would fetch the whole file from a provider, which is what the
+        # census refuses to do per file across a library. Eviction is not a
+        # rewrite either: a local write faults the file in and clears the flag.
+        return None if untouched else _replaced(record, _NOT_HERE_TO_COMPARE)
+    if digest_of(target) == record.digest:
         return None
-    if record.digest and info.st_size == record.size:
-        if getattr(info, "st_flags", 0) & DATALESS_FLAG:
-            # Reading it would fetch the whole file from a provider, which is what
-            # the census refuses to do per file across a library. A dataless file
-            # is also one nothing local has rewritten, so there is nothing to gain.
-            return _replaced(record, "its bytes are not on this machine to compare")
-        if digest_of(target) == record.digest:
-            return None
-    return _replaced(record, "its bytes are not the ones adoption left there")
+    return _replaced(record, _NOT_THE_RECORDED_BYTES)
+
+
+#: The two refusals, named once so a report and a test cannot spell them apart.
+_NOT_THE_RECORDED_BYTES = "its bytes are not the ones adoption left there"
+_NOT_HERE_TO_COMPARE = "its bytes are not on this machine to compare"
 
 
 def _replaced(record: TagSnapshot, why: str) -> str:
@@ -875,14 +916,25 @@ def revert_tags(
     reporting failure this whole ledger exists to avoid one step earlier.
 
     A RECORD IS DROPPED FROM THE LEDGER ONLY AFTER ITS FILE IS WRITTEN, AND
-    IMMEDIATELY AFTER. Batching the drops to the end of the pass looked like the
-    same rule and was not: a pass that restored one file and then died left that
-    record on disk describing a file that no longer matched it, so on the retry it
-    could not be recognized and was refused forever while every other record
-    settled. The file was correct and the ledger kept a record nobody could ever
-    clear. Settling each record as it lands means an interrupted pass leaves
-    exactly the records it did not reach, which is the only state a retry can act
-    on. The cost is one small document write per file instead of one per pass.
+    IMMEDIATELY AFTER. Batching the drops to the end of the pass was worse by a
+    whole pass: it left a record on disk for every file the run had already
+    restored, none of which matched its own stamp any more, so all of them were
+    refused forever while every other record settled. Settling each record as it
+    lands costs one small document write per file instead of one per pass.
+
+    IT NARROWS THAT WINDOW RATHER THAN CLOSING IT, and saying so is the point. A
+    run that dies BETWEEN a restore landing and that record's drop reaching the
+    disk still leaves one record describing bytes its own successful restore has
+    already replaced, and the retry refuses exactly that record. Round 3 wrote
+    this up as eliminated structurally, which is a stronger claim than the code
+    makes: the window went from the whole pass to one record, and one record is
+    not none. It cannot be closed from here without a journal, because the
+    surviving evidence after such a crash is indistinguishable from a replacement
+    without decoding the audio, which is R-22's wall. What makes the residue
+    tolerable rather than merely small is that the damage is BOUNDED: the refused
+    record names itself for ``force``, and forcing it writes the same original
+    onto a file that already holds it. Residual R-24 states the window and the
+    journal that would close it.
 
     ONE BAD RECORD COSTS ONE RECORD, which is the per-track versus per-pass rule
     this repository keeps paying for, applied to the undo log. The whole body of

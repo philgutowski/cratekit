@@ -1579,12 +1579,23 @@ def test_one_file_in_two_composition_forms_is_one_record(cfg, tmp_path):
 
 
 def test_a_reverted_file_that_has_since_been_deleted_is_reported_not_silent(cfg, tmp_path):
+    """And it is reported AS DELETED, which is the half the key alone cannot say.
+
+    ``RevertReport.failed`` carries one reason per pair rather than a count
+    because the ways this fails have different answers: a deleted file is not a
+    defect, a replaced one is a refusal, and a container this build cannot write
+    is a bug. Asserting only the key made the existence check kill zero tests,
+    because a deleted file reaches the tag writer, mutagen refuses it, and the
+    report says "the container refused the write" about a file that is not there.
+    Same key, same pass, wrong answer, and a person acts on the reason.
+    """
     path = _synth(tmp_path, ".flac")
     adopt_revert.snapshot_before_write(cfg, path, field="genre", written="New")
     path.unlink()
     report = adopt_revert.revert_tags(cfg)
     assert report.restored == ()
     assert list(report.failed) == [(str(path), "genre")]
+    assert report.failed[(str(path), "genre")] == "the file is no longer there"
     assert adopt_revert.read(cfg).snapshots != (), (
         "the record was dropped for a file that was never restored"
     )
@@ -1970,6 +1981,205 @@ def test_a_byte_identical_file_whose_time_moved_still_reverts(cfg, tmp_path):
     assert tags.read_genre_from_file(path) == "Original Genre"
 
 
+def test_a_replacement_that_FORGES_THE_RECORDED_TIME_is_still_refused(cfg, tmp_path):
+    """The modification time is metadata, and metadata is not the bytes.
+
+    The version this replaces accepted "size and time unchanged" as its own
+    definitive answer and RETURNED BEFORE the digest it had recorded was ever
+    consulted. Both halves of that pair are settable by anything that copies a
+    file: ``os.utime``, ``touch -r``, ``cp -p``, ``rsync -a``, ``tar -x``, and
+    every tag editor carrying a preserve modification time option. So the one
+    piece of evidence a replacement genuinely cannot forge sat unread in the
+    record while the two it can forge decided the answer.
+
+    Driven exactly that way. Different audio at the path, padded to the recorded
+    size, stamped back to the recorded time. Measured on the previous version:
+    ``restored: 1  failed: {}``, the replacement's own genre overwritten, and the
+    record dropped, which is verbatim the harm the refusal message names.
+
+    The fixture asserts the forgery worked and the digest still disagrees, so a
+    green run here cannot mean the test simply failed to set the trap.
+    """
+    path = _synth(tmp_path, ".flac")
+    tags.write_genre(path, "Original A")
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Adopted", entry_id="e1"
+    )
+    record = adopt_revert.read(cfg).snapshots[0]
+    assert record.digest and record.size is not None
+
+    stranger = _synth_in(tmp_path / "other", ".flac")
+    tags.write_tags(stranger, {"genre": "Stranger Genre", "title": "Somebody Else"})
+    blob = stranger.read_bytes()
+    blob = blob[: record.size].ljust(record.size, b"\x00")
+    path.write_bytes(blob)
+    os.utime(path, ns=(record.mtime_ns, record.mtime_ns))
+
+    info = path.stat()
+    assert (info.st_size, info.st_mtime_ns) == (record.size, record.mtime_ns), (
+        "the forgery did not take, so this test proves nothing about the guard"
+    )
+    assert hashlib.sha256(path.read_bytes()).hexdigest() != record.digest, (
+        "the fixture put the SAME bytes back, so there is nothing to refuse"
+    )
+
+    key = (str(path), "genre")
+    report = adopt_revert.revert_tags(cfg)
+    assert report.restored == (), (
+        "size and time were forged and the recorded digest was never asked, so "
+        "the revert put one file's tag onto another file's audio"
+    )
+    assert list(report.failed) == [key]
+    assert tags.read_genre_from_file(path) == "Stranger Genre"
+    assert adopt_revert.read(cfg).snapshots != (), "the record was dropped anyway"
+
+
+def test_a_file_of_a_DIFFERENT_SIZE_is_refused_without_reading_it(cfg, tmp_path):
+    """Different sizes cannot be the same bytes, so the digest is not asked.
+
+    The one short-circuit left in front of the digest, and it is kept only
+    because it can never change an answer: no digest read can rescue a size
+    mismatch. Asserted as ZERO READS rather than as the refusal, because the
+    refusal happens either way and the reason to keep the branch at all is that
+    it does not hash a whole file to learn something ``stat`` already said.
+    """
+    path = _synth(tmp_path, ".flac")
+    tags.write_genre(path, "Original A")
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Adopted", entry_id="e1"
+    )
+    record = adopt_revert.read(cfg).snapshots[0]
+    path.write_bytes(path.read_bytes() + b"\x00" * 4096)
+    assert path.stat().st_size != record.size
+
+    reads: list[Path] = []
+    real_digest = adopt_revert.digest_of
+    adopt_revert.digest_of = lambda p: (reads.append(p), real_digest(p))[1]
+    try:
+        report = adopt_revert.revert_tags(cfg)
+    finally:
+        adopt_revert.digest_of = real_digest
+
+    assert list(report.failed) == [(str(path), "genre")]
+    assert reads == [], f"a whole file was hashed to confirm what stat said: {reads}"
+
+
+def test_an_untouched_stamped_file_still_reverts_with_no_override(cfg, tmp_path):
+    """The legitimate case the digest check must not cost, held to explicitly.
+
+    Asking for the digest on every stamped record is only safe if the ordinary
+    library still passes silently, so this is the pair to the forgery test above:
+    a file adoption wrote and nobody has touched since reverts with no ``force``,
+    no refusal, and its record settled. A guard that made this refuse would be the
+    third wrong direction rather than the fix for the second.
+    """
+    path = _synth(tmp_path, ".flac")
+    tags.write_genre(path, "Original Genre")
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Adopted", entry_id="e1"
+    )
+    record = adopt_revert.read(cfg).snapshots[0]
+    assert record.digest, "an unstamped record would pass this without the check"
+
+    report = adopt_revert.revert_tags(cfg)
+    assert report.failed == {}, report.failed
+    assert report.restored == ((str(path), "genre"),)
+    assert tags.read_genre_from_file(path) == "Original Genre"
+    assert adopt_revert.read(cfg).snapshots == ()
+
+
+def test_a_record_with_no_digest_falls_back_to_the_cheap_evidence(cfg, tmp_path):
+    """An older document, and the one case where size and time may stand alone.
+
+    A record carrying a stamp and no digest is what a document written before the
+    digest existed holds, and what a write whose stamping read failed leaves. It
+    has nothing stronger, so the metadata is the only evidence rather than a
+    shortcut past better evidence, and it must still be spendable: refusing every
+    such record would strand a whole library's undo log behind an override.
+
+    Both directions, because a fallback that accepted everything would be worse
+    than no fallback at all.
+    """
+    path = _synth(tmp_path, ".flac")
+    tags.write_genre(path, "Original Genre")
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Adopted", entry_id="e1"
+    )
+    document = json.loads(adopt_revert.path_for(cfg).read_text())
+    document["snapshots"][0]["digest"] = ""
+    adopt_revert.path_for(cfg).write_text(json.dumps(document))
+    assert adopt_revert.read(cfg).snapshots[0].digest == ""
+
+    untouched = adopt_revert.revert_tags(cfg)
+    assert untouched.failed == {}, untouched.failed
+    assert tags.read_genre_from_file(path) == "Original Genre"
+
+    # And the same fallback still refuses a file whose stamp has moved.
+    tags.write_genre(path, "Adopted")
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Adopted", entry_id="e2"
+    )
+    document = json.loads(adopt_revert.path_for(cfg).read_text())
+    document["snapshots"][0]["digest"] = ""
+    document["snapshots"][0]["mtime_ns"] = 1
+    adopt_revert.path_for(cfg).write_text(json.dumps(document))
+    moved = adopt_revert.revert_tags(cfg)
+    assert list(moved.failed) == [(str(path), "genre")]
+
+
+def test_a_cloud_EVICTED_file_is_never_read_to_decide_about_it(cfg, tmp_path, monkeypatch):
+    """The one acceptance that exists so a whole library is not downloaded.
+
+    Asking for the digest on every stamped record puts this guard on the critical
+    path rather than behind an unreachable branch, which is where it was: a
+    dataless file keeps its size and its time, so the old ordering accepted it on
+    the metadata before the flag was ever consulted, and the check killed zero
+    tests. Now the flag is the reason the read is skipped, and skipping it is the
+    difference between a revert and a whole-library download from a provider.
+
+    Asserted as ZERO READS rather than as an outcome, because the outcome is the
+    same either way and the cost is the entire point. ``st_flags`` cannot be set
+    to ``SF_DATALESS`` from userspace, so the stat is what is substituted, which
+    is also all this function looks at.
+    """
+    path = _synth(tmp_path, ".flac")
+    tags.write_genre(path, "Original Genre")
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Adopted", entry_id="e1"
+    )
+    assert adopt_revert.read(cfg).snapshots[0].digest
+
+    real_stat = Path.stat
+
+    class _Evicted:
+        def __init__(self, info):
+            self._info = info
+
+        def __getattr__(self, name):
+            return getattr(self._info, name)
+
+        st_flags = adopt_scan.DATALESS_FLAG
+
+    def evicted_stat(self, *args, **kwargs):
+        info = real_stat(self, *args, **kwargs)
+        return _Evicted(info) if self == path else info
+
+    reads: list[Path] = []
+    real_digest = adopt_revert.digest_of
+    monkeypatch.setattr(
+        adopt_revert, "digest_of", lambda p: (reads.append(p), real_digest(p))[1]
+    )
+    monkeypatch.setattr(Path, "stat", evicted_stat)
+
+    report = adopt_revert.revert_tags(cfg, restore=lambda *_: True)
+    assert report.failed == {}, report.failed
+    assert reads == [], (
+        f"the guard fetched {reads} from the provider to decide about a file "
+        f"whose bytes are not on this machine, which is the per-file download "
+        f"the census refuses to do across a library"
+    )
+
+
 def test_an_interrupted_revert_pass_can_be_retried(cfg, tmp_path):
     """A pass restores a file and dies before the ledger is rewritten.
 
@@ -2021,6 +2231,81 @@ def test_an_interrupted_revert_pass_can_be_retried(cfg, tmp_path):
     assert retry.failed == {}, retry.failed
     for path, genre in originals.items():
         assert tags.read_genre_from_file(path) == genre
+    assert adopt_revert.read(cfg).snapshots == ()
+
+
+def test_a_pass_that_dies_BEFORE_THE_LEDGER_WRITE_still_strands_that_one_record(
+    cfg, tmp_path
+):
+    """The window the per-record settle NARROWED rather than closed.
+
+    Round 3 wrote the per-record drop up as eliminating the interrupted pass
+    structurally, in this module's docstring and in residual R-22, and it does not.
+    It moves the window from the whole pass to one record: a run that dies between
+    a restore landing and that record's drop reaching the disk leaves one record
+    describing bytes its own successful restore already replaced, and every retry
+    refuses exactly that record. Its sibling next door proves the narrowing is
+    real; this one proves the residue is real, so nobody reads the stronger claim
+    off a green suite.
+
+    THE DAMAGE IS BOUNDED AND THAT IS WHY IT IS A RESIDUAL RATHER THAN A DEFECT.
+    The refused record names itself for ``force``, and forcing it writes the same
+    original onto a file that already holds it. Asserted, because "bounded" is the
+    whole argument for accepting it. Residual R-24.
+    """
+    paths = {
+        _synth_in(tmp_path / "one", ".flac"): "Original One",
+        _synth_in(tmp_path / "two", ".flac"): "Original Two",
+    }
+    for path, genre in paths.items():
+        tags.write_genre(path, genre)
+        adopt_revert.write_tag_with_record(
+            cfg, path, field="genre", written="Adopted", entry_id="e1"
+        )
+
+    class _Died(RuntimeError):
+        pass
+
+    settled = adopt_revert.write
+    restored: list[Path] = []
+    writes = {"n": 0}
+
+    def note(target, tag_field, original):
+        restored.append(target)
+        return adopt_revert.restore_tag(target, tag_field, original)
+
+    def die_on_the_first_settle(cfg_value, ledger):
+        writes["n"] += 1
+        if writes["n"] == 1:
+            raise _Died("the drop never reached the disk")
+        return settled(cfg_value, ledger)
+
+    adopt_revert.write = die_on_the_first_settle
+    try:
+        with pytest.raises(_Died):
+            adopt_revert.revert_tags(cfg, restore=note)
+    finally:
+        adopt_revert.write = settled
+
+    done = restored[0]
+    assert tags.read_genre_from_file(done) == paths[done], "the restore did not land"
+    key = (str(done), "genre")
+    assert key in {
+        (record.path, record.field) for record in adopt_revert.read(cfg).snapshots
+    }, "the record for the restored file was dropped, so there is no window at all"
+
+    retry = adopt_revert.revert_tags(cfg)
+    assert list(retry.failed) == [key], (
+        "the window is closed rather than narrowed, so this module's docstring "
+        "and R-24 both overstate the residue and should be corrected"
+    )
+    assert tags.read_genre_from_file(done) == paths[done]
+
+    # BOUNDED: the override writes the same original onto a file already holding
+    # it, so the cost of the residue is one override and never a wrong value.
+    cleared = adopt_revert.revert_tags(cfg, force=[key])
+    assert cleared.restored == (key,)
+    assert tags.read_genre_from_file(done) == paths[done]
     assert adopt_revert.read(cfg).snapshots == ()
 
 

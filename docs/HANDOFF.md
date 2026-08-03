@@ -134,12 +134,12 @@ onto another file's audio, destroyed the replacement's own genre with no record,
 and dropped the ledger record. The round 2 test that claimed the guard still bit
 had picked the one replacement genre that dodged the branch.
 
-The guard now accepts only evidence about the BYTES: size and time unchanged, or
-a digest recorded at write time. The inode was measured and rejected, because
-`write_bytes` and `cp` both truncate in place and keep it. The interrupted-pass
-case is closed structurally instead of heuristically, by dropping each record as
-its file is restored. The one remaining legitimate refusal, a later write of
-another field this product owns, is residual R-22 with the fix named.
+The guard was rewritten around size and time unchanged, or a digest recorded at
+write time. The inode was measured and rejected, because `write_bytes` and `cp`
+both truncate in place and keep it. Each record is now dropped from the ledger as
+its own file is restored rather than at the end of the pass. The one remaining
+legitimate refusal, a later write of another field this product owns, is residual
+R-22 with the fix named.
 
 **And the same commit that took a per-track-versus-per-pass failure out of
 `apply_plan` put one into the undo log.** A record naming a field this build does
@@ -148,9 +148,41 @@ and every retry died on the same record. The loop body is guarded per record now
 
 Also: `force` takes a list of `(path, field)` pairs, because a refusal printed per
 record must not hand out a pass-wide override; a `Path`-valued `recorded` resolves
-instead of excluding the whole library; the guard opens no audio file at all in
-the common path; and the container list under test is derived from the writer's
-own table, which grew it from seven suffixes to eleven.
+instead of excluding the whole library; and the container list under test is
+derived from the writer's own table, which grew it from seven suffixes to eleven.
+
+### What round 4 fixed, which was round 3's own two over-claims
+
+**Round 3 recorded the digest and then never asked it.** Its acceptance order was
+"size and time unchanged" FIRST, returning before the digest was consulted, so
+the one piece of evidence a replacement cannot forge sat unread while the two it
+can forge decided the answer. `st_mtime_ns` is metadata: `os.utime`, `touch -r`,
+`cp -p`, `rsync -a`, `tar -x` and every tag editor with a preserve modification
+time option set it to whatever they are told. Measured: different audio written to
+the path, padded to the recorded size and stamped back to the recorded time,
+restored anyway, `restored: 1  failed: {}`, the replacement's genre destroyed and
+the record dropped. That is verbatim the harm the refusal message names, reached
+past definitive contrary evidence already in the record.
+
+The digest is now the answer whenever there is one. Size and time may stand alone
+only where there is no digest at all, or where the file's bytes are not on this
+machine, which is the cloud-eviction case and is the reason that flag check is
+now load-bearing instead of unreachable. The performance argument that talked
+round 3 out of the read does not survive contact with the next line: accepting is
+immediately followed by `restore_tag`, which opens the same file and REWRITES it.
+
+**And "the interrupted pass is eliminated structurally" is a stronger claim than
+the code makes.** Dropping each record as its file is restored narrows the window
+from the whole pass to one record; it does not close it. A run that dies between a
+restore landing and that record's drop reaching the disk strands exactly that
+record, refused on every retry. Written down as residual R-24 and pinned by a test,
+because the damage is bounded (forcing it writes the same original onto a file
+that already holds it) but the claim was not.
+
+Also: the deleted-file refusal now asserts its REASON rather than only its key,
+which is what made the existence check kill zero tests. Round 3's mutation table
+would have caught all three: the size-and-time acceptance, the cloud-eviction
+check and the existence check each killed zero tests out of 3705.
 
 
 
