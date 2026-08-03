@@ -274,11 +274,90 @@ def owed_by_unit() -> dict[int, list[str]]:
 # the closing check: a trailer is refused BEFORE it closes anything
 
 
-CLOSES_TRAILER_RE = re.compile(r"^\s*Closes\s+#(\d+)\s*$", re.MULTILINE | re.IGNORECASE)
+#: Every keyword GitHub closes an issue on, not the one this repository's
+#: contract happens to use.
+#:
+#: The distinction cost a whole check. The first version of this matched
+#: `^Closes #n$` and nothing else, on the reasoning that the contract says to
+#: write that exact trailer. GitHub does not read the contract. `Fixes #36`,
+#: `Resolve #36`, `Closes: #36`, `Closes #36.` and `This closes #36.` all close
+#: issue 36 and cascade every unit waiting on it, and every one of them returned
+#: exit 0. A check that recognizes one spelling of many is a check that reports
+#: clean on the eleven ways somebody actually types it.
+CLOSING_KEYWORDS = ("close", "closes", "closed", "fix", "fixes", "fixed",
+                    "resolve", "resolves", "resolved")
+
+#: Keyword, optional colon, then the issue. Anywhere in the line rather than
+#: anchored, because GitHub scans the whole message body and so must this.
+CLOSES_RE = re.compile(
+    r"\b(?:" + "|".join(CLOSING_KEYWORDS) + r")\b\s*:?\s*#(\d+)",
+    re.IGNORECASE,
+)
+
+#: A comma list continuing from a keyword-anchored issue: `Closes #36, #33`.
+#: Applied with `match` at the END of a keyword hit and walked forward, so a bare
+#: `#33` anywhere else in the message is untouched.
+CONTINUED_RE = re.compile(r"\s*(?:,|and)\s*#(\d+)", re.IGNORECASE)
+
+#: Lines git itself strips from a commit message. The commit-msg hook is handed
+#: the RAW file, comments and the verbose diff included, so a template line
+#: reading `# Closes #NN` would otherwise refuse every commit that never touched
+#: it.
+COMMENT_LINE_RE = re.compile(r"^\s*#")
+SCISSORS_RE = re.compile(r"^\s*#\s*-+\s*>8\s*-+")
+
+
+def message_body(text: str) -> str:
+    """The part of a commit message git will keep, comments and diff removed.
+
+    The commit-msg hook is handed the RAW file. That file carries git's own
+    instructional comments, and on `commit --verbose` it carries the entire diff
+    below a scissors line. Matching over all of it would let a template line or a
+    diff hunk that happens to contain a closing keyword refuse a commit that
+    closes nothing, which is a check that gets uninstalled the first afternoon.
+    """
+    kept = []
+    for line in text.splitlines():
+        if SCISSORS_RE.match(line):
+            break
+        if COMMENT_LINE_RE.match(line):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def closing_references(text: str) -> list[int]:
+    """Every issue number this message would close, by any spelling GitHub reads.
+
+    THE SPELLING IS NOT OURS TO CHOOSE. This repository's contract says to write
+    `Closes #n`, and a check that only recognized that was clean on `Fixes #36`,
+    `Resolve #36`, `Closes: #36`, `Closes #36.` and `This closes #36.`, each of
+    which closes the issue and cascades every unit waiting on it. What matters is
+    what GitHub acts on, not what the contract asks for.
+
+    The comma continuation is caught DELIBERATELY OVER-INCLUSIVELY. Whether
+    GitHub closes the second issue in `Closes #36, #33` has changed with its
+    parser, but somebody writing that line means to close both, and the two costs
+    are not comparable: a false refusal is answered by rewording one line, while
+    a miss is a close that has already cascaded and that `sync` will not repair.
+
+    A bare `#36` with no keyword is left alone. Refusing a reference would make
+    it impossible to explain in a commit body why a unit is still open, which is
+    exactly the sentence this check is asking people to write.
+    """
+    found: list[int] = []
+    body = message_body(text)
+    for match in CLOSES_RE.finditer(body):
+        found.append(int(match.group(1)))
+        position = match.end()
+        while (carried := CONTINUED_RE.match(body, position)) is not None:
+            found.append(int(carried.group(1)))
+            position = carried.end()
+    return found
 
 
 def unresolved_closes(text: str, owed: dict[int, list[str]] | None = None) -> list[str]:
-    """Every `Closes #n` in ``text`` whose unit a register still owes a module.
+    """Every issue this message closes whose unit a register still owes a module.
 
     PURE, and network-free, which is what lets this run where it is useful. The
     rest of the audit needs `gh`, so it cannot bite on a machine with no token
@@ -294,13 +373,13 @@ def unresolved_closes(text: str, owed: dict[int, list[str]] | None = None) -> li
     """
     owed = owed_by_unit() if owed is None else owed
     found = []
-    for match in CLOSES_TRAILER_RE.finditer(text):
-        uid = int(match.group(1))
+    for uid in dict.fromkeys(closing_references(text)):
         modules = owed.get(uid)
         if modules:
             found.append(
-                f"Closes #{uid}, but U{uid} is still owed {', '.join(modules)}. "
-                f"Either land them, or re-point them at the unit that will."
+                f"this message closes #{uid}, but U{uid} is still owed "
+                f"{', '.join(modules)}. Either land them, or re-point them at "
+                f"the unit that will."
             )
     return found
 
@@ -308,7 +387,15 @@ def unresolved_closes(text: str, owed: dict[int, list[str]] | None = None) -> li
 def cmd_closing(args) -> int:
     """Refuse a closing trailer while a register still owes that unit a module."""
     if args.message_file:
-        text = Path(args.message_file).read_text()
+        path = Path(args.message_file)
+        if not path.is_file():
+            # A refusal a person can act on, not a traceback. This runs inside a
+            # git hook, where an unhandled exception surfaces as a stack trace in
+            # place of the commit message editor and reads as the tool being
+            # broken rather than the invocation being wrong.
+            print(f"board: no commit message at {args.message_file!r}", file=sys.stderr)
+            return 1
+        text = path.read_text()
     else:
         result = subprocess.run(
             ["git", "log", "--format=%B", f"{args.since}..HEAD"],

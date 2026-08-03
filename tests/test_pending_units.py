@@ -409,12 +409,86 @@ def test_a_closing_trailer_is_refused_while_a_register_still_owes_that_unit():
         "a unit no register owes anything closes cleanly, or the rule refuses "
         "every merge and gets removed"
     )
-    assert not board.unresolved_closes("Fixes #36", owed), (
-        "only the trailer this repository's contract uses closes an issue"
-    )
     assert not board.unresolved_closes("see #36 for the reasoning", owed), (
         "a reference is not a trailer, and refusing one would make it impossible "
         "to explain in a commit body why a unit is still open"
+    )
+
+
+#: Every spelling GitHub closes an issue on. WRITTEN OUT rather than generated
+#: from the pattern, because a table generated from the thing it tests passes
+#: whatever the thing does.
+#:
+#: An earlier version of this file asserted that `Fixes #36` does NOT close, and
+#: justified it with "only the trailer this repository's contract uses closes an
+#: issue". That is false about GitHub, and worse than false: it certified the
+#: hole, so the next reader would have found the gap already considered and
+#: settled. A test may not assert a limitation into a fact.
+CLOSING_SPELLINGS_GITHUB_ACTS_ON = (
+    "Fix #36",
+    "Fixes #36",
+    "Fixed #36",
+    "Close #36",
+    "Closes #36",
+    "Closed #36",
+    "Resolve #36",
+    "Resolves #36",
+    "Resolved #36",
+    "Closes: #36",
+    "Closes #36.",
+    "Closes #36, #33",
+    "This closes #36.",
+    "feat: a thing\n\nCloses #36\n",
+)
+
+#: Messages that close nothing this repository tracks, and must stay exit 0. A
+#: check that refuses these is a check somebody removes on the first afternoon it
+#: blocks a commit that was fine.
+MESSAGES_THAT_CLOSE_NOTHING = (
+    "Closes #21",
+    "see #36",
+    "Closes #52",
+    "look at #36 for why U36 is still open",
+    "feat: x\n\nbody\n# Please enter the commit message\n# Closes #36\n",
+    "feat: x\n\nCloses #21\n# ------------------------ >8 ------------------------\n+Closes #36\n",
+)
+
+
+@pytest.mark.parametrize("message", CLOSING_SPELLINGS_GITHUB_ACTS_ON)
+def test_every_spelling_github_closes_on_is_refused(message):
+    """One spelling out of eleven is a check that reports clean on the other ten.
+
+    Each of these closes issue 36 on GitHub and cascades every unit waiting on
+    it. The first version of this check matched `^Closes #n$` anchored to a whole
+    line, on the reasoning that the contract says to write that exact trailer.
+    GitHub does not read the contract.
+
+    The comma continuation is caught deliberately over-inclusively. Whether
+    GitHub closes the second issue in a list has moved with its parser, but the
+    person writing it means to close both, and the costs are not symmetric: a
+    false refusal is one reworded line, a miss is a close that has already
+    cascaded and that `sync` will not repair.
+    """
+    board = _board()
+    owed = {36: ["cratekit.write.converge_cli"], 33: ["cratekit.export.cli"]}
+    assert board.unresolved_closes(message, owed), (
+        f"{message!r} closes an issue on GitHub and this check reported clean"
+    )
+
+
+@pytest.mark.parametrize("message", MESSAGES_THAT_CLOSE_NOTHING)
+def test_a_message_that_closes_nothing_owed_is_left_alone(message):
+    """The direction that decides whether a check survives contact.
+
+    Two of these are the ones that would have made it unusable rather than merely
+    wrong: git hands the commit-msg hook the RAW file, so the template comments
+    are in it, and `commit --verbose` puts the entire diff below a scissors line.
+    A keyword anywhere in either would refuse a commit that closes nothing.
+    """
+    board = _board()
+    owed = {36: ["cratekit.write.converge_cli"], 33: ["cratekit.export.cli"]}
+    assert not board.unresolved_closes(message, owed), (
+        f"{message!r} closes nothing this register owes, and was refused anyway"
     )
 
 

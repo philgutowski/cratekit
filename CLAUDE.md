@@ -66,14 +66,28 @@ that is true.
 Two failure modes, and they are not the same thing:
 
 - **Exit 1, drift.** A derived value fell out of date. `board.py sync` repairs it.
-- **Exit 2, contradiction.** A unit's issue is closed while `tests/_pending.py`
-  still owes it a module, so the board says work landed that the repository says
-  did not. `sync` deliberately will not touch these, because repairing them
-  automatically means picking one source of truth to overwrite, which is how the
-  wrong one wins silently. Either reopen the issue or clear the register entry.
+- **Exit 2, contradiction.** A unit's issue is closed while a register still owes
+  it a module, so the board says work landed that the repository says did not.
+  Two registers are read: `tests/_pending.py`, and the `planned_in` markers on
+  the verb registry. `sync` deliberately will not touch these, because repairing
+  them automatically means picking one source of truth to overwrite, which is how
+  the wrong one wins silently. Either reopen the issue or clear the register
+  entry.
 
 Run the audit even when you changed nothing, because the cheapest time to catch
 drift is before it is load-bearing.
+
+**Before writing a merge commit that closes a unit:**
+
+    .venv/bin/python scripts/board.py closing --since main
+
+Exit 2 means the trailer you are about to write closes a unit that a register
+still owes a module. That is the same comparison `audit` makes, asked before the
+close instead of after it, and it is the last moment it is cheap: once the close
+has cascaded, `sync` will not repair it. It is network-free, so it works with no
+token. It runs in CI on every push and in a `commit-msg` hook if you installed
+that hook type, and it is here as well because the hook is absent from a fresh
+clone (R1) and CI answers after the push rather than before it.
 
 ## The battery
 

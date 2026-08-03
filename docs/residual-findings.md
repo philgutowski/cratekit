@@ -33,6 +33,18 @@ Installing the tool is not the same as installing the hook.
 dispatches to this repository's configuration, and reports the exact command
 when it does not. Doctor lands in U27.
 
+**Widened 2026-08-02: the closing condition names one hook type and there are
+now two.** `pre-commit install` writes `.git/hooks/pre-commit` and nothing else.
+The closing check added on `fix/conformance-3-and-soft-delete-reader` is on the
+`commit-msg` stage, which needs `--hook-type commit-msg` on top of it, so a clone
+can have a perfectly good `.git/hooks/pre-commit` and no `.git/hooks/commit-msg`
+at all. **U27 as specified will not close that gap**, because it checks the file
+this entry names. The install line in `.pre-commit-config.yaml` now asks for both
+types, and CI runs the closing check independently so the hook is not load
+bearing, but the doctor check should look for **every** hook type this
+repository configures rather than the one it happened to have when this was
+written.
+
 ---
 
 ## R-2. Four live portability and layering violations in the source repository
@@ -665,11 +677,19 @@ were compared instead, and they disagree exactly once: U23's package is
 exact membership, so U23 resolving it turns the test red and forces the deletion.
 
 **Fixed far enough to be safe on this branch:** `board.py` gained `planned_units`,
-`owed_by_unit` and a network-free `closing` check that refuses a `Closes #n`
-trailer while either register still owes Un, wired as a `commit-msg` hook and
-called by `audit`. `contradictions()` now reads both registers. Rule A refuses a
-register key naming a command-line module no verb declares, because such a key can
-never be satisfied and its unit's close becomes a permanent exit 2.
+`owed_by_unit` and a network-free `closing` check that refuses a message closing
+a unit either register still owes, wired three ways. `contradictions()` now reads
+both registers. Rule A refuses a register key naming a command-line module no verb
+declares, because such a key can never be satisfied and its unit's close becomes a
+permanent exit 2.
+
+**The check recognizes every keyword GitHub acts on, not the one the contract
+uses.** The first version matched `^Closes #n$` anchored to a line and reported
+clean on `Fix`, `Fixes`, `Fixed`, `Close`, `Closed`, `Resolve`, `Resolves`,
+`Resolved`, the colon form, trailing punctuation, a comma list, and the inline
+form, every one of which closes the issue and cascades. Git's own comment lines
+and the `commit --verbose` diff are stripped first, or a template line would
+refuse a commit that closes nothing.
 
 **Left open, and this is what needs the issue.** Nothing decides WHICH record is
 right when they disagree, and this branch deliberately did not pick for U23. The
