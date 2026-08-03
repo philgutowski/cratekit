@@ -57,10 +57,26 @@ Two applies still serialize into first-write-wins, which is the property that wa
 already true and is not weakened by the write moving inside the lock.
 
 **A record says what the file looked like when adoption left it.** Size and
-modification time, stamped after the write. Without them the revert writes the
-recorded original onto whatever is at that path now, which after somebody
-replaced the file is a stranger's audio getting a genre it never had. With them
-the mismatch is a named refusal instead.
+modification time, stamped after the write, and consulted only AFTER the field's
+own value has failed to settle the question. Without any of it the revert writes
+the recorded original onto whatever is at that path now, which after somebody
+replaced the file is a stranger's audio getting a genre it never had. Without the
+field check first, three ordinary libraries are refused forever; see
+:func:`_changed_since_adoption`.
+
+**THE LOCK IS NOT REENTRANT, AND TWO PUBLIC PARAMETERS CAN REACH IT.** ``flock``
+is held per open file description, so a second acquisition from the same process
+on a new descriptor blocks against the first and never returns. Nothing this
+package ships does that. What can is a caller's own ``restore`` handed to
+:func:`revert_tags`, or a caller's own ``write_field`` handed to
+:func:`write_tag_with_record`: both run INSIDE the lock, so either of them
+calling back into any function in this module that takes it deadlocks
+permanently rather than raising. It is written down rather than defended against
+because every defence costs more than it buys. A timeout turns a programming
+error into a partial revert, which is the outcome this module exists to prevent,
+and a reentrancy count would make a nested caller believe it holds exclusivity it
+does not. Both callbacks exist to be pure: read a file, write a file, return a
+boolean.
 
 **The reader refuses everything it cannot recognize, positively, field by
 field.** Catching only ``json.loads`` raising leaves a top-level list, a scalar,
@@ -610,6 +626,10 @@ def write_tag_with_record(
     the write and the stamp leaves the record unstamped, which reverts without
     the check rather than refusing, because the alternative is a record that can
     never be spent.
+
+    ``write_field`` RUNS INSIDE THE LOCK and must not take it again. See the
+    module docstring: ``flock`` is per open file description, so a callback that
+    reaches back into this module hangs forever rather than raising.
     """
     resolved = Path(path)
     with config._exclusive_lock(lock_path(cfg)):
@@ -682,14 +702,51 @@ def restore_tag(path: Path, tag_field: str, original: tuple[str, ...] | None) ->
     return tags.write_tag_values(path, tag_field, original)
 
 
-def _changed_since_adoption(record: TagSnapshot, target: Path) -> str | None:
+def _changed_since_adoption(
+    record: TagSnapshot,
+    target: Path,
+    *,
+    read_field: Callable[[Path, str], tuple[str, ...] | None],
+) -> str | None:
     """Why this file is not the one adoption wrote to, or None when it is.
 
-    An UNSTAMPED record is unverifiable rather than suspect, and it reverts. It
-    can only come from a crash between the write and the stamp, and refusing
-    those would leave a record that can never be spent on a file that genuinely
-    does carry adoption's value.
+    THE FIELD IS ASKED BEFORE THE STAMP IS, and that ordering is the whole of
+    this function. Size and modification time are CIRCUMSTANTIAL evidence about
+    the file; the field's own value is DIRECT evidence about the thing the record
+    describes. A guard that consults only the circumstantial evidence refuses
+    three ordinary libraries, all of them measured:
+
+    * A later write of any other field this module owns. Writing an energy
+      rating, which is in :data:`cratekit.core.tags.FIELDS` for the analysis
+      workflow, moved the size and the time and permanently blocked the adoption
+      revert on a file still carrying adoption's own genre.
+    * A byte-identical file whose time moved. A backup restore, an rsync without
+      timestamps, a cloud re-download. Same bytes, same genre, refused forever.
+    * An interrupted revert pass. It restores a file and dies before the ledger
+      is rewritten, so on retry that record's stamp no longer matches its own
+      successful restore, and it is refused for good while every other record
+      settles. The file is correct and the ledger keeps a record nobody can ever
+      clear.
+
+    So two positive recognitions come first. The field still holding exactly what
+    adoption WROTE is proof this is adoption's own output whatever the stamp
+    says. The field already holding the recorded ORIGINAL is proof a restore
+    already landed, and doing it again writes the same bytes and lets the record
+    settle. Only when neither is true does the stamp decide, and only when the
+    stamp is present: an unstamped record can only come from a crash between the
+    write and the stamp, and refusing those would leave a record that can never
+    be spent on a file that genuinely does carry adoption's value.
+
+    Even then the refusal is EVIDENCE RATHER THAN PERMISSION. See
+    :func:`revert_tags`'s ``force``: a person who knows the file is theirs has to
+    be able to say so, or a wrong guess here is as unrecoverable as the write it
+    was guarding.
     """
+    current = read_field(target, record.field)
+    if current is not None and tuple(current) == (record.written,):
+        return None
+    if current == record.original:
+        return None
     if record.size is None or record.mtime_ns is None:
         return None
     try:
@@ -699,9 +756,10 @@ def _changed_since_adoption(record: TagSnapshot, target: Path) -> str | None:
     if info.st_size == record.size and info.st_mtime_ns == record.mtime_ns:
         return None
     return (
-        "the file has changed since adoption wrote it, so the recorded original "
-        "describes bytes that are no longer there; restoring it would put one "
-        "file's tag onto another file's audio"
+        "the file has changed since adoption wrote it and no longer carries the "
+        "value adoption wrote, so the recorded original describes bytes that are "
+        "no longer there; restoring it would put one file's tag onto another "
+        "file's audio. Revert with force to override this."
     )
 
 
@@ -709,7 +767,9 @@ def revert_tags(
     cfg: config.Config,
     *,
     entry_id: str | None = None,
+    force: bool = False,
     restore: Callable[[Path, str, tuple[str, ...] | None], bool] = restore_tag,
+    read_field: Callable[[Path, str], tuple[str, ...] | None] = tags.read_tag_values,
 ) -> RevertReport:
     """Put every recorded original back on disk, exactly.
 
@@ -719,6 +779,15 @@ def revert_tags(
     because first-write-wins means a second adoption of a file writes through the
     FIRST record: matching on the creator alone answers "nothing to do" for work
     that demonstrably happened and leaves the file holding adoption's value.
+
+    ``force`` spends a record whose file no longer looks like the one adoption
+    wrote to. IT EXISTS BECAUSE THE GUARD IS EVIDENCE AND NOT PERMISSION. The
+    check in :func:`_changed_since_adoption` is a heuristic over a file somebody
+    else owns, and a heuristic with no override is a heuristic that decides: a
+    wrong refusal strands the only copy of a value exactly as surely as a wrong
+    restore overwrites one. It is a parameter here rather than something the
+    ``restore`` callback could reach, because the check runs BEFORE the callback
+    and no callback can therefore see past it.
 
     THE WHOLE PASS IS UNDER THE LEDGER'S LOCK, which is the same lock
     :func:`write_tag_with_record` holds across a record and its write. That is
@@ -735,6 +804,10 @@ def revert_tags(
     A RECORD IS DROPPED FROM THE LEDGER ONLY AFTER ITS FILE IS WRITTEN. The
     reverse order loses the record for a write that then failed, which is the same
     data loss the ledger exists to prevent arriving through the undo.
+
+    ``restore`` and ``read_field`` BOTH RUN INSIDE THE LOCK and must not take it
+    again. See the module docstring: ``flock`` is per open file description, so a
+    callback reaching back into this module hangs forever rather than raising.
     """
     restored: list[tuple[str, str]] = []
     failed: dict[tuple[str, str], str] = {}
@@ -749,7 +822,11 @@ def revert_tags(
             if not target.exists():
                 failed[reported] = "the file is no longer there"
                 continue
-            replaced = _changed_since_adoption(record, target)
+            replaced = (
+                None
+                if force
+                else _changed_since_adoption(record, target, read_field=read_field)
+            )
             if replaced is not None:
                 failed[reported] = replaced
                 continue

@@ -59,7 +59,12 @@ from cratekit.adopt.plan import (
     build_adoption_plan,
     offer_plan,
 )
-from cratekit.adopt.revert import RevertReport, revert_tags, snapshot_before_write
+from cratekit.adopt.revert import (
+    RevertReport,
+    revert_tags,
+    snapshot_before_write,
+    write_tag_with_record,
+)
 from cratekit.adopt.scan import (
     CollectionRow,
     Disposition,
@@ -68,6 +73,13 @@ from cratekit.adopt.scan import (
     scan_rows,
 )
 
+# BOTH HALVES OF THE TAG WRITE ARE EXPORTED, and which one a reader reaches for
+# first is decided here. ``write_tag_with_record`` is the composed call an apply
+# wants, because the record and the write it describes have to be one critical
+# section or a revert can land between them. ``snapshot_before_write`` is the
+# record half and stays public because recording without writing is a real thing
+# to want. This list used to export only the second one, so the surface pointed
+# every reader at the half that is unsafe on its own.
 __all__ = [
     "APPROVAL_GATE",
     "Approval",
@@ -90,4 +102,5 @@ __all__ = [
     "revert_tags",
     "scan_rows",
     "snapshot_before_write",
+    "write_tag_with_record",
 ]

@@ -25,9 +25,18 @@ six files came back ``applied=0 failed=6`` with an empty applied ledger and all
 six files on disk holding adoption's genre instead of their own. Every gate that
 stands in front of a destructive run is structurally DOWNSTREAM of this module's
 own irreversible write, so the per-entry catch multiplied one refusal into one
-file rewrite per entry in the plan. Two things fix it and both are needed: the
-irreversible write is now second, and a refusal whose own declared scope is wider
-than one item STOPS THE RUN instead of being counted and stepped over.
+file rewrite per entry in the plan.
+
+THE ORDER IS THE WHOLE FIX, AND THE LOOP STILL NEVER STOPS. A first attempt
+paired the reordering with a break when the refusal's declared scope was wider
+than one item. That was wrong for a reason worth writing down, because it reads
+so plausibly: :func:`cratekit.core.cause.refuse` DEFAULTS to ``Scope.RUN`` and
+nothing in :mod:`cratekit.write` declares ``ITEM`` at all, so the default was
+doing all the work and an ordinary per-track refusal ended the pass with later
+entries never attempted. That is exactly the per-track versus per-pass failure
+U19 paid for and the one :func:`membership_plan` says this module refuses to
+have. Nothing was gained by it either: once the irreversible write is second, a
+systemic refusal costs zero file writes however many times it is reported.
 
 WHAT A SECOND RUN DOES AFTER A CRASH AT EACH STEP, stated rather than implied,
 because "idempotent" asserted in a docstring is what a green suite cannot check:
@@ -381,12 +390,15 @@ class ApplyReport:
     from the outstanding set rather than counted, so it is correct after a plan
     has grown or shrunk between two runs.
 
-    ``stopped_at`` names the entry a systemic refusal ended the run on, and is
-    None for a run that reached the end of its work. It is a declared field
-    rather than something inferred from the counts, because "one entry failed and
-    the rest were fine" and "the first entry refused and nothing after it was
-    attempted" produce the same shape of report otherwise, and only one of them
-    means the person still has a whole plan to apply.
+    THERE IS NO "STOPPED HERE" FIELD, and its absence is now the design rather
+    than an omission. One briefly existed, set when a refusal wider than one item
+    ended the loop. Both halves were wrong: the loop must not end (see
+    :func:`apply_plan`), so the field could only ever be None, and a field that is
+    always None is a promise a reader will eventually rely on.
+
+    EVERY OUTSTANDING ENTRY IS ATTEMPTED, so ``applied`` plus ``failed`` accounts
+    for all of them. That is the property a caller can use, and it is stronger
+    than a marker saying where a run gave up.
     """
 
     tree: str
@@ -396,7 +408,6 @@ class ApplyReport:
     already_applied: tuple[str, ...] = ()
     failed: Mapping[str, str] = field(default_factory=dict)
     resumed_at: int | None = None
-    stopped_at: str | None = None
 
     def __len__(self) -> int:
         return len(self.applied)
@@ -419,6 +430,14 @@ def apply_plan(
     write and this module owns the order. It is called per entry rather than per
     batch deliberately: the ledger record has to follow the write it describes,
     and a batch call cannot say which half of a batch landed before it failed.
+
+    A ``CratekitError`` FROM ``place`` FAILS THAT ENTRY AND NOTHING ELSE, and its
+    declared scope is not consulted. A caller does not have to reach for
+    ``Scope.ITEM`` to keep the rest of its plan alive, which matters because the
+    scope every existing refusal in this repository carries is the default one,
+    ``Scope.RUN``. If the refusal really does condemn the run, the caller sees it
+    against every entry and the run costs nothing but time: no file is rewritten,
+    because the tag write is downstream of this call.
 
     ``tag_value`` says what, if anything, adoption should write onto the file for
     an entry. Returning None writes no tag, which is the correct answer for a
@@ -464,7 +483,6 @@ def apply_plan(
 
     applied: list[str] = []
     failed: dict[str, str] = {}
-    stopped_at: str | None = None
     for entry in pending:
         try:
             folder, sub = destination(declared, entry.bucket, entry.sub)
@@ -473,35 +491,47 @@ def apply_plan(
             failed[entry.entry_id] = str(exc)
             continue
 
-        # THE RECOVERABLE WRITE GOES FIRST. A membership row is inside the
-        # database snapshot; the tag write below is outside every safety net this
-        # product has. See the module docstring for what the other order cost.
-        try:
-            place(entry, folder, sub)
-        except CratekitError as exc:
-            failed[entry.entry_id] = exc.cause.message
-            if exc.cause.scope is not Scope.ITEM:
-                # A REFUSAL THAT CONDEMNS MORE THAN THIS ENTRY ENDS THE RUN. Its
-                # own declared scope says so, and stepping over it would offer
-                # the same refusal one entry at a time for the length of the
-                # plan while doing the irreversible half of each one.
-                stopped_at = entry.entry_id
-                break
-            continue
-
         wanted = None if tag_value is None else tag_value(entry, declared)
-        if wanted is not None and entry.path:
-            target = Path(entry.path)
+        target = Path(entry.path) if entry.path else None
+        if wanted is not None and target is not None:
             try:
-                # ASKED BEFORE ANYTHING IS RECORDED. ``write_tags`` raises this
-                # out of its own try block, so an unsupported container used to
-                # leave the run with no report at all and a revert record for a
-                # write that never happened, and every re-run died on the same
-                # file. One awkward container costs one entry.
+                # ASKED BEFORE ANYTHING AT ALL HAPPENS FOR THIS ENTRY, membership
+                # included. ``write_tags`` raises this from OUTSIDE its own try
+                # block, so an unsupported container used to raise out of this
+                # function entirely: no report, later entries never attempted,
+                # and every re-run dying on the same file. Asking after ``place``
+                # fixed that and bought a second problem, which is that the entry
+                # got its membership, was then failed, and could never reach
+                # applied, so every re-run placed it again. Asked here, one
+                # awkward container costs exactly one entry and changes nothing.
                 tags.dialect_of(target.suffix.lower())
             except tags.UnsupportedContainer as exc:
                 failed[entry.entry_id] = str(exc)
                 continue
+
+        # THE RECOVERABLE WRITE GOES FIRST. A membership row is inside the
+        # database snapshot; the tag write below is outside every safety net this
+        # product has. See the module docstring for what the other order cost.
+        #
+        # AND A REFUSAL HERE COSTS EXACTLY THIS ENTRY, whatever it condemns. An
+        # earlier version broke the loop when the cause's scope was wider than
+        # one item, which reads well and is wrong twice over:
+        # :func:`cratekit.core.cause.refuse` DEFAULTS to ``Scope.RUN`` and
+        # nothing in :mod:`cratekit.write` declares ``ITEM``, so an ordinary
+        # per-track refusal ended the pass and later entries were never
+        # attempted. That is the per-track versus per-pass failure U19 paid for
+        # and the one ``membership_plan`` says this module refuses to have. The
+        # property that made the break look necessary was never the break: it is
+        # the ORDER above, which is what makes a refusal cost no file write at
+        # all. A systemic refusal is now reported once per entry, which is noise
+        # in a report rather than damage on a disk.
+        try:
+            place(entry, folder, sub)
+        except CratekitError as exc:
+            failed[entry.entry_id] = exc.cause.message
+            continue
+
+        if wanted is not None and target is not None:
             # THE ORIGINAL AND THE WRITE ARE ONE ACT. See the module docstring:
             # a revert landing between them leaves the write with no record.
             _record, landed = revert.write_tag_with_record(
@@ -541,7 +571,6 @@ def apply_plan(
         already_applied=already,
         failed=failed,
         resumed_at=report_resumed,
-        stopped_at=stopped_at,
     )
 
 

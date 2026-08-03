@@ -88,6 +88,40 @@ legacy genre byte the ledger never recorded; the block-count probe called sparse
 files and whole FUSE mounts cloud-backed; a stale `.icloud` stub hid a readable
 file; the collision question was asked and nothing consumed the answer.
 
+### What round 2 fixed, which was mostly round 1's own damage
+
+**The flagship guard could not fail.** The 35-case exactness test defined its
+expectation by calling the reader it was verifying, so both sides of every
+assertion moved together. A mutant restoring all three of the losses the round
+exists to close left the whole suite green. The expectation is now the
+parametrised literal, cross-checked against an oracle that reads the container
+directly and shares no code with the reader. Verified: that mutant now kills 50
+cases across two test functions. `probe_readability`'s own totality wrapper had
+the same shape, covered only by a second catch downstream, and is now driven
+directly.
+
+**Two regressions round 1 introduced, both in code it rewrote.** Breaking the
+apply loop when a refusal's scope was wider than one item ended the pass on an
+ORDINARY per-track refusal, because `cause.refuse` defaults to `Scope.RUN` and
+nothing in `write/` declares `ITEM`. That is the per-track versus per-pass
+failure U19 paid for, so the break is gone: the ordering was always the whole
+fix. And decoding the recorded location made a NULL `Location` raise
+`AttributeError` out of the census generator, one line above the probe that had
+just been hardened against exactly that.
+
+**One over-correction.** The revert's size and mtime check refused three
+legitimate libraries: a later write of any other field this module owns, a
+byte-identical file whose mtime moved, and an interrupted revert pass retried.
+The record already carried direct evidence the guard was not consulting, so the
+field's own value is asked first and the stamp only decides when that is
+inconclusive. `revert_tags` gains `force`, because a heuristic over somebody
+else's file with no override is a heuristic that decides.
+
+**One smaller one.** Asking about the container after `place` meant an
+unsupported container got its membership, was failed, and could never reach
+applied, so every re-run placed it again. The question is now asked before
+anything happens for the entry.
+
 
 
 **The per-field metadata policy, and the registration that inverts it.**

@@ -58,12 +58,16 @@ PLACEHOLDER_SUFFIX = ".icloud"
 #: The prefix that same synchroniser puts on the placeholder's own name.
 PLACEHOLDER_PREFIX = "."
 
-#: ``UF_DATALESS``. macOS sets this in ``st_flags`` on a file whose bytes a file
+#: ``SF_DATALESS``. macOS sets this in ``st_flags`` on a file whose bytes a file
 #: provider has evicted, which is the ONE authoritative answer to "are the bytes
 #: here" that costs nothing and downloads nothing. Spelled as a literal because
-#: Python's :mod:`stat` module does not export it; the value is from the
-#: platform's own ``sys/stat.h`` and is inert on every platform that has no
-#: ``st_flags`` at all.
+#: Python's :mod:`stat` module does not export it; the value is copied from
+#: ``sys/stat.h``, where the line reads
+#: ``#define SF_DATALESS 0x40000000 /* file is dataless object */``, and is inert
+#: on every platform that has no ``st_flags`` at all. The comment said
+#: ``UF_DATALESS`` at first, which is a constant that does not exist: the value
+#: was right and the name was invented, and a name nobody can grep for in the
+#: header is a name the next reader cannot check.
 DATALESS_FLAG = 0x40000000
 
 
@@ -326,6 +330,16 @@ def _resolved_path(
     layer down. This function adds nothing to that decision; it translates it
     into this module's vocabulary once, so no caller re-interprets it.
     """
+    if not isinstance(recorded, str):
+        # A NULL COLUMN. The annotation says ``str`` and a rekordbox row does not
+        # have to agree: a null ``FolderPath`` is ordinary. The decoder below asks
+        # a string method of whatever it is handed, so a None raised
+        # ``AttributeError`` straight out of the census generator and took every
+        # later row with it, which is the failure the probe two functions down was
+        # just hardened against. Resolving it here rather than there because this
+        # is where the value stops being the caller's and starts being a path, and
+        # because the resolver this replaced survived it by coercing with ``str``.
+        return None, Readability.NOT_A_PATH
     try:
         decoded = locations.location_to_path(recorded)
     except locations.LocationDecodeError:
