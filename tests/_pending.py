@@ -106,6 +106,22 @@ PENDING: dict[str, tuple[str, str]] = {
         "decision, and the decision is never read back out of a file somebody "
         "edited",
     ),
+    "cratekit.core.tombstone": (
+        "U24",
+        "that cratekit.acquire.match's replicated copy of the tombstone identity "
+        "and the domain module's original agree, over a table of inputs chosen "
+        "for what a normalization change actually bites on rather than for "
+        "readability: the store key, the kind, the fold, and the identity a raw "
+        "row title produces. Two copies of one algorithm exist while U24 is in "
+        "flight, because the identity is addressed by both a deletion pass and "
+        "an acquisition pass and neither may import the other. A drift between "
+        "them is silent from both sides: a tombstone recorded under one spelling "
+        "is invisible to the other, the version reports missing, acquisition "
+        "fetches it back, and a deletion somebody made on purpose is undone with "
+        "the whole suite green. This is the ONE guard that can compare them, and "
+        "it can only run once the domain module exists in the same tree, which "
+        "is the moment this entry is deleted",
+    ),
     # U16 APPENDED A SECOND OBLIGATION HERE AND IT HAS BEEN REMOVED, which is
     # worth a note because removing an obligation is normally the wrong move.
     # It said a tombstone must be recorded under cratekit.acquire.match's kind

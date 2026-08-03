@@ -95,6 +95,13 @@ TOMBSTONE_OVER_OWNED = "tombstone-over-owned"
 #: verb is told "blocked" and "nothing to do" in the same breath.
 VERDICT_UNAPPLICABLE = "verdict-unapplicable"
 
+#: An approximate offer that was truncated. A silently truncated offer looks
+#: exactly like an offer of everything the library resembles, so a person who
+#: rejects it has rejected answers they were never shown, and the run then
+#: acquires a track the library already holds, which is what the approximate pass
+#: exists to prevent.
+CANDIDATES_WITHHELD = "candidates-withheld"
+
 #: The verb that shows a person the questions this run left open.
 REVIEW_VERB = "review.list"
 
@@ -367,12 +374,20 @@ def adjudicate(
     result: match.MatchResult,
     *,
     handler_key: str,
+    suppresses: Callable[[str, Mapping[str, Any]], bool],
+    suppression_id: Callable[..., str],
 ) -> match.MatchResult:
     """Turn the needs-review state into queue items, and read back the answers.
 
     Matched and missing pass through untouched. They are results, and a result
     pushed into the queue asks a person to confirm an answer (R12, and the split
     U11 recorded when it declared these surfaces).
+
+    The tombstone view is threaded through because a REJECTION reaches "missing"
+    by a road resolution never walks, and the row it produces is the one that
+    tells acquisition what to go and get. Passing the same snapshot the match
+    used, rather than re-reading the store, is what keeps one run seeing one
+    world.
     """
     settled: list[match.TrackMatch] = []
     for found in result.matches:
@@ -404,7 +419,12 @@ def adjudicate(
         )
         settled.append(
             match.apply_verdict(
-                found, accepted=accepted, option=held.option, item_id=held.item_id
+                found,
+                accepted=accepted,
+                option=held.option,
+                item_id=held.item_id,
+                suppresses=suppresses,
+                suppression_id=suppression_id,
             )
         )
     return match.MatchResult(matches=tuple(settled))
@@ -492,9 +512,16 @@ def _warnings(
                     "remedy": "",
                 }
             )
+    named: set[str] = set()
     for track in result.of(match.MatchState.NEEDS_REVIEW):
         if track.why not in match.STALLED:
             continue
+        # ONE WARNING PER ITEM. Two rows of one list can resolve to one question,
+        # and a second warning about it is a second thing to clear that is not
+        # there.
+        if track.item_id and track.item_id in named:
+            continue
+        named.add(track.item_id or "")
         found.append(
             {
                 "code": VERDICT_UNAPPLICABLE,
@@ -508,6 +535,24 @@ def _warnings(
                 "match": track.match_id,
                 "item": track.item_id or "",
                 "remedy": CLEAR_VERB,
+            }
+        )
+    for track in result.of(match.MatchState.NEEDS_REVIEW):
+        if not track.withheld:
+            continue
+        found.append(
+            {
+                "code": CANDIDATES_WITHHELD,
+                "message": (
+                    f"{track.wanted.artist} / {track.wanted.title} resembles more "
+                    f"of this library than one offer can hold; "
+                    f"{track.withheld} further candidates were not shown, so a "
+                    f"rejection here rejects only what was"
+                ),
+                "suppression": "",
+                "match": track.match_id,
+                "item": track.item_id or "",
+                "remedy": "",
             }
         )
     return tuple(found)
@@ -532,15 +577,23 @@ def _pending(result: match.MatchResult, *, run_id: str) -> PendingHumanAction | 
     named reported nothing to do. So the verb the action names is the verb that
     can act, and the item identifiers ride in the steps.
 
-    COUNTED BY QUESTION, not by row. Two rows of one list that resolve to one
-    item are one thing to answer, and reporting two made the number a person sees
-    disagree with the number of items they are shown.
+    COUNTED BY QUESTION, not by row, IN BOTH HALVES OF THE SENTENCE. The first
+    version of this counted the total by question and the stalled part by row, so
+    one line pasted twice produced "1 tracks ... need a person; 2 of them carry a
+    verdict that could not be applied", which is arithmetic nobody can follow, and
+    then printed one identifier for the two.
     """
     open_questions = result.of(match.MatchState.NEEDS_REVIEW)
     if not open_questions:
         return None
-    stalled = [found for found in open_questions if found.why in match.STALLED]
-    answerable = [found for found in open_questions if found.why not in match.STALLED]
+    stalled = sorted(
+        {found.item_id for found in open_questions if found.why in match.STALLED and found.item_id}
+    )
+    answerable = {
+        found.item_id or found.match_id
+        for found in open_questions
+        if found.why not in match.STALLED
+    }
     questions = {found.item_id or found.match_id for found in open_questions}
     steps: list[str] = []
     if answerable:
@@ -550,12 +603,18 @@ def _pending(result: match.MatchResult, *, run_id: str) -> PendingHumanAction | 
             "the version the list asked for"
         )
     if stalled:
-        named = ", ".join(sorted({found.item_id or "" for found in stalled} - {""}))
         steps.append(
             f"{len(stalled)} of these carry a verdict this run could not apply, so "
-            f"they are resolved and invisible to the open listing; clear each one "
-            f"to put it back in front of a person: crate review clear {named}"
+            f"they are resolved, invisible to the open listing, and refused by "
+            f"review resolve; clear each one to put it back in front of a person"
         )
+        # ONE STEP PER ITEM, each a command that runs. Joining the identifiers
+        # into one line rendered "crate review clear a, b", and the verb takes a
+        # single positional, so the shell answered "unrecognized arguments" and
+        # exit 2. A pending action naming a remedy nobody can execute is the
+        # printed instruction this field exists to replace, so rendering one here
+        # was the same defect wearing this unit's own fix as a costume.
+        steps.extend(f"crate review clear {item_id}" for item_id in stalled)
     return PendingHumanAction(
         kind="review",
         id=output.new_pending_id(run_id),
@@ -617,7 +676,13 @@ def match_list(ctx: Any) -> Envelope:
         wanted, index, suppresses=suppresses, suppression_id=identify
     )
     with review.open_store(cfg) as items:
-        result = adjudicate(items, result, handler_key=ctx.entry.handler_key)
+        result = adjudicate(
+            items,
+            result,
+            handler_key=ctx.entry.handler_key,
+            suppresses=suppresses,
+            suppression_id=identify,
+        )
     pending = _pending(result, run_id=ctx.run.run_id)
     return ctx.envelope(
         data=result.payload(),
@@ -629,6 +694,7 @@ def match_list(ctx: Any) -> Envelope:
 
 
 __all__ = [
+    "CANDIDATES_WITHHELD",
     "CLEAR_VERB",
     "LIST_KEYS",
     "LIST_VERSION",

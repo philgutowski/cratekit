@@ -593,3 +593,63 @@ recorded the deferral, and no handoff entry names it, which Part 4 step 3 of the
 seam decisions requires be stated when a requirement is deferred across a unit
 boundary. It is stated here. **Closes when:** an intake unit lands the fetch, or
 the requirement is re-pointed at a unit on the board.
+
+---
+
+## R-19. Four accepted findings from the second U16 review, recorded rather than fixed
+
+**Found:** by the second U16 adversarial review, 2026-08-03.
+
+Numbered after R-18, which the same unit added. If a concurrent unit claims R-19
+first, renumber this entry at merge; the content is what matters.
+
+**1. A candidate at a non-Camelot key is displayed as having no key.**
+`match.key_token` parses Camelot and returns the empty string for anything else,
+so `"Am"`, `"F#m"` and `"A min"` all fold to nothing. Those files then group with
+genuinely unkeyed files, and `Candidate.key` renders null. The invariant the
+candidate docstring states, that a candidate shows one key and every path under
+it is at that key, is therefore false for exactly the spellings rekordbox writes
+by default when a track has not been through this product's naming convention.
+It is not a wrong join: an unparseable key and an absent key are already treated
+alike by `key_disagreement`, so the STATE is right and only the display and the
+grouping are coarse. **Closes when:** the key vocabulary understands the open-key
+and musical spellings, at which point `key_token` returns a canonical Camelot for
+all of them and the grouping sharpens with no other change. The natural owner is
+whichever unit first has to render a key to a person outside this verb.
+
+**2. The dash reader is an English vocabulary, so convergence is English-only.**
+`match.split_title` reads a dash-introduced version only when the tail's last
+word, or its first, is in a list of English qualifiers. A catalogue spelling its
+versions in Japanese or Cyrillic converges through the bracketed reader and not
+through this one, so the pair `曲 (リミックス)` and `曲 - リミックス` still produce
+two identities where the English pair now produces one. The module docstring now
+says this rather than presenting the dash pass as fixing convergence outright.
+Deliberately not fixed here: guessing at a version qualifier in a script this
+list cannot check is the wrong-join risk the vocabulary exists to bound, and the
+right fix is a per-script vocabulary rather than a looser rule. **Closes when:**
+the vocabulary carries the qualifier words for the scripts the library actually
+holds, with the same last-word-plus-multi-word guard.
+
+**3. `split_version` and `split_title` differ by one word and mean different
+things.** Both are exported. The first reads bracketed groups only; the second is
+what the readers call and reads both conventions. The docstring that claimed a
+dash qualifier is "deliberately not parsed" has been rewritten, since the module
+now parses one, and it points at the other function. The names remain a trap.
+**Closes when:** the bracketed half stops being public, or is renamed to say that
+it is a part rather than the whole. Not done here because it is exported and a
+rename is a change other units read.
+
+**4. The export text guard would fire on sixteen correct modules if it were run
+over the package.** `tests/test_match_states.py` checks non-docstring string
+literals for `.xml`, `rekordbox` and export markup. Applied to this unit's two
+modules it is clean and useful, and it covers the one route an import guard
+cannot see. Applied package-wide it would fire on an argparse help string
+mentioning an export, on the cause slug `rekordbox-running`, on the remedy token
+`quit-rekordbox`, on a doctor check name, on
+`importlib.import_module("pyrekordbox")`, and, most pointedly, on a guard clause
+written to REFUSE an export. It is not red today because it is scoped to two
+modules, and it is recorded because the obvious next move, widening it, is the
+move that breaks it. **Closes when:** whoever widens it narrows the pattern to a
+path-shaped literal in a read call rather than any string mentioning an export,
+and keeps a fixture for the refusal clause so the guard cannot block the code
+written to enforce the same rule.

@@ -245,12 +245,18 @@ def fold(text: object) -> str:
 
 
 def split_version(title: str) -> tuple[str, str]:
-    """Split a listing's title into (title, version qualifier).
+    """The BRACKETED half of the split, on its own. Not the reader's entry point.
 
-    Only TRAILING bracketed groups are read. A dash-introduced qualifier is
-    deliberately not parsed: titles contain dashes, and a parser that guessed
-    would split "Sun - Rise" into a title and a version and then ask a person
-    about a record that does not exist.
+    Only trailing bracketed groups are read here, and a dash is not looked at at
+    all. That is a division of labour rather than a policy: :func:`split_title`
+    is what the readers call and what reads both conventions, and this is the
+    piece it starts with. The dash rule lives there, with the vocabulary that
+    keeps it from splitting "Sun - Rise".
+
+    Kept exported because it is the shape a caller wants when it already knows a
+    string carries no dash convention, and because the two names differing by one
+    word is a trap: if you want what a listing means by a title, call
+    :func:`split_title`.
     """
     remaining = str(title).strip()
     qualifiers: list[str] = []
@@ -299,6 +305,9 @@ _DASH_VERSIONS: frozenset[str] = frozenset(
 #: playlist API ships "Remastered 2011" and "Remastered Version", so the year is
 #: the last word and the vocabulary above cannot see it. Deliberately tiny, since
 #: a leading-word rule is the loose one: "Reprise Of Nothing" is a title.
+#:
+#: These are also the ONLY words allowed to make a one-word tail a version. See
+#: :func:`_is_a_version`.
 _DASH_VERSION_HEADS: frozenset[str] = frozenset({"remaster", "remastered", "rerecorded"})
 
 #: The separator the public playlist API puts before a version. The same three
@@ -308,10 +317,35 @@ _DASH = " - "
 
 
 def _is_a_version(tail: str) -> bool:
+    """Whether a dash-introduced tail names a version rather than ending a title.
+
+    A ONE-WORD TAIL IS NOT ENOUGH, and that is the whole of the second version of
+    this rule. Matching on the last vocabulary word alone split every title whose
+    final word happens to be one of seventeen: "Ziggy Stardust - Reprise", "Hurt
+    - Reprise", "Long - Live", "Studio 54 - Live", "Pump Up The Volume -
+    Extended", "Nice Up - Dub", "Beat It - Demo", "Sunset - Acoustic". The
+    reprise class is the sharpest, because an album reprise is a separate
+    composition, so the mangle reframed it from "the library holds nothing like
+    this" to "the library holds this record as a different version", and
+    accepting that reports ownership of a track the library does not hold.
+
+    The two costs are not comparable, which is what decides the rule. A tail this
+    misses stays in the title and produces a QUESTION. A tail this takes wrongly
+    produces a wrong join, which is the one thing this unit exists to remove. So
+    a bare qualifier is left alone and only a multi-word tail, or one of the three
+    head words the public playlist API actually uses on its own, is read.
+
+    WORDS ARE COUNTED RAW, not folded. Folding turns punctuation into spaces, so
+    "Sun - Re-Mix" counted as two words and split; the tail is one word and the
+    count has to be taken before anything rewrites it.
+    """
+    raw = str(tail).split()
     words = fold(tail).split()
-    return bool(words) and (
-        words[-1] in _DASH_VERSIONS or words[0] in _DASH_VERSION_HEADS
-    )
+    if not words:
+        return False
+    if words[0] in _DASH_VERSION_HEADS:
+        return True
+    return len(raw) > 1 and words[-1] in _DASH_VERSIONS
 
 
 def split_title(title: str) -> tuple[str, str]:
@@ -327,7 +361,14 @@ def split_title(title: str) -> tuple[str, str]:
 
     The dash pass is GUARDED BY A VOCABULARY rather than by position, because a
     parser that split on any trailing dash would turn "Sun - Rise" into a record
-    nobody released. Only a tail that names a version qualifier is read as one.
+    nobody released. Only a tail that names a version qualifier is read as one,
+    and :func:`_is_a_version` says what that means and why a bare one-word tail
+    does not qualify.
+
+    THE VOCABULARY IS ENGLISH, so this convergence is English-only. A catalogue
+    spelling its versions in another script converges through the bracketed
+    reader and not through this one, which is recorded rather than hidden: see
+    R-19 in docs/residual-findings.md.
     """
     remaining, bracketed = split_version(title)
     head, separator, tail = remaining.rpartition(_DASH)
@@ -366,14 +407,13 @@ def key_token(key: str | None) -> str:
 
 
 def listed_title(title: str, version: str) -> str:
-    """The title as a listing spells it, with the version back inside it.
+    """A title and a separate version qualifier, put back into one string.
 
-    The three readers hand this module a title and a version as separate values,
-    and the tombstone identity below is addressed by ONE title that carries the
-    version, because that is how a library row spells it and a library row is
-    what the deletion pass reads. Parentheses rather than brackets, because a
-    canonical spelling is the only thing three readers with three conventions can
-    converge on, and it is the one rekordbox writes.
+    ONLY FOR A SOURCE THAT NEVER HAD ONE. A provider row carries the version in
+    its own field, so there is no original spelling to preserve and something has
+    to be composed; parentheses, because that is what a library row uses. Every
+    other source hands over a title that already carries its version, and that
+    ORIGINAL STRING is what gets hashed. See :attr:`Wanted.listed`.
     """
     return f"{title} ({version})" if str(version).strip() else str(title)
 
@@ -498,6 +538,13 @@ class Wanted:
     isrc: str | None = None
     origin: str = TEXT
     ref: str = ""
+    #: THE TITLE EXACTLY AS THE SOURCE SPELLED IT, before the version came out of
+    #: it. Carried rather than recomputed because the tombstone identity is a
+    #: hash of a title, the other side of that hash reads a library row's Title
+    #: column verbatim, and a title this module took apart and put back together
+    #: is a different string. Empty for a source that never had one, which is a
+    #: provider row carrying its version in a separate field.
+    spelled: str = ""
 
     @property
     def recording(self) -> str:
@@ -513,13 +560,50 @@ class Wanted:
 
     @property
     def listed(self) -> str:
-        """The title with the version back inside it, as a library row spells it."""
-        return listed_title(self.title, self.version)
+        """The title this track is ADDRESSED BY, which is the one it arrived as.
+
+        THE SEAM, and getting it wrong is invisible from either side alone. The
+        deletion pass hashes a library row's Title column verbatim. Round one of
+        this file hashed a title that had been split and recomposed into round
+        parentheses, so the two sides agreed only when the row happened to use
+        that one spelling out of the several a row really uses. Four other
+        spellings of one version missed, including the dash form this module
+        learned to parse, and a miss is silent on both sides: nothing knows a
+        tombstone exists, so nothing reports one.
+
+        Composition is the fallback and not the rule. It is reached only by a
+        source that hands over a version in its own field, where there is no
+        original string to preserve and something has to be built.
+        """
+        return self.spelled or listed_title(self.title, self.version)
 
     @property
     def identity(self) -> dict[str, str]:
         """THE TOMBSTONE identity (R36), which is U24's and not this module's."""
         return version_identity(artist=self.artist, title=self.listed)
+
+    @property
+    def suppression_spellings(self) -> tuple[dict[str, str], ...]:
+        """Every identity one version of this recording could have been recorded under.
+
+        CONSULTING IS NOT RECORDING, and the two get different rules. A recorder
+        must write one identity, or one deletion becomes several records; a
+        consulter that asks under one spelling and misses re-acquires a track
+        somebody deleted on purpose, with nothing raised anywhere. So the store
+        is asked under the spelling this list used AND under the composed one,
+        which is what a provider-sourced list would have produced for the same
+        version.
+
+        This does NOT loosen KTD16. Every spelling here names the SAME version of
+        the same recording, so no lookup can cross a version boundary and a
+        tombstone over one remix can still never suppress another.
+        """
+        seen: list[dict[str, str]] = []
+        for title in (self.listed, listed_title(self.title, self.version)):
+            built = version_identity(artist=self.artist, title=title)
+            if built not in seen:
+                seen.append(built)
+        return tuple(seen)
 
     def question(self, *, about_the_key: bool = False) -> dict[str, str]:
         """THE REVIEW ITEM identity, which is this module's.
@@ -735,6 +819,11 @@ def _from_row(row: object, *, origin: str, position: int) -> Wanted:
         isrc=(str(isrc).strip() or None) if isrc else None,
         origin=origin,
         ref=str(_field(row, "id", "")).strip(),
+        # KEPT ONLY WHEN THE VERSION CAME OUT OF IT. A row that declared its
+        # version in its own field never spelled the two together, so there is no
+        # original to preserve and the composed form is the honest answer. A row
+        # that spelled them together is addressed by exactly what it said.
+        spelled="" if declared else raw_title,
     )
 
 
@@ -810,11 +899,16 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
     for anything acquired before it was tagged, the artist and title too.
     Neither alone is enough, and an export is neither.
 
-    THE ARTIST AND THE TITLE FALL BACK AS A PAIR. Falling back field by field
-    gave a half-tagged file, one with a title tag and no artist tag, an identity
-    assembled from two sources that matched neither the file's tags nor its
-    name, and the identity is what ownership is looked up by. A file either
-    speaks for itself or it does not.
+    THE ARTIST AND THE TITLE FALL BACK AS A PAIR, AND A PRESENT VALUE IS NEVER
+    DISCARDED. Three rules in precedence order, because two of them alone each
+    lose a file. Field by field, a title tag with no artist tag gave an identity
+    assembled from two sources matching neither the tags nor the name. As a
+    plain pair, an artist tag with no title tag and a filename carrying no
+    separator threw the artist away entirely, so the file was found by no list
+    naming its artist and a held track reported missing. So: both tags win when
+    both are there; otherwise the NAME wins when the name carries both halves;
+    otherwise each field takes whatever it has, which is the only case where the
+    two sources mix and the only case where mixing beats losing a value.
 
     THE KEY'S PRECEDENCE RUNS THE OTHER WAY, on purpose. The Camelot head is
     written into the filename by this product, following the library's own
@@ -831,11 +925,14 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
 
     tagged_artist = str(tags.read_tag(path, "artist") or "").strip()
     tagged_title = str(tags.read_tag(path, "title") or "").strip()
+    named_artist, named_title = artist_part.strip(), str(title_part).strip()
     if tagged_artist and tagged_title:
         artist, spelled = tagged_artist, tagged_title
+    elif named_artist and named_title:
+        artist, spelled = named_artist, named_title
     else:
-        artist, spelled = artist_part.strip(), title_part
-    title, version = split_title(str(spelled))
+        artist, spelled = tagged_artist or named_artist, tagged_title or named_title
+    title, version = split_title(spelled)
 
     written_key = head.get("key")
     key = written_key or tags.read_tag(path, "initialkey")
@@ -1058,6 +1155,9 @@ class TrackMatch:
     suppression_id: str | None = None
     acquisitions: tuple[Acquisition, ...] = ()
     asks_about_key: bool = False
+    #: Candidates the offer limit kept back. Reported rather than dropped, so a
+    #: rejection is a rejection of what was shown and everybody knows it.
+    withheld: int = 0
 
     @property
     def match_id(self) -> str:
@@ -1092,6 +1192,7 @@ class TrackMatch:
             "key": self.wanted.key,
             "isrc": self.wanted.isrc,
             "candidates": [candidate.to_json() for candidate in self.candidates],
+            "candidates_withheld": self.withheld,
             "acquisition": [option.to_json() for option in self.acquisitions],
             "paths": list(self.paths),
             "review_item": self.item_id,
@@ -1151,7 +1252,15 @@ def _candidates_for(wanted: Wanted, owned: Sequence[Owned]) -> tuple[Candidate, 
     for held in owned:
         grouped.setdefault((held.recording, held.version_key, held.key_key), []).append(held)
     built: list[Candidate] = []
-    for recording, version_key, key in sorted(grouped):
+    # INSERTION ORDER, NOT SORTED. Sorting looked harmless and threw away the one
+    # ordering that carries information: the approximate pass hands its rows over
+    # best score first, and re-sorting them alphabetically then truncating to the
+    # offer limit dropped the BEST match and kept five worse ones. A library
+    # holding "Sun Path Alt" at 91.3 as five versions and "Sun Pathx" at 97.7 as
+    # one showed the person five wrong answers and withheld the right one. Every
+    # other caller passes rows straight out of the index, whose order is a sorted
+    # directory walk, so this is deterministic there too.
+    for recording, version_key, key in grouped:
         rows = grouped[(recording, version_key, key)]
         first = rows[0]
         if recording != wanted.recording:
@@ -1200,7 +1309,29 @@ def _approximate(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
         score_cutoff=APPROXIMATE_FLOOR,
         limit=APPROXIMATE_LIMIT,
     )
+    # BEST SCORE FIRST, and the order is load-bearing from here on. ``extract``
+    # returns descending, and everything downstream preserves it so that the
+    # offer limit drops the worst answers rather than whichever sorted last.
     return tuple(held for token, _score, _position in found for held in index.versions(token))
+
+
+def _suppressed(
+    wanted: Wanted,
+    *,
+    suppresses: Callable[[str, Mapping[str, Any]], bool],
+    suppression_id: Callable[[str, Mapping[str, Any]], str],
+) -> str | None:
+    """The identifier of the tombstone standing over this version, or None.
+
+    Asked under every spelling one version could have been recorded under, for
+    the reason :attr:`Wanted.suppression_spellings` gives: a consult that misses
+    re-acquires something somebody deleted on purpose and nothing anywhere
+    reports it, while an extra lookup costs one set membership test.
+    """
+    for identity in wanted.suppression_spellings:
+        if suppresses(TOMBSTONE_KIND, identity):
+            return suppression_id(TOMBSTONE_KIND, identity)
+    return None
 
 
 def resolve_one(
@@ -1268,20 +1399,25 @@ def resolve_one(
 
     near = _approximate(wanted, index)
     if near:
+        offered = _candidates_for(wanted, near)
         return TrackMatch(
             wanted=wanted,
             state=MatchState.NEEDS_REVIEW,
             why=Why.TITLE_APPROXIMATE,
-            candidates=_candidates_for(wanted, near)[:APPROXIMATE_LIMIT],
+            candidates=offered[:APPROXIMATE_LIMIT],
+            # SAID OUT LOUD. A truncated offer that says nothing looks exactly
+            # like an offer of everything the library resembles, so a person who
+            # rejects it has rejected answers they were never shown.
+            withheld=max(len(offered) - APPROXIMATE_LIMIT, 0),
         )
 
-    identity = wanted.identity
-    if suppresses(TOMBSTONE_KIND, identity):
+    standing = _suppressed(wanted, suppresses=suppresses, suppression_id=suppression_id)
+    if standing is not None:
         return TrackMatch(
             wanted=wanted,
             state=MatchState.SUPPRESSED,
             why=Why.TOMBSTONED,
-            suppression_id=suppression_id(TOMBSTONE_KIND, identity),
+            suppression_id=standing,
         )
 
     return TrackMatch(
@@ -1316,6 +1452,8 @@ def apply_verdict(
     accepted: bool | None,
     option: str | None,
     item_id: str,
+    suppresses: Callable[[str, Mapping[str, Any]], bool],
+    suppression_id: Callable[[str, Mapping[str, Any]], str],
 ) -> TrackMatch:
     """Fold a recorded decision into a track that would otherwise need review.
 
@@ -1337,6 +1475,16 @@ def apply_verdict(
     candidates on offer "accepted" says the library has the record and does not
     say which version, and taking all of them would report the library holding
     three copies of one record on the strength of one unspecific yes.
+
+    A REJECTION CONSULTS THE TOMBSTONES, which is why this takes the store at
+    all. Resolution asks the store only on the path that ends in "missing", and
+    a rejection reaches "missing" by another road: the question was asked because
+    the library held something, the person said none of it is the record, and the
+    row that comes out says go and get the version the list asked for. The step
+    text says exactly that. Without the second consult a rejected question
+    produced a missing row carrying acquisition options for a version standing
+    under a tombstone, at exit zero, and a warning is not a declared input to the
+    verb that reads them.
     """
     if accepted is None:
         return TrackMatch(
@@ -1347,8 +1495,23 @@ def apply_verdict(
             paths=found.paths,
             item_id=item_id,
             asks_about_key=found.asks_about_key,
+            withheld=found.withheld,
         )
     if not accepted:
+        standing = _suppressed(
+            found.wanted, suppresses=suppresses, suppression_id=suppression_id
+        )
+        if standing is not None:
+            return TrackMatch(
+                wanted=found.wanted,
+                state=MatchState.SUPPRESSED,
+                why=Why.TOMBSTONED,
+                candidates=found.candidates,
+                item_id=item_id,
+                suppression_id=standing,
+                asks_about_key=found.asks_about_key,
+                withheld=found.withheld,
+            )
         return TrackMatch(
             wanted=found.wanted,
             state=MatchState.MISSING,
@@ -1361,6 +1524,7 @@ def apply_verdict(
             # it has to say what to go and get.
             acquisitions=acquisition_options(found.wanted),
             asks_about_key=found.asks_about_key,
+            withheld=found.withheld,
         )
     if option is None:
         chosen = list(found.candidates) if len(found.candidates) == 1 else []
@@ -1376,6 +1540,7 @@ def apply_verdict(
             candidates=found.candidates,
             item_id=item_id,
             asks_about_key=found.asks_about_key,
+            withheld=found.withheld,
         )
     return TrackMatch(
         wanted=found.wanted,
@@ -1385,6 +1550,7 @@ def apply_verdict(
         paths=tuple(path for candidate in chosen for path in candidate.paths),
         item_id=item_id,
         asks_about_key=found.asks_about_key,
+        withheld=found.withheld,
     )
 
 

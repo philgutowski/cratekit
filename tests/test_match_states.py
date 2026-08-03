@@ -40,6 +40,7 @@ from cratekit.core.exit_codes import ExitCode
 # be a second opinion about what a valid file is, and the tag suite's opinion is
 # the one the tag reader is proven against. It lives in a helper module rather
 # than in that suite, so importing it does not run another suite's top level.
+from tests import _pending
 from tests._containers import synth_container
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -207,6 +208,108 @@ def u24_fold(value: str) -> str:
     return re.sub(r"\s+", " ", unicodedata.normalize("NFC", str(value)).casefold()).strip()
 
 
+#: INPUTS CHOSEN FOR WHAT A FOLD CHANGE BITES ON, not for readability. Every row
+#: is a string where two plausible normalizations disagree, so a copy of this
+#: algorithm that drifts from NFC to NFKC, or acquires a leading-article strip, or
+#: stops case-folding, produces a different answer HERE rather than passing.
+#:
+#: A pin over ASCII cannot see any of that: "Aurora Bloom" is NFC-stable, so NFC
+#: and NFKC give identical bytes and a drift between them is invisible. The
+#: verifier proved that by injecting exactly that change and watching the whole
+#: suite stay green.
+FOLD_PINS: tuple[tuple[str, str], ...] = (
+    # NFC composes; NFD would leave the combining acute on its own.
+    ("Café del Mar", "café del mar"),
+    ("Café del Mar", "café del mar"),
+    # THE TWO ROWS THAT SEE AN NFC TO NFKC DRIFT. Under NFKC the fullwidth run
+    # becomes "sun path" and the circled digit becomes "1 track"; under NFC both
+    # survive. These are what a pin over ASCII cannot do.
+    ("Ｓｕｎ Ｐａｔｈ", "ｓｕｎ ｐａｔｈ"),
+    ("① Track", "① track"),
+    # Full case folding expands this ligature on its own, with no compatibility
+    # normalization involved. Pinned because it is a real property both copies
+    # must share, and because it is easy to mistake for an NFKC effect.
+    ("Suﬁx", "sufix"),
+    # A leading-article strip is a plausible "improvement" and would break both
+    # sides silently. The article stays.
+    ("The Sun Path", "the sun path"),
+    # Case folding is deeper than lowercasing for these two.
+    ("STRASSE", "strasse"),
+    ("İstanbul", "i̇stanbul"),
+    # Spacing folds, punctuation does not, and the two are the axis U24 chose.
+    ("  Sun   Path  (Live)  ", "sun path (live)"),
+    ("Sun Path [Live]", "sun path [live]"),
+    # Non-Latin passes through untouched apart from spacing.
+    ("曲  (リミックス)", "曲 (リミックス)"),
+)
+
+
+@pytest.mark.parametrize("given,expected", FOLD_PINS, ids=lambda v: repr(v)[:40])
+def test_the_tombstone_fold_is_pinned_where_two_normalizations_disagree(given, expected):
+    """PIN THE FOLD, NOT ONE HASH, because a hash pins one input.
+
+    Two copies of this algorithm exist until U24 merges, and the risk is not that
+    somebody renames a key: it is that one copy's NORMALIZATION drifts, which
+    only shows up on the inputs the normalization exists for. Every row here is
+    such an input, and the independently written reference below has to agree
+    with the module on all of them.
+    """
+    assert match.tombstone_fold(given) == expected
+    assert match.tombstone_fold(given) == u24_fold(given)
+
+
+def test_the_fold_pins_actually_discriminate_between_normalizations():
+    """A pin nobody proved discriminates is a pin over ASCII wearing a costume.
+
+    Asserts that the table contains at least one row where NFC and NFKC differ,
+    one where a leading article would be stripped, and one where composition
+    matters, so the table cannot rot into a list of strings that agree under
+    every normalization anybody might drift to.
+    """
+    import unicodedata as u
+
+    inputs = [given for given, _ in FOLD_PINS]
+    assert any(
+        u.normalize("NFC", given).casefold() != u.normalize("NFKC", given).casefold()
+        for given in inputs
+    ), "no row here can see an NFC to NFKC drift"
+    assert any(given.lower().startswith("the ") for given in inputs)
+    assert any(
+        u.normalize("NFC", given) != u.normalize("NFD", given) for given in inputs
+    )
+
+
+@_pending.requires("cratekit.core.tombstone")
+def test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist():
+    """THE ONLY GUARD THAT CAN SEE THE COPIES DRIFT, armed when U24 lands.
+
+    Until then two implementations of one algorithm live in two worktrees and
+    nothing in either tree can compare them, so this file pins the fold against
+    an independently written reference. That catches a drift on THIS side. It
+    cannot catch one on the other, and a drift on either side has the same cost:
+    a tombstone recorded under one spelling is invisible to the other, the
+    version reports missing, acquisition fetches it back, and the deletion is
+    undone with the suite green.
+
+    The moment ``cratekit.core.tombstone`` exists in the same tree, the pending
+    register goes red, the entry is deleted, and this runs. It compares the store
+    key, the kind, the fold over every pinned input, and the identity a raw row
+    title produces, which is the full surface the two sides share. When it
+    passes, the correct next move is to delete the copy here and import the
+    domain module, which is what this unit's own docstrings already say.
+    """
+    from cratekit.core import tombstone
+
+    assert match.TOMBSTONE_KIND == tombstone.KIND_VERSION
+    assert match_cli.TOMBSTONE_STORE == tombstone.STORE_KEY
+    for given, _expected in FOLD_PINS:
+        assert match.tombstone_fold(given) == tombstone.fold(given)
+    for row_title in ROW_SPELLINGS:
+        assert match.version_identity(
+            artist="Aurora Bloom", title=row_title
+        ) == tombstone.version_identity(artist="Aurora Bloom", title=row_title)
+
+
 def test_the_tombstone_identity_is_u24s_algorithm_byte_for_byte():
     """THE MOST EXPENSIVE DEFECT THIS UNIT SHIPPED, pinned so it cannot return.
 
@@ -238,6 +341,98 @@ def test_the_tombstone_identity_is_u24s_algorithm_byte_for_byte():
     )
 
 
+#: THE SPELLINGS A REKORDBOX Title COLUMN ACTUALLY HOLDS for one version of one
+#: recording. U24 hashes this string verbatim, so this is the input to the other
+#: side of the seam, and the question this table asks is whether a LIST naming
+#: the same record arrives at the same identity.
+ROW_SPELLINGS = [
+    "Sun Path (Nightwave Remix)",
+    "Sun Path - Nightwave Remix",
+    "Sun Path [Nightwave Remix]",
+    "Sun Path (feat. Mira) (Nightwave Remix)",
+    "Sun Path (Extended) (Remastered)",
+    "Sun Path",
+    "Sun Path (Original Mix)",
+]
+
+
+def u24_records(artist: str, row_title: str) -> dict[str, str]:
+    """What U24's recorder writes, DERIVED the way it derives it.
+
+    ``deletion.stores.version_of`` passes ``row.artist`` and ``row.title``
+    straight through, and ``row.title`` is the collection row's Title column
+    verbatim: ``deletion/library.py`` builds it with ``_text(row, "Title")``.
+    Nothing splits it and nothing recomposes it. Written out here rather than
+    imported, because the deletion package is landing in its own worktree and the
+    whole point of this helper is to be a SECOND implementation.
+    """
+    return {"artist": u24_fold(artist), "title": u24_fold(row_title)}
+
+
+@pytest.mark.parametrize("row_title", ROW_SPELLINGS)
+def test_a_list_addresses_a_tombstone_the_way_a_deleted_row_actually_recorded_it(row_title):
+    """THE SEAM, and it is what a literal-fed parity test cannot see.
+
+    Round one proved the FUNCTION agreed, by handing both sides the same string.
+    The entire risk is that the two sides DERIVE different strings from one
+    record, and they did: this side split the title, pulled the version out and
+    put it back in round parentheses, so it agreed only where the row happened to
+    use that one spelling. Four of the seven below missed, including the dash
+    form this unit had just learned to parse, and a miss is silent on both sides
+    because nothing knows a tombstone exists.
+
+    Driven from the ROW SPELLING through the real readers, which is the only way
+    to see it. A pasted list and a public playlist both hand over the title as
+    the row spells it, so the address is that string, unaltered.
+    """
+    recorded = u24_records("Aurora Bloom", row_title)
+    for wanted in (
+        match.read_text_lines(f"Aurora Bloom - {row_title}\n")[0],
+        match.read_spotify_items(
+            [{"name": row_title, "artists": [{"name": "Aurora Bloom"}]}]
+        )[0],
+    ):
+        assert recorded in wanted.suppression_spellings, (
+            f"a tombstone recorded from the row {row_title!r} is addressed by "
+            f"nothing this list produces: {wanted.suppression_spellings}"
+        )
+
+
+@pytest.mark.parametrize("row_title", ROW_SPELLINGS)
+def test_a_provider_row_with_a_separate_version_field_reaches_the_same_record(row_title):
+    """The one source that never spelled the two together, held to the same seam.
+
+    A provider carries the version beside the title, so there is no original
+    string and one has to be composed. It still has to reach a tombstone the
+    deletion pass wrote for the spelling a library row most often uses.
+    """
+    title, version = match.split_title(row_title)
+    wanted = match.read_tidal_tracks(
+        [{"title": title, "version": version, "artist": {"name": "Aurora Bloom"}}]
+    )[0]
+    assert (
+        u24_records("Aurora Bloom", match.listed_title(title, version))
+        in wanted.suppression_spellings
+    )
+
+
+def frozen(identities):
+    return {tuple(sorted(identity.items())) for identity in identities}
+
+
+def test_consulting_several_spellings_never_crosses_a_version_boundary():
+    """The loosening this must not be. KTD16 says a tombstone identifies a VERSION.
+
+    Asking the store under more than one spelling is safe only while every
+    spelling names the same version, so that is asserted rather than argued in a
+    comment: nothing a remix produces may address the recording with no
+    qualifier, or with a different one.
+    """
+    remix = frozen(one(version="Nightwave Remix").suppression_spellings)
+    for stranger in (one(), one(version="Someone Remix"), one(title="Sun Pathway")):
+        assert not remix & frozen(stranger.suppression_spellings)
+
+
 @pytest.mark.parametrize(
     "artist,title,version",
     [
@@ -245,19 +440,11 @@ def test_the_tombstone_identity_is_u24s_algorithm_byte_for_byte():
         ("Aurora Bloom", "Sun Path", ""),
         ("Aurora Bloom", "Sun Path", "Original Mix"),
         ("  Nova   Reef ", " Tide  Line ", "Extended Mix"),
-        ("Café del Mar", "Track", "Live"),
+        ("Caf\u00e9 del Mar", "Track", "Live"),
     ],
 )
-def test_a_wanted_track_addresses_a_tombstone_the_way_a_deleted_row_records_it(
-    artist, title, version
-):
-    """The two producers, driven from the two shapes they actually have.
-
-    The deletion pass reads a library row, which carries ONE title with the
-    version inside it. This unit reads a listing, which carries a title and a
-    version as separate values, and three readers disagree about which. Both have
-    to arrive at one mapping, so the listing's pair is recombined into the row's
-    spelling rather than hashed as a pair.
+def test_a_composed_address_still_matches_a_row_spelled_that_way(artist, title, version):
+    """The composition path, held to the row it is modelled on.
 
     ``Original Mix`` is in the table on purpose: this module folds that qualifier
     away for MATCHING, because a record listed as the original mix and the same
@@ -265,10 +452,10 @@ def test_a_wanted_track_addresses_a_tombstone_the_way_a_deleted_row_records_it(
     tombstone, because U24 does not, and a suppression that disagrees about one
     qualifier is a suppression that misses.
     """
-    from_a_row = {"artist": u24_fold(artist), "title": u24_fold(f"{title} ({version})".strip())}
-    if not version:
-        from_a_row = {"artist": u24_fold(artist), "title": u24_fold(title)}
-    assert one(artist=artist, title=title.strip(), version=version).identity == from_a_row
+    composed = match.listed_title(title.strip(), version)
+    assert match.version_identity(artist=artist, title=composed) == u24_records(
+        artist, composed
+    )
 
 
 def test_an_identity_with_neither_an_artist_nor_a_title_is_refused():
@@ -926,6 +1113,75 @@ def test_at_most_the_declared_number_of_approximate_candidates_is_offered(music)
     assert 0 < len(found.candidates) <= match.APPROXIMATE_LIMIT
 
 
+def test_the_offer_limit_keeps_the_best_scoring_answers_and_says_what_it_kept_back(
+    cfg, music, tmp_path
+):
+    """IT TRUNCATED AN ALPHABETICALLY SORTED LIST, so it dropped the best answer.
+
+    ``_candidates_for`` re-sorted on the folded tokens, destroying the score
+    order the approximate pass had just produced, and the cap then took the first
+    five. With "Sun Path Alt" scoring 91.3 as five versions and "Sun Pathx"
+    scoring 97.7 as one, the person was shown five wrong answers and the right
+    one was withheld. Rejecting then re-acquires a track the library already
+    holds, which is what the approximate pass exists to prevent.
+
+    And a silent truncation looks exactly like an offer of everything the library
+    resembles, so the count that was kept back is reported.
+    """
+    for number in range(5):
+        hold(music, f"0{number + 1}A - 124 - Aurora Bloom - Sun Path Alt (Mix {number})")
+    hold(music, "08A - 124 - Aurora Bloom - Sun Pathx")
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path\n", "near.txt")
+    _code, envelope = drive(["match", "run", path])
+
+    row = envelope["data"]["needs_review"][0]
+    assert row["why"] == str(match.Why.TITLE_APPROXIMATE)
+    titles = [candidate["title"] for candidate in row["candidates"]]
+    assert "Sun Pathx" in titles, (
+        "the best-scoring recording was dropped by an alphabetical truncation"
+    )
+    assert titles[0] == "Sun Pathx", "the offer is no longer in score order"
+    assert len(row["candidates"]) == match.APPROXIMATE_LIMIT
+    assert row["candidates_withheld"] == 1
+    assert [w["code"] for w in envelope["warnings"]] == [match_cli.CANDIDATES_WITHHELD]
+
+
+def test_rejecting_a_question_about_a_tombstoned_version_does_not_hand_it_to_acquisition(
+    cfg, music, tmp_path
+):
+    """A REJECTION REACHES MISSING BY A ROAD RESOLUTION NEVER WALKS.
+
+    Consulting the store last is right, but the rejection branch built its
+    acquisition options without consulting it at all, so a question about a
+    version standing under a tombstone came back as a missing row telling the
+    next verb to go and get it, at exit zero. The step text says in as many
+    words "reject to acquire the version the list asked for", and a warning is
+    not a declared input to that verb.
+    """
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Someone Remix)")
+    review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
+        kind=match.TOMBSTONE_KIND,
+        identity=match.version_identity(
+            artist="Aurora Bloom", title="Sun Path (Extended Mix)"
+        ),
+        actor="test",
+    )
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path (Extended Mix)\n")
+    _code, first = drive(["match", "run", path])
+    assert first["data"]["needs_review"][0]["why"] == str(match.Why.VERSION_DIFFERS)
+    drive(["review", "resolve", first["data"]["needs_review"][0]["review_item"],
+           "--verdict", "rejected"])
+
+    code, second = drive(["match", "run", path])
+    assert code == int(ExitCode.OK)
+    assert second["data"]["missing"] == [], (
+        "a tombstoned version was handed to acquisition by a rejection"
+    )
+    assert second["data"]["matched"] == second["data"]["needs_review"] == []
+    warnings = [w for w in second["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
+    assert len(warnings) == 1 and warnings[0]["suppression"]
+
+
 def test_a_half_tagged_file_does_not_get_an_identity_matching_neither_source(
     music, tmp_path
 ):
@@ -943,6 +1199,23 @@ def test_a_half_tagged_file_does_not_get_an_identity_matching_neither_source(
     index = index_of(music)
     assert index.versions(match.recording_token("Aurora Bloom", "Wrong Title"))
     assert index.versions(match.recording_token("Aurora Bloom", "Sun Path")) == ()
+
+
+def test_a_present_artist_tag_is_never_thrown_away_by_the_pair_fallback(music, tmp_path):
+    """THE PAIR RULE'S OWN FAILURE, which round one introduced and did not test.
+
+    A file with an artist tag, no title tag, and a name carrying no separator has
+    no filename artist to fall back to, so falling back as a pair set the artist
+    to nothing. The file is then found by no list naming its artist: a held track
+    reports missing and is acquired again, which is the same cost the field-wise
+    rule had, arriving from the other side.
+    """
+    probe = synth_container(tmp_path, ".flac")
+    assert tags.write_tags(probe, {"artist": "Aurora Bloom"})
+    shutil.copy2(probe, music / "SunPath.flac")
+
+    held = index_of(music).versions(match.recording_token("Aurora Bloom", "SunPath"))
+    assert [row.artist for row in held] == ["Aurora Bloom"]
 
 
 def test_the_payload_carries_exactly_the_fields_the_declared_surface_requires():
@@ -1040,9 +1313,16 @@ def test_the_three_readers_produce_one_shape(spotify):
             ("Aurora Bloom", "Sun Path", match.version_token("Someone Remix")),
             ("Nova Reef", "Tide Line", ""),
         ]
-    assert {w.identity["title"] for w in from_spotify} == {
-        w.identity["title"] for w in from_tidal
-    }
+    # THE MATCH CONVERGES AND THE ADDRESS DELIBERATELY DOES NOT. A listing is
+    # addressed by the title it actually spelled, because the other side of that
+    # hash reads a library row verbatim, so a dash-spelled list and a provider row
+    # are two addresses for one version. The consult covers both, which is what
+    # makes a tombstone recorded from either spelling findable from the other.
+    composed = {w.identity["title"] for w in from_tidal}
+    for wanted in from_spotify:
+        assert composed & {
+            spelling["title"] for spelling in wanted.suppression_spellings
+        }, "a version this list can name is addressed by nothing the other side writes"
 
 
 @pytest.mark.parametrize(
@@ -1050,8 +1330,12 @@ def test_the_three_readers_produce_one_shape(spotify):
     [
         ("Sun Path - Nightwave Remix", ("Sun Path", "Nightwave Remix")),
         ("Sun Path - Radio Edit", ("Sun Path", "Radio Edit")),
+        ("Sun Path - Extended Mix", ("Sun Path", "Extended Mix")),
+        # A HEAD WORD carries a one-word tail, because the public playlist API
+        # ships exactly these three on their own and a year is not a vocabulary
+        # word.
         ("Sun Path - Remastered 2011", ("Sun Path", "Remastered 2011")),
-        ("Sun Path - Live", ("Sun Path", "Live")),
+        ("Sun Path - Remastered", ("Sun Path", "Remastered")),
         ("Sun Path - Nightwave Remix (Radio Edit)", ("Sun Path", "Nightwave Remix Radio Edit")),
         # NOT a version. A parser that split on any trailing dash would invent a
         # record nobody released, which is why the split is vocabulary-guarded.
@@ -1065,6 +1349,57 @@ def test_a_dash_qualifier_is_read_only_when_it_names_a_version(name, expected):
     # The bracket-only splitter is unchanged, so the hazard it was written
     # against stays written down where somebody will find it.
     assert match.split_version("Sun - Rise") == ("Sun - Rise", "")
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        # THE REPRISE CLASS, which is the sharpest of these. An album reprise is a
+        # separate composition, so splitting it reframes "the library holds
+        # nothing like this" into "the library holds this record as a different
+        # version", and accepting that reports ownership of a track the library
+        # does not hold.
+        "Sgt. Pepper's Lonely Hearts Club Band - Reprise",
+        "Ziggy Stardust - Reprise",
+        "Hurt - Reprise",
+        # Every other one-word vocabulary tail that is really the end of a title.
+        "Long - Live",
+        "Studio 54 - Live",
+        "Pump Up The Volume - Extended",
+        "Nice Up - Dub",
+        "Beat It - Demo",
+        "Sunset - Acoustic",
+        # FOLDING INFLATED THE WORD COUNT: the inner hyphen became a space, so a
+        # one-word tail counted as two and split. The count is taken raw now.
+        "Sun - Re-Mix",
+        # A Latin tail on a non-Latin title is the same exposure.
+        "曲 - Live",
+    ],
+)
+def test_a_legitimate_title_ending_in_a_vocabulary_word_is_not_split(name):
+    """THE ENTIRE EXPOSURE OF A VOCABULARY RULE, and round one had no case for it.
+
+    The negatives before this all used a tail OUTSIDE the vocabulary, which tests
+    that a word not on the list is not on the list. What matters is a real title
+    whose final word IS on it. A bare one-word qualifier is genuinely ambiguous,
+    so it is left alone: a tail this misses costs a question, and a tail taken
+    wrongly costs a wrong join, which is the one thing this unit exists to remove.
+    """
+    assert match.split_title(name) == (name, "")
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("Sun - Rise", ("Sun - Rise", "")),
+        ("Sing - Sing - Sing", ("Sing - Sing - Sing", "")),
+        ("The Man - Machine", ("The Man - Machine", "")),
+        ("Come - Alive", ("Come - Alive", "")),
+        ("Sun - Rise!", ("Sun - Rise!", "")),
+    ],
+)
+def test_the_titles_that_were_already_safe_stay_safe(name, expected):
+    assert match.split_title(name) == expected
 
 
 def test_a_bare_track_record_is_read_as_readily_as_a_playlist_item():
@@ -1559,8 +1894,84 @@ def test_a_run_blocked_by_an_unapplicable_verdict_names_the_verb_that_can_act(
     assert third["pending_human_action"]["verify_verb"] == match_cli.REVIEW_VERB
 
 
-def test_the_pending_action_counts_questions_rather_than_rows(cfg, music, tmp_path):
-    """Two rows of one list that resolve to one item are one thing to answer."""
+def stall(cfg, music, tmp_path, how_many: int) -> tuple[list[str], dict]:
+    """Leave ``how_many`` questions carrying a verdict that cannot be applied.
+
+    Accept a candidate for each, then take the accepted file away and put a
+    different remix in its place, which is the shape a retag or a move produces.
+    """
+    lines = []
+    for number in range(how_many):
+        hold(music, f"08A - 124 - Artist{number} - Track{number} (Someone Remix)")
+        lines.append(f"Artist{number} - Track{number} (Extended Mix)")
+    path = write_list(tmp_path, "\n".join(lines) + "\n", f"stall{how_many}.txt")
+    _code, first = drive(["match", "run", path])
+    for row in first["data"]["needs_review"]:
+        drive(
+            ["review", "resolve", row["review_item"], "--verdict", "accepted",
+             "--option", row["candidates"][0]["id"]]
+        )
+    for number in range(how_many):
+        (music / f"08A - 124 - Artist{number} - Track{number} (Someone Remix).flac").unlink()
+        hold(music, f"08A - 124 - Artist{number} - Track{number} (Another Remix)")
+    _code, second = drive(["match", "run", path])
+    return lines, second
+
+
+def runnable_steps(pending: dict) -> list[list[str]]:
+    return [
+        step.split()[1:] for step in pending["steps"] if step.startswith("crate ")
+    ]
+
+
+@pytest.mark.parametrize("how_many", [1, 2, 5])
+def test_every_printed_remedy_is_a_command_that_actually_runs(
+    cfg, music, tmp_path, how_many
+):
+    """WITH TWO OR MORE STALLED ITEMS THE PRINTED REMEDY WAS NOT A COMMAND.
+
+    The identifiers were joined into one line, and the verb takes a single
+    positional, so the shell answered "unrecognized arguments" and exit 2. That
+    is the exact defect class this unit says it removes: a pending action naming
+    a remedy nobody can execute is the printed instruction the field replaces.
+    Reachable whenever a person accepted candidates for two or more tracks and
+    then retagged or moved files.
+
+    Parametrized over one, two and five, because the old shape passed at one.
+    Each step is DRIVEN, not pattern-matched, so "it looks like a command" is not
+    what is being asserted.
+    """
+    _lines, envelope = stall(cfg, music, tmp_path, how_many)
+    assert envelope["exit_code"] == int(ExitCode.PENDING_HUMAN)
+    pending = envelope["pending_human_action"]
+    commands = runnable_steps(pending)
+    assert len(commands) == how_many
+    assert len({tuple(command) for command in commands}) == how_many
+    for command in commands:
+        assert command[:2] == ["review", "clear"]
+        assert len(command) == 3, f"not a single-item invocation: {command}"
+        code, _ = drive(command)
+        assert code == int(ExitCode.OK), f"the printed remedy failed: {command}"
+    # And the run is genuinely unblocked afterwards, which is what makes the
+    # remedy worth printing.
+    code, after = drive(["match", "run", str(tmp_path / f"stall{how_many}.txt")])
+    assert code == int(ExitCode.PENDING_HUMAN)
+    assert not [
+        row for row in after["data"]["needs_review"]
+        if row["why"] in {str(match.Why.CANDIDATE_GONE), str(match.Why.VERDICT_UNSPECIFIC)}
+    ]
+
+
+def test_the_pending_action_counts_questions_rather_than_rows_in_both_halves(
+    cfg, music, tmp_path
+):
+    """One sentence counted two ways is arithmetic nobody can follow.
+
+    Round one applied "counted by question" to the total and left the stalled
+    part a row count, so one line pasted twice reported "1 tracks ... need a
+    person; 2 of them carry a verdict that could not be applied", and then
+    printed one identifier for the two.
+    """
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Someone Remix)")
     path = write_list(
         tmp_path,
@@ -1571,6 +1982,22 @@ def test_the_pending_action_counts_questions_rather_than_rows(cfg, music, tmp_pa
     assert len(envelope["data"]["needs_review"]) == 2
     assert envelope["pending_human_action"]["summary"].startswith("1 tracks")
     assert len(queue_items(cfg)) == 1
+
+    row = envelope["data"]["needs_review"][0]
+    drive(["review", "resolve", row["review_item"], "--verdict", "accepted",
+           "--option", row["candidates"][0]["id"]])
+    (music / "08A - 124 - Aurora Bloom - Sun Path (Someone Remix).flac").unlink()
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Another Remix)")
+    _code, stalled = drive(["match", "run", path])
+
+    summary = stalled["pending_human_action"]["summary"]
+    assert summary.startswith("1 tracks")
+    assert "1 of them carry a verdict" in summary
+    assert len(runnable_steps(stalled["pending_human_action"])) == 1
+    # And the warning channel says it once, not once per row.
+    assert len(
+        [w for w in stalled["warnings"] if w["code"] == match_cli.VERDICT_UNAPPLICABLE]
+    ) == 1
 
 
 def test_a_verdict_this_build_cannot_read_leaves_the_item_answerable(
@@ -1650,6 +2077,40 @@ def test_a_suppressed_version_is_reported_as_a_warning_carrying_its_identifier(
     warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
     assert [w["suppression"] for w in warnings] == [recorded.suppression_id]
     assert queue_items(cfg) == []
+
+
+@pytest.mark.parametrize("row_title", ROW_SPELLINGS)
+def test_a_tombstone_recorded_from_any_row_spelling_suppresses_the_list_that_names_it(
+    cfg, music, tmp_path, row_title
+):
+    """THE SEAM, DRIVEN, which is where round one's parity proof was worth nothing.
+
+    The tombstone is recorded exactly as the deletion pass records it: the row's
+    artist and its Title column verbatim, through the real decision store. Then
+    a list naming the same record runs through the real dispatcher.
+
+    Round one recomposed the title into round parentheses before hashing, so this
+    reported ``missing=1``, ``warnings=[]``, exit 0, and an acquisition option
+    telling the next verb to go and fetch the exact version somebody had deleted,
+    for five of these seven spellings. That is verbatim the failure the module's
+    own docstring describes.
+    """
+    store = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg)
+    recorded = store.record(
+        kind=match.TOMBSTONE_KIND,
+        identity=u24_records("Aurora Bloom", row_title),
+        actor="deletion",
+    )
+    path = write_list(tmp_path, f"Aurora Bloom - {row_title}\n", "seam.txt")
+    code, envelope = drive(["match", "run", path])
+
+    assert code == int(ExitCode.OK)
+    assert envelope["data"]["missing"] == [], (
+        "a version standing under a tombstone was reported missing, so the next "
+        "verb fetches back exactly what somebody deleted"
+    )
+    warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
+    assert [w["suppression"] for w in warnings] == [recorded.suppression_id]
 
 
 def test_a_revoked_tombstone_stops_suppressing(cfg, music, tmp_path):
