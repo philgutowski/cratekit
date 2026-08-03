@@ -7,20 +7,26 @@ things the engine must not: configuration, the review queue, and the envelope.
 **THE SPLIT U11 SETTLED, IMPLEMENTED HERE.** R11 has three states and only one
 of them is a question. The needs-review state becomes a persisted review item in
 the version-match queue; matched and missing are results, and neither ever
-reaches the queue. That is not a detail of wording. A missing track is a fact,
-not a question, and offering one into the queue would ask a person to confirm
-that a track they put on a list should be acquired, once per run, forever, which
-is precisely the unconditional re-prompting the queue exists to end. When
-acquisition later cannot serve a missing track from the configured provider,
-THAT is a question, and U11 declared a different queue for it.
+reaches the queue.
 
-The unit's own brief says missing items "become review items with acquisition
-options". The half of that sentence which matters is its negative: not a file.
-Both readings agree that the source system's ``missing.csv`` is gone. Where they
-differ, U11's is the one with a countdown registered against this unit, and it
-is also the one that survives contact with a person who runs the verb twice. So
-a missing row carries its acquisition options as DATA in the match result, where
-the next verb reads them, and it does not become a question nobody asked.
+**THE JUSTIFICATION THAT USED TO BE HERE WAS FALSE, and deleting it is part of
+the record.** It argued that queueing a missing row would ask a person to confirm
+the same track once per run forever. It would not: ``review.offer`` is
+idempotent, so the same identity finds the same item, keeps its verdict, and
+writes no second row. A review proved that against the real store. What is
+actually true is narrower and is a matter of authority rather than mechanics.
+Issue #16 says twice that missing items become review items with acquisition
+options, and plan line 271 AE11 agrees; U11 declared matched and missing as
+OUTPUTS and registered a countdown against this unit for that reading. Two
+briefs disagree, the disagreement is a product decision, and it belongs to
+Phillip rather than to whoever writes this file. It is recorded as **R-17** in
+``docs/residual-findings.md`` and needs its own issue.
+
+What this file owes either way is that the sentence it prints be true. A missing
+row now genuinely carries its acquisition options as DATA in the match result,
+under ``acquisition``, where the next verb reads them. It used to carry an empty
+candidate list, an empty path list, and nothing else, while the docstring claimed
+otherwise.
 
 **WHY THE QUEUE IS READ BEFORE IT IS WRITTEN.** An item that already carries a
 verdict is not offered again. ``offer`` is idempotent and would leave a resolved
@@ -82,15 +88,31 @@ LIST_KEYS = frozenset({"list", "origin", "tracks"})
 SUPPRESSED_WARNING = "acquisition-suppressed"
 TOMBSTONE_OVER_OWNED = "tombstone-over-owned"
 
+#: A stored verdict that could not be applied, on the channel that can carry the
+#: item identifier. Without it the only sign is an exit status: the item is
+#: RESOLVED in the queue, so a listing of open items shows nothing and resolving
+#: it again is refused, and a caller reading the exit code and then the verify
+#: verb is told "blocked" and "nothing to do" in the same breath.
+VERDICT_UNAPPLICABLE = "verdict-unapplicable"
+
 #: The verb that shows a person the questions this run left open.
 REVIEW_VERB = "review.list"
+
+#: The verb that puts a stalled item back in front of a person. Named because it
+#: is the ONLY escape from a verdict that cannot be applied, and a pending action
+#: naming a remedy nobody can execute is the printed instruction this field
+#: exists to replace.
+CLEAR_VERB = "review.clear"
 
 #: A URL scheme at the start of an argument, matched against the form a path
 #: leaves it in. ``Path`` COLLAPSES the double slash, so "https://host/x" is
 #: "https:/host/x" by the time it is text again and a check for "://" finds
 #: nothing. That is how a web address arrives as "no such file or directory".
 #: Two or more characters before the colon, so a Windows drive letter is not a
-#: scheme.
+#: scheme. Matched against a STRIPPED name: a leading space survives a copy and
+#: paste, is legal in a filename and therefore cannot be refused on its own, and
+#: anchoring at the first character sent " https://host/x" back out as "no such
+#: file or directory", which is the exact failure this pattern exists to stop.
 _URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]+:/")
 
 
@@ -198,14 +220,30 @@ def _document_tracks(document: Mapping[str, Any]) -> tuple[match.Wanted, ...]:
                     f"track {position} of a text list is not a line of text",
                     position=position,
                 )
-        return _text("\n".join(str(row) for row in rows))
+        # ROW BY ROW rather than joined and re-split. Joining made a refusal cite
+        # a line number in a string nobody has, let a row carrying a newline
+        # become two tracks, and stopped the array's length being the number of
+        # tracks read. An explicitly empty array is allowed here and refused on
+        # the plain-text path, because a document that declares zero tracks has
+        # said something and a file with no readable line in it has not.
+        try:
+            return match.read_text_rows(rows)
+        except match.UnreadableList as exc:
+            raise _refuse(str(exc), position=exc.line) from exc
     for position, row in enumerate(rows, start=1):
         if not isinstance(row, Mapping):
             raise _refuse(
                 f"track {position} of a {origin} list is not a track record",
                 position=position,
             )
-    return match.READERS[origin](rows)
+    # POSITIVE RECOGNITION OF THE ROW ITSELF, not only of its container. A
+    # mapping is not a track record: two rows carrying nothing but an identifier
+    # used to fold to one match identifier, and an anonymous row resolved
+    # "matched" against any file in the library whose name folded to nothing.
+    try:
+        return match.READERS[origin](rows)
+    except match.UnreadableList as exc:
+        raise _refuse(str(exc), position=exc.line) from exc
 
 
 def _text(raw: str) -> tuple[match.Wanted, ...]:
@@ -224,7 +262,7 @@ def read_list(path: Path) -> tuple[match.Wanted, ...]:
     which is what keeps the whole unit provable without an account.
     """
     name = str(path)
-    if _URL_SCHEME.match(name):
+    if _URL_SCHEME.match(name.strip()):
         raise _refuse(
             f"{name} is a web address rather than a list on this machine; fetch "
             f"the playlist into a list document first, then match that",
@@ -341,7 +379,12 @@ def adjudicate(
         if found.state is not match.MatchState.NEEDS_REVIEW:
             settled.append(found)
             continue
-        identity = found.identity
+        # THE QUESTION'S identity, not the tombstone's. They address different
+        # things and they are two functions for that reason: a tombstone is a
+        # fact about a version that outlives every list, and a review item is the
+        # answer to something somebody was asked, which for two of these whys is
+        # a question about the key.
+        identity = found.question_identity
         held = _item(items, review.item_id_for(QUEUE, match.QUESTION_KIND, identity))
         if held is None or not held.resolved:
             held = review.offer(
@@ -413,22 +456,58 @@ def _warnings(
                 ),
                 "suppression": track.suppression_id or "",
                 "match": track.match_id,
+                "item": "",
+                "remedy": "",
             }
         )
-    for track in result.of(match.MatchState.MATCHED):
-        identity = track.identity
-        if not suppresses(match.TOMBSTONE_KIND, identity):
+    # A TOMBSTONE THAT DID NOT SUPPRESS IS STILL REPORTED. The match consults the
+    # store last, so a version the library can say something about becomes a
+    # matched row or a question rather than a suppression, and the tombstone
+    # would otherwise leave no trace at all. The two cases are different facts
+    # and get different codes: over a held file the record is STALE and the disk
+    # wins, while over a question the record still stands and whatever the person
+    # answers, acquisition must not go and fetch it.
+    for state in match.PAYLOAD_STATES:
+        for track in result.of(state):
+            identity = track.identity
+            if not suppresses(match.TOMBSTONE_KIND, identity):
+                continue
+            held = state is match.MatchState.MATCHED
+            found.append(
+                {
+                    "code": TOMBSTONE_OVER_OWNED if held else SUPPRESSED_WARNING,
+                    "message": (
+                        f"{track.wanted.artist} / {track.wanted.title} is held on "
+                        f"disk and a tombstone stands over it; the disk is the "
+                        f"truth and the tombstone is stale"
+                        if held
+                        else f"a tombstone stands over "
+                        f"{track.wanted.artist} / {track.wanted.title}, which "
+                        f"resolved to {state} rather than being suppressed; "
+                        f"acquisition must skip it whatever this row says"
+                    ),
+                    "suppression": identify(match.TOMBSTONE_KIND, identity),
+                    "match": track.match_id,
+                    "item": track.item_id or "",
+                    "remedy": "",
+                }
+            )
+    for track in result.of(match.MatchState.NEEDS_REVIEW):
+        if track.why not in match.STALLED:
             continue
         found.append(
             {
-                "code": TOMBSTONE_OVER_OWNED,
+                "code": VERDICT_UNAPPLICABLE,
                 "message": (
-                    f"{track.wanted.artist} / {track.wanted.title} is held on disk "
-                    f"and a tombstone stands over it; the disk is the truth and the "
-                    f"tombstone is stale"
+                    f"{track.wanted.artist} / {track.wanted.title} carries a "
+                    f"recorded verdict this run could not apply ({track.why}); the "
+                    f"item stays resolved, so it is not in the open queue and "
+                    f"cannot be resolved again"
                 ),
-                "suppression": identify(match.TOMBSTONE_KIND, identity),
+                "suppression": "",
                 "match": track.match_id,
+                "item": track.item_id or "",
+                "remedy": CLEAR_VERB,
             }
         )
     return tuple(found)
@@ -442,23 +521,56 @@ def _pending(result: match.MatchResult, *, run_id: str) -> PendingHumanAction | 
     and never learns that four more tracks were a remix away from being right.
     Nothing is put in ``blocks``: an open version question stops nobody from
     working, it only stops the run from claiming it is finished.
+
+    TWO KINDS OF OUTSTANDING, and conflating them parked a run at
+    ``PENDING_HUMAN`` forever naming a remedy nobody could execute. An ANSWERABLE
+    question is in the open queue and ``review list`` shows it. A STALLED one
+    carries a verdict this run could not apply, which leaves the item RESOLVED:
+    it is absent from the open listing, resolving it again is refused, and the
+    only way forward is to clear it. That was reachable by deleting or retagging
+    one file, and every later run repeated the same exit status while the verb it
+    named reported nothing to do. So the verb the action names is the verb that
+    can act, and the item identifiers ride in the steps.
+
+    COUNTED BY QUESTION, not by row. Two rows of one list that resolve to one
+    item are one thing to answer, and reporting two made the number a person sees
+    disagree with the number of items they are shown.
     """
     open_questions = result.of(match.MatchState.NEEDS_REVIEW)
     if not open_questions:
         return None
+    stalled = [found for found in open_questions if found.why in match.STALLED]
+    answerable = [found for found in open_questions if found.why not in match.STALLED]
+    questions = {found.item_id or found.match_id for found in open_questions}
+    steps: list[str] = []
+    if answerable:
+        steps.append("list the version-match queue and record a verdict on each item")
+        steps.append(
+            "accept a candidate to call it the same record, or reject to acquire "
+            "the version the list asked for"
+        )
+    if stalled:
+        named = ", ".join(sorted({found.item_id or "" for found in stalled} - {""}))
+        steps.append(
+            f"{len(stalled)} of these carry a verdict this run could not apply, so "
+            f"they are resolved and invisible to the open listing; clear each one "
+            f"to put it back in front of a person: crate review clear {named}"
+        )
     return PendingHumanAction(
         kind="review",
         id=output.new_pending_id(run_id),
         summary=(
-            f"{len(open_questions)} tracks resolved to a version this library does "
+            f"{len(questions)} tracks resolved to a version this library does "
             f"not hold under that name, and need a person"
+            + (
+                f"; {len(stalled)} of them carry a verdict that could not be "
+                f"applied and have to be cleared first"
+                if stalled
+                else ""
+            )
         ),
-        verify_verb=REVIEW_VERB,
-        steps=(
-            "list the version-match queue and record a verdict on each item",
-            "accept a candidate to call it the same record, or reject to acquire "
-            "the version the list asked for",
-        ),
+        verify_verb=REVIEW_VERB if answerable else CLEAR_VERB,
+        steps=tuple(steps),
     )
 
 
@@ -517,6 +629,7 @@ def match_list(ctx: Any) -> Envelope:
 
 
 __all__ = [
+    "CLEAR_VERB",
     "LIST_KEYS",
     "LIST_VERSION",
     "QUEUE",
@@ -524,6 +637,7 @@ __all__ = [
     "SUPPRESSED_WARNING",
     "TOMBSTONE_OVER_OWNED",
     "TOMBSTONE_STORE",
+    "VERDICT_UNAPPLICABLE",
     "adjudicate",
     "build",
     "library_template",

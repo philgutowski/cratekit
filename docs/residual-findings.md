@@ -492,3 +492,104 @@ fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather
 than skips, so the battery runs either way and a supplied fixture strengthens it.
 The natural owner is U27, which lands doctor and is the unit that makes a machine
 ready.
+
+---
+
+## R-17. Two briefs disagree about whether a missing track is a review item
+
+**Found:** by the U16 adversarial review, 2026-08-02. **Needs its own issue.**
+
+**What the brief requires.** Issue #16 says twice that missing items become
+review items with acquisition options, and plan line 271 AE11 agrees.
+
+**What shipped.** U16 reversed that, following U11's register entry instead,
+which declares matched and missing as OUTPUTS and only the middle state as the
+version match queue. U11 has a countdown registered against this unit for its
+reading; the issue text does not. The reversal was recorded nowhere except a
+source docstring.
+
+**The original justification was disproved.** That docstring argued that
+queueing a missing row would ask a person once per run, forever, to confirm that
+a track they put on a list should be acquired, which it called the unconditional
+re-prompting the queue exists to end. That is false. `review.offer` is
+idempotent: the same identity finds the same item, the verdict is preserved, and
+no second row is written. The reviewer proved it against the real store. The
+false sentence has been deleted from `src/cratekit/acquire/match_cli.py` rather
+than left standing, and what replaces it says what is actually true, which is
+that two briefs disagree and the disagreement is a product decision.
+
+**What is fixed here, and it is only the mechanical half.** The docstring
+claimed a missing row "carries its acquisition options as DATA in the match
+result". It did not: `match.resolve_one` returned a missing row with an empty
+candidate list, an empty path list, and no options of any kind, and the test
+named `test_a_missing_track_carries_its_options_as_data_rather_than_as_a_question`
+asserted a reason slug, a null review item and an empty queue while asserting
+nothing at all about options. A missing row now carries an `acquisition` array of
+`match.Acquisition` options, most precise first: an ISRC lookup when the list
+supplied a code, then a text search. Both name the exact version the list asked
+for, because an option meaning "some other cut will do" is the silent
+substitution the whole unit exists to remove. A rejected verdict produces a
+missing row and carries the same options for the same reason. The test now
+asserts them.
+
+**Still open, and reserved for Phillip.** Whether a missing track belongs in the
+review queue with those options attached, or stays an output row carrying them as
+data, is a product decision and was not taken here. Missing rows were deliberately
+NOT moved into the queue and `adjudicate` was deliberately NOT rewritten.
+
+**A related gap with no owner at all.** U11 declared `missing_full.csv` and
+`not_acquired.csv` as legacy surfaces. Neither has a producer in any unit that
+has landed or is in flight, and no countdown covers them, because
+`NEW_SURFACE_OWED_BY` in `tests/test_review_queue.py` is derived from surfaces
+that are adjudicated AND carry no legacy file, so a surface carrying one is
+excluded by construction. Two declared outputs are therefore owed by nobody and
+nothing says so.
+
+**Closes when:** an issue records the decision between the two readings, and
+whichever wins is implemented with the legacy surfaces either given a producer or
+withdrawn.
+
+---
+
+## R-18. Four accepted findings from the U16 review, recorded rather than fixed
+
+**Found:** by the U16 adversarial review, 2026-08-02.
+
+Numbered after R-17. If a concurrent unit claims R-18 first, renumber this entry
+at merge; the content is what matters, not the number.
+
+**1. `match run` exiting PENDING_HUMAN changes the chaining contract.** A run
+that produced version questions exits 12, so `crate match run && crate acquire`
+stops. That is correct as a state, and it is the silence R11 exists to remove:
+a run whose caller reads `missing` and acquires it must not also be told nothing
+about four tracks that were a remix away from being right. But it is a change to
+how the two verbs compose, nothing declares it, and the acquisition verb has not
+landed to have an opinion. **Closes when:** the acquisition unit states whether it
+consumes a pending match run's payload or refuses until the questions are
+answered.
+
+**2. The three arrays no longer sum to the input list.** A suppressed version is
+reported on `warnings` and appears in none of `matched`, `needs_review` or
+`missing`, which is deliberate and is argued in the module docstring: counting it
+missing is what the brief forbids by name and dropping it is what R36 forbids by
+name. The cost is that a consumer reconciling counts against the list it supplied
+loses tracks with nothing to notice. **Closes when:** the envelope carries a
+count a consumer can reconcile against, or the payload surface is reopened to
+carry a fourth array and U5's three-array reservation is revisited deliberately.
+
+**3. The library walk parses every file two or three times per run.**
+`match._read_from_disk` calls `tags.read_tag` for the artist, the title and
+sometimes the key, and each call opens and parses the container again. Over a
+real library that is two or three full mutagen parses per file on every `match
+run`, with no cache and no reuse between runs. Nothing here is wrong, it is
+simply paid for repeatedly. **Closes when:** the tag layer exposes a
+read-all-fields call, or the index is cached against file size and mtime. The
+natural owner is whichever unit first walks the library in anger.
+
+**4. R13's URL fetch is deferred with no countdown.** `match run` refuses a web
+address with its own sentence and says the intake verbs own provider sessions and
+pagination. No intake verb has landed that fetches a playlist, no residual
+recorded the deferral, and no handoff entry names it, which Part 4 step 3 of the
+seam decisions requires be stated when a requirement is deferred across a unit
+boundary. It is stated here. **Closes when:** an intake unit lands the fetch, or
+the requirement is re-pointed at a unit on the board.

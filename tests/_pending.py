@@ -106,23 +106,28 @@ PENDING: dict[str, tuple[str, str]] = {
         "decision, and the decision is never read back out of a file somebody "
         "edited",
     ),
+    # U16 APPENDED A SECOND OBLIGATION HERE AND IT HAS BEEN REMOVED, which is
+    # worth a note because removing an obligation is normally the wrong move.
+    # It said a tombstone must be recorded under cratekit.acquire.match's kind
+    # and identity. Two things were wrong with it. It was FALSE ABOUT ITS OWN
+    # GUARD: this file's header defines the second element as one line saying
+    # what THE GUARD asserts, and the guard that arms on this key asserts store
+    # construction, record, revoke, the deletion queue and no CSV writer, and
+    # says nothing about a kind or an identity. And it pointed at the wrong
+    # module: the identity belongs below both the pass that records it and the
+    # pass that consults it, which is where U24 puts it as
+    # cratekit.core.tombstone, so an obligation aimed at this unit to match a
+    # feature module's spelling had the dependency backwards. What replaces it is
+    # a guard that is armed today rather than a countdown:
+    # test_the_tombstone_identity_is_u24s_algorithm_byte_for_byte pins the exact
+    # identifier, so the two copies cannot drift while both exist.
     "cratekit.deletion.cli": (
         "U24",
         "that a declined file and a tombstoned version are recorded through the "
         "decision stores U11 shipped, and are therefore REVOCABLE: R35 says a "
         "declined file is never offered again until the decline is revoked and "
         "R36 says a tombstone is listable and revocable, and both sentences are "
-        "false if the deletion pass keeps its own file instead. A SECOND "
-        "OBLIGATION arrives with U16 and is registered here because U24 owns the "
-        "pass that writes the records (P5): a tombstone is recorded under "
-        "cratekit.acquire.match.TOMBSTONE_KIND and against the mapping "
-        "cratekit.acquire.match.version_identity returns, because a suppression "
-        "identifier is a hash of the store key, the kind, and the identity, so a "
-        "deletion pass spelling any of the three its own way records a tombstone "
-        "the acquisition side can never find. Nothing raises when that happens: "
-        "the match reports the version missing, acquisition goes and gets it, and "
-        "the deletion somebody made on purpose is undone with the whole suite "
-        "green",
+        "false if the deletion pass keeps its own file instead",
     ),
     "cratekit.cli.doctor": (
         "U27",
