@@ -1289,16 +1289,57 @@ def test_the_soft_delete_guard_catches_a_read_laundered_one_line_later():
         "    return marker\n"
     ), "the sanctioned shape must survive the launder check, or nothing can pass"
 
+    # THE CONTROL THAT WAS INERT. This fixture used to write the read as
+    # `return getattr(...)`, which is not an assignment, so `holders` stayed
+    # empty and the assertion passed without exercising scoping at all. Written
+    # as an assignment to `marker` it is the same shape the real readers use, and
+    # against the previous `ast.walk` scoping it FAILS.
     assert not fires(
+        "_ABSENT = object()\n"
         "def unrelated():\n"
         "    marker = 0\n"
         "    return marker\n"
         "def read(row):\n"
-        '    return getattr(row, "rb_local_deleted", _ABSENT)\n'
+        '    marker = getattr(row, "rb_local_deleted", _ABSENT)\n'
+        "    if marker is _ABSENT:\n"
+        "        raise Refused()\n"
+        "    return marker\n"
     ), (
         "two functions using the name 'marker' are not talking about one "
-        "variable; scoping this file-wide would fire on unrelated code"
+        "variable; scoping this file-wide fires on unrelated code"
     )
+
+
+def test_the_soft_delete_guard_survives_an_unrelated_edit_to_the_files_it_protects():
+    """The failure mode that ends a guard: firing on a one-line unrelated change.
+
+    Not a constructed fixture. Both shipped readers assign the sanctioned read to
+    a local named ``marker``, so this appends an ordinary helper that uses that
+    name as a counter to each REAL file and asserts the guard stays quiet. Under
+    the previous scoping, which yielded the module and then walked it, "module
+    scope" was the whole file and both fired.
+
+    A guard that goes red because somebody added an unrelated function to
+    `metadata.py` is a guard that gets deleted by the third person it stops, and
+    the column it protects is the one this repository has already got wrong three
+    times.
+    """
+    guard = _source_guard()
+    unrelated = (
+        "\n\ndef _unrelated_counter(rows):\n"
+        "    marker = 0\n"
+        "    for _ in rows:\n"
+        "        marker = marker + 1\n"
+        "    return marker\n"
+    )
+    for path, source in _package_sources():
+        if path not in SOFT_DELETE_READERS:
+            continue
+        assert not guard.permissive_soft_delete_reads(source), f"{path} is not clean"
+        assert not guard.permissive_soft_delete_reads(source + unrelated), (
+            f"appending a helper that uses the name 'marker' to {path} arms the "
+            f"guard against the file it exists to protect"
+        )
 
 
 def test_the_soft_delete_guard_stays_quiet_on_correct_code():
@@ -1352,6 +1393,37 @@ def test_the_soft_delete_guard_stays_quiet_on_correct_code():
         "def label():\n"
         '    return LABELS.get(COLUMN, "")\n'
     ), "the same table reached through the named constant"
+    assert not fires('line = f"deleted={row.rb_local_deleted}" if row else ""'), (
+        "an ordinary summary string. The conditional rule fired on any ternary "
+        "with the column on one side and a falsey literal on the other; what "
+        "makes the real shape a defect is that the CONDITION is about whether "
+        "the column is there"
+    )
+
+
+def test_the_lookup_table_exclusion_is_not_an_evasion_route():
+    """A row is not a dict literal, and the earlier test could not tell.
+
+    The exclusion that stops `COLUMN_TYPES.get(...)` firing was keyed on the NAME
+    being bound at module level, with no test of what it was bound TO. So one
+    module-level `row = fetch_one()` bought silence for every `row.get(COL, 0)`
+    below it, and two genuine false positives had been traded for a one-line
+    evasion. The binding must now be a container literal.
+    """
+    guard = _source_guard()
+    fires = guard.permissive_soft_delete_reads
+    assert fires(
+        'COLUMN = "rb_local_deleted"\n'
+        "row = fetch_one()\n"
+        "def read():\n"
+        "    return row.get(COLUMN, 0)\n"
+    ), "a module-level row is still a row"
+    assert fires(
+        'COLUMN = "rb_local_deleted"\n'
+        "row = None\n"
+        "def read(row):\n"
+        "    return row.get(COLUMN, 0)\n"
+    ), "a module-level name shadowed by a parameter is not a lookup table either"
 
 
 def test_no_module_in_the_package_reads_the_soft_delete_marker_permissively():

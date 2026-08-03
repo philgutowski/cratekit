@@ -2095,6 +2095,38 @@ def test_the_unreachable_exemption_covers_one_named_gate_and_expires_on_its_own(
         _conformance_3(with_exempt, ["slim"])
 
 
+#: EXACT MEMBERSHIP, because the three checks below are each satisfiable by a
+#: plausible-looking addition. `registry.gate` only asks that SOME entry among
+#: sixty-three declares the name, and the reason check is a length test rather
+#: than a truth test, so a gate a landed verb declares and does not reach can be
+#: exempted with one entry and an eighty-one character sentence. Verified: it
+#: passed silently with all three guards green.
+#:
+#: Adding a gate here is now a red suite, which is the point. It is the same
+#: shape `EXPECTED_PENDING` uses: the duplication IS the mechanism, because the
+#: second place is a line a reviewer reads in a diff.
+EXPECTED_UNREACHABLE_GATES = frozenset({"write.cloudsync.unreadable"})
+
+
+def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
+    """One gate is exempt. A second one is a decision, not a diff.
+
+    Note what this pin does NOT prove, so nobody reads more into a green run than
+    is there: the map is INERT against the real registry today. All twelve
+    entries declaring `write.cloudsync.unreadable` are planned, and `profile.set`
+    is the only landed entry with a gate at all, so no parametrized run of
+    assertion 3 exercises the exemption. Its behaviour, including its
+    self-expiry, is proved by the synthetic tests above and by nothing else until
+    the first such verb lands.
+    """
+    assert set(UNREACHABLE_GATES) == EXPECTED_UNREACHABLE_GATES, (
+        f"the exemption set is {sorted(UNREACHABLE_GATES)} and this file "
+        f"declares {sorted(EXPECTED_UNREACHABLE_GATES)}. Every entry here is a "
+        f"gate no verb has to reach, which is the assertion switched off for "
+        f"that gate across every entry that declares it."
+    )
+
+
 def test_every_unreachable_gate_is_real_and_carries_a_reason():
     """An exemption naming a gate nobody declares is an exemption nobody can audit."""
     for name, reason in UNREACHABLE_GATES.items():

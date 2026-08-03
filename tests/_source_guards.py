@@ -407,17 +407,20 @@ class SoftDeleteNames:
         #: already ships `BOOKKEEPING_COLUMNS` and `GRIDLESS_ON_CREATE_COLUMNS`.
         #: A guard that fires on the most likely correct shape is a guard that
         #: gets switched off, which is the failure this repository has shipped.
-        self.module_level: set[str] = set()
+        self.lookup_tables: set[str] = set()
         for node in getattr(tree, "body", []):
+            targets: list[ast.AST] = []
+            value: ast.AST | None = None
             if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    name = _dotted(target)
-                    if name is not None:
-                        self.module_level.add(name)
-            elif isinstance(node, ast.AnnAssign):
-                name = _dotted(node.target)
+                targets, value = list(node.targets), node.value
+            elif isinstance(node, ast.AnnAssign) and node.value is not None:
+                targets, value = [node.target], node.value
+            if value is None or not _is_container(value):
+                continue
+            for target in targets:
+                name = _dotted(target)
                 if name is not None:
-                    self.module_level.add(name)
+                    self.lookup_tables.add(name)
 
     def _is_column(self, node: ast.AST) -> bool:
         if isinstance(node, ast.Constant) and node.value == SOFT_DELETE_COLUMN_LITERAL:
@@ -498,11 +501,16 @@ def _soft_delete_reads(
     object from the binding AND as a mapping from a raw query, and a guard that
     understood only one of them would be answered by rewriting the other.
 
-    The ``.get`` shape excludes a MODULE LEVEL receiver, because that is a
-    per-column lookup table rather than a row. A row is a parameter or a local;
-    a name bound once at module level and asked about a column is
-    ``COLUMN_TYPES.get(SOFT_DELETE_COLUMN)``, and firing on it would be firing
-    on the shape most likely to be correct.
+    The ``.get`` shape excludes a receiver bound at module level TO A CONTAINER
+    LITERAL, because that is a per-column lookup table rather than a row.
+    ``COLUMN_TYPES = {...}`` then ``COLUMN_TYPES.get(SOFT_DELETE_COLUMN)`` is the
+    in-house shape this repository already writes twice, and firing on it would
+    be firing on the code most likely to be correct.
+
+    THE CONTAINER TEST IS WHAT KEEPS THAT FROM BEING AN EVASION. Keyed on the
+    name alone, one module-level binding silenced the branch for that name
+    everywhere in the file, so ``row = fetch_one()`` at module level bought
+    silence for every ``row.get(COL, 0)`` below it. A row is not a dict literal.
     """
     found: list[tuple[ast.AST, ast.AST | None]] = []
     for node in ast.walk(tree):
@@ -514,6 +522,14 @@ def _soft_delete_reads(
         if not isinstance(node, ast.Call):
             continue
         func = node.func
+        if isinstance(func, ast.Name) and func.id == "hasattr":
+            # A presence test is a read of the marker's availability. It supplies
+            # no default and so is never permissive on its own; it is recognized
+            # because it is the CONDITION in the ternary route below, and because
+            # a module asking it is a module in this conversation.
+            if len(node.args) >= 2 and names.names_the_column(node.args[1]):
+                found.append((node, None))
+            continue
         if isinstance(func, ast.Name) and func.id == "getattr":
             if len(node.args) >= 2 and names.names_the_column(node.args[1]):
                 found.append((node, node.args[2] if len(node.args) > 2 else None))
@@ -531,7 +547,7 @@ def _soft_delete_reads(
             if not names.names_the_column(node.args[0]):
                 continue
             receiver = _dotted(func.value)
-            if receiver is not None and receiver in names.module_level:
+            if receiver is not None and receiver in names.lookup_tables:
                 continue
             # A one-argument ``.get`` defaults to None ALL BY ITSELF, which is
             # the permissive answer arrived at by omission rather than by
@@ -540,6 +556,23 @@ def _soft_delete_reads(
             default = node.args[1] if len(node.args) > 1 else ast.Constant(value=None)
             found.append((node, default))
     return found
+
+
+def _is_container(node: ast.AST) -> bool:
+    """Whether this expression builds a mapping or a set: a per-column table.
+
+    Deliberately narrow. A call to anything that is not a container constructor
+    could return a row, and the whole reason this test exists is that "bound at
+    module level" was too generous to be a definition of "not a row".
+    """
+    if isinstance(node, (ast.Dict, ast.Set, ast.DictComp, ast.SetComp)):
+        return True
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        return node.func.id in {"dict", "set", "frozenset"}
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        # `MappingProxyType({...})`, which is how this package freezes a table.
+        return node.func.attr in {"MappingProxyType"}
+    return False
 
 
 def _packed_pair(node: ast.AST, tree: ast.AST) -> list[ast.AST] | None:
@@ -555,13 +588,39 @@ def _packed_pair(node: ast.AST, tree: ast.AST) -> list[ast.AST] | None:
     return None
 
 
+#: Node types that OPEN A NEW SCOPE. Walking must stop at each of these or a
+#: "scope" is the whole file wearing a smaller name.
+_SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+
+
+def _own_nodes(scope: ast.AST):
+    """Every node belonging to THIS scope, never descending into a nested one.
+
+    ``ast.walk`` cannot be used for this and that was the defect. It descends
+    into every function body, so yielding the module and then walking it made
+    "module scope" mean the entire file, which is the exact thing
+    :func:`_laundered_reads` documents itself as not doing.
+
+    It was live rather than latent. Both shipped readers assign the sanctioned
+    read to a local named ``marker``, so appending any unrelated helper that uses
+    that name as a counter to either real file fired the guard. A guard that
+    fires on a one-line unrelated edit to the file it protects is a guard that
+    gets switched off.
+    """
+    for child in ast.iter_child_nodes(scope):
+        if isinstance(child, _SCOPE_NODES):
+            continue
+        yield child
+        yield from _own_nodes(child)
+
+
 def _scopes(tree: ast.AST):
-    """Each function body, plus the module's own top level, as separate trees.
+    """Each function body, plus the module's own top level, as separate scopes.
 
     Scoped rather than whole-file, because the rules below ask whether a name
     that HOLDS a marker is later overwritten with a permissive value, and two
-    functions that both call a local ``marker`` are not talking about the same
-    variable. Asking it file-wide would fire on unrelated code.
+    functions that both use a local ``marker`` are not talking about the same
+    variable.
     """
     yield tree
     for node in ast.walk(tree):
@@ -595,7 +654,7 @@ def _laundered_reads(tree: ast.AST, names: SoftDeleteNames) -> list[ast.AST]:
     found: list[ast.AST] = []
     for scope in _scopes(tree):
         holders: dict[str, ast.AST] = {}
-        for statement in ast.walk(scope):
+        for statement in _own_nodes(scope):
             targets: list[ast.AST] = []
             value: ast.AST | None = None
             if isinstance(statement, ast.Assign):
@@ -613,7 +672,7 @@ def _laundered_reads(tree: ast.AST, names: SoftDeleteNames) -> list[ast.AST]:
 
         if not holders:
             continue
-        for statement in ast.walk(scope):
+        for statement in _own_nodes(scope):
             if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
                 continue
             name = _dotted(statement.targets[0])
@@ -622,6 +681,13 @@ def _laundered_reads(tree: ast.AST, names: SoftDeleteNames) -> list[ast.AST]:
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.IfExp):
+            continue
+        # THE TEST MUST NAME THE COLUMN. Without that, any conditional with the
+        # marker on one side and a falsey literal on the other fired, and
+        # `line = f"deleted={row.rb_local_deleted}" if row else ""` is an
+        # ordinary summary string, not a defaulted read. What makes the real
+        # shape a defect is that the CONDITION is about the column's presence.
+        if not _soft_delete_reads(node.test, names):
             continue
         for kept, other in ((node.body, node.orelse), (node.orelse, node.body)):
             if _soft_delete_reads(kept, names) and names.is_permissive(other):
