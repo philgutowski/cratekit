@@ -127,6 +127,13 @@ _DIALECT_BY_SUFFIX: dict[str, Dialect] = {
     **{s: Dialect.ID3 for s in WAVE_SUFFIXES + AIFF_SUFFIXES + MP3_SUFFIXES},
 }
 
+#: Every container suffix this module has verified handling for, DERIVED from
+#: the table above rather than listed a second time. A caller that walks a music
+#: directory needs to know which files carry tags, and a hand-kept copy of that
+#: answer is a copy that misses the next container added here, which shows up as
+#: a whole format silently absent from a sweep (P3).
+SUPPORTED_SUFFIXES: tuple[str, ...] = tuple(sorted(_DIALECT_BY_SUFFIX))
+
 
 class UnsupportedContainer(ValueError):
     """A suffix this module has no verified container handling for.

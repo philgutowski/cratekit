@@ -168,7 +168,61 @@ PENDING: dict[str, tuple[str, str]] = {
         "node identifiers a previous write used, which is the shape the tree "
         "registry already has for a tree's adopted root, and U20 is the unit "
         "that owns that record. Building a second one inside the routing pass "
-        "would give two answers to which node a destination is",
+        "would give two answers to which node a destination is. THAT MAP NOW "
+        "EXISTS: U36 landed it as cratekit.core.convergence.DestinationNode, "
+        "recorded per tree and read back through "
+        "cratekit.write.rebuild.resolve_destinations, so the obligation on "
+        "U20 narrowed from building the record to READING it. Building a second "
+        "one would still give two answers",
+    ),
+    # THREE THINGS THE MERGE WITH U32 HAS TO DO IN THIS FILE AND ITS SIBLINGS,
+    # verified against a real merge on 2026-08-02 rather than inferred:
+    #
+    # 1. U32 carries an entry keyed ``cratekit.write.tree_rebuild``, re-keyed
+    #    there from ``cratekit.write.rebuild`` on the belief that U36 would ship
+    #    the former. U36 ships ``src/cratekit/write/rebuild.py``, which is what
+    #    issue #36's Files line names, so on the merged tree U32's key is the one
+    #    that can never resolve. RE-KEY IT BACK TO ``cratekit.write.rebuild``.
+    #    Left alone it is a permanent red light that teaches people to ignore the
+    #    audit, which is the exact failure the U32 comment beside it describes.
+    # 2. ``tests/test_pending_units.py`` carries the same spelling in
+    #    ``EXPECTED_PENDING`` and moves with it.
+    # 3. Once re-keyed, ``_is_absent`` answers False and the meta-test goes red,
+    #    which is the countdown FIRING rather than a problem. Discharging it means
+    #    deleting the entry in a commit that also removes the fallback branch in
+    #    ``restore._hand_tree_shortness_over`` and the
+    #    ``reconcile.Kind.UNCONVERGED_TREE`` path behind it, exactly as U32's own
+    #    entry text asks.
+    "cratekit.cli.rebuild": (
+        "U20",
+        "the command-line surface for the rebuild verb, and the obligation that "
+        "the operator disposition which clears a refusal for one tree is an "
+        "EXPLICIT, LOGGED act by a named person: never a flag that clears every "
+        "tree, and never an actor derived from the environment or from the "
+        "process owner. cratekit.core.convergence.Disposition refuses an empty "
+        "actor, so the surface has to carry a real one, and the guard behind "
+        "this entry drives that refusal directly. A SECOND OBLIGATION, same "
+        "unit: the verb clears a tree's flag only through "
+        "cratekit.write.rebuild.rebuild_tree, whose clearing call is handed the "
+        "convergence check's own difference list, never through a bare "
+        "convergence.clear_unconverged or a bare reconcile disposition. "
+        "REGISTERED HERE RATHER THAN LEFT AS A planned_in MARKER because "
+        "scripts/board.py reads this file and nothing else, so an obligation "
+        "carried only by a marker on a closing unit is owned by nobody the "
+        "moment that unit closes (P5). RE-POINTED FROM U36 TO U20 by the "
+        "reasoning that re-pointed the routing CLI: conformance 3 requires a "
+        "landed gated verb to exit OK once its gate is answered, and rebuild "
+        "writes db_tree and is destructive, which cannot exit OK on a machine "
+        "with no rekordbox database. U20 is the unit that flips trees to "
+        "database-native and must therefore ship a destructive database surface "
+        "anyway. ONLY REBUILD IS BEHIND THAT WALL. U36 first parked converge "
+        "here too, because both verbs named one module and this countdown keys "
+        "on the module; converge declares no gates, is destructive of nothing, "
+        "and is what both of this unit's refusals name as remediation step one, "
+        "so parking it parked the remedy. It landed with U36 as "
+        "cratekit.cli.converge and is read only by contract: a diagnostic that "
+        "needed the gates the unconverged flag is holding shut is a diagnostic "
+        "nobody can reach",
     ),
 }
 

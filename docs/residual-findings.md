@@ -554,6 +554,48 @@ still has to succeed to exit `OK`, and it cannot succeed on a machine with no
 database. That half stands, and it is what the closing condition below addresses.
 A verb with an explicit gate and no database write, `session.ack` being the
 clearest, is landable today.
+**The three parts named, and which of them survived.** The paragraph this entry
+opened with states the wall as one fact. It is three, and separating them
+matters, because a verb held by none of them was parked behind it once already:
+
+1. the **explicit-gate refusal**, which is conformance 3's requirement that a
+   landed gated verb refuse and then proceed;
+2. the **one-gate-per-drive shape**, which is what makes the first part
+   drivable at all;
+3. the **database**, which is the part that cannot be satisfied where no
+   rekordbox database exists.
+
+Parts 1 and 2 are the defect diagnosed above, and they are fixed on `main` as of
+the conformance 3 merge. Part 3 stands and is the whole of what remains. A verb
+that declares no gate and writes nothing is behind none of the three:
+conformance 3's loop body never executes for it, conformance 5 and 6 filter it
+out, and conformance 1 and 8 already assert over every entry landed or not.
+
+**U36 hit part of this wall, and a correction is recorded here because the first
+answer was wrong, 2026-08-02.** `converge` and `rebuild` were declared against
+one module, `cratekit.write.converge_cli`, with `planned_in="U36"`. Only
+`rebuild` belongs behind the wall: it writes `db_tree` and is destructive. Its
+sibling `converge` declares no gate, writes nothing and is destructive of
+nothing, and it was parked purely because both verbs named ONE module and the
+countdown in `tests/_pending.py` keys on the module rather than on the verb.
+Parking it parked the remedy: both of U36's refusals name `converge` as
+remediation step one, and it is exactly what a person reaches for when a tree is
+already refusing every write.
+
+The correction: U36 split the modules and landed `cratekit.cli.converge`, with
+its conformance properties asserted like any other landed verb. Only
+`cratekit.cli.rebuild` stays behind the wall, registered in `tests/_pending.py`
+against **U20** through a `REBUILD_CLI_UNIT` constant, and backed by a real
+`requires(...)` guard rather than by prose. That brings the count waiting on the
+wall to five verbs rather than six.
+
+**A false claim made in this document on 2026-08-02 is withdrawn.** The
+paragraph that stood here said "U36's brief names no CLI module it could have
+landed". Issue #36's Files line reads `src/cratekit/write/rebuild.py`,
+**`src/cratekit/cli/rebuild.py`**, `tests/test_rebuild.py`. The brief names a CLI
+module explicitly. The sentence was true of U19, whose file list genuinely
+contained none, and it was reused for U36 where the fact does not hold, in the
+document a human adjudicates from.
 
 **Closes when:** conformance 3 can be satisfied against a disposable database
 fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather
@@ -626,3 +668,102 @@ and the pins are worth writing deliberately rather than alongside something else
 **Closes when:** the permitted-tables set, the content-column allow-list and the
 bookkeeping set each carry an exact-membership assertion, each verified to fail on a
 deliberate widening rather than merely existing.
+---
+
+## R-16. What the U36 and U32 merge owes, verified rather than inferred
+
+**Found:** during U36's first review round, 2026-08-02, by running the merge.
+
+**Numbered R-14 on the U36 branch and renumbered to R-16 when U36 merged**, on
+the standing rule that residual numbers collide across branches and renumber
+sequentially in merge order. U32's R-21 refers to this entry by its branch
+number. They are the same entry.
+
+Both branches were merged in a scratch clone and the whole suite was run against
+the result. Six tests fail, all of them in `tests/test_restore.py`, and every one
+is a merge-resolution item rather than a defect in either branch. Recorded here
+so whoever merges is not discovering them one at a time.
+
+1. **`record_cutover` needs `source`.** Four failures. U36 made `source` a
+   required keyword-only argument with no default, because the only value it
+   could pick is `TAXONOMY` and picking it writes "yes, this tree can be
+   rebuilt" about a tree nobody checked into a one-way record. U32 added a
+   fixture call afterwards. **Add `source=DerivationSource.TAXONOMY` to
+   `_cut_over` in `tests/test_restore.py`.**
+2. **`test_the_rebuild_verb_has_no_way_to_declare_a_recovery_intent`.** U32's
+   own test, whose docstring says "if that ever changes this reasoning should be
+   revisited rather than inherited". It changed: `write_tree_membership` now
+   takes an `intent`, so the rebuild is no longer refused by the latch whose
+   refusal names it. **Delete or invert that test.**
+3. **`test_every_coupled_entry_declares_what_leaves_the_coupled_set`.** U36's
+   `tree_convergence` entry cannot name `RollbackEffect` on a branch where U32's
+   enum does not exist. **Add `rollback_effects=(RollbackEffect.NONE,)`;** the
+   comment at the entry in `config.py` gives the line and the argument.
+4. **`test_a_restore_predating_a_cutover_marks_that_tree_unconverged`** asserts
+   `reconcile.unconverged_trees(cfg) == ("routing",)`. That is stale against
+   U32's own hand-over: `restore._hand_tree_shortness_over` routes the fact to
+   `convergence.mark_unconverged` whenever that module is present, and it now is.
+   **Assert `convergence.read(cfg).blocking_trees()` instead.** Patched that way
+   in the scratch merge, the handoff passes, which is the positive confirmation
+   that ownership of tree shortness now sits in one module.
+
+**Also in the merge, and not a test failure**, so nothing will catch it: U32
+re-keyed its pending entry to `cratekit.write.tree_rebuild` on the belief that
+U36 would ship that filename. U36 ships `src/cratekit/write/rebuild.py`, which is
+what issue #36's Files line names, so U32's key can never resolve and its
+countdown sits switched off while the suite stays green. **Re-key it to
+`cratekit.write.rebuild` in `tests/_pending.py` and `tests/test_pending_units.py`.**
+The entry then fires, and discharging it is the commit that removes the fallback
+branch in `restore._hand_tree_shortness_over` and the
+`reconcile.Kind.UNCONVERGED_TREE` path behind it.
+
+**Re-verified after U36's second review round, 2026-08-02.** The merge was run
+again. With items 1 and 4 applied the merged suite is 3390 tests and two
+failures, both of them items 2 and 3 above; with all four applied it is 3389
+tests, 0 failures, 18 skips. Item 4's fix is the positive confirmation that
+ownership of tree shortness now sits in one module: `restore` hands the trees to
+`convergence.mark_unconverged` and `reconcile.unconverged_trees` is correctly
+empty.
+
+**Closes when:** both branches are on `main` and the six items above are
+resolved.
+
+---
+
+## R-17. Two convergence flags that are set correctly and never cleared
+
+**Found:** during U36's second review round, 2026-08-02.
+
+Both are fail-closed, both are inert today, and both accumulate. Recorded rather
+than fixed because each needs a surface that has not landed.
+
+**A native tree no caller ever writes to.** `convergence.native_trees` unions the
+caller's registry with the one on disk, which is what makes "every
+database-native tree is marked" true rather than conditional on what the caller
+passed. The consequence is that a tree recorded native on disk, which no workflow
+ever names, is marked unconverged by the detection and nothing will ever run a
+rebuild for it. Nothing is written against it, so nothing is damaged, but its
+flag stands forever. The alternative, marking only what the caller passed, is the
+defect the union exists to close, so the union stays. **Closes when** a verb can
+enumerate governed trees and rebuild each in turn, which is U20's surface.
+
+**A tree whose tracks were retagged out of a bucket.** The rebuild is additive by
+design: a membership somebody made by hand is their data, and deleting it would
+be the one operation in this product that destroys work nobody can get back. So
+rows the declaration no longer places are reported `UNEXPECTED` and left alone,
+`after.converged` is never True, and a flagged tree can never be cleared by
+rebuilding. That is intended and R39 names the escape: an explicit, logged
+operator disposition scoped to one tree.
+
+**The escape exists in the engine and has no surface on this branch.**
+`convergence.clear_unconverged(cfg, tree_id, differences=..., disposition=...)`
+takes it and refuses an empty actor, so the mechanism is complete and tested. The
+command-line half rides on `cratekit.cli.rebuild`, which is behind the
+conformance wall against U20 and is registered in `tests/_pending.py` with that
+obligation attached. **Until U20 lands, a library in this state has no
+supported exit**, which is acceptable only because no tree has cut over yet:
+`tree_registry` starts every tree on the XML bridge and the cutover verb is U20's
+too, so the first library that can reach this state is one U20 created.
+
+**Closes when:** U20 ships the disposition surface, at which point both entries
+are answerable by a person rather than only by the engine.

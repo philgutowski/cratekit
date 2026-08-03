@@ -60,10 +60,22 @@ from cratekit.core.exit_codes import Remedy
 #: cannot disagree about which file is meant.
 STATE_KEY = "tree_registry"
 
+#: The lock that serializes the read-modify-write ``record_cutover`` performs. A
+#: second DECLARED entry rather than a suffix composed from the first, because a
+#: path built under a state root is a file the inventory does not know about.
+LOCK_KEY = "tree_registry_lock"
+
 #: Bumped only when the on-disk shape changes incompatibly. A file written by a
 #: newer build is not guessed at: a wrong reading here decides which writer runs
 #: against a real library, and no answer is better than a wrong one.
-SCHEMA_VERSION = 1
+#:
+#: VERSION 2 ADDED THE DERIVATION SOURCE, and it is a real incompatibility rather
+#: than an added optional field. A version 1 record could name a native tree with
+#: no source, and this build refuses that record rather than reading it, because
+#: a native tree whose membership cannot be re-derived has no repair path at all
+#: (R39). Nothing has ever written such a record: recording a cutover is the only
+#: way one comes into existence and no unit that flips a tree has landed.
+SCHEMA_VERSION = 2
 
 
 class Mode(StrEnum):
@@ -82,6 +94,53 @@ class Mode(StrEnum):
 #: Every mode this build understands, derived from the enum rather than repeated,
 #: so a third member cannot exist in one place and not the other.
 MODES: tuple[str, ...] = tuple(m.value for m in Mode)
+
+
+class DerivationSource(StrEnum):
+    """Where a tree's FULL membership comes from, if it can be re-derived at all.
+
+    R39's precondition for a cutover, expressed as a value on the record rather
+    than as a judgement somebody makes at the moment they flip. A tree that has
+    gone database-native has exactly one repair path when a restore leaves it
+    short, and that path is a full-scope rebuild: incremental sync cannot close
+    the gap, because its scope is a watermark plus deduplication against what is
+    already owned, and the files a restore orphaned are still on disk and still
+    read as owned. So a tree whose membership no declared source can reproduce is
+    a tree that must never flip, and this enum is the question asked out loud.
+
+    THE TWO NON-DERIVABLE MEMBERS ARE NOT PLACEHOLDERS. Catalogued source folders
+    come from a crawl of a third-party catalogue that answers differently month to
+    month, so re-deriving one next year produces a different, equally honest
+    answer rather than the same one. A hand-curated or hearts-driven playlist
+    derives from no declared source whatsoever. Both stay on the XML bridge, and
+    naming them here is what stops the flip being offered for them at all.
+    """
+
+    #: The declared taxonomy applied to what is on disk. Reproducible: the same
+    #: files and the same template give the same membership, every time.
+    TAXONOMY = "taxonomy"
+
+    #: One folder per catalogued source, one playlist per release year, built
+    #: from a catalogue crawl. NOT reproducible.
+    CATALOGUE_CRAWL = "catalogue-crawl"
+
+    #: A person's own playlist, or one driven by what they hearted upstream.
+    #: NOT reproducible from anything this product declares.
+    CURATED = "curated"
+
+
+#: The sources a full rebuild can reproduce, and therefore the only sources a
+#: tree may cut over on (R39).
+#:
+#: LISTED, while its complement below is DERIVED. The direction is the property
+#: and it is the same one the deferred-routing ledger applies to its settled
+#: states: a member added later lands in the NOT-rebuildable set by default, so a
+#: source nobody has classified cannot let a tree flip by omission. Deriving this
+#: half instead would hand a new member the permissive answer.
+REBUILDABLE: frozenset[DerivationSource] = frozenset({DerivationSource.TAXONOMY})
+
+#: Everything else, derived so the two halves cannot both miss a member (P3).
+NOT_REBUILDABLE: frozenset[DerivationSource] = frozenset(DerivationSource) - REBUILDABLE
 
 #: Where every tree starts. Not configurable at setup: a cutover is a migration
 #: with a date and an adopted root, not a preference somebody answers up front.
@@ -202,12 +261,21 @@ class TreeRecord:
     ``root_id`` is the identifier of the root row the tree adopted at cutover. It
     is None while the tree is on the bridge, because there is nothing adopted
     yet, and it is required once the tree is native.
+
+    ``source`` is where a full rebuild of this tree's membership would come from.
+    It follows ``root_id`` exactly: None on the bridge, required once native. A
+    native record naming no source is refused rather than defaulted, and the
+    default that is not offered is the dangerous one. Anything this module could
+    pick would say "yes, this tree can be rebuilt" about a tree nobody checked,
+    and that sentence is only ever discovered to be false at the one moment it
+    matters, which is after a restore has already left the tree short.
     """
 
     tree_id: str
     mode: Mode = DEFAULT_MODE
     cutover_on: date | None = None
     root_id: str | None = None
+    source: DerivationSource | None = None
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
@@ -227,6 +295,43 @@ class TreeRecord:
                 f"cutover date; the date is what lets a reader place the flip "
                 f"against the snapshots either side of it"
             )
+        if self.mode == Mode.DATABASE and self.source is None:
+            raise ValueError(
+                f"tree {self.tree_id!r} is recorded as database native with no "
+                f"derivation source, so nothing can say whether its membership "
+                f"could be rebuilt after a restore left it short; a native tree "
+                f"with no rebuild path has no repair path at all (R39)"
+            )
+        if self.source is not None and self.source not in frozenset(DerivationSource):
+            raise ValueError(
+                f"tree {self.tree_id!r} declares the derivation source "
+                f"{self.source!r}, which is not one of "
+                f"{[str(s) for s in DerivationSource]}"
+            )
+        if self.mode == Mode.XML:
+            # THE CONTRADICTION IN THE OTHER DIRECTION, which nothing refused. A
+            # record saying "on the bridge" while carrying a cutover date, an
+            # adopted root and a derivation source describes a tree that flipped
+            # and a mode that says it did not, and every consumer believes the
+            # mode: the bridge writer splices an export for a tree the database
+            # owns, and ``database_native_trees`` leaves it out of the set the
+            # restore detector reads. That shape arrives from a hand-edited file
+            # or from a record that lost one key, and reading it either way is a
+            # guess about which half is true.
+            carried = [
+                name
+                for name in ("cutover_on", "root_id", "source")
+                if getattr(self, name) is not None
+            ]
+            if carried:
+                raise ValueError(
+                    f"tree {self.tree_id!r} is recorded as still on the XML "
+                    f"bridge while carrying {', '.join(carried)}, which only a "
+                    f"tree that has cut over can have; the record contradicts "
+                    f"itself, and every consumer believes the mode, so the bridge "
+                    f"would write an export for a tree the database may already "
+                    f"own and the restore detector would not see it at all"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,6 +359,27 @@ class Registry:
 
     def is_database_native(self, tree_id: str) -> bool:
         return self.mode(tree_id) == Mode.DATABASE
+
+    def derivation_source(self, tree_id: str) -> DerivationSource | None:
+        """Where a rebuild of this tree's membership would come from, if anywhere.
+
+        None for a tree on the bridge, because nothing has decided yet, and never
+        None for a native one: :class:`TreeRecord` refuses that combination.
+        """
+        entry = self.record(tree_id)
+        return None if entry is None else entry.source
+
+    def database_native_trees(self) -> tuple[str, ...]:
+        """Every tree the database owns, which is the set a restore endangers.
+
+        Derived from the records rather than accumulated by a caller, because the
+        caller that needs it is the one marking every native tree unconverged
+        after an out-of-band restore, and a set built by hand there would miss
+        the tree somebody flipped last week.
+        """
+        return tuple(
+            entry.tree_id for entry in self.trees if entry.mode == Mode.DATABASE
+        )
 
     def is_on_the_bridge(self, tree_id: str) -> bool:
         return self.mode(tree_id) == Mode.XML
@@ -285,6 +411,16 @@ def path_for(cfg: config.Config) -> Path:
     one file whose snapshot coupling the plan's top-ranked risk is named after.
     """
     return config.state_path(STATE_KEY, cfg)
+
+
+def lock_path(cfg: config.Config) -> Path:
+    """Where the registry's exclusive lock lives, resolved through the inventory.
+
+    A DECLARED entry rather than a path composed here, for the reason every other
+    state file is declared: a file the inventory does not know about is a file
+    nothing walks, captures or clears.
+    """
+    return config.state_path(LOCK_KEY, cfg)
 
 
 def read(cfg: config.Config) -> Registry:
@@ -395,13 +531,38 @@ def read(cfg: config.Config) -> Registry:
                     remedy=Remedy.RUN_DOCTOR,
                 ) from exc
         root_id = entry.get("root")
+        raw_source = entry.get("source")
+        raw_mode = entry.get("mode")
+        if raw_mode is None:
+            # NO DEFAULT, and the value it would have defaulted to is why. A
+            # record that lost its ``mode`` key while keeping ``cutover_on``,
+            # ``root`` and ``source`` read as ``Mode.XML``, which is a
+            # self-contradictory shape nothing refused: the record says the tree
+            # cut over on a date, adopted a root and named a rebuild source,
+            # while its mode says it is still on the bridge. The consequences
+            # compound. ``is_on_the_bridge`` answers True, so the bridge writer
+            # splices an export for a tree the database owns and under U9's A2
+            # verdict the next import replaces it. ``database_native_trees``
+            # answers empty, and that set is the restore detector's whole input,
+            # so one missing key switches the out-of-band detection off for the
+            # entire library.
+            raise TreeRegistryUnreadable(
+                f"{path} holds a record for {tree_id!r} with no mode; the medium "
+                f"that owns a tree is the one thing this file exists to say, and "
+                f"the value it would default to sends the bridge writer at a tree "
+                f"the database may already own and switches the restore detector "
+                f"off for every tree in this library",
+                path=path,
+                remedy=Remedy.RUN_DOCTOR,
+            )
         try:
             records.append(
                 TreeRecord(
                     tree_id=tree_id,
-                    mode=Mode(str(entry.get("mode", DEFAULT_MODE))),
+                    mode=Mode(str(raw_mode)),
                     cutover_on=cutover,
                     root_id=None if root_id is None else str(root_id),
+                    source=None if raw_source is None else DerivationSource(str(raw_source)),
                 )
             )
         except ValueError as exc:
@@ -434,6 +595,7 @@ def write(cfg: config.Config, registry: Registry) -> Path:
                 "mode": str(entry.mode),
                 "cutover_on": None if entry.cutover_on is None else entry.cutover_on.isoformat(),
                 "root": entry.root_id,
+                "source": None if entry.source is None else str(entry.source),
             }
             # Sorted so the bytes are a function of the content alone. An
             # unordered dump makes every write a diff even when nothing changed.
@@ -453,12 +615,49 @@ def record_cutover(
     *,
     root_id: str,
     on: date,
+    source: DerivationSource,
 ) -> Registry:
     """Move one tree to the database, naming the root it adopted and the day.
 
     Read, modify, write, rather than a whole file overwrite. Trees cut over one
     at a time by design, and a writer that replaced the file would erase every
     other tree's record on each flip.
+
+    UNDER AN EXCLUSIVE LOCK, because that cycle is not made atomic by the atomic
+    rename at the end of it. Two processes that both read, both add a record and
+    both rename leave one flip on the floor while the call that lost it returns a
+    registry reporting success, and the tree whose cutover was lost then takes
+    its next write through the XML bridge. Under U9's A2 verdict importing that
+    export replaces the database-native tree outright. The primitive is the one
+    the config migration already takes rather than a third implementation.
+
+    REBUILDABILITY IS CHECKED HERE, WHICH IS THE ONLY MOMENT IT CAN BE. A cutover
+    is a one-way door: under U9's A2 verdict a tree that has taken a native write
+    is permanently unsafe to import over, so there is no undo to fall back on
+    once a restore has left it short. The question "could this tree's membership
+    be rebuilt" therefore has to be answered before the flip rather than after
+    the damage, and answering it after is how a library ends up with a native
+    tree, a gap, and no path from one to the other.
+
+    ``source`` IS REQUIRED AND CARRIES NO DEFAULT, AND THE DEFAULT THAT IS NOT
+    OFFERED IS THE DANGEROUS ONE. The only value this function could pick is
+    ``TAXONOMY``, because it is the only rebuildable member, and picking it says
+    "yes, this tree can be rebuilt" about a tree nobody checked. That sentence is
+    only ever discovered to be false at the one moment it matters, which is after
+    a restore has already left the tree short and the one-way door has shut.
+    :class:`TreeRecord` refuses a native record with no source for the same
+    reason, so a default here would be this module handing out through a
+    parameter exactly what it refuses one class up.
+
+    THE COST OF THAT DECISION IS A CALL SITE IN ANOTHER UNIT, stated here rather
+    than discovered at merge. U32 added a fixture call to this function after
+    this parameter existed but before the two branches met, so on the merged tree
+    ``tests/test_restore.py`` raises ``TypeError: record_cutover() missing 1
+    required keyword-only argument: 'source'`` in two tests. Whoever merges adds
+    ``source=DerivationSource.TAXONOMY`` to that fixture. A missing argument that
+    stops the suite is the outcome this signature is FOR; the alternative was a
+    silent default writing an unchecked claim about a real library into a
+    one-way record.
     """
     if not root_id:
         raise ValueError(
@@ -466,11 +665,18 @@ def record_cutover(
             f"root it adopted; without one, a pre-cutover database restored "
             f"underneath this registry cannot be detected"
         )
-    current = read(cfg)
-    updated = current.with_record(
-        TreeRecord(tree_id=tree_id, mode=Mode.DATABASE, cutover_on=on, root_id=str(root_id))
-    )
-    write(cfg, updated)
+    assert_rebuildable(tree_id, source)
+    with config._exclusive_lock(lock_path(cfg)):
+        updated = read(cfg).with_record(
+            TreeRecord(
+                tree_id=tree_id,
+                mode=Mode.DATABASE,
+                cutover_on=on,
+                root_id=str(root_id),
+                source=source,
+            )
+        )
+        write(cfg, updated)
     return updated
 
 
@@ -514,6 +720,45 @@ def refuse_database_write(tree_id: str, registry: Registry) -> None:
             f"overwrite whatever was written natively",
             tree_id=tree_id,
             mode=registry.mode(tree_id),
+            attempted=Mode.DATABASE,
+            remedy=Remedy.COMPLETE_PENDING_ACTION,
+        )
+
+
+def assert_rebuildable(tree_id: str, source: DerivationSource | None) -> None:
+    """Refuse a cutover for a tree whose membership nothing could rebuild (R39).
+
+    Two refusals rather than one, because the two are different mistakes with
+    different answers. A source this build does not recognise is a registry
+    written by hand or by a newer build, and the answer is to fix the file. A
+    source that is recognised and simply is not reproducible is a correct
+    declaration about a tree that must stay on the bridge, and the answer is to
+    leave it there.
+
+    THE REFUSAL IS SCOPED TO THE TREE, never to the product. A library may hold
+    one tree the taxonomy fully describes beside another that a person curates by
+    hand, and the second one refusing to flip says nothing at all about the first.
+    """
+    if source is None or source not in frozenset(DerivationSource):
+        raise TreeModeRefused(
+            f"the tree {tree_id!r} names no derivation source this build "
+            f"recognises, so nothing can say where a rebuild of its membership "
+            f"would come from; a tree that cannot be rebuilt cannot be repaired "
+            f"after a restore, and a cutover is a one-way door",
+            tree_id=tree_id,
+            mode=Mode.XML,
+            attempted=Mode.DATABASE,
+            remedy=Remedy.FIX_CONFIG_VALUES,
+        )
+    if source not in REBUILDABLE:
+        raise TreeModeRefused(
+            f"the tree {tree_id!r} derives its membership from {str(source)!r}, "
+            f"which no rebuild can reproduce, so it stays on the XML bridge; a "
+            f"catalogue crawl answers differently every month and a curated "
+            f"playlist derives from nothing this product declares, and a native "
+            f"tree that a restore leaves short has no other repair path",
+            tree_id=tree_id,
+            mode=Mode.XML,
             attempted=Mode.DATABASE,
             remedy=Remedy.COMPLETE_PENDING_ACTION,
         )
@@ -565,9 +810,13 @@ def anchored_root(
 __all__ = [
     "DEFAULT_MODE",
     "EMPTY",
+    "LOCK_KEY",
     "MODES",
+    "NOT_REBUILDABLE",
+    "REBUILDABLE",
     "SCHEMA_VERSION",
     "STATE_KEY",
+    "DerivationSource",
     "Mode",
     "Registry",
     "RegistrySkew",
@@ -575,6 +824,8 @@ __all__ = [
     "TreeRecord",
     "TreeRegistryUnreadable",
     "anchored_root",
+    "assert_rebuildable",
+    "lock_path",
     "path_for",
     "read",
     "record_cutover",
