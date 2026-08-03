@@ -691,6 +691,16 @@ form, every one of which closes the issue and cascades. Git's own comment lines
 and the `commit --verbose` diff are stripped first, or a template line would
 refuse a commit that closes nothing.
 
+**It caught its own author, which is the only evidence worth having.** Two
+commits on this branch documented the closing keywords by listing them with a
+real issue number, so their bodies contained twelve live closing references
+between them. Merged to `main`, GitHub would have closed two unrelated units and
+cascaded every unit waiting on either. `board.py closing --since main` refused
+the branch, the example numbers were replaced with a non-numeric placeholder, and
+the trees are byte-identical before and after. A check written that afternoon
+caught a defect its own author shipped the same afternoon, in the one shape
+nobody thinks to look at: prose about the rule is subject to the rule.
+
 **Left open, and this is what needs the issue.** Nothing decides WHICH record is
 right when they disagree, and this branch deliberately did not pick for U23. The
 seven markers on closed units are not repaired here either, because re-pointing
