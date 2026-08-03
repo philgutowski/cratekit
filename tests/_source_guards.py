@@ -28,6 +28,7 @@ that was skipped.
 from __future__ import annotations
 
 import ast
+import re
 
 #: The module every question here is asked about.
 REVIEW_MODULE = "cratekit.core.review"
@@ -317,9 +318,24 @@ def package_modules(package_root) -> list[tuple[str, str]]:
 EXIT_CODE_MODULE = "cratekit.core.exit_codes"
 EXIT_CODE_PACKAGE = "cratekit.core"
 
+#: A cause slug as this repository spells one: lowercase words joined by single
+#: hyphens. The reserved set is passed in as well, so a slug that does not match
+#: this shape is still recognized once it is reserved. The shape is what lets the
+#: guard see a table for causes NOBODY has reserved yet, which is the case the
+#: table exists to prevent and the case a reserved-keys-only guard cannot see.
+CAUSE_SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$")
+
 
 class ExitCodeImports:
     """How one source file reaches ``ExitCode``, in every import shape.
+
+    U12 COORDINATION. This is the same walk ``ReviewImports`` does, asked about a
+    different module, and U12 is concurrently generalizing that one into a
+    module-parameterized ``ImportsOf``. When both land, this class collapses into
+    ``ImportsOf(tree, EXIT_CODE_MODULE)`` with one narrowing, because this one
+    records only the ``ExitCode`` symbol where ``ImportsOf`` records every symbol
+    a source imported. The two merge textually clean in either order, so nothing
+    will flag the duplication; it is written down here instead.
 
     Five shapes are recognized, and they are every shape this repository's own
     modules use between them::
@@ -362,6 +378,16 @@ class ExitCodeImports:
                         if alias.name == "exit_codes":
                             self.module_names.add(alias.asname or "exit_codes")
 
+    def names_the_class(self, node: ast.AST) -> bool:
+        """Whether ``node`` names the ``ExitCode`` CLASS this source imported."""
+        dotted = _dotted(node)
+        if dotted is None:
+            return False
+        if dotted in self.class_names:
+            return True
+        parts = dotted.split(".")
+        return len(parts) >= 2 and ".".join(parts[:-1]) in self.module_names and parts[-1] == "ExitCode"
+
     def names_a_code(self, node: ast.AST) -> bool:
         """Whether ``node`` is a member of the ``ExitCode`` this source imported."""
         dotted = _dotted(node)
@@ -374,7 +400,13 @@ class ExitCodeImports:
 
 
 def _bound_module_names(tree: ast.AST, module: str) -> set[str]:
-    """Local names bound to a standard-library module, aliases included."""
+    """Local names bound to a standard-library MODULE, aliases included.
+
+    Module binding only. ``from sys import exit`` binds a callable rather than a
+    module and is answered by ``_bound_symbol_names`` below, which is the half
+    that was missing: a guard that walked ``ast.Import`` alone let the one import
+    shape that needs no attribute access through untouched.
+    """
     return {
         alias.asname or alias.name
         for node in ast.walk(tree)
@@ -384,34 +416,298 @@ def _bound_module_names(tree: ast.AST, module: str) -> set[str]:
     }
 
 
-def reserved_code_tables(source: str, causes: frozenset[str]) -> list[str]:
-    """Every mapping in this source that gives a RESERVED cause an exit code.
+def _bound_symbol_names(tree: ast.AST, module: str, symbol: str) -> set[str]:
+    """Local names bound to one SYMBOL of a standard-library module."""
+    return {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == module and node.level == 0
+        for alias in node.names
+        if alias.name == symbol
+    }
+
+
+def _module_level_literals(tree: ast.AST) -> dict[str, ast.AST]:
+    """Every ``NAME = <expression>`` at module level, for one hop of resolution.
+
+    One hop only, and deliberately. ``CAUSES = (...)`` beside
+    ``dict(zip(CAUSES, CODES))`` is how a real module spells a table, and a guard
+    that only understood the inlined spelling would be one refactor away from
+    seeing nothing. Chasing further than one hop needs dataflow, which is the
+    line this file does not cross.
+    """
+    found: dict[str, ast.AST] = {}
+    for node in getattr(tree, "body", []):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    found[target.id] = node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            if isinstance(node.target, ast.Name):
+                found[node.target.id] = node.value
+    return found
+
+
+class ReservedCodeTable:
+    """Reads one source for a second opinion about what a refusal cause exits with.
+
+    TWO SIDES HAVE TO BE RIGHT AT ONCE, and the first version of this guard got
+    each of them wrong in a different direction.
+
+    WHAT COUNTS AS A KEY. Not "a cause already reserved". A module that maps its
+    OWN new causes to its own codes is the whole defect the table exists to
+    prevent, and a guard keyed on the existing registry is blind to exactly that
+    module. So a key counts when it is a reserved cause OR when it is spelled the
+    way this repository spells a cause slug (``CAUSE_SLUG``). One word with no
+    hyphen is not, which is what keeps a module's own data keyed on its own
+    vocabulary out of it: ``{"files": ..., "settings": ...}`` is a portion table.
+
+    WHAT COUNTS AS A CODE, and this is where a guard that fires on correct code
+    gets itself switched off (P7). An ``ExitCode`` member is unambiguous. A bare
+    integer is not: a cause slug mapped to 3 is an attempt budget, mapped to 1 is
+    a display order, mapped to 5 is a backoff in seconds, and six of the reserved
+    keys are also remediation tokens, so every one of those maps is ordinary
+    correct code keyed on a slug. The only integers that can be a second
+    reservation are the ones inside the RESERVED RANGE, which the caller passes
+    in from the live table rather than repeating here. ``True`` and ``False`` are
+    integers to ``isinstance`` and are never a status, so they are excluded
+    before the range is even consulted.
+
+    THE RESIDUAL LIMIT, stated rather than hidden: a backoff of 30 seconds keyed
+    by a cause slug is indistinguishable from a reservation of 30 by shape alone,
+    and this reports it. That direction was chosen deliberately, because the
+    alternative is matching on the variable's NAME, and a guard a rename defeats
+    is not a guard.
+    """
+
+    def __init__(self, tree: ast.AST, causes: frozenset[str], code_range: tuple[int, int]) -> None:
+        self.tree = tree
+        self.causes = causes
+        self.low, self.high = code_range
+        self.codes = ExitCodeImports(tree)
+        self.literals = _module_level_literals(tree)
+
+    def cause_key(self, node: ast.AST | None) -> str | None:
+        """The cause slug a key names, whether or not anyone has reserved it."""
+        if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+            return None
+        if node.value in self.causes or CAUSE_SLUG.match(node.value):
+            return node.value
+        return None
+
+    def status(self, node: ast.AST | None) -> str | None:
+        """What this expression reserves as a process status, or None."""
+        if node is None:
+            return None
+        if self.codes.names_a_code(node):
+            return ast.unparse(node)
+        if isinstance(node, ast.Call) and len(node.args) == 1:
+            # ``int(ExitCode.X)`` and ``ExitCode(30)``: a code with a conversion
+            # wrapped round it is still a code, and both spellings read as
+            # ordinary Python rather than as an evasion.
+            wraps_a_code = _dotted(node.func) == "int" or self.codes.names_the_class(node.func)
+            if wraps_a_code and self.status(node.args[0]) is not None:
+                return ast.unparse(node)
+        if isinstance(node, ast.Constant) and isinstance(node.value, int):
+            if isinstance(node.value, bool):
+                return None
+            if self.low <= node.value < self.high:
+                return f"bare status {node.value}"
+        return None
+
+    def _sequence(self, node: ast.AST) -> list[ast.AST] | None:
+        """A literal sequence, through at most one module-level name."""
+        if isinstance(node, ast.Name):
+            node = self.literals.get(node.id, node)
+        if isinstance(node, (ast.Tuple, ast.List)):
+            return list(node.elts)
+        return None
+
+    def pairs(self) -> list[tuple[ast.AST, ast.AST]]:
+        """Every place a key and a value are bound together, in any shape.
+
+        Every shape below was written as an evasion first and only then as a
+        rule, which is why the list is this specific.
+        """
+        found: list[tuple[ast.AST, ast.AST]] = []
+        for node in ast.walk(self.tree):
+            if isinstance(node, ast.Dict):
+                # A mapping literal, including the one inside ``dict(**{...})``,
+                # ``MappingProxyType({...})`` and ``CODES.update({...})``.
+                for key, value in zip(node.keys, node.values):
+                    if key is not None:
+                        found.append((key, value))
+            elif isinstance(node, (ast.Tuple, ast.List)) and len(node.elts) == 2:
+                # One pair, wherever it sits: a tuple of pairs, the argument to
+                # ``dict([...])`` or ``OrderedDict([...])``, or the iterable a
+                # dict comprehension unpacks.
+                found.append((node.elts[0], node.elts[1]))
+            elif isinstance(node, ast.DictComp):
+                # ``{slug: 30 for slug in (...)}``: the value is the code and
+                # every slug in the iterables is a key it is given to.
+                for generator in node.generators:
+                    for element in ast.walk(generator.iter):
+                        if isinstance(element, ast.Constant):
+                            found.append((element, node.value))
+            elif isinstance(node, ast.Assign):
+                # ``CODES[slug] = 30`` after ``CODES = {}``, which is a table
+                # built a line at a time and is a table all the same.
+                for target in node.targets:
+                    if isinstance(target, ast.Subscript):
+                        found.append((target.slice, node.value))
+            elif isinstance(node, ast.Call):
+                function = node.func
+                if (
+                    isinstance(function, ast.Attribute)
+                    and function.attr == "setdefault"
+                    and len(node.args) == 2
+                ):
+                    found.append((node.args[0], node.args[1]))
+                elif _dotted(function) in {"dict", "OrderedDict"} and len(node.args) == 1:
+                    found.extend(self._zipped(node.args[0]))
+        found.extend(self._branches())
+        return found
+
+    def _zipped(self, argument: ast.AST) -> list[tuple[ast.AST, ast.AST]]:
+        """``dict(zip(slugs, codes))``, with either sequence named once."""
+        if not (isinstance(argument, ast.Call) and _dotted(argument.func) == "zip"):
+            return []
+        if len(argument.args) != 2:
+            return []
+        keys = self._sequence(argument.args[0])
+        values = self._sequence(argument.args[1])
+        if keys is None or values is None:
+            return []
+        return list(zip(keys, values))
+
+    def _branches(self) -> list[tuple[ast.AST, ast.AST]]:
+        """A table written as control flow: a match statement or an if chain.
+
+        Narrowed to what the branch RETURNS. A module that waits 30 seconds
+        inside a branch keyed on a cause is doing something ordinary, and a guard
+        that reported it would be the false positive that gets the whole check
+        suppressed. A module that RETURNS 30 from that branch is answering the
+        question this table answers.
+        """
+        found: list[tuple[ast.AST, ast.AST]] = []
+        for node in ast.walk(self.tree):
+            if isinstance(node, ast.Match):
+                for case in node.cases:
+                    keys = [
+                        pattern.value
+                        for pattern in ast.walk(case.pattern)
+                        if isinstance(pattern, ast.MatchValue)
+                    ]
+                    found.extend(self._returned(keys, case.body))
+            elif isinstance(node, ast.If):
+                keys = [
+                    element
+                    for element in ast.walk(node.test)
+                    if isinstance(element, ast.Constant)
+                ]
+                found.extend(self._returned(keys, node.body))
+        return found
+
+    @staticmethod
+    def _returned(keys: list[ast.AST], body: list[ast.stmt]) -> list[tuple[ast.AST, ast.AST]]:
+        returned = [
+            statement.value
+            for statement in body
+            if isinstance(statement, ast.Return) and statement.value is not None
+        ]
+        return [(key, value) for key in keys for value in returned]
+
+
+def reserved_code_tables(
+    source: str, causes: frozenset[str], code_range: tuple[int, int]
+) -> list[str]:
+    """Every place this source gives a refusal cause its own exit code.
 
     A second table is how two answers to one question appear, and the repository
-    has already paid for that shape once in its taxonomy resolvers. The keys are
-    supplied by the caller from the live registry rather than matched by a
-    pattern, so this cannot go stale against a cause added later.
+    has already paid for that shape once in its taxonomy resolvers. The class
+    above carries the reasoning for what counts as a key and what counts as a
+    code; this function is the walk over every shape a table can be written in.
 
-    Two value shapes count, and both are the defect: an ``ExitCode`` member,
-    which is a second opinion in the right vocabulary, and a bare integer, which
-    is a second opinion in no vocabulary at all. A dict mapping the same keys to
-    SENTENCES is ordinary correct code and is not reported, because a guard that
-    fires on correct code gets routed around (P7).
+    Deliberately NOT restricted to dict literals, which is what the first version
+    was while its docstring claimed otherwise. A tuple of pairs, a comprehension,
+    ``dict(zip(...))``, a mapping filled a key at a time, ``setdefault``, a match
+    statement and an if chain are all a table, and a guard that only understood
+    the punctuation of one of them is a guard the next module walks past without
+    meaning to.
     """
-    tree = ast.parse(source)
-    codes = ExitCodeImports(tree)
+    table = ReservedCodeTable(ast.parse(source), causes, code_range)
     found: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Dict):
+    seen: set[tuple[int, str, str]] = set()
+    for key, value in table.pairs():
+        slug = table.cause_key(key)
+        if slug is None:
             continue
-        for key, value in zip(node.keys, node.values):
-            if not (isinstance(key, ast.Constant) and key.value in causes):
-                continue
-            if isinstance(value, ast.Constant) and isinstance(value.value, int):
-                found.append(f"line {key.lineno}: {key.value!r} -> bare status {value.value}")
-            elif codes.names_a_code(value):
-                found.append(f"line {key.lineno}: {key.value!r} -> {ast.unparse(value)}")
-    return found
+        status = table.status(value)
+        if status is None:
+            continue
+        entry = (key.lineno, slug, status)
+        if entry in seen:
+            continue
+        seen.add(entry)
+        found.append(f"line {key.lineno}: {slug!r} -> {status}")
+    return sorted(found)
+
+
+class ProcessExits:
+    """Every local name in one source that ends the process with a status.
+
+    Four bindings reach a process status, and the first version of this guard
+    recognized one and a half of them::
+
+        import sys; sys.exit(30)            # recognized
+        import sys as system; system.exit(30)   # recognized
+        from sys import exit; exit(30)      # NOT, and it needs no attribute
+        from os import _exit; _exit(30)     # NOT
+        e = sys.exit; e(30)                 # NOT
+        SE = SystemExit; raise SE(30)       # NOT
+        class Refused(SystemExit): ...      # NOT, and it reads as good design
+
+    The two ``from`` shapes are the ones that matter, because they are ordinary
+    Python that anybody might write without meaning to evade anything, and
+    because both sibling classes in this file already handle ``ast.ImportFrom``.
+    The aliases are cheaper to close than to argue about, so they are closed.
+
+    Resolution runs to a fixed point, so ``a = sys.exit`` then ``b = a`` binds
+    both, and a class deriving from a class deriving from ``SystemExit`` is one.
+    """
+
+    def __init__(self, tree: ast.AST) -> None:
+        #: Names that, CALLED, end the process.
+        self.exits: set[str] = {
+            f"{name}.exit" for name in _bound_module_names(tree, "sys")
+        } | {f"{name}._exit" for name in _bound_module_names(tree, "os")}
+        self.exits |= _bound_symbol_names(tree, "sys", "exit")
+        self.exits |= _bound_symbol_names(tree, "os", "_exit")
+        #: Names that ARE the exception whose argument is a process status.
+        self.statuses: set[str] = {"SystemExit"}
+        assignments = _assignments(tree)
+        classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+        changed = True
+        while changed:
+            changed = False
+            for name, value in assignments:
+                dotted = _dotted(value)
+                if dotted in self.exits and name not in self.exits:
+                    self.exits.add(name)
+                    changed = True
+                if dotted in self.statuses and name not in self.statuses:
+                    self.statuses.add(name)
+                    changed = True
+            for node in classes:
+                if node.name in self.statuses:
+                    continue
+                if any(_dotted(base) in self.statuses for base in node.bases):
+                    self.statuses.add(node.name)
+                    changed = True
+
+    def ends_the_process(self, node: ast.AST) -> bool:
+        target = _dotted(node)
+        return target is not None and (target in self.exits or target in self.statuses)
 
 
 def process_status_literals(source: str) -> list[str]:
@@ -419,17 +715,17 @@ def process_status_literals(source: str) -> list[str]:
 
     ``sys.exit(21)`` bypasses the whole vocabulary: nothing imports, nothing
     looks anything up, and the integer arrives at the shell meaning whatever the
-    author believed that day. The module is bound through the import graph, so
-    ``import sys as system`` is caught and ``runner.exit(21)`` on somebody's own
-    object is not.
+    author believed that day. Every name is bound through the import graph, so
+    ``import sys as system`` and ``from sys import exit`` are both caught and
+    ``runner.exit(21)`` on somebody's own object is not.
 
     Zero is excluded. ``sys.exit(0)`` is success spelled plainly and is not a
     refusal, and reporting it would be the false positive that gets the whole
-    guard suppressed.
+    guard suppressed. ``True`` is excluded for the same reason and a stronger
+    one: it is an integer only by accident of the language.
     """
     tree = ast.parse(source)
-    sys_names = _bound_module_names(tree, "sys")
-    os_names = _bound_module_names(tree, "os")
+    exits = ProcessExits(tree)
     found: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or len(node.args) != 1:
@@ -439,12 +735,6 @@ def process_status_literals(source: str) -> list[str]:
             continue
         if argument.value == 0 or isinstance(argument.value, bool):
             continue
-        target = _dotted(node.func)
-        names_an_exit = (
-            target in {f"{name}.exit" for name in sys_names}
-            or target in {f"{name}._exit" for name in os_names}
-            or (isinstance(node.func, ast.Name) and node.func.id == "SystemExit")
-        )
-        if names_an_exit:
+        if exits.ends_the_process(node.func):
             found.append(f"line {node.lineno}: {ast.unparse(node)}")
     return found

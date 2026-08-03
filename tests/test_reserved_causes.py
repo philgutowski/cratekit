@@ -26,21 +26,50 @@ the five defects a registry-shaped thing in this repository has actually shipped
    causes by walking the package for the exceptions that carry one, so a module
    landing later with an unreserved cause fails here rather than shipping a
    refusal nothing downstream can recover (P3).
+
+WHAT THE REVIEW FOUND, because it is the reason half of this file exists. A
+plausible next module, ``modules/tools/tagger.py``, was written with three
+unreserved refusal causes, its own reservation table, and two bare integer
+process exits, and this suite stayed green over all of it. The table was sound
+and every check ON the table was real; the three things that LOOK at the rest of
+the tree were not.
+
+* The second-table guard was keyed on the causes already reserved, so a module
+  deciding codes for causes NOBODY has reserved was invisible, which is not a
+  corner of the problem but the whole of it. It also read dict literals only,
+  while its docstring said "every mapping in this source".
+* The same guard fired on correct code in seven of eight fixtures, reporting
+  things like ``'rekordbox-running' -> bare status False``, and a guard that
+  fires on correct code is one somebody adds an exemption for.
+* The bare-status guard walked ``ast.Import`` alone, so ``from sys import exit``
+  went straight past it, which is the one shape that needs no attribute access.
+* The completeness walk could not read ``Refusal | None``, a discriminator
+  imported under ``if TYPE_CHECKING:``, a module that raises on import, or the
+  canonical ``Remedy``, and it demanded that any package enum on a constructor be
+  reserved, so an exception carrying a ``Scope`` broke it with a nonsense demand.
+
+Each of those now has fixtures in BOTH directions beside it, and that module is
+the acceptance test: it fails three assertions by name.
 """
 
 from __future__ import annotations
 
+import ast
 import enum
 import importlib
 import pkgutil
+import sys
 import typing
 from pathlib import Path
+from types import MappingProxyType, ModuleType
+from typing import Iterator, Mapping
 
 import pytest
 
 import cratekit
 from cratekit.cli import exit_codes as reserved_codes
 from cratekit.cli import render
+from cratekit.core import backup_facts, config
 from cratekit.core.cause import REASONS, Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import BANDS, MAX_CODE, ExitCode, Remedy, band_of, meaning_of
 from tests._source_guards import process_status_literals, reserved_code_tables
@@ -55,6 +84,57 @@ PACKAGE_ROOT = REPO_ROOT / "src" / "cratekit"
 TABLE_OWNERS = frozenset({"cli/exit_codes.py", "core/cause.py"})
 
 CAUSES = frozenset(reserved_codes.RESERVED_CAUSES)
+
+#: The range the guard measures a bare integer against, taken from the table
+#: rather than repeated, so the two cannot drift.
+RANGE = reserved_codes.RESERVED_RANGE
+
+#: The constructor parameters that carry a refusal's structured CAUSE.
+#:
+#: Read by name, and the reason is that the annotation alone cannot tell the two
+#: apart. ``scope: Scope`` and ``refusal: Refusal`` are both a package enum on an
+#: exception's constructor, and only one of them is the reason the refusal
+#: happened; the other is context travelling with it. A derivation that accepted
+#: any package enum demanded that ``['item', 'run', 'session', 'source']`` be
+#: reserved as exit codes, which is a nonsense the next author would have had to
+#: argue their way out of. These four names are how every module in this
+#: repository already spells the role.
+DISCRIMINATOR_PARAMETERS = frozenset({"refusal", "remedy", "reason", "cause"})
+
+#: The refusals whose discriminator this table deliberately does NOT reserve,
+#: and the conversion that already gives each one a code and a remediation.
+#:
+#: NAMED, not accidental, and that is the whole change. Both of these were
+#: excluded before by the shape of their annotation rather than by a decision:
+#: their discriminator is written ``Remedy | None``, the derivation could not
+#: read a union, and so the exclusion held only until somebody tightened an
+#: unrelated annotation. An exclusion nobody wrote down is an exclusion nobody
+#: can review.
+#:
+#: ``test_every_exclusion_names_a_refusal_something_already_converts`` proves
+#: each entry rather than trusting it: it finds the except clause in this package
+#: that catches the type and reads its remedy. A refusal nobody converts is
+#: exactly what this table is for, so an entry that stops being true fails here.
+CONVERTED_ELSEWHERE: Mapping[str, str] = MappingProxyType(
+    {
+        "cratekit.core.config.ConfigError": (
+            "cratekit/cli/__init__.py catches this AT THE COMMAND-LINE BOUNDARY "
+            "and builds a cause with reason config-unusable, which core.cause "
+            "already reserves at PRECONDITION, carrying the module's own token "
+            "through unchanged. Reserving its six tokens here would be a second "
+            "opinion, and for upgrade-cratekit it would be a WRONG one: this "
+            "table reserves that key at 32 for the unreadable fact file, and the "
+            "configuration path exits 30. See the module docstring, which now "
+            "records that collision instead of claiming it does not exist"
+        ),
+        "cratekit.acquire.adapter.AdapterError": (
+            "the acquisition layer catches its own failures and folds them into "
+            "an InvocationOutcome carrying exc.remedy, so an adapter refusal "
+            "becomes a run RESULT rather than an exception at the boundary. Its "
+            "nine tokens are remediation for a track, not a status for a process"
+        ),
+    }
+)
 
 
 def package_sources() -> list[tuple[str, str]]:
@@ -98,7 +178,7 @@ def test_no_reservation_was_collapsed_by_a_duplicate_key():
     assert len(reserved_codes.RESERVATIONS) == len(reserved_codes.RESERVED_CAUSES)
 
 
-def test_the_index_refuses_a_duplicate_at_import_rather_than_only_in_a_test():
+def test_the_index_refuses_a_duplicate_rather_than_letting_the_later_one_win():
     """A duplicate that only the suite catches still ships to anyone who runs the code."""
     doubled = (
         reserved_codes.RESERVATIONS[0],
@@ -107,6 +187,29 @@ def test_the_index_refuses_a_duplicate_at_import_rather_than_only_in_a_test():
     with pytest.raises(ValueError) as excinfo:
         reserved_codes._index(doubled)
     assert reserved_codes.RESERVATIONS[0].cause in str(excinfo.value)
+
+
+def test_the_index_runs_at_import_rather_than_only_when_a_test_calls_it():
+    """The test above drives ``_index`` directly, which proves the check and not WHEN.
+
+    "At import" is a structural property of the module and is asserted as one:
+    the published mapping is built by a module-level call, so a reservation that
+    the index refuses cannot load at all. A guard that ran only when the suite
+    ran would ship the duplicate to anybody who imports the package without it.
+    """
+    tree = ast.parse((PACKAGE_ROOT / "cli" / "exit_codes.py").read_text())
+    built_at_import = [
+        node
+        for node in tree.body
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "_index"
+    ]
+    assert built_at_import, (
+        "RESERVED_CAUSES is no longer built by a module-level call to _index, so "
+        "nothing enforces the range or the duplicate check until a test asks"
+    )
 
 
 def test_every_reservation_carries_a_remediation():
@@ -136,8 +239,11 @@ def test_every_reserved_code_sits_inside_the_reserved_range():
     it. Below 10 is the process band: 0 is success, 1 is a defect, and 2 belongs
     to the argument parser, which is the one property the whole KTD25 fix rests
     on. At or above MAX_CODE is the shell's own territory, where 126 means not
-    executable, 127 means not found, 128 plus a signal number covers 129 to 165,
-    and anything past a byte truncates to something it did not mean.
+    executable, 127 means not found, 128 plus a signal number covers 129 to 192
+    on a platform whose real-time signals run to a SIGRTMAX of 64, and anything
+    past a byte truncates to something it did not mean. The job engine reads the
+    same statuses through subprocess.returncode, which is the NEGATIVE signal
+    number on POSIX rather than 128 plus it, and this range is clear of both.
     """
     low, high = reserved_codes.RESERVED_RANGE
     assert (low, high) == (10, 60)
@@ -154,14 +260,23 @@ def test_every_reserved_code_sits_inside_the_reserved_range():
         assert meaning_of(reservation.code).verb_producible
 
 
-def test_the_growth_band_stays_free_of_reservations():
+def test_the_growth_band_is_closed_at_both_ends_rather_than_merely_unused():
     """60 through 63 is the room a class nobody has met yet claims.
 
-    Reserving inside it is how the room quietly disappears, so the range check
-    excludes it and this asserts the consequence directly.
+    Asserting that no reservation sits there cannot fail while the range check
+    above already forbids it, so that assertion is not the test. The two that can
+    fail are these: the reserved range STOPS where the growth band starts, and
+    the status vocabulary itself has no member inside it. Adding an ``ExitCode``
+    at 61 is how the room disappears, and it fails here.
     """
     growth = BANDS[-1]
     assert growth.name == "unclaimed"
+    assert reserved_codes.RESERVED_RANGE[1] <= growth.start, (
+        "the reserved range now reaches into the growth band, so the room is "
+        "claimable by the next reservation rather than kept"
+    )
+    inhabited = [code.name for code in ExitCode if growth.start <= int(code) < growth.stop]
+    assert not inhabited, f"the growth room has been built on: {inhabited}"
     taken = [
         reservation.cause
         for reservation in reserved_codes.RESERVATIONS
@@ -170,26 +285,45 @@ def test_the_growth_band_stays_free_of_reservations():
     assert not taken, f"these reservations took the growth room: {taken}"
 
 
-@pytest.mark.parametrize("value", [0, 1, 2, 60, 64, 126, 127, 130, 255])
+def test_the_permitted_bands_are_exactly_the_bands_the_range_spans():
+    """A permission set wider than the range is a permission nobody granted.
+
+    ``RESERVED_BANDS`` lists five bands and today's reservations use three, so
+    nothing about the reservations can tell whether the other two are deliberate
+    or leftover. They are derived from the range here, which makes widening
+    either one without the other fail.
+    """
+    low, high = reserved_codes.RESERVED_RANGE
+    spanned = {band.name for band in BANDS if band.start < high and band.stop > low}
+    assert reserved_codes.RESERVED_BANDS == spanned, (
+        f"the permitted bands are {sorted(reserved_codes.RESERVED_BANDS)} and the "
+        f"range {low} to {high - 1} spans {sorted(spanned)}"
+    )
+
+
+@pytest.mark.parametrize("value", [0, 1, 2, 3, 60, 63, 64, 126, 127, 130, 255])
 def test_a_code_outside_the_range_cannot_be_reserved(value):
     """The range enforced at import, driven with the exact integers it excludes.
 
-    ``ExitCode`` has no member for most of these, which is itself the answer: a
-    reservation can only name a member, and the ones it CAN name that fall
-    outside the range are refused by the index.
+    EVERY value here reaches ``_index``, which was not true when this test read
+    as coverage it did not have: six of the nine had no ``ExitCode`` member, so
+    the body returned before touching the index and asserted only that the member
+    was missing. A reservation naming a bare integer is now refused by name, so
+    the values with no member drive the index too, and the shape a future author
+    would actually write is the shape that fails.
     """
     member = next((code for code in ExitCode if int(code) == value), None)
     if member is None:
-        assert value >= MAX_CODE or value not in {int(c) for c in ExitCode}
-        return
+        assert value not in {int(code) for code in ExitCode}
     candidate = reserved_codes.Reservation(
         cause="invented",
-        code=member,
+        code=member if member is not None else value,
         note="outside the range on purpose",
         steps=("nothing",),
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as excinfo:
         reserved_codes._index((candidate,))
+    assert "invented" in str(excinfo.value)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -212,6 +346,49 @@ def test_where_this_table_and_the_closed_reason_registry_overlap_they_agree():
             f"{REASONS[slug].name} in the closed reason registry, so one refusal "
             f"has two meanings depending on which table a caller read"
         )
+
+
+def test_the_two_tables_spell_two_conditions_twice_and_still_agree():
+    """The overlap check compares SPELLING, so these two pairs are invisible to it.
+
+    ``library-root-absent`` here and ``library-directory-missing`` in the closed
+    registry are one condition with two names, and so are ``database-absent`` and
+    ``library-database-missing``. They agree on 22 today and nothing was asserting
+    it, because the derived overlap can only see ``rekordbox-running``.
+
+    They are not renamed into one. A slug is persisted inside a stored cause and
+    crosses a process boundary when the job engine re-invokes the command line,
+    so by this repository's own rule renaming one is a breaking change to
+    anything holding it. The duplication is recorded and pinned instead.
+    """
+    for reserved_slug, registry_slug in (
+        ("library-root-absent", "library-directory-missing"),
+        ("database-absent", "library-database-missing"),
+    ):
+        assert reserved_codes.code_for(reserved_slug) is REASONS[registry_slug], (
+            f"{reserved_slug!r} and {registry_slug!r} are two spellings of one "
+            f"condition and now exit with two different statuses"
+        )
+
+
+def test_upgrade_cratekit_is_declared_three_times_and_this_table_reserves_one_meaning():
+    """One symbol, two meanings, pinned rather than papered over.
+
+    The module docstring used to claim the symbol keeps one meaning wherever it
+    is read. It does not: an unreadable FACT file written by a newer build is an
+    acknowledgment gate at 32, and a CONFIGURATION file written by a newer build
+    is ``config-unusable`` at 30. Both readings are asserted here, so the day
+    somebody makes them the same value it is a decision rather than a drift.
+    """
+    declaring = sorted(
+        f"{owner.__module__}.{owner.__qualname__}"
+        for owner in (backup_facts.Remedy, config.Remedy, Remedy)
+        if "upgrade-cratekit" in {str(member.value) for member in owner}
+    )
+    assert len(declaring) == 3, f"the collision changed shape: {declaring}"
+    assert reserved_codes.code_for("upgrade-cratekit") is ExitCode.ACK_REQUIRED
+    assert REASONS["config-unusable"] is ExitCode.PRECONDITION
+    assert reserved_codes.code_for("upgrade-cratekit") is not REASONS["config-unusable"]
 
 
 def test_a_reserved_cause_that_is_also_a_remedy_token_reserves_that_token():
@@ -297,8 +474,81 @@ def test_a_reservation_builds_the_remediation_a_cause_carries():
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def structured_refusal_causes() -> dict[str, frozenset[str]]:
-    """Every structured refusal cause in the package, as module -> cause slugs.
+_NAMESPACES: dict[str, dict[str, object]] = {}
+
+
+def _annotation_namespace(module: ModuleType | None) -> dict[str, object]:
+    """Every name this module's IMPORT STATEMENTS bind, TYPE_CHECKING included.
+
+    ``get_type_hints`` resolves an annotation against what a module holds at
+    RUNTIME, and a discriminator imported under ``if TYPE_CHECKING:`` is not
+    there, so the call raises ``NameError``. The first version of this walk
+    swallowed that, which meant the more carefully a module avoided an import
+    cycle, the less of it the derivation could see. The import statements are
+    read from the SOURCE instead, which sees a guarded import exactly the way a
+    person reading the file does.
+    """
+    if module is None:
+        return {}
+    cached = _NAMESPACES.get(module.__name__)
+    if cached is not None:
+        return cached
+    namespace: dict[str, object] = {}
+    _NAMESPACES[module.__name__] = namespace
+    source_file = getattr(module, "__file__", None)
+    if source_file is None:
+        return namespace
+    try:
+        tree = ast.parse(Path(source_file).read_text())
+    except OSError:  # pragma: no cover - a module with no readable source
+        return namespace
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            for alias in node.names:
+                try:
+                    imported = importlib.import_module(node.module)
+                    namespace[alias.asname or alias.name] = getattr(imported, alias.name)
+                except Exception:  # noqa: BLE001 - a name that will not resolve is not a cause
+                    continue
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                bound = alias.name if alias.asname else alias.name.split(".")[0]
+                try:
+                    namespace[alias.asname or bound] = importlib.import_module(bound)
+                except Exception:  # noqa: BLE001 - as above
+                    continue
+    return namespace
+
+
+def _declared_enums(hint: object, owner: str, packages: tuple[str, ...]) -> Iterator[type]:
+    """Every enum THIS REPOSITORY declares that an annotation can carry.
+
+    Recursive, because ``Refusal | None`` is not a type and ``isinstance(hint,
+    type)`` is False for it. An optional discriminator is the ordinary shape for
+    a base exception that lets each raise override a class default, and reading
+    only the bare-type spelling made the most common shape in the package the one
+    the walk could not see.
+
+    ``ExitCode`` and only ``ExitCode`` is excluded. A STATUS is not a cause, so
+    an exception carrying one has nothing to reserve. Excluding the whole module
+    it lives in, which is what this did first, made the canonical ``Remedy``
+    invisible too, so the more closely a module followed this repository's own
+    "stay a subset" convention, the less of it was checked.
+    """
+    if isinstance(hint, type) and issubclass(hint, enum.Enum):
+        if hint is ExitCode:
+            return
+        if hint.__module__ == owner or hint.__module__.split(".")[0] in packages:
+            yield hint
+        return
+    for argument in typing.get_args(hint):
+        yield from _declared_enums(argument, owner, packages)
+
+
+def refusal_causes_in(
+    module: ModuleType, *, packages: tuple[str, ...] = ("cratekit",)
+) -> dict[str, frozenset[str]]:
+    """The structured refusal causes ONE module declares, as producer -> slugs.
 
     DERIVED, and the derivation is the specification of what this table owes.
 
@@ -307,42 +557,93 @@ def structured_refusal_causes() -> dict[str, frozenset[str]]:
     gap. The gap is every OTHER exception in the package that carries a
     structured discriminator, because there is nothing downstream that turns one
     of those into a status. Those are found by their shape: an exception defined
-    in this package, not a ``CratekitError``, whose constructor takes a parameter
-    annotated with an enum this package defines.
+    in this module, not a ``CratekitError``, whose constructor takes a parameter
+    NAMED for the discriminator role and annotated with an enum this repository
+    declares.
 
-    That shape deliberately excludes ``core.config`` and ``core.secrets``, whose
-    structured cause is the exception TYPE rather than an enum member. Their
-    conversion is already declared at the command-line boundary and they already
-    arrive carrying their own remediation token, so reserving them here would be
-    the second opinion this table exists to prevent.
+    WHAT THIS SHAPE CANNOT SEE, said plainly rather than presented as a rule.
+    ``core.secrets`` carries its remedy as a CLASS ATTRIBUTE and subclasses per
+    meaning, so the exception TYPE is the discriminator and no constructor
+    parameter names one. That is genuinely outside a constructor walk. It is
+    recorded in ``docs/residual-findings.md`` rather than papered over, because a
+    credential failure reaching any caller other than the one that converts it
+    still becomes ``internal-error`` today.
     """
+    namespace_owner = module
     found: dict[str, frozenset[str]] = {}
+    for value in vars(module).values():
+        if not (isinstance(value, type) and issubclass(value, Exception)):
+            continue
+        if getattr(value, "__module__", None) != module.__name__:
+            continue
+        if issubclass(value, CratekitError):
+            continue
+        if any(
+            f"{base.__module__}.{base.__qualname__}" in CONVERTED_ELSEWHERE
+            for base in value.__mro__
+        ):
+            continue
+        initializer = value.__init__
+        owner = sys.modules.get(getattr(initializer, "__module__", ""), namespace_owner)
+        try:
+            hints = typing.get_type_hints(initializer, localns=_annotation_namespace(owner))
+        except Exception as exc:  # noqa: BLE001 - re-raised, never swallowed
+            raise AssertionError(
+                f"{module.__name__}.{value.__name__} has an annotation this walk "
+                f"cannot resolve ({type(exc).__name__}: {exc}). Swallowing it "
+                f"would make the exception invisible to the completeness check "
+                f"rather than failing, which is how a refusal ships with no "
+                f"reserved code and nobody finds out"
+            ) from exc
+        slugs: set[str] = set()
+        for name, hint in hints.items():
+            if name not in DISCRIMINATOR_PARAMETERS:
+                continue
+            for declared in _declared_enums(hint, value.__module__, packages):
+                slugs.update(str(member.value) for member in declared)
+        if slugs:
+            found[f"{module.__name__}.{value.__name__}"] = frozenset(slugs)
+    return found
+
+
+def imported_package_modules() -> tuple[list[ModuleType], dict[str, str]]:
+    """Every module in the package, imported, and the ones that would not import.
+
+    The failures are RETURNED rather than skipped. A walk that quietly drops a
+    module it cannot import is a walk whose coverage depends on which optional
+    extras happen to be installed on the machine running it, so the same suite
+    proves less under a slim profile than under a full one and says nothing about
+    the difference. That is P3's own lesson pointed at the derivation itself.
+    """
+    modules: list[ModuleType] = []
+    unimportable: dict[str, str] = {}
     for info in pkgutil.walk_packages(cratekit.__path__, "cratekit."):
         if "._vendor" in info.name:
             continue
         try:
-            module = importlib.import_module(info.name)
-        except Exception:  # noqa: BLE001 - a missing heavy extra is not a failure here
-            continue
-        for value in vars(module).values():
-            if not (isinstance(value, type) and issubclass(value, Exception)):
-                continue
-            if value.__module__ != info.name or issubclass(value, CratekitError):
-                continue
-            try:
-                hints = typing.get_type_hints(value.__init__)
-            except Exception:  # noqa: BLE001 - an unresolvable annotation is not a cause
-                continue
-            for hint in hints.values():
-                if not (isinstance(hint, type) and issubclass(hint, enum.Enum)):
-                    continue
-                if not hint.__module__.startswith("cratekit."):
-                    continue
-                if hint.__module__ == "cratekit.core.exit_codes":
-                    continue
-                slugs = frozenset(str(member.value) for member in hint)
-                found[f"{info.name}.{value.__name__}"] = slugs
+            modules.append(importlib.import_module(info.name))
+        except Exception as exc:  # noqa: BLE001 - recorded, not swallowed
+            unimportable[info.name] = f"{type(exc).__name__}: {exc}"
+    return modules, unimportable
+
+
+def structured_refusal_causes() -> dict[str, frozenset[str]]:
+    """Every structured refusal cause in the package, as producer -> cause slugs."""
+    modules, unimportable = imported_package_modules()
+    assert not unimportable, (
+        f"the walk could not import these, so whatever refusal causes they "
+        f"declare are invisible to the completeness check: {unimportable}"
+    )
+    found: dict[str, frozenset[str]] = {}
+    for module in modules:
+        found.update(refusal_causes_in(module))
     return found
+
+
+def test_every_module_in_the_package_imports_so_the_walk_can_see_it():
+    """Coverage that depends on an installed extra is coverage nobody can measure."""
+    _, unimportable = imported_package_modules()
+    assert not unimportable, f"these are invisible to the derivation: {unimportable}"
 
 
 def test_every_structured_refusal_cause_in_the_package_is_reserved():
@@ -387,6 +688,373 @@ def test_the_three_surfaces_the_waiting_guard_names_are_covered():
     ):
         assert producer in derived, f"the walk no longer sees {producer}"
         assert derived[producer] <= CAUSES
+
+
+def _converted_exception_names() -> set[str]:
+    """Exception class names this package CATCHES and whose remedy it then reads.
+
+    Per module rather than per flow, and that limit is deliberate: an except
+    clause binds a name and the handler hands it to a helper in the same file as
+    often as it reads it inline, so requiring the read inside the handler body
+    would have missed the acquisition layer entirely. What it will not accept is
+    a catch that never looks at the remedy at all, which is the difference
+    between a conversion and a swallow.
+    """
+    names: set[str] = set()
+    for _, source in package_sources():
+        tree = ast.parse(source)
+        reads = {
+            node.value.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute)
+            and node.attr == "remedy"
+            and isinstance(node.value, ast.Name)
+        }
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ExceptHandler):
+                continue
+            if node.name is None or node.type is None or node.name not in reads:
+                continue
+            caught = node.type.elts if isinstance(node.type, ast.Tuple) else [node.type]
+            names.update(ast.unparse(entry).split(".")[-1] for entry in caught)
+    return names
+
+
+def test_every_exclusion_names_a_refusal_something_already_converts():
+    """An exclusion is a claim about the tree, so it is checked against the tree.
+
+    The two entries were excluded before by the accident of a union annotation
+    the walk could not read, under a stated reason that was false of one of them.
+    Now they are named, and each has to earn it: something in this package
+    catches the type and carries its remedy onward. An entry that stops being
+    true fails here rather than quietly widening what this table does not cover.
+    """
+    converted = _converted_exception_names()
+    modules, _ = imported_package_modules()
+    for qualname, reason in CONVERTED_ELSEWHERE.items():
+        assert reason, f"{qualname} is excluded and says nothing about why"
+        module_name, _, class_name = qualname.rpartition(".")
+        excluded = getattr(importlib.import_module(module_name), class_name)
+        family = {
+            candidate.__name__
+            for module in modules
+            for candidate in vars(module).values()
+            if isinstance(candidate, type)
+            and issubclass(candidate, Exception)
+            and issubclass(candidate, excluded)
+        }
+        assert family & converted, (
+            f"{qualname} is excluded from the completeness walk because something "
+            f"already converts it, and nothing in this package catches it and "
+            f"reads its remedy. Either the conversion went away, in which case "
+            f"the exclusion has to go too, or the entry was never true"
+        )
+
+
+def test_the_excluded_refusals_are_absent_from_the_derivation():
+    """The exclusion actually applies, rather than being decorative."""
+    derived = structured_refusal_causes()
+    assert not [producer for producer in derived if producer.startswith("cratekit.core.config.")]
+    assert not [producer for producer in derived if producer.startswith("cratekit.acquire.adapter.")]
+    for slug in ("fix-config-values", "switch-adapter", "repair-config-file"):
+        assert slug not in CAUSES, (
+            f"{slug!r} is reserved here as well as carried by the module that "
+            f"already converts it, which is the second opinion this table "
+            f"exists to prevent"
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The derivation itself, driven against modules written to defeat it (P7)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# The completeness check is only as good as the walk under it, and the walk is
+# the part that was silently blind. These build a real module from source, so
+# every shape is exercised through the same path the package takes: annotations
+# resolved the way Python resolves them, class hierarchies real, and the
+# TYPE_CHECKING fixture genuinely unresolvable at runtime without the fix.
+
+FIXTURE_PACKAGES = ("cratekit", "u38fix")
+
+
+@pytest.fixture
+def module_from(tmp_path):
+    """Build an importable module from source, and take it back out afterwards."""
+    built: list[str] = []
+
+    def build(name: str, source: str) -> ModuleType:
+        dotted = f"u38fix.{name}"
+        path = tmp_path / f"{name}.py"
+        path.write_text(source)
+        module = ModuleType(dotted)
+        module.__file__ = str(path)
+        sys.modules[dotted] = module
+        built.append(dotted)
+        exec(compile(source, str(path), "exec"), module.__dict__)  # noqa: S102 - a fixture
+        return module
+
+    yield build
+    for dotted in built:
+        sys.modules.pop(dotted, None)
+        _NAMESPACES.pop(dotted, None)
+
+
+SEEN_OPTIONAL_DISCRIMINATOR = """
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class Refusal(StrEnum):
+    SOURCE_UNREADABLE = "tagger-source-unreadable"
+    ART_REJECTED = "tagger-art-rejected"
+
+
+class TaggingRefused(Exception):
+    refusal: Refusal = Refusal.SOURCE_UNREADABLE
+
+    def __init__(self, detail: str, *, refusal: Refusal | None = None) -> None:
+        super().__init__(detail)
+        if refusal is not None:
+            self.refusal = refusal
+"""
+
+SEEN_DISCRIMINATOR_IMPORTED_FOR_TYPING_ONLY = """
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from cratekit.core.backup_facts import Remedy
+
+
+class Unreadable(Exception):
+    def __init__(self, message: str, *, remedy: Remedy) -> None:
+        super().__init__(message)
+        self.remedy = remedy
+"""
+
+SEEN_THE_CANONICAL_REMEDY = """
+from __future__ import annotations
+
+from cratekit.core.exit_codes import Remedy
+
+
+class TaggingRefused(Exception):
+    def __init__(self, detail: str, *, remedy: Remedy) -> None:
+        super().__init__(detail)
+        self.remedy = remedy
+"""
+
+SEEN_A_DATACLASS_EXCEPTION = """
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import StrEnum
+
+
+class Refusal(StrEnum):
+    ART_REJECTED = "tagger-art-rejected"
+
+
+@dataclass
+class TaggingRefused(Exception):
+    refusal: Refusal
+    detail: str = ""
+"""
+
+SEEN_A_TYPE_CALL = """
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class Refusal(StrEnum):
+    ART_REJECTED = "tagger-art-rejected"
+
+
+def _init(self, refusal: Refusal, detail: str) -> None:
+    Exception.__init__(self, detail)
+    self.refusal = refusal
+
+
+TaggingRefused = type("TaggingRefused", (Exception,), {"__init__": _init})
+"""
+
+SEEN_A_FACTORY = """
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class Refusal(StrEnum):
+    ART_REJECTED = "tagger-art-rejected"
+
+
+def _refusal_type(name):
+    class Refused(Exception):
+        def __init__(self, refusal: Refusal, detail: str) -> None:
+            super().__init__(detail)
+            self.refusal = refusal
+
+    Refused.__name__ = name
+    Refused.__qualname__ = name
+    return Refused
+
+
+TaggingRefused = _refusal_type("TaggingRefused")
+"""
+
+SEEN_A_BASE_IN_ANOTHER_MODULE = """
+from __future__ import annotations
+
+from u38fix.upstream import UpstreamRefused
+
+
+class TaggingRefused(UpstreamRefused):
+    pass
+"""
+
+UPSTREAM_FOR_THE_SUBCLASS = """
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class Refusal(StrEnum):
+    ART_REJECTED = "tagger-art-rejected"
+
+
+class UpstreamRefused(Exception):
+    def __init__(self, refusal: Refusal, detail: str) -> None:
+        super().__init__(detail)
+        self.refusal = refusal
+"""
+
+UNSEEN_CONTEXT_RATHER_THAN_A_CAUSE = """
+from __future__ import annotations
+
+from cratekit.core.cause import Scope
+
+
+class ProbeProblem(Exception):
+    def __init__(self, message: str, scope: Scope = Scope.RUN) -> None:
+        super().__init__(message)
+        self.scope = scope
+"""
+
+UNSEEN_A_STATUS_IS_NOT_A_CAUSE = """
+from __future__ import annotations
+
+from cratekit.core.exit_codes import ExitCode
+
+
+class Refused(Exception):
+    def __init__(self, message: str, *, cause: ExitCode) -> None:
+        super().__init__(message)
+        self.cause = cause
+"""
+
+UNSEEN_A_CRATEKIT_ERROR = """
+from __future__ import annotations
+
+from enum import StrEnum
+
+from cratekit.core.cause import Cause, CratekitError
+
+
+class Refusal(StrEnum):
+    ART_REJECTED = "tagger-art-rejected"
+
+
+class Refused(CratekitError):
+    def __init__(self, cause: Cause, refusal: Refusal | None = None) -> None:
+        super().__init__(cause)
+"""
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (SEEN_OPTIONAL_DISCRIMINATOR, {"tagger-source-unreadable", "tagger-art-rejected"}),
+        (SEEN_DISCRIMINATOR_IMPORTED_FOR_TYPING_ONLY, {"repair-backup-facts", "upgrade-cratekit"}),
+        (SEEN_A_DATACLASS_EXCEPTION, {"tagger-art-rejected"}),
+        (SEEN_A_TYPE_CALL, {"tagger-art-rejected"}),
+        (SEEN_A_FACTORY, {"tagger-art-rejected"}),
+    ],
+)
+def test_the_walk_sees_every_shape_a_refusal_is_actually_written_in(
+    module_from, source, expected
+):
+    """Four of these were invisible, and one of the four is live in the tree.
+
+    ``Refusal | None`` is the shape ``core/config.py`` already uses and the shape
+    the reviewer's next module used, so the walk was blind to the most ordinary
+    way to write a base exception with a per-raise override. The typing-only
+    import was invisible because the resolution failure was swallowed, which
+    punished the module that avoided an import cycle.
+    """
+    module = module_from("subject", source)
+    derived = refusal_causes_in(module, packages=FIXTURE_PACKAGES)
+    assert derived, "the walk saw nothing"
+    assert frozenset().union(*derived.values()) == expected
+
+
+def test_the_walk_sees_a_refusal_whose_base_lives_in_another_module(module_from):
+    module_from("upstream", UPSTREAM_FOR_THE_SUBCLASS)
+    module = module_from("child", SEEN_A_BASE_IN_ANOTHER_MODULE)
+    derived = refusal_causes_in(module, packages=FIXTURE_PACKAGES)
+    assert derived == {"u38fix.child.TaggingRefused": frozenset({"tagger-art-rejected"})}
+
+
+def test_the_walk_demands_the_whole_vocabulary_a_module_claims(module_from):
+    """A module that annotates the CANONICAL Remedy has claimed all of it.
+
+    Excluding the whole of ``core.exit_codes`` made this invisible, so a module
+    following this repository's own "stay a subset" convention was the one shape
+    nothing checked. It is seen now, and what it owes is every token it declared
+    it can carry. The way to owe less is to declare a narrower enum, which is
+    what four modules in the package already do.
+    """
+    module = module_from("canonical", SEEN_THE_CANONICAL_REMEDY)
+    derived = refusal_causes_in(module, packages=FIXTURE_PACKAGES)
+    slugs = frozenset().union(*derived.values())
+    assert {str(member) for member in Remedy} == set(slugs)
+    assert slugs - CAUSES, "this must fail the completeness check, not pass it"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        UNSEEN_CONTEXT_RATHER_THAN_A_CAUSE,
+        UNSEEN_A_STATUS_IS_NOT_A_CAUSE,
+        UNSEEN_A_CRATEKIT_ERROR,
+    ],
+)
+def test_the_walk_stays_silent_on_an_exception_that_reserves_nothing(module_from, source):
+    """P7 for the derivation. A demand that makes no sense is how a check is deleted.
+
+    The first of these is the one that mattered: a correct exception carrying a
+    ``Scope`` made the completeness test fail demanding that ``item``, ``run``,
+    ``session`` and ``source`` be reserved as exit codes. Nobody reserves those,
+    so the only way out was to weaken the check.
+    """
+    module = module_from("subject", source)
+    assert refusal_causes_in(module, packages=FIXTURE_PACKAGES) == {}
+
+
+def test_an_unresolvable_annotation_fails_rather_than_disappearing(module_from):
+    """Swallowing this is what made a whole class of module invisible."""
+    module = module_from(
+        "broken",
+        "from __future__ import annotations\n\n\n"
+        "class Refused(Exception):\n"
+        "    def __init__(self, refusal: NeverDefined) -> None:\n"
+        "        super().__init__()\n",
+    )
+    with pytest.raises(AssertionError, match="cannot resolve"):
+        refusal_causes_in(module, packages=FIXTURE_PACKAGES)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -453,6 +1121,61 @@ PORTION_CODES = {
 }
 """
 
+# ── Correct code keyed on a cause slug and mapped to an INTEGER ─────────────
+#
+# The failure mode these close is the one this repository has already paid for
+# once: a guard fires on a correct module, somebody adds the file to the owners
+# set to make the build green, and the guard is switched off for that whole file
+# from then on. Six of the reserved keys are also remediation tokens, so a
+# display order, a retry budget and a backoff are all a cause slug mapped to a
+# small integer, and none of them is a reservation.
+
+CORRECT_A_RETRY_FLAG_PER_CAUSE = """
+RETRYABLE = {
+    "rekordbox-running": False,
+    "rclone-missing": True,
+}
+"""
+
+CORRECT_A_BACKOFF_PER_CAUSE = """
+BACKOFF_SECONDS = {
+    "rekordbox-running": 5,
+    "remote-not-configured": 0,
+}
+"""
+
+CORRECT_A_DISPLAY_ORDER_PER_REMEDY = """
+ORDER = {
+    "run-setup": 1,
+    "upgrade-cratekit": 2,
+    "install-binary": 3,
+}
+"""
+
+CORRECT_AN_ATTEMPT_BUDGET = """
+ATTEMPTS = {"encoder-failed": 3}
+"""
+
+CORRECT_A_SEVERITY_RANKING = """
+SEVERITY = {
+    "rclone-missing": 2,
+    "database-absent": 1,
+    "no-snapshot-available": 1,
+}
+"""
+
+CORRECT_A_COUNTER = """
+COUNTS = {"rclone-missing": 0}
+"""
+
+CORRECT_A_BRANCH_THAT_WAITS = """
+def wait_for(cause):
+    if cause == "rclone-missing":
+        seconds = 30
+        return seconds
+    return 0
+"""
+
 EVASION_BARE_INTEGER_TABLE = """
 CODES = {
     "rclone-missing": 30,
@@ -478,6 +1201,110 @@ from cratekit.core import exit_codes
 CODES = {"encoder-missing": exit_codes.ExitCode.PRECONDITION}
 """
 
+# ── A second table for causes NOBODY has reserved ───────────────────────────
+#
+# The case the table exists to prevent, and the case a guard keyed on the
+# existing registry cannot see: a new module deciding its own codes. Every one
+# of these passed the first version of the guard.
+
+EVASION_A_NEW_MODULE_DECIDES_ITS_OWN_CODES = """
+from cratekit.core.exit_codes import ExitCode
+
+CODES = {
+    "tagger-source-unreadable": ExitCode.PRECONDITION,
+    "tagger-art-rejected": 30,
+    "tagger-lookup-unavailable": 41,
+}
+"""
+
+EVASION_A_TUPLE_OF_PAIRS = """
+CODES = (
+    ("tagger-source-unreadable", 30),
+    ("tagger-art-rejected", 41),
+)
+"""
+
+EVASION_A_COMPREHENSION_OVER_PAIRS = """
+CODES = {cause: code for cause, code in (("tagger-art-rejected", 30),)}
+"""
+
+EVASION_A_COMPREHENSION_OVER_SLUGS = """
+CODES = {cause: 30 for cause in ("tagger-art-rejected", "tagger-source-unreadable")}
+"""
+
+EVASION_ZIPPED_FROM_TWO_SEQUENCES = """
+SLUGS = ("tagger-art-rejected", "tagger-source-unreadable")
+STATUSES = (30, 41)
+
+CODES = dict(zip(SLUGS, STATUSES))
+"""
+
+EVASION_FILLED_A_KEY_AT_A_TIME = """
+CODES = {}
+CODES["tagger-art-rejected"] = 30
+"""
+
+EVASION_AN_ORDERED_DICT = """
+from collections import OrderedDict
+
+CODES = OrderedDict([("tagger-art-rejected", 30)])
+"""
+
+EVASION_SETDEFAULT = """
+CODES = {}
+
+def reserve():
+    CODES.setdefault("tagger-art-rejected", 30)
+"""
+
+EVASION_A_MATCH_STATEMENT = """
+def status(cause):
+    match cause:
+        case "tagger-art-rejected":
+            return 30
+        case "tagger-source-unreadable":
+            return 41
+        case _:
+            return 1
+"""
+
+EVASION_AN_IF_CHAIN = """
+def status(cause):
+    if cause == "tagger-art-rejected":
+        return 30
+    if cause == "tagger-source-unreadable":
+        return 41
+    return 1
+"""
+
+EVASION_A_CODE_WITH_A_CONVERSION_ROUND_IT = """
+from cratekit.core.exit_codes import ExitCode
+
+CODES = {
+    "tagger-art-rejected": int(ExitCode.PRECONDITION),
+    "tagger-source-unreadable": ExitCode(30),
+}
+"""
+
+EVASION_KEYWORD_EXPANSION = """
+CODES = dict(**{"rclone-missing": 30})
+"""
+
+EVASION_A_READ_ONLY_WRAPPER = """
+from types import MappingProxyType
+
+CODES = MappingProxyType(dict(**{"rclone-missing": 30}))
+"""
+
+EVASION_AN_UPDATE = """
+CODES = {}
+CODES.update({"rclone-missing": 30})
+"""
+
+EVASION_AN_IMPLICITLY_CONCATENATED_KEY = """
+CODES = {"rclone-" "missing": 30}
+"""
+
 EVASION_ALIASED_SYS_EXIT = """
 import sys as system
 
@@ -488,6 +1315,71 @@ def refuse():
 EVASION_RAISES_A_STATUS = """
 def refuse():
     raise SystemExit(30)
+"""
+
+EVASION_EXIT_IMPORTED_AS_A_SYMBOL = """
+from sys import exit
+
+def refuse():
+    exit(30)
+"""
+
+EVASION_EXIT_IMPORTED_UNDER_ANOTHER_NAME = """
+from sys import exit as leave
+
+def refuse():
+    leave(30)
+"""
+
+EVASION_THE_UNDERLYING_EXIT = """
+from os import _exit
+
+def refuse():
+    _exit(30)
+"""
+
+EVASION_AN_EXIT_HELD_IN_A_VARIABLE = """
+import sys
+
+def refuse():
+    stop = sys.exit
+    stop(30)
+"""
+
+EVASION_THE_EXCEPTION_UNDER_ANOTHER_NAME = """
+Stop = SystemExit
+
+def refuse():
+    raise Stop(30)
+"""
+
+EVASION_A_SUBCLASS_OF_THE_EXCEPTION = """
+class Refusal(SystemExit):
+    pass
+
+def refuse():
+    raise Refusal(30)
+"""
+
+CORRECT_EXITS_THROUGH_A_SYMBOL_IMPORT = """
+from sys import exit
+
+from cratekit.cli.exit_codes import code_for
+
+def main(cause):
+    exit(int(code_for(cause)))
+"""
+
+CORRECT_RAISES_A_STATUS_IT_LOOKED_UP = """
+from cratekit.cli.exit_codes import code_for
+
+def main(cause):
+    raise SystemExit(int(code_for(cause)))
+"""
+
+CORRECT_RAISES_A_STATUS_IT_WAS_GIVEN = """
+def main(status):
+    raise SystemExit(status)
 """
 
 
@@ -501,6 +1393,13 @@ def refuse():
         CORRECT_SOMEBODY_ELSE_HAS_AN_EXIT,
         CORRECT_ALIASED_IMPORT_USED_ORDINARILY,
         CORRECT_A_MAPPING_THIS_TABLE_DOES_NOT_OWN,
+        CORRECT_A_RETRY_FLAG_PER_CAUSE,
+        CORRECT_A_BACKOFF_PER_CAUSE,
+        CORRECT_A_DISPLAY_ORDER_PER_REMEDY,
+        CORRECT_AN_ATTEMPT_BUDGET,
+        CORRECT_A_SEVERITY_RANKING,
+        CORRECT_A_COUNTER,
+        CORRECT_A_BRANCH_THAT_WAITS,
     ],
 )
 def test_the_second_table_guard_stays_silent_on_correct_code(source):
@@ -513,8 +1412,15 @@ def test_the_second_table_guard_stays_silent_on_correct_code(source):
     other half: a module keying its own data on its own slugs is not a second
     reservation and reporting it would be the false positive that gets the guard
     suppressed.
+
+    The seven integer maps are the ones the first version got wrong, and it got
+    them wrong in the direction that switches a guard off rather than the one
+    that lets a defect through: it reported ``'rekordbox-running' -> bare status
+    False``. Six reserved keys are also remediation tokens, so ordering them for
+    display, counting them, or giving each a backoff is ordinary code, and the
+    only integers that can be a reservation are the ones inside the range.
     """
-    assert reserved_code_tables(source, CAUSES) == []
+    assert reserved_code_tables(source, CAUSES, RANGE) == []
 
 
 @pytest.mark.parametrize(
@@ -524,11 +1430,43 @@ def test_the_second_table_guard_stays_silent_on_correct_code(source):
         EVASION_ALIASED_MODULE_IMPORT,
         EVASION_ALIASED_CLASS_IMPORT,
         EVASION_FROM_THE_PACKAGE,
+        EVASION_KEYWORD_EXPANSION,
+        EVASION_A_READ_ONLY_WRAPPER,
+        EVASION_AN_UPDATE,
+        EVASION_AN_IMPLICITLY_CONCATENATED_KEY,
     ],
 )
 def test_the_second_table_guard_bites_every_shape_of_second_opinion(source):
     """Including the two aliased shapes, which is what defeated the armed guards once."""
-    assert reserved_code_tables(source, CAUSES)
+    assert reserved_code_tables(source, CAUSES, RANGE)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        EVASION_A_NEW_MODULE_DECIDES_ITS_OWN_CODES,
+        EVASION_A_TUPLE_OF_PAIRS,
+        EVASION_A_COMPREHENSION_OVER_PAIRS,
+        EVASION_A_COMPREHENSION_OVER_SLUGS,
+        EVASION_ZIPPED_FROM_TWO_SEQUENCES,
+        EVASION_FILLED_A_KEY_AT_A_TIME,
+        EVASION_AN_ORDERED_DICT,
+        EVASION_SETDEFAULT,
+        EVASION_A_MATCH_STATEMENT,
+        EVASION_AN_IF_CHAIN,
+        EVASION_A_CODE_WITH_A_CONVERSION_ROUND_IT,
+    ],
+)
+def test_the_second_table_guard_bites_a_module_reserving_causes_of_its_own(source):
+    """The case the table exists to prevent, and the case the guard could not see.
+
+    Keying on the causes ALREADY reserved made the guard blind to a module that
+    decides codes for causes nobody has reserved, which is not a corner of the
+    problem, it is the problem. Eleven shapes, every one of them ordinary Python
+    somebody would write without meaning to evade anything, and every one of them
+    silent before.
+    """
+    assert reserved_code_tables(source, CAUSES, RANGE)
 
 
 @pytest.mark.parametrize(
@@ -538,14 +1476,42 @@ def test_the_second_table_guard_bites_every_shape_of_second_opinion(source):
         CORRECT_EXITS_THROUGH_THE_ENVELOPE,
         CORRECT_SOMEBODY_ELSE_HAS_AN_EXIT,
         CORRECT_USES_THE_VOCABULARY,
+        CORRECT_EXITS_THROUGH_A_SYMBOL_IMPORT,
+        CORRECT_RAISES_A_STATUS_IT_LOOKED_UP,
+        CORRECT_RAISES_A_STATUS_IT_WAS_GIVEN,
     ],
 )
 def test_the_bare_status_guard_stays_silent_on_correct_code(source):
+    """The three added fixtures are the same import shapes the evasions use.
+
+    Recognizing ``from sys import exit`` must not make every module that imports
+    it a suspect, which is the half of P7 that gets skipped.
+    """
     assert process_status_literals(source) == []
 
 
-@pytest.mark.parametrize("source", [EVASION_ALIASED_SYS_EXIT, EVASION_RAISES_A_STATUS])
+@pytest.mark.parametrize(
+    "source",
+    [
+        EVASION_ALIASED_SYS_EXIT,
+        EVASION_RAISES_A_STATUS,
+        EVASION_EXIT_IMPORTED_AS_A_SYMBOL,
+        EVASION_EXIT_IMPORTED_UNDER_ANOTHER_NAME,
+        EVASION_THE_UNDERLYING_EXIT,
+        EVASION_AN_EXIT_HELD_IN_A_VARIABLE,
+        EVASION_THE_EXCEPTION_UNDER_ANOTHER_NAME,
+        EVASION_A_SUBCLASS_OF_THE_EXCEPTION,
+    ],
+)
 def test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal(source):
+    """``from sys import exit`` needs no attribute access, so it needed no evasion.
+
+    The guard walked ``ast.Import`` alone, so the one import shape that binds the
+    function directly went straight past it: the refusal reached the shell as 30
+    with no envelope and no remediation, which is the precise defect this exists
+    to stop. Both sibling classes in the same file already handled
+    ``ast.ImportFrom``.
+    """
     assert process_status_literals(source)
 
 
@@ -558,9 +1524,9 @@ def test_no_module_in_the_package_keeps_a_second_reservation_table():
     duplicate taxonomy resolvers.
     """
     offenders = {
-        relative: reserved_code_tables(source, CAUSES)
+        relative: reserved_code_tables(source, CAUSES, RANGE)
         for relative, source in package_sources()
-        if relative not in TABLE_OWNERS and reserved_code_tables(source, CAUSES)
+        if relative not in TABLE_OWNERS and reserved_code_tables(source, CAUSES, RANGE)
     }
     assert not offenders, f"a second reservation table: {offenders}"
 

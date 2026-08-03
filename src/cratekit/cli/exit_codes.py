@@ -21,13 +21,24 @@ re-invokes the command line, so the slug is the stable key and the enum is one
 module's spelling of it. Keying on the enum would also mean importing the module,
 which the paragraph above forbids.
 
-**Two tables that cannot disagree.** ``core.cause.REASONS`` is the other mapping
-in this repository that gives a slug a code, and a second opinion that drifts is
-worse than no opinion at all. So the overlap is not avoided, it is ASSERTED:
-where a slug appears in both, ``tests/test_reserved_causes.py`` requires the same
-code from both, and the same suite forbids any third file in the package from
-mapping a reserved cause to a code at all. Today the overlap is one slug,
-``rekordbox-running``, and one is enough to prove the check works.
+**Two tables that agree wherever they are SPELLED the same.**
+``core.cause.REASONS`` is the other mapping in this repository that gives a slug
+a code, and a second opinion that drifts is worse than no opinion at all. So the
+overlap is not avoided, it is ASSERTED: where a slug appears in both,
+``tests/test_reserved_causes.py`` requires the same code from both, and the same
+suite forbids any third file in the package from mapping a reserved cause to a
+code at all.
+
+That check compares SPELLING and not meaning, which is a real limit and is
+written down rather than implied. Today the identical spelling is one slug,
+``rekordbox-running``. Two more conditions are spelled twice: this table's
+``library-root-absent`` is the registry's ``library-directory-missing``, and this
+table's ``database-absent`` is its ``library-database-missing``. Both pairs
+happen to agree on 22 and a test asserts that pair by pair, but the overlap check
+cannot see them, because a slug is persisted inside a stored cause and renaming
+one is a breaking change to anything holding it. So the duplication stays and is
+recorded, rather than being tidied away at the cost of a stored cause that no
+longer resolves.
 
 **Several causes share a code, and that is correct.** ``REASONS`` makes this
 argument at length and it holds here: what a person needs kept apart is the
@@ -44,25 +55,66 @@ success, 1 is a defect, and 2 belongs to the argument parser and to nothing else
 so the process band is closed to a refusal cause. 60 through 63 is the growth
 room a class nobody has met yet will claim, so it is closed too. Everything at or
 above ``MAX_CODE`` is closed because the shell already owns it: 126 means not
-executable, 127 means not found, 128 plus a signal number covers 129 to 165, and
-255 is what a status above a byte truncates to. A caller reading a status can
-therefore always tell a Cratekit refusal from the shell reporting on Cratekit.
-``_index`` enforces every clause of that at import, so a reservation outside the
-range cannot even load.
+executable, 127 means not found, 128 plus a signal number covers 129 to 192 on a
+platform whose real-time signals run to a ``SIGRTMAX`` of 64, and 255 is what a
+status above a byte truncates to. A caller reading a status can therefore always
+tell a Cratekit refusal from the shell reporting on Cratekit. ``_index`` enforces
+every clause of that at import, so a reservation outside the range cannot even
+load.
 
-**One key space, with one recorded asymmetry.** Most reserved keys are refusal
-CAUSES. Two of them, ``repair-backup-facts`` and ``upgrade-cratekit``, are
-remediation TOKENS, because ``core.backup_facts`` models its unreadable fact file
-as a choice of remedy rather than a choice of cause: one file, one diagnosis, two
-fixes. Folding them into one key space risks the worst defect a registry can
-have, one symbol meaning two things, since ``upgrade-cratekit`` is also what
-``core.config`` says about a file from a newer build. The guard is that any key
-which is also a canonical ``Remedy`` value must reserve THAT token, so the symbol
-keeps one meaning wherever it is read. The modules whose structured cause is
-their exception TYPE rather than an enum member, ``core.config`` and
-``core.secrets``, are deliberately outside this table: their conversion is
-already declared, they already reach the command line carrying their own token,
-and duplicating them here is how a second opinion starts.
+That last property is about a SHELL, and the other reader of these statuses is
+not one. The job engine re-invokes the command line through ``subprocess`` and
+reads ``returncode``, which on POSIX is the NEGATIVE signal number when a child
+is killed by a signal, never 128 plus it. Both readings are safe against this
+range, and neither is safe by accident: nothing reserved here is negative and
+nothing reserved here is at or above 126.
+
+**One key space, and six of its keys are remediation tokens.** Most reserved keys
+are refusal CAUSES. Six are also canonical ``Remedy`` values.
+``repair-backup-facts`` and ``upgrade-cratekit`` are, because
+``core.backup_facts`` models its unreadable fact file as a choice of remedy
+rather than a choice of cause: one file, one diagnosis, two fixes.
+``install-binary``, ``install-binary-source-unknown``, ``fix-binary-override``
+and ``unsupported-platform`` are, because ``core.binaries`` does the same for a
+program that is missing, unusable, or unpackaged on this platform. The guard is
+that any key which is also a canonical ``Remedy`` value must reserve THAT token.
+
+**``upgrade-cratekit`` is one symbol with two meanings and this table holds one.**
+Three enums declare it: ``backup_facts.Remedy``, ``config.Remedy`` and the
+canonical ``exit_codes.Remedy``. A FACT FILE written by a newer build is an
+acknowledgment gate that cannot be satisfied, which is 32 and is what the entry
+below reserves. A CONFIGURATION file written by a newer build is
+``config-unusable``, which ``core.cause`` reserves at 30 and which the
+command-line boundary already converts to. A flat key space keyed on a slug
+cannot hold both, so this is a limit of the shape rather than evidence that the
+second meaning is not real, and ``tests/test_reserved_causes.py`` pins both
+readings so neither can quietly become the other. Resolving it means keying on
+more than a slug, or retiring one spelling, and both are a migration rather than
+a tidy-up because a slug is persisted inside a stored cause.
+
+**``core.config`` and ``acquire.adapter`` are excluded BY NAME.** Both declare a
+per-raise ``Remedy | None`` override on their base exception, so both have the
+shape the completeness walk hunts for, and both are listed in
+``CONVERTED_ELSEWHERE`` in the suite together with the conversion that already
+gives them a code and a token: config at the command-line boundary, the adapter
+inside the acquisition layer that folds its failures into a run outcome. The
+suite proves each claim against the tree rather than accepting it. Neither is
+excluded any longer by the accident of an annotation the walk could not read,
+which is how both were excluded before and which meant one unrelated tightening
+would have flipped the result.
+
+``core.secrets`` is a different case and is deliberately not in that list. It
+carries its remedy as a CLASS attribute and subclasses per meaning, so its
+structured cause really is the exception TYPE and no constructor parameter names
+one. Its conversion is also narrower than the earlier argument here claimed:
+exactly one caller converts it, and every other path reaches ``except Exception``
+and becomes ``internal-error``. That is recorded in
+``docs/residual-findings.md`` rather than assumed away.
+
+**Nothing in ``src/`` reads this table yet.** It is a RESERVATION and not a
+wiring. Every cause below still reaches ``except Exception`` in ``cratekit.cli``
+today and exits 1 carrying ``report-defect``. Read this file as what a refusal is
+OWED, not as what it currently does.
 """
 
 from __future__ import annotations
@@ -403,6 +455,14 @@ def _index(reservations: tuple[Reservation, ...]) -> Mapping[str, Reservation]:
                 f"{reservation.cause!r} is reserved twice. Two reservations for "
                 f"one cause means the later one silently wins, and which one is "
                 f"later is a property of line order rather than of intent."
+            )
+        if not isinstance(reservation.code, ExitCode):
+            raise ValueError(
+                f"{reservation.cause!r} reserves {reservation.code!r}, which is "
+                f"not a member of the one status vocabulary. A bare integer here "
+                f"is the same second opinion the guards forbid elsewhere, and it "
+                f"is refused by name rather than by an attribute error while this "
+                f"module was trying to describe it."
             )
         value = int(reservation.code)
         if not low <= value < high:

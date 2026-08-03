@@ -492,3 +492,61 @@ fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather
 than skips, so the battery runs either way and a supplied fixture strengthens it.
 The natural owner is U27, which lands doctor and is the unit that makes a machine
 ready.
+
+---
+
+## R-14. Three accepted findings from the U38 review
+
+**Found:** during U38's adversarial review, 2026-08-02. All three were confirmed
+against the tree, and none of them is fixed by U38.
+
+**1. `core.secrets` reaches the boundary as `internal-error` on every path but
+one.** `cratekit/acquire/provider_session.py:128` catches
+`secrets.CredentialError` and translates it into the adapter vocabulary, which
+is correct and is the only conversion there is. Any other caller reaching
+`secrets` raises a `CredentialError` that meets `except Exception` in
+`cratekit/cli/__init__.py` and becomes reason `internal-error`, exit 1, remedy
+`report-defect`. A user who has simply not recorded a credential is told to
+report a defect.
+
+The reservation table does not cover it and says so. `core.secrets` carries its
+remedy as a CLASS attribute and subclasses per meaning, so its structured cause
+is the exception TYPE and no constructor parameter names one, which is outside
+what the completeness walk in `tests/test_reserved_causes.py` can see. That limit
+is written into the walk's own docstring rather than left implied. The earlier
+argument, that config and secrets both "already reach the command line carrying
+their own token", is true of config and is not true of secrets.
+
+**Closes when:** the command-line boundary declares a conversion for
+`secrets.CredentialError` the way it already does for `config.ConfigError`,
+mapping its three tokens onto `credential-missing`, which `core.cause.REASONS`
+already reserves at `PRECONDITION`. One except clause.
+
+**2. `core/session.py` discards `exc.remedy` from an unreadable fact file.**
+Around line 1026, `_shown_ages` catches `backup_facts.BackupFactsUnreadable` and
+raises `refuse(..., remedy=Remedy.REPAIR_BACKUP_FACTS)` with the token written in
+by hand. `backup_facts` raises that same exception with either
+`REPAIR_BACKUP_FACTS` or `UPGRADE_CRATEKIT`, and the second one is the whole
+reason the exception carries a remedy at all: a fact file written by a NEWER
+build must not be repaired by hand, because repairing it discards a record this
+build cannot read and the newer one can. A user on the older build is currently
+told to repair it.
+
+Driven live and confirmed, and confirmed present on `main` before U38 branched.
+U38 introduced neither the code nor the defect and touches no file in `core/`,
+so it is recorded rather than fixed. U38's table is what makes the fix one line:
+`repair-backup-facts` and `upgrade-cratekit` are both reserved at 32 with their
+own token, so the conversion has only to pass `exc.remedy` through.
+
+**Closes when:** `_shown_ages` forwards `exc.remedy` instead of naming a token.
+
+**3. The reservation table has no consumer in `src/`.** Only tests import
+`cratekit.cli.exit_codes`. All 22 reserved causes still reach `except Exception`
+and exit 1 today, and the two source guards forbid a second table rather than
+requiring the first one be read. That is consistent with a reservation rather
+than a wiring, and the module docstring now states it plainly so nobody reads the
+table as live behaviour.
+
+**Closes when:** the command-line boundary converts a module refusal through
+`code_for` and `remediation_for`, which is the unit that lands the standalone
+utility verbs.
