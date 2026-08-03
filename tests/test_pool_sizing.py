@@ -47,6 +47,7 @@ from __future__ import annotations
 import ast
 import multiprocessing
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -58,7 +59,7 @@ import pytest
 
 from cratekit.core import pool
 from tests._pending import requires
-from tests._source_guards import ImportsOf, calls_attribute, package_modules
+from tests._source_guards import ImportsOf, calls_attribute, package_modules, package_of
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -119,6 +120,31 @@ def pressure(*, swap_used_bytes: int = 0, used_percent: float = 10.0):
     return lambda: pool.Pressure(swap_used_bytes=swap_used_bytes, used_percent=used_percent)
 
 
+# NEITHER OF THE TWO HELPERS BELOW IS A PIN, AND THAT IS SAID HERE BECAUSE THEY
+# READ LIKE ONE. Both take the shipped percent and the shipped reserve when they
+# are not given one, so every boundary they derive MOVES with the number it looks
+# like it is checking. That is the exact shape that let six constants travel to
+# absurd values with the suite green. They are kept because a test about where
+# the count flips reads better as "the rule's boundary" than as a byte count, and
+# a flip is a different property from a value.
+#
+# The constants themselves are pinned by literals, elsewhere, and those are the
+# tests that must never be deleted as duplicates of these:
+#
+#   * the two headroom shares: test_the_headroom_share_is_lower_where_the_reading
+#     _is_measurably_worse, test_the_general_headroom_claims_three_quarters_of
+#     _what_is_left, test_the_darwin_headroom_claims_half_because_half_is_what
+#     _was_measured
+#   * the absolute reserve: test_the_absolute_reserve_is_two_gibibytes_of_the
+#     _reading_that_was_never_ours
+#   * the worker ceiling: test_the_default_ceiling_is_two_because_two_is_what
+#     _survived_a_real_run
+#
+# Every call site below that derives a number from a constant carries a one line
+# reminder pointing back here, so a reader cannot mistake a derivation for a
+# check.
+
+
 def affordable_for(
     available: int,
     *,
@@ -126,7 +152,7 @@ def affordable_for(
     percent: int | None = None,
     reserve: int | None = None,
 ) -> int:
-    """How many workers the RULE affords at this reading.
+    """How many workers the RULE affords at this reading. NOT A PIN, see above.
 
     Derived from the three numbers the module combines, rather than copied out of
     a run of it, so this expresses the intended rule and can disagree with the
@@ -144,7 +170,7 @@ def threshold_for(
     percent: int,
     reserve: int | None = None,
 ) -> int:
-    """The smallest available-byte reading that affords ``workers`` workers.
+    """The smallest available-byte reading that affords ``workers`` workers. NOT A PIN.
 
     The inverse of :func:`affordable_for`, derived the same way and for the same
     reason. The reserve is added back on rather than scaled, because it comes off
@@ -183,11 +209,13 @@ def test_sixteen_gigabytes_is_bound_by_the_hard_ceiling_at_the_default():
     the brake that covers the per-worker estimate being wrong rather than the
     machine being small.
     """
-    assert affordable_for(16 * GIB) > pool.DEFAULT_WORKER_CEILING, (
+    # The guard is derived and is not the pin, see the note above affordable_for.
+    # The count is a literal, so this test disagrees with a ceiling that moves.
+    assert affordable_for(16 * GIB) > 2, (
         "the fixture no longer leaves the ceiling as the binding constraint"
     )
     plan = pool.plan_pool(worker_bytes=WORKER, items=500, read_available=reader(16 * GIB))
-    assert plan.workers == pool.DEFAULT_WORKER_CEILING
+    assert plan.workers == 2
     assert plan.bound is pool.Bound.CEILING
 
 
@@ -300,6 +328,8 @@ def test_the_worker_count_flips_exactly_at_the_affordable_boundary(workers):
     wrong within one byte of a boundary, which is why the boundary is derived
     here from the rule rather than read off a run.
     """
+    # Derived, and NOT the pin on the headroom share, see the note above
+    # affordable_for. What is under test here is the flip, not the number.
     edge = threshold_for(workers, percent=pool.DEFAULT_HEADROOM_PERCENT)
     below = pool.plan_pool(
         worker_bytes=WORKER, items=500, ceiling=64, read_available=reader(edge - 1)
@@ -400,6 +430,8 @@ def test_the_hard_ceiling_and_the_headroom_agree_at_the_point_they_cross():
     reason gets one answer per run and two answers is a bug report nobody can
     reproduce. Memory wins, since it is the input that changes tomorrow.
     """
+    # Derived, and NOT the pin on the headroom share, see the note above
+    # affordable_for. What is under test here is the tie, not the number.
     edge = threshold_for(2, percent=pool.DEFAULT_HEADROOM_PERCENT)
     tied = pool.plan_pool(
         worker_bytes=WORKER, items=500, ceiling=2, read_available=reader(edge)
@@ -441,11 +473,7 @@ def test_no_headroom_setting_ever_affords_more_than_the_reading_itself(percent):
 
 @pytest.mark.parametrize(
     "platform,expected",
-    [
-        ("darwin", pool.DARWIN_HEADROOM_PERCENT),
-        ("linux", pool.GENERAL_HEADROOM_PERCENT),
-        ("win32", pool.GENERAL_HEADROOM_PERCENT),
-    ],
+    [("darwin", 50), ("linux", 75), ("win32", 75)],
 )
 def test_the_headroom_share_is_lower_where_the_reading_is_measurably_worse(platform, expected):
     """Both branches are checked from here, which is why this is a function.
@@ -455,6 +483,11 @@ def test_the_headroom_share_is_lower_where_the_reading_is_measurably_worse(platf
     somebody edits it. On darwin the available reading was measured at 91 percent
     inactive queue, which is not all cheaply reclaimable, so the share it is safe
     to claim is lower there than on a platform whose reading means what it says.
+
+    THE EXPECTATIONS ARE LITERALS, which they were not. Both were spelled as the
+    constant they were checking, so this test agreed with either share at any
+    value and the only real claim in it was the ordering on the last line, which
+    every number above fifty satisfies.
     """
     assert pool.default_headroom_percent(platform) == expected
     assert pool.DARWIN_HEADROOM_PERCENT < pool.GENERAL_HEADROOM_PERCENT
@@ -499,10 +532,10 @@ def test_the_machine_the_kill_happened_on_gets_no_pool_under_the_shipped_rule():
 @pytest.mark.parametrize(
     "reading,gated",
     [
-        (dict(swap_used_bytes=pool.DEFAULT_SWAP_PRESSURE_BYTES, used_percent=5.0), True),
-        (dict(swap_used_bytes=pool.DEFAULT_SWAP_PRESSURE_BYTES - 1, used_percent=5.0), False),
-        (dict(swap_used_bytes=0, used_percent=float(pool.DEFAULT_USED_PERCENT_CEILING)), True),
-        (dict(swap_used_bytes=0, used_percent=pool.DEFAULT_USED_PERCENT_CEILING - 1), False),
+        (dict(swap_used_bytes=1 * GIB, used_percent=5.0), True),
+        (dict(swap_used_bytes=1 * GIB - 1, used_percent=5.0), False),
+        (dict(swap_used_bytes=0, used_percent=85.0), True),
+        (dict(swap_used_bytes=0, used_percent=84.0), False),
     ],
     ids=["swap-at-the-line", "swap-below", "percent-at-the-line", "percent-below"],
 )
@@ -512,6 +545,18 @@ def test_the_pressure_gate_bites_at_its_two_lines_and_nowhere_else(reading, gate
     Either signal alone is enough, because they fail in different directions: the
     swap counter is history the percentage cannot show, and the percentage is a
     present tense the swap counter is slow to reach.
+
+    THE READINGS ARE LITERALS, AND THIS TEST IS THE REASON THEY HAVE TO BE. It
+    used to spell them ``DEFAULT_SWAP_PRESSURE_BYTES`` and that minus one, so at
+    a threshold of one byte a reading of one byte was still "at the line" and a
+    reading of zero was still "below" it, and both cases passed while every
+    machine on earth was being refused a pool. That is the self reference that
+    let six constants travel. It reads as the more thorough of the two tests of
+    this gate and it was covering nothing. What each number means is pinned
+    beside its constant, in test_the_swap_threshold_is_a_gibibyte_and_the
+    _gibibyte_is_load_bearing and test_the_used_percent_ceiling_is_eighty_five
+    _and_the_number_is_load_bearing, and neither of those may be deleted as a
+    duplicate of this one.
     """
     plan = pool.plan_pool(
         worker_bytes=WORKER,
@@ -847,6 +892,8 @@ def test_the_windows_pool_limit_is_the_interpreters_own_and_falls_back_to_sixty_
 
 
 def test_a_machine_that_affords_exactly_one_worker_says_so():
+    # Derived, and NOT the pin on the headroom share, see the note above
+    # affordable_for. What is under test here is the bound, not the number.
     edge = threshold_for(1, percent=pool.DEFAULT_HEADROOM_PERCENT)
     plan = pool.plan_pool(
         worker_bytes=WORKER, items=500, ceiling=64, read_available=reader(edge)
@@ -865,6 +912,8 @@ def test_a_machine_that_affords_none_is_not_the_same_machine_and_does_not_say_it
     as folding an unreadable machine into a tight one would have, which is the
     reason this module gives for keeping that one separate.
     """
+    # Derived, and NOT the pin on the headroom share, see the note above
+    # affordable_for. What is under test here is the two bounds, not the number.
     edge = threshold_for(1, percent=pool.DEFAULT_HEADROOM_PERCENT)
     affords_one = pool.plan_pool(
         worker_bytes=WORKER, items=500, ceiling=64, read_available=reader(edge)
@@ -1264,6 +1313,113 @@ def _still_running_when_the_deadline_passes() -> object:
     return None
 
 
+#: The exit code a child of this file's own making reports when it unwound on a
+#: terminate. An arbitrary number, and the arbitrariness is the point: no signal
+#: produces it, so a child that reports it got there through its own handler and
+#: a child that was killed outright cannot fake it.
+_TERMINATED_CLEANLY = 77
+
+
+def _unwinds_on_a_terminate(ready) -> None:
+    """A probe child that exits cleanly when it is ASKED to stop.
+
+    The first rung of the reaping ladder is a terminate, and a terminate is only
+    worth having if a child can act on one. This is that child. It installs a
+    handler, says it is armed, and then sleeps well past every deadline the
+    reaping uses, so the ONLY thing that can end it is the ladder and the exit
+    code says which rung did.
+    """
+    signal.signal(signal.SIGTERM, lambda _signal, _frame: os._exit(_TERMINATED_CLEANLY))
+    ready.send(True)
+    ready.close()
+    time.sleep(8)
+
+
+def _ignores_a_terminate(ready) -> None:
+    """A probe child that will not unwind, which is the case the backstop exists for.
+
+    A worker deep inside a native model load does not run Python's signal handler
+    until it comes back up, and one that is wedged does not come back up. This is
+    that child made deterministic: the terminate is ignored outright, so the only
+    thing left that can end it is the kill.
+    """
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    ready.send(True)
+    ready.close()
+    time.sleep(8)
+
+
+class _WatchedChild:
+    """One probe child, wrapped so each rung of the reaping ladder is visible.
+
+    ``_reap`` takes anything that answers the four calls, so a wrapper is the
+    honest way to watch it. The escalation is a SEQUENCE, and a sequence cannot
+    be read off the process table after the fact: by the time the call returns
+    the child is gone either way.
+
+    THE EXIT CODE IS TAKEN AT THE MOMENT OF CLOSING, because a closed process
+    object refuses to report one and closing is the last thing the ladder does.
+    That also makes the close itself observable, which nothing else here would.
+    """
+
+    def __init__(self, process) -> None:
+        self.process = process
+        self.rungs: list[str] = []
+        self.exitcode: int | None = None
+        self.closed = False
+
+    def join(self, timeout=None) -> None:
+        self.rungs.append("join")
+        self.process.join(timeout)
+
+    def is_alive(self) -> bool:
+        return self.process.is_alive()
+
+    def terminate(self) -> None:
+        self.rungs.append("terminate")
+        self.process.terminate()
+
+    def kill(self) -> None:
+        self.rungs.append("kill")
+        self.process.kill()
+
+    def close(self) -> None:
+        self.rungs.append("close")
+        self.exitcode = self.process.exitcode
+        self.process.close()
+        self.closed = True
+
+
+def _reap_a_child(target) -> _WatchedChild:
+    """Start one child of this shape, wait until it is armed, and reap it.
+
+    The child says when its handler is installed rather than the parent guessing
+    from a sleep, because a terminate that arrives before the handler is a
+    different test than the one being written.
+    """
+    context = multiprocessing.get_context("spawn")
+    reader, writer = context.Pipe(duplex=False)
+    process = context.Process(target=target, args=(writer,))
+    process.start()
+    writer.close()
+    try:
+        assert reader.poll(60), "the child never reported that its handler was installed"
+        reader.recv()
+    finally:
+        reader.close()
+    watched = _WatchedChild(process)
+    try:
+        pool._reap(watched)
+    finally:
+        if not watched.closed:
+            # The ladder did not finish, which is what a broken rung looks like.
+            # This test does not get to leave a child running either.
+            process.kill()
+            process.join(10)
+            process.close()
+    return watched
+
+
 def _raises_in_the_worker() -> object:
     """A loader failing the way a machine with no model installed fails."""
     raise RuntimeError("no checkpoint on this machine")
@@ -1316,6 +1472,13 @@ def test_pool_arguments_carry_a_spawn_context_and_never_the_platform_recycle_cou
     )
     arguments = pool.executor_arguments(plan, initializer=_load, initargs=("x",))
     assert arguments["max_workers"] == 4
+    # THE LINE BELOW IS NOT THE PIN ON SPAWN, and reading it as one is how the
+    # start method stayed unchecked. Darwin's own default start method IS spawn,
+    # so this passes on this machine whether the module names spawn or asks for
+    # whatever the platform hands out, and on linux the same unnamed context is
+    # a fork and every per-worker number in the module is wrong. What pins it is
+    # test_every_context_this_module_builds_is_written_as_spawn_in_the_source,
+    # which reads the source and therefore answers for every platform from here.
     assert arguments["mp_context"].get_start_method() == "spawn"
     assert arguments["initargs"] == ("x",)
     assert "max_tasks_per_child" not in arguments, (
@@ -1363,11 +1526,58 @@ def test_the_executor_constructor_is_never_written_with_a_recycle_counter():
         )
 
 
+def test_every_context_this_module_builds_is_written_as_spawn_in_the_source():
+    """The start method, pinned for every platform from the one that ships it.
+
+    THE RUNTIME CHECK CANNOT ASK THIS QUESTION FROM HERE, and that is the whole
+    reason this exists. Darwin's default start method is spawn, so
+    ``get_context()`` with no argument returns a spawn context on this machine
+    and the assertion that reads the start method off it passes FOR THE WRONG
+    REASON. Both call sites were changed to the unnamed form and nothing died.
+    On linux the same unnamed call is a fork today and a forkserver in a later
+    interpreter, and a forked child shares its parent's pages, so a model loaded
+    before the fork costs almost nothing per child and every per-worker number
+    in this module is measuring something that is not happening.
+
+    This is the same shape the general headroom share and the windows fallback
+    are driven for: an arm this platform never executes cannot be checked by
+    running it. It is checked by reading it, which is what the walk beside this
+    one already does for the recycle counter.
+    """
+    written: list[tuple[int, list[str]]] = []
+    for node in ast.walk(ast.parse(POOL_SOURCE)):
+        if not isinstance(node, ast.Call):
+            continue
+        named = (
+            node.func.attr
+            if isinstance(node.func, ast.Attribute)
+            else getattr(node.func, "id", "")
+        )
+        if named != "get_context":
+            continue
+        written.append((node.lineno, [ast.unparse(argument) for argument in node.args]))
+    assert len(written) >= 2, (
+        f"the sizing module builds {len(written)} start-method contexts; the probe "
+        f"builds one and the executor builds another, so a walk that finds fewer "
+        f"than two has stopped seeing them and is asserting nothing"
+    )
+    for lineno, arguments in written:
+        assert arguments == ["'spawn'"], (
+            f"line {lineno} builds a start-method context without naming spawn. The "
+            f"per-worker arithmetic in this module assumes a child shares nothing "
+            f"with its parent, which is true under spawn and false under fork, and "
+            f"the platform default is spawn here and fork on linux, so an unnamed "
+            f"context is right on this machine and wrong on the one it ships to"
+        )
+
+
 def test_recycling_is_on_by_default_for_any_pool_wider_than_one():
+    """The literal is the point. This used to assert the plan CARRIES the constant,
+    which it does at any value, so it was silent while the budget moved to one."""
     plan = pool.plan_pool(
         worker_bytes=WORKER, items=500, ceiling=4, read_available=reader(16 * GIB)
     )
-    assert plan.max_tasks_per_child == pool.DEFAULT_MAX_TASKS_PER_CHILD
+    assert plan.max_tasks_per_child == 100
 
 
 def test_no_child_survives_a_generation_boundary_and_every_one_reloads_its_model():
@@ -1754,6 +1964,65 @@ def test_a_probe_that_gave_up_leaves_no_child_still_allocating():
     )
 
 
+# --- the ladder itself, one rung at a time -----------------------------------
+#
+# THE TEST ABOVE COVERS THE EXISTENCE OF REAPING AND NOTHING ABOUT ITS SHAPE. Its
+# loader sleeps for eight seconds, so after the first join the child is alive and
+# EITHER rung ends it on its own. Measured against that suite: removing the
+# terminate rung killed nothing, removing the kill rung killed nothing, and
+# swapping them so the kill runs first killed nothing. Only deleting the whole
+# function body registered at all.
+#
+# WHAT IS ACTUALLY LOAD BEARING IS THE ORDER. Terminate first, so a child gets
+# the chance to unwind and release what it holds; kill second, as the backstop
+# for a child that cannot. Somebody deleting the terminate rung as redundant
+# ships green and turns every abandoned probe into an unconditional SIGKILL, on a
+# machine this module had already decided was tight.
+#
+# Two children distinguish the rungs, and neither can be answered by the other:
+# one exits cleanly on a terminate and reports a number no signal produces, and
+# one ignores the terminate entirely and can only be ended by the kill.
+
+
+def test_a_probe_child_that_can_unwind_is_asked_to_before_it_is_killed():
+    """The first rung, and the ORDER, which is the part that has consequences.
+
+    A child that handles a terminate exits with its own code. A child that was
+    killed outright reports the negative of the signal that killed it and never
+    ran a line of its own. Those are two different numbers, so this test can say
+    which rung ended the child rather than only that something did.
+
+    POSIX SIGNAL SEMANTICS, ASSERTED UNCONDITIONALLY. Windows has no handleable
+    terminate and its kill IS its terminate, so there would be nothing to
+    distinguish there, and this repository allows no conditional skip outside the
+    pending register. The battery runs on darwin and continuous integration runs
+    on linux, which are the two machines this has to be true on.
+    """
+    watched = _reap_a_child(_unwinds_on_a_terminate)
+    assert watched.exitcode == _TERMINATED_CLEANLY, (
+        f"the child reported {watched.exitcode} rather than unwinding on a terminate; "
+        f"a negative number here is a SIGKILL, which means the backstop ran first "
+        f"and no probe child ever gets to release what it is holding"
+    )
+    assert watched.rungs == ["join", "terminate", "join", "close"]
+
+
+def test_a_probe_child_that_refuses_to_unwind_meets_the_kill_backstop():
+    """The second rung, which is the one that makes the promise absolute.
+
+    A terminate is a request and a wedged child is entitled to ignore it. Without
+    the backstop the ladder is a suggestion, and the child left behind is holding
+    the allocation this module exists to refuse.
+    """
+    watched = _reap_a_child(_ignores_a_terminate)
+    assert watched.closed, (
+        "the reaping gave up on a child that ignored its terminate; it is still "
+        "running and still holding whatever its loader had allocated"
+    )
+    assert watched.exitcode == -signal.SIGKILL
+    assert watched.rungs == ["join", "terminate", "join", "kill", "join", "close"]
+
+
 def test_a_probe_child_that_dies_without_answering_gives_up_at_once():
     """The pipe is what tells a dead child from a slow one, and nothing tested it.
 
@@ -1835,6 +2104,25 @@ def _version_one(root: Path, *, limit: str, usage: str = "0") -> Path:
     return root
 
 
+def _hierarchy(tmp_path: Path) -> Path:
+    """An empty cgroup mount point, kept apart from the other files a test writes."""
+    root = tmp_path / "cgroup"
+    root.mkdir()
+    return root
+
+
+def _self_cgroup(tmp_path: Path, text: str) -> Path:
+    """A ``/proc/self/cgroup`` this process could have been given.
+
+    Written rather than read, for the same reason the mount point is: this
+    machine has neither file, so the only way to execute either branch of the
+    reader is to hand it both.
+    """
+    path = tmp_path / "self-cgroup"
+    path.write_text(text)
+    return path
+
+
 def test_a_cgroup_with_a_cap_reports_what_is_left_inside_it(tmp_path):
     _version_two(tmp_path, limit=str(512 * MIB), current=str(64 * MIB))
     assert pool.cgroup_memory_headroom_bytes(tmp_path) == 448 * MIB
@@ -1885,6 +2173,239 @@ def test_a_machine_with_no_cgroups_at_all_reports_none(tmp_path):
     """P7's other half. This is every developer machine this product is built on."""
     assert pool.cgroup_memory_headroom_bytes(tmp_path / "nothing here") is None
     assert pool.cgroup_memory_headroom_bytes(tmp_path) is None
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [32 * GIB, 256 * GIB, 1024 * GIB, 65536 * GIB],
+    ids=["a-large-container", "a-large-host", "a-terabyte-host", "larger-than-anything-sold"],
+)
+def test_a_large_cap_is_still_a_cap_and_the_sentinel_never_swallows_one(tmp_path, limit):
+    """The sentinel from the side that reintroduces the defect this unit closes.
+
+    "Absurdly large" has to stay absurd, and nothing was checking that it did.
+    Lowered from four exbibytes to thirty two gibibytes, a container published
+    with a thirty two gibibyte cap reads as having NO cap at all, the host's five
+    hundred gibibyte reading stands, and the plan is the full ceiling of model
+    loading children inside a cgroup that holds a sixteenth of it. The suite
+    stayed green at that value and at a tebibyte.
+
+    NEITHER EXISTING CASE COULD SEE IT. The one at the sentinel uses a number
+    above every candidate, and the one where the host is tighter than the cap
+    puts a one gibibyte host against a thirty two gibibyte cap, so the host is
+    the minimum either way and the cap is never the answer being checked.
+
+    Sixty four tebibytes is past the largest machine anybody sells, and it is
+    still a cap rather than a way of saying there is not one.
+    """
+    _version_two(tmp_path, limit=str(limit), current="0")
+    assert pool.cgroup_memory_headroom_bytes(tmp_path) == limit
+
+
+def test_a_large_container_on_a_larger_host_is_still_sized_by_the_container(
+    tmp_path, monkeypatch
+):
+    """The same sentinel, driven to the number a pool would be built from.
+
+    A thirty two gibibyte cap on a five hundred and twelve gibibyte host is a
+    real deployment rather than a corner: it is what a large container on a large
+    host looks like. The reading has to be the container's.
+    """
+    import psutil
+
+    _version_two(tmp_path, limit=str(32 * GIB), current=str(2 * GIB))
+    monkeypatch.setattr(
+        psutil, "virtual_memory", lambda: SimpleNamespace(available=512 * GIB)
+    )
+    assert pool.available_bytes(cgroup_root=tmp_path) == 30 * GIB
+
+
+def test_a_cgroup_file_this_process_may_not_read_is_no_cap_rather_than_a_crash(
+    tmp_path, monkeypatch
+):
+    """The second of the three reasons the reader's own docstring names.
+
+    Only the first was driven. Narrowed from ``OSError`` to ``FileNotFoundError``
+    the suite stayed green, and on a host where the cgroup file is mode 000 the
+    narrowed version raises ``PermissionError`` out of :func:`available_bytes`,
+    which is a public function that promises a number. Inside ``plan_pool`` that
+    is swallowed and lands on MEMORY_UNREADABLE, so it degrades QUIETLY rather
+    than crashing, which is what makes it hard to notice.
+
+    REFUSED AT THE CALL RATHER THAN STAGED WITH A FILE MODE, for two reasons that
+    point the same way. A file at mode 000 is readable by root, so a staged
+    version would pass vacuously wherever the suite runs privileged, and this
+    repository allows no conditional skip outside the pending register, which is
+    the only other way to handle that. The refusal is raised at the one call the
+    reader makes, which is exactly where the operating system would raise it.
+    """
+    import psutil
+
+    _version_two(tmp_path, limit=str(512 * MIB), current="0")
+    refused = tmp_path / "memory.max"
+    readable = Path.read_text
+
+    def refuse(self, *arguments, **keywords):
+        if self == refused:
+            raise PermissionError(13, "Permission denied", str(self))
+        return readable(self, *arguments, **keywords)
+
+    monkeypatch.setattr(Path, "read_text", refuse)
+    assert pool.cgroup_memory_headroom_bytes(tmp_path) is None
+    monkeypatch.setattr(psutil, "virtual_memory", lambda: SimpleNamespace(available=7 * GIB))
+    assert pool.available_bytes(cgroup_root=tmp_path) == 7 * GIB
+
+
+def test_a_cgroup_path_that_is_a_directory_is_no_cap_rather_than_a_crash(
+    tmp_path, monkeypatch
+):
+    """The third reason, and the one that survives narrowing to PermissionError.
+
+    The breadth was covered on one side only: narrowing the catch the other way
+    kills nine tests, and narrowing it to the file simply not existing kills
+    none. A path that resolves to a directory is neither.
+    """
+    import psutil
+
+    (tmp_path / "memory.max").mkdir()
+    assert pool.cgroup_memory_headroom_bytes(tmp_path) is None
+    monkeypatch.setattr(psutil, "virtual_memory", lambda: SimpleNamespace(available=7 * GIB))
+    assert pool.available_bytes(cgroup_root=tmp_path) == 7 * GIB
+
+
+# --- which cgroup is THIS process in --------------------------------------
+#
+# READING THE ROOT OF THE HIERARCHY IS RIGHT IN ONE DEPLOYMENT AND WRONG IN THE
+# OTHER. Inside a cgroup namespaced container, which is the ordinary Docker case,
+# this process sits at "/" and the cap is published at the root. On a host it is
+# not: a systemd unit with MemoryMax= lives at system.slice/something.service and
+# the root publishes no cap at all, so a reader that stopped at the root reports
+# no limit for a four gibibyte service on a five hundred gibibyte machine, and
+# the reserve and the percent then scale a number a hundred times the truth.
+
+
+def test_a_cap_on_a_nested_cgroup_is_read_rather_than_the_empty_root(tmp_path):
+    """The systemd shape, which reading the root alone cannot see at all."""
+    root = _hierarchy(tmp_path)
+    unit = root / "system.slice" / "cratekit.service"
+    unit.mkdir(parents=True)
+    _version_two(unit, limit=str(4 * GIB), current=str(1 * GIB))
+    where = _self_cgroup(tmp_path, "0::/system.slice/cratekit.service\n")
+    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 3 * GIB
+
+
+def test_the_tightest_cap_on_the_chain_is_the_one_that_binds(tmp_path):
+    """A cgroup nested inside another is held by both, and the smaller runs out first.
+
+    Taking the deepest cap instead reports the unit's own generous number while a
+    tighter slice above it is the real ceiling, which is the same mistake as
+    taking the host's number over the container's.
+    """
+    root = _hierarchy(tmp_path)
+    unit = root / "system.slice" / "cratekit.service"
+    unit.mkdir(parents=True)
+    _version_two(unit.parent, limit=str(2 * GIB), current="0")
+    _version_two(unit, limit=str(8 * GIB), current="0")
+    where = _self_cgroup(tmp_path, "0::/system.slice/cratekit.service\n")
+    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 2 * GIB
+
+
+def test_a_namespaced_container_sits_at_the_root_and_reads_what_it_always_read(tmp_path):
+    """The common Docker case, unchanged, which is the half a walk could break."""
+    root = _hierarchy(tmp_path)
+    _version_two(root, limit=str(512 * MIB), current=str(64 * MIB))
+    where = _self_cgroup(tmp_path, "0::/\n")
+    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 448 * MIB
+
+
+def test_the_older_layout_is_walked_from_this_processs_own_path_too(tmp_path):
+    """Version one names its controllers, and the memory one shares a line with others.
+
+    The controller field is comma separated, so a reader matching the whole field
+    against "memory" misses every host that grouped the controllers, which is
+    most of them.
+    """
+    root = _hierarchy(tmp_path)
+    unit = root / "memory" / "system.slice" / "cratekit.service"
+    unit.mkdir(parents=True)
+    (unit / "memory.limit_in_bytes").write_text(str(2 * GIB))
+    (unit / "memory.usage_in_bytes").write_text(str(512 * MIB))
+    where = _self_cgroup(
+        tmp_path, "9:cpu,memory:/system.slice/cratekit.service\n12:pids:/\n"
+    )
+    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 1536 * MIB
+
+
+def test_a_machine_with_no_proc_file_at_all_reads_the_root_it_was_given(tmp_path):
+    """Every darwin machine this product is built on, and every one with no cgroups."""
+    root = _hierarchy(tmp_path)
+    _version_two(root, limit=str(512 * MIB), current="0")
+    assert (
+        pool.cgroup_memory_headroom_bytes(root, self_cgroup=tmp_path / "no such file")
+        == 512 * MIB
+    )
+
+
+def test_a_cgroup_path_that_climbs_out_of_the_mount_is_not_followed(tmp_path):
+    """A path this reader does not understand is not a licence to read elsewhere.
+
+    The only way ``..`` reaches here is a kernel writing something unexpected,
+    and walking out of the mount to read whatever file happens to be there is not
+    a reading of this process's cgroup.
+    """
+    root = _hierarchy(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _version_two(outside, limit=str(64 * MIB), current="0")
+    where = _self_cgroup(tmp_path, "0::/../outside\n")
+    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) is None
+
+
+def test_a_capped_service_on_a_huge_host_is_sized_by_the_service(tmp_path, monkeypatch):
+    """The failure scenario end to end, and the reason the walk exists.
+
+    Four gibibytes of MemoryMax on a five hundred and twelve gibibyte host. Under
+    the host's own reading the plan is the full ceiling, sixty four children each
+    holding a model, inside a unit that holds one of them.
+    """
+    import psutil
+
+    root = _hierarchy(tmp_path)
+    unit = root / "system.slice" / "cratekit.service"
+    unit.mkdir(parents=True)
+    _version_two(unit, limit=str(4 * GIB), current="0")
+    where = _self_cgroup(tmp_path, "0::/system.slice/cratekit.service\n")
+    monkeypatch.setattr(
+        psutil, "virtual_memory", lambda: SimpleNamespace(available=512 * GIB)
+    )
+
+    assert pool.available_bytes(cgroup_root=root, cgroup_self=where) == 4 * GIB
+    inside = pool.plan_pool(
+        worker_bytes=WORKER,
+        items=500,
+        ceiling=64,
+        read_available=lambda: pool.available_bytes(cgroup_root=root, cgroup_self=where),
+    )
+    host = pool.plan_pool(
+        worker_bytes=WORKER, items=500, ceiling=64, read_available=reader(512 * GIB)
+    )
+    assert host.workers == 64, "the fixture no longer distinguishes the two readings"
+    assert inside.workers == 1
+    assert inside.in_process is True
+
+
+def test_the_two_kernel_paths_the_reader_defaults_to_are_the_ones_the_kernel_uses():
+    """Two defaults that no test above can execute, spelled out here instead.
+
+    Every cgroup test points the reader at files it wrote itself, which is the
+    only way this machine can reach either branch. That leaves the DEFAULTS
+    unchecked, and pointed at the wrong place every test above still passes while
+    every real container on earth reads as having no cap. The literals are the
+    kernel's own documented locations, written here rather than read out of the
+    module.
+    """
+    assert pool.CGROUP_ROOT == Path("/sys/fs/cgroup")
+    assert pool.CGROUP_SELF == Path("/proc/self/cgroup")
 
 
 def test_a_container_capped_below_its_host_is_sized_by_the_cap(tmp_path, monkeypatch):
@@ -2411,6 +2932,52 @@ def repository_modules(roots=WALK_ROOTS) -> list[Path]:
     ]
 
 
+def package_for(
+    path: Path, *, source_root: Path = SRC_ROOT, repo_root: Path = REPO_ROOT
+) -> str | None:
+    """The dotted package a walked file sits in, for the relative import question.
+
+    THE PIECE THE WALK ALREADY HAD AND DID NOT PASS ON. ``repository_modules``
+    yields paths and every caller threw the path away at ``read_text()``, so
+    ``ImportsOf`` was given source text and a target module name and nothing
+    else, and could only match a relative import by its dotted tail. Passing this
+    makes that half exact.
+
+    The shipped package is measured from ``src`` so a module comes out as
+    ``cratekit.core``; anything else is measured from the repository root, which
+    gives ``scripts`` and ``tests``. Neither of those is an importable package,
+    and a file in one cannot legally write a relative import at all, so what they
+    resolve to matters less than that they are not ``cratekit.anything``.
+
+    Both roots are arguments so the walk below can be driven over a tree a test
+    wrote. There are no relative imports anywhere under ``src/cratekit`` today,
+    so on the real tree this argument changes no answer at all, and a wire that
+    changes no answer is a wire somebody unplugs while tidying.
+    """
+    return package_of(path, source_root if source_root in path.parents else repo_root)
+
+
+def plans_built_outside_the_sizing_module(
+    paths: list[Path], *, source_root: Path = SRC_ROOT, repo_root: Path = REPO_ROOT
+) -> dict[str, list[str]]:
+    """Every walked file that builds a :class:`PoolPlan`, keyed by where it sits.
+
+    A function rather than a loop inside the test, so the same code that runs
+    over the shipped tree can be run over a tree written for the purpose. The
+    real tree cannot exercise the package argument, because it holds no relative
+    import to resolve.
+    """
+    offenders: dict[str, list[str]] = {}
+    for path in paths:
+        found = pool_plan_constructions(
+            path.read_text(),
+            package=package_for(path, source_root=source_root, repo_root=repo_root),
+        )
+        if found:
+            offenders[str(path.relative_to(repo_root))] = found
+    return offenders
+
+
 def test_no_module_outside_the_sizing_module_builds_a_process_pool():
     """Armed today, over every tree this repository writes, so the shape cannot arrive quietly.
 
@@ -2447,7 +3014,7 @@ def test_the_sizing_module_would_fail_its_own_guard():
 # --- no module fabricates a plan ---------------------------------------------
 
 
-def pool_plan_constructions(source: str) -> list[str]:
+def pool_plan_constructions(source: str, *, package: str | None = None) -> list[str]:
     """Every place this source builds a :class:`PoolPlan` of its own.
 
     THE ESCAPE ONE LEVEL UP FROM A PRIVATE POOL, and the one that was live. A
@@ -2457,10 +3024,12 @@ def pool_plan_constructions(source: str) -> list[str]:
     about seams while spawning nine model-loading children.
 
     Bound through the import graph rather than to the bare name, so somebody
-    else's class called ``PoolPlan`` is not this and does not fire.
+    else's class called ``PoolPlan`` is not this and does not fire. ``package``
+    is where the source sits, and it is what stops a relative import in an
+    unrelated package from being read as a relative import of this one.
     """
     tree = ast.parse(source)
-    imports = ImportsOf(tree, POOL_MODULE)
+    imports = ImportsOf(tree, POOL_MODULE, package)
     if not imports.reaches:
         return []
     return sorted(
@@ -2585,6 +3154,124 @@ def test_the_plan_provenance_guard_bites_a_plan_somebody_typed(source):
     assert pool_plan_constructions(source) != []
 
 
+# --- the relative half, which was the guard's one false direction ------------
+#
+# THE WALK HANDLES EVERY ABSOLUTE SHAPE AND PRODUCES NO FALSE POSITIVE ON ANY OF
+# THEM, because it DERIVES the shapes from the module's own name rather than
+# listing them. The relative shapes were the exception and they were matched by
+# dotted tail, which cannot be right: given source text and a target module name
+# and nothing else, the walk could not know which package the importing file sat
+# in, so a file in an unrelated package writing any of the five shapes below
+# fired. All five were executed against it and all five were false positives.
+#
+# Harmless in this repository today, and verified so: there are no relative
+# imports anywhere under src/cratekit. Not harmless in the walk, which three
+# files ask questions of and which is the one every guard is meant to collapse
+# onto.
+#
+# The fix is small and the data was already there. Every caller walking real
+# files holds a Path and threw it away at read_text(). Passing the package makes
+# the resolution exact: the dots are counted against the package's own parts and
+# the result is compared like any absolute name.
+
+#: A package that has nothing to do with this one, which is the entire point.
+UNRELATED_PACKAGE = "somewhere.else"
+
+#: The five relative shapes, each paired with the package it genuinely reaches
+#: the sizing module FROM, or None where no package reaches it at all.
+#:
+#: The last one is None on purpose and is the clearest of the five: relative
+#: imports cannot climb above the top of a package tree, so ``from .. import
+#: cratekit`` can never name the top level ``cratekit`` from anywhere. It ended
+#: the same way as an ancestor of the target and that was the whole of the old
+#: match.
+RELATIVE_SHAPES = (
+    (
+        "from .pool import PoolPlan\n"
+        "def run():\n"
+        "    return PoolPlan(workers=9, items=1, bound=None, worker_bytes=1,\n"
+        "                    available_bytes=None, max_tasks_per_child=None)\n",
+        "cratekit.core",
+    ),
+    (
+        "from . import pool\n"
+        "def run():\n"
+        "    return pool.PoolPlan(workers=9, items=1, bound=None, worker_bytes=1,\n"
+        "                         available_bytes=None, max_tasks_per_child=None)\n",
+        "cratekit.core",
+    ),
+    (
+        "from . import core\n"
+        "def run():\n"
+        "    return core.pool.PoolPlan(workers=9, items=1, bound=None, worker_bytes=1,\n"
+        "                              available_bytes=None, max_tasks_per_child=None)\n",
+        "cratekit",
+    ),
+    (
+        "from .core.pool import PoolPlan\n"
+        "def run():\n"
+        "    return PoolPlan(workers=9, items=1, bound=None, worker_bytes=1,\n"
+        "                    available_bytes=None, max_tasks_per_child=None)\n",
+        "cratekit",
+    ),
+    (
+        "from .. import cratekit\n"
+        "def run():\n"
+        "    return cratekit.core.pool.PoolPlan(workers=9, items=1, bound=None,\n"
+        "                                       worker_bytes=1, available_bytes=None,\n"
+        "                                       max_tasks_per_child=None)\n",
+        None,
+    ),
+)
+
+REACHING_RELATIVE_SHAPES = tuple(pair for pair in RELATIVE_SHAPES if pair[1] is not None)
+
+
+@pytest.mark.parametrize(
+    "source,_reaches_from", RELATIVE_SHAPES, ids=range(len(RELATIVE_SHAPES))
+)
+def test_a_relative_import_in_an_unrelated_package_is_not_this_module(source, _reaches_from):
+    """Five false positives, silent now, and the guard is armed over the shipped tree.
+
+    A guard that fires on correct code is a guard people route around (P7), and
+    this one fires on a file that has never heard of this product.
+    """
+    assert pool_plan_constructions(source, package=UNRELATED_PACKAGE) == []
+
+
+@pytest.mark.parametrize(
+    "source,reaches_from",
+    REACHING_RELATIVE_SHAPES,
+    ids=range(len(REACHING_RELATIVE_SHAPES)),
+)
+def test_the_same_relative_shapes_still_bite_from_the_package_that_owns_them(
+    source, reaches_from
+):
+    """The other direction, which is the one that must not be lost to the fix.
+
+    The same four lines, written where they really do name the sizing module, are
+    a hand built plan of nine children reaching the right seam. Exactness has to
+    cut both ways or this is a guard that was switched off rather than corrected.
+    """
+    assert pool_plan_constructions(source, package=reaches_from) != []
+
+
+@pytest.mark.parametrize(
+    "path,root,expected",
+    [
+        (SRC_ROOT / "cratekit" / "core" / "pool.py", SRC_ROOT, "cratekit.core"),
+        (SRC_ROOT / "cratekit" / "__init__.py", SRC_ROOT, "cratekit"),
+        (REPO_ROOT / "scripts" / "board.py", REPO_ROOT, "scripts"),
+        (REPO_ROOT / "noxfile.py", REPO_ROOT, None),
+        (Path("/elsewhere/thing.py"), SRC_ROOT, None),
+    ],
+    ids=["a-nested-module", "a-package-root", "a-script", "a-loose-file", "outside-the-tree"],
+)
+def test_the_package_a_walked_file_sits_in_is_read_off_its_path(path, root, expected):
+    """The one piece of information the walk needed and was never handed."""
+    assert package_of(path, root) == expected
+
+
 #: The trees where a fabricated plan is a defect. TESTS ARE NOT HERE, and the
 #: exclusion is a decision rather than an oversight: a test that wants to drive
 #: ``map_workers`` at a width no reading produces has to build a plan by hand,
@@ -2601,15 +3288,43 @@ def test_no_shipped_module_outside_the_sizing_module_builds_its_own_plan():
     inside: a runtime check would have to be told what a legitimate origin looks
     like, and the origin is a fact about the source rather than about the object.
     """
-    offenders: dict[str, list[str]] = {}
-    for path in repository_modules(PRODUCTION_ROOTS):
-        found = pool_plan_constructions(path.read_text())
-        if found:
-            offenders[str(path.relative_to(REPO_ROOT))] = found
+    offenders = plans_built_outside_the_sizing_module(repository_modules(PRODUCTION_ROOTS))
     assert not offenders, (
         f"plans built outside the sizing module: {offenders}. A plan that did not "
         f"come from plan_pool is a worker count nobody derived from memory (R23)."
     )
+
+
+def test_the_walk_credits_a_relative_import_only_to_the_package_that_owns_it(tmp_path):
+    """The threading itself, driven on a tree where a relative import exists.
+
+    ONE LINE, TWO FILES, TWO ANSWERS. Both spell the identical relative import
+    and build the identical plan of nine. One of them sits inside the package
+    that owns the sizing module, where the line really does name it; the other
+    sits in a package that has never heard of this product, where the same line
+    names something else entirely.
+
+    Without the package the walk matched a relative import by its dotted tail and
+    reported both, which is a guard firing on code it has no business reading and
+    is how a guard gets routed around (P7). The real tree cannot show this: there
+    are no relative imports under src/cratekit at all, so the argument changes
+    nothing there and reverting it kills nothing there either.
+    """
+    source = tmp_path / "src"
+    inside = source / "cratekit" / "core" / "sibling.py"
+    outside = source / "unrelated" / "thing.py"
+    for path in (inside, outside):
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            "from .pool import PoolPlan\n"
+            "def run():\n"
+            "    return PoolPlan(workers=9, items=1, bound=None, worker_bytes=1,\n"
+            "                    available_bytes=None, max_tasks_per_child=None)\n"
+        )
+    offenders = plans_built_outside_the_sizing_module(
+        [inside, outside], source_root=source, repo_root=tmp_path
+    )
+    assert sorted(offenders) == ["src/cratekit/core/sibling.py"]
 
 
 # ---------------------------------------------------------------------------
@@ -2617,7 +3332,7 @@ def test_no_shipped_module_outside_the_sizing_module_builds_its_own_plan():
 # ---------------------------------------------------------------------------
 
 
-def unplanned_map_workers(source: str) -> list[str]:
+def unplanned_map_workers(source: str, *, package: str | None = None) -> list[str]:
     """Every ``map_workers`` call run on a plan this source built for itself.
 
     The call-site half of the provenance question, and the one that reads at the
@@ -2627,7 +3342,7 @@ def unplanned_map_workers(source: str) -> list[str]:
     sound rather than generous.
     """
     tree = ast.parse(source)
-    imports = ImportsOf(tree, POOL_MODULE)
+    imports = ImportsOf(tree, POOL_MODULE, package)
     if not imports.reaches:
         return []
     fabricated = {
@@ -2653,7 +3368,15 @@ def unplanned_map_workers(source: str) -> list[str]:
     return found
 
 
-def analysis_sizing_violations(modules: list[tuple[str, str]]) -> list[str]:
+#: The package the countdown below is about, named once. It is also the package
+#: every module in that countdown is treated as sitting in, which is what turns
+#: its two relative fixtures from tail matches into resolved imports.
+ANALYSIS_PACKAGE = "cratekit.analysis"
+
+
+def analysis_sizing_violations(
+    modules: list[tuple[str, str]], package: str | None = ANALYSIS_PACKAGE
+) -> list[str]:
     """Every way a set of modules fails to be sized by this module and by nothing else.
 
     THE WHOLE COUNTDOWN LIVES HERE rather than in the test body, so the fixtures
@@ -2671,12 +3394,18 @@ def analysis_sizing_violations(modules: list[tuple[str, str]]) -> list[str]:
         return ["the analysis package landed with no modules in it"]
 
     problems: list[str] = []
-    if not any(calls_attribute(source, POOL_MODULE, "plan_pool") for _name, source in modules):
+    if not any(
+        calls_attribute(source, POOL_MODULE, "plan_pool", package=package)
+        for _name, source in modules
+    ):
         problems.append(
             "no module in the analysis package calls cratekit.core.pool.plan_pool; a "
             "pool sized anywhere else is a second answer to R23"
         )
-    if not any(calls_attribute(source, POOL_MODULE, "map_workers") for _name, source in modules):
+    if not any(
+        calls_attribute(source, POOL_MODULE, "map_workers", package=package)
+        for _name, source in modules
+    ):
         problems.append(
             "the analysis package plans a pool and never runs work through "
             "cratekit.core.pool.map_workers, so the branch that keeps a cap of one "
@@ -2685,12 +3414,12 @@ def analysis_sizing_violations(modules: list[tuple[str, str]]) -> list[str]:
     for name, source in modules:
         for where in process_pool_constructions(source):
             problems.append(f"{name} builds its own process pool at {where}")
-        for where in pool_plan_constructions(source):
+        for where in pool_plan_constructions(source, package=package):
             problems.append(
                 f"{name} builds its own PoolPlan at {where}, which is a worker count "
                 f"nobody derived from memory reaching map_workers through the right seam"
             )
-        for where in unplanned_map_workers(source):
+        for where in unplanned_map_workers(source, package=package):
             problems.append(f"{name} runs a pool on a plan it built itself, at {where}")
         leaked = sorted(set(CORE_COUNT_SPELLINGS) & _names_used(source))
         if leaked:
@@ -2774,6 +3503,22 @@ ANALYSIS_CORRECT = (
             "    plan = plan_pool(worker_bytes=cost, items=len(items), ceiling=2)\n"
             "    return map_workers(plan, analyse, items)\n"
             "def analyse(item):\n    return item\n",
+        ),
+    ],
+    # A SIBLING OF THE ANALYSIS PACKAGE'S OWN, spelled the same way the sizing
+    # module would be. ``from .pool import PoolPlan`` inside cratekit.analysis
+    # names cratekit.analysis.pool, which is not this module and not this class,
+    # and the countdown must not accuse the package of building its own plan for
+    # it. Matched by dotted tail it was read as the sizing module and the package
+    # was accused. This is the one fixture here that the package argument decides,
+    # and the collision it turns on is exactly the one this repository already
+    # hunts: one word meaning two things in two modules.
+    [
+        _ANALYSIS_LIGHT,
+        (
+            "grouping.py",
+            "from .pool import PoolPlan\n"
+            "def group(tracks):\n    return PoolPlan(tracks)\n",
         ),
     ],
 )
@@ -2864,6 +3609,7 @@ ANALYSIS_EVASIONS = (
         "ancestor-package",
         "relative-package-import",
         "relative-symbol-import",
+        "a-sibling-of-its-own-named-pool",
     ],
 )
 def test_the_analysis_countdown_stays_silent_on_correctly_sized_modules(modules):

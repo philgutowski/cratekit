@@ -83,7 +83,12 @@ hundred times the truth: the reserve comes off it, the percent scales what is
 left, and the pressure gate reads the host's swap and the host's used percent,
 both of which are fine. So the reading is the SMALLER of what the machine says
 and what this process's own memory cgroup allows, and a machine with no cgroup
-at all reads exactly what it read before. This is the same blindness the core
+at all reads exactly what it read before. "This process's own" is read from
+``/proc/self/cgroup`` rather than assumed to be the top of the hierarchy,
+because that assumption holds only inside a cgroup namespaced container: a
+capped systemd unit sits several levels down and the root publishes no cap at
+all, so a reader that stopped at the root would report no limit for a service
+that has one. This is the same blindness the core
 count is refused for: the four spellings forbidden below include the two
 affinity calls precisely because somebody reaches for them on reading that a
 core count ignores cgroup limits, and a module that refused cores for that
@@ -419,6 +424,16 @@ class PoolPlan:
 #: a directory it wrote itself.
 CGROUP_ROOT = Path("/sys/fs/cgroup")
 
+#: Where the kernel publishes WHICH cgroup this process is actually in.
+#:
+#: A constant and an argument for the same reason as the root above, and it is
+#: the file that makes the root usable. Reading the root's own limit answers
+#: "what is capped at the top of this hierarchy", which is the right question
+#: inside a cgroup namespaced container and the wrong one on a host: a systemd
+#: unit with a memory cap lives at ``system.slice/something.service`` and the
+#: root publishes no cap at all.
+CGROUP_SELF = Path("/proc/self/cgroup")
+
 #: A published limit at least this large is the kernel saying "no limit".
 #:
 #: Version one writes the largest page-aligned value it can rather than a
@@ -429,27 +444,110 @@ CGROUP_ROOT = Path("/sys/fs/cgroup")
 _CGROUP_UNLIMITED_ABOVE = 1 << 62
 
 
+def _cgroup_text(path: Path) -> str | None:
+    """One file the kernel publishes, as text, or None when it cannot be read.
+
+    BROAD ON PURPOSE, AND THE BREADTH IS THE ARM THAT CARRIES THE WEIGHT. The
+    file may not exist, this process may not be allowed to read it, and the path
+    may be a directory rather than a file. Every one of those arrives as
+    ``OSError`` and every one of them means the same thing here, which is that
+    there is no reading. Narrowing this to ``FileNotFoundError`` while tidying
+    would let a cgroup file with mode 000, or a path that resolved to a
+    directory, raise out of :func:`available_bytes`, which is a public function
+    that promises a number.
+    """
+    try:
+        return path.read_text()
+    except OSError:
+        return None
+
+
 def _cgroup_number(path: Path) -> int | None:
     """One byte count the kernel published, or None when there is not one there.
 
-    Every way of not getting a number is the same answer. The file may not
-    exist, this process may not be allowed to read it, the path may be a
-    directory, and version two writes the word ``max`` where a number would go
-    on a group with no limit. None of those is a limit, and none of them is a
-    reason to invent one.
+    Every way of not getting a number is the same answer. There may be no
+    reading at all, for any of the reasons above, and version two writes the
+    word ``max`` where a number would go on a group with no limit. Neither is a
+    limit, and neither is a reason to invent one.
     """
-    try:
-        text = path.read_text().strip()
-    except OSError:
+    text = _cgroup_text(path)
+    if text is None:
         return None
     try:
-        value = int(text)
+        # The strip is REDUNDANT and is kept as documentation rather than as a
+        # guard: int() already tolerates surrounding whitespace and the trailing
+        # newline the kernel writes, so removing it changes no answer and kills
+        # no test. It says out loud that the file ends in a newline.
+        value = int(text.strip())
     except ValueError:
         return None
     return value if value >= 0 else None
 
 
-def cgroup_memory_headroom_bytes(root: Path = CGROUP_ROOT) -> int | None:
+def _cgroup_self_paths(text: str | None) -> tuple[str, str]:
+    """Where this process sits, as (unified path, memory controller path).
+
+    ``/proc/self/cgroup`` is one line per hierarchy, each of them
+    ``id:controllers:path``. Version two writes a single line whose controller
+    field is EMPTY, and version one writes one line per hierarchy with the
+    controller names comma separated, so the memory controller may share its
+    line with others. A machine with no such file at all, which is every darwin
+    machine this product is built on, sits at the root of both, which is what
+    the empty strings mean.
+    """
+    unified = ""
+    controller = ""
+    for line in (text or "").splitlines():
+        fields = line.split(":", 2)
+        if len(fields) != 3:
+            continue
+        _hierarchy, controllers, path = fields
+        if not controllers:
+            unified = path
+        elif "memory" in controllers.split(","):
+            controller = path
+    return unified, controller
+
+
+def _cgroup_directories(mount: Path, relative: str) -> list[Path]:
+    """This process's own cgroup directory and every ancestor up to the mount.
+
+    A CAP ON AN ANCESTOR IS A CAP ON THIS PROCESS. Nesting is the ordinary shape
+    on a host that is not a container: the slice publishes one number and the
+    unit inside it publishes another, and a process in the unit is bound by
+    both. Every level is read rather than only the deepest.
+
+    ``..`` is dropped rather than followed. The only way it can appear here is a
+    kernel writing something this function does not understand, and walking out
+    of the mount to read whatever file is there is not a reading of this
+    process's cgroup.
+    """
+    parts = [part for part in relative.split("/") if part and part != ".."]
+    return [mount.joinpath(*parts[:depth]) for depth in range(len(parts), -1, -1)]
+
+
+def _headroom_in(directory: Path, *, limit_file: str, used_file: str) -> int | None:
+    """Room left in ONE cgroup directory, or None when it publishes no cap.
+
+    A CAP WITH NO USAGE READING IS STILL A CAP. Version two publishes the limit
+    and the current usage as two files, and a process that can read one but not
+    the other still knows a ceiling it can never exceed. Reporting the limit
+    there is not optimism, because it is certainly not smaller than the truth,
+    and the machine's own reading is still taken as the other half of the
+    minimum in :func:`available_bytes`.
+    """
+    limit = _cgroup_number(directory / limit_file)
+    if limit is None or limit >= _CGROUP_UNLIMITED_ABOVE:
+        return None
+    used = _cgroup_number(directory / used_file)
+    if used is None:
+        return limit
+    return max(0, limit - used)
+
+
+def cgroup_memory_headroom_bytes(
+    root: Path = CGROUP_ROOT, *, self_cgroup: Path = CGROUP_SELF
+) -> int | None:
     """Room left inside this process's own memory cgroup, or None when uncapped.
 
     NONE MEANS NO CAP, and it also means no cap this process could read. Those
@@ -458,27 +556,44 @@ def cgroup_memory_headroom_bytes(root: Path = CGROUP_ROOT) -> int | None:
     developer's laptop to fix a container nobody is running is what a fix that
     is too restrictive looks like from the inside.
 
-    A CAP WITH NO USAGE READING IS STILL A CAP. Version two publishes the limit
-    and the current usage as two files, and a process that can read one but not
-    the other still knows a ceiling it can never exceed. Reporting the limit
-    there is not optimism, because it is certainly not smaller than the truth,
-    and the machine's own reading is still taken as the other half of the
-    minimum below.
+    THIS PROCESS'S OWN CGROUP, NOT THE ROOT OF THE HIERARCHY, and the difference
+    is a whole class of host. Inside a cgroup namespaced container, which is the
+    ordinary Docker case, the process sits at ``/`` and the cap is published at
+    the root, so reading the root is exactly right. On a host it is not: a
+    systemd unit with ``MemoryMax=`` lives at ``system.slice/something.service``
+    and the root publishes no cap at all, so a reader that looked only at the
+    root would report NO LIMIT for a four gibibyte service on a five hundred
+    gibibyte machine, the host's reading would stand, and every brake above
+    would do its arithmetic on a number a hundred times the truth. So
+    ``/proc/self/cgroup`` says where this process is, and the walk starts there.
+
+    THE TIGHTEST CAP ON THE CHAIN IS THE ONE THAT BINDS. A cgroup nested inside
+    another is held by both, and whichever is smaller is what runs out first.
+    Taking the deepest cap instead would report a unit's own generous number
+    while a tighter slice above it was the real ceiling, which is the same
+    mistake as taking the host's number over the container's.
     """
-    limit = _cgroup_number(root / "memory.max")
-    used = _cgroup_number(root / "memory.current")
-    if limit is None:
-        version_one = root / "memory"
-        limit = _cgroup_number(version_one / "memory.limit_in_bytes")
-        used = _cgroup_number(version_one / "memory.usage_in_bytes")
-    if limit is None or limit >= _CGROUP_UNLIMITED_ABOVE:
-        return None
-    if used is None:
-        return limit
-    return max(0, limit - used)
+    unified, controller = _cgroup_self_paths(_cgroup_text(self_cgroup))
+    layouts = (
+        (_cgroup_directories(root, unified), "memory.max", "memory.current"),
+        (
+            _cgroup_directories(root / "memory", controller),
+            "memory.limit_in_bytes",
+            "memory.usage_in_bytes",
+        ),
+    )
+    found: list[int] = []
+    for directories, limit_file, used_file in layouts:
+        for directory in directories:
+            headroom = _headroom_in(directory, limit_file=limit_file, used_file=used_file)
+            if headroom is not None:
+                found.append(headroom)
+    return min(found) if found else None
 
 
-def available_bytes(*, cgroup_root: Path = CGROUP_ROOT) -> int:
+def available_bytes(
+    *, cgroup_root: Path = CGROUP_ROOT, cgroup_self: Path = CGROUP_SELF
+) -> int:
     """Memory a new process could obtain right now, in bytes.
 
     AVAILABLE, never free. See the module docstring for why the two are not
@@ -491,8 +606,11 @@ def available_bytes(*, cgroup_root: Path = CGROUP_ROOT) -> int:
     with no cgroup the second ceiling is absent and this returns exactly what it
     always returned.
 
-    ``cgroup_root`` is keyword-only and defaulted, so this is still the zero
-    argument reader :data:`AvailableReader` describes.
+    Both cgroup arguments are keyword-only and defaulted, so this is still the
+    zero argument reader :data:`AvailableReader` describes. They exist because a
+    machine with no cgroups cannot execute either branch of the reader below
+    them, and a branch no test can reach is a branch that is wrong the day
+    somebody edits it.
 
     psutil is imported lazily so a caller that injects its own reader, which
     every sizing test does, never loads the extension module at all.
@@ -500,7 +618,7 @@ def available_bytes(*, cgroup_root: Path = CGROUP_ROOT) -> int:
     import psutil
 
     reading = int(psutil.virtual_memory().available)
-    capped = cgroup_memory_headroom_bytes(cgroup_root)
+    capped = cgroup_memory_headroom_bytes(cgroup_root, self_cgroup=cgroup_self)
     return reading if capped is None else min(reading, capped)
 
 
@@ -653,6 +771,12 @@ def _spawned_probe(
     finally:
         reader.close()
         _reap(worker)
+    # THIS TAG CHECK IS REDUNDANT AND IS KEPT FOR ITS MESSAGE. A failure sends
+    # back the reason as text, so ``int(answer)`` on the line below would raise
+    # on it anyway and the caller would land on the floor either way: removing
+    # this branch changes no answer and kills no test. What it buys is the
+    # reason travelling into the exception instead of a ValueError about a
+    # string nobody can trace back to a loader.
     if outcome != _PROBE_MEASURED:
         raise RuntimeError(f"the probe loader failed in its worker: {answer}")
     return int(answer)
@@ -1000,6 +1124,13 @@ def map_workers(
     _refuse_what_no_child_could_receive(function, "function")
     if initializer is not None:
         _refuse_what_no_child_could_receive(initializer, "initializer")
+    # THE ARGUMENTS ARE HELD TO THE RULE EVEN WITH NO INITIALIZER TO RECEIVE
+    # THEM, which is over strict by a hair and is the deliberate choice. The
+    # ordinary empty tuple is not refused by it at all, so what it costs is a
+    # caller who passed arguments that will never be called with them, and what
+    # it buys is one rule rather than a rule that changes with a second
+    # argument. It is the same on both paths, which is the property this whole
+    # function exists for.
     for position, argument in enumerate(initargs):
         _refuse_what_no_child_could_receive(argument, f"initializer argument {position}")
     ordered = list(items)
@@ -1025,6 +1156,7 @@ __all__ = [
     "BOUND_PHRASES",
     "Bound",
     "CGROUP_ROOT",
+    "CGROUP_SELF",
     "DARWIN_HEADROOM_PERCENT",
     "DEFAULT_HEADROOM_PERCENT",
     "DEFAULT_MAX_TASKS_PER_CHILD",

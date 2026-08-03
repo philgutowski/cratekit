@@ -54,16 +54,60 @@ def _dotted(node: ast.AST) -> str | None:
 def _dotted_tail_of(candidate: str, path: str) -> bool:
     """Whether ``candidate`` is a whole dotted tail of ``path``.
 
-    A relative import cannot be resolved to an absolute module without knowing
-    where the importing file sits, so it is matched by its tail instead.
-    ``from .pool import PoolPlan`` written inside ``cratekit/core`` and
-    ``from ..core.pool import PoolPlan`` written one package deeper both name the
-    same module, and both end the same way.
+    THE FALLBACK, AND ONLY THE FALLBACK. A relative import cannot be resolved to
+    an absolute module without knowing which package the importing file sits in,
+    so a caller that does not say gets its relative imports matched by tail
+    instead. That is a heuristic and it is wrong in one direction: a file in an
+    unrelated package writing ``from .pool import PoolPlan`` ends the same way as
+    the real one and fires. Callers that walk real files pass ``package`` and get
+    exact resolution instead. See :func:`package_of`.
     """
     if not candidate:
         return False
     wanted = candidate.split(".")
     return path.split(".")[-len(wanted):] == wanted
+
+
+def _absolute_module(package: str | None, level: int, module: str) -> str | None:
+    """The module a relative import names, resolved against the importing package.
+
+    ``from . import pool`` inside ``cratekit.core`` names ``cratekit.core.pool``
+    and the identical line inside ``somewhere.else`` names ``somewhere.else.pool``,
+    which is a different module in a different distribution. One of them is the
+    thing a guard is looking for and the other is not, and the only thing that
+    tells them apart is where the importing file sits.
+
+    None means the import reaches nothing this walk can name: either there is no
+    package to resolve against, or the dots climb past the top of the package
+    tree, which is an import the interpreter itself refuses.
+    """
+    if level == 0:
+        return module or None
+    if package is None:
+        return None
+    parts = package.split(".")
+    if level - 1 > len(parts):
+        return None
+    base = parts[: len(parts) - (level - 1)]
+    if not base:
+        return None
+    return ".".join([*base, module]) if module else ".".join(base)
+
+
+def package_of(path, source_root) -> str | None:
+    """The dotted package a module sits in, or None when it is not inside one.
+
+    The one piece of information :class:`ImportsOf` needs and was never given.
+    Every walk in this repository already holds the ``Path`` and threw it away at
+    ``read_text()``, so the fix is to pass it on rather than to compute anything
+    new.
+    """
+    try:
+        relative = path.resolve().relative_to(source_root.resolve())
+    except ValueError:
+        return None
+    parts = relative.parts[:-1]
+    return ".".join(parts) if parts else None
 
 
 class ImportsOf:
@@ -101,10 +145,22 @@ class ImportsOf:
     about ``cratekit.core.pool``, and asking it with a second copy of this walk
     is exactly the drift this file was created to end: the copy that learned to
     recognize an aliased import and the copy that did not.
+
+    AND PARAMETERIZED BY THE IMPORTING FILE'S PACKAGE, which is what makes the
+    relative half exact rather than approximate. Given the package, a relative
+    import is RESOLVED: the dots are counted against the package's own parts and
+    the result is compared like any absolute name. Without one, it falls back to
+    matching by dotted tail, which fires on a file in an unrelated package
+    writing ``from .pool import PoolPlan``, ``from . import pool``,
+    ``from . import core``, ``from .core.pool import PoolPlan`` or
+    ``from .. import cratekit``. All five are silent once the package is passed,
+    and all five are demonstrated in ``tests/test_pool_sizing.py``. Any caller
+    walking real files has the package for free and should pass it.
     """
 
-    def __init__(self, tree: ast.AST, module: str) -> None:
+    def __init__(self, tree: ast.AST, module: str, package: str | None = None) -> None:
         self.module = module
+        self.package = package
         parts = module.split(".")
         #: Every dotted prefix of the module, mapped to the path still to be
         #: walked from it. The module itself maps to the empty string. Derived
@@ -119,12 +175,18 @@ class ImportsOf:
         #: Local name -> the module attribute it was imported as.
         self.symbols: dict[str, str] = {}
 
-        def remainder(reached: str, *, relative: bool) -> str | None:
+        def remainder(reached: str, *, by_tail: bool) -> str | None:
             """What is left to walk from an imported name, or None if it misses."""
             if reached in ancestors:
                 return ancestors[reached]
-            if not relative:
+            if not by_tail:
                 return None
+            # Longest first, so a name that is a tail of two ancestors is
+            # credited to the more specific one. REDUNDANT for the three modules
+            # this file is asked about, since no two ancestors of any of them
+            # share a dotted tail, so reversing the order kills nothing today.
+            # Kept because the ambiguity is a property of the module NAME rather
+            # than of this code, and the next module asked about may have it.
             for path in sorted(ancestors, key=len, reverse=True):
                 if _dotted_tail_of(reached, path):
                     return ancestors[path]
@@ -137,14 +199,24 @@ class ImportsOf:
                         self.paths[alias.asname or alias.name] = ancestors[alias.name]
             elif isinstance(node, ast.ImportFrom):
                 imported = node.module or ""
-                relative = node.level > 0
-                if imported == module or (relative and _dotted_tail_of(imported, module)):
+                by_tail = False
+                if node.level:
+                    if package is None:
+                        # Nothing to resolve against, so fall back to the tail
+                        # heuristic and accept its one false direction.
+                        by_tail = True
+                    else:
+                        resolved = _absolute_module(package, node.level, imported)
+                        if resolved is None:
+                            continue
+                        imported = resolved
+                if imported == module or (by_tail and _dotted_tail_of(imported, module)):
                     for alias in node.names:
                         self.symbols[alias.asname or alias.name] = alias.name
                     continue
                 for alias in node.names:
                     reached = f"{imported}.{alias.name}" if imported else alias.name
-                    rest = remainder(reached, relative=relative)
+                    rest = remainder(reached, by_tail=by_tail)
                     if rest is not None:
                         self.paths[alias.asname or alias.name] = rest
         #: Local names that ARE the module, kept as its own set because that is
@@ -195,15 +267,16 @@ class ReviewImports(ImportsOf):
         return self.reaches
 
 
-def calls_attribute(source: str, module: str, wanted: str) -> bool:
+def calls_attribute(source: str, module: str, wanted: str, *, package: str | None = None) -> bool:
     """Whether this source CALLS ``module``'s ``wanted`` function, in any import shape.
 
     The general form of :func:`calls_review`. A call on something that merely has
     a function of the same name is not an answer, which is the whole reason this
-    binds through the import graph.
+    binds through the import graph. ``package`` is the package the source sits
+    in, and passing it is what makes a relative import resolve exactly.
     """
     tree = ast.parse(source)
-    imports = ImportsOf(tree, module)
+    imports = ImportsOf(tree, module, package)
     if not imports.reaches:
         return False
     return any(

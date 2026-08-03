@@ -574,3 +574,89 @@ trade, and it is the shape of a fix that is too restrictive rather than wrong.
 
 **Closes when:** a probe run is cheap enough to supervise from outside, or the
 first real loader is known well enough to say whether it spawns.
+
+---
+
+## R-17. The import walk to keep, and the argument the collapse must carry
+
+**Found:** during U12 round 2 verification, 2026-08-03. Fixed in round 3, and
+recorded here because the DECISION outlives this unit.
+
+Three files ask the same question about how one source file reaches one module:
+`tests/_source_guards.py` holds `ImportsOf`, which `tests/test_review_queue.py`,
+`tests/test_cli_contract.py` and `tests/test_pool_sizing.py` all read, and two
+sibling copies of the same walk exist elsewhere, one on `main` under the name
+`ReviewImports` and one on another branch. Collapsing the three into one is
+booked as follow up work and is not done here.
+
+**The verdict, so the collapse does not have to re-derive it.** Keep
+`ImportsOf`. It was driven against 18 true positive shapes and 13 false positive
+probes and it handles all 18, including every shape the first version of this
+unit was blind to, with no false positive on any absolute shape. The reason is
+structural rather than lucky: it DERIVES the import shapes from the target
+module's own dotted name instead of listing them, so an ancestor package, an
+alias, a submodule under another name and a direct symbol import are all one
+rule. A listed set of shapes is a set somebody has to remember to extend, and
+the two sibling copies are listed.
+
+**The one thing that had to be fixed first, and now is.** The five false
+positives it did produce were all relative imports: a file in an UNRELATED
+package writing `from .pool import PoolPlan`, `from . import pool`,
+`from . import core`, `from .core.pool import PoolPlan` or
+`from .. import cratekit` all fired. The cause was inherent to the signature.
+`ImportsOf` was handed source TEXT and a target module NAME and nothing else, so
+it could not know which package the importing file sat in, and it matched a
+relative import by dotted tail. Harmless in this repository today, verified:
+there are zero relative imports anywhere under `src/cratekit`.
+
+The importing file's package is now an argument, and a relative import is
+RESOLVED against it rather than tail matched, which makes that half exact rather
+than heuristic. The data was already there: `repository_modules()` yields `Path`
+objects and every caller threw the path away at `read_text()`. All five shapes
+are silent with a package, all four that can genuinely reach the module still
+bite from the package that owns them, and the fifth cannot reach it from
+anywhere, because a relative import may not climb above the top of a package
+tree.
+
+**What the collapse must carry.** The `package` argument, at every call site
+that walks real files. Without it the walk falls back to the tail heuristic,
+which is deliberate so that inline fixtures with no package still work, and the
+five false positives come back in the single place every guard reads. That is
+strictly worse than three copies each wrong in its own corner, because one wrong
+answer would then be everybody's answer.
+
+**Closes when:** the three-way collapse lands. It should keep this walk, thread
+`package_of(path, root)` from every walk that holds a path, and carry the
+fixtures that prove both directions. The two sibling copies were deliberately
+not read while this was decided, so the collapse still owes them a comparison.
+
+---
+
+## R-18. The cgroup mount point is read at an assumed location
+
+**Found:** during U12 round 3, 2026-08-03, while fixing the nested cgroup path.
+
+`cgroup_memory_headroom_bytes` now reads `/proc/self/cgroup` to find WHICH
+cgroup this process is in, and walks from there up to the mount, which closes
+the systemd case where a capped unit sits several levels below the root. What it
+still assumes is WHERE the hierarchy is mounted: `/sys/fs/cgroup` for version
+two and `/sys/fs/cgroup/memory` for version one.
+
+That is the documented location and it is right on every ordinary host. It is
+not guaranteed. The mount points are published in `/proc/self/mountinfo`, and a
+host that mounts the hierarchy somewhere else, or mounts only some controllers,
+reads as having no cap at all and falls back to the host's own memory reading.
+That is the same failure shape this unit exists to close, one layer further out.
+
+**Not fixed here, deliberately.** Reading `mountinfo` means parsing a fourth
+kernel format and deciding what to do when a controller is mounted more than
+once, which is a real case. The fallback when it goes wrong is the behaviour
+this module had before the container fix at all, so the cost of being wrong here
+is a pool sized as it was two commits ago rather than a pool sized against
+nothing. That is a much smaller hole than the one closed, and closing it
+properly is a unit rather than a line.
+
+**Closes when:** a real deployment target is known. If Cratekit ships in a
+container image with a fixed layout this closes as not applicable; if it ships
+onto hosts nobody controls, the mount points get read rather than assumed, with
+the same injection seam the two path constants already have.
