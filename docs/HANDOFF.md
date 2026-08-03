@@ -22,7 +22,7 @@ which blocks which. Read BOARD.md for what to update when a merge lands.
 and U35, plus the W1 through W6 hardening, the A4 whitelist addition, and U9's
 verdicts. Pushed to the private remote. On `main` as this branch left it,
 **3252 passed, 15 skipped**, ruff clean, `scan_repo` clean. This branch's own
-battery after round 3 is **3300 passed, 15 skipped** out of 3315 collected, ruff
+battery after round 4 is **3326 passed, 15 skipped** out of 3341 collected, ruff
 clean, `scan_repo` clean. Quote the PASS count here, never the collected total:
 they differ by the skips, and an earlier line in this file and one commit trailer
 both quoted the collected number as if it were passes.
@@ -33,8 +33,20 @@ deleted. Five files conflicted, `docs/HANDOFF.md`,
 `docs/residual-findings.md`, `src/cratekit/cli/registry.py`,
 `src/cratekit/core/cause.py` and `tests/test_cli_contract.py`, and every one was
 two sides appending to the same region rather than two sides changing one thing.
-The merged battery was **3395 passed, 16 skipped** out of 3411 collected, ruff
-clean, `scan_repo` clean.
+
+**THE MERGED NUMBERS RECORDED HERE AFTER ROUND 3 WERE MEASURED ON THE ROUND 2
+TIP, and are corrected rather than adjusted.** They read 3395 passed, 16 skipped
+out of 3411 collected, which is exactly nineteen short of the merge of the round
+3 tip, nineteen being the number of assertions round 3 added. The merge had been
+run before round 3 was committed, so it described a tree that no longer existed
+by the time the line was written. The conflict set of five files and the ruff and
+`scan_repo` results were and are correct.
+
+MERGED BATTERY, re-measured on the round 4 tip: recorded in the commit that
+follows this one, because a merge measured before its own round is committed
+measures the round before it, which is the whole of what went wrong above.
+Re-measure it again after any further round, since every added assertion moves
+it.
 
 ## What U24 changed
 
@@ -163,9 +175,13 @@ identity whenever rekordbox filed the mix name in its dedicated `RemixerName` or
 re-acquired it. The module docstring asserted "the title is what carries the
 version", which the schema contradicts by having a Remixer column. The reader
 takes the mix name from either column now and `tombstone.version_title` composes
-it into the title, so the claim is true rather than assumed. Composition can only
-split one identity into two, never merge two into one, and it keeps the two-field
-identity the ISRC argument depends on.
+it into the title, so the claim is true rather than assumed, and it keeps the
+two-field identity the ISRC argument depends on. **Round 4 narrowed the safety
+claim that came with it**, which read "composition can only split one identity
+into two, never merge two into one": composing produces a title, and a title is a
+string another row may already hold, so `("Everything", "I Do")` and
+`("Everything (I Do)", "")` land on one identity. It is true when the second
+field really is a mix name, and what keeps it one is the producer, below.
 
 Four smaller ones, each an absence read as evidence. `apply`'s re-check took no
 `declined` predicate, so the function whose docstring says it re-runs EVERY
@@ -177,9 +193,77 @@ was excused from the completeness proof on an argument that covers streamed
 pseudo-locations only: a drive-letter path or a `file://` location is excused by
 the same branch, which on Windows empties the reference set entirely and proves
 every removed row unreferenced against nothing. `candidates._unnameable` refuses
-those two shapes and a genuinely streamed library still runs. See **R-18** for the
-half that belongs to `core.locations` and **R-17** for a folding collision that is
-recorded rather than fixed.
+those two spellings and NOTHING ELSE, which is round 4's correction: round 3
+recognised them with `locations.looks_like_location`, which is `"://" in value`,
+so `tidal://`, `spotify://`, `beatport://` and `https://` rows were refused too
+and the whole destructive verb went off for any library holding one streamed row
+spelled as a URL. Both directions are pinned now. See **R-18** for the half that
+belongs to `core.locations` and **R-17** for a folding collision that is recorded
+rather than fixed.
+
+**ROUND FOUR FIXED A REGRESSION ROUND THREE INTRODUCED, WIDENED THE UNDO TO THE
+INTERRUPTS THAT MISS IT, AND SETTLED WHAT AN IDENTITY IS.** Five blocking
+findings and nine more, all driven end to end by an independent verifier.
+
+The regression is the one above: narrowing which excused rows count against the
+proof was right, and recognising them by `"://" in value` refused every streamed
+row that carries a scheme. That is a destructive verb turning itself off
+permanently with a step nobody can perform. Only `file://` names a file, so only
+`file://` and a drive letter refuse, and the four other schemes are asserted
+excused.
+
+`run._record_or_put_it_back` caught `Exception`, and the failure most likely to
+land in that window is not one. The store write takes a sibling lock, which is
+the slowest part of the pass, so a Ctrl-C lands there: `KeyboardInterrupt` and
+the `SystemExit` a SIGTERM handler raises are both `BaseException` and both
+walked past the undo, leaving the file in the Trash with no tombstone and the
+next run retiring the row through `GONE`. `trash.move_to_trash` had used
+`except BaseException` for the identical window one file over since it shipped.
+Both handlers take it now. **`Category.GONE`'s safety argument is corrected
+rather than repeated**: no handler catches a SIGKILL or a power loss, so the
+guarantee is "every failure this process can observe" and the rest is bounded by
+the file being in the Trash rather than unlinked, and by what is lost being the
+suppression rather than the music. Recorded as **R-20** with the write-ahead
+intent that would actually close it.
+
+**Three findings that were one question: what is an identity.**
+`version_title`'s containment short circuit was a plain substring test, so a
+version appearing anywhere in the title was dropped from the identity and `Live`
+counted as carried by `Lively Up`. Two rows of one recording then shared one
+identity and deleting either suppressed both, which is the over-suppression
+direction and the exact defect round 3 claimed to close. A version is carried now
+only when a BRACKETED group of the title names it at word boundaries, which keeps
+`Strobe (Michael Woods Remix)` from composing a second time even though
+`RemixerName` holds the bare artist name `Michael Woods`.
+
+And `Subtitle` is not `RemixerName`. `RemixerName` is an association proxy into
+`djmdArtist`, so rekordbox's schema says a non-empty value is a remixer, and it
+is believed on sight. `Subtitle` is free text mapping to ID3 `TIT3` and holds a
+label, a featured credit or a note as readily as a mix name, so believing it on
+sight wrote an ordinary track's tombstone under `atlas (anjunadeep)` while the
+consulter, which is handed a provider's `Atlas`, answered NOT SUPPRESSED. It is
+believed now only when the value reads as a version against a closed vocabulary,
+and both directions are pinned. That is also what makes the narrowed composition
+claim true in practice: composition is safe because of what is fed to it, not
+because of what it does.
+
+Smaller: the `unnameable` tally and the payload's own spelling of the mix name
+are pinned rather than merely present, the dead first half of the version guard
+is live again under the bracketed test, and R-17's Turkish sentence is deleted
+because `str.lower` and `str.casefold` behave identically for the dotless and
+dotted i. The Greek final sigma reason is real and the re-keying reason is
+decisive on its own, so R-17's decline stands. **R-19** records a square-bracketed
+mix name never matching the parenthesised spelling a provider uses.
+
+**ON "THE STALE SENTENCE IS CORRECTED IN ALL FIVE PLACES", written in round 3's
+commit body: it is corrected in the four places that can be corrected.** Those
+are this file, `src/cratekit/cli/registry.py`, `tests/_pending.py` and
+`src/cratekit/deletion/__init__.py`, and each states the reason that is true. The
+fifth is `c4f97fb`'s commit body, and a commit body cannot be amended once it is
+in the history, so it carries the stale reason and always will. A claim that a
+repository has been made uniformly true has to exclude the parts of it that are
+immutable, and pointing at the superseding record is the whole of what can be
+done about them.
 
 **One rule that had two producers now has one implementation.**
 `trees.soft_delete_marker` is the single read of rekordbox's soft-delete marker,

@@ -66,6 +66,17 @@ def version_of(row: RemovedRow) -> dict[str, str]:
     and deleting either reported the other suppressed and never re-acquired it.
     ``tombstone.version_title`` is where the rule lives, below both this and the
     acquisition side, so a recorder and a consulter cannot compose differently.
+
+    **HOW THE RECORDER AND THE CONSULTER AGREE, WHICH IS NOT BY BOTH COMPOSING.**
+    :func:`suppressed_version` composes nothing, and it cannot: a provider
+    candidate arrives as one title with the mix name already inside it and no
+    second field to offer. So the agreement runs the other way. The RECORDER is
+    obliged to produce exactly the string the consulter will be handed, and it
+    keeps that obligation by composing only from a field that really is a version
+    designation, which ``library._version_of`` is what decides. Composing from a
+    ``Subtitle`` holding a label wrote the identity ``atlas (anjunadeep)`` for a
+    track a provider spells ``Atlas``, so the tombstone was written, was
+    listable, and answered NOT SUPPRESSED to the only question ever asked of it.
     """
     return tombstone.version_identity(
         artist=row.artist, title=tombstone.version_title(row.title, row.version)
@@ -155,10 +166,16 @@ def record_tombstone(
         payload={
             "artist": row.artist,
             "title": row.title,
-            # RIDES BESIDE THE TITLE RATHER THAN INSIDE IT, so a person reading a
-            # listing can see which of two same-titled versions this record is
-            # about. The identity composes the two; the payload keeps the row's
-            # own spelling, which is the same separation ``describe`` makes.
+            # RIDES BESIDE THE TITLE RATHER THAN INSIDE IT, and the claim made
+            # here used to be that a person reading a LISTING tells two
+            # same-titled versions apart by it. They do not: ``summarize`` is the
+            # only projection any surface renders and it does not emit this, and
+            # what distinguishes the two rows there is the composed identity line.
+            # What this is actually for is the record itself. It keeps the row's
+            # own spelling of the mix name, uncomposed and unfolded, so somebody
+            # auditing a suppression can see WHICH COLUMN VALUE the identity was
+            # built out of, which is the one thing the composed title cannot show
+            # and the first thing to look at when a tombstone missed.
             "version": row.version,
             "isrc": row.isrc or "",
             "content_id": row.content_id,

@@ -168,12 +168,28 @@ class Category(StrEnum):
     #: was RECORDED and wrong for one whose deletion was not: a run that trashed
     #: a file and then failed to write its tombstone would leave the file in the
     #: Trash, the version un-suppressed, and this category quietly retiring the
-    #: only row that could ever have said so. What makes the reading safe is that
-    #: the state cannot be reached: ``run._record_or_put_it_back`` puts the file
-    #: back when the tombstone cannot be written, so a file that is absent at the
-    #: start of a run is a file whose deletion completed. The docstring is stated
-    #: as a consequence of that guarantee rather than as a property of absence,
-    #: because absence on its own does not carry it.
+    #: only row that could ever have said so.
+    #:
+    #: **WHAT ACTUALLY PROTECTS THE INVARIANT, STATED AS THE PARTIAL GUARANTEE IT
+    #: IS.** ``run._record_or_put_it_back`` puts the file back whenever the
+    #: tombstone cannot be written, and it catches ``BaseException``, so it covers
+    #: every failure THIS PROCESS CAN OBSERVE: a store refusal, a full disk, a
+    #: lock it cannot take, a Ctrl-C, and the ``SystemExit`` a SIGTERM handler
+    #: raises. It cannot cover what the process never observes. A SIGKILL or a
+    #: power loss in the window between the rename and the record leaves the file
+    #: in the Trash with no tombstone, and on the next run this category retires
+    #: the row. NO HANDLER CLOSES THAT, and claiming the state is unreachable
+    #: would be claiming something no in-process code can deliver.
+    #:
+    #: Three things bound the cost rather than remove it. The window is one
+    #: rename plus one store write per candidate, so it is small and it is not a
+    #: long-running operation. The file is in the TRASH rather than unlinked, so
+    #: it is still the user's file and recoverable by hand. And the tombstone is
+    #: the thing lost, not the music: the version becomes re-acquirable, which is
+    #: the under-suppression direction this package calls the milder one. The
+    #: durable repair is a write-ahead intent, the record written as pending
+    #: BEFORE the rename and settled after, which is a change to the store
+    #: contract rather than to this category. It is recorded as R-20.
     GONE = "gone"
     #: A person was shown this file and said to keep it (R35). Never offered
     #: again until the decline is revoked, which means it is suspended rather
@@ -310,6 +326,15 @@ class ReferenceSet:
 #: no file. On Windows every ``C:\`` row fails it too.
 _DRIVE_LETTER = re.compile(r"^[A-Za-z]:[\\/]")
 
+#: The ONE scheme that names a file, and therefore the only scheme whose rows are
+#: paths rather than rows referencing no file. Tested as its own pattern rather
+#: than through ``locations.looks_like_location``, which is ``"://" in value`` and
+#: is true of every streaming pseudo-location there is. Case-insensitive because a
+#: URL scheme is case-insensitive and an upper-case spelling names a file just as
+#: surely; anchored, because a title containing the text ``file://`` is not a
+#: location.
+_FILE_LOCATION = re.compile(r"^file://", re.IGNORECASE)
+
 
 def _unnameable(recorded: str) -> bool:
     """Whether a row excused as "not a path" is in fact a path, unnameably spelled.
@@ -338,15 +363,26 @@ def _unnameable(recorded: str) -> bool:
       module nor ``library.read_collection`` routes a recorded value through it,
       so a percent-encoded location is excused the same way.
 
-    REFUSING IS THE NARROW ANSWER RATHER THAN THE BROAD ONE. It fires only for a
-    row that positively looks like a path, so a genuinely streamed library still
-    runs, which is the case the excusal was built for and the case that must not
-    be broken by fixing this one. A destructive verb proving a file unreferenced
-    against an empty reference set is the worst shape this unit has, and this is
-    the half of it U24 can close from inside its own package.
+    REFUSING IS THE NARROW ANSWER RATHER THAN THE BROAD ONE, AND IT USED TO BE
+    THE BROAD ONE. The second test asked ``locations.looks_like_location``, which
+    is ``"://" in value`` and therefore true of ``tidal://track/123``,
+    ``spotify://track/abc`` and ``https://api.tidal.com/v1/tracks/123`` as
+    readily as of ``file://``. Every one of those is a row that references NO
+    file, which is the exact case the excusal exists for, so the whole
+    destructive verb refused for any library holding one streamed row spelled as
+    a URL, with a remedy, "run this on the machine the library was recorded on",
+    that a streamed row can never satisfy and no configuration can clear.
+
+    The scheme is what carries the meaning: ``file`` names a file and every other
+    scheme names a service. So the test is the ``file`` scheme by name, and a
+    pseudo-location under any other scheme stays excused exactly as it was. A
+    destructive verb proving a file unreferenced against an empty reference set
+    is the worst shape this unit has, and this is the half of it U24 can close
+    from inside its own package, without taking the feature away from anybody who
+    has ever streamed anything.
     """
     text = str(recorded).strip()
-    return bool(_DRIVE_LETTER.match(text)) or locations.looks_like_location(text)
+    return bool(_DRIVE_LETTER.match(text)) or bool(_FILE_LOCATION.match(text))
 
 
 def _anchor_text(value: str) -> str:

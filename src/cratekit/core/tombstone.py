@@ -38,11 +38,30 @@ re-acquires it. Over-suppression silently withholds music the user wants.
 So a producer that holds the version in a separate field COMPOSES IT INTO THE
 TITLE before asking for an identity, through :func:`version_title`, and the rule
 lives here rather than at each producer for the same reason the store key does.
-Composition can only ever split one identity into two, never merge two into one,
-so it moves strictly away from over-suppression. It also keeps the two-field
-identity intact, which the ISRC paragraph below is the argument for: a provider
-candidate arrives with the mix name already inside its title and no separate
-field to offer, so a THIRD key would be a key one side never has.
+It keeps the two-field identity intact, which the ISRC paragraph below is the
+argument for: a provider candidate arrives with the mix name already inside its
+title and no separate field to offer, so a THIRD key would be a key one side
+never has.
+
+**WHAT COMPOSITION GUARANTEES, NARROWED TO WHAT IS TRUE.** It used to be written
+here that composition "can only ever split one identity into two, never merge two
+into one", so it moved strictly away from over-suppression. That is true WHEN THE
+SECOND FIELD REALLY IS A MIX NAME, which is the case it was written for, and it
+is false in general. Composing produces a title, and a title is a string another
+row may already hold, so two identities that were distinct MERGE whenever one
+row's composed title equals another row's plain one::
+
+    ("Everything", "I Do")  and  ("Everything (I Do)", "")
+    ("Sun", "Sun Path")     and  ("Sun (Sun Path)", "")
+
+Both pairs land on one identity, and deleting either member suppresses the other,
+which is the over-suppression direction. What makes those unreachable in practice
+is upstream rather than here: they need a version field holding something that is
+not a mix name, and ``deletion.library`` believes ``RemixerName``, which
+rekordbox's schema dedicates to a remixer, while it believes ``Subtitle``, which
+is ID3 ``TIT3`` and holds anything at all, ONLY when the value reads as a version.
+So the honest statement is that composition is safe because of what is fed to it,
+not because of what it does, and the producer is where that is guarded.
 
 **WHY THE ISRC IS NOT IN THE IDENTITY, recorded because it is the obvious
 suggestion and it is wrong.** An ISRC does identify a specific recording, and a
@@ -106,6 +125,12 @@ KIND_REMOVED_FILE = "removed-file"
 #: it is the only structural thing here that is folded.
 _SPACING = re.compile(r"\s+")
 
+#: Every parenthesised or bracketed group in a title, which is where a title that
+#: already carries its own mix name keeps it. Non-nesting on purpose: a title with
+#: nested brackets is not a shape any provider spells, and the inner group is
+#: matched on its own anyway.
+_BRACKETED = re.compile(r"\(([^()]*)\)|\[([^\[\]]*)\]")
+
 
 def fold(value: str) -> str:
     """One spelling of a free-text field, for identity purposes only.
@@ -122,10 +147,58 @@ def fold(value: str) -> str:
     return _SPACING.sub(" ", unicodedata.normalize("NFC", str(value)).casefold()).strip()
 
 
+def _already_carries(title: str, folded_version: str) -> bool:
+    """Whether the title already names this version, AS A VERSION.
+
+    **A PLAIN SUBSTRING TEST IS WHAT THIS REPLACES, AND IT WAS SILENTLY DROPPING
+    VERSIONS OUT OF IDENTITIES.** ``folded_version in fold(title)`` is true
+    whenever the version appears anywhere at all, so ``Live`` counted as already
+    carried by ``Lively Up`` and ``Extended`` by ``Extended Play Track``. Two rows
+    of one recording, one with the column empty and one with it filled in, then
+    produced ONE identity, deleting either suppressed both, and that is the
+    over-suppression direction this module's docstring calls the worse one.
+
+    So the test is DELIMITED, and the delimiter is a bracket. A title carries its
+    own mix name inside ``(...)`` or ``[...]`` and nowhere else, because that is
+    the convention every provider and every rekordbox library actually spells, so
+    a version is already carried when a bracketed group of the title NAMES it.
+    ``Lively Up`` has no groups at all and ``Extended Play Track`` has none
+    either, so both compose and both stay distinct from the bare title.
+
+    THE MATCH INSIDE THE GROUP IS ITSELF DELIMITED, on word boundaries rather
+    than on the whole group, and that is not fussiness. rekordbox's
+    ``RemixerName`` is an association proxy into ``djmdArtist``, so it holds an
+    ARTIST NAME: the row is ``Strobe (Michael Woods Remix)`` with ``Michael
+    Woods`` in the column. Requiring the group to equal the version would compose
+    that into ``Strobe (Michael Woods Remix) (Michael Woods)``, a spelling no
+    provider will ever produce and therefore a tombstone that suppresses nothing.
+    Requiring the group to CONTAIN the version at word boundaries answers yes,
+    and still answers no for ``Live`` against a group reading ``Lively``.
+
+    Lookarounds rather than ``\\b`` because a mix name may begin or end with a
+    character that is not a word character, and ``\\b`` is defined against the
+    character next to it in the PATTERN, so it silently means nothing there.
+    """
+    folded_title = fold(title)
+    delimited = re.compile(rf"(?<!\w){re.escape(folded_version)}(?!\w)")
+    return any(
+        delimited.search(group)
+        for match in _BRACKETED.finditer(folded_title)
+        for group in match.groups()
+        if group is not None
+    )
+
+
 def version_title(title: str, version: str) -> str:
     """The title with the version in it, for a producer that holds the two apart.
 
-    Both halves of the guard matter and each closes a real shape.
+    Both halves of the guard matter and each closes a real shape. The first half
+    is load-bearing rather than decorative, which it was NOT while the second one
+    was a plain substring test: ``fold("")`` is ``""`` and ``"" in anything`` is
+    true, so the empty check could be deleted with nothing noticing. It cannot be
+    now, because :func:`_already_carries` asks a bracketed question that an empty
+    version answers no to, and deleting the check would compose ``Strobe ()``
+    for every ordinary row in the library.
 
     AN EMPTY VERSION CHANGES NOTHING, so the ordinary row, which is most of them,
     produces exactly the identity it produced before this function existed.
@@ -144,7 +217,7 @@ def version_title(title: str, version: str) -> str:
     the wild.
     """
     folded_version = fold(version)
-    if not folded_version or folded_version in fold(title):
+    if not folded_version or _already_carries(title, folded_version):
         return title
     return f"{title} ({version})" if title else version
 

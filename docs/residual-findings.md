@@ -506,6 +506,17 @@ database half; the explicit half needs conformance 3 to answer an explicit gate
 the way the product says it must be answered, which is through `run.decide`
 against a recorded run. A branch is correcting that assertion.
 
+**2026-08-03: that branch landed and the explicit half is DOWN.** Main's
+`3269ab1` rewrote conformance 3, and `delete.review` was built on a throwaway
+merge and driven through all four acts: it refuses at its gate, refuses an inline
+answer without recording it, takes the answer from a separate `run decide` act
+with its actor, and resumes past the gate. It stops one step later at exit 22,
+`library-directory-missing`, which is the DATABASE half above, unchanged and
+still owned by U27. The paragraph above is left standing rather than rewritten,
+because what it recorded was true when it was written and the correction is worth
+more beside it than instead of it. The full record is in `docs/HANDOFF.md`,
+`tests/_pending.py` and `src/cratekit/deletion/__init__.py`.
+
 **2026-08-02, same evening, CORRECTED.** U24's first pass re-pointed both
 deletion verbs to U27 through a `DELETION_CLI_UNIT` constant. That is reverted,
 and the reasoning is recorded because the reversal is itself a judgement:
@@ -705,9 +716,15 @@ one: a missed suppression re-acquires something and REPORTS it, while an
 over-eager one silently withholds music the user wants.
 
 **Why it is not fixed here.** Every alternative is worse in a way that is not
-smaller. `str.lower` is not full case folding and gets Turkish dotless i and
-Greek final sigma wrong, which are real title characters, and it would change the
-identity of every record already written. Comparing the unfolded strings as well
+smaller. `str.lower` is not full case folding: it leaves the Greek final sigma
+`ς` alone where `casefold` maps it onto `σ`, so two spellings of one Greek title
+would stop matching, and `ς` is a real title character. It would also change the
+identity of every record already written, which is decisive on its own and would
+be decisive even if the Greek case did not exist. **The Turkish sentence that
+used to stand here was wrong and is removed:** `lower` and `casefold` behave
+IDENTICALLY for the dotless `ı` and the dotted `İ`, verified in the interpreter,
+so Turkish does not distinguish the two operations and never argued for either.
+Comparing the unfolded strings as well
 would make the identity carry two spellings of one field, so a recorder and a
 consulter that normalised differently would stop matching, which is exactly the
 property the two-field identity exists to guarantee. There is no folding here
@@ -720,9 +737,10 @@ correctness property that is load-bearing every day, to close a collision that i
 rare, and that trade should be made deliberately rather than inside a fix round.
 
 **Closes when:** the identity can carry a discriminator that both a recorder and
-a consulter always have and that survives folding, or the product decides the
-Turkish and Greek cost is acceptable and moves to a narrower fold. Either one is
-a decision about the identity contract rather than a repair.
+a consulter always have and that survives folding, or the product decides the Greek
+final sigma cost and the re-keying of every record already written are acceptable
+and moves to a narrower fold. Either one is a decision about the identity
+contract rather than a repair.
 
 ---
 
@@ -756,25 +774,120 @@ decode, and two such shapes exist:
    through the decoder, so such a value is excused the same way.
 
 **What U24 closed from inside its own package.** `candidates._unnameable`
-inspects the recorded value of every row the resolver excused and splits it: a
-drive-letter path or a `file://` location is `unnameable` and REFUSES through
-`assert_complete`, and anything else stays `not_a_path` and still runs. The split
-is on whether the value looks like a path rather than on how many rows were
-excused, so there is no threshold to tune wrong, and a genuinely streamed library
-is asserted to still run. A destructive verb proving a file unreferenced against
-an empty reference set is the worst shape this unit has, and this closes it for
-the two spellings that are known.
+inspects the recorded value of every row the resolver excused and splits it. It
+recognises exactly two spellings, and the list is exhaustive rather than
+illustrative:
+
+- a value matching `^[A-Za-z]:[\\/]`, a drive-letter path;
+- a value matching `^file://` case-insensitively, the one URL scheme that names
+  a file.
+
+Both are `unnameable` and REFUSE through `assert_complete`. **Everything else
+stays `not_a_path` and still runs, and that is a decision rather than an
+omission.** `tidal://track/123`, `spotify://track/abc`, `beatport://12345` and
+`https://api.tidal.com/v1/tracks/123` all reference NO file, which is the entire
+argument for excusing them, so all four are excused and all four are pinned as
+such. The round 3 recogniser asked `locations.looks_like_location`, which is
+`"://" in value` and therefore true of every one of them, and that turned the
+whole destructive verb off for any library holding one streamed row spelled as a
+URL, with a remedy no such row can ever satisfy. It is fixed and both directions
+are asserted.
 
 **What is still open, and why it is not U24's to close.** The recogniser is a
-list of two known shapes rather than a decision the resolver makes, so a third
-spelling nobody has met yet is still excused silently. The real repair is in
-`locations`: `resolve_recorded_path` should distinguish "this is not a path" from
-"this is a path this build cannot name", and `read_collection` should route
-recorded values through `location_to_path` so the decoder that already exists is
-actually used. Both are edits to another unit's file, and a deletion pass
-reaching into the resolver to fix the resolver is how two decoders end up in one
-tree, which is the fault that cost 144 files.
+list of known shapes rather than a decision the resolver makes, so a spelling
+nobody has met yet is still excused silently. One is already known and stays
+open: a Windows DRIVE-RELATIVE path, `C:Music/Track.flac` with no separator after
+the colon, is a real path that names a file relative to the current directory of
+drive C, and `_DRIVE_LETTER` requires the separator, so that row is excused. Two
+of the three Windows spellings are closed and this is the third. It is left with
+the rest of R-18 rather than patched into the regular expression, because
+widening the pattern to `^[A-Za-z]:` would also catch a pseudo-location of the
+form `x:something`, and choosing between those two on a per-shape basis is
+exactly the guessing the resolver should be doing instead.
+
+The real repair is in `locations`: `resolve_recorded_path` should distinguish
+"this is not a path" from "this is a path this build cannot name", and
+`read_collection` should route recorded values through `location_to_path` so the
+decoder that already exists is actually used. Both are edits to another unit's
+file, and a deletion pass reaching into the resolver to fix the resolver is how
+two decoders end up in one tree, which is the fault that cost 144 files.
 
 **Closes when:** `core.locations` returns the two answers separately and the
 library reader decodes through it, at which point U24's consumer drops its
 recogniser and reads the resolver's own answer.
+
+---
+
+## R-19. A square-bracketed mix name never matches the provider spelling of the same version
+
+**Found:** during the U24 round 4 review, 2026-08-03. Verified against
+`cratekit.deletion.stores` with a recorded tombstone.
+
+`core.tombstone.fold` folds case, surrounding space, internal runs of space and
+Unicode composition form, and nothing else. Punctuation stays, so `Track (Live)`
+and `Track [Live]` are deliberately two identities. That is the module's stated
+conservatism and it is right in general, but it has one consequence worth naming
+concretely:
+
+    row:       title "Sun Path [Nightwave Remix]", version "Nightwave Remix"
+    identity:  {"artist": "...", "title": "sun path [nightwave remix]"}
+    consulted: suppressed_version(artist, "Sun Path (Nightwave Remix)") -> False
+
+The row already carries its mix name, so `version_title` correctly does not
+compose a second one, and the brackets survive into the identity. Every provider
+this product will ask spells that version with parentheses, so the tombstone is
+written, is listable, is revocable, and answers NOT SUPPRESSED to the only
+question ever asked of it.
+
+**Direction:** under-suppression. The version is re-acquired and the acquisition
+reports what it acquired, which this package calls the milder of the two
+failures. The over-suppression direction is what the conservatism buys, and it is
+the one that silently withholds music.
+
+**Pre-existing rather than introduced.** Round 3 put it inside U24's stated scope
+by making the recorder compose, so it is recorded here rather than left unsaid.
+
+**Why it is not fixed here.** Closing it means folding punctuation, which is a
+change to what an identity IS for every recorder and every consulter in the
+product, including ones outside deletion, and it would re-key every record
+already written. It also cannot be done halfway: normalising `[` to `(` on the
+recording side alone gives the recorder and the consulter two spellings of one
+rule, which is the exact fault `core.tombstone` exists to prevent.
+
+**Closes when:** the identity contract decides whether bracket style is part of a
+version, and both sides move together.
+
+---
+
+## R-20. A SIGKILL between the move and the tombstone still loses the record, and no handler can catch it
+
+**Found:** during the U24 round 4 review, 2026-08-03, as the honest half of the
+F2 fix.
+
+`run._record_or_put_it_back` closes the window where a file has reached the Trash
+and its tombstone has not been written. Round 3 caught `Exception`, which missed
+`KeyboardInterrupt` and the `SystemExit` a SIGTERM handler raises, and the store
+write takes a sibling lock, which is the slowest part of the pass and therefore
+where a Ctrl-C lands. Both are caught now, matching `trash.move_to_trash`, which
+already used `except BaseException` for the identical window.
+
+**What is left is what no in-process code can reach.** A SIGKILL, a power loss,
+or a kernel panic between the rename and the store write leaves the file in the
+Trash with no tombstone. On the next run the categoriser answers `GONE`, `GONE`
+is the one member of `HANDLED`, and the watermark retires the row. R36's "every
+completed deletion writes a tombstone" is then false for that row with nothing
+recording it.
+
+**What bounds the cost rather than removing it:** the window is one rename plus
+one store write per candidate; the file is in the TRASH rather than unlinked, so
+it is still the user's file; and what is lost is the suppression rather than the
+music, so the version becomes re-acquirable, which is the under-suppression
+direction. `Category.GONE`'s docstring states this as the partial guarantee it is
+rather than claiming the state is unreachable, which is what it claimed before.
+
+**Closes when:** the tombstone is written as a PENDING intent before the rename
+and settled after it, so an interrupted deletion is discoverable from the store
+rather than from the absence of a file. That is a change to the decision store's
+contract, since `core.review` records settled decisions and has no pending state,
+and it belongs with whoever owns that contract rather than inside a fix round for
+one consumer.

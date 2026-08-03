@@ -412,14 +412,33 @@ def _record_or_put_it_back(
     tombstone and no way back is a fact about their music, and the only thing
     that helps is being told both paths so they can move it themselves. The
     original cause rides inside so nothing about why is lost.
+
+    **BOTH HANDLERS TAKE ``BaseException``, WHICH IS THE SAME CHOICE
+    ``trash.move_to_trash`` ALREADY MADE FOR THE IDENTICAL WINDOW**, and taking
+    only ``Exception`` here left the hole this function was written to close. The
+    store write takes a sibling lock, which is the slowest thing in the pass, so
+    it is precisely where a Ctrl-C lands: ``KeyboardInterrupt`` and the
+    ``SystemExit`` a SIGTERM handler raises are both ``BaseException`` and neither
+    is an ``Exception``. Either one used to walk straight out of this function
+    with the file in the Trash and no tombstone, which is the state the whole
+    function exists to make unreachable. The undo runs first and the interrupt
+    then propagates untouched, because the bare ``raise`` re-raises what arrived
+    rather than something built here, so Ctrl-C still ends the process the way
+    the person asked it to.
+
+    THE INNER HANDLER TAKES IT TOO, and that one does convert: an interrupt
+    during the recover becomes this refusal. It is worth it. The alternative is a
+    bare traceback for the one state in this unit where a person must be told two
+    paths and a manual step, and the interrupt is not lost, it rides in as the
+    ``from`` cause.
     """
     try:
         return stores.record_tombstone(cfg, moved.row, actor=actor, trashed_to=str(target))
-    except Exception as exc:
+    except BaseException as exc:
         original = moved.resolved or moved.row.recorded
         try:
             trash.recover(target, original)
-        except Exception as undo:
+        except BaseException as undo:
             cause = exc.cause if isinstance(exc, CratekitError) else None
             raise refuse(
                 "internal-error",

@@ -27,11 +27,13 @@ no verb.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Iterable
 
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
+from cratekit.core.tombstone import fold
 from cratekit.write import trees
 
 
@@ -197,14 +199,89 @@ def _text(row: Any, attribute: str) -> str:
     return str(getattr(row, attribute, "") or "")
 
 
-#: The columns that can hold a mix name, in the order they are believed.
-#: ``RemixerName`` is rekordbox's own dedicated field and is what the application
-#: fills in from a tag; ``Subtitle`` is where the same information lands when it
-#: arrived from a file whose tags spelled it that way. FIRST NON-EMPTY WINS
-#: rather than both being joined, because two columns describing one mix would
-#: otherwise produce a title carrying it twice, and that is a second identity for
-#: one version.
-_VERSION_COLUMNS: tuple[str, ...] = ("RemixerName", "Subtitle")
+#: The words that make a value a VERSION DESIGNATION rather than a note about the
+#: track. A closed, explicit list rather than a shape test, because "does this
+#: read as a mix name" has no syntax to test: ``Extended Mix`` and ``Anjunadeep``
+#: are the same shape and only the vocabulary tells them apart.
+_VERSION_WORDS = frozenset(
+    {
+        "acapella",
+        "acoustic",
+        "alternate",
+        "bootleg",
+        "club",
+        "cut",
+        "demo",
+        "dub",
+        "edit",
+        "extended",
+        "flip",
+        "instrumental",
+        "interlude",
+        "live",
+        "mashup",
+        "mix",
+        "original",
+        "radio",
+        "remaster",
+        "remastered",
+        "remix",
+        "reprise",
+        "rework",
+        "session",
+        "unplugged",
+        "version",
+        "vip",
+    }
+)
+
+#: Splits a folded value into its words, so a vocabulary hit is a WORD and not a
+#: substring. Without it ``Remixed Records``, a label, would read as a version and
+#: ``Anjunadeep`` would too, on the ``dee``-shaped accidents a substring test
+#: makes.
+_WORD_SPLIT = re.compile(r"\W+", re.UNICODE)
+
+#: The columns that can hold a mix name, in the order they are believed, each
+#: with whether a non-empty value is believed ON SIGHT or has to read as a version
+#: first. FIRST BELIEVED VALUE WINS rather than the two being joined, because two
+#: columns describing one mix would otherwise produce a title carrying it twice,
+#: and that is a second identity for one version.
+#:
+#: **THE SECOND HALF OF EACH PAIR IS WHAT THE COLUMN IS GUARANTEED TO MEAN, AND
+#: THE TWO COLUMNS ARE NOT GUARANTEED THE SAME THING.** ``RemixerName`` is not a
+#: text column at all: it is an association proxy over ``RemixerID`` into
+#: ``djmdArtist``, exactly as ``ArtistName`` is, so rekordbox's own schema says a
+#: non-empty value is the artist who remixed this, and it is believed on sight.
+#: ``Subtitle`` is a free text column that maps to ID3 ``TIT3``, "subtitle or
+#: description refinement", and in real files that holds a label, a featured
+#: credit or a note as often as it holds a mix name. Believing it on sight put an
+#: ordinary track's identity under ``atlas (anjunadeep)``, so the consulter, which
+#: asks under the bare ``Atlas`` a provider hands it, answered NOT SUPPRESSED and
+#: R36 silently did not work for that row.
+_VERSION_COLUMNS: tuple[tuple[str, bool], ...] = (
+    ("RemixerName", False),
+    ("Subtitle", True),
+)
+
+
+def _reads_as_version(value: str) -> bool:
+    """Whether a free text value names a VERSION of the recording.
+
+    Folded through ``core.tombstone.fold``, which is the same folding the
+    identity itself uses, so this asks its question in the one spelling both
+    sides of the identity already agree on rather than inventing a second one.
+
+    WHICH WAY IT FAILS, STATED, because a vocabulary is never complete. A mix
+    name using none of these words is not believed, so the row keeps the bare
+    title it had before the version columns were read at all, and two versions
+    of one recording can share one identity again: that is the over-suppression
+    shape, and it is the price of the list. A note that happens to contain one of
+    these words IS believed, so an ordinary track's identity carries a
+    parenthetical and its tombstone misses, which is under-suppression. The list
+    is deliberately short and made of words that are version designations
+    wherever they appear, so the second direction stays rare.
+    """
+    return bool(_VERSION_WORDS.intersection(_WORD_SPLIT.split(fold(value))))
 
 
 def _version_of(row: Any) -> str:
@@ -216,11 +293,18 @@ def _version_of(row: Any) -> str:
     identity exactly as wide as it was before this was read, which is the
     behaviour that shipped, while an absent marker would decide whether a row is
     somebody's music.
+
+    A column that is not believed is SKIPPED rather than returned empty, so the
+    order in :data:`_VERSION_COLUMNS` keeps meaning what it says if a third
+    column is ever added below these two.
     """
-    for column in _VERSION_COLUMNS:
+    for column, must_read_as_version in _VERSION_COLUMNS:
         found = _text(row, column)
-        if found:
-            return found
+        if not found:
+            continue
+        if must_read_as_version and not _reads_as_version(found):
+            continue
+        return found
     return ""
 
 

@@ -2367,13 +2367,17 @@ def test_a_row_nobody_declined_is_still_trashed(cfg, gates_pass, tmp_path):
 # ── F6: a trashed file with no tombstone ─────────────────────────────────────
 
 
-def _tombstone_store_that_will_not_write(monkeypatch):
+def _tombstone_store_that_will_not_write(monkeypatch, *, raising=None):
     """Break ``record_tombstone`` behind a FLAG rather than by patching and undoing.
 
     ``monkeypatch.undo`` would also revert the volume identity and process probes
     the gates fixture installed, so a test that needs a working run afterwards has
     to switch the failure off rather than unwind the patch. The suite already
     learned this once, in the revoke test above.
+
+    ``raising`` names a class to raise instead of the store's own refusal, which
+    is how the ``BaseException`` shapes are driven. It defaults to None so the
+    ordinary refusal is still what the ordinary caller gets.
     """
     real = run.stores.record_tombstone
     broken = {"on": True}
@@ -2381,6 +2385,8 @@ def _tombstone_store_that_will_not_write(monkeypatch):
     def unwritable(cfg, row, *, actor, trashed_to=None):
         if not broken["on"]:
             return real(cfg, row, actor=actor, trashed_to=trashed_to)
+        if raising is not None:
+            raise raising()
         raise refuse(
             "review-file-unusable",
             "the suppression store could not be written",
@@ -2510,6 +2516,12 @@ def test_the_name_search_gives_up_at_a_bound_a_person_will_wait_for(tmp_path, mo
     assert excinfo.value.cause.scope is Scope.ITEM, (
         "running out of numbers is one file's problem, not the volume's"
     )
+    # NOT THE PIN, AND IT IS WORTH SAYING SO OUT LOUD. This reads the constant
+    # under test, so it holds the loop to whatever the constant says and holds
+    # the constant to nothing. The literal ceiling asserted at the top of this
+    # test is the only thing pinning the number itself, and the pair is sound
+    # only while both are here. Deleting the literal because "the other one
+    # covers it" restores exactly the defect this test was written for.
     assert tries["count"] == trash.MAX_NAME_ATTEMPTS, (
         "the loop did not stop at the declared bound, so the constant names one "
         "number and the code spends another"
@@ -2525,8 +2537,14 @@ def test_the_name_search_gives_up_at_a_bound_a_person_will_wait_for(tmp_path, mo
         "C:\\Music\\Track.flac",
         "D:/Music/Track.flac",
         "file://localhost/Volumes/Music/Caf%C3%A9%20Track.flac",
+        "FILE://localhost/Volumes/Music/Track.flac",
     ],
-    ids=["windows-backslash", "windows-slash", "percent-encoded-location"],
+    ids=[
+        "windows-backslash",
+        "windows-slash",
+        "percent-encoded-location",
+        "upper-case-scheme",
+    ],
 )
 def test_a_row_that_is_a_path_this_build_cannot_name_refuses(cfg, recorded):
     """The worst shape this unit has, closed from inside U24's own consumer.
@@ -2551,6 +2569,11 @@ def test_a_row_that_is_a_path_this_build_cannot_name_refuses(cfg, recorded):
         candidates.assert_complete(references)
     assert excinfo.value.cause.reason == "deletion-reference-set-incomplete"
     assert excinfo.value.cause.detail["unnameable_rows"] == ["9"]
+    assert excinfo.value.cause.detail["unnameable"] == 1, (
+        "the tally the refusal reports is not the tally it refused on, so a "
+        "person reading the detail is told a different number from the one that "
+        "stopped the run"
+    )
     assert excinfo.value.cause.remediation.steps
 
 
@@ -2574,3 +2597,328 @@ def test_a_genuinely_streamed_library_still_runs(cfg):
     candidates.assert_complete(references)
     answered = _categorize(cfg, [_removed(cfg, ONE, "1")], references)
     assert answered[0].category is candidates.Category.DELETABLE
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Round 4: what the last round over-restricted, and what an identity is
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── R4-F1: a streamed row spelled as a URL is not a path ─────────────────────
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    [
+        "tidal://track/123",
+        "spotify://track/abc",
+        "beatport://12345",
+        "https://api.tidal.com/v1/tracks/123",
+    ],
+    ids=["tidal", "spotify", "beatport", "https"],
+)
+def test_a_streamed_row_spelled_as_a_url_is_excused_rather_than_stopping_the_run(cfg, recorded):
+    """THE REGRESSION THE UNNAMEABLE SPLIT INTRODUCED, in every scheme that hits it.
+
+    The split asked ``locations.looks_like_location``, which is ``"://" in
+    value``, so every one of these landed in ``unnameable``, made ``complete``
+    false, and refused the whole destructive verb at RUN scope with the step "run
+    this on the machine and platform the library was recorded on". A streamed row
+    can never satisfy that step and no configuration change clears it, so one
+    such row in a library turned deletion off permanently.
+
+    A pseudo-location references no file, which is the entire argument for
+    excusing it, and the argument does not care whether it is spelled with a
+    scheme. Only ``file`` names a file.
+    """
+    _music(cfg, ONE)
+    active = [trees.ContentRow(content_id="9", recorded=recorded, deleted=False)]
+    references = _references(cfg, active)
+
+    assert references.unnameable == (), (
+        "a row that references no file was called a path this build cannot "
+        "name, which refuses the run with a step nothing can satisfy"
+    )
+    assert references.not_a_path == ("9",)
+    assert references.complete
+    candidates.assert_complete(references)
+
+    answered = _categorize(cfg, [_removed(cfg, ONE, "1")], references)
+    assert answered[0].category is candidates.Category.DELETABLE, (
+        "the run refused rather than proceeding, so the verb is off for every "
+        "library that has ever streamed anything"
+    )
+
+
+# ── R4-F2: an interrupt is not an Exception ──────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "interrupt", [KeyboardInterrupt, SystemExit], ids=["ctrl-c", "sigterm"]
+)
+def test_an_interrupt_during_the_store_write_still_puts_the_file_back(
+    cfg, gates_pass, tmp_path, monkeypatch, interrupt
+):
+    """The undo caught ``Exception``, and the likeliest failure here is not one.
+
+    The store write takes a sibling lock, which is the slowest thing in the pass
+    and therefore exactly where a Ctrl-C lands. ``KeyboardInterrupt`` and the
+    ``SystemExit`` a SIGTERM handler raises are both ``BaseException``, so both
+    walked straight past the undo: the original path was gone, the Trash held the
+    audio, no tombstone existed, and the next run answered GONE, which is the one
+    member of HANDLED, so the watermark retired the only row that could ever have
+    said so. ``trash.move_to_trash`` already caught ``BaseException`` for the
+    identical window one file over.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    db = _prepared(cfg)
+    found = run.plan(cfg, db, actor="cli")
+    _confirm(cfg, run.present(cfg, found)[0].item_id)
+    broken = _tombstone_store_that_will_not_write(monkeypatch, raising=interrupt)
+
+    with pytest.raises(interrupt):
+        run.apply(cfg, db, actor="cli", home=home)
+
+    original = Path(cfg.library.root) / "Music" / ONE
+    assert original.exists(), (
+        "an interrupt left the file in the Trash with no tombstone, which is the "
+        "one state in this unit that loses an invariant with no trace at all"
+    )
+    assert original.read_bytes() == b"audio bytes"
+    assert stores.list_tombstones(cfg, include_revoked=True) == ()
+    assert list((home / ".Trash").iterdir()) == []
+
+    # And the row is still live business, because GONE would have retired it.
+    broken["on"] = False
+    again = run.plan(cfg, db, actor="cli")
+    assert [item.category for item in again.candidates] == [candidates.Category.DELETABLE]
+    finished = run.apply(cfg, db, actor="cli", home=home)
+    assert len(finished.trashed) == 1
+    assert len(stores.list_tombstones(cfg)) == 1
+
+
+# ── R4-F3: a version contained in a title is not a version carried by it ─────
+
+
+@pytest.mark.parametrize(
+    ("title", "version"),
+    [("Lively Up", "Live"), ("Extended Play Track", "Extended")],
+    ids=["live-inside-lively", "extended-inside-extended-play"],
+)
+def test_a_version_that_is_merely_a_substring_of_the_title_still_splits_the_identity(
+    cfg, title, version
+):
+    """The containment short circuit was a PLAIN SUBSTRING TEST on folded text.
+
+    So a version appearing anywhere in the title at all was dropped out of the
+    identity: ``Live`` was "already carried" by ``Lively Up`` and ``Extended`` by
+    ``Extended Play Track``. Two rows of one recording, one with the column empty
+    and one with it filled in, then produced ONE identity, and recording the
+    second suppressed the first. That is over-suppression, which this module's
+    own docstring calls the worse direction, and it is the defect round 3 claimed
+    to close.
+    """
+    plain = _remixed(cfg, ONE, "1", title=title, version="")
+    carried = _remixed(cfg, TWO, "2", title=title, version=version)
+
+    assert stores.version_of(plain) != stores.version_of(carried), (
+        "the two versions share one identity, so deleting either suppresses both"
+    )
+    stores.record_tombstone(cfg, carried, actor="cli")
+    assert stores.suppressed_version(cfg, artist=ARTIST, title=f"{title} ({version})")
+    assert not stores.suppressed_version(cfg, artist=ARTIST, title=title), (
+        "the version the person kept is suppressed, and it will never be "
+        "offered to them again"
+    )
+
+
+def test_a_remixer_name_inside_the_titles_own_bracket_is_not_composed_twice(cfg):
+    """The legitimate case a bracket-only test would have broken.
+
+    ``RemixerName`` is an association proxy into ``djmdArtist``, so it holds an
+    ARTIST name and not a mix name: the real row is ``Strobe (Michael Woods
+    Remix)`` with ``Michael Woods`` in the column. Requiring the bracketed group
+    to EQUAL the version would compose ``Strobe (Michael Woods Remix) (Michael
+    Woods)``, which no provider will ever spell, so the tombstone would suppress
+    nothing. The group has to CONTAIN the version at word boundaries, which is
+    the test that answers yes here and still answers no for ``Live`` inside
+    ``Lively``.
+    """
+    inline = _remixed(cfg, ONE, "1", title="Strobe (Michael Woods Remix)", version="Michael Woods")
+    assert stores.version_of(inline)["title"] == "strobe (michael woods remix)"
+    stores.record_tombstone(cfg, inline, actor="cli")
+    assert stores.suppressed_version(cfg, artist=ARTIST, title="Strobe (Michael Woods Remix)")
+
+
+def test_a_square_bracketed_mix_name_keeps_its_brackets_which_is_R_19(cfg):
+    """Pinned as the CURRENT behaviour, and it is a residual rather than a fix.
+
+    Nothing is folded but case, space and composition form, so ``Track (Live)``
+    and ``Track [Live]`` are deliberately two identities. The consequence is that
+    a row whose title already carries its mix name in square brackets keeps them,
+    and a provider spelling the same version with parentheses does not match it.
+    That is under-suppression, the milder direction, and closing it means folding
+    punctuation for every identity in the product. Recorded as R-19.
+    """
+    bracketed = _remixed(cfg, ONE, "1", title="Sun Path [Nightwave Remix]", version="Nightwave Remix")
+    assert stores.version_of(bracketed)["title"] == "sun path [nightwave remix]"
+    stores.record_tombstone(cfg, bracketed, actor="cli")
+    assert not stores.suppressed_version(cfg, artist=ARTIST, title="Sun Path (Nightwave Remix)")
+
+
+# ── R4-F4: a Subtitle is not guaranteed to be a mix name ─────────────────────
+
+
+def _subtitled(cfg, name, content_id, *, title, subtitle, usn=50):
+    row = _content(cfg, name, content_id, deleted=True, usn=usn, title=title)
+    row.RemixerName = ""
+    row.Subtitle = subtitle
+    return row
+
+
+def test_a_subtitle_that_is_not_a_mix_name_leaves_the_identity_the_provider_spells(cfg):
+    """rekordbox's ``Subtitle`` is ID3 ``TIT3`` and holds a label as readily as a mix.
+
+    Believing it on sight wrote an ordinary track's tombstone under ``atlas
+    (anjunadeep)``. The consulter is handed a provider's title, which is
+    ``Atlas``, so it answered NOT SUPPRESSED: R36 did not work for that row, and
+    nothing anywhere reported it, because the tombstone existed and was listable.
+    """
+    row = _subtitled(cfg, ONE, "1", title="Atlas", subtitle="Anjunadeep")
+    seen = library.read_collection(FakeQuery([row]), since=0)
+
+    assert seen.removed[0].version == ""
+    assert stores.version_of(seen.removed[0])["title"] == "atlas"
+    stores.record_tombstone(cfg, seen.removed[0], actor="cli")
+    assert stores.suppressed_version(cfg, artist=ARTIST, title="Atlas"), (
+        "the tombstone was written under a title no acquisition source will ever "
+        "ask about, so the suppression exists and does nothing"
+    )
+
+
+def test_a_subtitle_that_is_a_mix_name_is_still_composed(cfg):
+    """The other direction, which is the collision the Subtitle column exists to close.
+
+    A library that files the mix name in ``Subtitle`` still gets two identities
+    for two versions, so narrowing which subtitles are believed may not quietly
+    take that back.
+    """
+    original = _subtitled(cfg, ONE, "1", title="Strobe", subtitle="")
+    extended = _subtitled(cfg, TWO, "2", title="Strobe", subtitle="Extended Mix", usn=51)
+    seen = library.read_collection(FakeQuery([original, extended]), since=0)
+    by_id = {row.content_id: row for row in seen.removed}
+
+    assert by_id["2"].version == "Extended Mix"
+    assert stores.version_of(by_id["1"]) != stores.version_of(by_id["2"])
+    written = stores.record_tombstone(cfg, by_id["2"], actor="cli")
+    assert stores.suppressed_version(cfg, artist=ARTIST, title="Strobe (Extended Mix)")
+    assert not stores.suppressed_version(cfg, artist=ARTIST, title="Strobe")
+
+    # THE PAYLOAD KEEPS THE COLUMN VALUE, uncomposed and unfolded, and nothing
+    # pinned it. It is what an audit reads to see which column value an identity
+    # was built out of, which is the first thing to look at when a tombstone
+    # missed, and the composed title cannot show it.
+    assert written.payload["version"] == "Extended Mix"
+
+
+@pytest.mark.parametrize(
+    ("subtitle", "believed"),
+    [
+        ("Extended Mix", True),
+        ("Nightwave Remix", True),
+        ("Radio Edit", True),
+        ("Live at a Venue", True),
+        ("Instrumental", True),
+        ("Anjunadeep", False),
+        ("feat. A Guest", False),
+        ("Toolroom Records", False),
+        ("ripped from vinyl", False),
+        ("Mixmag Records", False),
+    ],
+)
+def test_which_subtitles_read_as_a_version(cfg, subtitle, believed):
+    """The vocabulary, in both directions, because a word list nothing drives rots.
+
+    A version word is a WORD and not a substring: ``Toolroom Records`` is a
+    label and must not read as a version because ``record`` looks like one when
+    it is tested with ``in``.
+    """
+    row = _subtitled(cfg, ONE, "1", title="Atlas", subtitle=subtitle)
+    seen = library.read_collection(FakeQuery([row]), since=0)
+    assert bool(seen.removed[0].version) is believed
+
+
+def test_a_remixer_name_is_believed_without_reading_as_a_version(cfg):
+    """``RemixerName`` is not free text, so the vocabulary must not be applied to it.
+
+    It is an association proxy over ``RemixerID`` into ``djmdArtist``, so a
+    non-empty value IS the artist who remixed this, by schema. Real remixer names
+    carry no version word at all, and holding that column to the vocabulary would
+    collapse every remix in the library back onto its original.
+    """
+    row = _content(cfg, ONE, "1", deleted=True, usn=50, title="Strobe")
+    row.RemixerName = "Michael Woods"
+    row.Subtitle = ""
+    seen = library.read_collection(FakeQuery([row]), since=0)
+
+    assert seen.removed[0].version == "Michael Woods"
+    assert stores.version_of(seen.removed[0])["title"] == "strobe (michael woods)"
+
+
+def test_a_bracketed_group_that_merely_contains_the_version_is_not_a_carry(cfg):
+    """The match INSIDE the bracketed group is delimited too, and it has to be.
+
+    A group is believed to name the version when it contains it at word
+    boundaries, which is what lets ``Michael Woods`` be recognised inside
+    ``(Michael Woods Remix)``. Testing plain containment inside the group instead
+    would put ``Live`` back inside ``(Lively Up Mix)`` and collapse two versions
+    onto one identity again, one bracket further in than the defect that was
+    fixed.
+    """
+    plain = _remixed(cfg, ONE, "1", title="Track (Lively Up Mix)", version="")
+    live = _remixed(cfg, TWO, "2", title="Track (Lively Up Mix)", version="Live")
+    assert stores.version_of(plain) != stores.version_of(live)
+    assert stores.version_of(live)["title"] == "track (lively up mix) (live)"
+
+
+def test_an_interrupt_while_putting_the_file_back_still_names_both_paths(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """The inner handler takes ``BaseException`` too, and that one converts.
+
+    An interrupt during the recover leaves the file in the Trash with no
+    tombstone and no way back, which is the one state in this unit where a person
+    has to be told two paths and a manual step. A bare traceback tells them
+    neither, so the interrupt becomes this refusal and rides in as its cause.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    db = _prepared(cfg)
+    found = run.plan(cfg, db, actor="cli")
+    _confirm(cfg, run.present(cfg, found)[0].item_id)
+    _tombstone_store_that_will_not_write(monkeypatch)
+
+    def interrupted(target, original):
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(run.trash, "recover", interrupted)
+
+    # CAUGHT AND RE-RAISED AS AN ASSERTION, because an interrupt that escapes
+    # here does not fail this test, it ENDS THE PYTEST SESSION, and a mutation
+    # measured against a suite that stopped early has measured nothing. This is
+    # the shape that turns "the guard is gone" into one named failure.
+    with pytest.raises(CratekitError) as excinfo:
+        try:
+            run.apply(cfg, db, actor="cli", home=home)
+        except KeyboardInterrupt as escaped:
+            raise AssertionError(
+                "the interrupt escaped the undo, so the one state where a person "
+                "must be told both paths and a manual step reaches them as a "
+                "bare traceback"
+            ) from escaped
+
+    cause = excinfo.value.cause
+    assert cause.reason == "internal-error"
+    assert str(Path(cfg.library.root) / "Music" / ONE) in cause.message
+    assert cause.detail["trashed_to"]
+    assert cause.remediation.steps and "by hand" in cause.remediation.steps[0]
