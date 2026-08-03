@@ -492,3 +492,120 @@ fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather
 than skips, so the battery runs either way and a supplied fixture strengthens it.
 The natural owner is U27, which lands doctor and is the unit that makes a machine
 ready.
+
+---
+
+## R-16. Four report verbs were owed by a unit that was about to close, and named a module nobody could build
+
+**Found:** during the U34 review, 2026-08-02, by two independent reviewers.
+
+**Numbering note:** R-14 and R-15 are issues #52 and #53 and were never written
+up here, so the gap is a missing pair of entries rather than two that somebody
+deleted. Numbers are not reused, because a slug in a commit message outlives the
+file.
+
+`audit.coverage`, `audit.duplicates`, `report.library` and `report.intake-aging`
+were declared in the registry against module `cratekit.reports.cli` with
+`planned_in="U34"`. U34's declared file list is `src/cratekit/modules/reports/`
+and its test module, and that is exactly what it landed: the duplicate audit and
+the intake aging engines, no command-line surface. The unit also cleared its
+`tests/_pending.py` entry, which was the required act of landing, since keeping
+it would have made `board.py audit` report a contradiction and exit 2.
+
+The two together are R-13 verbatim, one wave later. After `Closes #34`, all four
+markers would have named a closed unit: `board.py audit` prints "The board
+matches the repository" and exits 0, `test_a_planned_verb_whose_module_has_landed_must_lose_its_marker`
+asserts the module is ABSENT so it passes forever and never fires, and
+`scripts/board.py` reads `tests/_pending.py` and nothing else. Four verbs owned
+by no mechanism at all.
+
+The module path was also unbuildable as spelled. `test_layering.layer_of` ranks
+`cratekit.reports.cli` as `modules` and `cratekit.cli.registry` as `cli`, so the
+module that must dispatch through the registry could not have imported it. U10
+and U11 each made the same correction on landing, and the comments above the job
+and review blocks in the registry record both.
+
+**Fixed here.** The four entries name `cratekit.cli.reports` and go through one
+`REPORTS_CLI_UNIT` constant, and that module is registered in `tests/_pending.py`
+against **U27**, which is the file the board audit actually reads.
+
+**Why U27, stated so a human can move it again.** It is the only open unit whose
+declared file list already lands modules in `src/cratekit/cli/`, `setup.py` and
+`doctor.py`, so `cli/reports.py` is the same act in the same directory rather
+than a new kind of work for a unit that does none of it. Three of the four verbs
+emit `diagnostic/1`, which is doctor's own output surface, and U27 owns the check
+registry that surface is rendered against. And U27 is unblocked today, so the
+obligation can be discharged next rather than parked behind a dependency chain.
+
+Two alternatives were weighed and rejected. **U29** is the only unit that
+structurally cannot close while these verbs are missing, since its test scenario
+generates a parity table from the verb inventory, but its declared files are
+`docs/cutover.md` and `README.md` and its execution note forbids batching: giving
+a code obligation to a documentation unit is the same "owned by nobody" failure
+one hop later. **U36** owns `converge`, which is the database-side sibling of a
+coverage report, but `audit.coverage` here reads an export rather than the
+database, and neither aging nor duplicates has anything to do with tree rebuild.
+
+**What U27 inherits with it, stated rather than hidden.** `audit.coverage` and
+`report.library` have no engine anywhere in the tree; nothing computes tree
+coverage or library statistics today. So that unit lands two report engines as
+well as the shell. `audit.duplicates` and `report.intake-aging` are thin over
+engines U34 landed.
+
+**Closes when:** `src/cratekit/cli/reports.py` exists with the four builders, the
+two missing engines land beside the two that exist, and the `tests/_pending.py`
+entry is deleted, which arms the conformance assertions over all four verbs.
+
+---
+
+## R-17. The review-queue countdown is satisfied by an offer that never runs
+
+**Found:** during the U34 review, 2026-08-02.
+
+`tests/_source_guards.offers_into` answers True when a source contains a
+`review.offer(queue=Queue.DUPLICATES, ...)` call, and it walks the syntax tree,
+so the call may sit in a function nothing calls or under `if False:`. The armed
+countdown in `tests/test_review_queue.py` that asserts a landed target genuinely
+produces into the queue it was registered against therefore has a floor it cannot
+see below: a package could satisfy it with an offer that never executes.
+
+**Not fixed here.** Reachability is not decidable from a syntax tree in general,
+and the cheap half, rejecting a call under a literally false branch, buys nothing
+against an author who wanted to pass rather than to produce. The honest fix is a
+behavioural assertion per registered producer, which is what
+`tests/modules/test_reports.py` already does for this one: the audit is driven and
+the item is read back out of a store opened in a second process. That is the
+shape to generalize, and generalizing it belongs with the file it lives in.
+
+**Closes when:** each entry in `NEW_SURFACE_OWED_BY` is answered by driving its
+producer rather than by reading its source, once enough of them have landed for
+the shared harness to be worth writing. The natural owner is U26, which is the
+first unit to land a second producer into a declared surface.
+
+---
+
+## R-18. A third copy of the import-graph walk now lives in the reports suite
+
+**Found:** during the U34 review, 2026-08-02.
+
+`tests/_source_guards.py` exists because two files asked the same question with
+two copies of one walk and the copies diverged: one learned to recognize an
+aliased import and the other did not. `tests/modules/test_reports.py` adds a
+third copy, in `_resolved_imports`, and it has already diverged from the
+`tests/test_layering.py` copy over CapWords and dunder handling, which that file
+excludes from module expansion and this one does not.
+
+**Not fixed here**, deliberately. U12 is concurrently generalizing
+`_source_guards.ReviewImports` into a module-parameterized `ImportsOf`, which is
+where this walk belongs, and collapsing three copies into a shared helper in this
+round would put a large edit to a shared test module in front of that work and
+conflict with it. The copy here was widened rather than collapsed: it now
+resolves relative imports against a package read off the filesystem, expands a
+`from X import y` where X is a real package directory at any depth, and reads
+`__import__` as the import it is. Those three widenings are what the shared
+version will have to carry, so the divergence is recorded rather than deepened by
+accident.
+
+**Closes when:** `ImportsOf` lands from U12 and all three call sites read it,
+including the CapWords and dunder rule, which must be settled in one place rather
+than three. The natural owner is U12.

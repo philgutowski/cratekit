@@ -321,6 +321,47 @@ DEFERRED_MODULES: frozenset[str] = frozenset({"web", "desktop"})
 #: obligation itself is registered there, against U20 (P5).
 ROUTING_CLI_UNIT = "U20"
 
+#: The unit that lands ``cratekit.cli.reports``, named ONCE so all four entries
+#: that carry it move together, in the same shape as the constant above.
+#:
+#: IT WAS U34 AND IT IS NOW U27, and there are two separate reasons, both of
+#: which somebody may want to revisit.
+#:
+#: THE MODULE PATH WAS UNBUILDABLE AS SPELLED. These entries named
+#: ``cratekit.reports.cli``, which ``tests/test_layering.py`` ranks ``modules``
+#: while this registry ranks ``cli``, so the module that must dispatch through
+#: this table could not have imported it without an upward import. That is the
+#: same correction U10 and U11 each made on landing, and the comments above the
+#: job and review blocks record both. It is corrected here rather than left for
+#: whoever picks the verbs up, because a path nobody can build is a fact worth
+#: one line now and an afternoon later.
+#:
+#: THE OWNER MOVED BECAUSE U34 NEVER OWED A CLI. U34's declared file list is
+#: ``src/cratekit/modules/reports/`` and its test module, and it landed exactly
+#: that: the duplicate audit and the intake aging engines. Left marked U34, all
+#: four markers would have named a closed unit the moment #34 merged, and
+#: nothing would have noticed, because ``test_cli_contract`` only fires once the
+#: module APPEARS and ``scripts/board.py`` reads ``tests/_pending.py`` alone.
+#: That is R-13 verbatim, one wave later.
+#:
+#: U27 IS THE OWNER, on three grounds. It is the only open unit whose declared
+#: file list already lands modules in this directory, ``cli/setup.py`` and
+#: ``cli/doctor.py``, so ``cli/reports.py`` is the same act in the same place
+#: rather than a new kind of work for a unit that does none of it. Three of the
+#: four verbs emit ``diagnostic/1``, which is doctor's own output surface, and
+#: U27 owns the check registry that surface is rendered against. And U27 is
+#: unblocked today, so the obligation can be discharged next rather than parked
+#: behind a dependency chain. What U27 inherits with it is real and is stated
+#: rather than hidden: ``audit.coverage`` and ``report.library`` have no engine
+#: anywhere in the tree, so that unit lands two report engines as well as the
+#: shell. ``audit.duplicates`` and ``report.intake-aging`` are thin over engines
+#: U34 already landed.
+#:
+#: THE MARKER IS NOT THE RECORD, exactly as above. The obligation is registered
+#: in ``tests/_pending.py`` against U27, which is the file the board audit reads
+#: (P5), and this constant is a convenience for the reader.
+REPORTS_CLI_UNIT = "U27"
+
 
 # ---------------------------------------------------------------------------
 # The verbs
@@ -845,7 +886,7 @@ ENTRIES: tuple[Entry, ...] = (
     Entry(
         name="audit.coverage",
         summary="report tracks the governed trees do not cover",
-        module="cratekit.reports.cli",
+        module="cratekit.cli.reports",
         builder="build_coverage",
         handler_key="audit.coverage",
         feature_rows=(14,),
@@ -853,12 +894,12 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
         taxonomy_terms=("genre_energy",),
-        planned_in="U34",
+        planned_in=REPORTS_CLI_UNIT,
     ),
     Entry(
         name="audit.duplicates",
         summary="review-gated duplicate audit; never deletes, remembers intentional alternates",
-        module="cratekit.reports.cli",
+        module="cratekit.cli.reports",
         builder="build_duplicates",
         handler_key="audit.duplicates",
         feature_rows=(15,),
@@ -867,24 +908,24 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"review_set"}),
         output_schema="review_set/1",
         adjudicates=True,
-        planned_in="U34",
+        planned_in=REPORTS_CLI_UNIT,
     ),
     Entry(
         name="report.library",
         summary="read-only library statistics: genres, tempo spread, tree shape, gaps",
-        module="cratekit.reports.cli",
+        module="cratekit.cli.reports",
         builder="build_library",
         handler_key="report.library",
         source_scripts=("dj-scan-playlists",),
         module_id="reports",
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
-        planned_in="U34",
+        planned_in=REPORTS_CLI_UNIT,
     ),
     Entry(
         name="report.intake-aging",
         summary="report intake items by age so stale ones are visible",
-        module="cratekit.reports.cli",
+        module="cratekit.cli.reports",
         builder="build_intake_aging",
         handler_key="report.intake-aging",
         feature_rows=(20,),
@@ -893,7 +934,7 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
         taxonomy_terms=("inbox",),
-        planned_in="U34",
+        planned_in=REPORTS_CLI_UNIT,
     ),
     # ── Analysis ────────────────────────────────────────────────────────────
     Entry(

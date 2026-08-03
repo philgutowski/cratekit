@@ -2089,9 +2089,18 @@ def _validate_aging_thresholds(data: Mapping) -> list[str]:
     still refuses, since it is constructible from code that never touched a file,
     and the two agree on the rule: both positive, and expiry no earlier than
     staleness or the two bands overlap and a grouping is reported twice.
+
+    THE PAIR CHECK IS SKIPPED WHEN EITHER VALUE WAS SET AND REJECTED. A field the
+    user wrote and got wrong has already produced its own message naming the key;
+    substituting the DEFAULT for it and then reporting the pair would tell them
+    that a number they never wrote is in conflict with one they did, which sends
+    them to fix the wrong line. A field they left out genuinely does take its
+    default, and that case still reports, because it is the one that makes
+    changing only one of the two able to invert the pair.
     """
     problems: list[str] = []
     read: dict[str, int] = {}
+    rejected: set[str] = set()
     for field_name in ("intake_stale_days", "intake_expired_days"):
         key = f"reports.{field_name}"
         value = _dig(data, key)
@@ -2103,12 +2112,13 @@ def _validate_aging_thresholds(data: Mapping) -> list[str]:
                 f"Zero or a negative threshold does not report less, it reports "
                 f"every intake grouping as overdue on the day it is created."
             )
+            rejected.add(field_name)
             continue
         read[field_name] = value
 
-    stale = read.get("intake_stale_days", DEFAULT_INTAKE_STALE_DAYS)
-    expired = read.get("intake_expired_days", DEFAULT_INTAKE_EXPIRED_DAYS)
-    if "intake_stale_days" in read or "intake_expired_days" in read:
+    if read and not rejected:
+        stale = read.get("intake_stale_days", DEFAULT_INTAKE_STALE_DAYS)
+        expired = read.get("intake_expired_days", DEFAULT_INTAKE_EXPIRED_DAYS)
         if expired < stale:
             problems.append(
                 f"reports.intake_expired_days ({expired}) is earlier than "

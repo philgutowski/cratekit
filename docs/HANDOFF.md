@@ -352,7 +352,9 @@ here is the one check on the board's single unverified input.
 U11 cleared its own entry, which is the countdown firing as designed. Eleven
 entries remain, and the growth is the mechanism working rather than debt piling
 up: U11 and U19 between them added five, each one an obligation that used to live
-in a docstring.
+in a docstring. U34 then cleared its own and added one, because clearing the
+entry is the required act of landing and the four verbs it left behind had to
+land somewhere that a mechanism reads (R-16).
 
 | Unit | Target | Owes |
 |---|---|---|
@@ -361,9 +363,9 @@ in a docstring.
 | U23 | `cratekit.adopt` | the adoption review surface |
 | U24 | `cratekit.deletion.cli` | declines and tombstones go through the revocable decision store |
 | U27 | `cratekit.cli.doctor` | a database acknowledged outside the library root is reported every run |
+| U27 | `cratekit.cli.reports` | the four report verbs, and the two report engines two of them still have none of. See R-16: U27 is a judgement, not a decision |
 | U28 | `path:skills` | the shipped skills tree |
 | U32 | `cratekit.core.restore` | the restore verb, and the three obligations U8 registered against it |
-| U34 | `cratekit.modules.reports` | the duplicates review surface |
 | U37 | `cratekit.intake`, `cratekit.intake.collection_xml` | record routing intents at the decision, close through `close_run`, and never emit a `<TEMPO>` element |
 | U38 | `cratekit.cli.exit_codes` | the reserved exit-code registry |
 

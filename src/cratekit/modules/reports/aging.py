@@ -28,6 +28,18 @@ merely obeyed, it is unnecessary. U18 had to declare its catalog tree in the
 taxonomy template for exactly this reason; this report needs nothing declared
 because it names nothing.
 
+**An intake flow that is not there is not an intake flow that is empty.** The
+declared node is looked for as a FOLDER anywhere in the exported tree, and a tree
+that carries none refuses. This is ``export``'s own doctrine one module along and
+it matters for the same reason: the correct answer for an intake flow with
+nothing waiting in it is "nothing to do", and so is the answer for a report
+pointed at a library whose intake flow is called something else or was never
+exported. Two facts, one rendering, and only one of them means the person can
+stop reading. A grouping is any playlist with the declared display ANYWHERE above
+it in its path, so an intake folder somebody filed inside another folder is aged
+rather than silently dropped, and a tree carrying two of them yields groupings
+from both at whatever depth they sit.
+
 **There is no ledger.** The source records, in a JSON file beside the report,
 when it first saw each name inside the holding folder, so it can hold a deletion
 back for one cycle. That file is a private, unlocked, read-then-write store of
@@ -47,6 +59,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from cratekit.core import config, taxonomy
+from cratekit.core.cause import Scope, refuse
 from cratekit.modules.reports.export import LibraryView, Playlist
 
 #: ISO first, then the month-first shapes the intake convention actually uses:
@@ -57,8 +70,16 @@ _ISO_IN_NAME = re.compile(r"(20\d{2})-(\d{1,2})-(\d{1,2})")
 _MONTH_FIRST_IN_NAME = re.compile(r"(\d{1,2})[_-](\d{1,2})[_-](\d{2,4})")
 
 #: The window a two-digit year is read into. A grouping named ``_99_`` is a typo
-#: rather than a list from 1999, and reading it as 1999 would report an age of
-#: nine thousand days with a straight face.
+#: rather than a list from 1999, so it resolves to 2099 rather than to a date
+#: nine thousand days in the past.
+#:
+#: THE WINDOW BOUNDS THE YEAR AND NOT THE AGE, which an earlier version of this
+#: comment claimed it did. ``phil_5_01_00`` sits inside the window, is a real
+#: date, and is nine thousand days old, so the window on its own does not prevent
+#: the outcome it was written to prevent. What prevents the other half, the
+#: grouping dated in the FUTURE, is ``_grouping`` refusing to age a date later
+#: than the day the report is run for; see there for why that is undated rather
+#: than current.
 _CENTURY = 2000
 _YEAR_FLOOR = 2000
 _YEAR_CEILING = 2099
@@ -197,26 +218,63 @@ def intake_groupings(
     """Every playlist under the DECLARED intake flow, dated and aged.
 
     The intake node arrives as a declared taxonomy node rather than as a name
-    this module knows, which is what keeps R19 true here. Every playlist beneath
-    it is a grouping, at any depth: a person who filed some of them into a folder
-    of their own has organized their intake, not left the report behind.
+    this module knows, which is what keeps R19 true here.
 
-    A tree carrying two nodes with the intake display name yields groupings from
-    BOTH, and that is deliberate. The writers refuse that shape because a write
-    targeted by name cannot tell the two apart; a report that silently picked one
-    would hide the duplication from the person who has to fix it.
+    A grouping is any playlist with the declared display ANYWHERE above it in its
+    path, rather than only at the top of it. Somebody who filed their intake
+    inside another folder has organized it, not hidden it, and a check anchored
+    at position zero reported nothing at all for that tree. The same widening is
+    what makes the paragraph below true: a tree carrying two nodes with the
+    intake display yields groupings from BOTH, at whatever depth they sit. The
+    writers refuse that shape, because a write targeted by name cannot tell the
+    two apart; a report that silently picked one would hide the duplication from
+    the person who has to fix it.
+
+    A TREE WITH NO SUCH FOLDER REFUSES. Returning nothing would answer "your
+    intake is clear" to a report that never found the intake flow, and those are
+    the two facts ``export`` refuses to render identically one module below.
     """
     wanted = intake.display
-    out: list[Grouping] = []
-    for playlist in view.playlists:
-        if not playlist.path or playlist.path[0] != wanted:
-            continue
-        out.append(_grouping(playlist, today=today))
-    return tuple(out)
+    if not view.has_folder(wanted):
+        raise refuse(
+            "intake-flow-absent",
+            f"no folder named {wanted!r} appears anywhere in the exported tree, "
+            f"so this report never found the intake flow it was asked about; "
+            f"reporting nothing would read as an intake queue with nothing "
+            f"waiting in it, which is the opposite conclusion",
+            steps=(
+                "check that the exported tree really holds the intake flow the "
+                "taxonomy declares, and that the export is the current one",
+                "if the flow is called something else in this library, change "
+                "the declared display in the taxonomy template rather than "
+                "renaming folders to match the software",
+            ),
+            scope=Scope.RUN,
+            origin=("reports",),
+            detail={"declared": wanted},
+        )
+    return tuple(
+        _grouping(playlist, today=today)
+        for playlist in view.playlists
+        if wanted in playlist.path[:-1]
+    )
 
 
 def _grouping(playlist: Playlist, *, today: date) -> Grouping:
+    """One playlist as a dated grouping. A future date is UNDATED, not current.
+
+    ``phil_1_5_99`` parses to a real date in 2099. Aged against today it is
+    twenty six thousand days old in the negative direction, which bands it as
+    current, renders as minus twenty six thousand days, and makes the grouping
+    permanently non-stale: the one outcome a typo in a year must not buy. A date
+    later than the day the report is run for is a bad SHAPE rather than a young
+    grouping, and this module already has an answer for a bad shape, which is to
+    report it undated with its name attached, because that is what gets the name
+    fixed.
+    """
     intake_date = parse_intake_date(playlist.display)
+    if intake_date is not None and intake_date > today:
+        intake_date = None
     return Grouping(
         path=playlist.path,
         track_count=len(playlist.track_ids),

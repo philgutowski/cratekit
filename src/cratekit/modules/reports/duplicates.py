@@ -34,13 +34,34 @@ addressed by the normalized artist and title, so:
   coordinating, which is what makes "the same decision is never re-asked" true
   across machines rather than only within one run.
 
-**The normalization is deliberately timid.** Case is folded and runs of
-whitespace collapse, and nothing else happens: no punctuation stripping, no
-guessing that ``(Original Mix)`` and the bare title are one recording. Every
-widening here buys a few more true pairs and costs false ones, and a false pair
-is not free: the person has to reject it, and that rejection is a permanent
-suppression keyed on the guess this module made. ``review.normalize_identity``
-draws the same line for the same reason.
+**The normalization is deliberately timid.** Composition form is folded to NFC,
+case is folded, and runs of whitespace collapse. Nothing else happens: no
+punctuation stripping, no guessing that ``(Original Mix)`` and the bare title are
+one recording. Every widening here buys a few more true pairs and costs false
+ones, and a false pair is not free: the person has to reject it, and that
+rejection is a permanent suppression keyed on the guess this module made.
+``review.normalize_identity`` draws the same line for the same reason.
+
+**The NFC fold is not a widening, and it is not optional.** Two spellings of one
+accented name are not two names, they are one name written twice, and this
+repository has already paid for treating them as two: the incident
+``core.locations`` opens on deleted 144 still-referenced files because a raw
+``==`` between an NFD disk path and an NFC ``Location`` reported every accented
+file as unreferenced. The same split costs two things here, and the second is
+worse than the missed duplicate. A re-tag that flips the form changes the
+recording, therefore changes the item id, therefore re-asks a question somebody
+already answered and orphans the earlier REJECTED verdict in the queue forever,
+which is exactly what the third bullet above promises cannot happen. The fold
+goes through ``locations.norm_for_compare`` rather than a second call to
+``unicodedata`` here, because two implementations of one rule that agree today
+disagree eventually and the disagreement is invisible until it has destroyed
+something.
+
+**Both halves of the identity are required.** An entry carrying an artist and no
+title is not half a recording, it is a person's name, and grouping on it puts
+every untagged file by one artist into one fabricated group. The dangerous
+direction is the ACCEPTED verdict: it names which copy survives and licenses the
+deletion surface to act on what may be three unrelated recordings.
 
 **Nothing here deletes, and nothing here acts on a verdict.** The audit reports
 and records. Acting on an ACCEPTED verdict means removing a row and trashing a
@@ -58,6 +79,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from cratekit.core import review
+from cratekit.core.locations import norm_for_compare
 from cratekit.core.naming import NameTemplate, strip_heads
 from cratekit.modules.reports.export import CollectionEntry, LibraryView
 
@@ -65,6 +87,18 @@ from cratekit.modules.reports.export import CollectionEntry, LibraryView
 #: because the question is the same in every case: are these one recording. The
 #: kind is a stable identifier and never a display name (R19, D5).
 KIND = "duplicate-recording"
+
+#: The verb whose answers these items are, so ``review.list_items`` can be asked
+#: for them by the name a person typed. Spelled here rather than left to the
+#: caller because the registry already declares it for this verb, and a default
+#: of "" opted every item this module produced out of the addressability
+#: property ``test_conformance_4`` asserts for every adjudicating verb: an item
+#: with no handler key is invisible to the one query a person has.
+#:
+#: A modules-layer file naming its own verb is the direction KTD23 allows, and
+#: ``test_a_module_layer_file_may_name_its_own_concepts`` says so explicitly.
+#: The rule is that a LOWER layer may not name a higher one.
+HANDLER_KEY = "audit.duplicates"
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,11 +203,21 @@ class DuplicateReport:
 def normalize(value: str) -> str:
     """One spelling of a field, so two producers of one recording agree.
 
-    Case folded and internal whitespace collapsed. That is the whole of it, and
-    the restraint is the design: see this module's own docstring for why a
-    cleverer normalization costs more than it buys.
+    Composition folded to NFC, case folded, and internal whitespace collapsed.
+    That is the whole of it, and the restraint is the design: see this module's
+    own docstring for why a cleverer normalization costs more than it buys, and
+    for why the NFC fold is not part of that restraint but a correctness rule
+    this repository has already been billed for once.
+
+    THE COMPOSITION FOLD RUNS ON BOTH SIDES OF THE CASE FOLD, which looks like a
+    belt and braces and is not. ``norm_for_compare`` deliberately does not
+    case-fold, which its own docstring says out loud, so the two are separate
+    steps; and ``casefold`` can itself emit a decomposed sequence for a character
+    whose lowercase form carries a combining mark, so composing only before it
+    would hand back exactly the split this function exists to remove.
     """
-    return " ".join(str(value).casefold().split())
+    folded = norm_for_compare(str(value)).casefold()
+    return " ".join(norm_for_compare(folded).split())
 
 
 def recording_of(entry: CollectionEntry, *, template: NameTemplate) -> Recording:
@@ -195,15 +239,24 @@ def recording_of(entry: CollectionEntry, *, template: NameTemplate) -> Recording
 def audit(view: LibraryView, *, template: NameTemplate) -> tuple[DuplicateGroup, ...]:
     """Every recording the collection holds more than one copy of.
 
-    Whole-collection, never per playlist. Entries whose artist and title are both
-    empty after normalization are skipped: they carry nothing to compare, and
-    grouping them would collapse every untagged file in the library onto one
-    item, which would look exactly like the audit working.
+    Whole-collection, never per playlist. An entry missing EITHER half of its
+    identity is skipped, and the rule is "both are required" rather than "not
+    both are missing" because the half-tagged case fails the same way the
+    untagged one does. Three files with no title and the artist ``Recondite``
+    are three different records; grouped, they become one item with three
+    options, and the collapse looks exactly like the audit working. The
+    dangerous direction is the ACCEPTED verdict, which names which copy survives
+    and hands the deletion surface a licence over three unrelated recordings.
+
+    Reported by omission rather than by refusal, because a library legitimately
+    holds files nobody has finished tagging and refusing the whole audit over
+    them would be a report nobody can run. What is owed to those files is a
+    tagging pass, not a duplicate question.
     """
     found: dict[tuple[str, str], list[CollectionEntry]] = {}
     for entry in view.entries:
         recording = recording_of(entry, template=template)
-        if not recording.artist and not recording.title:
+        if not recording.artist or not recording.title:
             continue
         found.setdefault((recording.artist, recording.title), []).append(entry)
     return tuple(
@@ -220,7 +273,7 @@ def offer_groups(
     store: review.ReviewStore,
     groups: Sequence[DuplicateGroup],
     *,
-    handler_key: str = "",
+    handler_key: str = HANDLER_KEY,
 ) -> DuplicateReport:
     """Put each group in front of a person, or return the answer already given.
 
@@ -259,7 +312,7 @@ def audit_and_offer(
     store: review.ReviewStore,
     *,
     template: NameTemplate,
-    handler_key: str = "",
+    handler_key: str = HANDLER_KEY,
 ) -> DuplicateReport:
     """The audit and the offer as one call, which is how a caller wants it.
 
@@ -274,6 +327,7 @@ def audit_and_offer(
 
 
 __all__ = [
+    "HANDLER_KEY",
     "KIND",
     "DuplicateGroup",
     "DuplicateReport",

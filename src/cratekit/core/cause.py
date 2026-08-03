@@ -276,14 +276,6 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # have carried between machines, and the fix is about that file rather
         # than about this installation's configuration.
         "review-file-unusable": ExitCode.PRECONDITION,
-        # U34. A collection export that is not one, or is one and is truncated.
-        # Its own slug rather than the review file above, because that file is
-        # something this product WROTE and this one is something rekordbox wrote:
-        # the remedy is to export again, and pointing a person at a queue export
-        # they never made would be a sentence about the wrong file. Same code,
-        # because the class of answer is the same, which is the whole reason a
-        # slug exists separately from a code.
-        "library-export-unusable": ExitCode.PRECONDITION,
         "backup-acknowledgment-missing": ExitCode.ACK_REQUIRED,
         # U8. The acknowledgment cannot be MINTED here, which is a different
         # condition from it being absent when a session consulted it. Minting is
@@ -376,6 +368,35 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # what this is: the tree the library holds and the tree the taxonomy
         # declares have come apart, and only a person can say which is right.
         "routing-destination-renamed": ExitCode.UNCONVERGED,
+        # ── U34's refusals, appended for the reason stated just above ───────
+        #
+        # The first version of this unit filed the export slug beside
+        # ``review-file-unusable``, in the middle of the literal, which is the
+        # convention this block exists to state. Confirmed with ``git
+        # merge-file``: two units appending both conflict textually and get
+        # read, while an insertion into a different half of the same mapping
+        # auto-merges, so a duplicate key would be resolved silently by
+        # whichever line happened to come last.
+        #
+        # A collection export that is not one, or is one and is truncated, or
+        # carries one ``TrackID`` twice. Its own slug rather than the review
+        # file's, because that file is something this product WROTE and this one
+        # is something rekordbox wrote: the remedy is to export again, and
+        # pointing a person at a queue export they never made would be a
+        # sentence about the wrong file. Same code, because the class of answer
+        # is the same, which is the whole reason a slug exists separately from a
+        # code.
+        "library-export-unusable": ExitCode.PRECONDITION,
+        # The declared intake flow does not appear anywhere in the exported
+        # tree. Reported rather than answered with an empty report, because the
+        # correct answer for an intake flow with nothing in it is ALSO nothing,
+        # so the two are indistinguishable to the person reading the output and
+        # only one of them means "you have nothing to do". It sits on the
+        # library-prerequisite code beside ``catalog-tree-undeclared`` for the
+        # same reason that one exists: the library lacks a structure the
+        # operation mirrors, and the remedy is a declaration or a folder rather
+        # than anything about this installation's configuration.
+        "intake-flow-absent": ExitCode.LIBRARY_PREREQUISITE,
     }
 )
 

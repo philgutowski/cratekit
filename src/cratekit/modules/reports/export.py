@@ -28,17 +28,24 @@ that fails a check is refused with the structure named:
 3. a declared entry count on that section;
 4. a ``PLAYLISTS`` section;
 5. the playlist root node inside it;
-6. and the declared entry count AGREES with the number of track elements
-   located. That last one is the check that catches a half copied file. The count
-   is written by whatever produced the document, so a document where the two
-   disagree was either truncated or edited by something that did not maintain it,
-   and in both cases the tracks this module can see are not the library.
+6. the declared entry count AGREES with the number of track elements located.
+   That one is the check that catches a half copied file. The count is written
+   by whatever produced the document, so a document where the two disagree was
+   either truncated or edited by something that did not maintain it, and in both
+   cases the tracks this module can see are not the library;
+7. and no ``TrackID`` appears twice. An identifier is what every later answer is
+   addressed by: a duplicate group offers one option per copy keyed on it, so
+   two rows sharing one identifier produce two options a person cannot tell
+   apart, and an ACCEPTED verdict naming that option says nothing about which
+   copy survives. The deletion surface would then be licensed by an ambiguous
+   answer, which is worse than no answer.
 
 Layer note: MODULES. It reads bytes a caller hands it and reaches nothing.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -107,15 +114,33 @@ class Playlist:
 
 @dataclass(frozen=True, slots=True)
 class LibraryView:
-    """One export, read once, as the two things a report asks about.
+    """One export, read once, as the three things a report asks about.
 
     Materialized rather than generated. Both reports walk the entries more than
     once, and an iterable consumed once and reused is how U18's row index came to
     report every track absent while the run reported clean.
+
+    ``folders`` is carried for one reason and it is the same reason this module
+    refuses rather than returning an empty view: WITHOUT IT, "the structure you
+    asked about is not in this tree" and "it is here and it is empty" are the
+    same answer. A folder holds no tracks, so it never appears in ``playlists``,
+    and a report that only had the playlists could not tell an intake flow that
+    has been emptied from one that was never exported. Both would render as a
+    clean report with nothing to do, and only one of them is true.
     """
 
     entries: tuple[CollectionEntry, ...]
     playlists: tuple[Playlist, ...]
+    folders: tuple[tuple[str, ...], ...] = ()
+
+    def has_folder(self, display: str) -> bool:
+        """Whether any folder in the tree carries ``display``, at any depth.
+
+        Asked rather than derived from the playlist paths, because the whole
+        point of holding the folders is the case where a folder has no playlists
+        under it to derive from.
+        """
+        return any(path and path[-1] == display for path in self.folders)
 
     def entry(self, track_id: str) -> CollectionEntry | None:
         """One entry by identifier, for a caller holding exactly one.
@@ -194,16 +219,28 @@ def read_export(content: bytes) -> LibraryView:
             detail={"declared": declared, "located": len(tracks)},
         )
 
+    repeated = sorted(
+        track_id
+        for track_id, seen in Counter(track.track_id for track in tracks).items()
+        if seen > 1
+    )
+    if repeated:
+        raise _unusable(
+            "its COLLECTION carries the same TrackID more than once",
+            detail={"repeated": repeated},
+        )
+
     if rbxml.playlists_span(content) is None:
         raise _unusable("it carries no PLAYLISTS section")
     root = rbxml.root_node(content)
     if root is None:
         raise _unusable("its PLAYLISTS section has no root node")
 
-    playlists = _read_playlists(content, root)
+    playlists, folders = _read_nodes(content, root)
     return LibraryView(
         entries=_read_entries(content, tracks, playlists),
         playlists=playlists,
+        folders=folders,
     )
 
 
@@ -232,18 +269,25 @@ def _declared_entry_count(content: bytes, collection: tuple[int, int]) -> int:
         ) from exc
 
 
-def _read_playlists(content: bytes, root: rbxml.NodeSpan) -> tuple[Playlist, ...]:
-    """Every playlist node under the root, with its display path.
+def _read_nodes(
+    content: bytes, root: rbxml.NodeSpan
+) -> tuple[tuple[Playlist, ...], tuple[tuple[str, ...], ...]]:
+    """Every node under the root, split by kind, each with its display path.
 
-    Folders are walked through and not returned. A folder holds nodes rather than
-    tracks, so it has no membership to report, and returning both kinds would
-    make every consumer re-ask which one it was holding.
+    The two kinds are returned SEPARATELY rather than as one list a consumer has
+    to re-ask about. A folder holds nodes rather than tracks, so it has no
+    membership to report and never becomes a ``Playlist``; what it does carry is
+    the fact that it EXISTS, which is the only way to tell a structure that is
+    absent from one that is present and empty.
     """
-    return tuple(
-        Playlist(path=path, track_ids=rbxml.track_keys(content, node))
-        for path, node in rbxml.walk_nodes(content, root)
-        if node.node_type == rbxml.PLAYLIST_TYPE
-    )
+    playlists: list[Playlist] = []
+    folders: list[tuple[str, ...]] = []
+    for path, node in rbxml.walk_nodes(content, root):
+        if node.node_type == rbxml.PLAYLIST_TYPE:
+            playlists.append(Playlist(path=path, track_ids=rbxml.track_keys(content, node)))
+        else:
+            folders.append(path)
+    return tuple(playlists), tuple(folders)
 
 
 def _read_entries(

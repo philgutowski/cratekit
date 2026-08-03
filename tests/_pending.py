@@ -160,6 +160,29 @@ PENDING: dict[str, tuple[str, str]] = {
         "that owns that record. Building a second one inside the routing pass "
         "would give two answers to which node a destination is",
     ),
+    # APPENDED, same reason as the entry above it.
+    "cratekit.cli.reports": (
+        "U27",
+        "the command-line surface for audit.coverage, audit.duplicates, "
+        "report.library and report.intake-aging, and the two report engines two "
+        "of them still have none of: nothing in the tree computes tree coverage "
+        "or library statistics. REGISTERED HERE RATHER THAN LEFT AS A planned_in "
+        "MARKER for the reason R-13 records and mechanizes against: scripts/"
+        "board.py reads this file and nothing else, test_cli_contract only fires "
+        "once the module APPEARS, and an obligation carried only by a marker on "
+        "a closing unit is owned by nobody the moment that unit closes (P5). "
+        "RE-POINTED FROM U34, whose declared file list is the reports package "
+        "and its test module and which landed exactly that, and whose four "
+        "markers would all have named a closed unit the instant #34 merged. The "
+        "module path moved too, from cratekit.reports.cli, which test_layering "
+        "ranks modules while the registry it must dispatch through ranks cli, so "
+        "it could not have been built as spelled; that is the same correction "
+        "U10 and U11 each made on landing. U27 is the owner because it is the "
+        "only open unit already landing modules in src/cratekit/cli/, because "
+        "three of the four verbs emit the diagnostic surface doctor owns, and "
+        "because it is unblocked today. The choice is a judgement and is left "
+        "legible so a human can move it again",
+    ),
 }
 
 

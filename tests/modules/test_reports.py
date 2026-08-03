@@ -340,6 +340,44 @@ def test_a_track_element_spanning_several_lines_is_read_whole():
     assert entries[0].location == "file://localhost/library/a.flac"
 
 
+def test_one_track_identifier_used_twice_refuses():
+    """An identifier is what every later answer is addressed BY.
+
+    A duplicate group offers one option per copy keyed on the track id, so two
+    rows sharing one identifier produce two options a person cannot tell apart,
+    and an ACCEPTED verdict naming that option says nothing about which copy
+    survives. The deletion surface would then be licensed by an answer that is
+    ambiguous rather than by one that is wrong, and only one of those two can be
+    argued with afterwards.
+    """
+    content = _document(
+        collection=[
+            '  <COLLECTION Entries="2">',
+            '    <TRACK TrackID="7" Name="a" Artist="b" Location="file://localhost/a.flac"/>',
+            '    <TRACK TrackID="7" Name="a" Artist="b" Location="file://localhost/b.flac"/>',
+            "  </COLLECTION>",
+        ],
+        root_children=[],
+        root_count=0,
+    )
+    with pytest.raises(CratekitError) as raised:
+        export.read_export(content)
+    assert "the same TrackID more than once" in raised.value.cause.message
+    assert raised.value.cause.detail["repeated"] == ["7"]
+
+
+def test_the_reader_reports_the_folders_it_walked_through(view):
+    """Carried because an absent structure and an empty one are not one fact.
+
+    A folder holds no tracks, so it never becomes a playlist, and a report with
+    only the playlists cannot tell an intake flow that was emptied from one that
+    was never exported. Both would render as nothing to do.
+    """
+    assert view.has_folder(INTAKE.display)
+    assert view.has_folder("Old")
+    assert not view.has_folder("Bandcamp Queue")
+
+
 def test_a_genuinely_empty_library_reads_as_empty_rather_than_refusing():
     """P7's other half: the guard must not fire on the correct document.
 
@@ -424,6 +462,95 @@ def test_entries_with_nothing_to_compare_are_never_grouped(view):
     assert "5" not in grouped
 
 
+def test_entries_carrying_only_an_artist_are_never_grouped():
+    """The half-tagged case, which fails the same way the untagged one does.
+
+    The rule used to be "skip when BOTH halves are empty", so three files with no
+    title and the artist ``Recondite`` became one group with three members and
+    three options: the collapse the docstring above says would look exactly like
+    the audit working, happening. The dangerous direction is the ACCEPTED
+    verdict, which names which copy survives and hands the deletion surface a
+    licence over three unrelated recordings.
+    """
+    tracks = [
+        (index, "", "Recondite", f"file://localhost/library/{index}.flac")
+        for index in (1, 2, 3)
+    ]
+    view = export.read_export(
+        _document(collection=_collection(tracks), root_children=[], root_count=0)
+    )
+    assert duplicates.audit(view, template=TEMPLATE) == ()
+
+
+def test_entries_carrying_only_a_title_are_never_grouped():
+    """The mirror of the case above, refused by the same rule for the same reason.
+
+    Three files called ``Untitled`` with no artist are three records, and a rule
+    that only guarded the artist half would collapse them.
+    """
+    tracks = [
+        (index, "08A - 124 - Untitled", "", f"file://localhost/library/{index}.flac")
+        for index in (1, 2, 3)
+    ]
+    view = export.read_export(
+        _document(collection=_collection(tracks), root_children=[], root_count=0)
+    )
+    assert duplicates.audit(view, template=TEMPLATE) == ()
+
+
+#: One recording, two composition forms. Written as ESCAPES rather than as
+#: literal characters, because the two spellings are indistinguishable on
+#: screen and in a diff, and a fixture whose whole point is that they differ
+#: must not depend on anybody's editor or terminal preserving the difference.
+_NFC_NAME = "Bj\u00f6rk"
+_NFD_NAME = "Bjo\u0308rk"
+
+
+def test_two_composition_forms_of_one_name_are_one_recording():
+    """The NFC split, which the timid normalization is not allowed to be timid about.
+
+    A tagger writing NFC and a filesystem handing back NFD is not an exotic case,
+    it is macOS, and ``core.locations`` opens on the incident where treating the
+    two as different names deleted 144 still-referenced files. Here the same
+    split reports zero duplicate groups where the answer is one.
+    """
+    assert _NFC_NAME != _NFD_NAME
+    tracks = [
+        (1, "08A - 124 - Cold Light", _NFC_NAME, "file://localhost/library/a.flac"),
+        (2, "11A - 126 - Cold Light", _NFD_NAME, "file://localhost/library/b.flac"),
+    ]
+    view = export.read_export(
+        _document(collection=_collection(tracks), root_children=[], root_count=0)
+    )
+    groups = duplicates.audit(view, template=TEMPLATE)
+    assert len(groups) == 1
+    assert {member.track_id for member in groups[0].members} == {"1", "2"}
+
+
+def test_re_tagging_into_the_other_composition_form_keeps_the_decision(store):
+    """The consequence that is worse than the missed duplicate.
+
+    The module docstring promises that renaming, re-importing or moving a copy
+    does not orphan the decision. A re-tag that flips the composition form is
+    none of those three and used to change the item id anyway, which re-asks a
+    settled question and strands the earlier REJECTED verdict in the queue with
+    nothing pointing at it.
+    """
+    def viewed(artist: str):
+        tracks = [
+            (index, "08A - 124 - Cold Light", artist, f"file://localhost/library/{index}.flac")
+            for index in (1, 2)
+        ]
+        return export.read_export(
+            _document(collection=_collection(tracks), root_children=[], root_count=0)
+        )
+
+    before = duplicates.audit_and_offer(viewed(_NFC_NAME), store, template=TEMPLATE)
+    after = duplicates.audit_and_offer(viewed(_NFD_NAME), store, template=TEMPLATE)
+    assert before.items[0].item_id == after.items[0].item_id
+    assert len(review.list_items(store, queue=review.Queue.DUPLICATES).items) == 1
+
+
 def test_a_recording_present_once_is_not_a_duplicate(view):
     groups = duplicates.audit(view, template=TEMPLATE)
     grouped = {member.track_id for group in groups for member in group.members}
@@ -457,6 +584,41 @@ def test_the_audit_puts_its_pairs_in_the_review_queue(view, store):
     assert item.kind == duplicates.KIND
     assert review.count_unresolved(store, queue=review.Queue.DUPLICATES) == 1
     assert {option.option_id for option in item.options} == {"1", "4"}
+
+
+def test_every_item_carries_the_handler_key_the_registry_declares(view, store):
+    """Addressability, which the default of "" silently opted every item out of.
+
+    ``test_conformance_4`` asserts, once per declared adjudicating verb, that an
+    item is findable under that verb's own key. An item produced with an empty
+    key satisfies nothing a person can type: asking the queue for
+    ``audit.duplicates`` returns nothing, and the only query that finds it is the
+    empty string. The registry has declared this key for this verb since U5, so
+    the default is read from the one place that already answers the question
+    rather than left to whichever caller remembers to pass it.
+    """
+    report = duplicates.audit_and_offer(view, store, template=TEMPLATE)
+    assert duplicates.HANDLER_KEY == "audit.duplicates"
+    assert {item.handler_key for item in report.items} == {duplicates.HANDLER_KEY}
+    addressed = review.list_items(store, handler_key=duplicates.HANDLER_KEY).items
+    assert [item.item_id for item in addressed] == [report.items[0].item_id]
+    assert review.list_items(store, handler_key="").items == ()
+
+
+def test_the_declared_handler_key_is_the_one_the_registry_carries():
+    """Read from the registry rather than restated, so a rename fails here.
+
+    A second spelling of one key is the shape that makes the queue answer an
+    empty list to the only query a person has, and nothing else would notice.
+    """
+    from cratekit.cli import registry
+
+    declared = {
+        entry.handler_key
+        for entry in registry.entries()
+        if entry.name == "audit.duplicates"
+    }
+    assert declared == {duplicates.HANDLER_KEY}
 
 
 def test_the_item_is_addressed_by_the_recording_and_shows_the_copies(view, store):
@@ -709,6 +871,40 @@ def test_a_configured_threshold_that_cannot_describe_a_policy_is_refused(
         }
     )
     assert any(expected in problem for problem in problems), problems
+
+
+def test_a_rejected_threshold_is_never_reported_against_the_default_it_did_not_set(
+    tmp_path, monkeypatch
+):
+    """The message has to name the line the person can go and fix.
+
+    With ``intake_stale_days`` set to text and ``intake_expired_days`` set to 5,
+    the pair check substituted the DEFAULT thirty for the field the user did set,
+    and reported that 5 is earlier than 30. Thirty appears nowhere in their file,
+    so the message sends them to a line that does not exist while the line that
+    is actually wrong already had its own message. The pair check is skipped when
+    either half was set and rejected, and still runs when a half was simply left
+    out, because that is the case that makes changing one of the two able to
+    invert the pair.
+    """
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    problems = config.validate(
+        {
+            "schema_version": config.CURRENT_SCHEMA_VERSION,
+            "library": {
+                "root": str(root),
+                "volume_id": "F1E2-D3C4",
+                "db_path": str(root / "db" / "master.db"),
+            },
+            "paths": {"download_staging": str(tmp_path / "staging")},
+            "profile": {"name": "full"},
+            "reports": {"intake_stale_days": "thirty", "intake_expired_days": 5},
+        }
+    )
+    assert any("intake_stale_days must be a positive" in problem for problem in problems)
+    assert not any("earlier than" in problem for problem in problems), problems
 
 
 @pytest.mark.parametrize(
@@ -988,6 +1184,7 @@ ALLOWED_IMPORTS = frozenset(
         "cratekit.core.cause",
         "cratekit.core.config",
         "cratekit.core.exit_codes",
+        "cratekit.core.locations",
         "cratekit.core.naming",
         "cratekit.core.review",
         "cratekit.core.taxonomy",
@@ -995,12 +1192,27 @@ ALLOWED_IMPORTS = frozenset(
     }
 )
 
+#: The package this allowlist governs. Named once and matched WITH A DOT
+#: BOUNDARY, because the bare-prefix version of this test accepted every module
+#: whose dotted name merely started with these characters. A sibling file
+#: ``cratekit/modules/reports_ledger.py`` was importable from inside the package
+#: on that reading AND sat outside the directory ``_report_modules`` walks, so
+#: the private ignore ledger the countdown against this unit forbids by name
+#: could have been written, imported, and called with both structural guards
+#: green. The dot boundary is what the allowlist entries below already get right
+#: through ``startswith(f"{allowed}.")``; only the self reference was loose.
+REPORTS_PACKAGE = "cratekit.modules.reports"
+
 #: Method names that mutate the filesystem and are not also ordinary methods on a
-#: string, a mapping, or a sequence. ``replace`` is deliberately absent: it is
-#: ``str.replace`` far more often than it is ``Path.replace``, and a guard that
-#: fires on correct code is a guard somebody routes around (P7). The import
-#: allowlist is what covers the module-level route to it, since ``os.replace``
-#: needs an import this package may not make.
+#: string, a mapping, or a sequence.
+#:
+#: ``replace`` is NOT here, and it is not absent either: it is handled separately
+#: below on its arity, because it is ``str.replace`` far more often than it is
+#: ``Path.replace`` and a guard that fires on correct code is a guard somebody
+#: routes around (P7). Leaving it out entirely was the other error, since
+#: ``Path(a).replace(b)`` silently overwrites its destination while its sibling
+#: ``rename`` is in this set, so the one of the pair that destroys more was the
+#: one that was allowed.
 FILESYSTEM_MUTATIONS = frozenset(
     {
         "atomic_write_bytes",
@@ -1013,6 +1225,7 @@ FILESYSTEM_MUTATIONS = frozenset(
         "rmtree",
         "symlink_to",
         "touch",
+        "truncate",
         "unlink",
         "write_bytes",
         "write_text",
@@ -1026,6 +1239,46 @@ _WRITING_MODES = frozenset({"w", "a", "x", "+"})
 #: ``from X import y``. ``cratekit`` and ``cratekit.<subpackage>``, plus the
 #: stdlib's own one and two level packages.
 _PACKAGE_DEPTH = 2
+
+
+#: What a dynamic import spells when its argument is not a literal this can read.
+#: It is deliberately not a module path, so ``_permitted`` can never match it: a
+#: computed import is exactly how a name check is walked past, and the guard's
+#: answer to something it cannot read is the same as its answer to ``open`` with
+#: a computed mode.
+_COMPUTED_IMPORT = "<computed import>"
+
+
+def _is_package(dotted: str) -> bool:
+    """Whether a dotted path names a DIRECTORY in this repository's source tree.
+
+    The depth rule below covers ``cratekit``, ``cratekit.<subpackage>`` and the
+    standard library's shallow packages, and it stops there because a symbol
+    treated as a module makes a checker report imports that do not exist. It does
+    not cover a three level package, and this repository now has one, so
+    ``from cratekit.modules.reports import aging`` would read as a dependency on
+    the package with ``aging`` mistaken for a symbol. Asking the filesystem is
+    the answer that cannot drift, and it answers False for everything outside the
+    tree, which is where guessing would be dangerous.
+    """
+    return SRC_ROOT.joinpath(*dotted.split(".")).is_dir()
+
+
+def _package_of(module: str) -> str:
+    """The package a module's relative imports resolve against.
+
+    A PACKAGE's own ``__init__`` resolves ``from . import aging`` against itself;
+    a module inside it resolves against its parent. Read off the filesystem
+    rather than off the dotted name, because the two coincide here: taking the
+    parent unconditionally made ``cratekit.modules.reports``'s own initializer
+    resolve ``from . import aging`` to ``cratekit.modules.aging``, a module that
+    does not exist and that this guard would then report as forbidden. A false
+    positive, which is the failure that gets a guard switched off, and it would
+    have fired on the first correct relative import anybody wrote there.
+    """
+    if SRC_ROOT.joinpath(*module.split(".")).is_dir():
+        return module
+    return module.rsplit(".", 1)[0]
 
 
 def _resolved_imports(source: str, module: str) -> list[str]:
@@ -1046,8 +1299,15 @@ def _resolved_imports(source: str, module: str) -> list[str]:
     is a module resolves to X with ``y`` left alone as a symbol. Getting that
     backwards is what makes a checker report imports that do not exist, which is
     the same distinction ``tests/test_layering.py`` draws for the same reason.
+
+    THE STATEMENT IS NOT THE ONLY IMPORT. ``__import__("os").truncate(path, 0)``
+    loads a module with no import statement anywhere in the file, and a walk over
+    ``ast.Import`` and ``ast.ImportFrom`` alone reports it clean, which put
+    ``os``, ``subprocess`` and ``sqlite3`` one builtin call away from this
+    package. The builtin is read here too, and an argument this cannot read is
+    reported as an import of something unnameable rather than ignored.
     """
-    package = module.rsplit(".", 1)[0]
+    package = _package_of(module)
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
@@ -1057,10 +1317,17 @@ def _resolved_imports(source: str, module: str) -> list[str]:
             if node.level:
                 parts = package.split(".")
                 base = ".".join([*parts[: len(parts) - node.level + 1], *([base] if base else [])])
-            if len(base.split(".")) <= _PACKAGE_DEPTH:
+            if len(base.split(".")) <= _PACKAGE_DEPTH or _is_package(base):
                 found += [f"{base}.{alias.name}" for alias in node.names]
             else:
                 found.append(base)
+        elif isinstance(node, ast.Call) and getattr(node.func, "id", "") == "__import__":
+            first = node.args[0] if node.args else None
+            found.append(
+                first.value
+                if isinstance(first, ast.Constant) and isinstance(first.value, str)
+                else _COMPUTED_IMPORT
+            )
     return found
 
 
@@ -1070,8 +1337,14 @@ def _permitted(target: str) -> bool:
     A prefix match against an allowlisted entry is accepted, so
     ``from cratekit.core.review import Option`` resolves through
     ``cratekit.core.review`` rather than being read as a module of its own.
+
+    EVERY MATCH TAKES A DOT BOUNDARY, including the one for this package's own
+    name. Without it, ``cratekit.modules.reports_ledger`` is a sibling of the
+    package that reads as part of it, and a sibling is not walked by
+    ``_report_modules`` either, so a file with that name could hold the private
+    ignore ledger this unit's countdown forbids and pass both guards at once.
     """
-    if target.startswith("cratekit.modules.reports"):
+    if target == REPORTS_PACKAGE or target.startswith(f"{REPORTS_PACKAGE}."):
         return True
     return any(target == allowed or target.startswith(f"{allowed}.") for allowed in ALLOWED_IMPORTS)
 
@@ -1084,12 +1357,28 @@ def forbidden_imports(source: str, module: str) -> list[str]:
 def filesystem_mutations(source: str) -> list[str]:
     """Every call in ``source`` that could change a file, with its line.
 
-    Two rules. A call to one of the named mutating methods, and a call to
-    ``open`` whose mode is anything other than a literal read mode. The second is
-    narrowed rather than banned outright because ``open(path, "rb")`` is a
-    perfectly correct read, and forbidding it would be a guard that fires on
-    correct code. A mode this cannot READ is a violation, since a computed mode
-    is exactly how the check would be walked past.
+    Four rules, and each of the last three is narrowed so it cannot fire on
+    correct code, because a guard that does is a guard somebody routes around
+    (P7).
+
+    1. A call to one of the named mutating methods.
+    2. A call to ``open`` whose mode is anything other than a literal read mode.
+       Narrowed rather than banned outright because ``open(path, "rb")`` is a
+       perfectly correct read. A mode this cannot READ is a violation, since a
+       computed mode is exactly how the check would be walked past.
+    3. A ``replace`` call with exactly one positional argument and no keywords,
+       which is ``Path.replace`` and ``os.replace`` and is never ``str.replace``.
+       The arity is what separates them: the string method needs the old text and
+       the new, so it always carries at least two, and ``date.replace(year=...)``
+       carries none positionally. That is why ``replace`` is not simply a member
+       of the set above, which would fire on the ``str.replace`` in
+       ``CORRECT_MODULE`` and be the P7 failure this whole guard is written
+       around.
+    4. A ``getattr`` naming one of the mutating methods, or naming an attribute
+       this cannot read. ``getattr(Path(p), "write_" + "text")(decided)`` writes
+       a file while the outer call's ``func`` is itself a Call and its ``attr``
+       never appears anywhere, which is the same walk-past as the computed mode
+       and gets the same answer.
     """
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
@@ -1100,20 +1389,35 @@ def filesystem_mutations(source: str) -> list[str]:
         if name in FILESYSTEM_MUTATIONS:
             found.append(f"line {node.lineno}: {name}")
         elif name == "open":
-            mode = _open_mode(node)
+            mode = _open_mode(node, bound=isinstance(func, ast.Attribute))
             if mode is None or _WRITING_MODES & set(mode):
                 found.append(f"line {node.lineno}: open(mode={mode!r})")
+        elif name == "replace" and len(node.args) == 1 and not node.keywords:
+            found.append(f"line {node.lineno}: replace(one argument)")
+        elif name == "getattr" and len(node.args) >= 2:
+            wanted = node.args[1]
+            if not isinstance(wanted, ast.Constant) or not isinstance(wanted.value, str):
+                found.append(f"line {node.lineno}: getattr(<computed attribute>)")
+            elif wanted.value in FILESYSTEM_MUTATIONS:
+                found.append(f"line {node.lineno}: getattr({wanted.value!r})")
     return found
 
 
-def _open_mode(node: ast.Call) -> str | None:
+def _open_mode(node: ast.Call, *, bound: bool) -> str | None:
     """The literal mode an ``open`` call was given, or None when it is not literal.
+
+    ``bound`` says which call this is, and getting it wrong is not a detail. The
+    builtin takes the file first and the mode second; ``Path.open`` takes the
+    mode FIRST, because its receiver already is the file. Reading position one
+    for both made ``Path(p).open("w")`` report as mode ``"r"`` while the
+    ``open(Path(p), "w")`` fixture was caught, so the idiomatic spelling was the
+    one that got through, on a package that already reaches for ``Path`` and has
+    ``pathlib`` on its allowlist.
 
     An absent mode is the default, which reads, so it comes back as ``"r"``.
     """
-    supplied: ast.AST | None = None
-    if len(node.args) >= 2:
-        supplied = node.args[1]
+    position = 0 if bound else 1
+    supplied: ast.AST | None = node.args[position] if len(node.args) > position else None
     for keyword in node.keywords:
         if keyword.arg == "mode":
             supplied = keyword.value
@@ -1174,6 +1478,24 @@ def test_the_walk_finds_every_module_in_the_package():
         "cratekit.modules.reports.duplicates",
         "cratekit.modules.reports.export",
     }
+
+
+def test_the_walk_is_bounded_to_the_package_and_the_allowlist_covers_the_boundary():
+    """The two halves of the sibling hole, asserted together because they are one.
+
+    The walk covers the package DIRECTORY, so a file beside it is not scanned for
+    a mutation, and that is correct: a module the package cannot reach cannot
+    write anything on its behalf. What makes it correct is the second half. If
+    the allowlist accepted a bare prefix, ``cratekit.modules.reports_ledger``
+    would be both unreachable by the walk and importable by the package, and the
+    pair of holes is what the countdown against this unit forbids by name.
+    """
+    assert all(name.startswith(f"{REPORTS_PACKAGE}.") or name == REPORTS_PACKAGE
+               for name, _ in _report_modules())
+    assert not _permitted("cratekit.modules.reports_ledger")
+    assert not _permitted("cratekit.modules.reportsx")
+    assert _permitted(REPORTS_PACKAGE)
+    assert _permitted(f"{REPORTS_PACKAGE}.export")
 
 
 def test_no_report_module_imports_anything_that_can_write():
@@ -1260,6 +1582,20 @@ def remember(path, decided):
         handle.write(decided)
 """
 
+#: The same handle through the BOUND method, which is the idiomatic spelling and
+#: is the one that got through: ``Path.open`` takes the mode as its first
+#: argument because its receiver is already the file, so a guard reading position
+#: one saw the default read mode and said nothing.
+EVASIVE_BOUND_OPEN_HANDLE = """
+from pathlib import Path
+
+
+def remember(path, decided):
+    handle = Path(path).open("w")
+    handle.write(decided)
+    handle.close()
+"""
+
 #: And with a mode this guard cannot read, which is how a literal check is walked
 #: past without ever writing the letter w.
 EVASIVE_COMPUTED_MODE = """
@@ -1273,9 +1609,62 @@ def remember(path, decided):
         handle.write(decided)
 """
 
+#: ``Path.replace`` overwrites its destination without asking, which is strictly
+#: worse than the ``rename`` sitting beside it in the mutation set, and it is
+#: how a private ledger gets swapped into place atomically.
+EVASIVE_PATH_REPLACE = """
+from pathlib import Path
+
+
+def remember(scratch, ledger):
+    Path(scratch).replace(ledger)
+"""
+
+#: The writer loaded with no import statement at all. Three modules, because the
+#: allowlist's whole argument is that nothing in it can open a database, spawn a
+#: process, or touch a file, and the builtin reaches all three.
+EVASIVE_DYNAMIC_IMPORT = """
+def remember(path, argv, db):
+    __import__("os").truncate(path, 0)
+    __import__("subprocess").run(argv)
+    return __import__("sqlite3").connect(db)
+"""
+
+#: The same builtin with a name this guard cannot read, which is the computed
+#: mode's trick applied to the import instead of to the handle.
+EVASIVE_COMPUTED_DYNAMIC_IMPORT = """
+NAME = "".join(["o", "s"])
+
+
+def remember(path):
+    __import__(NAME).truncate(path, 0)
+"""
+
+#: The mutating method reached through a computed attribute name, so the method
+#: never appears as text and the outer call's ``func`` is itself a Call.
+EVASIVE_COMPUTED_ATTRIBUTE = """
+from pathlib import Path
+
+
+def remember(path, decided):
+    getattr(Path(path), "write_" + "text")(decided)
+"""
+
+#: A private ledger in a SIBLING module whose name merely starts with this
+#: package's. It is not inside the package, so ``_report_modules`` never scans
+#: it, and the bare-prefix allowlist waved the import through, which is the pair
+#: of holes that let it be written, imported and called with both guards green.
+EVASIVE_SIBLING_PACKAGE = """
+from cratekit.modules import reports_ledger
+
+
+def remember(path, decided):
+    reports_ledger.remember(path, decided)
+"""
+
 #: Correct code, in both directions: the one persistence this package is allowed,
-#: a read through the one read primitive, and ordinary string and mapping methods
-#: whose names collide with filesystem verbs.
+#: a read through every read primitive available, and ordinary string, mapping
+#: and date methods whose names collide with filesystem verbs.
 CORRECT_MODULE = """
 from pathlib import Path
 
@@ -1283,19 +1672,35 @@ from cratekit.core import review
 from cratekit.core.review import Option
 
 
-def run(store, path, name):
+def run(store, path, name, today):
     content = Path(path).read_bytes()
-    handle = open(path, "rb")
-    handle.close()
+    bound = Path(path).open("rb")
+    bound.close()
+    builtin = open(path, "rb")
+    builtin.close()
     tidied = name.replace("_", " ").casefold()
+    first_of_month = today.replace(day=1)
+    queue = getattr(review, "Queue")
     return review.offer(
         store,
-        queue=review.Queue.DUPLICATES,
+        queue=queue.DUPLICATES,
         kind="duplicate-recording",
         identity={"title": tidied},
-        payload={"bytes": len(content)},
+        payload={"bytes": len(content), "month": str(first_of_month)},
         options=(Option(option_id="1", summary=tidied),),
     )
+"""
+
+#: Correct code that imports a SIBLING module of this package, the shape the dot
+#: boundary must keep legal. Nothing here uses one today; a guard that failed the
+#: first correct one is a guard that gets deleted rather than obeyed (P7).
+CORRECT_IN_PACKAGE_IMPORT = """
+from cratekit.modules.reports import aging
+from cratekit.modules.reports.export import LibraryView
+
+
+def run(view: LibraryView, intake, today):
+    return aging.intake_groupings(view, intake=intake, today=today)
 """
 
 
@@ -1306,37 +1711,103 @@ def run(store, path, name):
         EVASIVE_PACKAGE_IMPORT,
         EVASIVE_RELATIVE_IMPORT,
         EVASIVE_LAZY_IMPORT,
+        EVASIVE_DYNAMIC_IMPORT,
+        EVASIVE_COMPUTED_DYNAMIC_IMPORT,
+        EVASIVE_SIBLING_PACKAGE,
     ],
 )
 def test_the_import_allowlist_bites_every_shape_of_the_evasion(source):
     """P7's first half, run against the thing the guard exists to catch.
 
-    All four import shapes are covered, and the aliased one is the one that
-    matters most: the armed copy of U11's comma-separated-file guard checked
-    ``import csv`` and ``from csv import DictWriter`` and never the alias, so it
-    was one keyword away from being switched off.
+    Seven import shapes are covered, and three of them were live holes.
+
+    The ALIASED one is the shape that has already defeated a guard here: the
+    armed copy of U11's comma-separated-file guard checked ``import csv`` and
+    ``from csv import DictWriter`` and never the alias, so it was one keyword
+    away from being switched off.
+
+    The DYNAMIC one needs no import statement at all, so a walk over ``ast.Import``
+    and ``ast.ImportFrom`` reported it clean while it loaded ``os``,
+    ``subprocess`` and ``sqlite3``, which is every capability the allowlist's
+    argument rests on excluding.
+
+    The SIBLING one is the shape the allowlist itself let through: a module named
+    ``cratekit.modules.reports_ledger`` matched this package on a bare prefix and
+    sits outside the directory the walk covers, so the private ignore ledger the
+    countdown against this unit forbids by name could have been written, imported
+    and called with both structural guards green.
     """
     assert forbidden_imports(source, "cratekit.modules.reports.planted")
 
 
 @pytest.mark.parametrize(
-    "source", [EVASIVE_PRIVATE_LEDGER, EVASIVE_WRITE_HANDLE, EVASIVE_COMPUTED_MODE]
+    "source",
+    [
+        EVASIVE_PRIVATE_LEDGER,
+        EVASIVE_WRITE_HANDLE,
+        EVASIVE_BOUND_OPEN_HANDLE,
+        EVASIVE_COMPUTED_MODE,
+        EVASIVE_PATH_REPLACE,
+        EVASIVE_COMPUTED_ATTRIBUTE,
+    ],
 )
 def test_the_mutation_guard_bites_the_private_ledger_in_every_shape(source):
+    """Six spellings of one act, three of which used to pass.
+
+    ``Path(p).open("w")`` is the idiomatic one and was read as mode ``"r"``,
+    because the mode was taken from the position the BUILTIN puts it in.
+    ``Path(a).replace(b)`` overwrites its destination while its sibling
+    ``rename`` was already forbidden. And ``getattr`` with a computed attribute
+    name never spells the method at all.
+    """
     assert filesystem_mutations(source)
 
 
-def test_the_guards_stay_quiet_on_correct_code():
+def test_a_dynamic_import_this_cannot_read_is_reported_as_unnameable():
+    """A computed module name gets the computed mode's answer, not the benefit.
+
+    Reporting it as clean would mean the whole allowlist is one string
+    concatenation away from being advisory.
+    """
+    assert forbidden_imports(
+        EVASIVE_COMPUTED_DYNAMIC_IMPORT, "cratekit.modules.reports.planted"
+    ) == [_COMPUTED_IMPORT]
+
+
+@pytest.mark.parametrize("source", [CORRECT_MODULE, CORRECT_IN_PACKAGE_IMPORT])
+def test_the_guards_stay_quiet_on_correct_code(source):
     """P7's second half, which is the half that keeps getting skipped.
 
-    The fixture reaches the review queue in two import shapes, reads a file
-    through both read primitives, and calls ``str.replace``, which is why
-    ``replace`` is not in the mutation set. A guard that failed this module would
-    be routed around within a week, and being routed around is the failure the
-    guard exists to prevent.
+    The first fixture reaches the review queue in two import shapes, reads a file
+    through every read primitive available including the bound ``Path.open``,
+    and calls ``str.replace``, ``date.replace`` and a literal ``getattr``, which
+    are the three shapes the widened mutation rules had to be narrowed around.
+    The second imports a real sibling inside this package, which is what the dot
+    boundary must keep legal. A guard that failed either would be routed around
+    within a week, and being routed around is the failure the guard exists to
+    prevent.
     """
-    assert forbidden_imports(CORRECT_MODULE, "cratekit.modules.reports.planted") == []
-    assert filesystem_mutations(CORRECT_MODULE) == []
+    assert forbidden_imports(source, "cratekit.modules.reports.planted") == []
+    assert filesystem_mutations(source) == []
+
+
+def test_the_package_initializer_may_import_its_own_siblings_relatively():
+    """The false positive the dotted-name shortcut would have produced.
+
+    A package's ``__init__`` resolves ``from . import aging`` against ITSELF, and
+    reading the package off the dotted name gave ``cratekit.modules.aging``: a
+    module that does not exist, reported forbidden. Nothing in the package writes
+    a relative import today, which is exactly why this is a fixture rather than a
+    bug report; the day somebody adds one, the guard would have failed correct
+    code.
+    """
+    resolved = _resolved_imports(
+        "from . import aging\nfrom .export import LibraryView\n", REPORTS_PACKAGE
+    )
+    assert resolved == [f"{REPORTS_PACKAGE}.aging", f"{REPORTS_PACKAGE}.export"]
+    assert forbidden_imports(
+        "from . import aging\n", REPORTS_PACKAGE
+    ) == []
 
 
 def test_the_real_package_reaches_the_review_queue_at_all():
@@ -1391,8 +1862,122 @@ def test_the_intake_node_is_a_declared_taxonomy_node_rather_than_a_name(view, cf
     """A second taxonomy gets a second answer, which is what R19 is worth.
 
     A library whose intake flow is called something else is not an exotic case,
-    it is the default for anyone who did not copy this author's library.
+    it is the default for anyone who did not copy this author's library. The
+    declared display is followed wherever it points: a taxonomy naming a folder
+    this tree really has gets that folder's playlists, and nothing about ``INBOX``
+    is written into this module for either answer to depend on.
     """
     renamed = taxonomy.Node(id=INTAKE.id, display="Deep House")
     groupings = aging.intake_groupings(view, intake=renamed, today=TODAY)
-    assert [group.path for group in groupings] == []
+    assert [group.display for group in groupings] == ["High"]
+
+
+def test_a_declared_intake_flow_that_is_nowhere_in_the_tree_refuses(view):
+    """Absent is not empty, and rendering them the same way is the whole defect.
+
+    An intake queue with nothing waiting in it and a report that never found the
+    intake flow produce the same output: no groupings. Only one of them means the
+    person can stop reading. This is ``export``'s own doctrine one module along,
+    and the filter it replaces returned an empty report with no refusal and no
+    signal for a taxonomy whose display this library does not use.
+    """
+    absent = taxonomy.Node(id=INTAKE.id, display="Bandcamp Queue")
+    with pytest.raises(CratekitError) as raised:
+        aging.intake_groupings(view, intake=absent, today=TODAY)
+    assert raised.value.cause.reason == "intake-flow-absent"
+    assert raised.value.cause.detail["declared"] == "Bandcamp Queue"
+
+
+def test_an_intake_flow_nested_inside_another_folder_is_still_the_intake_flow():
+    """The filter used to be anchored at position zero of the path.
+
+    Somebody who moved their intake folder inside an archive folder got an empty
+    report, silently. Two intake nodes at two depths both yield groupings, which
+    is what this module's docstring has always claimed and what only used to be
+    true of the top level.
+    """
+    tracks = [(1, "n", "a", "file://localhost/library/a.flac")]
+    root_children = [
+        _folder("Old", 1, 1),
+        _folder(INTAKE.display, 1, 2),
+        *_playlist("phil_1_1_26", [1], 3),
+        _close(2),
+        _close(1),
+        _folder(INTAKE.display, 1, 1),
+        *_playlist("phil_2_1_26", [1], 2),
+        _close(1),
+    ]
+    view = export.read_export(
+        _document(collection=_collection(tracks), root_children=root_children, root_count=2)
+    )
+    groupings = aging.intake_groupings(view, intake=INTAKE, today=TODAY)
+    assert {group.path for group in groupings} == {
+        ("Old", INTAKE.display, "phil_1_1_26"),
+        (INTAKE.display, "phil_2_1_26"),
+    }
+
+
+def test_an_intake_flow_holding_only_the_nested_one_is_still_found():
+    """The reviewer's sharper case: the report used to be completely silent."""
+    tracks = [(1, "n", "a", "file://localhost/library/a.flac")]
+    root_children = [
+        _folder("Old", 1, 1),
+        _folder(INTAKE.display, 1, 2),
+        *_playlist("phil_1_1_26", [1], 3),
+        _close(2),
+        _close(1),
+    ]
+    view = export.read_export(
+        _document(collection=_collection(tracks), root_children=root_children, root_count=1)
+    )
+    groupings = aging.intake_groupings(view, intake=INTAKE, today=TODAY)
+    assert [group.display for group in groupings] == ["phil_1_1_26"]
+
+
+def test_an_intake_flow_present_and_empty_reports_nothing_without_refusing(cfg):
+    """The other side of the refusal, and the reason it needs the folder list.
+
+    An intake queue somebody has just cleared is the good outcome, and a report
+    that refused it would be a guard firing on correct code.
+    """
+    view = export.read_export(
+        _document(
+            collection=_collection([]),
+            root_children=[_folder(INTAKE.display, 0, 1), _close(1)],
+            root_count=1,
+        )
+    )
+    report = aging.intake_aging(
+        view, intake=INTAKE, thresholds=aging.thresholds_from(cfg), today=TODAY
+    )
+    assert report.groupings == ()
+
+
+def test_a_grouping_dated_in_the_future_is_undated_rather_than_permanently_current():
+    """A typo in a year must not buy a grouping immunity from the report.
+
+    ``phil_1_5_99`` parses to 2099, which bands current, renders as an age of
+    minus twenty six thousand days, and can never become stale. A date later than
+    the day the report is run for is a bad SHAPE, and this module already has an
+    answer for a bad shape: report it undated, with the name in front of a
+    person, because that is what gets the name fixed.
+    """
+    tracks = [(1, "n", "a", "file://localhost/library/a.flac")]
+    root_children = [
+        _folder(INTAKE.display, 1, 1),
+        *_playlist("phil_1_5_99", [1], 2),
+        _close(1),
+    ]
+    view = export.read_export(
+        _document(collection=_collection(tracks), root_children=root_children, root_count=1)
+    )
+    report = aging.intake_aging(
+        view,
+        intake=INTAKE,
+        thresholds=aging.AgingThresholds(stale_days=30, expired_days=90),
+        today=TODAY,
+    )
+    assert [group.display for group in report.undated] == ["phil_1_5_99"]
+    assert report.current == ()
+    assert report.undated[0].age_days is None
+    assert report.undated[0].intake_date is None
