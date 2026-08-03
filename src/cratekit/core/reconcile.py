@@ -648,6 +648,16 @@ def in_flight_marker(
     restore, and the detail below names the capture, which is the field a person
     matches against the listing.
 
+    THE STAMP IS TAKEN VERBATIM AND IS NOT VALIDATED, which is recorded rather
+    than fixed. An empty string, a path traversal, three hundred characters or an
+    embedded NUL all become a marker identity, because this takes whatever the
+    manifest holds. Nothing reaches a filesystem path from here: the staging
+    directory is named from a freshly minted stamp rather than from this identity,
+    which is the only place a stamp used to escape into a path. So the exposure is
+    a marker whose identifier reads badly in a listing, and the answer is
+    validation at the manifest reader, which owns the field, rather than a second
+    opinion about it here.
+
     IT IS WRITTEN EVEN WHEN THERE IS NOTHING ELSE TO WRITE, which is the whole
     point. Seven of the twelve coupled entries declare ``RollbackEffect.NONE``, so
     a restore whose window touched only those derives no effect markers, and a

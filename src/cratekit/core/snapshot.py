@@ -526,37 +526,25 @@ def assert_room_for(
     )
 
 
-def restore_peak_bytes(record: Capture) -> int:
-    """The largest TRANSIENT a restore of this capture needs. Not the sum.
+def incoming_bytes(source: Path) -> int:
+    """What a copy of ``source`` will ALLOCATE at the destination.
 
-    A CAPTURE AND A RESTORE HAVE OPPOSITE SHAPES AND ASKING THE SAME QUESTION OF
-    BOTH REFUSES RESTORES THAT FIT. A capture copies everything into a directory
-    that did not exist, so its cost is the SUM and the whole sum has to be free at
-    once. A restore replaces things one at a time: a file is staged beside its
-    target and renamed over it, which frees the old copy before the next step
-    begins, and a directory is staged beside its target and swapped, which frees
-    the old tree the same way. So at no moment does a restore hold more than one
-    replacement's worth of extra space, and the steady-state delta is near zero
-    because the library already holds the previous versions of everything being
-    written.
-
-    Measured on the shape that exposed it: an 8 MiB database, a 4 MiB write-ahead
-    log and a 2,000 item coupled tree summed to 24,879,104 bytes and demanded
-    27,367,014, so a volume with 9,437,184 free was refused, against a real peak
-    of roughly 8.4 MiB. The peak measure asks for 9,227,468 and lets it through.
-
-    Measured on the CAPTURE rather than on the live library, because the capture is
-    what is about to be copied, and with ``entry_overhead`` at zero for the reason
-    :func:`_allocated_size` gives.
+    Charged WITH the directory-entry overhead, because a staged copy is a tree of
+    entries that did not exist a moment ago, exactly as a capture is.
     """
-    return max(
-        (
-            _allocated_size(entry.captured, entry_overhead=0)
-            for entry in record.sources
-            if entry.captured is not None
-        ),
-        default=0,
-    )
+    return _allocated_size(source, entry_overhead=DIRECTORY_ENTRY_OVERHEAD)
+
+
+def freed_bytes(target: Path) -> int:
+    """What removing ``target`` will give back, counted conservatively.
+
+    Charged WITHOUT the entry overhead, which is the opposite choice from
+    :func:`incoming_bytes` and is deliberate: over-counting what a step gives back
+    is how an estimate ends up below the real peak, and the whole point of the
+    estimate is to be above it. Directory structure is also not reliably returned
+    to the filesystem when a tree is removed.
+    """
+    return _allocated_size(target, entry_overhead=0)
 
 
 def capture(
@@ -821,6 +809,7 @@ __all__ = [
     "database_paths",
     "new_stamp",
     "read_manifest",
-    "restore_peak_bytes",
+    "freed_bytes",
+    "incoming_bytes",
     "store_root",
 ]

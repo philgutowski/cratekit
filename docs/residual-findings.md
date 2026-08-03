@@ -652,3 +652,54 @@ that finds out whether the derivation above is right.
    checked against the session.** Two sources for one answer is how the first
    version got here: `assert_recovery_target` validated a target and then dropped
    it, and everything downstream resolved a different one.
+
+---
+
+## R-21. What the U36 merge owes, from this side. Six items, and two of them are silent
+
+**Found:** by the verification of U32's second fix round, 2026-08-03, against a
+real trial merge rather than by inference.
+
+U36 records the same obligation as R-14 on its own branch, with four items. Two
+more were found and both are worse than a failing test, so the list is kept on
+both sides rather than trusted to one. **U36's R-14 needs the same two additions.**
+
+**1. Delete the stale `cratekit.core.restore` entry from `tests/_pending.py`.**
+Required, and it AUTO-RESOLVES: U32 deletes the line, U36 leaves it untouched, and
+a three-way merge takes the deletion. Listed so nobody re-adds it by hand.
+
+**2. Delete the `cratekit.write.rebuild` entry from `tests/_pending.py` and from
+`EXPECTED_PENDING` in `tests/test_pending_units.py`.** The countdown fires the
+moment U36's module exists, which is the mechanism working.
+
+**3. Remove the fallback branch in `restore._hand_tree_shortness_over` and the
+`_convergence_module` helper behind it, and import `core.convergence` normally.**
+Item 2's register text names this as the act that discharges it.
+
+**4. Add `rollback_effects=(RollbackEffect.NONE,)` to the `tree_convergence`
+entry in `core/config.py`.** Neither branch can write this alone: the enum is
+U32's and the entry is U36's. The three facts that entry holds are about rows in
+this database and nothing outside the coupled set, so NONE is the right answer.
+
+**5. Drop the `@requires("cratekit.write.rebuild")` decorator in
+`tests/test_restore.py`.** THIS ONE IS SILENT AND IS THE REASON THE LIST IS
+KEPT HERE. `_pending.requires` raises `KeyError` at IMPORT time for a key that is
+no longer in `PENDING`, so leaving the decorator after item 2 makes the whole file
+fail to COLLECT. That is not one red test, it is roughly two hundred tests that
+never run, and a suite that never runs looks exactly like a suite that passed.
+
+**6. Rewrite `test_the_tree_shortness_handoff_calls_the_module_that_owns_the_gate`
+to patch `convergence.mark_unconverged` instead of `restore._convergence_module`.**
+Also silent in the same way: item 3 deletes the attribute the test patches, so it
+raises `AttributeError` at setup.
+
+**Verified:** with all six applied, the merged tree is green, and the only
+remaining differences are the two documentation notes recorded below.
+
+**Two documentation corrections the merge should also carry.** U36's
+`assert_no_latched_restore` docstring says U32's `LATCHING_KINDS` does not include
+the tree kind and that its exemption is therefore inert. Fix round 2 put that kind
+back, so the premise is false while the derivation it justifies is still exactly
+right: the exemption is now LIVE rather than inert. Nothing behaves differently,
+because that function subtracts the tree kind by name from whatever the set holds.
+The reverse direction is already correct in `reconcile.assert_converged`.

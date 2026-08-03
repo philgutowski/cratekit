@@ -2550,40 +2550,194 @@ def test_round2_three_attempts_stage_their_logs_side_by_side(cfg):
 
 
 def test_round2_a_restore_that_fits_is_not_refused(cfg, held):
-    """The peak transient, not the sum, and measured on the verifier's shape.
+    """The rule must not refuse a restore the volume can genuinely hold.
 
-    ``_preflight`` demanded ``1.10 * sum(every captured source)``. The run copies
-    them one at a time and each rename frees the old copy, so the real transient
-    is the largest single step. Measured: an 8 MiB database, a 4 MiB log and a
-    2,000 item coupled tree summed to roughly 24.9 MB and demanded 27.4 MB, and a
-    volume with 9,437,184 bytes free was refused against a real peak near 8.4 MiB.
+    Round 1 demanded ``1.10 * sum(every captured source)``, which refused a
+    restore whose real high-water mark was a third of that, on exactly the volume
+    state a person restores from. This is the P7 half of the capacity rule: run it
+    against correct behaviour too.
     """
-    database = config.state_path("rekordbox_db", cfg)
-    database.write_bytes(b"d" * (8 * 1024 * 1024))
-    _wal_path(cfg).write_bytes(b"w" * (4 * 1024 * 1024))
-    queue = config.state_path("review_queue", cfg)
-    queue.mkdir(parents=True, exist_ok=True)
-    for index in range(2000):
-        (queue / f"item-{index:05d}.json").write_bytes(b"x" * 120)
+    _build_capacity_shape(cfg, database=8, wal=4, items=2000)
+    record, _captured = completed_session(cfg)
 
-    record, captured = completed_session(cfg)
-    peak = snapshot.restore_peak_bytes(captured)
+    decided = restore.plan(cfg, record.session_id, held=held)
+    estimate = restore.space_peak_bytes(decided)
     summed = sum(
-        snapshot._allocated_size(entry.captured)
-        for entry in captured.sources
+        snapshot.incoming_bytes(entry.source)
+        for entry in snapshot.read_manifest(decided.capture_root).sources
         if entry.captured is not None
     )
 
-    assert peak < summed / 2, "the peak is not meaningfully below the sum"
-    assert int(peak * snapshot.CAPACITY_HEADROOM) <= 9_437_184, (
-        f"a restore whose real peak is one 8 MiB file still demands "
-        f"{int(peak * snapshot.CAPACITY_HEADROOM)} bytes"
-    )
+    assert estimate < summed, "the estimate is no better than summing everything"
+    outcome = restore.run(decided, cfg, held=held)
+    assert outcome.converged
+
+
+def _build_capacity_shape(cfg, *, database: int, wal: int, items: int) -> None:
+    """One of the shapes the capacity rule was measured against. Sizes in MiB."""
+    config.state_path("rekordbox_db", cfg).write_bytes(b"d" * (database * 1024 * 1024))
+    _wal_path(cfg).write_bytes(b"w" * (wal * 1024 * 1024))
+    queue = config.state_path("review_queue", cfg)
+    queue.mkdir(parents=True, exist_ok=True)
+    for index in range(items):
+        (queue / f"item-{index:05d}.json").write_bytes(b"x" * 120)
+
+
+def _allocated_tree(root: Path) -> int:
+    """Blocks occupied under ``root``, the way a filesystem counts them."""
+    total = 0
+    for current, _directories, files in os.walk(root):
+        here = Path(current)
+        for name in files:
+            try:
+                total += here.joinpath(name).stat().st_blocks * 512
+            except OSError:
+                continue
+    return total
+
+
+class _PeakSampler:
+    """Samples occupied blocks around every primitive a restore uses to move bytes.
+
+    THE PEAK IS INSIDE A STEP, NOT BETWEEN STEPS, which is why this wraps the
+    primitives rather than ``_perform``. A replacement holds the old copy and the
+    staged new one at the same time, and that overlap IS the high-water mark; a
+    sampler that only looked before and after each step would miss precisely the
+    quantity the capacity rule exists to bound.
+    """
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.baseline = _allocated_tree(root)
+        self.peak = 0
+
+    def sample(self) -> None:
+        self.peak = max(self.peak, _allocated_tree(self.root) - self.baseline)
+
+    def install(self, monkeypatch) -> None:
+        import shutil as real_shutil  # noqa: PLC0415
+
+        sampler = self
+
+        class _Shim:
+            def __init__(self, wrapped, names):
+                self._wrapped = wrapped
+                for name in names:
+                    setattr(self, name, self._wrap(getattr(wrapped, name)))
+
+            def _wrap(self, call):
+                def sampled(*args, **kwargs):
+                    sampler.sample()
+                    result = call(*args, **kwargs)
+                    sampler.sample()
+                    return result
+
+                return sampled
+
+            def __getattr__(self, name):
+                return getattr(self._wrapped, name)
+
+        monkeypatch.setattr(
+            restore, "shutil", _Shim(real_shutil, ("copyfile", "copytree", "rmtree"))
+        )
+        monkeypatch.setattr(restore, "os", _Shim(os, ("replace",)))
+
+
+@pytest.mark.parametrize(
+    "shape, wipe_live",
+    [
+        ({"database": 8, "wal": 4, "items": 2000}, False),
+        ({"database": 8, "wal": 4, "items": 2000}, True),
+        ({"database": 1, "wal": 8, "items": 2000}, False),
+    ],
+)
+def test_round3_the_capacity_estimate_is_above_the_measured_peak(
+    cfg, held, monkeypatch, shape, wipe_live
+):
+    """BLOCKING 1: the single-step rule was a false ACCEPTANCE, measured four ways.
+
+    Two kinds of step grow the library PERMANENTLY, so every later step starts
+    from a higher floor and the maximum of one step cannot see it. A ``CLEAR`` is
+    a rename, so the live log keeps its blocks under another name forever and the
+    ``REPLACE`` that follows frees nothing; and any target that is not there live
+    frees nothing either. On a real 64 MiB volume squeezed to just above what the
+    rule demanded, the preflight passed and the restore died inside the coupled
+    copy with ENOSPC, leaving the database restored and the coupled state not.
+
+    The estimate is compared against a peak MEASURED by sampling occupied blocks
+    around every rename and copy the run makes, rather than against arithmetic
+    restated from the implementation, because restating it would agree with a
+    wrong implementation exactly as readily as with a right one.
+    """
+    _build_capacity_shape(cfg, **shape)
+    record, _captured = completed_session(cfg)
+    if wipe_live:
+        shutil.rmtree(config.library_coupled_dir(cfg), ignore_errors=True)
+        config.state_path("rekordbox_db", cfg).unlink()
 
     decided = restore.plan(cfg, record.session_id, held=held)
-    outcome = restore.run(decided, cfg, held=held)
+    estimate = restore.space_peak_bytes(decided)
 
-    assert outcome.converged
+    sampler = _PeakSampler(Path(cfg.library.root))
+    sampler.install(monkeypatch)
+    restore.run(decided, cfg, held=held)
+
+    assert estimate >= sampler.peak, (
+        f"the estimate {estimate} is BELOW the measured high-water mark "
+        f"{sampler.peak}, so a volume between the two passes the preflight and "
+        f"dies part way through the restore"
+    )
+
+
+def test_round3_a_volume_between_the_two_rules_is_refused(cfg, held):
+    """The gap the single-step rule opened, driven directly.
+
+    Free space above what that rule demanded and below the real high-water mark is
+    exactly the band in which the preflight passed and the restore ran out of room
+    with the two halves at different generations.
+    """
+    _build_capacity_shape(cfg, database=8, wal=4, items=2000)
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    largest_single = max(
+        snapshot.incoming_bytes(step.source)
+        for step in decided.steps
+        if step.act in (restore.Act.REPLACE, restore.Act.REPLACE_TREE)
+    )
+    estimate = restore.space_peak_bytes(decided)
+    assert estimate > largest_single, "the estimate is still one step's worth"
+
+    original = snapshot._free_bytes
+    snapshot._free_bytes = lambda _root: int(largest_single * 1.2)
+    try:
+        with pytest.raises(CratekitError) as excinfo:
+            restore.run(decided, cfg, held=held, dry_run=True)
+    finally:
+        snapshot._free_bytes = original
+
+    assert excinfo.value.cause.reason == "snapshot-store-full"
+    assert config.state_path("rekordbox_db", cfg).read_bytes()[:1] == b"d"
+
+
+def test_round3_a_staged_log_is_counted_as_permanent_growth(cfg, held):
+    """The specific blindness: a CLEAR is a rename and the REPLACE frees nothing.
+
+    The estimate must be at least the restored companion's captured size on top of
+    whatever the rest of the plan needs, because those blocks are never given back.
+    """
+    _build_capacity_shape(cfg, database=1, wal=8, items=10)
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    staged = {step.target for step in decided.steps if step.act is restore.Act.CLEAR}
+    companions = sum(
+        snapshot.incoming_bytes(step.source)
+        for step in decided.steps
+        if step.act is restore.Act.REPLACE and step.target in staged
+    )
+    assert companions > 0, "this fixture writes no companion back"
+    assert restore.space_peak_bytes(decided) >= companions
 
 
 def test_round2_the_restore_capacity_refusal_names_the_library_volume(cfg, held):
@@ -2820,3 +2974,71 @@ def test_round2_the_real_mount_probe_is_armed_by_default(cfg, tmp_path):
             raise AssertionError("unreachable")
 
     assert "unmounted volume leaves behind" in excinfo.value.cause.message
+
+
+def test_round3_an_unwritable_coupled_directory_refuses_at_the_rehearsal(cfg, held):
+    """BLOCKING 2: dropping the target probe for a tree replacement was a regression.
+
+    ``_replace_directory`` renames the target to ``.replaced``, and renaming a
+    directory rewrites that directory's own parent entry, so it needs write
+    permission on the TARGET. With the coupled directory at 0o500 and its parent
+    writable, the rehearsal reported all seven steps performed with no refusal and
+    the real run staged the log aside, replaced the database, and died on the
+    rename with the coupled state half replaced and the latch standing.
+    """
+    write_state(cfg, "label_watermarks", {"source": "before"})
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+    coupled = config.library_coupled_dir(cfg)
+    assert any(
+        step.act is restore.Act.REPLACE_TREE and step.target == coupled
+        for step in decided.steps
+    ), "the plan does not replace the coupled directory, so this proves nothing"
+    assert os.access(coupled.parent, os.W_OK), "the parent must stay writable"
+    coupled.chmod(0o500)
+
+    try:
+        with pytest.raises(CratekitError) as excinfo:
+            restore.run(decided, cfg, held=held, dry_run=True)
+    finally:
+        coupled.chmod(0o700)
+
+    assert excinfo.value.cause.reason == "restore-step-failed"
+    assert str(coupled) in excinfo.value.cause.message
+    # Nothing was touched: the rehearsal refused before the first destructive step.
+    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
+        b"database, generation one"
+    )
+    assert reconcile.outstanding(cfg) == ()
+
+
+def test_round3_staged_companions_are_bounded_by_the_keep_count(cfg):
+    """The staging is unbounded in the other direction on purpose, so bound it here.
+
+    A staged log is never deleted by the restore that made it, and each attempt
+    takes a fresh directory, so attempts accumulate copies on the volume being
+    restored onto. Pruned only from the step that claims a restore finished,
+    because a failed attempt's log is the one most likely to be wanted.
+    """
+    acknowledge(cfg)
+    record, _captured = completed_session(cfg)
+    store = None
+
+    for attempt in range(restore.KEEP_STAGED_ATTEMPTS + 3):
+        _wal_path(cfg).write_bytes(f"attempt {attempt}".encode())
+        with restore.recovery_session(cfg, **gate_seams(cfg)) as open_session:
+            decided = restore.plan(cfg, record.session_id, held=open_session)
+            restore.run(decided, cfg, held=open_session)
+            store = decided.pre_restore_root.parent
+
+    kept = sorted(entry for entry in store.iterdir() if entry.is_dir())
+    assert len(kept) == restore.KEEP_STAGED_ATTEMPTS
+    # The NEWEST survive: the oldest stranded log is the one given up first.
+    surviving = {
+        path.read_bytes()
+        for root in kept
+        for path in root.iterdir()
+        if path.name.endswith("wal")
+    }
+    assert b"attempt 0" not in surviving
+    assert f"attempt {restore.KEEP_STAGED_ATTEMPTS + 2}".encode() in surviving

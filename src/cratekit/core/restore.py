@@ -410,14 +410,14 @@ def recovery_session(
                 record,
                 cfg,
                 state=session.SessionState.CLOSED,
+                # NO PLATFORM SEAMS ARE PASSED, and their absence is the point
+                # rather than an omission. ``close_session`` asserts the volume
+                # only on the path it gates, and a RECOVERY is exempt from that
+                # gate for the reason it is exempt from every other latch here.
+                # Forwarding them anyway said "this close is volume-asserted" to a
+                # reader, which was not true on this path, and a seam that is
+                # threaded but never reached is a seam somebody later trusts.
                 intent=session.Intent.RECOVERY,
-                # The same seams this guard was entered with. The close now
-                # asserts the volume, and a close that probed the platform
-                # directly would ask a different question from the one the gates
-                # around it asked, which is how a session passes its gates and
-                # then fails to end.
-                identity_provider=identity_provider,
-                mount_enumerator=mount_enumerator,
                 now=now,
             )
 
@@ -1155,15 +1155,71 @@ def _preflight(decided: Plan, cfg: config.Config, *, held: Held) -> None:
             _assert_writable(step)
 
     snapshot.assert_room_for(
-        snapshot.restore_peak_bytes(captured),
+        space_peak_bytes(decided),
         config.state_path(snapshot.DATABASE_KEY, cfg).parent,
-        what="the largest single step of putting this capture back",
+        what="the high-water mark of putting this capture back",
         steps=(
             "free space on the LIBRARY volume, which is the one being written to "
             "here; pruning captures helps only if the capture store is on it, and "
             "the retention plan reports whether it is",
         ),
     )
+
+
+def space_peak_bytes(decided: Plan) -> int:
+    """The most this plan will ever occupy beyond what the library holds now.
+
+    THE MAXIMUM OF ONE STEP IS NOT THE ANSWER, AND ASSUMING IT WAS WAS A FALSE
+    ACCEPTANCE. The reasoning that produced it is sound about a single
+    replacement, which stages a copy beside its target and renames over it, so the
+    old copy is freed before the next step begins. It is wrong about the plan,
+    because two kinds of step GROW THE LIBRARY PERMANENTLY and every later step
+    starts from that higher floor:
+
+    * a ``CLEAR`` is a rename, not a delete. The live write-ahead log keeps its
+      blocks under a new name forever, on purpose, because those bytes postdate
+      every capture and this module is not entitled to decide they are worthless.
+      The ``REPLACE`` that follows then writes the captured companion onto a
+      target that no longer exists, so it frees nothing, and the captured
+      companion's whole size is a permanent add;
+    * any target that is not there live frees nothing when it is replaced, which
+      is the ordinary shape of restoring onto a library that lost files.
+
+    So the peak is the running total of what completed steps added, plus the
+    transient of the step in flight, maximised over the plan. Four shapes were
+    measured by sampling allocated bytes around every rename and copy, and the
+    single-step rule was below the real peak on all four, by up to 7.4 MB; on a
+    real 64 MiB volume squeezed to just above what it demanded, the preflight
+    passed, the log was staged aside, the database was replaced, and the coupled
+    copy died with ENOSPC, leaving the two halves at different generations.
+
+    IT WALKS THE PLAN RATHER THAN THE MANIFEST, because the order is what makes
+    the arithmetic true and only the plan has it. The plan is also what a caller
+    was shown, so this is an estimate about the thing that is going to run.
+    """
+    staged_aside = {
+        step.target for step in decided.steps if step.act is Act.CLEAR
+    }
+    occupied = 0
+    peak = 0
+    for step in decided.steps:
+        if step.target is None:
+            continue
+        if step.act is Act.REMOVE:
+            occupied -= snapshot.freed_bytes(step.target)
+            continue
+        if step.act not in (Act.REPLACE, Act.REPLACE_TREE) or step.source is None:
+            continue
+        incoming = snapshot.incoming_bytes(step.source)
+        # A target that was staged aside is still on the volume under another
+        # name, so replacing it gives nothing back.
+        outgoing = (
+            0 if step.target in staged_aside else snapshot.freed_bytes(step.target)
+        )
+        # Both copies exist at once, which is what makes the swap atomic.
+        peak = max(peak, occupied + incoming)
+        occupied += incoming - outgoing
+    return max(peak, occupied)
 
 
 def _assert_source_usable(step: Step) -> None:
@@ -1194,20 +1250,32 @@ def _assert_source_usable(step: Step) -> None:
 def _assert_writable(step: Step) -> None:
     """Refuse when this account cannot write where the step has to write.
 
-    Asked of the nearest EXISTING ancestor, because a restore legitimately creates
-    directories that are not there yet, and asking about a path that does not exist
-    answers about nothing.
+    A DIRECTORY REPLACEMENT NEEDS BOTH ITS PARENT AND ITSELF, and each of the two
+    previous versions of this check asked for exactly one of them.
+    :func:`_replace_directory` stages a sibling and renames twice, so the staging
+    writes all happen in the target's PARENT; that is the half the first version
+    missed, and it let a genuinely unwritable parent through. But the first of
+    those renames is ``os.replace(target, previous)``, and renaming a directory
+    rewrites that directory's own ``..`` entry, so it needs write permission on
+    the TARGET; that is the half the second version missed, and it is a
+    regression, because the rehearsal then reported all seven steps performed with
+    no refusal and the real run staged the log aside, replaced the database, and
+    died on the rename with the coupled state half replaced. So both are asked.
 
-    A DIRECTORY REPLACEMENT NEEDS ITS PARENT, NOT ITSELF. :func:`_replace_directory`
-    stages a sibling and renames twice, so every write it makes is in the target's
-    PARENT; the target itself is only ever renamed. Probing the target answered a
-    question nobody was asking and let a genuinely unwritable parent through.
+    Each is asked of the nearest EXISTING ancestor, because a restore legitimately
+    creates directories that are not there yet, and asking about a path that does
+    not exist answers about nothing.
     """
     target = step.target
     assert target is not None
-    if step.act is Act.REPLACE_TREE:
-        target = target.parent
-    probe = target if target.exists() else target.parent
+    wanted = [target.parent] if step.act is Act.REPLACE_TREE else []
+    wanted.append(target)
+    for candidate in wanted:
+        _assert_directory_writable(step, candidate)
+
+
+def _assert_directory_writable(step: Step, wanted: Path) -> None:
+    probe = wanted
     while not probe.exists() and probe.parent != probe:
         probe = probe.parent
     writable = probe if probe.is_dir() else probe.parent
@@ -1216,14 +1284,18 @@ def _assert_writable(step: Step) -> None:
     raise refuse(
         "restore-step-failed",
         f"{writable} is not writable by this account, so the restore would stop "
-        f"at {target} after having already replaced everything before it",
+        f"at {step.target} after having already replaced everything before it",
         steps=(
             "make the library's directories writable by this account, then run "
             "this again",
         ),
         scope=Scope.RUN,
         origin=("restore",),
-        detail={"act": str(step.act), "target": str(target), "unwritable": str(writable)},
+        detail={
+            "act": str(step.act),
+            "target": str(step.target),
+            "unwritable": str(writable),
+        },
     )
 
 
@@ -1359,6 +1431,7 @@ def _perform(
                 len(discharged),
                 len(discharged) - 1,
             )
+        _prune_staged_companions(decided.pre_restore_root.parent)
         return ()
     if step.target is None:  # pragma: no cover - every other act carries a target
         raise refuse(
@@ -1413,6 +1486,45 @@ def _perform(
             },
         ) from exc
     return ()
+
+
+def _prune_staged_companions(store: Path) -> None:
+    """Bound the staged-companion store, oldest first, AFTER a restore completed.
+
+    THE BOUND EXISTS BECAUSE THE STAGING IS DELIBERATELY UNBOUNDED IN THE OTHER
+    DIRECTION. A staged log is never deleted by the restore that made it, because
+    those bytes postdate every capture, and each attempt takes a fresh directory
+    because the second attempt's log is not the first's. Both of those are right
+    and together they grow without limit: four attempts leave four copies. That
+    compounds with the capacity estimate, because every stranded log permanently
+    occupies space on the volume being restored onto.
+
+    PRUNED ONLY ON THE SUCCESS PATH, from the step that claims the restore
+    finished. A failed attempt's log is the one most likely to be wanted, and
+    pruning from a run that is about to fail would delete the evidence of the run
+    before it.
+
+    IT NEVER RAISES. This is housekeeping running after the work has landed, and
+    nothing after the point of no return may fail a restore that succeeded.
+    """
+    # ORDERED BY MODIFICATION TIME, not by name. The directory names are capture
+    # stamps, whose second-resolution prefix is followed by a RANDOM tail, so
+    # sorting them lexically is chronological only for attempts in different
+    # seconds and is arbitrary for attempts inside one. Retention next door already
+    # orders on the recorded time for the same reason.
+    try:
+        attempts = sorted(
+            (entry for entry in store.iterdir() if entry.is_dir()),
+            key=lambda entry: (entry.stat().st_mtime, entry.name),
+        )
+    except OSError:
+        return
+    for stale in attempts[: max(len(attempts) - KEEP_STAGED_ATTEMPTS, 0)]:
+        try:
+            shutil.rmtree(stale)
+            logger.info("pruned the staged companion files from %s", stale.name)
+        except OSError as exc:
+            logger.warning("could not prune the staged companions at %s: %s", stale, exc)
 
 
 def _stage_companion_aside(target: Path, staging: Path) -> None:
@@ -1495,10 +1607,12 @@ def _hand_tree_shortness_over(
     a cycle. ``core.convergence`` lands with U36 and is not in this build. A
     module-level import would make this module unimportable until it lands, and a
     hard requirement on a module that does not exist is not a handoff, it is a
-    breakage. Until then the fact is recorded in this unit's own store and
-    REPORTED, never latched, so nothing is lost and nothing deadlocks; the obligation
-    to delete that fallback is registered in ``tests/_pending.py`` against U36, so
-    it is a countdown rather than a comment.
+    breakage. Until then the fact is recorded in this unit's own store AND LATCHED
+    THERE by ``reconcile.assert_converged``, so it gates rather than merely
+    reporting. An earlier round recorded it without latching it, on a premise about
+    the rebuild that turned out to be false, and the result was a fact written down
+    and read by nothing. The obligation to delete that fallback is registered in
+    ``tests/_pending.py`` against U36, so it is a countdown rather than a comment.
     """
     if not decided.tree_markers:
         return
@@ -1514,8 +1628,8 @@ def _hand_tree_shortness_over(
         return
     logger.warning(
         "core.convergence is not in this build, so %d unconverged tree(s) are "
-        "recorded here and reported rather than gated; the rebuild that clears "
-        "them lands with it",
+        "recorded and latched here instead; the rebuild that clears them lands "
+        "with it",
         len(tree_ids),
     )
     reconcile.record_markers(cfg, decided.tree_markers)
@@ -1673,6 +1787,11 @@ DEFAULT_KEEP = 5
 #: enough to cover a person who works in bursts and short enough that a library
 #: does not silently accumulate a year of database copies.
 DEFAULT_MAX_AGE = timedelta(days=30)
+
+#: How many attempts' worth of staged companion files survive. The same number
+#: the capture store keeps, carried rather than re-chosen so two answers to one
+#: question cannot exist.
+KEEP_STAGED_ATTEMPTS = DEFAULT_KEEP
 
 
 @dataclass(frozen=True, slots=True)
@@ -2261,6 +2380,7 @@ __all__ = [
     "CAPTURE_RESTORE_WORKFLOW",
     "DEFAULT_KEEP",
     "DEFAULT_MAX_AGE",
+    "KEEP_STAGED_ATTEMPTS",
     "PRE_RESTORE_DIR",
     "PRE_CUTOVER_RESTORE",
     "RECOVERY_LOCK_KEY",
@@ -2285,6 +2405,7 @@ __all__ = [
     "recovery_lock_path",
     "recovery_session",
     "restorable_targets",
+    "space_peak_bytes",
     "retention_plan",
     "run",
     "shares_the_database_volume",
