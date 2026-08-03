@@ -300,11 +300,15 @@ def test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist():
     It is what a provider row does for six of the seven spellings below, and one
     of the six it still cannot reach at all.
 
-    So the second check is over the RECORDING PATH: for every spelling a library
-    row really carries, the identity U24's recorder would write is compared
+    So the second check is over the RECORDING PATH: for every rekordbox row shape,
+    the identity U24's recorder would write, composed by its OWN
+    ``version_title`` from the Title column AND the version column, is compared
     against the identities the three readers on this side actually produce, and
     the ones that cannot reconcile are named in ``UNRECONCILED`` rather than left
-    to a silent miss.
+    to a silent miss. The version column is in it because that is where the two
+    sides diverged: U24 reads a version out of ``RemixerName`` and ``Subtitle``
+    and composes, this side composes from a provider's version field, and the
+    property that matters is whether the two compositions produce one string.
 
     WHAT IT STILL CANNOT PROVE, and this is the residual R-21 records: U24's
     RECORDER is not imported here either, so the string it hands
@@ -324,13 +328,21 @@ def test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist():
         assert match.version_identity(
             artist="Aurora Bloom", title=row_title
         ) == tombstone.version_identity(artist="Aurora Bloom", title=row_title)
-    # THE DERIVATION, against the domain module's own function rather than
-    # against the local copy of it.
+    # THE COMPOSITION, against the domain module's own rule rather than against
+    # this file's imitation of it. Every row is composed the way the recorder
+    # composes, then hashed the way the recorder hashes.
+    for row_title, row_version, _listed, _title, _version in REKORDBOX_ROWS:
+        assert tombstone.version_title(row_title, row_version) == u24_version_title(
+            row_title, row_version
+        ), "the imitation of version_title in this file has drifted from the real one"
+    # THE DERIVATION, end to end.
     missed = tuple(
-        (row_title, wanted.origin)
-        for row_title in ROW_SPELLINGS
-        for wanted in every_reader_on(row_title)
-        if tombstone.version_identity(artist="Aurora Bloom", title=row_title)
+        (row[0], wanted.origin)
+        for row in REKORDBOX_ROWS
+        for wanted in every_reader_on(row)
+        if tombstone.version_identity(
+            artist="Aurora Bloom", title=tombstone.version_title(row[0], row[1])
+        )
         not in wanted.suppression_spellings
     )
     assert missed == UNRECONCILED, (
@@ -385,20 +397,39 @@ ROW_SPELLINGS = [
 ]
 
 
-#: THE PROVIDER ROW a source carrying its version in a separate field ships for
-#: each of the spellings above, WRITTEN OUT. Not produced by calling
-#: ``split_title``: an input built by the code under test cannot show that code
-#: reading a row wrongly, and half the point of this table is that the provider
-#: path is the one with no original string to preserve.
-PROVIDER_OF: dict[str, tuple[str, str]] = {
-    "Sun Path (Nightwave Remix)": ("Sun Path", "Nightwave Remix"),
-    "Sun Path - Nightwave Remix": ("Sun Path", "Nightwave Remix"),
-    "Sun Path [Nightwave Remix]": ("Sun Path", "Nightwave Remix"),
-    "Sun Path (feat. Mira) (Nightwave Remix)": ("Sun Path", "Nightwave Remix"),
-    "Sun Path (Extended) (Remastered)": ("Sun Path", "Extended Remastered"),
-    "Sun Path": ("Sun Path", ""),
-    "Sun Path (Original Mix)": ("Sun Path", "Original Mix"),
-}
+#: ONE REKORDBOX COLLECTION ROW PER ENTRY, plus what a list naming the same
+#: record spells, plus the provider row a source with a separate version field
+#: ships for it. Every column a literal, because an input built by the code under
+#: test cannot show that code reading a row wrongly.
+#:
+#: THE VERSION COLUMN IS WHY THIS TABLE REPLACED A LIST OF TITLES. U24's recorder
+#: no longer hashes the Title column on its own: it reads a version out of
+#: ``RemixerName`` and then ``Subtitle`` and passes both through
+#: ``version_title``, because two different remixes of one recording collide
+#: whenever the mix name sits in those columns rather than inside the Title.
+#: Fields: title column, version column, what a list spells, provider title,
+#: provider version.
+REKORDBOX_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
+    ("Sun Path (Nightwave Remix)", "Nightwave Remix",
+     "Sun Path (Nightwave Remix)", "Sun Path", "Nightwave Remix"),
+    ("Sun Path - Nightwave Remix", "Nightwave Remix",
+     "Sun Path - Nightwave Remix", "Sun Path", "Nightwave Remix"),
+    ("Sun Path [Nightwave Remix]", "Nightwave Remix",
+     "Sun Path [Nightwave Remix]", "Sun Path", "Nightwave Remix"),
+    ("Sun Path (feat. Mira) (Nightwave Remix)", "Nightwave Remix",
+     "Sun Path (feat. Mira) (Nightwave Remix)", "Sun Path", "Nightwave Remix"),
+    # THE ROW U24'S OWN FIX IS ABOUT. The mix name is in the version column and
+    # nowhere in the Title, so the recorder COMPOSES rather than short
+    # circuiting, and what it composes is the parenthesised form this side
+    # composes for the same record.
+    ("Sun Path", "Nightwave Remix",
+     "Sun Path (Nightwave Remix)", "Sun Path", "Nightwave Remix"),
+    ("Sun Path (Extended) (Remastered)", "",
+     "Sun Path (Extended) (Remastered)", "Sun Path", "Extended Remastered"),
+    ("Sun Path", "", "Sun Path", "Sun Path", ""),
+    ("Sun Path (Original Mix)", "",
+     "Sun Path (Original Mix)", "Sun Path", "Original Mix"),
+)
 
 #: THE DERIVATIONS THAT DO NOT RECONCILE, named rather than left to a silent
 #: miss. A featured credit is dropped from the matching title because it names a
@@ -411,41 +442,59 @@ UNRECONCILED: tuple[tuple[str, str], ...] = (
 )
 
 
-def u24_records(artist: str, row_title: str) -> dict[str, str]:
+def u24_version_title(title: str, version: str) -> str:
+    """U24's ``core.tombstone.version_title``, written out INDEPENDENTLY.
+
+    THE COMPOSITION RULE, WHICH IS WHERE THE SEAM ACTUALLY IS. It composes with
+    round parentheses, which is the shape this side composes with, so the plain
+    case now meets. What it also does is SHORT CIRCUIT: when the folded version
+    is already inside the folded title, the Title column is recorded exactly as
+    it stands. So whatever shape a rekordbox Title happens to use survives into
+    the identity, and a consulter cannot assume one shape, it has to enumerate
+    them. It is idempotent for the same reason, so a title already carrying its
+    version is never composed twice, and this side must not defeat that by
+    composing over an already composed title.
+    """
+    folded = u24_fold(version)
+    if not folded or folded in u24_fold(title):
+        return title
+    return f"{title} ({version})" if title else version
+
+
+def u24_records(artist: str, row_title: str, row_version: str = "") -> dict[str, str]:
     """What U24's recorder writes, DERIVED the way it derives it.
 
-    ``deletion.stores.version_of`` passes ``row.artist`` and ``row.title``
-    straight through, and ``row.title`` is the collection row's Title column
-    verbatim: ``deletion/library.py`` builds it with ``_text(row, "Title")``.
-    Nothing splits it and nothing recomposes it. Written out here rather than
-    imported, because the deletion package is landing in its own worktree and the
-    whole point of this helper is to be a SECOND implementation.
+    ``deletion.stores.version_of`` hands ``row.artist`` and
+    ``tombstone.version_title(row.title, row.version)`` to ``version_identity``,
+    where ``row.title`` is the collection row's Title column and ``row.version``
+    is read from ``RemixerName`` and then ``Subtitle``. Written out here rather
+    than imported, because the deletion package is landing in its own worktree
+    and the whole point of this helper is to be a SECOND implementation.
 
     AN IMITATION, AND NOTHING HERE CHECKS IT AGAINST U24'S REAL RECORDER. The
-    fold below is a second implementation of an algorithm this repository can
-    read; the DERIVATION is a reading of a file in another worktree, taken from
-    that unit's stated shape. If U24's reader maps a column this does not, this
-    helper agrees with the code here and both disagree with what actually gets
-    written. R-21 records that and names the check that would close it.
+    fold and the composition below are second implementations of algorithms
+    stated to this unit; the READER that fills ``row.version`` is a file in
+    another worktree. If it maps a column this does not, this helper agrees with
+    the code here and both disagree with what actually gets written. R-21 records
+    that and names the check that would close it.
     """
-    return {"artist": u24_fold(artist), "title": u24_fold(row_title)}
+    return {
+        "artist": u24_fold(artist),
+        "title": u24_fold(u24_version_title(row_title, row_version)),
+    }
 
 
-def every_reader_on(row_title: str) -> tuple[match.Wanted, ...]:
-    """One library row spelling, arriving through all three readers.
-
-    The provider row comes from :data:`PROVIDER_OF` rather than from a call to
-    ``split_title``, so the input is a literal and a reader that splits a row
-    wrongly cannot make its own input agree with it.
-    """
-    title, version = PROVIDER_OF[row_title]
+def every_reader_on(row: tuple[str, str, str, str, str]) -> tuple[match.Wanted, ...]:
+    """One rekordbox row, named by a list arriving through all three readers."""
+    _title, _version, listed, provider_title, provider_version = row
     return (
-        match.read_text_lines(f"Aurora Bloom - {row_title}\n")[0],
+        match.read_text_lines(f"Aurora Bloom - {listed}\n")[0],
         match.read_spotify_items(
-            [{"name": row_title, "artists": [{"name": "Aurora Bloom"}]}]
+            [{"name": listed, "artists": [{"name": "Aurora Bloom"}]}]
         )[0],
         match.read_tidal_tracks(
-            [{"title": title, "version": version, "artist": {"name": "Aurora Bloom"}}]
+            [{"title": provider_title, "version": provider_version,
+              "artist": {"name": "Aurora Bloom"}}]
         )[0],
     )
 
@@ -536,18 +585,92 @@ def test_every_row_spelling_is_addressed_from_every_reader_or_is_a_named_gap():
 
     The gated guard above compares this side against the real domain module and
     cannot run yet. This one compares it against ``u24_records``, an
-    independently written second implementation, over all three readers and all
-    seven spellings, so the seam is checked every run rather than only after a
-    merge. The gaps are a literal tuple: one going missing means a tombstone
+    independently written second implementation, over all three readers and every
+    rekordbox row shape, so the seam is checked every run rather than only after
+    a merge. The gaps are a literal tuple: one going missing means a tombstone
     became invisible, and one going away means R-20 is stale.
+
+    DRIVEN FROM THE ROW AND ITS VERSION COLUMN, not from a title alone, because
+    that is what the recorder is handed. The row whose mix name sits only in the
+    version column is the one U24's own fix exists for, and it is the one that
+    proves the two sides now COMPOSE the same string rather than merely agreeing
+    when neither of them composes anything.
     """
     missed = tuple(
-        (row_title, wanted.origin)
-        for row_title in ROW_SPELLINGS
-        for wanted in every_reader_on(row_title)
-        if u24_records("Aurora Bloom", row_title) not in wanted.suppression_spellings
+        (row[0], wanted.origin)
+        for row in REKORDBOX_ROWS
+        for wanted in every_reader_on(row)
+        if u24_records("Aurora Bloom", row[0], row[1]) not in wanted.suppression_spellings
     )
     assert missed == UNRECONCILED
+
+
+def test_the_recorder_and_the_consulter_compose_the_same_string():
+    """THE PROPERTY, rather than two functions handed one string.
+
+    The round before this proved the identity FUNCTIONS agreed by giving both
+    sides the same input, which cannot see the risk: the recorder DERIVES its
+    string from a collection row and this side derives one from a listing. Now
+    that the recorder composes too, the property is sharp and can be stated. For
+    a row whose version lives only in the version column, the string the recorder
+    hands ``version_identity`` must be one of the strings this side consults
+    under, and the parenthesised composition is where they meet.
+
+    The expected string is a LITERAL. Deriving it from either composition would
+    make this agree with whichever one changed.
+    """
+    recorded = u24_version_title("Sun Path", "Nightwave Remix")
+    assert recorded == "Sun Path (Nightwave Remix)"
+    wanted = match.read_tidal_tracks([PROVIDER_ROW])[0]
+    assert "Sun Path (Nightwave Remix)" in wanted.addresses
+
+
+def test_the_consulter_never_composes_over_an_already_composed_title():
+    """IDEMPOTENCE, which the recorder has and this side must not defeat.
+
+    ``version_title`` short circuits on containment, so it never appends a
+    version a title already carries. This side composes from the SPELLING'S OWN
+    HEAD, which is the spelling with its version taken off, so it cannot append a
+    second copy either. Composing from the listing's full title instead would
+    produce ``Sun Path (Nightwave Remix) (Nightwave Remix)``, an address nothing
+    will ever record, and would quietly halve the useful spellings consulted.
+    """
+    for wanted in (
+        match.read_tidal_tracks([PROVIDER_ROW])[0],
+        match.read_text_lines("Aurora Bloom - Sun Path (Nightwave Remix)\n")[0],
+        match.read_text_lines("Aurora Bloom - Sun Path - Nightwave Remix\n")[0],
+    ):
+        doubled = [
+            address for address in wanted.addresses
+            if address.casefold().count("nightwave remix") > 1
+        ]
+        assert doubled == [], f"the version was composed twice: {doubled}"
+
+
+#: A TITLE SHAPE THIS SIDE DOES NOT ENUMERATE. The recorder keeps whatever shape
+#: the Title column used, so the consulter has to know the shapes; it knows round
+#: parentheses, square brackets, the dash and the multi-group split. Anything
+#: else misses, and that class is recorded as R-23 rather than guessed at.
+UNENUMERATED_SHAPE = ("Sun Path {Nightwave Remix}", "Nightwave Remix")
+
+
+def test_a_title_shape_outside_the_enumerated_ones_is_a_recorded_gap():
+    """THE BOUNDARY OF THE ENUMERATION, asserted rather than assumed.
+
+    A consulter that enumerates shapes has an edge, and an edge nobody wrote down
+    is discovered by a track coming back after somebody deleted it. This pins
+    where the edge is: a curly-brace Title short circuits ``version_title``, so
+    the identity keeps that shape, and no spelling this side composes reaches it
+    unless the list happened to spell it the same way. R-23 records the class.
+    """
+    title, version = UNENUMERATED_SHAPE
+    recorded = u24_records("Aurora Bloom", title, version)
+    listed = match.read_tidal_tracks([PROVIDER_ROW])[0]
+    assert recorded not in listed.suppression_spellings
+    # The list that spelled it the same way still reaches it, which is what makes
+    # this a limit of the ENUMERATION rather than of the addressing rule.
+    same = match.read_text_lines(f"Aurora Bloom - {title}\n")[0]
+    assert recorded in same.suppression_spellings
 
 
 @pytest.mark.parametrize(

@@ -733,14 +733,20 @@ its reader maps only `ArtistName` and `Title`; this side may compose a title tha
 side would never have recorded. Neither is visible to a same-string function
 comparison, and only the second is visible to the derivation check as written.
 
-**The exact check that would close it.** Once both modules are in one tree, drive
-U24's own library reader over a collection row table whose rows put the version in
-`Title`, in `RemixerName` and in `Subtitle` in turn, hand each resulting row to
-U24's own `version_of`, and assert that every identity it writes appears in
-`Wanted.suppression_spellings` for a list naming the same record through all three
-readers. That is the only form of this check with no imitation in it on either
-side. Until it exists, `u24_records` says in its own docstring what it is and what
-it cannot prove.
+**What it already checks against the real rule.** The gated guard calls U24's own
+`version_title` for every row shape and asserts the imitation in this file agrees
+with it, then composes each identity with the real function and drives it through
+the three readers. So the COMPOSITION rule is checked against the real code the
+moment both are in one tree, and only the READER that fills the version column is
+imitated.
+
+**The exact check that would close the rest.** Drive U24's own library reader over
+a collection row table whose rows put the version in `Title`, in `RemixerName` and
+in `Subtitle` in turn, hand each resulting row to U24's own `version_of`, and
+assert that every identity it writes appears in `Wanted.suppression_spellings` for
+a list naming the same record through all three readers. That is the only form of
+this check with no imitation in it on either side. Until it exists, `u24_records`
+says in its own docstring what it is and what it cannot prove.
 
 **Closes when:** that test exists, and `TOMBSTONE_KIND` and `version_identity` in
 `match.py` have collapsed into imports from `cratekit.core.tombstone`, which is
@@ -778,3 +784,56 @@ material acquired before it, or by hand.
 registers a file under each, with `__len__` counting distinct paths and
 `_candidates_for` grouping so that one file is one candidate however many
 recordings reach it.
+
+---
+
+## R-23. The recorder keeps the Title column's own shape, so the consulter enumerates shapes
+
+**Found:** by the third U16 review, 2026-08-03, after U24 changed its identity
+derivation mid-round.
+
+**What changed on the other side.** U24's recorder no longer hashes the Title
+column verbatim. `deletion.stores.version_of` now passes
+`tombstone.version_title(row.title, row.version)`, with `row.version` read from
+rekordbox's `RemixerName` and then `Subtitle`, and `version_title` composes with
+ROUND PARENTHESES. That narrows this seam rather than widening it: a row whose mix
+name sits only in the version column is recorded under `sun path (nightwave
+remix)`, which is exactly what this side composes for a provider row naming the
+same record, and `test_the_recorder_and_the_consulter_compose_the_same_string`
+pins it.
+
+**The mechanism that leaves a class open.** `version_title` SHORT CIRCUITS: when
+the folded version is already contained in the folded title it returns the Title
+column untouched. So a Title of `Sun Path [Nightwave Remix]` with `RemixerName`
+of `Nightwave Remix` is recorded under `sun path [nightwave remix]`, keeping the
+square brackets, and a Title of `Sun Path - Nightwave Remix` keeps the dash. The
+shape a library row happens to use therefore survives into the identity, and a
+consulter cannot assume one shape. It has to ENUMERATE them.
+
+**What this side enumerates, and where the edge is.** `Wanted.addresses` composes
+round parentheses, square brackets, the dash form when this module's own reader
+reads it back, and the multi-group split. Those cover every shape in
+`REKORDBOX_ROWS`, which is why the derivation guard's only gap is R-20's featured
+credit. What is NOT covered is any other bracket shape, `Sun Path {Nightwave
+Remix}` being the pinned example, and any difference INSIDE the version string
+itself, such as a Title spelling `Nightwave RMX` against a provider version of
+`Nightwave Remix`. Both are recorded under one identity by U24 and consulted under
+another here, so the version reports missing and is re-acquired at exit zero.
+
+**Not fixed by widening.** Adding shapes is cheap and adding the wrong one is not:
+every extra composed spelling is another string a deletion of somebody else's
+record could match, and `tombstone_fold`'s docstring settles that direction, an
+over-eager suppression silently withholds music somebody wants. The dash form
+already carries a read-back gate for exactly this reason. A shape is added when a
+library is found to use it, not on the chance that one might.
+
+**Pinned rather than assumed.**
+`test_a_title_shape_outside_the_enumerated_ones_is_a_recorded_gap` asserts the
+edge is where this entry says it is, and asserts that a list spelling the record
+the same way still reaches it, so the limit is the enumeration and not the
+addressing rule.
+
+**Closes when:** the deletion pass records a normalized identity beside the
+verbatim one and this side consults that, which puts one shape on both sides of
+the seam and retires the enumeration. That is a decision for whoever owns the
+tombstone identity, which is the domain layer and not this unit.
