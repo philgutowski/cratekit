@@ -473,6 +473,15 @@ def _index(reservations: tuple[Reservation, ...]) -> Mapping[str, Reservation]:
                 f"to the argument parser; at or above {MAX_CODE} is the shell's "
                 f"own territory."
             )
+        # THE NEXT TWO ARE UNREACHABLE TODAY and are kept deliberately. The range
+        # check above already excludes every code outside a reserved band and
+        # every code no verb may return, so deleting either of these kills no
+        # test and changes no behaviour. They stay because each states a
+        # DIFFERENT rule from the range: the range is a span of integers and
+        # these two are about what the span means, so a band renumbered or a
+        # meaning changed to non-producible fails by name here rather than
+        # passing because the arithmetic still happens to hold. A reader should
+        # take them as defence in depth, not as live paths. See R-16.
         band = band_of(reservation.code)
         if band.name not in RESERVED_BANDS:
             raise ValueError(

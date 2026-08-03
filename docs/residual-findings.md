@@ -586,3 +586,167 @@ the list from going stale.
 
 **Closes when:** nothing has to close it. Recorded as a maintenance cost that was
 chosen over a rule a rename can flip.
+
+---
+
+## R-15. One import walk was fixed and three copies of it still carry the defect
+
+**Found:** during U38's third review round, 2026-08-03. Driven and confirmed.
+
+`tests/_source_guards.py` asks "does this source reach a named module" four times,
+in four classes, and every one of them used the same expression to recognize a
+relative import:
+
+    node.level > 0 and module.split(".")[-2:] == ["core", "<module>"]
+
+That expression answers for `from ..core.exit_codes import ExitCode` and for no
+other relative spelling. `node.module` holds only the TAIL: a SIBLING import
+records `exit_codes` and nothing else, and `from . import exit_codes` records
+nothing at all, so the one-level forms, which are the natural spelling for a file
+sitting beside the module it imports, matched nothing. Confirmed live: a module
+inside `cratekit/core/` written as `from .exit_codes import ExitCode` with
+`CODES = {"rclone-missing": ExitCode.PRECONDITION}`, a fully reserved cause and
+the exact case the guard exists for, reported nothing.
+
+U38 fixed its own copy, `ExitCodeImports`, by resolving `node.level` against the
+importing file's package the way Python resolves it, and pinned all three
+relative spellings with fixtures.
+
+The other three copies are untouched and each still carries it:
+
+- `ReviewImports`, `tests/_source_guards.py` on `main`, lines 85 to 90. U38
+  propagated the expression from here rather than introducing it.
+- `ImportsOf`, U12's generalization of `ReviewImports`, on U12's branch.
+- `SoftDeleteNames`, the conformance branch's third copy.
+
+**The reason this is written down rather than left to the merge.** U38's own
+docstring already books the collapse of all four into `ImportsOf`. That collapse
+takes ONE implementation and deletes three, so if it takes `ImportsOf`'s relative
+handling rather than the fixed one, the defect survives the deduplication and
+lands in the single place every guard then reads. A three-into-one merge that
+picks the wrong one is silent by construction: every call site keeps working and
+every suite stays green, because what was lost was a shape none of them drives.
+
+**Closes when:** the collapse lands and its `ImportsOf` resolves `node.level`
+against the importer's package, with a fixture for the sibling form, a fixture
+for `from . import <module>`, and the existing two-level fixture still passing.
+Reviewing the collapse means checking that specific line, not that the tests are
+green.
+
+---
+
+## R-16. Six checks in this unit are correct, kept, and unobservable
+
+**Found:** during U38's third review round, 2026-08-03. Each was reverted alone
+and killed zero tests, and each was then verified to be genuinely unreachable
+rather than merely undriven.
+
+Nothing here is a defect. They are recorded because a reader meeting a check with
+no test behind it has to work out which of the two it is, and doing that work
+again per reader is the cost this entry removes. Each now carries a comment
+saying so in place.
+
+1. `resolve_int`'s bool exclusion, `tests/_source_guards.py`. Nothing maps a
+   cause to `True` and the reserved range would reject `1` anyway. Kept because
+   the first version of this guard reported `'rekordbox-running' -> bare status
+   False`, which is the false positive that got it suppressed.
+2. `resolve_int`'s `int(...)` branch. The only `int(...)` any fixture writes is
+   `int(ExitCode.PRECONDITION)`, which `status` answers through its own
+   conversion branch first.
+3. `status`'s one-argument narrowing on a conversion. No fixture writes a
+   two-argument spelling, so widening it kills nothing. Kept because
+   `ExitCode(30, "note")` is somebody else's constructor and reading its first
+   argument as a status would be a false positive.
+4. `names_the_class`'s module-qualified branch. Reachable only through that same
+   conversion branch, and nothing spells a conversion that way today.
+5. `_index`'s band check and its `verb_producible` check,
+   `src/cratekit/cli/exit_codes.py`. The range check above them already excludes
+   every code either one could catch. Kept because each states a different rule
+   from the range: the range is a span of integers and these two are about what
+   the span means, so a band renumbered or a meaning changed to non-producible
+   fails by name rather than passing because the arithmetic still holds.
+6. `structured_refusal_causes`'s inner unimportable assertion,
+   `tests/test_reserved_causes.py`. Duplicated by
+   `test_every_module_in_the_package_imports_so_the_walk_can_see_it`. Kept so no
+   CALLER of the derivation can read a short answer as a complete one.
+
+The `setdefault` branch in `ReservedCodeTable.pairs` is the seventh and is a
+slightly different case: it is redundant rather than unreachable, because the
+catch-all that crosses every call's arguments reaches `setdefault` too. It stays
+because it binds the key to ITS value by position instead of crossing them.
+
+`MAX_HOPS` was on this list and is NOT any more. It was load bearing downward
+only, and the ceiling its own docstring claims, that a mutually recursive pair
+cannot hang the suite, is now driven by
+`test_a_mutually_recursive_pair_of_constants_resolves_to_nothing`.
+
+**Closes when:** nothing has to close it. It is a record of six deliberate
+retentions, so a later reader deleting one for being untested knows it was
+already looked at.
+
+---
+
+## R-17. Two refusal vocabularies stay outside the second-table guard's key set
+
+**Found:** during U38's third review round, 2026-08-03.
+
+The guard reports a second reservation only for a key somebody DECLARED to be a
+refusal cause. That set is now four declarations wide: the reservation table, the
+closed reason registry `core.cause.REASONS`, the package-wide derivation, and a
+source's own enums. The registry was the one the round before this left out, and
+it was the largest, sixty slugs. It is in now.
+
+Two vocabularies are still outside it, both deliberately:
+
+**`preflight.MountState`.** Seven states, spelled with underscores rather than
+this repository's hyphens, and `core/session.py` converts every one of them into
+a slug the registry already reserves before anything refuses. Adding them would
+put the bare string `"ok"` into the key set, and `{"ok": 30}` is a mapping
+somebody will write for an unrelated reason. Measured cost of leaving them out: a
+module mapping `"not_mounted"` to a code of its own is not reported.
+
+**The tokens carried by the refusals in `CONVERTED_ELSEWHERE`.** Twenty one
+strings, and most of them are remediation tokens rather than causes:
+`fix-config-values`, `switch-adapter`, `retry-later` and their neighbours. Adding
+them would widen R-14.4, the residual where a duration in range keyed by a
+declared cause reads as a status, from the causes to the remedies, and
+`{"retry-later": 30}` is precisely the backoff that residual describes.
+
+Both widenings were driven over the real tree and both find zero offenders today,
+so neither is being avoided because it would fail. They are avoided because the
+first false positive either one produces is the one that gets the whole guard
+suppressed, which is how the armed review guards were switched off once already.
+
+**Closes when:** nothing has to close it, unless a module lands that genuinely
+maps one of those strings to an exit code, in which case the answer is to give
+the condition a real slug in the closed registry rather than to widen the key
+set.
+
+---
+
+## R-18. The conversion proof shows that a conversion exists, not that it keeps anything
+
+**Found:** during U38's third review round, 2026-08-03.
+
+`test_every_exclusion_names_a_refusal_something_already_converts` checks each
+entry in `CONVERTED_ELSEWHERE` against the tree: something in this package
+catches that CLASS and uses what it bound. Both halves of that were name matching
+once. The class half was fixed in the round before this and the "inspects" half
+was not, so it asked whether the bound name appeared with an attribute read
+anywhere in the same FILE, which nearly every handler in this package satisfies
+because nearly every handler calls its binding `exc`. Removing that half killed
+zero tests. It is scoped to the handler now, and driven by
+`test_the_conversion_proof_is_scoped_to_the_handler_that_bound_the_exception`.
+
+What it still cannot say is whether the conversion is LOSSLESS, and there is a
+live example: `core/session.py:1026` catches `BackupFactsUnreadable`, reads
+`exc.path`, and hardcodes `Remedy.REPAIR_BACKUP_FACTS`, discarding the remedy the
+exception carried. That is R-14.2. That handler satisfies this proof and should.
+
+The alternative is a rule about WHICH attributes a handler must read, and that is
+a rule an ordinary refactor breaks, which puts it in the same family as reading a
+role from a parameter name. So the proof answers the question it can answer, and
+the losslessness question is answered by R-14.2 and by the one line that closes
+it.
+
+**Closes when:** nothing has to close it. R-14.2 closes the live instance.

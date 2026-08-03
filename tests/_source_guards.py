@@ -333,6 +333,32 @@ EXIT_CODE_PACKAGE = "cratekit.core"
 CAUSE_SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$")
 
 
+def _relative_module(node: ast.ImportFrom, package: str) -> str | None:
+    """The absolute module a RELATIVE import names, resolved against its package.
+
+    ``node.module`` is only the TAIL of a relative import, and the round before
+    this matched that tail against a two-element suffix. That answered for
+    ``from ..core.exit_codes import ExitCode`` and for no other relative
+    spelling: a SIBLING records ``exit_codes`` and nothing else, and ``from .
+    import exit_codes`` records nothing at all, so the two shapes most natural
+    for a module sitting beside ``core/exit_codes.py`` were the two the guard
+    could not see. Recognizing one relative form and not another is a bug in the
+    resolution rather than a decision about scope.
+
+    One dot is the file's own package, and one level up from
+    ``cratekit.core.session`` is ``cratekit.core`` whether the file is a module
+    or that package's ``__init__``, which is why the caller passes the dotted
+    directory in both cases. None means the level walks off the top of the
+    package, which Python refuses to import at all, so it names no module here
+    either.
+    """
+    parts = package.split(".")
+    if node.level - 1 >= len(parts):
+        return None
+    base = parts[: len(parts) - (node.level - 1)]
+    return ".".join(base + ([node.module] if node.module else []))
+
+
 class ExitCodeImports:
     """How one source file reaches ``ExitCode``, in every import shape.
 
@@ -344,9 +370,12 @@ class ExitCodeImports:
     land together, this class collapses into ``ImportsOf(tree,
     EXIT_CODE_MODULE)`` with one narrowing, because this one records only the
     ``ExitCode`` symbol where ``ImportsOf`` records every symbol a source
-    imported, and ``SoftDeleteNames`` collapses the same way.
+    imported, and ``SoftDeleteNames`` collapses the same way. THE COLLAPSE HAS TO
+    TAKE THE RELATIVE HANDLING BELOW WITH IT. The other two copies still carry
+    the suffix match this one replaced, and a collapse onto either of them would
+    reinstate the defect in one place instead of three. R-15 records that.
 
-    Five shapes are recognized, and they are every shape this repository's own
+    Seven shapes are recognized, and they are every shape this repository's own
     modules use between them::
 
         import cratekit.core.exit_codes             # ...exit_codes.ExitCode.OK
@@ -354,13 +383,17 @@ class ExitCodeImports:
         from cratekit.core import exit_codes        # exit_codes.ExitCode.OK
         from cratekit.core.exit_codes import ExitCode        # ExitCode.OK
         from cratekit.core.exit_codes import ExitCode as EC  # EC.OK
+        from .exit_codes import ExitCode            # a sibling of the module
+        from . import exit_codes                    # the same, module bound
 
-    ``from cratekit.cli import exit_codes`` is deliberately NOT one of them. That
-    name binds the reservation table, and reading the table is the sanctioned
-    path rather than the shape being hunted.
+    ``from cratekit.cli import exit_codes`` is deliberately NOT one of them, and
+    neither is the relative spelling of it from inside ``cli``. That name binds
+    the reservation table, and reading the table is the sanctioned path rather
+    than the shape being hunted. Resolving the level is what makes the relative
+    spelling answer the same way the absolute one does rather than by accident.
     """
 
-    def __init__(self, tree: ast.AST) -> None:
+    def __init__(self, tree: ast.AST, package: str | None = None) -> None:
         #: Local names that ARE the vocabulary module.
         self.module_names: set[str] = set()
         #: Local names that ARE the ``ExitCode`` class itself.
@@ -371,13 +404,7 @@ class ExitCodeImports:
                     if alias.name == EXIT_CODE_MODULE:
                         self.module_names.add(alias.asname or EXIT_CODE_MODULE)
             elif isinstance(node, ast.ImportFrom):
-                module = node.module or ""
-                names_the_module = module == EXIT_CODE_MODULE or (
-                    node.level > 0 and module.split(".")[-2:] == ["core", "exit_codes"]
-                )
-                names_the_package = module == EXIT_CODE_PACKAGE or (
-                    node.level > 0 and module.split(".")[-1:] == ["core"]
-                )
+                names_the_module, names_the_package = self._targets(node, package)
                 if names_the_module:
                     for alias in node.names:
                         if alias.name == "ExitCode":
@@ -387,6 +414,31 @@ class ExitCodeImports:
                         if alias.name == "exit_codes":
                             self.module_names.add(alias.asname or "exit_codes")
 
+    @staticmethod
+    def _targets(node: ast.ImportFrom, package: str | None) -> tuple[bool, bool]:
+        """Whether this import names the vocabulary MODULE, or the package it sits in.
+
+        Resolved against the importer's package when the caller knows it, which
+        is the whole tree scan, so ``from . import exit_codes`` inside ``cli``
+        resolves to the reservation table and stays out exactly as its absolute
+        spelling does.
+
+        The fallback, for a source with no path, matches the TAIL and accepts a
+        bare sibling. A fixture is a file that could be anywhere, so the only
+        honest reading of ``from .exit_codes import ExitCode`` there is that it
+        names a module called ``exit_codes``.
+        """
+        if not node.level:
+            module = node.module or ""
+            return module == EXIT_CODE_MODULE, module == EXIT_CODE_PACKAGE
+        if package is not None:
+            absolute = _relative_module(node, package)
+            return absolute == EXIT_CODE_MODULE, absolute == EXIT_CODE_PACKAGE
+        tail = (node.module or "").split(".")
+        names_the_module = tail[-2:] == ["core", "exit_codes"] or tail == ["exit_codes"]
+        names_the_package = tail[-1:] == ["core"] or node.module is None
+        return names_the_module, names_the_package
+
     def names_the_class(self, node: ast.AST) -> bool:
         """Whether ``node`` names the ``ExitCode`` CLASS this source imported."""
         dotted = _dotted(node)
@@ -394,6 +446,10 @@ class ExitCodeImports:
             return False
         if dotted in self.class_names:
             return True
+        # The module-qualified spelling, ``exit_codes.ExitCode(30)``. Reachable
+        # only through ``status``'s conversion branch, and no fixture in the tree
+        # writes a conversion that way today, so a reader should take this as
+        # defence in depth rather than as a live path. See R-16.
         parts = dotted.split(".")
         return len(parts) >= 2 and ".".join(parts[:-1]) in self.module_names and parts[-1] == "ExitCode"
 
@@ -408,32 +464,13 @@ class ExitCodeImports:
         return len(parts) >= 3 and ".".join(parts[:-2]) in self.module_names and parts[-2] == "ExitCode"
 
 
-def _bound_module_names(tree: ast.AST, module: str) -> set[str]:
-    """Local names bound to a standard-library MODULE, aliases included.
-
-    Module binding only. ``from sys import exit`` binds a callable rather than a
-    module and is answered by ``_bound_symbol_names`` below, which is the half
-    that was missing: a guard that walked ``ast.Import`` alone let the one import
-    shape that needs no attribute access through untouched.
-    """
-    return {
-        alias.asname or alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Import)
-        for alias in node.names
-        if alias.name == module
-    }
-
-
-def _bound_symbol_names(tree: ast.AST, module: str, symbol: str) -> set[str]:
-    """Local names bound to one SYMBOL of a standard-library module."""
-    return {
-        alias.asname or alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module == module and node.level == 0
-        for alias in node.names
-        if alias.name == symbol
-    }
+# ``_bound_module_names`` and ``_bound_symbol_names`` stood here. They were round
+# one's answer to ``from sys import exit`` and round two replaced them with
+# ``ProcessExits``, which binds by module IDENTITY and covers every shape they
+# did. Nothing called either of them afterwards, while one of the two carried a
+# docstring naming itself the fix for the defect. Dead code that claims a repair
+# is worse than no code: a reader checking whether the shape is handled finds a
+# function that says yes and never runs. Deleted rather than left as evidence.
 
 
 def _module_level_literals(tree: ast.AST) -> dict[str, ast.AST]:
@@ -516,6 +553,14 @@ def _declared_enum_values(tree: ast.AST) -> set[str]:
 
 #: How far a code is chased through names, members and arithmetic. Bounded so a
 #: mutually recursive pair of constants cannot hang the suite.
+#:
+#: LOAD BEARING IN BOTH DIRECTIONS, and only the downward half used to be
+#: covered. Lowering it stops the guard resolving the careful spellings and kills
+#: seven tests. Raising it past the interpreter's own recursion limit turns
+#: ``A = B`` beside ``B = A`` from a silent None into a ``RecursionError`` that
+#: takes the suite with it, which is the hang this constant exists to prevent, so
+#: ``test_a_mutually_recursive_pair_of_constants_resolves_to_nothing`` drives
+#: that pair.
 MAX_HOPS = 6
 
 
@@ -538,6 +583,11 @@ def resolve_int(
     if node is None or hops > MAX_HOPS:
         return None
     if isinstance(node, ast.Constant):
+        # The bool exclusion is unobservable today: nothing in the tree or the
+        # fixtures maps a cause to True, and the reserved range would reject
+        # ``1`` anyway. Kept because the FIRST version of this guard reported
+        # ``'rekordbox-running' -> bare status False``, which is the false
+        # positive that got it suppressed. See R-16.
         if isinstance(node.value, bool) or not isinstance(node.value, int):
             return None
         return node.value
@@ -561,9 +611,30 @@ def resolve_int(
         if isinstance(node.op, ast.Mult):
             return left * right
         return None
+    # ``int(30)`` around a plain integer. Unobservable: the only ``int(...)`` a
+    # fixture writes is ``int(ExitCode.PRECONDITION)``, which ``status`` answers
+    # through its own conversion branch before this is reached. Defence in depth
+    # for the careful spelling, not a live path. See R-16.
     if isinstance(node, ast.Call) and _dotted(node.func) == "int" and len(node.args) == 1:
         return resolve_int(node.args[0], names, members, hops + 1)
     return None
+
+
+def _within_scope(body: list[ast.stmt]):
+    """Every node inside a block of statements, without entering a nested scope.
+
+    The same rule ``_walk_scope`` below applies to one node, applied to a list of
+    them. Shared rather than written twice, because "what counts as still being
+    in this scope" is exactly the kind of question two copies eventually answer
+    differently.
+    """
+    for statement in body:
+        if isinstance(
+            statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+        ):
+            continue
+        yield statement
+        yield from _walk_scope(statement)
 
 
 class ReservedCodeTable:
@@ -610,10 +681,16 @@ class ReservedCodeTable:
     a string somebody already declared to be a refusal cause.
     """
 
-    def __init__(self, tree: ast.AST, causes: frozenset[str], code_range: tuple[int, int]) -> None:
+    def __init__(
+        self,
+        tree: ast.AST,
+        causes: frozenset[str],
+        code_range: tuple[int, int],
+        package: str | None = None,
+    ) -> None:
         self.tree = tree
         self.low, self.high = code_range
-        self.codes = ExitCodeImports(tree)
+        self.codes = ExitCodeImports(tree, package)
         self.constants = _module_level_literals(tree)
         self.members = _class_level_literals(tree)
         self.causes = set(causes) | _declared_enum_values(tree)
@@ -638,6 +715,11 @@ class ReservedCodeTable:
             return None
         if self.codes.names_a_code(node):
             return ast.unparse(node)
+        # The one-argument narrowing is unobservable: no fixture writes
+        # ``int(ExitCode.X, base)`` or any other two-argument spelling, so
+        # widening it kills nothing. It stays because ``ExitCode(30, "note")``
+        # is not a conversion and reading its first argument as one would be a
+        # false positive on somebody else's constructor. See R-16.
         if isinstance(node, ast.Call) and len(node.args) == 1:
             # ``int(ExitCode.X)`` and ``ExitCode(30)``: a code with a conversion
             # wrapped round it is still a code, and both spellings read as
@@ -714,6 +796,11 @@ class ReservedCodeTable:
                     and function.attr == "setdefault"
                     and len(node.args) == 2
                 ):
+                    # Redundant since the catch-all below started crossing every
+                    # call's arguments, which reaches ``setdefault`` too.
+                    # Deleting it kills nothing. Kept because it binds the key to
+                    # ITS value by position rather than crossing them, so a
+                    # three-argument call cannot pair the wrong two. See R-16.
                     found.append((node.args[0], node.args[1], None))
                 elif _dotted(function) in {"dict", "OrderedDict"} and len(node.args) == 1:
                     found.extend(self._zipped(node.args[0]))
@@ -772,16 +859,31 @@ class ReservedCodeTable:
     def _returned(
         self, keys: list[ast.AST], body: list[ast.stmt]
     ) -> list[tuple[ast.AST, ast.AST, str | None]]:
+        """What a branch returns, at ANY depth inside it.
+
+        Reading the body's top level alone was one indent from silence, and no
+        evasion was needed to reach it: a branch that checks something else
+        before returning is the ordinary way to write the second case of a table,
+        and ``if c == "rclone-missing": if ready: return 30`` reported nothing
+        while the flat spelling reported it. A guard that a plain ``if`` defeats
+        is a guard that is off.
+
+        A nested def, class or lambda is NOT entered, because a function declared
+        inside the branch has its own scope and its own returns, and attributing
+        them to the branch's key would be the false positive that gets this
+        suppressed.
+        """
+        within = list(_within_scope(body))
         locals_here: dict[str, ast.AST] = {}
-        for statement in body:
-            if isinstance(statement, ast.Assign):
-                for target in statement.targets:
+        for node in within:
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
                     if isinstance(target, ast.Name):
-                        locals_here[target.id] = statement.value
+                        locals_here[target.id] = node.value
         returned = [
-            (statement.value, self.status(statement.value, locals_here))
-            for statement in body
-            if isinstance(statement, ast.Return) and statement.value is not None
+            (node.value, self.status(node.value, locals_here))
+            for node in within
+            if isinstance(node, ast.Return) and node.value is not None
         ]
         return [
             (key, value, label)
@@ -792,7 +894,10 @@ class ReservedCodeTable:
 
 
 def reserved_code_tables(
-    source: str, causes: frozenset[str], code_range: tuple[int, int]
+    source: str,
+    causes: frozenset[str],
+    code_range: tuple[int, int],
+    package: str | None = None,
 ) -> list[str]:
     """Every place this source gives a refusal cause its own exit code.
 
@@ -805,8 +910,13 @@ def reserved_code_tables(
     was while its docstring claimed otherwise, and not to two-element pairs,
     which is what the second was while the file it protects declares its own
     table as a tuple of three-field dataclasses.
+
+    ``package`` is the dotted package the source sits in, and it is what lets a
+    relative import be resolved rather than pattern matched. A caller scanning
+    real files knows it and passes it; a caller holding a source string does not,
+    and ``ExitCodeImports`` says what it falls back to.
     """
-    table = ReservedCodeTable(ast.parse(source), causes, code_range)
+    table = ReservedCodeTable(ast.parse(source), causes, code_range, package)
     found: list[str] = []
     seen: set[tuple[int, str, str]] = set()
     for key, value, label in table.pairs():

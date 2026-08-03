@@ -75,6 +75,39 @@ green over it:
   nothing longer, so the second module to copy the house style was the one shape
   it could not see.
 
+ROUND THREE stopped writing the module and pointed the same question at the
+guards themselves: what does reverting this line kill? Seven answers were "nothing",
+and each one was a different way of not looking:
+
+* THE KEY RULE LOST THE CLOSED REGISTRY. Round two replaced a shape with a
+  declaration and enumerated three sources, omitting ``core.cause.REASONS``,
+  which is the other mapping in this repository that gives a slug a code. Sixty
+  of its sixty one slugs were outside the key set, so a module writing
+  ``{"config-unusable": 22}`` against a registry entry that says 30 reported
+  nothing. Round one's rule reported it. The sharpest form: ``TABLE_OWNERS``
+  "exempts" ``core/cause.py`` while the guard could see one of its sixty one
+  mappings, which is exclusion by blindness rather than by decision.
+* ``TABLE_OWNERS`` COULD BE WIDENED FOR FREE. Adding ``core/session.py`` switched
+  the guard off for that whole file and the suite stayed green. Every assertion
+  about that set was about what it forbids, and only exact membership catches a
+  widening, which is R-15 on ``main`` said in another module's terms.
+* ONE RELATIVE IMPORT SHAPE OUT OF THREE. ``from ..core.exit_codes import
+  ExitCode`` was recognized and ``from .exit_codes import ExitCode`` was not,
+  because the rule matched a two-element suffix a sibling import does not have.
+  That is the spelling a module beside ``core/exit_codes.py`` would use.
+* A BRANCH TABLE ONE INDENT DEEPER. The branch walk read the body's top level, so
+  a return behind any further condition was silent. No evasion needed.
+* THE CONVERSION PROOF'S SECOND HALF was still name matching: it asked whether
+  the bound name appeared with an attribute read anywhere in the FILE, which
+  nearly every handler satisfies because nearly every handler calls its binding
+  ``exc``.
+* THE TREE SCAN HAD NO POSITIVE CONTROL. Narrowing ``package_sources`` from
+  ``rglob`` to ``glob`` killed nothing, because both tree-wide tests assert the
+  ABSENCE of an offender. That is this file's own signature defect pointed at its
+  own scanner.
+* THE RECORD HOP READ A DATACLASS AND NOT A NAMED TUPLE, so the identical refusal
+  was seen or invisible depending on which keyword its author reached for.
+
 Each of those now has fixtures in BOTH directions beside it, and that module is
 the acceptance test: every respelling of it, alone and combined, fails all three
 assertions by name.
@@ -101,6 +134,7 @@ from cratekit.cli import render
 from cratekit.core import backup_facts, config
 from cratekit.core.cause import REASONS, Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import BANDS, MAX_CODE, ExitCode, Remedy, band_of, meaning_of
+from tests import _source_guards as _guards
 from tests._source_guards import process_status_literals, reserved_code_tables
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -624,6 +658,22 @@ def _annotation_namespace(module: ModuleType | None) -> dict[str, object]:
     return namespace
 
 
+def _is_a_record(hint: type) -> bool:
+    """A dataclass or a ``NamedTuple``: the two ways this repository writes a record.
+
+    Both are a fixed set of named, annotated fields, and the argument for looking
+    one field down into a refusal's diagnosis is the same for either. Matching
+    only the dataclass meant the identical exception was seen or invisible
+    depending on which keyword its author reached for.
+
+    ``NamedTuple`` leaves no marker class behind, so it is recognized the way the
+    standard library recognizes one: a tuple subclass carrying ``_fields``.
+    """
+    if dataclasses.is_dataclass(hint):
+        return True
+    return issubclass(hint, tuple) and hasattr(hint, "_fields")
+
+
 def _declared_enums(
     hint: object, owner: str, packages: tuple[str, ...], hops: int = 0
 ) -> Iterator[type]:
@@ -637,12 +687,19 @@ def _declared_enums(
     only the bare-type spelling made the most common shape in the package the one
     the walk could not see.
 
-    ONE FIELD INTO A DATACLASS, because ``preflight.LibraryVolumeError`` takes a
+    ONE FIELD INTO A RECORD, because ``preflight.LibraryVolumeError`` takes a
     ``MountStatus``, which is a record holding the ``MountState`` that is the
     actual cause. A refusal that wraps its diagnosis in a record with the paths
     it compared is BETTER code than one that passes the bare enum, and it was the
     one shape the walk could not read. One hop only: further needs a graph, and
     the exceptions that would need it do not exist.
+
+    A RECORD IS A DATACLASS OR A NAMED TUPLE, because the argument for the hop
+    says nothing about which of the two a module picked.
+    ``dataclasses.is_dataclass`` is False for a ``NamedTuple``, so the identical
+    refusal was seen in one spelling and invisible in the other, which is a rule
+    a keyword defeats. Not live in the tree today, and this walk has been wrong
+    twice about what "not live today" is worth.
 
     ``ExitCode`` and only ``ExitCode`` is excluded here. A STATUS is not a cause,
     so an exception carrying one has nothing to reserve. Excluding the whole
@@ -656,7 +713,7 @@ def _declared_enums(
         if hint.__module__ == owner or hint.__module__.split(".")[0] in packages:
             yield hint
         return
-    if isinstance(hint, type) and dataclasses.is_dataclass(hint) and hops < 1:
+    if isinstance(hint, type) and _is_a_record(hint) and hops < 1:
         if hint.__module__ == owner or hint.__module__.split(".")[0] in packages:
             fields = typing.get_type_hints(
                 hint, localns=_annotation_namespace(sys.modules.get(hint.__module__))
@@ -765,6 +822,11 @@ def imported_package_modules() -> tuple[list[ModuleType], dict[str, str]]:
 def structured_refusal_causes() -> dict[str, frozenset[str]]:
     """Every structured refusal cause in the package, as producer -> cause slugs."""
     modules, unimportable = imported_package_modules()
+    # Duplicated on purpose by ``test_every_module_in_the_package_imports_so_the
+    # _walk_can_see_it``, which is why deleting this line kills nothing. It stays
+    # because the standalone test proves the tree imports and this one refuses to
+    # let any CALLER of the derivation read a short answer as a complete one. A
+    # reader should not mistake it for the only place the check lives. See R-16.
     assert not unimportable, (
         f"the walk could not import these, so whatever refusal causes they "
         f"declare are invisible to the completeness check: {unimportable}"
@@ -825,6 +887,83 @@ def test_the_three_surfaces_the_waiting_guard_names_are_covered():
         assert derived[producer] <= CAUSES
 
 
+def _local_function_names(tree: ast.AST) -> set[str]:
+    """Every function and method THIS source defines, by name.
+
+    Used to tell a helper from a builtin. ``_stop_with_failure(exc)`` hands the
+    refusal to something in this file that can read it; ``str(exc)`` hands it to
+    something that reads nothing off it, which is the difference between a
+    conversion and a swallow.
+    """
+    return {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+
+def _handler_uses_what_it_bound(handler: ast.ExceptHandler, helpers: set[str]) -> bool:
+    """Whether THIS handler uses the exception it bound, rather than discarding it.
+
+    SCOPED TO THE HANDLER, and the round before this scoped it to the FILE. That
+    version asked whether the bound NAME appeared with an attribute read anywhere
+    in the module, which is a different question with a much larger yes: a
+    handler that binds ``exc`` and throws it away satisfied it as long as any
+    ``exc.anything`` appeared somewhere else in the same file, and ``exc`` is
+    what nearly every handler in this package calls its binding. Removing the
+    rule entirely killed nothing.
+
+    Two uses count and both are conversions:
+
+    * reading an ATTRIBUTE off the bound name, which is how a handler reads a
+      remedy or a discriminator;
+    * handing the bound name to a function THIS FILE defines, which is what
+      ``acquire/download.py`` does, and a rule demanding the read inline would
+      have called the one real conversion in that layer a swallow.
+
+    ``str(exc)`` is neither. It reads nothing off the exception and hands it to a
+    builtin, so it stays a swallow, which is the distinction the docstring above
+    claimed and the module-wide version could not make.
+    """
+    bound = handler.name
+    for node in ast.walk(handler):
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == bound
+        ):
+            return True
+        if not isinstance(node, ast.Call):
+            continue
+        function = node.func
+        called = (
+            function.id
+            if isinstance(function, ast.Name)
+            else function.attr
+            if isinstance(function, ast.Attribute)
+            else None
+        )
+        if called not in helpers:
+            continue
+        given = list(node.args) + [keyword.value for keyword in node.keywords]
+        if any(isinstance(argument, ast.Name) and argument.id == bound for argument in given):
+            return True
+    return False
+
+
+def converting_handlers(tree: ast.AST) -> list[ast.ExceptHandler]:
+    """Every handler in one source that binds an exception AND uses it."""
+    helpers = _local_function_names(tree)
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ExceptHandler)
+        and node.name is not None
+        and node.type is not None
+        and _handler_uses_what_it_bound(node, helpers)
+    ]
+
+
 def _converted_exception_types() -> set[type]:
     """Exception CLASSES this package catches and then inspects, resolved for real.
 
@@ -837,13 +976,16 @@ def _converted_exception_types() -> set[type]:
     conversion had gone. Each clause is resolved against the globals of the
     module that wrote it, so it answers for the class and not for the spelling.
 
-    "Inspects" means the handler binds the exception and something in that module
-    reads an ATTRIBUTE off the bound name. ``str(exc)`` reads none, which is what
-    separates a conversion from a swallow. Per module rather than per flow, and
-    that limit is deliberate: the acquisition layer's handler hands the bound
-    exception to a helper in the same file rather than reading it inline, and a
-    rule that demanded the read inside the handler body would have called the one
-    real conversion in that layer a swallow.
+    "Inspects" is answered by ``_handler_uses_what_it_bound``, per HANDLER. It
+    used to be answered per module, which was the same hole one level up and is
+    the half of this proof the class resolution left behind.
+
+    WHAT THIS STILL CANNOT PROVE, and R-18 records it. A conversion that EXISTS
+    is not a conversion that is lossless. ``core/session.py`` catches
+    ``BackupFactsUnreadable``, reads ``exc.path`` and hardcodes the remedy,
+    discarding the one the exception carried, which is R-14.2. That handler
+    satisfies this proof and should, because the alternative is a rule about
+    which attributes a handler must read, and that is a rule a refactor breaks.
     """
     found: set[type] = set()
     modules, _ = imported_package_modules()
@@ -852,22 +994,77 @@ def _converted_exception_types() -> set[type]:
         if source_file is None or "_vendor" in source_file:
             continue
         tree = ast.parse(Path(source_file).read_text())
-        inspected = {
-            node.value.id
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
-        }
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ExceptHandler):
-                continue
-            if node.name is None or node.type is None or node.name not in inspected:
-                continue
+        for node in converting_handlers(tree):
             caught = node.type.elts if isinstance(node.type, ast.Tuple) else [node.type]
             for entry in caught:
                 resolved = _resolve_in(module, ast.unparse(entry))
                 if isinstance(resolved, type) and issubclass(resolved, BaseException):
                     found.add(resolved)
     return found
+
+
+A_HANDLER_THAT_READS_AN_ATTRIBUTE = """
+def load(path):
+    try:
+        return read(path)
+    except ConfigError as exc:
+        return Refusal(remedy=exc.remedy)
+"""
+
+A_HANDLER_THAT_HANDS_IT_TO_A_HELPER = """
+def _fold(run, exc):
+    return Outcome(detail=str(exc), remedy=exc.remedy)
+
+
+def acquire(run):
+    try:
+        return fetch(run)
+    except AdapterBroken as exc:
+        return _fold(run, exc)
+"""
+
+A_HANDLER_THAT_DISCARDS_IT = """
+def _fold(exc):
+    return Outcome(remedy=exc.remedy)
+
+
+def load(path):
+    try:
+        return read(path)
+    except ConfigError as exc:
+        logger.debug("no usable configuration: %s", exc)
+        return None
+"""
+
+A_HANDLER_THAT_ONLY_STRINGIFIES_IT = """
+def load(path):
+    try:
+        return read(path)
+    except ConfigError as exc:
+        raise Refusal(str(exc)) from exc
+"""
+
+
+def test_the_conversion_proof_is_scoped_to_the_handler_that_bound_the_exception():
+    """A handler that discards what it caught is a swallow, whatever the file does elsewhere.
+
+    ``A_HANDLER_THAT_DISCARDS_IT`` is the case the module-wide rule got wrong,
+    and it is written the way the real one is: the file has a helper that reads
+    ``exc.remedy``, the handler binds ``exc`` and logs it, and the two have
+    nothing to do with each other. Nearly every handler in this package calls its
+    binding ``exc``, so one attribute read anywhere kept every exclusion in the
+    table alive.
+    """
+    assert converting_handlers(ast.parse(A_HANDLER_THAT_READS_AN_ATTRIBUTE))
+    assert converting_handlers(ast.parse(A_HANDLER_THAT_HANDS_IT_TO_A_HELPER))
+    assert converting_handlers(ast.parse(A_HANDLER_THAT_DISCARDS_IT)) == [], (
+        "the handler binds the exception and throws it away, and the attribute "
+        "read that vouched for it belongs to an unrelated helper"
+    )
+    assert converting_handlers(ast.parse(A_HANDLER_THAT_ONLY_STRINGIFIES_IT)) == [], (
+        "str(exc) reads nothing off the exception, which is what separates a "
+        "conversion from a swallow"
+    )
 
 
 def _resolve_in(module: ModuleType, dotted: str) -> object | None:
@@ -1160,6 +1357,29 @@ class TaggingRefused(Exception):
         self.status = status
 """
 
+SEEN_A_DISCRIMINATOR_ONE_FIELD_DOWN_IN_A_NAMED_TUPLE = """
+from __future__ import annotations
+
+from enum import StrEnum
+from pathlib import Path
+from typing import NamedTuple
+
+
+class Refusal(StrEnum):
+    ART_REJECTED = "tagger-art-rejected"
+
+
+class Report(NamedTuple):
+    verdict: Refusal
+    examined: Path | None = None
+
+
+class TaggingRefused(Exception):
+    def __init__(self, status: Report, detail: str = "") -> None:
+        super().__init__(detail)
+        self.status = status
+"""
+
 UNSEEN_A_STATUS_IS_NOT_A_CAUSE = """
 from __future__ import annotations
 
@@ -1200,6 +1420,7 @@ class Refused(CratekitError):
         (SEEN_A_FACTORY, {"tagger-art-rejected"}),
         (SEEN_A_DISCRIMINATOR_NOBODY_CALLED_REFUSAL, {"tagger-art-rejected"}),
         (SEEN_A_DISCRIMINATOR_ONE_FIELD_DOWN, {"tagger-art-rejected"}),
+        (SEEN_A_DISCRIMINATOR_ONE_FIELD_DOWN_IN_A_NAMED_TUPLE, {"tagger-art-rejected"}),
     ],
 )
 def test_the_walk_sees_every_shape_a_refusal_is_actually_written_in(
@@ -1217,6 +1438,29 @@ def test_the_walk_sees_every_shape_a_refusal_is_actually_written_in(
     derived = refusal_causes_in(module, packages=FIXTURE_PACKAGES)
     assert derived, "the walk saw nothing"
     assert frozenset().union(*derived.values()) == expected
+
+
+def test_the_hop_into_a_record_reads_a_named_tuple_and_not_only_a_dataclass(module_from):
+    """The same refusal, spelled with the other keyword, and it was invisible.
+
+    ``dataclasses.is_dataclass`` is False for a ``NamedTuple``, so a module that
+    wraps its diagnosis in one reserved nothing and the completeness check said
+    so by finding nothing. The unit's own argument for looking one field down is
+    about a record holding the enum, and it does not mention which of the two
+    ways to declare one the author picked.
+    """
+    dataclass_form = module_from("record_dc", SEEN_A_DISCRIMINATOR_ONE_FIELD_DOWN)
+    named_tuple_form = module_from(
+        "record_nt", SEEN_A_DISCRIMINATOR_ONE_FIELD_DOWN_IN_A_NAMED_TUPLE
+    )
+    seen_as_dataclass = refusal_causes_in(dataclass_form, packages=FIXTURE_PACKAGES)
+    seen_as_named_tuple = refusal_causes_in(named_tuple_form, packages=FIXTURE_PACKAGES)
+    assert frozenset().union(*seen_as_named_tuple.values()) == frozenset(
+        {"tagger-art-rejected"}
+    )
+    assert frozenset().union(*seen_as_named_tuple.values()) == frozenset().union(
+        *seen_as_dataclass.values()
+    ), "one keyword changed the answer, which is a rule a rename defeats"
 
 
 def test_the_walk_sees_a_refusal_whose_base_lives_in_another_module(module_from):
@@ -1758,6 +2002,121 @@ EVASION_AN_IMPLICITLY_CONCATENATED_KEY = """
 CODES = {"rclone-" "missing": 30}
 """
 
+# ── A second opinion about a slug only the CLOSED REGISTRY reserves ─────────
+#
+# ``core.cause.REASONS`` gives a code to sixty one slugs and this table repeats
+# one of them, so sixty of the registry's reservations were outside the guard's
+# key set entirely. A module contradicting one of those is the same defect as a
+# module contradicting this table, and it read as correct code.
+
+EVASION_A_CODE_FOR_A_REGISTRY_SLUG = """
+CODES = {"config-unusable": 22}
+"""
+
+EVASION_A_CODE_FOR_A_REGISTRY_SLUG_HELD_IN_A_NAME = """
+PRECONDITION = 30
+
+CODES = {"credential-missing": PRECONDITION}
+"""
+
+CORRECT_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS = """
+RETRY_AFTER_MINUTES = {
+    "session-lock-held": 5,
+    "write-lock-held": 5,
+}
+
+SENTENCES = {
+    "internal-error": "report this as a defect",
+    "credential-missing": "record the credential and try again",
+}
+
+ATTEMPTS = {"library-volume-unmounted": 3}
+"""
+
+# ── The relative import shapes, which is how a SIBLING reaches the vocabulary ──
+#
+# The two-level spelling was recognized and the one-level spellings were not,
+# because the rule matched the last two elements of a name a sibling import does
+# not have. A module inside ``core`` writing ``from .exit_codes import ExitCode``
+# is the most natural spelling there is, and it is the neighbourhood a second
+# table would most plausibly appear in.
+
+EVASION_A_SIBLING_RELATIVE_IMPORT = """
+from .exit_codes import ExitCode
+
+CODES = {"rclone-missing": ExitCode.PRECONDITION}
+"""
+
+EVASION_A_SIBLING_BOUND_AS_A_MODULE = """
+from . import exit_codes
+
+CODES = {"rclone-missing": exit_codes.ExitCode.PRECONDITION}
+"""
+
+EVASION_A_RELATIVE_IMPORT_TWO_LEVELS_UP = """
+from ..core.exit_codes import ExitCode
+
+CODES = {"rclone-missing": ExitCode.PRECONDITION}
+"""
+
+CORRECT_A_RELATIVE_IMPORT_READS_THE_TABLE = """
+from . import exit_codes
+
+
+def status(cause):
+    return exit_codes.code_for(cause)
+"""
+
+CORRECT_A_RELATIVE_IMPORT_AND_A_MAPPING_OF_SENTENCES = """
+from .exit_codes import ExitCode
+
+MESSAGES = {"rclone-missing": "install rclone and run doctor"}
+
+
+def status(cause):
+    return ExitCode.PRECONDITION if cause in MESSAGES else ExitCode.OK
+"""
+
+# ── A branch table one indent deeper ────────────────────────────────────────
+#
+# The branch walk read the body's TOP LEVEL statements, so a return behind any
+# further condition was silent while the flat spelling fired. No evasion is
+# needed to write this: checking something else before answering is the ordinary
+# way the second case of a table gets written.
+
+EVASION_A_BRANCH_ONE_INDENT_DEEPER = DECLARES_ITS_CAUSES + """
+def status(cause, ready):
+    if cause == "tagger-art-rejected":
+        if ready:
+            return 30
+    return 1
+"""
+
+EVASION_A_BRANCH_INSIDE_A_LOOP = DECLARES_ITS_CAUSES + """
+def status(cause, attempts):
+    if cause == "tagger-source-unreadable":
+        for _ in attempts:
+            return 41
+    return 1
+"""
+
+CORRECT_A_HELPER_INSIDE_A_BRANCH_HAS_ITS_OWN_RETURN = """
+def render(cause):
+    if cause == "rekordbox-running":
+        def column_width():
+            return 30
+
+        return "quit rekordbox".ljust(column_width())
+    return ""
+"""
+
+MUTUALLY_RECURSIVE_CONSTANTS = """
+A = B
+B = A
+
+CODES = {"rekordbox-running": A}
+"""
+
 EVASION_ALIASED_SYS_EXIT = """
 import sys as system
 
@@ -1949,6 +2308,9 @@ def main(status):
         CORRECT_A_THRESHOLD_AND_A_VERSION,
         CORRECT_A_FUNCTION_RETURNING_A_WIDTH,
         CORRECT_A_PROGRESS_WEIGHT_PER_STEP,
+        CORRECT_A_RELATIVE_IMPORT_READS_THE_TABLE,
+        CORRECT_A_RELATIVE_IMPORT_AND_A_MAPPING_OF_SENTENCES,
+        CORRECT_A_HELPER_INSIDE_A_BRANCH_HAS_ITS_OWN_RETURN,
     ],
 )
 def test_the_second_table_guard_stays_silent_on_correct_code(source):
@@ -2012,6 +2374,8 @@ def test_the_second_table_guard_bites_every_shape_of_second_opinion(source):
         EVASION_A_TUPLE_LONGER_THAN_A_PAIR,
         EVASION_A_TUPLE_OF_DATACLASSES,
         EVASION_A_TABLE_KEYED_BY_KEYWORD,
+        EVASION_A_BRANCH_ONE_INDENT_DEEPER,
+        EVASION_A_BRANCH_INSIDE_A_LOOP,
     ],
 )
 def test_the_second_table_guard_bites_a_module_reserving_causes_of_its_own(source):
@@ -2024,6 +2388,57 @@ def test_the_second_table_guard_bites_a_module_reserving_causes_of_its_own(sourc
     silent before.
     """
     assert reserved_code_tables(source, CAUSES, RANGE)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        EVASION_A_SIBLING_RELATIVE_IMPORT,
+        EVASION_A_SIBLING_BOUND_AS_A_MODULE,
+        EVASION_A_RELATIVE_IMPORT_TWO_LEVELS_UP,
+    ],
+)
+def test_the_second_table_guard_reads_every_relative_import_shape(source):
+    """One recognized relative spelling out of three is a bug, not a scope decision.
+
+    The rule matched the last two elements of the imported name, which a sibling
+    import does not have: ``from .exit_codes import ExitCode`` records
+    ``exit_codes`` and ``from . import exit_codes`` records nothing at all. So
+    the two spellings a module sitting BESIDE ``core/exit_codes.py`` would
+    actually use were the two the guard could not read, while the two-level
+    spelling from further away worked. Each of these maps a fully reserved cause
+    to a real code and reported nothing.
+    """
+    assert reserved_code_tables(source, CAUSES, RANGE)
+
+
+def test_a_relative_import_is_resolved_against_the_package_the_file_sits_in():
+    """Resolving the level is what makes the relative answer match the absolute one.
+
+    ``from . import exit_codes`` means a different module in ``core`` than it
+    does in ``cli``, and the second one binds the reservation table, which this
+    guard has always left alone because reading the table is the sanctioned path.
+    A suffix match cannot tell those apart. Resolving the level can, and it is
+    the same answer Python gives.
+    """
+    assert reserved_code_tables(
+        EVASION_A_SIBLING_RELATIVE_IMPORT, CAUSES, RANGE, "cratekit.core"
+    ) == ["line 4: 'rclone-missing' -> ExitCode.PRECONDITION"]
+    assert (
+        reserved_code_tables(
+            EVASION_A_SIBLING_RELATIVE_IMPORT, CAUSES, RANGE, "cratekit.cli"
+        )
+        == []
+    )
+    assert reserved_code_tables(
+        EVASION_A_RELATIVE_IMPORT_TWO_LEVELS_UP, CAUSES, RANGE, "cratekit.modules"
+    )
+    assert (
+        reserved_code_tables(
+            EVASION_A_RELATIVE_IMPORT_TWO_LEVELS_UP, CAUSES, RANGE, "cratekit"
+        )
+        == []
+    ), "two dots from the top package walks off it, so Python imports nothing either"
 
 
 def test_the_guard_bites_through_the_derivation_when_the_file_declares_nothing():
@@ -2039,6 +2454,32 @@ def test_the_guard_bites_through_the_derivation_when_the_file_declares_nothing()
     assert reserved_code_tables(source, CAUSES, RANGE) == []
     elsewhere = CAUSES | frozenset({"tagger-source-unreadable", "tagger-art-rejected"})
     assert reserved_code_tables(source, elsewhere, RANGE)
+
+
+def test_a_mutually_recursive_pair_of_constants_resolves_to_nothing():
+    """``MAX_HOPS`` was load bearing downward only, and its docstring claims both.
+
+    Lowering it stops the guard resolving the careful spellings and kills seven
+    tests, so the floor was covered. The ceiling was not: the constant says it is
+    bounded "so a mutually recursive pair of constants cannot hang the suite" and
+    nothing drove such a pair, so raising it to anything above the interpreter's
+    own recursion limit turned ``A = B`` beside ``B = A`` into a
+    ``RecursionError`` that takes the run down, which is the failure the bound
+    exists to prevent. Driven here in both halves: the pair resolves to nothing
+    rather than raising, and a table keyed on it reports nothing rather than
+    reporting a guess.
+    """
+    tree = ast.parse("A = B\nB = A\n")
+    names = _guards._module_level_literals(tree)
+    assert set(names) == {"A", "B"}
+    assert _guards.resolve_int(names["A"], names, {}) is None
+    assert _guards.resolve_int(names["B"], names, {}) is None
+    assert _guards.MAX_HOPS < sys.getrecursionlimit(), (
+        "the bound is above the interpreter's own, so the pair above raises "
+        "RecursionError instead of resolving to nothing and the suite dies "
+        "rather than the guard staying silent"
+    )
+    assert reserved_code_tables(MUTUALLY_RECURSIVE_CONSTANTS, CAUSES, RANGE) == []
 
 
 def test_the_residual_is_pinned_rather_than_discovered():
@@ -2113,15 +2554,80 @@ def test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal(source)
 def declared_causes() -> frozenset[str]:
     """Every string anybody in this package has declared to be a refusal cause.
 
-    The reserved set UNION what the completeness walk derived, which is what
-    makes the two checks share one answer to "what is a cause" instead of each
-    inventing its own. Keying the guard on the RESERVED set alone was blind to a
-    module reserving codes for its own new causes, which is the case the table
-    exists for; keying it on the SHAPE of a slug fired on every kebab-keyed
+    FOUR declarations, and the round before this enumerated three and called the
+    set complete. What it left out was the obvious one: ``core.cause.REASONS``,
+    which ``cli/exit_codes.py``'s own docstring calls "the other mapping in this
+    repository that gives a slug a code". Sixty of its sixty one slugs are
+    outside the reserved table, so a module writing ``{"config-unusable": 22}``
+    was a second opinion contradicting a live registry entry and the guard
+    returned empty over it. Round one's shape rule reported that module; round
+    two's declaration rule reported nothing, which is a coverage loss dressed as
+    a narrowing.
+
+    * the reservation table, which is what this file is about;
+    * the closed reason registry, which reserves a code for every CORE refusal;
+    * what the completeness walk derived from the package, so a module's table
+      for its own brand new causes is seen the moment the module declares them;
+    * a cause-shaped string a source declares in its own enum, which
+      ``ReservedCodeTable`` adds per file rather than here.
+
+    The middle two are why the guard and the derivation share one answer to "what
+    is a cause". Keying on the reserved set alone was blind to the whole case the
+    table exists for; keying on the SHAPE of a slug fired on every kebab-keyed
     integer in the tree.
+
+    WHAT IS STILL OUTSIDE, said rather than implied. ``preflight.MountState``
+    spells its seven states with underscores rather than this repository's
+    hyphens, and ``core/session.py`` converts every one of them into a slug
+    ``REASONS`` reserves before anything refuses. Adding them would put ``"ok"``
+    in the key set, which is a false positive waiting for the first module that
+    maps it to a number in range. R-17 records the gap and the reason.
     """
     derived = structured_refusal_causes()
-    return CAUSES | frozenset().union(*derived.values())
+    return CAUSES | frozenset(REASONS) | frozenset().union(*derived.values())
+
+
+def package_of(relative: str) -> str:
+    """The dotted package a module's relative imports resolve against.
+
+    ``cli/render.py`` and ``cli/__init__.py`` both answer ``cratekit.cli``,
+    because one level up from a module and one level up from a package's own
+    ``__init__`` are the same place, which is what Python does.
+    """
+    return ".".join(["cratekit"] + relative.split("/")[:-1])
+
+
+def test_the_package_scan_reaches_the_modules_it_claims_to():
+    """A POSITIVE control on the scanner, which the two tree-wide tests cannot be.
+
+    Both of those assert the ABSENCE of an offender, so narrowing
+    ``package_sources`` from ``rglob`` to ``glob`` kills neither: the scan stops
+    at the top level, finds nothing because it looks nowhere, and both pass. That
+    is absence read as evidence of absence pointed at the scanner itself, which
+    is the shape this whole file exists to catch.
+
+    Named at three depths on purpose. One nested file would still be found by a
+    scan narrowed to ``*/*.py``, so the deepest entry is what makes any narrowing
+    at all go red.
+    """
+    scanned = {relative for relative, _ in package_sources()}
+    for reached in (
+        "__init__.py",
+        "cli/exit_codes.py",
+        "core/cause.py",
+        "modules/tools/backup.py",
+    ):
+        assert reached in scanned, (
+            f"the scan no longer reaches {reached}, so every guard driven over "
+            f"package_sources is silent about it and says so by finding nothing"
+        )
+    assert len(scanned) > 50, f"the scan collapsed to {len(scanned)} files"
+    assert all(relative.endswith(".py") for relative in scanned)
+    assert not [relative for relative in scanned if relative.startswith("_vendor/")]
+    assert TABLE_OWNERS <= scanned, (
+        "the guard exempts files the scan does not reach, which is an exemption "
+        "for nothing and a scan that shrank"
+    )
 
 
 def test_no_module_in_the_package_keeps_a_second_reservation_table():
@@ -2134,11 +2640,87 @@ def test_no_module_in_the_package_keeps_a_second_reservation_table():
     """
     causes = declared_causes()
     offenders = {
-        relative: reserved_code_tables(source, causes, RANGE)
+        relative: reserved_code_tables(source, causes, RANGE, package_of(relative))
         for relative, source in package_sources()
-        if relative not in TABLE_OWNERS and reserved_code_tables(source, causes, RANGE)
+        if relative not in TABLE_OWNERS
+        and reserved_code_tables(source, causes, RANGE, package_of(relative))
     }
     assert not offenders, f"a second reservation table: {offenders}"
+
+
+def test_the_table_owner_escape_is_exactly_these_two_files():
+    """R-15's rule, applied to the one whitelist this unit ships.
+
+    ``TABLE_OWNERS`` switches the second-table guard off for a WHOLE FILE, so
+    adding a name to it is the cheapest way there is to stop the guard looking.
+    Verified: adding ``core/session.py`` leaves the suite at 3299 passed. Round
+    one's own commit named that failure mode and shipped nothing that would catch
+    it, because every assertion about this set was about what it forbids.
+
+    R-15 on ``main`` settles the general form: a guard whitelist asserts what is
+    FORBIDDEN and never what is permitted, and only EXACT MEMBERSHIP catches a
+    widening. So the membership is pinned here, and each entry has to be a file
+    that genuinely holds a table, so a decorative exemption fails too.
+    """
+    assert TABLE_OWNERS == frozenset({"cli/exit_codes.py", "core/cause.py"}), (
+        "the second-table guard is off for every file named here, so widening "
+        "this set is how the guard gets switched off one file at a time. Adding "
+        "an entry needs a reason written beside it and this assertion updated, "
+        "which is the review this set never had"
+    )
+    causes = declared_causes()
+    sources = dict(package_sources())
+    for owner in TABLE_OWNERS:
+        assert owner in sources, f"{owner} is exempted and is not in the package"
+        assert reserved_code_tables(sources[owner], causes, RANGE, package_of(owner)), (
+            f"{owner} is exempted from the second-table guard and maps no cause "
+            f"to a code, so the exemption covers nothing and the file it was "
+            f"written for has moved"
+        )
+
+
+def test_the_closed_reason_registry_is_part_of_the_guards_key_set():
+    """The declaration the round before this left out, pinned by the case it lets through.
+
+    ``config-unusable`` is reserved by ``core.cause.REASONS`` at ``PRECONDITION``
+    and is one of the sixty slugs the reserved table does not repeat. A module
+    mapping it to a different code is the exact second opinion this guard exists
+    to report, and with the registry outside the key set the guard returned empty
+    over it.
+    """
+    assert "config-unusable" in REASONS
+    assert "config-unusable" not in CAUSES, "pick a slug only the registry declares"
+    assert reserved_code_tables(EVASION_A_CODE_FOR_A_REGISTRY_SLUG, declared_causes(), RANGE) == [
+        "line 2: 'config-unusable' -> status 22"
+    ]
+    assert frozenset(REASONS) <= declared_causes(), (
+        "every slug the closed registry reserves is a cause somebody declared, "
+        "and a key set that omits them lets a module contradict the registry"
+    )
+    assert reserved_code_tables(
+        EVASION_A_CODE_FOR_A_REGISTRY_SLUG_HELD_IN_A_NAME, declared_causes(), RANGE
+    ) == ["line 4: 'credential-missing' -> status 30 as PRECONDITION"]
+
+
+def test_widening_the_key_set_to_the_registry_does_not_fire_on_ordinary_code():
+    """P7, run against the widening rather than after it.
+
+    Sixty slugs joined the key set at once, and the direction that gets a guard
+    switched off is the one where it starts reporting correct code. Every ordinary
+    thing a module does with a registry slug is here: a retry delay in minutes, a
+    sentence per cause, an attempt budget. None is a status and none is reported,
+    for the same reason the twenty fixtures above are silent, which is that the
+    only integers that can be a reservation are the ones inside the range.
+
+    Measured over the real tree as well: the widened key set finds ZERO offenders
+    across the package, so no file had to be exempted to make it green.
+    """
+    assert (
+        reserved_code_tables(
+            CORRECT_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS, declared_causes(), RANGE
+        )
+        == []
+    )
 
 
 def test_the_guard_and_the_completeness_walk_share_one_answer_to_what_a_cause_is():
