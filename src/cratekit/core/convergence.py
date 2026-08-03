@@ -497,10 +497,30 @@ def assert_injective(tree_id: str, nodes: Sequence[DestinationNode]) -> None:
     identifier back for both. Every later rebuild then resolves both declared
     destinations to one playlist, files both sets of tracks into it, and reports
     the other one short forever. The rebuild is additive, so it cannot undo that,
-    and the flag can never be cleared by a rebuild again. Refusing the record is
-    what keeps a tree recoverable: the map is rebuilt from scratch by falling
-    back to display-name resolution, which is exactly what an absent record
-    already does.
+    and the flag can never be cleared by a rebuild again.
+
+    THERE IS NO AUTOMATIC FALLBACK, AND AN EARLIER VERSION OF THIS DOCSTRING SAID
+    THERE WAS. It claimed that refusing the record "keeps a tree recoverable: the
+    map is rebuilt from scratch by falling back to display-name resolution, which
+    is exactly what an absent record already does". Nothing does that.
+    :func:`read` turns this ``ValueError`` into ``ConvergenceStateUnreadable`` and
+    raises, so a record in this shape stops every reader of the file. The claim
+    was load bearing and false, which is worse than the gap it described.
+
+    THE FALLBACK IS NOT IMPLEMENTED BECAUSE IT WOULD CONTRADICT THE READER'S OWN
+    RULE. Dropping the nodes and continuing means the next rebuild reads "nothing
+    was ever recorded", and that is precisely the misreading
+    :meth:`TreeConvergence.from_json` refuses an absent ``nodes`` key for: after a
+    rename it resolves by display name and files the whole tree a second time.
+    Falling back is the permissive answer wearing a recovery's clothes.
+
+    SO THE HONEST POSITION IS THAT A CORRUPT MAP IS A CORRUPT STATE FILE, with
+    the same answers every other corrupt state file in this product has: the
+    doctor, or a restore of the coupled set, which carries this document back
+    with the database it describes. What stays reachable meanwhile is the
+    read-only convergence check, which reports an unreadable record as a finding
+    rather than dying with it, because the diagnostic somebody is told to run
+    must not be the second thing that breaks.
 
     A ``ValueError`` rather than a structured cause, because it is the
     dataclass's own construction guard and :func:`read` turns every one of those
@@ -1036,18 +1056,31 @@ def native_trees(cfg: config.Config, registry: tree_registry.Registry) -> tuple[
     """Every database-native tree in this library, from the record AND from disk.
 
     THE UNION, because the docstring below promises "every database-native tree
-    is marked" and a caller-supplied registry cannot make that promise true.
-    Nothing in ``src`` calls :func:`cratekit.core.tree_registry.read`; the
-    registry always arrives as an argument, so the guarantee held only as long as
-    every future caller happened to pass the whole registry rather than the one
-    record it cared about. A caller that passed a filtered registry would have
-    marked one tree and left every other native tree in the same damaged database
-    reporting itself fine, which is precisely the failure the promise names.
+    is marked" and a caller-supplied registry cannot make that promise true. The
+    registry is a parameter at every call site, so the guarantee held only as
+    long as every future caller happened to pass the WHOLE registry rather than
+    the one record it cared about. A caller that passed a filtered registry would
+    have marked one tree and left every other native tree in the same damaged
+    database reporting itself fine, which is precisely the failure the promise
+    names. Reading the file removes the condition rather than documenting it.
 
-    Read from disk rather than replacing the argument, so a caller that has
-    already loaded the registry keeps deciding which root it writes under, while
-    the SET this marks is derived from the file that actually says which trees
-    have cut over.
+    AN EARLIER VERSION OF THIS ARGUED THE UNION WAS FREE because "nothing in src
+    calls tree_registry.read". That was false in the commit that wrote it:
+    ``cratekit.cli.converge`` reads the registry, and a rebuild's caller reads it
+    to build the argument in the first place. The union is justified by what it
+    GUARANTEES, not by being free, and the extra read costs one small JSON file
+    on a path that is about to open a database.
+
+    Read from disk IN ADDITION TO the argument rather than instead of it, so a
+    caller that has already loaded the registry keeps deciding which root it
+    writes under, while the SET this marks is derived from the file that actually
+    says which trees have cut over. An unreadable registry raises here, which is
+    correct: a build that cannot say which trees are native cannot say which ones
+    a restore endangered.
+
+    A TREE ON DISK THAT NO CALLER EVER WRITES TO IS MARKED AND NEVER CLEARED, and
+    that is recorded rather than solved. It is fail-closed, so nothing is written
+    against a tree that may be short, but the flags accumulate. See R-15.
     """
     return tuple(
         sorted(

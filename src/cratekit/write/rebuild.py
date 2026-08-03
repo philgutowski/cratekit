@@ -357,10 +357,19 @@ def declared_membership(
             f"declares, it is evidence that the derivation could not be made, and "
             f"treating the two as one is what would let a run that read nothing "
             f"clear the flag that says this tree is short",
-            remedy=Remedy.MOUNT_LIBRARY_VOLUME,
+            # RUN_DOCTOR RATHER THAN MOUNT_LIBRARY_VOLUME, and the difference is
+            # a real case rather than a nicety. The unmounted volume is refused
+            # one step earlier, by ``library_truth``, which is the only place
+            # that knows the directory was not there and which carries the mount
+            # remedy. By here the walk SUCCEEDED and returned nothing, so the
+            # music directory is present and holds no audio files this build can
+            # read. Telling that person to mount a volume they have already
+            # mounted sends them to fix something that is not broken.
+            remedy=Remedy.RUN_DOCTOR,
             steps=(
-                "confirm the library volume is mounted and its music directory "
-                "holds the files this library declares",
+                "check that this library's music directory holds the files it is "
+                "supposed to; it is present and this walk found nothing in it "
+                "that carries tags",
                 "run the convergence check, which reports what was and was not "
                 "compared without writing anything",
             ),
@@ -521,13 +530,28 @@ def resolve_destinations(
             (node.folder_display, node.playlist_display), []
         ).append(node)
 
-    wanted = {(entry.bucket, entry.sub) for entry in placements}
+    derived = {(entry.bucket, entry.sub) for entry in placements}
+    wanted = set(derived)
     if record is not None:
         wanted |= {(entry.bucket, entry.sub) for entry in record.nodes}
 
     out: list[Destination] = []
     for bucket, sub in sorted(wanted):
-        folder_display, sub_display = _declared_display(declared, bucket, sub)
+        names = _declared_display(declared, bucket, sub, derived=(bucket, sub) in derived)
+        if names is None:
+            # A RECORDED DESTINATION THIS TAXONOMY NO LONGER DECLARES IS SKIPPED,
+            # not refused, and this is where an ordinary edit stopped being a
+            # one-way door. Removing an additive sub-class, or re-declaring the
+            # energy band identifiers, leaves a node record naming destinations
+            # the template no longer has. Refusing on that took out BOTH verbs:
+            # the rebuild refused, and so did the read-only check somebody is
+            # told to run instead, so the remedy refused along with the problem.
+            # Skipped, the destination is simply not declared any more: its node
+            # is reported as ``undeclared`` so nobody has to guess where it went,
+            # its contents fall to ``foreign`` exactly as a playlist a person
+            # curated does, and the run continues.
+            continue
+        folder_display, sub_display = names
         recorded = None if record is None else record.node(bucket, sub)
         node = None
         if recorded is not None:
@@ -558,35 +582,76 @@ def resolve_destinations(
 
 
 def _declared_display(
-    declared: taxonomy.Taxonomy, bucket: str, sub: str
-) -> tuple[str, str]:
-    """The two display names a declared destination means, or a structured refusal.
+    declared: taxonomy.Taxonomy, bucket: str, sub: str, *, derived: bool
+) -> tuple[str, str] | None:
+    """The two display names a destination means, None, or a structured refusal.
 
-    ``routing_pass.destination`` raises a bare ``KeyError`` for an identifier the
-    active taxonomy no longer declares, which is a real and ordinary shape: a
-    recorded destination survives a template edit that removes the sub it named.
-    A bare ``KeyError`` reaches the command-line boundary as an internal defect
-    with "report a defect" attached (S4), which is the wrong sentence to hand
-    somebody whose taxonomy and whose recorded tree have simply come apart.
+    THE SAME MISSING IDENTIFIER MEANS TWO DIFFERENT THINGS depending on where it
+    came from, and treating them alike turned an ordinary taxonomy edit into a
+    permanent refusal of both verbs.
+
+    ``derived=True`` means this destination came out of THIS RUN'S derivation,
+    which reads the active taxonomy and applies its own rules. An identifier that
+    derivation produced and that the same taxonomy cannot name is a contradiction
+    inside one document, which is a defect rather than a user's edit, and it
+    refuses. A bare ``KeyError`` would reach the command-line boundary as an
+    internal defect with "report a defect" attached (S4), which is the right
+    remedy here and the wrong sentence in the other case.
+
+    ``derived=False`` means it came only from the NODE RECORD, which is a note
+    about where a previous write landed and which outlives any edit to the
+    template. Removing an additive sub-class or re-declaring the energy bands
+    leaves exactly this shape, and it is somebody curating their own library
+    rather than anything being wrong. It answers None, and the caller reports it
+    instead of refusing.
+
+    THE RECORD ENTRY IS NOT DELETED ON THE STRENGTH OF THIS. A taxonomy edit can
+    be reverted, and the node identifier is the only thing that stops a rebuild
+    doubling the tree after a rename, so throwing it away the first time somebody
+    tries an edit would make the revert expensive. See ``rebuild_tree``.
     """
     try:
         return routing_pass.destination(declared, bucket, sub)
     except KeyError as exc:
+        if not derived:
+            return None
         raise refuse(
             "routing-destination-renamed",
-            f"this library's taxonomy declares no destination {bucket}/{sub}, "
-            f"and a previous write or this derivation named one; the tree the "
-            f"library holds and the tree the taxonomy declares have come apart, "
-            f"and inventing a name for it would create a folder nobody chose",
-            remedy=Remedy.FIX_CONFIG_VALUES,
+            f"this rebuild's own derivation placed a track in {bucket}/{sub} and "
+            f"this library's taxonomy declares no such destination; one document "
+            f"has contradicted itself, and inventing a name for it would create a "
+            f"folder nobody chose",
+            remedy=Remedy.REPORT_DEFECT,
             steps=(
-                "restore the declared destination in this library's taxonomy, or "
-                "dispose of the difference for this tree by name",
+                "run the convergence check, which reports what this tree holds "
+                "and writes nothing",
             ),
             scope=Scope.RUN,
             origin=("tree_rebuild",),
             detail={"bucket": bucket, "sub": sub},
         ) from exc
+
+
+def undeclared_destinations(
+    declared: taxonomy.Taxonomy, record: convergence.TreeConvergence | None
+) -> tuple[str, ...]:
+    """Recorded destinations this taxonomy no longer declares, as stable identifiers.
+
+    REPORTED RATHER THAN REFUSED AND RATHER THAN SILENT. A person who removes a
+    sub-playlist from their template has done something ordinary and reversible,
+    and the tree still holds the playlist that destination used to name. Refusing
+    made the edit a one-way door; saying nothing would leave a playlist under a
+    governed root that the report never mentions.
+    """
+    if record is None:
+        return ()
+    return tuple(
+        sorted(
+            f"{entry.bucket}/{entry.sub}"
+            for entry in record.nodes
+            if _declared_display(declared, entry.bucket, entry.sub, derived=False) is None
+        )
+    )
 
 
 def assert_addressable(
@@ -806,6 +871,15 @@ class ConvergenceReport:
     #: Every declared destination holding a track more than once, as
     #: ``bucket/sub:content_id``. A doubling an additive write cannot undo.
     doubled: tuple[str, ...] = ()
+    #: Destinations the NODE RECORD names that this taxonomy no longer declares.
+    #:
+    #: NOT A DIFFERENCE, for the same reason ``foreign`` is not one: a person who
+    #: edits their template has changed what the declaration says, and the
+    #: playlist the old destination named is now an undeclared playlist under a
+    #: governed root, which is somebody's own data. Reported so the edit is
+    #: visible rather than silent, and so a reader can tell "this playlist is not
+    #: compared because nobody declares it" from "this playlist matched".
+    undeclared: tuple[str, ...] = ()
 
     @property
     def differences(self) -> tuple[Difference, ...]:
@@ -983,6 +1057,7 @@ def check(
         not_compared=tuple(not_compared),
         derived=len(placements),
         doubled=tuple(sorted(doubled)),
+        undeclared=undeclared_destinations(declared, record),
     )
 
 
@@ -1008,12 +1083,21 @@ class RebuildReport:
     cleared: bool = False
     #: Whether the restore-reconciliation marker for this tree was also closed.
     #:
-    #: THREE ANSWERS, and the third one is the honest one this repository needs.
-    #: True means a marker was open and this rebuild closed it on the evidence of
-    #: the check. False means there was nothing open to close. None means the
-    #: module that holds those markers is not present in this build at all, so
-    #: the question could not be asked, which is a fact a caller must be able to
-    #: SEE rather than infer from a False. See :func:`close_restore_marker`.
+    #: THREE ANSWERS, AND None COVERS TWO WAYS OF NOT ASKING. True means a marker
+    #: was open and this rebuild closed it on the evidence of the check. False
+    #: means the question was asked and there was nothing open to close.
+    #:
+    #: None means the question WAS NOT ASKED, and there are exactly two reasons,
+    #: named here because a caller reading None as only the first would be wrong:
+    #:
+    #: 1. the module holding those markers is not present in this build, so there
+    #:    was nothing to ask;
+    #: 2. this rebuild did not converge, so there was no evidence to ask on. A
+    #:    marker is closed only by a check reporting no difference, never by a
+    #:    rebuild having run, so a rebuild that still differs must leave it alone.
+    #:
+    #: ``cleared`` distinguishes them: False there means the second reason.
+    #: See :func:`close_restore_marker`.
     restore_marker_closed: bool | None = None
 
     @property
@@ -1045,51 +1129,89 @@ def _reconcile():  # type: ignore[no-untyped-def]
     return reconcile
 
 
-def assert_no_outstanding_effects(cfg: config.Config) -> None:
-    """Refuse a rebuild while a restore has left effects nobody has answered for.
+#: The reconciliation marker kind whose ONLY remedy is this rebuild, and the one
+#: thing a rebuild may therefore be exempt from. Spelled here as a NAME rather
+#: than as a member so that a build whose ``reconcile`` does not have it exempts
+#: NOTHING, which is the restrictive direction.
+REBUILD_ANSWERS_KIND = "unconverged-tree"
 
-    THE OTHER HALF OF A BOUNDED EXEMPTION, and it is here because the intent the
-    rebuild declares is wider than the thing it needs. The membership write is
-    made with ``Intent.RECOVERY`` so the restore-reconciliation latch cannot
-    refuse the rebuild that latch's own refusal names. ``RECOVERY`` sheds that
-    whole latch, and the latch guards two different kinds of marker: an
-    UNCONVERGED TREE, whose only remedy IS this rebuild, and an EFFECT, which is
-    something a restore could not undo out in the world and whose remedy is a
-    person deciding what to do about it. A rebuild has no business shedding the
-    second one, so it asserts it here by name.
 
-    THE SPLIT MATCHES WHERE THE FACT NOW LIVES. U32 settled ownership of tree
-    shortness on ``core.convergence`` and hands it over rather than latching it,
-    so on a merged build the tree kind should not appear in that store at all.
-    This assertion is written against the EFFECT kind alone, so it stays correct
-    either way: it refuses over the markers that are not this rebuild's business,
-    and it stays silent about the ones that are.
+def assert_no_latched_restore(cfg: config.Config) -> None:
+    """Refuse a rebuild while a restore holds a latch this rebuild does not answer.
+
+    THE OTHER HALF OF A BOUNDED EXEMPTION, and the previous version of it named
+    the wrong set, which is the whole reason this is written by DERIVATION now.
+
+    The membership write is made with ``Intent.RECOVERY`` so the
+    restore-reconciliation latch cannot refuse the rebuild that latch's refusal
+    names. ``RECOVERY`` sheds that latch WHOLE, and the latch does not hold on one
+    kind of marker, it holds on ``reconcile.LATCHING_KINDS``. Listing the kinds to
+    put back by hand meant naming ``EFFECT`` and missing ``IN_FLIGHT_RESTORE``,
+    which is the record that a restore started and was not seen to finish. That
+    marker is reachable without contrivance: a restore writes it before its first
+    destructive step and retracts it at the step that completes, so a process
+    killed between marking the trees unconverged and finishing leaves the trees
+    flagged AND the latch standing. The user is then told to rebuild, and the
+    rebuild proceeded against a library whose database and coupled state are at
+    different generations, which is exactly what that latch exists to refuse. U32
+    argued its RECOVERY exemption for a restore that FINISHES; a rebuild borrowed
+    it for a different act.
+
+    SO THE SET IS DERIVED FROM THE LATCH'S OWN, MINUS ONE NAMED KIND, in the
+    direction that makes a kind added later HELD by default. That is the same
+    argument ``tree_registry.NOT_REBUILDABLE`` makes for deriving its half rather
+    than listing it: a member nobody has classified must land on the restrictive
+    side. The one subtraction is the unconverged-tree kind, whose only remedy is
+    this function, and it is subtracted by NAME so that a build without it
+    subtracts nothing.
+
+    IT MAY WELL SUBTRACT NOTHING TODAY. U32 settled ownership of tree shortness
+    on ``core.convergence`` and its ``LATCHING_KINDS`` does not include the tree
+    kind, so on a merged build this puts the entire latch back and the exemption
+    is inert. That is the correct outcome rather than a wasted mechanism: the
+    exemption exists so that a latch cannot condemn its own remedy, and it costs
+    nothing when no latch is doing so.
     """
     reconcile = _reconcile()
     if reconcile is None:
         return
-    effects = [
+    outstanding = reconcile.outstanding(cfg)
+    # An absent LATCHING_KINDS means an older or newer shape this build cannot
+    # interrogate, and the answer is to hold on EVERYTHING outstanding rather
+    # than on nothing. A default that shrank the held set would be this rebuild
+    # deciding, on no evidence, that a marker it has never heard of is its own
+    # business to ignore.
+    latching = getattr(reconcile, "LATCHING_KINDS", None)
+    held = [
         record
-        for record in reconcile.outstanding(cfg)
-        if record.marker.kind is reconcile.Kind.EFFECT
+        for record in outstanding
+        if (latching is None or record.marker.kind in latching)
+        and str(record.marker.kind) != REBUILD_ANSWERS_KIND
     ]
-    if not effects:
+    if not held:
         return
     raise refuse(
         "tree-unconverged",
-        "a restore of this library left "
-        + f"{len(effects)} effect(s) it could not undo, and nobody has said what "
-        "should happen about them; a rebuild is exempt from the tree markers "
-        "whose remedy it is and from nothing else, because an effect is a fact "
-        "about the world outside this library that no rebuild repairs",
+        f"a restore of this library left {len(held)} thing(s) latched that a "
+        f"rebuild does not answer for: an effect it could not undo out in the "
+        f"world, or a restore that started and was not seen to finish. A rebuild "
+        f"is exempt from the markers whose own remedy it is and from nothing "
+        f"else, because writing membership into a library whose database and "
+        f"coupled state are at different generations is what that latch exists "
+        f"to refuse",
         remedy=Remedy.COMPLETE_PENDING_ACTION,
         steps=(
+            "finish or restart the restore that did not complete, if one is "
+            "recorded as in flight",
             "close each outstanding restore effect by deciding what to do about "
             "it, then run this rebuild again",
         ),
         scope=Scope.RUN,
         origin=("tree_rebuild",),
-        detail={"markers": [record.marker.marker_id for record in effects]},
+        detail={
+            "markers": [record.marker.marker_id for record in held],
+            "kinds": sorted({str(record.marker.kind) for record in held}),
+        },
     )
 
 
@@ -1259,32 +1381,43 @@ def rebuild_tree(
     for the reason R29 gives, and which is handed the rebuild purpose so the
     convergence latches whose remedy is this function do not refuse it.
 
-    THE LATCHES THIS RUN IS AND IS NOT HELD BY, spelled out because they look
-    alike and are not, and because an exemption nobody bounds is an override.
+    THE LATCHES THIS RUN IS AND IS NOT HELD BY, stated as what is SHED rather
+    than as what is declared, because those are different lists and an earlier
+    version of this docstring counted the declarations and called it the
+    exemption. That sentence claimed three shed things, all naming this function
+    as their remedy. One of them was never held at all, and a fourth thing was
+    shed and not named.
 
-    The membership write declares ``Intent.RECOVERY``, which sheds the
-    restore-reconciliation latch whole. That latch's outstanding markers include
-    "this tree needs rebuilding", and a latch that condemns its own remedy leaves
-    a library with no exit but a hand-edited file, which this repository has
-    already shipped once. But ``RECOVERY`` is WIDER than what is needed, in two
-    directions, so both are put back by name:
+    Two declarations are made, and each sheds more than this function needs:
 
-    * the unresolved-session latch, whose remedy is a restore rather than a
-      rebuild. A rebuild over a library whose last commit could not be read back
-      would be adding to something nobody can vouch for.
-    * the reconciliation latch's EFFECT markers, which are facts about the world
-      outside this library that no rebuild repairs. Only the tree markers are
-      this rebuild's business.
+    * ``purpose=Purpose.REBUILD`` on the membership write, which sheds the
+      convergence flag on THIS tree and the out-of-band restore REFUSAL. The
+      detection behind that refusal still runs and still marks every native tree.
+    * ``intent=Intent.RECOVERY`` on the session gate, which sheds the
+      unresolved-session latch and the restore-reconciliation latch, both whole.
 
-    What is genuinely shed is exactly three things, all of them naming this
-    function as their own remedy: this tree's convergence flag, the out-of-band
-    restore REFUSAL (the detection still runs and still marks), and the
-    reconciliation latch's unconverged-tree markers.
+    Both of those are wider than the remedy, so the surplus is put back HERE and
+    by name, before anything is written:
+
+    * ``session.assert_no_unresolved_session``, whose remedy is a restore rather
+      than a rebuild. A rebuild over a library whose last commit could not be
+      read back would be adding to something nobody can vouch for.
+    * :func:`assert_no_latched_restore`, which puts back everything
+      ``reconcile.LATCHING_KINDS`` holds except the unconverged-tree kind. That
+      derivation is the fix for the gap: the hand-written version named EFFECT
+      and silently shed IN_FLIGHT_RESTORE, so a rebuild ran over a library whose
+      database and coupled state were at different generations.
+
+    SO WHAT IS ACTUALLY SHED IS TWO THINGS, and on a merged build possibly three:
+    this tree's convergence flag, the out-of-band restore refusal, and the
+    reconciliation latch's unconverged-tree markers IF that build latches on them
+    at all. U32's current shape does not, which makes the third one inert rather
+    than wrong.
     """
     source = registry.derivation_source(tree_id)
     tree_registry.assert_rebuildable(tree_id, source)
     session.assert_no_unresolved_session(cfg)
-    assert_no_outstanding_effects(cfg)
+    assert_no_latched_restore(cfg)
     collection = tuple(rows)
     root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
     placements, not_compared = declared_membership(
@@ -1393,6 +1526,32 @@ def rebuild_tree(
                 playlist_id=node.playlist_id,
             )
         )
+    # A RECORDED DESTINATION THIS TAXONOMY NO LONGER DECLARES IS CARRIED FORWARD
+    # rather than dropped, and the reason is the one this record exists for. It
+    # was skipped above, so it is not in ``destinations``, and a whole-record
+    # replacement would therefore delete it. A taxonomy edit is reversible, and
+    # the node identifier is the only thing that stops a rebuild doubling the
+    # tree after somebody renames a folder, so deleting it the first time an edit
+    # is tried would make the revert expensive in exactly the way this unit
+    # exists to prevent. Kept, the entry is inert: nothing resolves through it
+    # while its destination is undeclared, and the report names it.
+    taken = {(entry.bucket, entry.sub) for entry in recorded}
+    claimed = {(entry.folder_id, entry.playlist_id) for entry in recorded}
+    for entry in () if record is None else record.nodes:
+        if (entry.bucket, entry.sub) in taken:
+            continue
+        if _declared_display(declared, entry.bucket, entry.sub, derived=False) is not None:
+            # Declared, and not written back, which means it resolved to no node
+            # this run: the playlist it named is gone. That entry IS dropped,
+            # because it is a dangling pointer rather than a note about an edit.
+            continue
+        if (entry.folder_id, entry.playlist_id) in claimed:
+            # Its node now belongs to a destination that IS declared. Keeping
+            # both would be the two-destinations-one-node record the injectivity
+            # check refuses, and the live one is the one worth keeping.
+            continue
+        recorded.append(entry)
+
     if recorded:
         # The map is validated as a bijection on construction, so a record that
         # would name one node for two destinations is refused HERE, before it can
@@ -1456,6 +1615,7 @@ def rebuild_tree(
 __all__ = [
     "DERIVATIONS",
     "REBUILD_ACTOR",
+    "REBUILD_ANSWERS_KIND",
     "REBUILD_WORKFLOW",
     "VOCAL_DIMENSION",
     "ConvergenceReport",
@@ -1467,7 +1627,7 @@ __all__ = [
     "TreeNode",
     "Truth",
     "assert_addressable",
-    "assert_no_outstanding_effects",
+    "assert_no_latched_restore",
     "check",
     "close_restore_marker",
     "declared_membership",
@@ -1478,4 +1638,5 @@ __all__ = [
     "rebuild_tree",
     "report_convergence",
     "resolve_destinations",
+    "undeclared_destinations",
 ]

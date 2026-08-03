@@ -44,8 +44,9 @@ import json
 import os
 import sqlite3
 import unicodedata
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date
+from enum import StrEnum
 from pathlib import Path
 
 import pytest
@@ -2105,29 +2106,138 @@ def test_a_bridge_record_carrying_a_cutover_contradicts_itself_and_is_refused():
         )
 
 
-def test_an_undeclared_destination_refuses_structurally_rather_than_by_key_error(
+def test_a_recorded_destination_the_taxonomy_dropped_is_reported_not_refused(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """A bare ``KeyError`` reaches the boundary as "report a defect" (S4).
+    """AN ORDINARY TAXONOMY EDIT IS NOT A ONE-WAY DOOR, which it briefly was.
 
-    A recorded destination outliving a template edit that removed the sub it
-    named is ordinary, and the person holding it has a taxonomy to repair rather
-    than a bug to file.
+    Unioning the node record into the destination set and refusing on any
+    identifier the template cannot name meant that removing a sub-playlist, or
+    re-declaring the energy band identifiers, took out BOTH verbs: the rebuild
+    refused, and so did the read-only check somebody is told to run instead, so
+    the remedy refused along with the problem. The only exits were reverting the
+    taxonomy forever or hand-editing the state file, which is the anti-pattern
+    this unit's own ``Purpose`` docstring names.
     """
+    bucket_id = _destination(declared)[0]
     convergence.record_nodes(
         cfg,
         TREE_ID,
         [
             convergence.DestinationNode(
-                bucket=_destination(declared)[0],
+                bucket=bucket_id,
                 sub="a_sub_this_taxonomy_never_declared",
                 folder_id="f",
                 playlist_id="p",
             )
         ],
     )
+
+    # The read-only check answers rather than dying, which is the whole point:
+    # it is what a person is told to run when something is wrong.
+    report = rebuild.report_convergence(
+        cfg,
+        db,
+        tree_id=TREE_ID,
+        registry=_registry(str(adopted_root.ID)),
+        declared=declared,
+        rows=_rows(cfg),
+        root_exists=lambda _root: True,
+        vocal_threshold=None,
+        truth=_truth(cfg, declared, PLAIN),
+    )
+    assert f"{bucket_id}/a_sub_this_taxonomy_never_declared" in report.undeclared
+
+    rebuilt = _rebuild(cfg, db, adopted_root, declared, [PLAIN])
+    assert rebuilt.after.converged and rebuilt.cleared
+    assert rebuilt.after.undeclared != ()
+
+    # AND THE RECORD KEEPS IT. A taxonomy edit is reversible, and the node
+    # identifier is the only thing that stops a rebuild doubling the tree after
+    # a rename, so it is not thrown away the first time somebody tries an edit.
+    kept = convergence.read(cfg).tree(TREE_ID)
+    assert kept.node(bucket_id, "a_sub_this_taxonomy_never_declared") is not None
+
+
+def test_dropping_the_additive_sub_class_leaves_both_verbs_working(
+    cfg, gates_pass, db, adopted_root, declared
+):
+    """The reviewer's reproduction, with the two edits they actually made.
+
+    A first rebuild with vocals on records a node for the additive destination.
+    Removing that sub-class from the template is an ordinary curation act, and
+    afterwards both verbs must still answer.
+    """
+    _rebuild(
+        cfg,
+        db,
+        adopted_root,
+        declared,
+        [PLAIN],
+        truth=_truth(cfg, declared, PLAIN, voxlevel=90),
+        vocal_threshold=5.0,
+    )
+    bucket_id = _destination(declared)[0]
+    assert convergence.read(cfg).tree(TREE_ID).node(bucket_id, trees.VOX_SUB_CLASS)
+
+    trimmed = replace(
+        declared,
+        sub_classes=tuple(s for s in declared.sub_classes if not s.additive),
+    )
+
+    report = rebuild.report_convergence(
+        cfg,
+        db,
+        tree_id=TREE_ID,
+        registry=_registry(str(adopted_root.ID)),
+        declared=trimmed,
+        rows=_rows(cfg),
+        root_exists=lambda _root: True,
+        vocal_threshold=5.0,
+        truth=_truth(cfg, trimmed, PLAIN, voxlevel=90),
+    )
+    assert f"{bucket_id}/{trees.VOX_SUB_CLASS}" in report.undeclared
+
+    again = _rebuild(
+        cfg,
+        db,
+        adopted_root,
+        trimmed,
+        [PLAIN],
+        truth=_truth(cfg, trimmed, PLAIN, voxlevel=90),
+        vocal_threshold=5.0,
+    )
+    assert again.after.converged
+
+    # RE-DECLARING IT PUTS EVERYTHING BACK, because the record was kept. The node
+    # resolves again and no second playlist is created beside the first.
+    restored = _rebuild(
+        cfg,
+        db,
+        adopted_root,
+        declared,
+        [PLAIN],
+        truth=_truth(cfg, declared, PLAIN, voxlevel=90),
+        vocal_threshold=5.0,
+    )
+    assert restored.after.converged
+    assert len(rebuild.read_tree(db, str(adopted_root.ID))) == 2
+
+
+def test_a_derived_placement_the_taxonomy_cannot_name_is_still_a_defect(declared):
+    """The other half of the split, kept sharp.
+
+    An identifier THIS RUN'S derivation produced, from the same taxonomy that
+    cannot name it, is one document contradicting itself. That is a defect rather
+    than a user's edit, and it keeps its refusal. Bare ``KeyError`` would reach
+    the boundary as an internal defect anyway; this carries the sentence.
+    """
+    assert (
+        rebuild._declared_display(declared, "no_such_bucket_at_all", "high", derived=False)
+        is None
+    )
     with pytest.raises(CratekitError) as excinfo:
-        _rebuild(cfg, db, adopted_root, declared, [PLAIN])
+        rebuild._declared_display(declared, "no_such_bucket_at_all", "high", derived=True)
     assert excinfo.value.cause.reason == "routing-destination-renamed"
 
 
@@ -2245,3 +2355,217 @@ def test_the_rebuild_verb_records_a_named_person_for_a_disposition():
         "the surface clears a tree's flag directly rather than through the "
         "rebuild, whose clearing call is handed the check's own difference list"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 11: what Intent.RECOVERY sheds, and what this rebuild puts back
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class _Kind(StrEnum):
+    """The reconciliation kinds, as U32 spells them. Stand-in, not a copy of it.
+
+    ``cratekit.core.reconcile`` lands with U32 and is not in this build, so the
+    derivation is driven against a stand-in that reproduces the ONE thing it
+    reads: a set of latching kinds and an outstanding list. A stand-in is what
+    lets this assert the RULE rather than the other unit's current answer, which
+    is the point, since the defect was a hand-written kind list going stale the
+    moment that answer changed.
+    """
+
+    EFFECT = "effect"
+    IN_FLIGHT_RESTORE = "in-flight-restore"
+    UNCONVERGED_TREE = "unconverged-tree"
+    SOMETHING_LATER = "a-kind-added-after-this-was-written"
+
+
+@dataclass(frozen=True)
+class _Marker:
+    kind: _Kind
+    identity: str = "x"
+
+    @property
+    def marker_id(self) -> str:
+        return f"{self.kind}:{self.identity}"
+
+
+@dataclass(frozen=True)
+class _Record:
+    marker: _Marker
+
+
+def _stand_in(monkeypatch, *kinds, latching=None):
+    """Patch the guarded reconcile accessor with a module-shaped stand-in."""
+
+    class _Module:
+        Kind = _Kind
+
+        @staticmethod
+        def outstanding(_cfg):
+            return tuple(_Record(_Marker(kind)) for kind in kinds)
+
+    if latching is not None:
+        _Module.LATCHING_KINDS = frozenset(latching)
+    monkeypatch.setattr(rebuild, "_reconcile", lambda: _Module)
+    return _Module
+
+
+def test_an_in_flight_restore_holds_the_rebuild(cfg, monkeypatch):
+    """THE GAP: RECOVERY shed this latch and nothing put it back.
+
+    ``reconcile.LATCHING_KINDS`` is EFFECT and IN_FLIGHT_RESTORE. The hand-written
+    version of this assertion named EFFECT alone, so an in-flight marker was shed
+    and never restored, and a rebuild ran to completion over a library whose
+    database and coupled state are at different generations.
+
+    REACHABLE WITHOUT CONTRIVANCE. A restore records the in-flight latch before
+    its first destructive step, marks trees unconverged partway through, and
+    retracts the latch at the step that completes. A process killed between those
+    two leaves the trees flagged AND the latch standing, and the user is then
+    told to rebuild.
+    """
+    _stand_in(
+        monkeypatch,
+        _Kind.IN_FLIGHT_RESTORE,
+        latching={_Kind.EFFECT, _Kind.IN_FLIGHT_RESTORE},
+    )
+    with pytest.raises(CratekitError) as excinfo:
+        rebuild.assert_no_latched_restore(cfg)
+    assert excinfo.value.cause.detail["kinds"] == [str(_Kind.IN_FLIGHT_RESTORE)]
+
+
+def test_an_effect_holds_the_rebuild_and_a_tree_marker_does_not(cfg, monkeypatch):
+    """The one subtraction, and it is subtracted by NAME rather than by position.
+
+    An effect is a fact about the world outside this library that no rebuild
+    repairs, so it holds. A tree marker's only remedy IS this rebuild, so a latch
+    holding on one would be condemning its own remedy.
+    """
+    _stand_in(monkeypatch, _Kind.EFFECT, latching={_Kind.EFFECT, _Kind.IN_FLIGHT_RESTORE})
+    with pytest.raises(CratekitError):
+        rebuild.assert_no_latched_restore(cfg)
+
+    _stand_in(
+        monkeypatch,
+        _Kind.UNCONVERGED_TREE,
+        latching={_Kind.EFFECT, _Kind.IN_FLIGHT_RESTORE, _Kind.UNCONVERGED_TREE},
+    )
+    rebuild.assert_no_latched_restore(cfg)
+
+
+def test_a_latching_kind_added_later_holds_the_rebuild_by_default(cfg, monkeypatch):
+    """DERIVED IN THE DIRECTION THAT MAKES A NEW MEMBER RESTRICTIVE.
+
+    The same argument ``tree_registry.NOT_REBUILDABLE`` makes for deriving its
+    half rather than listing it: a member nobody has classified must land on the
+    side that refuses. Listing the held kinds by hand is exactly how the in-flight
+    one was missed.
+    """
+    _stand_in(
+        monkeypatch,
+        _Kind.SOMETHING_LATER,
+        latching={_Kind.EFFECT, _Kind.IN_FLIGHT_RESTORE, _Kind.SOMETHING_LATER},
+    )
+    with pytest.raises(CratekitError):
+        rebuild.assert_no_latched_restore(cfg)
+
+
+def test_a_reconcile_with_no_latching_set_holds_everything_but_the_tree_kind(
+    cfg, monkeypatch
+):
+    """An absent set is a shape this build cannot interrogate, not permission.
+
+    A default that shrank the held set would be this rebuild deciding, on no
+    evidence, that a marker it has never heard of is its own business to ignore.
+    """
+    _stand_in(monkeypatch, _Kind.SOMETHING_LATER)
+    with pytest.raises(CratekitError):
+        rebuild.assert_no_latched_restore(cfg)
+
+    _stand_in(monkeypatch, _Kind.UNCONVERGED_TREE)
+    rebuild.assert_no_latched_restore(cfg)
+
+
+def test_a_build_without_the_module_is_held_by_nothing_here(cfg, monkeypatch):
+    """There is no latch to put back where there is no latch."""
+    monkeypatch.setattr(rebuild, "_reconcile", lambda: None)
+    rebuild.assert_no_latched_restore(cfg)
+
+
+def test_the_rebuild_refuses_end_to_end_while_a_restore_is_in_flight(
+    cfg, gates_pass, db, adopted_root, declared, monkeypatch
+):
+    """The reproduction as it was executed: the whole rebuild, not the assertion.
+
+    Previously this ran to completion, wrote membership, recorded a new
+    fingerprint and cleared the tree flag, with the marker still open afterwards.
+    """
+    convergence.mark_unconverged(cfg, [TREE_ID], reason="a restore")
+    _stand_in(
+        monkeypatch,
+        _Kind.IN_FLIGHT_RESTORE,
+        latching={_Kind.EFFECT, _Kind.IN_FLIGHT_RESTORE},
+    )
+    before = convergence.read(cfg).fingerprint
+
+    with pytest.raises(CratekitError):
+        _rebuild(cfg, db, adopted_root, declared, [PLAIN])
+
+    assert convergence.read(cfg).tree(TREE_ID).blocking, "the flag was cleared"
+    assert convergence.read(cfg).fingerprint == before, "a fingerprint was recorded"
+    assert rebuild.read_tree(db, str(adopted_root.ID)) == ()
+
+
+def test_the_diagnostic_survives_a_record_every_other_reader_refuses(cfg, adopted_root):
+    """FIX 3: the recovery ``assert_injective`` claimed does not exist, so this does.
+
+    A node map naming one playlist for two destinations is refused by ``read``,
+    which turns the construction guard into ``ConvergenceStateUnreadable``. That
+    refusal is right: falling back to "nothing was ever recorded" is the reading
+    that doubles a tree after a rename. What was wrong was the claim that a
+    fallback existed, and what it cost was the diagnostic dying alongside every
+    writer, so the one command somebody is told to run when a record is corrupt
+    was the second thing to break.
+    """
+    tree_registry.write(cfg, _registry(str(adopted_root.ID)))
+    convergence.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
+    convergence.path_for(cfg).write_text(
+        json.dumps(
+            {
+                "schema_version": convergence.SCHEMA_VERSION,
+                "fingerprint": None,
+                "trees": [
+                    {
+                        "tree": TREE_ID,
+                        "unconverged": True,
+                        "reason": "a restore",
+                        "since": "2026-08-02",
+                        "disposition": None,
+                        "nodes": [
+                            {"bucket": "b", "sub": "one", "folder": "f", "playlist": "p"},
+                            {"bucket": "b", "sub": "two", "folder": "f", "playlist": "p"},
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CratekitError):
+        convergence.read(cfg)
+
+    class _Args:
+        tree = None
+
+    class _Ctx:
+        args = _Args()
+
+        @staticmethod
+        def envelope(*, data, **kwargs):
+            return {"data": data, **kwargs}
+
+    result = converge_cli.converge(_Ctx())["data"]
+    assert result["summary"]["record_readable"] is False
+    assert converge_cli.MATCHING not in {entry["status"] for entry in result["checks"]}
+    assert any(entry["key"] == "record.unreadable" for entry in result["checks"])

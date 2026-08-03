@@ -582,3 +582,43 @@ branch in `restore._hand_tree_shortness_over` and the
 
 **Closes when:** both branches are on `main` and the six items above are
 resolved.
+
+---
+
+## R-15. Two convergence flags that are set correctly and never cleared
+
+**Found:** during U36's second review round, 2026-08-02.
+
+Both are fail-closed, both are inert today, and both accumulate. Recorded rather
+than fixed because each needs a surface that has not landed.
+
+**A native tree no caller ever writes to.** `convergence.native_trees` unions the
+caller's registry with the one on disk, which is what makes "every
+database-native tree is marked" true rather than conditional on what the caller
+passed. The consequence is that a tree recorded native on disk, which no workflow
+ever names, is marked unconverged by the detection and nothing will ever run a
+rebuild for it. Nothing is written against it, so nothing is damaged, but its
+flag stands forever. The alternative, marking only what the caller passed, is the
+defect the union exists to close, so the union stays. **Closes when** a verb can
+enumerate governed trees and rebuild each in turn, which is U20's surface.
+
+**A tree whose tracks were retagged out of a bucket.** The rebuild is additive by
+design: a membership somebody made by hand is their data, and deleting it would
+be the one operation in this product that destroys work nobody can get back. So
+rows the declaration no longer places are reported `UNEXPECTED` and left alone,
+`after.converged` is never True, and a flagged tree can never be cleared by
+rebuilding. That is intended and R39 names the escape: an explicit, logged
+operator disposition scoped to one tree.
+
+**The escape exists in the engine and has no surface on this branch.**
+`convergence.clear_unconverged(cfg, tree_id, differences=..., disposition=...)`
+takes it and refuses an empty actor, so the mechanism is complete and tested. The
+command-line half rides on `cratekit.cli.rebuild`, which is behind the
+conformance wall against U20 and is registered in `tests/_pending.py` with that
+obligation attached. **Until U20 lands, a library in this state has no
+supported exit**, which is acceptable only because no tree has cut over yet:
+`tree_registry` starts every tree on the XML bridge and the cutover verb is U20's
+too, so the first library that can reach this state is one U20 created.
+
+**Closes when:** U20 ships the disposition surface, at which point both entries
+are answerable by a person rather than only by the engine.

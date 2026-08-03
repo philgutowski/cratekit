@@ -139,7 +139,19 @@ def converge(ctx: "Context") -> Envelope:
     """Report, per governed tree, whether the declaration and the database agree."""
     cfg = config.load()
     entries = tree_registry.read(cfg)
-    recorded = convergence.read(cfg)
+    # AN UNREADABLE RECORD IS A FINDING HERE, NOT THE END OF THE RUN. Every other
+    # reader of that document refuses on it, correctly, because acting on a
+    # record nobody can parse is acting on nothing. This is the one caller that
+    # must survive it: it writes nothing, and it is what a person is told to run
+    # when something is wrong, so a diagnostic that died with the document would
+    # leave them with no way to see what the document says. The standing half of
+    # each check then reads "not compared", never "matching".
+    unreadable: str | None = None
+    try:
+        recorded = convergence.read(cfg)
+    except convergence.ConvergenceStateUnreadable as exc:
+        unreadable = exc.cause.message
+        recorded = convergence.EMPTY
     wanted = (
         entries.tree_ids()
         if ctx.args.tree is None
@@ -192,6 +204,21 @@ def converge(ctx: "Context") -> Envelope:
             finally:
                 rb_writer.close_db(handle)
 
+    if unreadable is not None:
+        checks.append(
+            {
+                "key": "record.unreadable",
+                "title": convergence.STATE_KEY,
+                "status": NOT_COMPARED,
+                "detail": (
+                    f"{unreadable} Nothing below can say whether a tree is "
+                    f"refusing writes, because the record that holds that answer "
+                    f"could not be read."
+                ),
+                "remedy": str(Remedy.RUN_DOCTOR),
+            }
+        )
+
     for tree_id in wanted:
         standing = _standing(recorded.tree(tree_id))
         status, detail = live.get(
@@ -202,6 +229,12 @@ def converge(ctx: "Context") -> Envelope:
                 "export's and there is nothing here to compare",
             ),
         )
+        if unreadable is not None:
+            # The live comparison reads the same record to resolve destinations,
+            # so it cannot have run either. Forced to NOT COMPARED rather than
+            # left at whatever the comparison happened to answer, because the one
+            # thing this verb may never do is report a tree it could not compare.
+            status, detail = NOT_COMPARED, f"{detail} (the convergence record is unreadable)"
         if standing["unconverged"]:
             detail = (
                 f"unconverged since {standing['since']} ({standing['reason']}); "
@@ -229,6 +262,7 @@ def converge(ctx: "Context") -> Envelope:
                 "trees": len(wanted),
                 "database_native": len(native),
                 "blocking": blocking,
+                "record_readable": unreadable is None,
                 "library": str(Path(cfg.library.root)),
             },
         }
