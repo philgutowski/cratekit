@@ -34,6 +34,17 @@ deleted. Five files conflicted, `docs/HANDOFF.md`,
 `src/cratekit/core/cause.py` and `tests/test_cli_contract.py`, and every one was
 two sides appending to the same region rather than two sides changing one thing.
 
+**ONE OF THOSE APPENDS IS A COLLISION AND NOT A CONFLICT, and the real merge has
+to settle it by hand.** `main` carries its own `R-16` and `R-17` in
+`docs/residual-findings.md`, from U36 and U32, and this branch carries `R-16`,
+`R-17`, `R-18`, `R-19` and `R-20`. Keeping both sides, which is what every one of
+these five conflicts wants, leaves the merged file with TWO `R-16` headings and
+TWO `R-17` headings naming four different findings. Git cannot see that, because
+neither side edited the other's line. Whoever merges renumbers this branch's
+entries to follow `main`'s highest, and fixes the references to them in
+`docs/HANDOFF.md`, `src/cratekit/deletion/candidates.py` and
+`tests/test_deletion.py`, which name `R-19` and `R-20` in prose.
+
 **THE MERGED NUMBERS RECORDED HERE AFTER ROUND 3 WERE MEASURED ON THE ROUND 2
 TIP, and are corrected rather than adjusted.** They read 3395 passed, 16 skipped
 out of 3411 collected, which is exactly nineteen short of the merge of the round
@@ -42,11 +53,13 @@ run before round 3 was committed, so it described a tree that no longer existed
 by the time the line was written. The conflict set of five files and the ruff and
 `scan_repo` results were and are correct.
 
-MERGED BATTERY, re-measured on the round 4 tip: recorded in the commit that
-follows this one, because a merge measured before its own round is committed
-measures the round before it, which is the whole of what went wrong above.
-Re-measure it again after any further round, since every added assertion moves
-it.
+MERGED BATTERY, measured on the merge of `c114afa` into the ROUND 4 tip
+`49f3c13`, taken after the conflicts above were resolved by keeping both sides:
+**3440 passed, 16 skipped** out of 3456 collected, ruff clean, `scan_repo` clean.
+The branch was created, measured, reset and deleted, and `main` was not touched.
+Re-measure after any further round, since every added assertion moves it, and
+measure it on a COMMITTED tip: a merge run before its own round is committed
+measures the round before it, which is exactly what went wrong above.
 
 ## What U24 changed
 
