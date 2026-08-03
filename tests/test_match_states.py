@@ -291,12 +291,28 @@ def test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist():
     version reports missing, acquisition fetches it back, and the deletion is
     undone with the suite green.
 
-    The moment ``cratekit.core.tombstone`` exists in the same tree, the pending
-    register goes red, the entry is deleted, and this runs. It compares the store
-    key, the kind, the fold over every pinned input, and the identity a raw row
-    title produces, which is the full surface the two sides share. When it
-    passes, the correct next move is to delete the copy here and import the
-    domain module, which is what this unit's own docstrings already say.
+    TWO CHECKS, AND THE FIRST ONE IS THE ONE THAT PROVES LEAST. Handing both
+    sides the same string proves the FUNCTIONS agree, and this unit's own second
+    commit message already says that was never the risk: U24 hashes a collection
+    row's Title column verbatim while this side may COMPOSE a title when the
+    source spelled the version separately, so the two can agree as functions and
+    still be handed different strings for one record. That is not hypothetical.
+    It is what a provider row does for six of the seven spellings below, and one
+    of the six it still cannot reach at all.
+
+    So the second check is over the RECORDING PATH: for every spelling a library
+    row really carries, the identity U24's recorder would write is compared
+    against the identities the three readers on this side actually produce, and
+    the ones that cannot reconcile are named in ``UNRECONCILED`` rather than left
+    to a silent miss.
+
+    WHAT IT STILL CANNOT PROVE, and this is the residual R-21 records: U24's
+    RECORDER is not imported here either, so the string it hands
+    ``version_identity`` is taken from ``u24_records`` below, which is a
+    hand-written imitation of ``deletion.stores.version_of`` that nothing checks
+    against U24's real code. This guard compares one real function against one
+    real function and one real derivation against an IMITATED one. The check that
+    would close it is named in R-21.
     """
     from cratekit.core import tombstone
 
@@ -308,6 +324,19 @@ def test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist():
         assert match.version_identity(
             artist="Aurora Bloom", title=row_title
         ) == tombstone.version_identity(artist="Aurora Bloom", title=row_title)
+    # THE DERIVATION, against the domain module's own function rather than
+    # against the local copy of it.
+    missed = tuple(
+        (row_title, wanted.origin)
+        for row_title in ROW_SPELLINGS
+        for wanted in every_reader_on(row_title)
+        if tombstone.version_identity(artist="Aurora Bloom", title=row_title)
+        not in wanted.suppression_spellings
+    )
+    assert missed == UNRECONCILED, (
+        "a library row spelling this side cannot address changed, so either a "
+        "tombstone became invisible or R-20 is now stale"
+    )
 
 
 def test_the_tombstone_identity_is_u24s_algorithm_byte_for_byte():
@@ -356,6 +385,32 @@ ROW_SPELLINGS = [
 ]
 
 
+#: THE PROVIDER ROW a source carrying its version in a separate field ships for
+#: each of the spellings above, WRITTEN OUT. Not produced by calling
+#: ``split_title``: an input built by the code under test cannot show that code
+#: reading a row wrongly, and half the point of this table is that the provider
+#: path is the one with no original string to preserve.
+PROVIDER_OF: dict[str, tuple[str, str]] = {
+    "Sun Path (Nightwave Remix)": ("Sun Path", "Nightwave Remix"),
+    "Sun Path - Nightwave Remix": ("Sun Path", "Nightwave Remix"),
+    "Sun Path [Nightwave Remix]": ("Sun Path", "Nightwave Remix"),
+    "Sun Path (feat. Mira) (Nightwave Remix)": ("Sun Path", "Nightwave Remix"),
+    "Sun Path (Extended) (Remastered)": ("Sun Path", "Extended Remastered"),
+    "Sun Path": ("Sun Path", ""),
+    "Sun Path (Original Mix)": ("Sun Path", "Original Mix"),
+}
+
+#: THE DERIVATIONS THAT DO NOT RECONCILE, named rather than left to a silent
+#: miss. A featured credit is dropped from the matching title because it names a
+#: performer, so a source that never spelled it cannot put it back, and the
+#: library row that kept it is unreachable from a provider row. Recorded as R-20
+#: in docs/residual-findings.md. Every other pair reconciles, and this tuple
+#: going empty or growing is a change somebody has to make on purpose.
+UNRECONCILED: tuple[tuple[str, str], ...] = (
+    ("Sun Path (feat. Mira) (Nightwave Remix)", match.TIDAL),
+)
+
+
 def u24_records(artist: str, row_title: str) -> dict[str, str]:
     """What U24's recorder writes, DERIVED the way it derives it.
 
@@ -365,8 +420,34 @@ def u24_records(artist: str, row_title: str) -> dict[str, str]:
     Nothing splits it and nothing recomposes it. Written out here rather than
     imported, because the deletion package is landing in its own worktree and the
     whole point of this helper is to be a SECOND implementation.
+
+    AN IMITATION, AND NOTHING HERE CHECKS IT AGAINST U24'S REAL RECORDER. The
+    fold below is a second implementation of an algorithm this repository can
+    read; the DERIVATION is a reading of a file in another worktree, taken from
+    that unit's stated shape. If U24's reader maps a column this does not, this
+    helper agrees with the code here and both disagree with what actually gets
+    written. R-21 records that and names the check that would close it.
     """
     return {"artist": u24_fold(artist), "title": u24_fold(row_title)}
+
+
+def every_reader_on(row_title: str) -> tuple[match.Wanted, ...]:
+    """One library row spelling, arriving through all three readers.
+
+    The provider row comes from :data:`PROVIDER_OF` rather than from a call to
+    ``split_title``, so the input is a literal and a reader that splits a row
+    wrongly cannot make its own input agree with it.
+    """
+    title, version = PROVIDER_OF[row_title]
+    return (
+        match.read_text_lines(f"Aurora Bloom - {row_title}\n")[0],
+        match.read_spotify_items(
+            [{"name": row_title, "artists": [{"name": "Aurora Bloom"}]}]
+        )[0],
+        match.read_tidal_tracks(
+            [{"title": title, "version": version, "artist": {"name": "Aurora Bloom"}}]
+        )[0],
+    )
 
 
 @pytest.mark.parametrize("row_title", ROW_SPELLINGS)
@@ -398,39 +479,205 @@ def test_a_list_addresses_a_tombstone_the_way_a_deleted_row_actually_recorded_it
         )
 
 
-@pytest.mark.parametrize("row_title", ROW_SPELLINGS)
-def test_a_provider_row_with_a_separate_version_field_reaches_the_same_record(row_title):
+#: EVERY IDENTITY TITLE the provider row for the Nightwave remix has to reach,
+#: as LITERALS. The test this replaces derived its expected value by calling
+#: ``match.listed_title``, the function under test, so the assertion reduced to
+#: ``X in (X,)``: rewriting ``listed_title`` to compose with square brackets left
+#: it green, and rewriting it to compose with a dash left it green too. A test
+#: that builds its expectation by calling the code under test asserts nothing.
+PROVIDER_REACHES: tuple[str, ...] = (
+    "sun path (nightwave remix)",
+    "sun path [nightwave remix]",
+    "sun path - nightwave remix",
+)
+
+#: The provider row those literals belong to.
+PROVIDER_ROW = {"title": "Sun Path", "version": "Nightwave Remix",
+                "artist": {"name": "Aurora Bloom"}}
+
+
+@pytest.mark.parametrize("spelling", PROVIDER_REACHES)
+def test_a_provider_row_reaches_every_spelling_of_the_version_it_names(spelling):
     """The one source that never spelled the two together, held to the same seam.
 
-    A provider carries the version beside the title, so there is no original
-    string and one has to be composed. It still has to reach a tombstone the
-    deletion pass wrote for the spelling a library row most often uses.
+    A provider carries the version beside the title, so ``spelled`` is empty and
+    the address had to be composed, and the composition produced exactly ONE
+    identity: the parenthesised one. Of the seven spellings a rekordbox Title
+    column really holds, a provider-sourced list could address that one, so a
+    tombstone U24 wrote from ``Sun Path - Nightwave Remix`` or ``Sun Path
+    [Nightwave Remix]`` was invisible and the version was re-acquired at exit
+    zero, which is the headline this unit's second round claimed to have fixed
+    and had not.
     """
-    title, version = match.split_title(row_title)
-    wanted = match.read_tidal_tracks(
-        [{"title": title, "version": version, "artist": {"name": "Aurora Bloom"}}]
+    wanted = match.read_tidal_tracks([PROVIDER_ROW])[0]
+    assert {"artist": "aurora bloom", "title": spelling} in wanted.suppression_spellings
+
+
+def test_the_one_spelling_a_provider_row_cannot_reach_is_named_rather_than_assumed():
+    """A GAP STATED IS A GAP SOMEBODY CAN CLOSE, and R-20 states this one.
+
+    A featured credit is dropped from the matching title because it names a
+    performer rather than an edit, so a row that never spelled it has nothing to
+    put back and cannot address the library row that kept it. The list that DID
+    spell it reaches it, which is what makes this a limit of the provider shape
+    and not of the addressing rule.
+    """
+    credited = {"artist": "aurora bloom", "title": "sun path (feat. mira) (nightwave remix)"}
+    provider = match.read_tidal_tracks([PROVIDER_ROW])[0]
+    assert credited not in provider.suppression_spellings
+    spelled = match.read_text_lines(
+        "Aurora Bloom - Sun Path (feat. Mira) (Nightwave Remix)\n"
     )[0]
-    assert (
-        u24_records("Aurora Bloom", match.listed_title(title, version))
-        in wanted.suppression_spellings
+    assert credited in spelled.suppression_spellings
+
+
+def test_every_row_spelling_is_addressed_from_every_reader_or_is_a_named_gap():
+    """THE DERIVATION CHECK THAT RUNS TODAY, while U24 is in another worktree.
+
+    The gated guard above compares this side against the real domain module and
+    cannot run yet. This one compares it against ``u24_records``, an
+    independently written second implementation, over all three readers and all
+    seven spellings, so the seam is checked every run rather than only after a
+    merge. The gaps are a literal tuple: one going missing means a tombstone
+    became invisible, and one going away means R-20 is stale.
+    """
+    missed = tuple(
+        (row_title, wanted.origin)
+        for row_title in ROW_SPELLINGS
+        for wanted in every_reader_on(row_title)
+        if u24_records("Aurora Bloom", row_title) not in wanted.suppression_spellings
     )
+    assert missed == UNRECONCILED
+
+
+@pytest.mark.parametrize(
+    "recorded_title",
+    ["sun path - nightwave remix", "sun path [nightwave remix]"],
+)
+def test_a_tombstone_under_a_spelling_the_composition_never_produces_is_found(
+    recorded_title,
+):
+    """DRIVEN THROUGH RESOLUTION, which is where the multi-spelling consult lived.
+
+    Narrowing ``resolve_one`` back to a single-spelling lookup killed no test in
+    this file. The one that died when ``suppression_spellings`` was narrowed
+    asserted a set intersection on the object and never went through resolution,
+    so the consult was unobservable at its most important call site: the branch
+    that decides whether a version is re-acquired.
+
+    The recorded identity is a literal, so nothing here can agree with a
+    composition that changed underneath it.
+    """
+    standing = {"artist": "aurora bloom", "title": recorded_title}
+
+    def suppresses(kind, identity):
+        return kind == match.TOMBSTONE_KIND and dict(identity) == standing
+
+    found = match.resolve_one(
+        match.read_tidal_tracks([PROVIDER_ROW])[0],
+        match.LibraryIndex(by_recording={}),
+        suppresses=suppresses,
+        suppression_id=no_identifier,
+    )
+    assert found.state is match.MatchState.SUPPRESSED
+    assert found.why is match.Why.TOMBSTONED
+
+
+@pytest.mark.parametrize(
+    "recorded_title,reachable",
+    [
+        # This module reads "Sun Path - Original Mix" back as the plain record,
+        # because a two-word tail ending in the vocabulary is a version. So a
+        # tombstone written from that row names the same version and is reached.
+        ("sun path - original mix", True),
+        ("sun path - original version", True),
+        # It reads "Sun Path - Original" as a TITLE, because a bare one-word tail
+        # outside the vocabulary is not a qualifier. Composing that spelling
+        # anyway would let a deletion of somebody else's record withhold this
+        # one, which is the over-eager direction the design rejects by name.
+        ("sun path - original", False),
+    ],
+)
+def test_a_dash_spelling_is_composed_only_when_this_module_reads_it_back(
+    recorded_title, reachable
+):
+    """THE GATE ON THE ONE AMBIGUOUS CONVENTION, asserted in both directions.
+
+    Brackets at the end of a title are a qualifier by convention, so they are
+    composed unconditionally. A dash can be part of the title itself, which is
+    the whole reason ``split_title`` is vocabulary-guarded, so a dash spelling is
+    composed only when this module's own reader reads it back as the same record.
+    Without the gate the consult addresses rows it would itself call somebody
+    else's; with the gate applied to brackets too, the canonical composition for
+    a credited head disappears.
+    """
+    spellings = frozen(match.read_text_lines("Aurora Bloom - Sun Path\n")[0].suppression_spellings)
+    composed = (("artist", "aurora bloom"), ("title", recorded_title))
+    assert (composed in spellings) is reachable
+
+
+def test_a_tombstone_survives_the_deletion_that_took_the_file_off_the_disk(
+    cfg, music, tmp_path
+):
+    """THE CASE BOTH HALVES OF THIS ROUND HAVE TO HOLD AT ONCE.
+
+    A deletion removes the file AND records the tombstone, so the run that comes
+    afterwards has no library evidence at all: the ambiguous reading cannot be
+    confirmed, the conservative one stands, and the only thing that can still
+    address the tombstone is the readings union in ``Wanted.addresses``. Consult
+    the first reading alone and the version is re-acquired at exit zero, which is
+    precisely the deletion undone.
+    """
+    recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
+        kind=match.TOMBSTONE_KIND,
+        identity=u24_records("Aurora Bloom", "Sun Path (Live)"),
+        actor="deletion",
+    )
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path - Live\n", "gone.txt")
+    code, envelope = drive(["match", "run", path])
+
+    assert code == int(ExitCode.OK)
+    assert envelope["data"]["missing"] == []
+    warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
+    assert [w["suppression"] for w in warnings] == [recorded.suppression_id]
 
 
 def frozen(identities):
     return {tuple(sorted(identity.items())) for identity in identities}
 
 
+def spellings_of(line: str) -> set:
+    return frozen(match.read_text_lines(f"Aurora Bloom - {line}\n")[0].suppression_spellings)
+
+
 def test_consulting_several_spellings_never_crosses_a_version_boundary():
     """The loosening this must not be. KTD16 says a tombstone identifies a VERSION.
 
-    Asking the store under more than one spelling is safe only while every
-    spelling names the same version, so that is asserted rather than argued in a
-    comment: nothing a remix produces may address the recording with no
-    qualifier, or with a different one.
+    REBUILT ON INPUTS THAT ACTUALLY HAVE SEVERAL SPELLINGS. The version this
+    replaces built every input with ``one()``, which constructs ``Wanted``
+    directly with ``spelled=""``, so each input carried exactly one identity and
+    the assertion was that four singletons did not intersect. It would have
+    passed against a consult that never widened at all, which is the shape it
+    exists to bound.
+
+    The strangers are chosen one axis apart each: no qualifier, a different
+    qualifier, a different recording, and the one-word dash form whose second
+    reading is the case the readings rule added.
     """
-    remix = frozen(one(version="Nightwave Remix").suppression_spellings)
-    for stranger in (one(), one(version="Someone Remix"), one(title="Sun Pathway")):
-        assert not remix & frozen(stranger.suppression_spellings)
+    remix = spellings_of("Sun Path (Nightwave Remix)")
+    assert len(remix) > 1, "the input carries one spelling, so this bounds nothing"
+    for stranger in (
+        "Sun Path",
+        "Sun Path (Someone Remix)",
+        "Sun Pathway (Nightwave Remix)",
+        "Sun Path - Live",
+    ):
+        other = spellings_of(stranger)
+        assert len(other) > 1, f"{stranger!r} carries one spelling, so this bounds nothing"
+        assert not remix & other, (
+            f"a listing for the Nightwave remix addresses the same identity as "
+            f"{stranger!r}, so one tombstone would suppress two versions"
+        )
 
 
 @pytest.mark.parametrize(
@@ -1146,6 +1393,38 @@ def test_the_offer_limit_keeps_the_best_scoring_answers_and_says_what_it_kept_ba
     assert [w["code"] for w in envelope["warnings"]] == [match_cli.CANDIDATES_WITHHELD]
 
 
+def test_the_withheld_warning_survives_onto_the_run_that_actually_acquires(
+    cfg, music, tmp_path
+):
+    """IT WAS SILENT ON THE ONE RUN ITS OWN SENTENCE IS ABOUT.
+
+    The warning's reason for existing is that a person who rejects a truncated
+    offer "has rejected answers they were never shown, and the run then acquires
+    a track the library already holds". It was emitted only for NEEDS_REVIEW,
+    which is the run where nothing is acquired. ``apply_verdict`` carries the
+    withheld count onto the rejected MISSING row, and the warning never looked at
+    that state, so run one exited 12 saying candidates were kept back, the person
+    rejected, and run two exited 0 with an acquisition option, no pending action
+    and an empty warnings array.
+    """
+    for number in range(5):
+        hold(music, f"0{number + 1}A - 124 - Aurora Bloom - Sun Path Alt (Mix {number})")
+    hold(music, "08A - 124 - Aurora Bloom - Sun Pathx")
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path\n", "near.txt")
+
+    first_code, first = drive(["match", "run", path])
+    assert first_code == int(ExitCode.PENDING_HUMAN)
+    drive(["review", "resolve", first["data"]["needs_review"][0]["review_item"],
+           "--verdict", "rejected"])
+
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.OK)
+    row = envelope["data"]["missing"][0]
+    assert row["candidates_withheld"] == 1
+    assert row["acquisition"], "this is the run that goes and gets it"
+    assert match_cli.CANDIDATES_WITHHELD in {w["code"] for w in envelope["warnings"]}
+
+
 def test_rejecting_a_question_about_a_tombstoned_version_does_not_hand_it_to_acquisition(
     cfg, music, tmp_path
 ):
@@ -1382,10 +1661,55 @@ def test_a_legitimate_title_ending_in_a_vocabulary_word_is_not_split(name):
     The negatives before this all used a tail OUTSIDE the vocabulary, which tests
     that a word not on the list is not on the list. What matters is a real title
     whose final word IS on it. A bare one-word qualifier is genuinely ambiguous,
-    so it is left alone: a tail this misses costs a question, and a tail taken
-    wrongly costs a wrong join, which is the one thing this unit exists to remove.
+    so the string reader leaves it alone and the LIBRARY settles it instead: see
+    ``test_an_ambiguous_reading_is_taken_only_when_the_library_confirms_it``,
+    which is where "left alone" stops meaning "reported missing".
     """
     assert match.split_title(name) == (name, "")
+
+
+#: THE ONE-WORD TAILS THE PUBLIC PLAYLIST API REALLY SHIPS. Every one of them is
+#: a whole class rather than an example, and refusing the class outright was the
+#: second round's regression: with the library holding "Sun Path (Instrumental)"
+#: the dash form scored 76.4 against a floor of 82 and reported MISSING with an
+#: acquisition option, which is verbatim the defect the first round closed.
+ONE_WORD_TAILS = ("Live", "Instrumental", "Acoustic", "Dub", "Demo", "Extended", "Remix")
+
+
+@pytest.mark.parametrize("tail", ONE_WORD_TAILS)
+def test_a_bare_one_word_tail_offers_the_reading_the_string_rule_declined(tail):
+    """BOTH READINGS EXIST, and neither is picked by the string.
+
+    ``split_title`` keeps the conservative one, because "Ziggy Stardust -
+    Reprise" and "Sun Path - Live" are the same shape and no rule over the
+    characters can tell a version from the end of a title. What must not happen
+    is the reading being thrown away, which is what left the whole class
+    unreachable.
+    """
+    assert match.split_title(f"Sun Path - {tail}") == (f"Sun Path - {tail}", "")
+    assert match.split_ambiguous(f"Sun Path - {tail}") == ("Sun Path", tail)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Sun - Rise",
+        "Tide Line - Reprise Of Nothing",
+        "Sun Path (Nightwave Remix)",
+        "Sun Path - Nightwave Remix",
+        "Sun Path - Remastered",
+        "- Remix",
+    ],
+)
+def test_a_title_with_only_one_reading_offers_no_second_one(name):
+    """The ambiguity is narrow on purpose.
+
+    A tail outside the vocabulary is not a version in either reading; a tail
+    ``split_title`` already reads is not ambiguous; and a head that is empty is
+    not a title. Offering a second reading for any of those would widen the
+    library-confirmed rule into a general licence to re-split a title.
+    """
+    assert match.split_ambiguous(name) is None
 
 
 @pytest.mark.parametrize(
@@ -1461,8 +1785,14 @@ def test_the_provider_reference_never_reaches_the_identity():
         {"artist": ["Two Names"], "title": "Listy"},
         {"artists": ["Two Names"], "title": "Listy"},
         {"artist": [{"name": "Two Names"}], "title": "Listy"},
+        {"artists": "Two Names", "title": "Listy"},
     ],
-    ids=["list-under-artist", "list-under-artists", "objects-under-artist"],
+    ids=[
+        "list-under-artist",
+        "list-under-artists",
+        "objects-under-artist",
+        "string-under-artists",
+    ],
 )
 def test_every_shape_a_row_spells_its_artists_in_reads_the_same(row):
     """A list under ``artist`` read as NO ARTIST AT ALL, and nothing said so.
@@ -1471,6 +1801,10 @@ def test_every_shape_a_row_spells_its_artists_in_reads_the_same(row):
     to an identity matching nothing and a track the library plainly held was
     reported missing at score 50, beside the ``artists`` spelling of the same
     track landing matched. Two spellings of one shape must not be two answers.
+
+    The BARE STRING under ``artists`` is the same defect one shape further out,
+    and it cost more, because refusing an unreadable row is at least a refusal
+    while failing to read an artist that is present is silent.
     """
     assert match.read_tidal_tracks([row])[0].artist == "Two Names"
 
@@ -1487,6 +1821,59 @@ def test_a_row_that_names_neither_an_artist_nor_a_title_is_refused(music):
     with pytest.raises(match.UnreadableList) as excinfo:
         match.read_tidal_tracks([{"id": "a"}, {"id": "b"}])
     assert excinfo.value.line == 1
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        {"id": "sp1", "name": "Sun Path"},
+        {"id": "sp1", "name": "Sun Path", "artists": []},
+        {"id": "sp1", "artists": [{"name": "Aurora Bloom"}]},
+    ],
+    ids=["no-artist-key", "empty-artists", "no-title"],
+)
+def test_a_row_naming_only_one_half_of_a_record_is_refused_too(row):
+    """BOTH HALVES, and demanding only one of them was the same hole re-opened.
+
+    The guard refused a row only when artist AND title were both absent, so an
+    artist-less row was accepted and given an identity that is not unique to the
+    thing it identifies. ``read_text_lines`` already refuses a line with no
+    artist by name and says why in prose, so the provider path was applying a
+    weaker rule than the one this module's own docstring cites.
+    """
+    with pytest.raises(match.UnreadableList) as excinfo:
+        match.read_spotify_items([row])
+    assert excinfo.value.line == 1
+
+
+def test_two_rows_sharing_a_title_and_naming_two_artists_are_two_records(
+    cfg, music, tmp_path
+):
+    """THE IDENTITY THAT WAS NOT UNIQUE TO THE THING IT IDENTIFIED.
+
+    Two public playlist rows spelling their artists as a bare string, ``Aurora
+    Bloom`` and ``Nova Reef``, both read as no artist at all, both hashed to the
+    identity of a title with nothing beside it, and both resolved MATCHED against
+    one unrelated file carrying a title tag and no artist tag. Two different
+    recordings were reported owned, pointing at a file that is neither, under one
+    identifier, so one of the two vanished from any payload keyed by id, at exit
+    zero, with no warning and no question.
+
+    Both halves are asserted: the artists now READ, and the two rows are two
+    records rather than one.
+    """
+    probe = synth_container(tmp_path, ".flac")
+    assert tags.write_tags(probe, {"title": "Sun Path"})
+    shutil.copy2(probe, music / "SunPath.flac")
+    rows = [
+        {"id": "sp1", "name": "Sun Path", "artists": "Aurora Bloom"},
+        {"id": "sp2", "name": "Sun Path", "artists": "Nova Reef"},
+    ]
+    read = match.read_spotify_items(rows)
+    assert [wanted.artist for wanted in read] == ["Aurora Bloom", "Nova Reef"]
+    resolved = resolve(read, index_of(music))
+    assert len({found.match_id for found in resolved.matches}) == 2
+    assert resolved.of(match.MatchState.MATCHED) == ()
 
 
 def test_two_anonymous_rows_can_no_longer_collapse_onto_one_row(cfg, music, tmp_path):
@@ -1647,6 +2034,126 @@ def test_the_dash_spelling_of_a_public_playlist_resolves_the_same_as_the_provide
     assert (
         envelope["data"]["matched"][0]["id"] == through_provider["data"]["matched"][0]["id"]
     )
+
+
+@pytest.mark.parametrize("tail", ONE_WORD_TAILS)
+def test_a_one_word_version_tail_resolves_the_same_through_all_three_readers(
+    cfg, music, tail
+):
+    """THE WHOLE ONE-WORD CLASS, PINNED, and not one example of it.
+
+    The second round refused to split a bare one-word tail, and the parity test
+    that was supposed to catch that only ever exercised "Someone Remix", two
+    words, so it stayed green while seven real qualifiers stopped converging.
+    With the library holding the file EXACTLY, the provider row resolved matched
+    and the identical public playlist row resolved missing with an acquisition
+    option for a track already on the shelf, at exit zero. "Live" was no better,
+    only quieter: 89.4 against a floor of 82 degraded it to a question about a
+    track the library holds exactly.
+
+    ASSERTED AT RESOLUTION rather than at the reader, deliberately, because that
+    is where this class is decided. The readers cannot agree on the split from
+    the string alone and are not asked to; what has to agree is the state, the
+    reason and the identifier every consumer keys on.
+    """
+    hold(music, f"08A - 124 - Aurora Bloom - Sun Path ({tail})")
+    index = index_of(music)
+    resolved = [
+        resolve(read, index).matches[0]
+        for read in (
+            match.read_tidal_tracks(
+                [{"title": "Sun Path", "version": tail, "artist": {"name": "Aurora Bloom"}}]
+            ),
+            match.read_spotify_items(
+                [{"name": f"Sun Path - {tail}", "artists": [{"name": "Aurora Bloom"}]}]
+            ),
+            match.read_text_lines(f"Aurora Bloom - Sun Path - {tail}\n"),
+        )
+    ]
+    assert [(found.state, found.why) for found in resolved] == [
+        (match.MatchState.MATCHED, match.Why.EXACT)
+    ] * 3
+    assert len({found.match_id for found in resolved}) == 1
+    assert len({found.question_identity["version"] for found in resolved}) == 1
+
+
+def test_the_dashed_one_word_spelling_is_matched_rather_than_acquired(
+    cfg, music, tmp_path
+):
+    """Driven through the verb, where the regression actually cost.
+
+    "Instrumental" is the sharpest of the class because it scores 76.4, below the
+    approximate floor, so nothing rescued it: the run reported the track missing,
+    carried an acquisition option, warned about nothing and exited zero.
+    """
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Instrumental)")
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path - Instrumental\n", "oneword.txt")
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.OK)
+    assert envelope["data"]["missing"] == []
+    assert envelope["data"]["needs_review"] == []
+    assert envelope["data"]["matched"][0]["why"] == str(match.Why.EXACT)
+    assert envelope["data"]["matched"][0]["version"] == "Instrumental"
+
+
+@pytest.mark.parametrize(
+    "line,held,expected_title",
+    [
+        # THE REPRISE CLASS, which is what refusing the split was defending. An
+        # album reprise is a separate composition, so the library holding the
+        # record it is a reprise OF is not evidence that the tail is a version.
+        ("David Bowie - Ziggy Stardust - Reprise", "David Bowie - Ziggy Stardust",
+         "Ziggy Stardust - Reprise"),
+        ("The Beatles - Sgt Peppers - Reprise", "The Beatles - Sgt Peppers",
+         "Sgt Peppers - Reprise"),
+        ("Nova Reef - Sunset - Acoustic", "Nova Reef - Sunset", "Sunset - Acoustic"),
+        ("Nova Reef - Nice Up - Dub", "Nova Reef - Nice Up", "Nice Up - Dub"),
+    ],
+)
+def test_an_ambiguous_reading_is_taken_only_when_the_library_confirms_it(
+    cfg, music, line, held, expected_title
+):
+    """WHAT THE SECOND ROUND WAS DEFENDING, kept, at the level that decides it.
+
+    The bar for reading a bare tail as a version is the highest evidence there
+    is: the library holds the head AT THAT VERSION. Holding the head at some
+    other version is not evidence about this question at all, so it must not
+    reframe "the library holds nothing like this" into "the library holds this
+    record as a different version" and offer the base recording as a candidate.
+    A person accepting that reports ownership of a track the library does not
+    hold, which is the wrong join this unit exists to remove.
+
+    The title stays whole, which is what a later reader and the acquisition query
+    both read.
+    """
+    hold(music, f"08A - 124 - {held}")
+    found = resolve(match.read_text_lines(f"{line}\n"), index_of(music)).matches[0]
+    assert found.wanted.title == expected_title
+    assert found.wanted.version == ""
+    assert found.why is not match.Why.VERSION_DIFFERS
+    assert found.state is not match.MatchState.MATCHED
+
+
+def test_the_reading_the_list_actually_spelled_wins_when_the_library_holds_both(
+    cfg, music
+):
+    """A TIE GOES TO WHAT THE LIST SAID, and the tie is reachable.
+
+    A library can hold a record called "Sun Path - Live" AND a live version of a
+    record called "Sun Path". Both readings are then confirmed, and the one that
+    must win is the conservative one, because it is the string the list actually
+    spelled and the other is this module's guess about it. Without that order the
+    guess wins whenever the library happens to hold both, and the person is told
+    they own a file they were not asking about.
+    """
+    whole = hold(music, "08A - 124 - Aurora Bloom - Sun Path - Live")
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Live)")
+    found = resolve(
+        match.read_text_lines("Aurora Bloom - Sun Path - Live\n"), index_of(music)
+    ).matches[0]
+    assert found.state is match.MatchState.MATCHED
+    assert found.wanted.title == "Sun Path - Live"
+    assert found.paths == (str(whole),)
 
 
 def test_a_version_question_becomes_an_addressable_item_with_its_candidates(
@@ -2141,6 +2648,99 @@ def test_a_tombstone_over_a_held_version_is_reported_rather_than_hidden(
     _code, envelope = drive(["match", "run", path])
     assert len(envelope["data"]["matched"]) == 1
     assert [w["code"] for w in envelope["warnings"]] == [match_cli.TOMBSTONE_OVER_OWNED]
+
+
+def test_a_stale_tombstone_is_reported_under_every_spelling_the_match_consults(
+    cfg, music, tmp_path
+):
+    """THE REPORT WAS NARROWER THAN THE RULE IT REPORTS ON.
+
+    Suppression asks the store under every spelling of one version; this warning
+    asked under ``track.identity``, a single spelling. So a tombstone recorded
+    from the row ``Sun Path (Live)``, standing over a file the library still
+    holds, left NO trace at all when the list spelled the version ``Sun Path
+    [Live]``: the row reported matched, the warnings array was empty, and the
+    stale record stayed invisible until somebody hit it during a deletion.
+    """
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Live)")
+    recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
+        kind=match.TOMBSTONE_KIND,
+        identity=u24_records("Aurora Bloom", "Sun Path (Live)"),
+        actor="deletion",
+    )
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path [Live]\n", "stale.txt")
+    _code, envelope = drive(["match", "run", path])
+
+    assert len(envelope["data"]["matched"]) == 1
+    warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.TOMBSTONE_OVER_OWNED]
+    assert [w["suppression"] for w in warnings] == [recorded.suppression_id]
+
+
+def test_a_deletion_of_the_plain_record_never_withholds_the_credited_one(
+    cfg, music, tmp_path
+):
+    """THE DIRECTION THE DESIGN REJECTS, and the consult was widening into it.
+
+    A featured credit is dropped from the MATCHING title because it names a
+    performer, and the composed fallback then asked the store under ``sun path``,
+    the identity of the plain no-qualifier record, which is a spelling the
+    recorder never writes for the credited row. ``tombstone_fold`` argues the
+    cost asymmetry out loud: a missed suppression re-acquires something and
+    reports it, while an over-eager one silently withholds music somebody wants,
+    and those two costs are not comparable.
+
+    Both directions are asserted, because a fix that simply stopped consulting
+    would have re-broken the case the widening was for.
+    """
+    review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
+        kind=match.TOMBSTONE_KIND,
+        identity=u24_records("Aurora Bloom", "Sun Path"),
+        actor="deletion",
+    )
+    credited = write_list(tmp_path, "Aurora Bloom - Sun Path (feat. Mira)\n", "credited.txt")
+    _code, envelope = drive(["match", "run", credited])
+    assert len(envelope["data"]["missing"]) == 1, (
+        "a deletion of the plain record silently withheld the credited one"
+    )
+
+    plain = write_list(tmp_path, "Aurora Bloom - Sun Path\n", "plain.txt")
+    _code, still = drive(["match", "run", plain])
+    assert still["data"]["missing"] == []
+    assert [w["code"] for w in still["warnings"]] == [match_cli.SUPPRESSED_WARNING]
+
+
+@pytest.mark.parametrize(
+    "recorded_row,listed",
+    [
+        ("Sun Path", "Sun Path (Original Mix)"),
+        ("Sun Path (Original Mix)", "Sun Path"),
+        ("Sun Path (Original Mix)", "Sun Path [Original Version]"),
+    ],
+)
+def test_the_two_spellings_of_no_qualifier_at_all_reach_each_other(
+    cfg, music, tmp_path, recorded_row, listed
+):
+    """BOTH DIRECTIONS, because ``_NULL_VERSIONS`` already calls them one version.
+
+    ``version_token`` folds "Original Mix" to nothing, so the match treats the
+    two as one version and would have asked a person to confirm a track against
+    itself otherwise. The tombstone consult did not: a list spelling ``Sun Path
+    (Original Mix)`` never reached a tombstone recorded from the row ``Sun
+    Path``, so the version was re-acquired at exit zero. It was recorded in no
+    residual either.
+    """
+    recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
+        kind=match.TOMBSTONE_KIND,
+        identity=u24_records("Aurora Bloom", recorded_row),
+        actor="deletion",
+    )
+    path = write_list(tmp_path, f"Aurora Bloom - {listed}\n", "null.txt")
+    code, envelope = drive(["match", "run", path])
+
+    assert code == int(ExitCode.OK)
+    assert envelope["data"]["missing"] == []
+    warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
+    assert [w["suppression"] for w in warnings] == [recorded.suppression_id]
 
 
 def test_a_tombstone_store_that_cannot_be_read_refuses_rather_than_matching(

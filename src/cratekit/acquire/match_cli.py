@@ -489,8 +489,17 @@ def _warnings(
     # answers, acquisition must not go and fetch it.
     for state in match.PAYLOAD_STATES:
         for track in result.of(state):
-            identity = track.identity
-            if not suppresses(match.TOMBSTONE_KIND, identity):
+            # ASKED UNDER EVERY SPELLING, the same set the suppression itself is
+            # asked under. Reporting on ``track.identity`` alone asked under ONE
+            # of them, so a tombstone recorded from the row ``Sun Path (Live)``
+            # left no trace at all against a list line spelling it ``Aurora Bloom
+            # - Sun Path [Live]``, which is the case the extra spellings exist
+            # for: a report narrower than the rule it reports on is silent on
+            # exactly the rows the rule was widened to catch.
+            standing = match.standing_tombstone(
+                track.wanted, suppresses=suppresses, suppression_id=identify
+            )
+            if standing is None:
                 continue
             held = state is match.MatchState.MATCHED
             found.append(
@@ -506,7 +515,7 @@ def _warnings(
                         f"resolved to {state} rather than being suppressed; "
                         f"acquisition must skip it whatever this row says"
                     ),
-                    "suppression": identify(match.TOMBSTONE_KIND, identity),
+                    "suppression": standing,
                     "match": track.match_id,
                     "item": track.item_id or "",
                     "remedy": "",
@@ -537,7 +546,14 @@ def _warnings(
                 "remedy": CLEAR_VERB,
             }
         )
-    for track in result.of(match.MatchState.NEEDS_REVIEW):
+    # EVERY STATE, not only the one where nothing is acquired. This warning's own
+    # reason for existing is that "the run then acquires a track the library
+    # already holds", and the run that acquires is the one AFTER the rejection:
+    # ``apply_verdict`` carries the withheld count onto the rejected MISSING row,
+    # so run one exited 12 saying candidates were kept back and run two exited 0
+    # with an acquisition option, no pending action and no warning at all. Silent
+    # on the only run the sentence is about.
+    for track in result.matches:
         if not track.withheld:
             continue
         found.append(
@@ -546,8 +562,9 @@ def _warnings(
                 "message": (
                     f"{track.wanted.artist} / {track.wanted.title} resembles more "
                     f"of this library than one offer can hold; "
-                    f"{track.withheld} further candidates were not shown, so a "
-                    f"rejection here rejects only what was"
+                    f"{track.withheld} further candidates were never shown, so "
+                    f"any answer here answers only what was, and this row "
+                    f"resolved to {track.state}"
                 ),
                 "suppression": "",
                 "match": track.match_id,

@@ -33,6 +33,15 @@ FOUR PROPERTIES, and each one answers a specific way that failed.
    list arrives through another. Acquisition is source-agnostic once matched
    (R13), and this module is where "once matched" is made true.
 
+   ONE PLACE THE STRING CANNOT DELIVER THIS ON ITS OWN, and both previous
+   attempts picked a side and paid for it. A dash tail that is a bare one-word
+   qualifier is either a version or the end of a title, and "Sun Path - Live"
+   and "Ziggy Stardust - Reprise" are the same shape. Splitting always mangles
+   the second; refusing always reports the first missing and re-acquires a file
+   the library holds. So both readings are carried and the LIBRARY settles it,
+   on the only evidence that bears on the question: see :func:`split_ambiguous`
+   and :func:`_reading_the_library_confirms`.
+
 **WHERE THE FETCH IS NOT.** Nothing here opens a socket. The readers take rows
 that somebody already has: a provider client's track objects, a public playlist
 API's items, or lines a person pasted. R13's URL fetching belongs to the intake
@@ -78,7 +87,7 @@ import hashlib
 import re
 import unicodedata
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -319,7 +328,7 @@ _DASH = " - "
 def _is_a_version(tail: str) -> bool:
     """Whether a dash-introduced tail names a version rather than ending a title.
 
-    A ONE-WORD TAIL IS NOT ENOUGH, and that is the whole of the second version of
+    A ONE-WORD TAIL IS NOT ENOUGH TO DECIDE ON ITS OWN, and that is the whole of
     this rule. Matching on the last vocabulary word alone split every title whose
     final word happens to be one of seventeen: "Ziggy Stardust - Reprise", "Hurt
     - Reprise", "Long - Live", "Studio 54 - Live", "Pump Up The Volume -
@@ -329,11 +338,21 @@ def _is_a_version(tail: str) -> bool:
     this" to "the library holds this record as a different version", and
     accepting that reports ownership of a track the library does not hold.
 
-    The two costs are not comparable, which is what decides the rule. A tail this
-    misses stays in the title and produces a QUESTION. A tail this takes wrongly
-    produces a wrong join, which is the one thing this unit exists to remove. So
-    a bare qualifier is left alone and only a multi-word tail, or one of the three
-    head words the public playlist API actually uses on its own, is read.
+    REFUSING IT OUTRIGHT WAS THE OTHER HALF OF THE SAME MISTAKE, and it cost
+    more. "Live", "Instrumental", "Acoustic", "Dub", "Demo", "Extended" and
+    "Remix" are all real one-word tails the public playlist API ships, and a
+    listing spelling one of them stopped converging with the provider row for the
+    identical record: with the library holding "Sun Path (Instrumental)", the
+    dash form scores 76.4 against a floor of 82 and reports MISSING with an
+    acquisition option, so the run goes and fetches a file the library already
+    holds, at exit zero, with nothing asked and nothing warned. The claim that a
+    tail this misses "produces a question" is only true above the floor.
+
+    So the string alone does not decide it, and this function answers only the
+    half a string CAN decide: a multi-word tail ending in the vocabulary, or one
+    of the three head words the public playlist API uses on its own. The bare
+    one-word case is genuinely ambiguous and is answered by the library instead,
+    in :func:`split_ambiguous` and :func:`Wanted.readings`.
 
     WORDS ARE COUNTED RAW, not folded. Folding turns punctuation into spaces, so
     "Sun - Re-Mix" counted as two words and split; the tail is one word and the
@@ -346,6 +365,37 @@ def _is_a_version(tail: str) -> bool:
     if words[0] in _DASH_VERSION_HEADS:
         return True
     return len(raw) > 1 and words[-1] in _DASH_VERSIONS
+
+
+def split_ambiguous(title: str) -> tuple[str, str] | None:
+    """The OTHER way a bare one-word dash tail reads, or None when there is none.
+
+    "Sun Path - Live" is either a record called "Sun Path" in a live version or a
+    record called "Sun Path - Live", and NO RULE OVER THE STRING CAN TELL THEM
+    APART. Both of the previous attempts picked one and paid for it: splitting
+    always mangled "Ziggy Stardust - Reprise", and refusing always reported a
+    held track missing and re-acquired it.
+
+    So neither is picked here. This returns the reading :func:`split_title`
+    declined, and the library settles which one is true: see
+    :attr:`Wanted.readings` and :func:`resolve_one`, where the split reading is
+    taken ONLY when the library holds exactly that, the head at that version.
+    Nothing weaker confirms it, because the library holding "Ziggy Stardust" says
+    nothing at all about whether "Reprise" is a version or the end of a title.
+
+    The tail is counted RAW and looked up FOLDED, for the reason
+    :func:`_is_a_version` gives: "Re-Mix" is one word carrying a hyphen.
+    """
+    remaining, bracketed = split_version(title)
+    head, separator, tail = remaining.rpartition(_DASH)
+    if not separator or not head.strip() or _is_a_version(tail):
+        return None
+    if len(str(tail).split()) != 1:
+        return None
+    words = fold(tail).split()
+    if not words or words[-1] not in _DASH_VERSIONS:
+        return None
+    return head.strip(), " ".join(part for part in (tail.strip(), bracketed) if part)
 
 
 def split_title(title: str) -> tuple[str, str]:
@@ -362,8 +412,14 @@ def split_title(title: str) -> tuple[str, str]:
     The dash pass is GUARDED BY A VOCABULARY rather than by position, because a
     parser that split on any trailing dash would turn "Sun - Rise" into a record
     nobody released. Only a tail that names a version qualifier is read as one,
-    and :func:`_is_a_version` says what that means and why a bare one-word tail
-    does not qualify.
+    and :func:`_is_a_version` says what that means.
+
+    THIS FUNCTION IS THE CONSERVATIVE HALF AND NOT THE WHOLE ANSWER. A bare
+    one-word tail is left in the title here, because from the string alone "Sun
+    Path - Live" and "Ziggy Stardust - Reprise" are the same shape.
+    :func:`split_ambiguous` returns the reading this one declined and the library
+    settles it, so the one-word class converges when the library holds it and
+    stays a whole title when it does not.
 
     THE VOCABULARY IS ENGLISH, so this convergence is English-only. A catalogue
     spelling its versions in another script converges through the bracketed
@@ -416,6 +472,82 @@ def listed_title(title: str, version: str) -> str:
     ORIGINAL STRING is what gets hashed. See :attr:`Wanted.listed`.
     """
     return f"{title} ({version})" if str(version).strip() else str(title)
+
+
+def _head_of(spelled: str, version: str) -> str:
+    """``spelled`` with only its VERSION removed and everything else kept.
+
+    NOT :attr:`Wanted.title`, and the gap between the two is a whole direction of
+    failure. A featured credit is dropped from the matching title because it
+    names a performer rather than an edit, but the library row a deletion
+    recorded KEPT it, so composing a lookup from the stripped title asks the
+    store about the plain no-qualifier record: a deletion of ``Sun Path`` then
+    silently withholds ``Sun Path (feat. Mira)``. :func:`tombstone_fold` argues
+    the whole cost asymmetry out loud, that a missed suppression re-acquires
+    something and reports it while an over-eager one silently withholds music
+    somebody wants, and a consult composed from the stripped title is the
+    over-eager side of exactly that.
+
+    Returns ``""`` when the version is not a suffix of the spelling in any of the
+    three conventions, which is a spelling that carried its version in more than
+    one group. The caller falls back to the matching title there, and no credit
+    can be lost by that fallback that was not already lost by the split.
+    """
+    text = str(spelled).strip()
+    qualifier = str(version).strip()
+    if not qualifier:
+        return text
+    for shape in ("({})", "[{}]", "- {}"):
+        suffix = shape.format(qualifier)
+        if text.casefold().endswith(suffix.casefold()):
+            return text[: len(text) - len(suffix)].strip()
+    return ""
+
+
+def _equivalent_versions(version: str) -> tuple[str, ...]:
+    """Every version TEXT that names the same version as this one.
+
+    One entry for a real qualifier. For a version that folds to nothing, every
+    spelling of "no qualifier at all" that :data:`_NULL_VERSIONS` already
+    declares equal, in both directions: a list asking for ``Sun Path (Original
+    Mix)`` has to reach a tombstone recorded from the row ``Sun Path``, and a
+    list asking for ``Sun Path`` has to reach one recorded from ``Sun Path
+    (Original Mix)``. Derived from that frozenset rather than spelled a second
+    time, so the two cannot disagree about what a null qualifier is.
+    """
+    if version_token(version):
+        return (str(version).strip(),)
+    return ("", *sorted(_NULL_VERSIONS))
+
+
+def _spellings_of(head: str, version: str) -> tuple[str, ...]:
+    """Every title string a library row could carry for this head and version.
+
+    THE BRACKETS ARE UNCONDITIONAL and the DASH IS CHECKED, because they are not
+    equally ambiguous. A bracketed group at the end of a title is a qualifier by
+    convention and is what a library row uses; a dash can be part of the title
+    itself, which is the whole reason :func:`split_title` is vocabulary-guarded.
+    So the dash form is composed only when this module's OWN reader reads it back
+    as the same head and the same version, which means no lookup is ever
+    composed under a name this module would itself read as somebody else's
+    record.
+
+    The two-group forms are here for the spelling that puts one version in
+    several brackets, ``Sun Path (Extended) (Remastered)``. A source carrying its
+    version in one field cannot know where the groups were, so every cut is
+    offered; every one of them folds back to the same version token, so none of
+    them crosses a version boundary.
+    """
+    if not version:
+        return (head,)
+    built = [f"{head} ({version})", f"{head} [{version}]"]
+    words = version.split()
+    for cut in range(1, len(words)):
+        built.append(f"{head} ({' '.join(words[:cut])}) ({' '.join(words[cut:])})")
+    dashed = f"{head}{_DASH}{version}"
+    if split_title(dashed) == (head, version) or split_ambiguous(dashed) == (head, version):
+        built.append(dashed)
+    return tuple(built)
 
 
 #: Runs of any whitespace, collapsed to one space. A SECOND spacing pattern
@@ -545,6 +677,12 @@ class Wanted:
     #: is a different string. Empty for a source that never had one, which is a
     #: provider row carrying its version in a separate field.
     spelled: str = ""
+    #: THE OTHER WAY THIS LISTING'S TITLE READS, as (title, version), when its
+    #: dash tail is a bare one-word qualifier and the string alone cannot say
+    #: whether that is a version or the end of a title. ``None`` when the title
+    #: has only one reading, which is almost every title. See
+    #: :func:`split_ambiguous` and :attr:`readings`.
+    other_reading: tuple[str, str] | None = None
 
     @property
     def recording(self) -> str:
@@ -583,6 +721,49 @@ class Wanted:
         return version_identity(artist=self.artist, title=self.listed)
 
     @property
+    def readings(self) -> tuple[Wanted, ...]:
+        """This listing, and the other way its title reads. Conservative first.
+
+        One entry for a title with one reading. Two when the dash tail is a bare
+        one-word qualifier, which no rule over the string can resolve: see
+        :func:`split_ambiguous`. The second entry carries the SAME spelled
+        string, because the address a deletion recorded is what the row said and
+        does not change with how this module reads it.
+        """
+        if self.other_reading is None:
+            return (self,)
+        title, version = self.other_reading
+        return (
+            self,
+            replace(self, title=title, version=version, other_reading=None),
+        )
+
+    @property
+    def addresses(self) -> tuple[str, ...]:
+        """Every TITLE STRING a library row could carry for this exact version.
+
+        Built from the spelling's own head rather than from the matching title,
+        for the reason :func:`_head_of` gives, and covering both readings when
+        the title has two, because a tombstone recorded from ``Sun Path (Live)``
+        must be reachable from a list line spelling it ``Sun Path - Live``
+        whether or not the library still holds the file.
+        """
+        found: list[str] = []
+        for reading in self.readings:
+            head = _head_of(reading.listed, reading.version) or reading.title
+            for spelling in (
+                reading.listed,
+                *(
+                    composed
+                    for text in _equivalent_versions(reading.version)
+                    for composed in _spellings_of(head, text)
+                ),
+            ):
+                if spelling not in found:
+                    found.append(spelling)
+        return tuple(found)
+
+    @property
     def suppression_spellings(self) -> tuple[dict[str, str], ...]:
         """Every identity one version of this recording could have been recorded under.
 
@@ -590,16 +771,26 @@ class Wanted:
         must write one identity, or one deletion becomes several records; a
         consulter that asks under one spelling and misses re-acquires a track
         somebody deleted on purpose, with nothing raised anywhere. So the store
-        is asked under the spelling this list used AND under the composed one,
-        which is what a provider-sourced list would have produced for the same
-        version.
+        is asked under the spelling this list used AND under every other spelling
+        a library row carries for the same version: the three bracket and dash
+        conventions, the multi-group form, and the null qualifiers
+        :data:`_NULL_VERSIONS` already declares equal to no qualifier at all.
+
+        A PROVIDER ROW USED TO REACH EXACTLY ONE OF THEM. Its version arrives in
+        its own field, so ``spelled`` is empty, and the set collapsed to the
+        single parenthesised composition; a tombstone written from ``Sun Path -
+        Nightwave Remix`` or ``Sun Path [Nightwave Remix]`` was invisible to it
+        and the track was re-acquired at exit zero.
 
         This does NOT loosen KTD16. Every spelling here names the SAME version of
         the same recording, so no lookup can cross a version boundary and a
-        tombstone over one remix can still never suppress another.
+        tombstone over one remix can still never suppress another. What it will
+        not do is widen INWARDS: nothing composed here drops a featured credit
+        the listing spelled, because that would let a deletion of the plain
+        record withhold the credited one.
         """
         seen: list[dict[str, str]] = []
-        for title in (self.listed, listed_title(self.title, self.version)):
+        for title in self.addresses:
             built = version_identity(artist=self.artist, title=title)
             if built not in seen:
                 seen.append(built)
@@ -634,7 +825,17 @@ def _field(row: object, name: str, default: Any = None) -> Any:
 
 
 def _first_named(entries: object) -> str:
-    """The first non-empty name in a list of artists, whatever they are made of."""
+    """The first non-empty name in a list of artists, whatever they are made of.
+
+    A BARE STRING IS A LIST OF ONE. Two rows spelling their artists
+    ``{"artists": "Aurora Bloom"}`` and ``{"artists": "Nova Reef"}`` both read as
+    no artist at all, so both hashed to an identity carrying only the title and
+    both landed on the same identifier for two different recordings. It is not
+    split on a comma: a comma is legal inside an artist's own name, and guessing
+    where one artist ends is the wrong-join risk this module exists to remove.
+    """
+    if isinstance(entries, str):
+        return entries.strip()
     if not isinstance(entries, (list, tuple)):
         return ""
     for entry in entries:
@@ -657,6 +858,13 @@ def _artist_of(row: object) -> str:
     the ``{"artists": [...]}`` spelling of the same track landing matched. A
     list is read here exactly as a list under ``artists`` is read, first entry
     first, because two spellings of one shape must not be two answers.
+
+    THE BARE STRING UNDER ``artists`` WAS MISSING FOR THE SAME REASON and cost
+    more, because it silently failed to read an artist that was RIGHT THERE. Two
+    rows carrying ``{"name": "Sun Path", "artists": "Aurora Bloom"}`` and
+    ``{"name": "Sun Path", "artists": "Nova Reef"}`` both produced an empty
+    artist and therefore one identity for two different recordings. See
+    :func:`_first_named`.
     """
     single = _field(row, "artist")
     if isinstance(single, str) and single.strip():
@@ -789,14 +997,20 @@ READERS: Mapping[str, Callable[[Iterable[object]], tuple[Wanted, ...]]] = {
 def _from_row(row: object, *, origin: str, position: int) -> Wanted:
     """One row, POSITIVELY recognized or refused.
 
-    A row that yields neither an artist nor a title is refused rather than read
-    as an anonymous track, which is the same rule ``read_text_lines`` already
-    stated in prose and the provider path did not apply. Three things went wrong
-    without it, all of them quietly: two rows carrying nothing but an identifier
-    folded to ONE match identifier and one of the two vanished from a payload a
-    consumer keyed by id; an unreadable row matched any junk file in the library
-    whose name folded to nothing and was reported owned; and a row whose artists
-    arrived in a shape this reader did not know reported a held track missing.
+    BOTH HALVES ARE REQUIRED, and demanding only one of them was the same defect
+    wearing a weaker rule. ``read_text_lines`` refuses a line with no artist by
+    name, and this path accepted one: an artist-less row keeps its title, and a
+    title alone is not unique to the recording it names. Two rows reading "Sun
+    Path" by two different artists then carried ONE match identifier, both
+    resolved matched against one unrelated file whose own artist tag was absent,
+    and one of the two vanished from any payload a consumer keys by id, at exit
+    zero, with no warning and no question.
+
+    Three more things went wrong with no guard at all: two rows carrying nothing
+    but an identifier folded to one match identifier; an unreadable row matched
+    any junk file in the library whose name folded to nothing and was reported
+    owned; and a row whose artists arrived in a shape this reader did not know
+    reported a held track missing.
     """
     raw_title = str(_field(row, "title", "") or _field(row, "name", "")).strip()
     declared = str(_field(row, "version", "")).strip()
@@ -804,11 +1018,13 @@ def _from_row(row: object, *, origin: str, position: int) -> Wanted:
     external = _field(row, "external_ids", {})
     isrc = _field(row, "isrc") or (_field(external, "isrc") if external else None)
     artist = _artist_of(row)
-    if not artist and not title:
+    if not artist or not title:
+        absent = "artist" if title else "title"
         raise UnreadableList(
-            f"track {position} names neither an artist nor a title, so nothing "
-            f"can be looked up for it and it would match any file in the library "
-            f"whose name folds to nothing",
+            f"track {position} names no {absent}, and the half that is left is "
+            f"not unique to the recording it means: it matches any file in the "
+            f"library agreeing on that half, and two rows differing only in the "
+            f"missing one are a single identifier",
             line=position,
         )
     return Wanted(
@@ -824,6 +1040,10 @@ def _from_row(row: object, *, origin: str, position: int) -> Wanted:
         # original to preserve and the composed form is the honest answer. A row
         # that spelled them together is addressed by exactly what it said.
         spelled="" if declared else raw_title,
+        # ONLY WHEN THE ROW SPELLED THE TWO TOGETHER. A declared version leaves
+        # nothing ambiguous, because the source already said which part is the
+        # version.
+        other_reading=None if declared else split_ambiguous(raw_title),
     )
 
 
@@ -1315,7 +1535,7 @@ def _approximate(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
     return tuple(held for token, _score, _position in found for held in index.versions(token))
 
 
-def _suppressed(
+def standing_tombstone(
     wanted: Wanted,
     *,
     suppresses: Callable[[str, Mapping[str, Any]], bool],
@@ -1327,11 +1547,53 @@ def _suppressed(
     the reason :attr:`Wanted.suppression_spellings` gives: a consult that misses
     re-acquires something somebody deleted on purpose and nothing anywhere
     reports it, while an extra lookup costs one set membership test.
+
+    PUBLIC because the verb reports a tombstone that did NOT suppress, and a
+    report that asks under one spelling while the suppression asks under several
+    says nothing about the cases the extra spellings exist for.
     """
     for identity in wanted.suppression_spellings:
         if suppresses(TOMBSTONE_KIND, identity):
             return suppression_id(TOMBSTONE_KIND, identity)
     return None
+
+
+def _held_exactly(wanted: Wanted, index: LibraryIndex) -> bool:
+    """Whether the library holds this recording AT THIS VERSION.
+
+    The one piece of evidence that settles an ambiguous reading. See
+    :func:`split_ambiguous`.
+    """
+    return any(
+        held.version_key == wanted.version_key
+        for held in index.versions(wanted.recording)
+    )
+
+
+def _reading_the_library_confirms(wanted: Wanted, index: LibraryIndex) -> Wanted:
+    """Which way to read a title the string alone cannot settle.
+
+    THE CONSERVATIVE READING WINS UNLESS THE LIBRARY SAYS OTHERWISE, and the bar
+    for otherwise is deliberately the highest one there is: the library holds the
+    head at exactly that version. Anything weaker is not evidence about this
+    question. The library holding "Ziggy Stardust" says nothing about whether
+    "Reprise" is a version or the end of a title, so a rule that accepted a
+    near-hit would reframe "the library holds nothing like this" into "the
+    library holds this record as a different version", and a person accepting
+    that reports ownership of a track the library does not hold.
+
+    A hold at the exact version IS evidence, and it is what makes the one-word
+    class converge: with "Sun Path (Instrumental)" on disk, the provider row and
+    the public playlist row "Sun Path - Instrumental" resolve to the same match
+    under the same identifier, instead of one matched and one missing with an
+    acquisition option for a file already on the shelf.
+    """
+    if _held_exactly(wanted, index):
+        return wanted
+    for reading in wanted.readings[1:]:
+        if _held_exactly(reading, index):
+            return reading
+    return wanted
 
 
 def resolve_one(
@@ -1358,7 +1620,11 @@ def resolve_one(
     back empty. The person was never asked whether the cut they own is the
     record, and the track was invisible to any consumer reading matched or
     missing.
+
+    BEFORE ANY OF THAT, a title the string alone cannot read one way is read the
+    way the library confirms. See :func:`_reading_the_library_confirms`.
     """
+    wanted = _reading_the_library_confirms(wanted, index)
     owned = index.versions(wanted.recording)
     exact = [held for held in owned if held.version_key == wanted.version_key]
 
@@ -1411,7 +1677,9 @@ def resolve_one(
             withheld=max(len(offered) - APPROXIMATE_LIMIT, 0),
         )
 
-    standing = _suppressed(wanted, suppresses=suppresses, suppression_id=suppression_id)
+    standing = standing_tombstone(
+        wanted, suppresses=suppresses, suppression_id=suppression_id
+    )
     if standing is not None:
         return TrackMatch(
             wanted=wanted,
@@ -1498,7 +1766,7 @@ def apply_verdict(
             withheld=found.withheld,
         )
     if not accepted:
-        standing = _suppressed(
+        standing = standing_tombstone(
             found.wanted, suppresses=suppresses, suppression_id=suppression_id
         )
         if standing is not None:
@@ -1593,8 +1861,10 @@ __all__ = [
     "recording_token",
     "resolve_all",
     "resolve_one",
+    "split_ambiguous",
     "split_title",
     "split_version",
+    "standing_tombstone",
     "tombstone_fold",
     "version_identity",
     "version_token",

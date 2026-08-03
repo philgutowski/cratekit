@@ -622,13 +622,27 @@ whichever unit first has to render a key to a person outside this verb.
 word, or its first, is in a list of English qualifiers. A catalogue spelling its
 versions in Japanese or Cyrillic converges through the bracketed reader and not
 through this one, so the pair `曲 (リミックス)` and `曲 - リミックス` still produce
-two identities where the English pair now produces one. The module docstring now
-says this rather than presenting the dash pass as fixing convergence outright.
-Deliberately not fixed here: guessing at a version qualifier in a script this
-list cannot check is the wrong-join risk the vocabulary exists to bound, and the
-right fix is a per-script vocabulary rather than a looser rule. **Closes when:**
-the vocabulary carries the qualifier words for the scripts the library actually
-holds, with the same last-word-plus-multi-word guard.
+two identities. The module docstring says this rather than presenting the dash
+pass as fixing convergence outright. Deliberately not fixed here: guessing at a
+version qualifier in a script this list cannot check is the wrong-join risk the
+vocabulary exists to bound, and the right fix is a per-script vocabulary rather
+than a looser rule. **Closes when:** the vocabulary carries the qualifier words
+for the scripts the library actually holds, with the same
+last-word-plus-multi-word guard.
+
+**CORRECTION, third round.** This entry originally ended "where the English pair
+now produces one identity". That was FALSE for a whole class of English pairs and
+the sentence hid a live regression. The rule this entry describes refused to read
+a BARE ONE-WORD tail, so `Sun Path - Live`, `- Instrumental`, `- Acoustic`,
+`- Dub`, `- Demo`, `- Extended` and `- Remix`, every one of them a tail the public
+playlist API really ships, stopped converging with the provider row for the
+identical record. With `Sun Path (Instrumental)` on the disk the dash form scored
+76.4 against a floor of 82 and reported MISSING with an acquisition option, which
+is verbatim the defect the round before it had closed. Fixed in the third round:
+`split_ambiguous` returns the reading `split_title` declines and the LIBRARY
+settles it, taking the split reading only when it holds the head at exactly that
+version. What is left English-only is what this entry says, the vocabulary
+itself.
 
 **3. `split_version` and `split_title` differ by one word and mean different
 things.** Both are exported. The first reads bracketed groups only; the second is
@@ -653,3 +667,114 @@ move that breaks it. **Closes when:** whoever widens it narrows the pattern to a
 path-shaped literal in a read call rather than any string mentioning an export,
 and keeps a fixture for the refusal clause so the guard cannot block the code
 written to enforce the same rule.
+
+---
+
+## R-20. A provider row cannot address a library row that kept a featured credit
+
+**Found:** by the third U16 review, 2026-08-03. Numbered after R-19, which the
+same unit added. If a concurrent unit claims R-20 first, renumber this entry at
+merge; the content is what matters.
+
+**The gap.** `Wanted.suppression_spellings` now consults the tombstone store
+under every spelling a library row carries for one version: the three bracket and
+dash conventions, the multi-group form, and the null qualifiers `_NULL_VERSIONS`
+already calls equal to no qualifier at all. One spelling stays out of reach from
+one source. A row whose Title column reads `Sun Path (feat. Mira) (Nightwave
+Remix)` is addressed by any list that spelled the credit, and by no list that
+arrived through a provider carrying its version in a separate field, because the
+credit is dropped from the matching title as a PERFORMER and a source that never
+spelled it has nothing to put back.
+
+**Why it is not closed by widening.** The obvious widening is to compose from the
+matching title rather than from the spelling's own head, which is what the
+previous round did, and that consults `sun path` for a listing of `Sun Path (feat.
+Mira)`. `tombstone_fold`'s own docstring settles the direction: a missed
+suppression re-acquires something and reports it, an over-eager one silently
+withholds music somebody wants, and those two costs are not comparable. So the
+miss is taken deliberately and named here rather than traded for a silent
+withhold.
+
+**Pinned, not assumed.** `UNRECONCILED` in `tests/test_match_states.py` is the
+literal list of unreconciled derivations, checked over all seven row spellings and
+all three readers on every run. It going empty or growing fails a test rather than
+changing behaviour quietly.
+
+**Closes when:** either the provider readers carry the row's full title alongside
+its split fields, so the credit survives into `spelled`, or the deletion pass
+records a second identity with credits stripped and this side consults it, which
+is a decision belonging to whoever owns the tombstone identity rather than to this
+unit.
+
+---
+
+## R-21. The two tombstone derivations are reconciled only at merge
+
+**Found:** by the third U16 review, 2026-08-03.
+
+**What the drift guard checks now.**
+`test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist` is gated on `cratekit.core.tombstone` existing and
+arms the day U24 merges. It checks the store key, the kind, the fold over every
+pinned input, the identity function over every row spelling, AND the DERIVATION:
+for each spelling a library row really carries, the identity that module's own
+`version_identity` returns is compared against the identities the three readers on
+this side actually produce.
+
+**What it still cannot prove.** U24's RECORDER is not imported by it. The string
+the recorder hands `version_identity` is taken from `u24_records` in the same test
+file, which is a hand-written imitation of `deletion.stores.version_of` written
+from that unit's stated shape, and nothing in this tree checks it against U24's
+real code. So the guard compares one real function against one real function, and
+one real derivation against an imitated one. The two units are known to fail from
+opposite sides of this seam: an independent review of U24 found that its identity
+COLLIDES for two different remixes of one recording whenever the mix name sits in
+rekordbox's `RemixerName` or `Subtitle` column rather than inside `Title`, because
+its reader maps only `ArtistName` and `Title`; this side may compose a title that
+side would never have recorded. Neither is visible to a same-string function
+comparison, and only the second is visible to the derivation check as written.
+
+**The exact check that would close it.** Once both modules are in one tree, drive
+U24's own library reader over a collection row table whose rows put the version in
+`Title`, in `RemixerName` and in `Subtitle` in turn, hand each resulting row to
+U24's own `version_of`, and assert that every identity it writes appears in
+`Wanted.suppression_spellings` for a list naming the same record through all three
+readers. That is the only form of this check with no imitation in it on either
+side. Until it exists, `u24_records` says in its own docstring what it is and what
+it cannot prove.
+
+**Closes when:** that test exists, and `TOMBSTONE_KIND` and `version_identity` in
+`match.py` have collapsed into imports from `cratekit.core.tombstone`, which is
+what this unit's docstrings already say must happen.
+
+---
+
+## R-22. The index reads a file's title one way, so the disk side of the one-word dash stays narrow
+
+**Found:** by the third U16 review, 2026-08-03.
+
+**The asymmetry.** A LIST title whose dash tail is a bare one-word qualifier now
+carries both readings, and `resolve_one` takes the split one when the library
+holds the head at exactly that version. A LIBRARY FILE named the same way does
+not. `match._read_from_disk` calls `split_title` once, so a file named `08A - 124
+- Aurora Bloom - Sun Path - Instrumental.flac` is indexed under the recording `sun
+path instrumental` with no version, and a provider row carrying title `Sun Path`
+and version `Instrumental` cannot reach it: the row scores 76.4 against a floor of
+82 and reports missing.
+
+**Why it was not fixed with the list side.** The list side needed one extra
+reading on one object. The index side needs a file to be reachable under two
+recording tokens, which changes what `LibraryIndex.__len__` counts, lets one file
+appear twice in one candidate offer under two different recordings, and gives
+`_candidates_for` two groups for one path. None of that is hard, and all of it is
+a change to the shape three other things read.
+
+**Bounded rather than open.** The exposure is files whose NAME carries a dash
+version and whose tags do not carry the title, because a tagged file takes its
+title from the tag and a title tag spelling `Sun Path (Instrumental)` indexes
+correctly. This product writes the bracketed convention, so the exposure is
+material acquired before it, or by hand.
+
+**Closes when:** `Owned` carries the readings of its own title and the index
+registers a file under each, with `__len__` counting distinct paths and
+`_candidates_for` grouping so that one file is one candidate however many
+recordings reach it.
