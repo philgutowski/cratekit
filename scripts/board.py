@@ -19,6 +19,7 @@ Subcommands:
     start N         branch, mark In Progress, print the closing trailer
     sync            make the board match the repository, idempotent
     audit           report drift, exit 1 if the board is lying
+    closing         refuse a `Closes #n` trailer while a register still owes Un
 
 `sync` is safe to run at any time and is the one that matters. Everything the
 board says about readiness is derived from issue closure state and the graph, so
@@ -199,6 +200,139 @@ def pending_units() -> dict[int, list[str]]:
                 if match:
                     owed.setdefault(int(match.group(1)), []).append(str(name))
     return owed
+
+
+def planned_units() -> dict[int, list[str]]:
+    """Which units the VERB REGISTRY still says owe a module.
+
+    The second register, and until now nothing read it. `planned_in` on a registry
+    entry is the same promise `tests/_pending.py` makes, written in a different
+    file: this verb's module does not exist and unit U-n will land it. Three
+    closed unit issues carry live markers between them and the board has never
+    said a word, because `contradictions()` read one register and there are two.
+
+    Read by ast rather than imported, for the same reason `pending_units` is: an
+    audit must never execute the code it audits. Keyed on the MODULE rather than
+    the verb, because one module carries several verbs and the obligation is the
+    file.
+    """
+    source = Path(__file__).resolve().parent.parent / "src" / "cratekit" / "cli" / "registry.py"
+    if not source.exists():
+        return {}
+    constants: dict[str, str] = {}
+    tree = ast.parse(source.read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and isinstance(node.value.value, str):
+                    constants[target.id] = node.value.value
+
+    def literal(value: ast.AST) -> str | None:
+        """The string this argument evaluates to, through one named constant.
+
+        `ROUTING_CLI_UNIT` is a module-level constant precisely so four entries
+        move together, so a reader that only understood literals would go blind
+        on the entries most likely to be re-pointed.
+        """
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            return value.value
+        if isinstance(value, ast.Name):
+            return constants.get(value.id)
+        return None
+
+    owed: dict[int, set[str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or getattr(node.func, "id", None) != "Entry":
+            continue
+        fields = {kw.arg: kw.value for kw in node.keywords if kw.arg}
+        planned = literal(fields["planned_in"]) if "planned_in" in fields else None
+        module = literal(fields["module"]) if "module" in fields else None
+        if not planned or not module:
+            continue
+        match = re.match(r"U(\d+)$", planned)
+        if match:
+            owed.setdefault(int(match.group(1)), set()).add(module)
+    return {uid: sorted(modules) for uid, modules in owed.items()}
+
+
+def owed_by_unit() -> dict[int, list[str]]:
+    """Every module either register still owes, per unit, merged.
+
+    Two registers exist and each one alone is a hole. `tests/_pending.py` holds
+    guards waiting for their module; the verb registry holds verbs waiting for
+    theirs. A unit can close clean against one while the other still owes it
+    seven verbs, which is the state three closed issues are in right now.
+    """
+    merged: dict[int, set[str]] = {}
+    for source in (pending_units(), planned_units()):
+        for uid, modules in source.items():
+            merged.setdefault(uid, set()).update(modules)
+    return {uid: sorted(modules) for uid, modules in merged.items()}
+
+
+# --------------------------------------------------------------------------
+# the closing check: a trailer is refused BEFORE it closes anything
+
+
+CLOSES_TRAILER_RE = re.compile(r"^\s*Closes\s+#(\d+)\s*$", re.MULTILINE | re.IGNORECASE)
+
+
+def unresolved_closes(text: str, owed: dict[int, list[str]] | None = None) -> list[str]:
+    """Every `Closes #n` in ``text`` whose unit a register still owes a module.
+
+    PURE, and network-free, which is what lets this run where it is useful. The
+    rest of the audit needs `gh`, so it cannot bite on a machine with no token
+    and cannot be tested without one. This reads two files in the repository and
+    one block of text.
+
+    This is `contradictions()` moved to the other side of the event. That function
+    compares the registers against issues that are ALREADY CLOSED, so it can only
+    report a contradiction after the close has cascaded and moved dependent units
+    to ready. By then `sync` deliberately will not repair it, so the repository is
+    stuck with it. The trailer is the moment the close is decided, and it is the
+    last moment refusing is cheap.
+    """
+    owed = owed_by_unit() if owed is None else owed
+    found = []
+    for match in CLOSES_TRAILER_RE.finditer(text):
+        uid = int(match.group(1))
+        modules = owed.get(uid)
+        if modules:
+            found.append(
+                f"Closes #{uid}, but U{uid} is still owed {', '.join(modules)}. "
+                f"Either land them, or re-point them at the unit that will."
+            )
+    return found
+
+
+def cmd_closing(args) -> int:
+    """Refuse a closing trailer while a register still owes that unit a module."""
+    if args.message_file:
+        text = Path(args.message_file).read_text()
+    else:
+        result = subprocess.run(
+            ["git", "log", "--format=%B", f"{args.since}..HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            # No such ref, a shallow clone, or no repository. Nothing to judge
+            # rather than a refusal, because a check that fails on a machine it
+            # cannot read is a check somebody removes from the hook.
+            print("board: no commit range to read; nothing checked")
+            return 0
+        text = result.stdout
+    problems = unresolved_closes(text)
+    if not problems:
+        return 0
+    print("CONTRADICTION: a unit cannot close while a register still owes it work.")
+    for line in problems:
+        print(f"  {line}")
+    print()
+    print("This is the same comparison `audit` makes, run BEFORE the close rather")
+    print("than after it. Afterwards the close has already cascaded and `sync`")
+    print("will not repair it.")
+    return 2
 
 
 # --------------------------------------------------------------------------
@@ -388,11 +522,15 @@ def contradictions(graph: dict) -> list[str]:
     """What the repository and the board disagree about, that a sync cannot fix.
 
     Every value the board derives comes from issue closure state, so closure
-    state is the one INPUT and nothing checks it. `tests/_pending.py` is the
-    repository asserting, in a file the suite enforces, that a named unit has not
-    finished. A closed issue for such a unit is the board claiming work landed
-    that the repository says did not, and it cascades: one wrong close moved four
-    units to Ready.
+    state is the one INPUT and nothing checks it. TWO registers assert, each in a
+    file the suite enforces, that a named unit has not finished: `tests/_pending.py`
+    for guards awaiting their module, and `planned_in` on a verb registry entry
+    for a verb awaiting its own. A closed issue for such a unit is the board
+    claiming work landed that the repository says did not, and it cascades: one
+    wrong close moved four units to Ready.
+
+    Reading only the first register is how three closed units kept live markers
+    for seven verbs between them with nothing ever saying so.
 
     This is kept apart from drift on purpose. Drift is a derived value that fell
     out of date and `sync` repairs it. A contradiction is two sources of truth
@@ -400,12 +538,12 @@ def contradictions(graph: dict) -> list[str]:
     overwrite, which is how the wrong one wins silently.
     """
     found = []
-    for uid, modules in sorted(pending_units().items()):
+    for uid, modules in sorted(owed_by_unit().items()):
         node = graph.get(uid)
         if node and node["unit"] and node["closed"]:
             found.append(
                 f"#{uid} {node['title'][:44]}\n"
-                f"      closed, but tests/_pending.py still owes it {', '.join(modules)}"
+                f"      closed, but a register still owes it {', '.join(modules)}"
             )
     return found
 
@@ -551,6 +689,19 @@ def main() -> int:
     audit = sub.add_parser("audit", help="report drift, exit 1 if the board is lying")
     audit.add_argument("--labels-only", action="store_true", help="skip the project board")
     audit.set_defaults(func=cmd_audit)
+    closing = sub.add_parser(
+        "closing", help="refuse a Closes trailer while a register still owes that unit"
+    )
+    closing.add_argument(
+        "--message-file",
+        help="a single commit message to judge; this is what the commit-msg hook passes",
+    )
+    closing.add_argument(
+        "--since",
+        default="main",
+        help="judge every commit after this ref instead of one message file",
+    )
+    closing.set_defaults(func=cmd_closing)
     args = parser.parse_args()
     try:
         return args.func(args)

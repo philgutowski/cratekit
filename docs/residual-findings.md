@@ -626,3 +626,60 @@ and the pins are worth writing deliberately rather than alongside something else
 **Closes when:** the permitted-tables set, the content-column allow-list and the
 bookkeeping set each carry an exact-membership assertion, each verified to fail on a
 deliberate widening rather than merely existing.
+
+---
+
+## R-18. Two records of the pending work, and nothing compared them
+
+**Found:** 2026-08-02, on `fix/conformance-3-and-soft-delete-reader`, from a
+third and fourth adversarial review of this wave. **Needs its own issue.**
+
+The repository keeps **two** registers of work a unit still owes. `tests/_pending.py`
+holds guards waiting for the module they govern. `planned_in` on a
+`cratekit.cli.registry` entry holds a verb waiting for its own. Both are the same
+promise in different files, and until this branch, `scripts/board.py` read only
+the first.
+
+Three consequences, all live.
+
+**Seven verbs are owed by closed units and nothing has ever said so.** U8, U15 and
+U35 are closed and still carry `planned_in` markers between them. `board.py audit`
+audits units against a register that never mentioned those verbs, so the marker is
+invisible to the one mechanism that exists to expire it.
+
+**The countdown that should catch it cannot fire for half the tree.**
+`test_a_planned_verb_whose_module_has_landed_must_lose_its_marker` probed with
+`find_spec` inside `except ModuleNotFoundError`, and `find_spec` raises when an
+ANCESTOR package is missing rather than the module. Both were read as "not
+present". Fixed here: `_pending.module_state` reports `present`, `absent` or
+`ancestor-missing`, walks ancestors top down, and no longer swallows a
+`ModuleNotFoundError` raised from inside an ancestor that does exist, which was a
+defect in our own tree reported as a countdown ticking quietly.
+
+**Measured, and the distinction is not a rule.** Seventeen planned verb modules
+are `ancestor-missing` and almost all belong to units that have not started, so
+asserting against that state would fire on correct pending work. The two records
+were compared instead, and they disagree exactly once: U23's package is
+`cratekit.adopt` in the register and `cratekit.adoption` in the registry.
+`test_the_two_registers_agree_on_each_unit_s_package_name` pins that one case as
+exact membership, so U23 resolving it turns the test red and forces the deletion.
+
+**Fixed far enough to be safe on this branch:** `board.py` gained `planned_units`,
+`owed_by_unit` and a network-free `closing` check that refuses a `Closes #n`
+trailer while either register still owes Un, wired as a `commit-msg` hook and
+called by `audit`. `contradictions()` now reads both registers. Rule A refuses a
+register key naming a command-line module no verb declares, because such a key can
+never be satisfied and its unit's close becomes a permanent exit 2.
+
+**Left open, and this is what needs the issue.** Nothing decides WHICH record is
+right when they disagree, and this branch deliberately did not pick for U23. The
+seven markers on closed units are not repaired here either, because re-pointing
+another unit's verbs is that unit's judgement and not a side effect of a fix
+branch. Four closing contradictions are queued in this wave right now and the new
+check will refuse all four at their merge, which is the intended outcome and will
+need somebody to answer each one.
+
+**Closes when:** the markers on U8, U15 and U35 are re-pointed or landed, U23's
+package name is settled in both records, and the `closing` check has refused and
+been answered at least once so the refusal path is known to be usable rather than
+merely correct.

@@ -11,6 +11,16 @@
 # Run it over everything at any time with:
 #
 #     pre-commit run --all-files
+#
+# The closing check is on the commit-msg stage, which needs its own install:
+#
+#     pre-commit install --hook-type commit-msg
+#
+# It is here rather than only in `audit` because it judges the commit MESSAGE,
+# and the message exists for exactly one moment before it becomes history. R1
+# says a hook can be absent from a clone, so `board.py closing` is also runnable
+# by hand and is called by `audit`; the hook is the copy that nobody has to
+# remember.
 repos:
   - repo: local
     hooks:
@@ -36,4 +46,21 @@ repos:
         entry: ruff check --force-exclude
         language: system
         types_or: [python, pyi]
+        require_serial: true
+
+      - id: board-closing
+        name: a unit cannot close while a register still owes it a module
+        # The comparison `board.py audit` makes, run BEFORE the close instead of
+        # after it. Afterwards the close has already cascaded to every dependent
+        # unit and `sync` deliberately will not repair it, so the repository is
+        # left holding a contradiction it has to resolve by hand.
+        #
+        # Network-free on purpose. The rest of the audit needs `gh`, which means
+        # it cannot bite on a machine with no token; this reads two files in the
+        # repository and the message being written.
+        entry: python3 scripts/board.py closing --message-file
+        language: system
+        stages: [commit-msg]
+        pass_filenames: true
+        always_run: true
         require_serial: true
