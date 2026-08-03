@@ -57,7 +57,8 @@ import uuid
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Iterable, Sequence
+from types import MappingProxyType
+from typing import Callable, Iterable, Mapping, Sequence
 
 # How many on-volume paths the readability sampler will stat before giving up.
 # Bounded because the alternative is stat-ing thousands of files just to fail.
@@ -316,7 +317,59 @@ def deepest_existing(path: Path) -> Path:
     return current
 
 
-def identity_source(path: Path) -> Path | None:
+#: WHERE A PLATFORM MOUNTS A VOLUME, as a directory and the depth beneath it at
+#: which the mount point sits. A table, per platform, in the shape this module
+#: already uses for identity providers, because it is the same kind of fact: what
+#: this operating system does, declared once rather than branched on inline.
+#:
+#: It exists to answer one question that the filesystem alone cannot: a path that
+#: does not exist yet is either a directory somebody will create, or the place a
+#: volume will appear when it is attached, and those look identical to ``stat``.
+#: The mount table describes the present and this describes where the future
+#: arrives. On macOS an external volume mounts at ``/Volumes/<name>``, one level
+#: down. On Linux the removable-media mounters use ``/media/<label>``,
+#: ``/media/<user>/<label>`` and ``/run/media/<user>/<label>``, and ``/mnt/<name>``
+#: is the conventional hand-mounted spot.
+_VOLUME_MOUNT_LOCATIONS: Mapping[str, tuple[tuple[str, int], ...]] = MappingProxyType(
+    {
+        "darwin": (("/Volumes", 1),),
+        "linux": (("/media", 1), ("/media", 2), ("/run/media", 2), ("/mnt", 1)),
+    }
+)
+
+
+def volume_mount_locations() -> tuple[tuple[Path, int], ...]:
+    """Where a volume mounts on THIS platform. Empty when the table has no row.
+
+    A function rather than a constant so a caller can be driven against another
+    platform's answer, which is the same seam shape ``default_identity_provider``
+    is. An empty answer means this module knows of no auto-mount location here,
+    and the caller treats that as "nothing to refuse", because inventing a
+    location would refuse ordinary paths on a platform nobody has described.
+    """
+    return tuple(
+        (Path(directory), depth)
+        for directory, depth in _VOLUME_MOUNT_LOCATIONS.get(sys.platform, ())
+    )
+
+
+def _is_a_volume_mount_location(
+    path: Path, locations: Sequence[tuple[Path, int]]
+) -> bool:
+    """Whether ``path`` is exactly where this platform mounts a volume."""
+    for directory, depth in locations:
+        try:
+            below = path.relative_to(directory)
+        except ValueError:
+            continue
+        if len(below.parts) == depth:
+            return True
+    return False
+
+
+def identity_source(
+    path: Path, *, locations: Sequence[tuple[Path, int]] | None = None
+) -> Path | None:
     """The mount whose identity may be RECORDED for ``path``, or None.
 
     The question is narrower than "which mount contains this path", and the
@@ -324,29 +377,58 @@ def identity_source(path: Path) -> Path | None:
     the deepest existing ancestor and then to a mount point, which is correct for
     reporting and dangerous for recording: with the library drive unplugged,
     ``/Volumes/NAME/Music`` walks past the absent mount point to the boot disk,
-    and recording THAT identity as the library's makes every destructive
-    refusal pass against the disk holding the operating system.
+    and recording THAT identity as the library's makes every destructive refusal
+    pass against the disk holding the operating system.
 
-    Two shapes are safe and the second is the one a first-run wizard is actually
-    in:
+    WHAT IS REFUSED IS A GAP THAT A VOLUME WOULD FILL, and that is a correction
+    to two earlier rules that were both about the wrong thing. "The root must
+    already exist" refused every first run. "The gap may be at most one level"
+    refused every library nested two or more directories under an attached
+    volume, which is the ordinary layout: ``/Volumes/NAME/Music/library`` is
+    exactly as safe as ``/Volumes/NAME/library`` and was refused, on a volume
+    that was mounted and readable, with a message telling the user to attach it.
+    Depth was never the hazard. The hazard is that the missing path is where a
+    volume APPEARS, so that is what is asked, against a declared table of where
+    this platform mounts one.
+
+    Three shapes, and only the third is refused:
 
     * the path EXISTS, so the identity is read from the volume it is on;
-    * the path does not exist and its deepest existing ancestor is ITSELF a mount
-      point, so the directory would be created directly on that volume and the
-      identity read from it is the identity it would sit on.
+    * it does not exist and the first missing directory is an ordinary one, so it
+      would be created on the volume its parent is already on, and that volume's
+      identity is the right one to record;
+    * it does not exist and the first missing directory is a mount location, so
+      the volume that will occupy it is not the volume this read would find.
 
-    Everything else means the walk crossed a directory that is not there, and a
-    directory that is not there is exactly where a mount point appears when the
-    volume is attached. Refusing only that shape is what stops the guard firing
-    on the common correct case, which is a library folder that has not been
-    created yet under a mount that is right there.
+    A residual, stated because it is not covered: a volume hand-mounted somewhere
+    this table does not name, whose mount point directory does not currently
+    exist. The identity read would be its parent's. Attaching the volume first,
+    which creates the mount point, resolves it, and so does naming the identity.
     """
     resolved = Path(path).resolve()
     deepest = deepest_existing(resolved)
-    mount = containing_mount(resolved)
-    if deepest == resolved or deepest == mount:
-        return mount
-    return None
+    if deepest == resolved:
+        return containing_mount(resolved)
+    gap = resolved.relative_to(deepest)
+    first_missing = deepest / gap.parts[0]
+    known = volume_mount_locations() if locations is None else locations
+    if _is_a_volume_mount_location(first_missing, known):
+        return None
+    return containing_mount(resolved)
+
+
+def root_can_be_created(configured_root: Path | str) -> bool:
+    """Whether library state may be CREATED under ``configured_root``.
+
+    The write-side companion to "is anything there to read", and a different
+    question from it. What a write needs to know is not whether the directory
+    exists but whether creating it lands on the volume this run is talking about,
+    which is what :func:`identity_source` answers. Sharing the read's "does it
+    exist" test was a read signal applied to a write: it refused a first run on
+    every platform with no identity adapter, which is every platform that is not
+    macOS or Windows.
+    """
+    return identity_source(Path(configured_root)) is not None
 
 
 def resolve_mount_state(
@@ -418,57 +500,80 @@ def resolve_mount_state(
     )
 
 
+class Reach(Enum):
+    """What a mount outcome permits, when the answer is not a plain yes or no.
+
+    Two of the four are conditions rather than verdicts, and they are DIFFERENT
+    conditions, which is the thing a boolean table could not say. Writing them as
+    named members is what makes the read table and the write table comparable
+    row by row, and what makes "these two tables differ in exactly these rows" an
+    assertion rather than a claim.
+    """
+
+    ALWAYS = "always"
+    NEVER = "never"
+    #: Read fallback: is there anything at the configured root to read at all.
+    IF_ROOT_EXISTS = "if-root-exists"
+    #: Write fallback: would creating the root land on the volume this run is
+    #: talking about, rather than in a gap a volume will later occupy.
+    IF_ROOT_CAN_BE_CREATED = "if-root-can-be-created"
+
+
 #: Whether library-scoped state at the configured root may be READ, per mount
-#: outcome. A TOTAL mapping over the enum, and three values rather than two.
+#: outcome. A TOTAL mapping over the enum.
 #:
-#: ``True`` and ``False`` are the obvious ones. ``None`` means the identity
-#: question could not be ASKED, which is not the same as being answered wrongly:
-#: a platform with no identity adapter answers None for every volume, mounted or
-#: not, so a two-valued table would either lock that platform out of its own
-#: library state entirely or hand it the same blanket yes it hands a machine with
-#: the wrong disk attached. For those two states the fallback is the only signal
-#: left, which is whether the configured root exists at all.
-_STATE_READABLE: dict[MountState, bool | None] = {
-    MountState.OK: True,
+#: The two conditional rows are the states where the identity question could not
+#: be ASKED, which is not the same as being answered wrongly: a platform with no
+#: identity adapter answers None for every volume, mounted or not, so a table
+#: with no conditional row would either lock that platform out of its own library
+#: state entirely or hand it the same blanket yes it hands a machine with the
+#: wrong disk attached. For a READ the remaining signal is whether anything is
+#: there.
+_STATE_READABLE: dict[MountState, Reach] = {
+    MountState.OK: Reach.ALWAYS,
     # The volume matched and the ROOT is not on it. There is nothing under a
     # path that is not there, so there is nothing to read and no answer to give.
-    MountState.LIBRARY_PATH_MISSING: False,
-    MountState.NOT_MOUNTED: False,
-    MountState.MOUNTED_ELSEWHERE: False,
-    MountState.FOREIGN_VOLUME: False,
-    MountState.IDENTITY_UNAVAILABLE: None,
-    MountState.IDENTITY_NOT_RECORDED: None,
+    MountState.LIBRARY_PATH_MISSING: Reach.NEVER,
+    MountState.NOT_MOUNTED: Reach.NEVER,
+    MountState.MOUNTED_ELSEWHERE: Reach.NEVER,
+    MountState.FOREIGN_VOLUME: Reach.NEVER,
+    MountState.IDENTITY_UNAVAILABLE: Reach.IF_ROOT_EXISTS,
+    MountState.IDENTITY_NOT_RECORDED: Reach.IF_ROOT_EXISTS,
 }
 
 #: Whether library-scoped state at the configured root may be WRITTEN. A SECOND
-#: table over the same enum, and it differs from the first in exactly one row.
+#: table over the same enum, differing in THREE rows, and every one of the three
+#: is a place where a read signal had been standing in for a write signal.
 #:
-#: That row is the reason there are two tables. ``LIBRARY_PATH_MISSING`` means
-#: the recorded identity MATCHED and only the directory is absent, which is
-#: nothing to read and precisely the moment when creating the directory and
-#: copying the template into it is the correct act: a first run on the right
-#: volume, or a library folder somebody renamed. One table serving both questions
-#: refused that write and printed a sentence its own parenthetical contradicted,
-#: "the volume recorded for this library is not the one mounted there" beside
-#: "recorded X, observed X".
-_STATE_WRITABLE: dict[MountState, bool | None] = {
-    MountState.OK: True,
-    MountState.LIBRARY_PATH_MISSING: True,
-    MountState.NOT_MOUNTED: False,
-    MountState.MOUNTED_ELSEWHERE: False,
-    MountState.FOREIGN_VOLUME: False,
-    MountState.IDENTITY_UNAVAILABLE: None,
-    MountState.IDENTITY_NOT_RECORDED: None,
+#: ``LIBRARY_PATH_MISSING`` is the first: the recorded identity MATCHED and only
+#: the directory is absent, which is nothing to read and precisely the moment
+#: when creating it is correct, a first run on the right volume or a library
+#: folder somebody renamed. One shared table refused that write and printed a
+#: sentence its own parenthetical contradicted.
+#:
+#: The other two are the conditional rows. "Is anything there" answers a read;
+#: what a write needs to know is whether CREATING the root lands on the volume
+#: this run is talking about. Sharing the read's condition refused a first run on
+#: every platform with no identity adapter, for the same reason and with the same
+#: false sentence, one leg further down.
+_STATE_WRITABLE: dict[MountState, Reach] = {
+    MountState.OK: Reach.ALWAYS,
+    MountState.LIBRARY_PATH_MISSING: Reach.ALWAYS,
+    MountState.NOT_MOUNTED: Reach.NEVER,
+    MountState.MOUNTED_ELSEWHERE: Reach.NEVER,
+    MountState.FOREIGN_VOLUME: Reach.NEVER,
+    MountState.IDENTITY_UNAVAILABLE: Reach.IF_ROOT_CAN_BE_CREATED,
+    MountState.IDENTITY_NOT_RECORDED: Reach.IF_ROOT_CAN_BE_CREATED,
 }
 
 
-def _reachable(table: dict[MountState, bool | None], status: MountStatus) -> bool:
+def _reachable(table: dict[MountState, Reach], status: MountStatus) -> bool:
     verdict = table[status.state]
-    if verdict is None:
-        # The identity could not be asked, so the only remaining signal is
-        # whether anything is at the configured root at all.
+    if verdict is Reach.IF_ROOT_EXISTS:
         return Path(status.configured_root).is_dir()
-    return verdict
+    if verdict is Reach.IF_ROOT_CAN_BE_CREATED:
+        return root_can_be_created(status.configured_root)
+    return verdict is Reach.ALWAYS
 
 
 def library_state_is_readable(status: MountStatus) -> bool:

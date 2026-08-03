@@ -352,10 +352,16 @@ also the file `scripts/board.py audit` reads to catch a contradiction, meaning a
 issue closed while the repository still says that unit owes a module, so an entry
 here is the one check on the board's single unverified input.
 
-U11 cleared its own entry, which is the countdown firing as designed. Eleven
-entries remain, and the growth is the mechanism working rather than debt piling
-up: U11 and U19 between them added five, each one an obligation that used to live
-in a docstring.
+U11 cleared its own entry, which is the countdown firing as designed, and U27
+cleared `cratekit.cli.doctor` when the health check landed. Ten entries remain,
+and the growth is the mechanism working rather than debt piling up: U11 and U19
+between them added five, each one an obligation that used to live in a docstring.
+
+The count and the table below are DERIVED values written out by hand, which is
+the shape this repository distrusts everywhere else. Both were stale until
+2026-08-03: the line said eleven while the register held ten, and the table still
+listed the row U27 removed. `tests/_pending.py` is the register; this is a
+retelling of it, and a retelling has to be re-read.
 
 | Unit | Target | Owes |
 |---|---|---|
@@ -363,7 +369,6 @@ in a docstring.
 | U20 | `cratekit.write.routing_cli` | the routing CLI, plus closing through `close_run` and converging after a rename. See R-13: U20 is an inference, not a decision |
 | U23 | `cratekit.adopt` | the adoption review surface |
 | U24 | `cratekit.deletion.cli` | declines and tombstones go through the revocable decision store |
-| U27 | `cratekit.cli.doctor` | a database acknowledged outside the library root is reported every run |
 | U28 | `path:skills` | the shipped skills tree |
 | U32 | `cratekit.core.restore` | the restore verb, and the three obligations U8 registered against it |
 | U34 | `cratekit.modules.reports` | the duplicates review surface |

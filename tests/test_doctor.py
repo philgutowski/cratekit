@@ -1545,7 +1545,29 @@ def test_the_interactive_allowlist_still_holds_exactly_one_file():
 # as against the machine where the answer really is yes.
 
 
-def test_the_wizard_will_not_read_an_identity_from_a_volume_that_is_not_there(tmp_path):
+@pytest.fixture
+def volumes_directory(tmp_path, monkeypatch):
+    """A synthetic directory that this platform mounts volumes into.
+
+    ``preflight`` declares those per platform, the way it declares identity
+    providers, because a path that does not exist yet is either a directory
+    somebody will create or the place a volume will appear, and ``stat`` cannot
+    tell those apart. Injecting the table is what lets the suite drive both
+    answers on any platform without touching the real one.
+    """
+    from cratekit.core import preflight
+
+    volumes = tmp_path / "Volumes"
+    volumes.mkdir()
+    monkeypatch.setattr(
+        preflight, "volume_mount_locations", lambda: ((volumes, 1),)
+    )
+    return volumes
+
+
+def test_the_wizard_will_not_read_an_identity_from_a_volume_that_is_not_there(
+    volumes_directory,
+):
     """BLOCKING. The reproduction: derive with the drive unplugged.
 
     ``containing_mount`` climbs to the deepest EXISTING ancestor, so an absent
@@ -1555,7 +1577,7 @@ def test_the_wizard_will_not_read_an_identity_from_a_volume_that_is_not_there(tm
     disk. Every destructive verb's identity precondition passes there too, which
     is R38 pointed at the wrong disk.
     """
-    absent = tmp_path / "Volumes" / "not-attached"
+    absent = volumes_directory / "not-attached"
     boot = "BOOT-DISK-IDENTITY"
     wizard = setup_verb._Wizard({}, silent())
 
@@ -1583,14 +1605,16 @@ def test_an_identity_is_derived_when_the_root_really_is_on_the_volume(tmp_path):
     assert any("read from the mounted volume" in line for line in wizard.asked)
 
 
-def test_setup_refuses_end_to_end_rather_than_recording_the_boot_disk(tmp_path, monkeypatch):
+def test_setup_refuses_end_to_end_rather_than_recording_the_boot_disk(
+    tmp_path, monkeypatch, volumes_directory
+):
     """The same reproduction through the real dispatcher, with nothing written.
 
     A refusal that still saved the document would be the defect with an error
     message attached: the next run would read the recorded identity back and keep
     it, because an identity already recorded is never re-derived.
     """
-    absent = tmp_path / "Volumes" / "not-attached"
+    absent = volumes_directory / "not-attached"
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(absent))
     monkeypatch.setattr(doctor, "Probes", lambda: probes(identity_provider=lambda _p: "BOOT"))
 
@@ -1757,78 +1781,128 @@ def test_a_library_with_no_sessions_still_reports_a_clean_log(configured):
     assert "0 recorded session(s), none of them open" in finding.detail
 
 
-@pytest.mark.parametrize("table", ["_STATE_READABLE", "_STATE_WRITABLE"])
-def test_whether_library_state_can_be_reached_is_total_over_the_mount_states(table):
-    """Two tables over a closed enum, three values each, one yes each.
+#: What each mount outcome permits, WRITTEN OUT rather than derived from the
+#: thing under test. Duplicating the tables is the entire point: a mutation to
+#: either one has to be made in two places, and the second place is a test a
+#: reviewer reads. The version of this that only asserted the SHAPE of the tables
+#: survived setting MOUNTED_ELSEWHERE to yes in both of them, which says doctor
+#: may read and the wizard may write library state at the configured root while
+#: the recorded volume is attached somewhere else, and that is the leftover
+#: mount-point hazard the module exists to prevent.
+EXPECTED_READABLE = {
+    "ok": "always",
+    "library_path_missing": "never",
+    "not_mounted": "never",
+    "mounted_elsewhere": "never",
+    "foreign_volume": "never",
+    "identity_unavailable": "if-root-exists",
+    "identity_not_recorded": "if-root-exists",
+}
+EXPECTED_WRITABLE = {
+    "ok": "always",
+    "library_path_missing": "always",
+    "not_mounted": "never",
+    "mounted_elsewhere": "never",
+    "foreign_volume": "never",
+    "identity_unavailable": "if-root-can-be-created",
+    "identity_not_recorded": "if-root-can-be-created",
+}
 
-    Written as tables rather than as branches for the reason the identity verdict
-    is: a chain of branches acquires a fall-through, and the fall-through is what
-    claims something about a disk nobody observed.
 
-    The third value is the interesting one. Two states mean the identity could
-    not be ASKED, not that it was answered wrongly, and a platform with no
-    identity adapter answers that way for every volume it will ever see. A
-    two-valued table would either lock that platform out of its own library state
-    forever or hand it the same yes it hands a machine with the wrong disk
-    attached, so those two fall back to the only signal left, which is whether the
-    configured root exists.
+@pytest.mark.parametrize(
+    "table, expected",
+    [("_STATE_READABLE", EXPECTED_READABLE), ("_STATE_WRITABLE", EXPECTED_WRITABLE)],
+)
+def test_every_mount_outcome_permits_exactly_what_it_is_declared_to(table, expected):
+    """Every row of both tables, spelled out, per table.
+
+    The weaker form of this asserted that the two tables were total and that
+    their conditional rows matched, which a mutation setting one state to yes in
+    BOTH tables passes: the shape is preserved and the meaning is inverted. Row
+    values are what carry the meaning, so row values are what is asserted.
     """
     from cratekit.core import preflight
 
     mapping = getattr(preflight, table)
-    assert set(mapping) == set(preflight.MountState)
-    assert {state for state, verdict in mapping.items() if verdict is None} == {
-        preflight.MountState.IDENTITY_UNAVAILABLE,
-        preflight.MountState.IDENTITY_NOT_RECORDED,
-    }
+    assert set(mapping) == set(preflight.MountState), "the table is not total"
+    assert {state.value: verdict.value for state, verdict in mapping.items()} == expected
 
 
-def test_reading_and_writing_library_state_are_two_questions_that_differ_by_one_row():
-    """The row that differs is the whole reason there are two tables.
+def test_the_two_tables_differ_in_three_rows_and_every_one_is_a_read_signal_removed():
+    """THREE rows, not one, and each is a place a read answer stood in for a write.
 
-    ``LIBRARY_PATH_MISSING`` means the recorded identity MATCHED and only the
-    directory is absent. There is nothing to read, and it is exactly the moment
-    when creating the directory and copying the template into it is the correct
-    act: a first run on the right volume, or a library folder somebody renamed.
-    One rule serving both questions refused that write and explained the refusal
-    with a sentence its own parenthetical contradicted.
+    ``library_path_missing`` is the visible one: the identity MATCHED and only the
+    directory is absent, which is nothing to read and exactly when creating it is
+    correct. The other two are the conditional rows, and they were the same
+    defect one leg further down: "is anything there" answers a read, while a
+    write needs to know whether CREATING the root lands on the volume this run is
+    talking about. Sharing the read's condition refused a first run on every
+    platform with no identity adapter, which is every platform that is not macOS
+    or Windows.
     """
     from cratekit.core import preflight
 
     readable = preflight._STATE_READABLE
     writable = preflight._STATE_WRITABLE
     differ = {state for state in readable if readable[state] != writable[state]}
-    assert differ == {preflight.MountState.LIBRARY_PATH_MISSING}
-    assert readable[preflight.MountState.LIBRARY_PATH_MISSING] is False
-    assert writable[preflight.MountState.LIBRARY_PATH_MISSING] is True
+    assert differ == {
+        preflight.MountState.LIBRARY_PATH_MISSING,
+        preflight.MountState.IDENTITY_UNAVAILABLE,
+        preflight.MountState.IDENTITY_NOT_RECORDED,
+    }
 
 
 @pytest.mark.parametrize(
     "state",
     ["IDENTITY_UNAVAILABLE", "IDENTITY_NOT_RECORDED"],
 )
-def test_a_platform_with_no_identity_adapter_still_reaches_its_own_library(
+def test_a_platform_with_no_identity_adapter_may_create_a_library_it_cannot_read_yet(
     tmp_path, state
 ):
-    """The guard must not fire on the correct case, and this is the correct case.
+    """The guard must not fire on the correct case, and a first run IS the case.
 
     ``null_volume_identity`` is what every platform without an adapter resolves
-    to, and it answers None for every volume, mounted or not. Under a rule that
-    demanded MountState.OK, such a machine could never write its active taxonomy
-    and doctor could never report on it, forever, with nothing wrong.
+    to, and it answers None for every volume, mounted or not. There is nothing to
+    READ at a root that does not exist yet, and creating it is exactly what setup
+    is for, so the two questions answer differently for the same machine.
     """
     from cratekit.core import preflight
 
     present = tmp_path / "library"
     present.mkdir()
-    absent = tmp_path / "detached"
+    not_yet = tmp_path / "not-created-yet"
 
-    for root, expected in ((present, True), (absent, False)):
+    for root, readable, writable in ((present, True, True), (not_yet, False, True)):
         status = preflight.MountStatus(
             state=getattr(preflight.MountState, state), configured_root=root
         )
-        assert preflight.library_state_is_readable(status) is expected
-        assert preflight.library_state_may_be_written(status) is expected
+        assert preflight.library_state_is_readable(status) is readable
+        assert preflight.library_state_may_be_written(status) is writable
+
+
+def test_a_first_run_on_a_platform_with_no_identity_adapter_writes_its_template(
+    configured, tmp_path
+):
+    """Driven through the product's own seam, at the shape a first run is in.
+
+    Root not yet created, no identity adapter: the wizard used to report
+    "this run could not establish that the volume there is the one recorded for
+    this library (identity_unavailable...)" and write nothing, which is a refusal
+    aimed at every Linux and BSD install.
+    """
+    from cratekit.core import preflight
+
+    configured.library.root.rename(tmp_path / "moved-away")
+    wizard = setup_verb._Wizard({}, silent())
+
+    setup_verb._seed_taxonomy(
+        wizard, configured, probes(identity_provider=preflight.null_volume_identity)
+    )
+
+    assert config.state_path("taxonomy_active", configured).is_file()
+    assert all(note.status is not doctor.Status.FAIL for note in wizard.notes), [
+        note.detail for note in wizard.notes
+    ]
 
 
 def test_a_renamed_library_folder_on_the_right_volume_is_written_not_refused(
@@ -2355,20 +2429,45 @@ def test_a_library_folder_not_yet_created_under_a_real_mount_is_not_refused():
     assert derived == VOLUME
 
 
-def test_the_derive_still_refuses_when_the_walk_crossed_a_missing_directory(tmp_path):
+@pytest.mark.parametrize(
+    "gap", ["library", "Music/library", "Music/a/b/library"], ids=["one", "two", "four"]
+)
+def test_a_library_nested_under_an_attached_volume_derives_at_any_depth(
+    volumes_directory, gap
+):
+    """BLOCKING. The rule counted levels, and depth was never the hazard.
+
+    Driven on one attached volume in one run, ``<mount>/library`` was accepted
+    and ``<mount>/Music/library`` was refused with "attach the library volume and
+    run setup again", which is false: the volume is attached, the identity read
+    comes from it, and nothing in the product prints the identity a first-run
+    user would need for the only escape it offered.
+    """
+    attached = volumes_directory / "DISK_THAT_IS_ATTACHED"
+    attached.mkdir()
+    (attached / "Music" / "a" / "b").mkdir(parents=True, exist_ok=True)
+    root = attached / gap
+    assert not root.exists()
+
+    wizard = setup_verb._Wizard({}, silent())
+    derived = setup_verb._resolve_volume_id(
+        wizard, str(root), None, probes(identity_provider=lambda _p: VOLUME)
+    )
+    assert derived == VOLUME
+
+
+def test_the_derive_still_refuses_when_a_volume_would_fill_the_gap(volumes_directory):
     """And the case that cost a library is still refused.
 
-    ``/Volumes/NAME/Music`` with the drive unplugged walks up past an absent
-    ``/Volumes/NAME``, and a directory that is not there is exactly where a mount
-    point appears when the volume is attached.
+    ``/Volumes/NAME/Music`` with the drive unplugged: the first missing directory
+    is ``/Volumes/NAME``, which is exactly where a volume appears when it is
+    attached, so the identity a walk finds now belongs to a different disk.
     """
     from cratekit.core import preflight
 
-    volumes = tmp_path / "Volumes"
-    volumes.mkdir()
-    root = volumes / "EP_LIBRARY" / "Music"
-    assert preflight.deepest_existing(root) == volumes.resolve()
-    assert preflight.identity_source(root) != volumes.resolve()
+    root = volumes_directory / "EP_LIBRARY" / "Music"
+    assert preflight.deepest_existing(root) == volumes_directory.resolve()
+    assert preflight.identity_source(root) is None
 
     wizard = setup_verb._Wizard({}, silent())
     with pytest.raises(CratekitError) as excinfo:
@@ -2376,22 +2475,38 @@ def test_the_derive_still_refuses_when_the_walk_crossed_a_missing_directory(tmp_
             wizard, str(root), None, probes(identity_provider=lambda _p: "BOOT")
         )
     assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
-    assert "walked up past a directory that does not exist" in excinfo.value.cause.message
+    assert "where this platform mounts a volume" in excinfo.value.cause.message
 
 
-def test_the_identity_source_is_the_mount_only_when_the_walk_crossed_nothing(tmp_path):
-    """The rule itself, over the three shapes that matter."""
+def test_the_identity_source_refuses_a_gap_a_volume_would_fill_and_nothing_else(
+    tmp_path, volumes_directory
+):
+    """The rule itself, over the four shapes that matter.
+
+    DEPTH IS NOT ONE OF THEM, and that was the defect: the rule counted levels,
+    so a library two directories under an attached volume was refused while one
+    directory under the same volume was accepted, in the same run.
+    """
     from cratekit.core import preflight
 
     existing = tmp_path / "library"
     existing.mkdir()
     # It exists: the identity comes from the volume it is on.
     assert preflight.identity_source(existing) == preflight.containing_mount(existing)
-    # Its deepest existing ancestor IS a mount point: the directory would be
-    # created on that volume.
-    assert preflight.identity_source(Path("/") / "no-such-cratekit-root") == Path("/")
-    # The walk crossed a gap.
-    assert preflight.identity_source(tmp_path / "missing" / "deeper") is None
+    # An ordinary missing directory, whatever the depth: it would be created on
+    # the volume its parent is already on.
+    for gap in ("one", "one/two", "one/two/three/four"):
+        assert preflight.identity_source(tmp_path / gap) == preflight.containing_mount(
+            tmp_path
+        ), gap
+    # A missing directory exactly where a volume mounts.
+    assert preflight.identity_source(volumes_directory / "DISK") is None
+    assert preflight.identity_source(volumes_directory / "DISK" / "Music") is None
+    # And BELOW a mounted volume, at any depth, once the mount point is there.
+    attached = volumes_directory / "DISK"
+    attached.mkdir()
+    for gap in ("library", "Music/library", "Music/a/b/library"):
+        assert preflight.identity_source(attached / gap) is not None, gap
 
 
 # ── an OK detail may claim only what the run established ────────────────────
@@ -2579,3 +2694,121 @@ def test_the_two_remote_tables_never_answer_for_the_same_type():
     assert not overlap, overlap
     for kind, policy in doctor._REMOTE_TRASH_POLICY.items():
         assert policy.option is None or policy.disabled in ("true", "false"), kind
+
+
+# ── the write refusals, driven rather than read off the table ────────────────
+
+
+def test_the_wizard_refuses_to_write_when_the_volume_is_not_mounted_at_all(
+    configured, tmp_path
+):
+    """NOT_MOUNTED, behaviourally. The table said never and nothing drove it.
+
+    Mutation testing found this: ``foreign_volume`` was covered by a real drive
+    and these two were covered only by the structural assertion, so a table row
+    flipped to yes would have been caught for one state and not for the others.
+    The state needs three things at once, an absent root, an identity that does
+    not match, and the recorded volume nowhere in the mount table, which is why
+    it is worth building rather than assuming.
+    """
+    from cratekit.core import preflight
+
+    configured.library.root.rename(tmp_path / "detached")
+    machine = probes(
+        identity_provider=lambda _p: "0000-0000", mount_enumerator=lambda: ()
+    )
+    status = preflight.resolve_mount_state(
+        configured.library.root,
+        configured.library.volume_id,
+        identity_provider=machine.identity_provider,
+        mount_enumerator=machine.mount_enumerator,
+    )
+    assert status.state is preflight.MountState.NOT_MOUNTED
+
+    wizard = setup_verb._Wizard({}, silent())
+    setup_verb._seed_taxonomy(wizard, configured, machine)
+
+    assert wizard.notes[0].status is doctor.Status.FAIL
+    assert wizard.notes[0].remedy is Remedy.MOUNT_LIBRARY_VOLUME
+    assert not config.state_path("taxonomy_active", configured).exists()
+    assert not configured.library.root.exists(), "the refusal created the root anyway"
+
+
+def test_the_wizard_refuses_to_write_when_the_volume_is_mounted_somewhere_else(
+    configured, tmp_path
+):
+    """MOUNTED_ELSEWHERE, behaviourally, and this is the leftover mount point.
+
+    The drive IS attached, at another path, so the configured root is a directory
+    on some other filesystem. Writing there is what creates a directory at a
+    mount point, which on macOS sends the real volume to ``<name> 1`` on its next
+    attach, permanently.
+    """
+    from cratekit.core import preflight
+
+    elsewhere = tmp_path / "actually-here"
+    elsewhere.mkdir()
+    machine = probes(
+        identity_provider=lambda path: VOLUME if path == elsewhere else "0000-0000",
+        mount_enumerator=lambda: (elsewhere,),
+    )
+    status = preflight.resolve_mount_state(
+        configured.library.root,
+        configured.library.volume_id,
+        identity_provider=machine.identity_provider,
+        mount_enumerator=machine.mount_enumerator,
+    )
+    assert status.state is preflight.MountState.MOUNTED_ELSEWHERE
+
+    wizard = setup_verb._Wizard({}, silent())
+    setup_verb._seed_taxonomy(wizard, configured, machine)
+
+    assert wizard.notes[0].status is doctor.Status.FAIL
+    assert not config.state_path("taxonomy_active", configured).exists()
+    assert not (configured.library.root / configured.library.state_dirname).exists()
+
+
+def test_the_zip_backed_shape_of_a_missing_packaged_directory_is_also_caught(
+    monkeypatch, tmp_path
+):
+    """"Never raises" has to be true of every backend, not of the common one.
+
+    ``importlib.resources`` does not promise one exception family. A filesystem
+    traversable raises FileNotFoundError or NotADirectoryError, both OSError; a
+    zip-backed one raises ``ValueError("Can't listdir a file")``, which is not.
+    Catching one family and documenting the other is the overclaim this unit
+    keeps shipping, so the guard is driven against a traversable that raises the
+    one that is not an OSError.
+    """
+    from cratekit.core import taxonomy as taxonomy_module
+
+    class ZipBacked:
+        name = "templates"
+
+        def __truediv__(self, _other):
+            return self
+
+        def iterdir(self):
+            raise ValueError("Can't listdir a file")
+
+    class _Zip:
+        def files(self, _package):
+            return ZipBacked()
+
+    monkeypatch.setattr(taxonomy_module, "resources", _Zip())
+    assert taxonomy_module.shipped_template_names() == ()
+    assert drive(["--help"])[0] == int(ExitCode.OK)
+
+
+def test_the_presence_index_has_no_locking_helper_left_to_deadlock_on():
+    """Dead code that is also a footgun.
+
+    ``set`` and ``delete`` hold the lock across their whole operation now, so the
+    two wrappers that took it themselves have no callers, and calling either from
+    inside a held cycle self-deadlocks: ``flock`` is per open file description,
+    and a second acquisition blocks against the first. The non-locking halves
+    stay, and their docstrings say who holds the lock for them.
+    """
+    assert not hasattr(secrets, "_index_add")
+    assert not hasattr(secrets, "_index_remove")
+    assert hasattr(secrets, "_record_name") and hasattr(secrets, "_forget_name")

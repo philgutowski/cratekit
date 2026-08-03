@@ -565,14 +565,6 @@ def _forget_name(name: str) -> None:
         _index_write(names - {name})
 
 
-def _index_add(name: str) -> None:
-    with _index_locked("record"):
-        _record_name(name)
-
-
-def _index_remove(name: str) -> None:
-    with _index_locked("remove"):
-        _forget_name(name)
 
 
 __all__ = [

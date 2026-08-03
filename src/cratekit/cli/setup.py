@@ -45,8 +45,16 @@ of a mount and lethal here: with the drive unplugged the configured root does no
 exist, the walk climbs past the empty mount point to the boot disk, and the boot
 disk's identity is recorded as the library's. Every destructive verb's identity
 precondition then passes against the boot disk, and doctor reports four greens
-over it. So the derive refuses unless the configured root exists, and the only
-other way to record an identity is to name one.
+over it.
+
+What is refused is a gap A VOLUME WOULD FILL, which took two corrections to get
+right and both of the wrong answers refused a disk that was attached and
+readable. Requiring the root to exist refuses every first run. Allowing a gap of
+one directory refuses every library nested deeper than one, which is the ordinary
+layout. Neither absence nor depth was ever the hazard: the hazard is that the
+missing directory is where a volume APPEARS, so that is the question
+``preflight.identity_source`` asks, against a declared table of where this
+platform mounts one.
 
 **NOTHING LIBRARY-SCOPED IS WRITTEN UNTIL THE VOLUME IS ASSERTED.** The active
 taxonomy is the one thing this verb writes beside the library, and it used to be
@@ -456,16 +464,19 @@ def _resolve_volume_id(
     once, that identity is what every destructive verb then asserts, against the
     disk holding the user's operating system.
 
-    WHAT IS REFUSED IS THE CROSSING, NOT THE ABSENCE, and the distinction is a
-    correction to this guard's first version. "The root must already exist" is
-    too strong by exactly the case a first run is in: a library folder that has
-    not been created yet, directly under a mount point that is attached and
-    readable. There the identity read comes from precisely the right volume, and
-    refusing it told the user to attach a drive that was already attached, with
-    the only escape being a flag whose value nothing in the product prints.
-    ``preflight.identity_source`` answers the narrower question, which is whether
-    the walk crossed a directory that is not there, since a directory that is not
-    there is exactly where a mount point appears when the volume is attached.
+    WHAT IS REFUSED IS A GAP A VOLUME WOULD FILL, and getting there took two
+    corrections, both of which refused a volume that was attached and readable.
+    "The root must already exist" refused every first run. "The gap may be at
+    most one level" refused every library nested two or more directories down,
+    which is the ordinary layout: driven on one attached volume in one run,
+    ``/Volumes/NAME/library`` was accepted and ``/Volumes/NAME/Music/library``
+    was refused with a message telling the user to attach a disk that was already
+    mounted. Depth was never the hazard.
+
+    ``preflight.identity_source`` answers the question that is actually load
+    bearing: is the first missing directory a place where this platform MOUNTS a
+    volume. That is the only shape where the identity found by walking up is not
+    the identity the library will sit on.
 
     The identity provider comes from the run's ``Probes`` rather than from the
     platform default here, so the volume this wizard reads is the volume doctor
@@ -482,13 +493,12 @@ def _resolve_volume_id(
     source = preflight.identity_source(Path(root))
     if source is None:
         raise _refuse(
-            f"{root} is not on any volume that is mounted right now: the search "
-            f"for one walked up past a directory that does not exist, and a "
-            f"directory that does not exist is where a mount point appears when a "
-            f"volume is attached. Reading an identity from further up would "
-            f"record whatever filesystem happens to be above it, and every "
-            f"destructive refusal would then pass against that disk. Attach the "
-            f"library volume and run setup again, or supply the identity with "
+            f"{root} sits below {preflight.deepest_existing(Path(root))}, and the "
+            f"first directory missing under it is where this platform mounts a "
+            f"volume. Whatever mounts there is not the filesystem an identity "
+            f"read now would find, and recording that one would make every "
+            f"destructive refusal pass against the wrong disk. Attach the library "
+            f"volume and run setup again, or supply the identity with "
             f"--volume-id",
             remedy=Remedy.MOUNT_LIBRARY_VOLUME,
             detail={

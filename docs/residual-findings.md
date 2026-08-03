@@ -685,3 +685,45 @@ answers is lost.
 **No unit owns this.** Deliberately not assigned: inventing an owner for an
 obligation nobody accepted is the inference R-13 spent a wave undoing. It needs
 an issue of its own.
+
+---
+
+## R-17. Three answers that claim slightly more than the check observed
+
+**Found:** during the third review of U27, 2026-08-03. Recorded rather than fixed
+by decision of that review: none is a false green, each is a sentence that is
+true of the common case and wider than the thing actually measured.
+
+**NUMBERING.** `main` carries R-14 and R-15; this branch adds R-16 and this
+entry. A merge that finds another R-17 renumbers whichever arrives second, and
+the collision is worth watching for, because nothing in the repository parses
+this document and R-16 was already renumbered once for exactly that reason.
+
+**1. A library root that exists as a FILE now derives an identity.** The derive
+guard asks whether the walk crossed a directory a volume would fill. A path that
+exists as a regular file crosses nothing, so an identity is read, and it is the
+right volume's identity, which is why this is not a safety regression: the run
+then fails later when something tries to create a directory under it. The earlier
+"the root must be a directory" rule refused it up front, which is better service.
+**Closes when:** the wizard validates that `library.root` is a directory or is
+absent, separately from the volume question, and says which of the two is wrong.
+
+**2. `library.db_containment` says more than path containment proves.** Its OK
+detail reads "library.db_path sits under library.root, so a snapshot commits
+atomically with a rename", and the check is a pure textual containment test. A
+filesystem mounted at or under `db_path` puts the two on different filesystems
+while the paths still nest, so the rename is a copy and the inference is wrong.
+Rare, and it is a real shape: a database on its own volume mounted inside the
+library tree. **Closes when:** the check compares `st_dev` for the two paths, or
+the sentence stops claiming the consequence and states the containment it
+measured.
+
+**3. `keychain.reachable` states an observation it did not make.** Its OK detail
+reads "a keychain backend that can store a credential is available", and the
+probe is `secrets.backend_available`, whose own docstring calls it a heuristic
+about a backend CLASS rather than an observation about a call: it asks keyring
+which backend it would choose and reads that backend's priority. A backend that
+resolves and then fails on write reports green here, which is exactly why
+`secrets.set` verifies its write by reading it back. **Closes when:** the detail
+says what was asked, or the check performs a real round trip against a scratch
+entry, which is a decision about whether a health check may write.

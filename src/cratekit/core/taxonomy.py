@@ -453,11 +453,18 @@ def shipped_template_names() -> tuple[str, ...]:
     IT NEVER RAISES, and that is not defensive habit. Its caller is an ARGUMENT
     PARSER, and the whole command tree is built before anything dispatches, so a
     packaged directory that is missing or unreadable used to take every command
-    down with an unhandled ``OSError``, including the health report. That report
-    exists for the broken machine, and a partial install is a broken machine: it
-    has to be able to describe one. An empty answer here is the honest one, and
-    the caller reports the missing template as a finding rather than as a
-    traceback.
+    down with an unhandled error, including the health report. That report exists
+    for the broken machine, and a partial install is a broken machine: it has to
+    be able to describe one. An empty answer here is the honest one, and the
+    caller reports the missing template as a finding rather than as a traceback.
+
+    ``ValueError`` IS CAUGHT BESIDE ``OSError``, and the reason is that the claim
+    above was false without it. ``importlib.resources`` does not promise one
+    exception family: a filesystem-backed traversable raises ``FileNotFoundError``
+    or ``NotADirectoryError``, both of which are ``OSError``, while a zip-backed
+    one raises ``ValueError("Can't listdir a file")``, which is not. Catching one
+    family and writing "never raises" is the shape of overclaim this unit has
+    been shipping all week, so both are caught and the sentence is true.
 
     A NAME IS ONLY OFFERED IF CONFIGURATION WOULD ACCEPT IT. Anything between the
     prefix and the suffix is a candidate on disk, so ``taxonomy.deep.house.toml``
@@ -469,7 +476,7 @@ def shipped_template_names() -> tuple[str, ...]:
     """
     try:
         entries = list((resources.files("cratekit") / "templates").iterdir())
-    except OSError:
+    except (OSError, ValueError):
         return ()
     found = []
     for item in entries:
