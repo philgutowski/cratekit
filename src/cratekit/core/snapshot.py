@@ -97,12 +97,24 @@ def new_stamp(now: datetime | None = None) -> str:
     on a machine running a queued job beside an interactive one, and a collision
     would have the second capture write into the first one's directory.
 
+    SIXTY-FOUR BITS OF TAIL, NOT SIXTEEN, and the widening is not defensive
+    rounding. This string names more than a capture directory: ``restore``
+    derives one staged-companion directory per ATTEMPT from it, and a restore
+    repeated after a failure runs several attempts back to back, so same-second
+    stamps are the ordinary case there rather than the rare one. At sixteen bits
+    a run of eight attempts collides about once in every two thousand runs, and
+    the loss when it does is precisely the one the staging exists to prevent: the
+    second attempt's ``os.replace`` puts its write-ahead log over the first
+    attempt's, and those bytes are in no capture. Eight bytes of tail costs twelve
+    characters in a directory name and moves that number below any rate worth
+    reasoning about. ``tests/test_snapshot.py`` pins the width.
+
     No colon and no space, unlike the run identifier, because this string becomes
     a directory name on whatever filesystem the user's library lives on and a
     colon is not a legal character on all of them.
     """
     moment = now or datetime.now(timezone.utc)
-    return f"{moment.strftime('%Y-%m-%dT%H%M%SZ')}-{secrets.token_hex(2)}"
+    return f"{moment.strftime('%Y-%m-%dT%H%M%SZ')}-{secrets.token_hex(8)}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -316,6 +328,18 @@ CAPACITY_HEADROOM = 1.10
 #: What one filesystem block costs when the platform will not say. Used only as
 #: the floor for a file whose ``st_blocks`` is unavailable; every POSIX platform
 #: this product supports reports it.
+#:
+#: IT IS OBSERVABLE ON EXACTLY ONE SHAPE, and it is worth saying which, because
+#: the value survived being changed from 4096 to 1 with nothing red and that
+#: looked like a constant nobody tests. :func:`_allocated_file` returns
+#: ``max(st_blocks * 512, ceil(st_size / ALLOCATION_UNIT) * ALLOCATION_UNIT)``,
+#: and for an ordinary file on a filesystem whose block size is also 4096 those
+#: two expressions agree, so the rounding term is invisible. It is the larger of
+#: the two only for a SPARSE file, whose ``st_blocks`` under-reports what the
+#: destination copy will occupy, and that is the case the max exists for.
+#: ``tests/test_snapshot.py`` pins it there, on a sparse file whose length is not
+#: a multiple of the unit, which is the only shape where the two candidate
+#: answers differ.
 ALLOCATION_UNIT = 4096
 
 #: What one directory entry costs beyond the blocks its file occupies. A copy of
@@ -351,13 +375,22 @@ def _allocated_size(path: Path, *, entry_overhead: int = DIRECTORY_ENTRY_OVERHEA
     have just fitted, and an under-estimate writes the truncated capture this
     exists to prevent.
 
-    ``entry_overhead`` IS ZERO ON THE RESTORE SIDE, and the asymmetry is real
-    rather than a tuning knob. The term above accounts for growth in the
-    DESTINATION's own directory structure, which a capture genuinely causes: it
-    writes a tree of entries that did not exist. A restore writes a tree back over
-    one of nearly the same shape, so those entries already exist and the marginal
-    growth is not a fresh allocation. Charging it on both sides refused restores
-    that fit.
+    ``entry_overhead`` IS A PARAMETER BECAUSE THE THREE CALLERS ANSWER DIFFERENTLY,
+    and the split is by DIRECTION rather than by side. A capture charges it
+    (:func:`assert_room_for_capture`), and so does the incoming half of a restore
+    (:func:`incoming_bytes`), because both write a tree of entries that did not
+    exist a moment ago: a staged copy beside its target is a fresh allocation of
+    directory structure exactly as a capture is. Only :func:`freed_bytes` passes
+    zero, because it is counting what a step GIVES BACK, and over-counting that
+    is how an estimate ends up below the real peak.
+
+    An earlier version of this paragraph said the whole restore side charged
+    nothing, on the argument that a restore writes back over a tree of nearly the
+    same shape. That argument was measured wrong: the staged sibling is a second
+    tree, not an overwrite of the first, and the version that charged nothing
+    passed a preflight and then died with ENOSPC part way through a coupled copy.
+    :func:`incoming_bytes` says the same thing in one line beside its own code, so
+    the two accounts agree.
 
     Absence is normal rather than exceptional, exactly as it is everywhere else
     in this module: a database just folded in by the engine has no companion
@@ -543,6 +576,25 @@ def freed_bytes(target: Path) -> int:
     is how an estimate ends up below the real peak, and the whole point of the
     estimate is to be above it. Directory structure is also not reliably returned
     to the filesystem when a tree is removed.
+
+    IT IS WORTH 2,048 BYTES, NOT A HEADLINE, and stating the real magnitude is
+    the honest version of the paragraph above. What a step gives back enters
+    ``restore.space_peak_bytes`` only through the running total, and the running
+    total only raises the peak at a LATER step; on this product's plans the
+    largest step is the coupled tree and it is last, so the only outgoing that
+    ever reaches a peak is the database file's, a single entry. Measured on the
+    branch's own shapes: an 8 MiB database with a 4 MiB log and 2,000 queue items
+    estimates 16,490,496 with this choice and 16,488,448 with the overhead charged
+    on both sides, and at 20,000 items the two answers are 127,082,496 and
+    127,080,448. One directory entry, either way.
+
+    IT IS KEPT ANYWAY, AND IT IS TESTED. Kept because the argument does not
+    depend on the size of the term: an estimate that is under is a preflight that
+    passes and a restore that dies part way through, and the cost of being over
+    by one entry is nothing. Tested because "too small to matter" and "wrong" are
+    indistinguishable from a green suite, so ``tests/test_restore.py`` asserts the
+    exact peak of an ordinary plan as a literal, which is the one assertion shape
+    that can see a 2,048-byte difference at all.
     """
     return _allocated_size(target, entry_overhead=0)
 

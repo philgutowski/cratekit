@@ -133,6 +133,34 @@ PRE_RESTORE_DIR = ".cratekit-pre-restore"
 
 
 # ---------------------------------------------------------------------------
+# The residual findings this module's prose points at
+# ---------------------------------------------------------------------------
+#
+# NAMED BY TITLE RATHER THAN BY NUMBER, and the number is deliberately absent.
+# ``docs/residual-findings.md`` is a file every branch appends to, and the
+# standing rule renumbers an entry when two of them reach for one number at a
+# merge. A number written into source is therefore a reference that repoints
+# SILENTLY: it still resolves, it still reads as a citation, and it now names
+# somebody else's finding. That has already happened once in this repository,
+# where ``core/convergence.py`` said "See R-15" and R-15 on the merged tree was a
+# different finding entirely.
+#
+# Titles do not move under a renumber. ``tests/test_restore.py`` asserts that each
+# of these still names a heading in that file, so a retitle goes red here rather
+# than becoming a dangling citation, and the number lives in exactly one place.
+
+#: The R30 sentence this unit computes and never renders. Owner U27.
+RESIDUAL_CAPTURE_VOLUME_UNREPORTED = (
+    "R30's second sentence is computed and never reported"
+)
+
+#: The bare-metal write path that closing the bypass removed. Owner U27.
+RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH = (
+    "Closing the bare-metal bypass removed the bare-metal write path"
+)
+
+
+# ---------------------------------------------------------------------------
 # What is restorable
 # ---------------------------------------------------------------------------
 
@@ -1254,13 +1282,33 @@ def _assert_writable(step: Step) -> None:
     previous versions of this check asked for exactly one of them.
     :func:`_replace_directory` stages a sibling and renames twice, so the staging
     writes all happen in the target's PARENT; that is the half the first version
-    missed, and it let a genuinely unwritable parent through. But the first of
-    those renames is ``os.replace(target, previous)``, and renaming a directory
-    rewrites that directory's own ``..`` entry, so it needs write permission on
-    the TARGET; that is the half the second version missed, and it is a
-    regression, because the rehearsal then reported all seven steps performed with
-    no refusal and the real run staged the log aside, replaced the database, and
-    died on the rename with the coupled state half replaced. So both are asked.
+    missed, and with it gone NOTHING refuses: the rehearsal reports every step
+    performed, and the real run stages the log aside, replaces the database, and
+    dies inside ``shutil.copytree`` into the unwritable parent, leaving the
+    database at the new generation and the coupled state at the old. The other
+    half is ``os.replace(target, previous)``, the first of those two renames, and
+    it is the half the second version missed: the rehearsal reported all seven
+    steps performed with no refusal and the real run died on that rename with the
+    coupled state half replaced. So both are asked.
+
+    NEITHER HALF IS COVERED BY ANY OTHER STEP, which is why both need their own
+    test. The database's parent is ``<library>/db`` and the coupled directory's
+    parent is ``<library>/<state>``; they are different directories, so the
+    ordinary file steps say nothing at all about the second one.
+
+    THE TARGET PROBE IS PLATFORM DEPENDENT, AND IS ASKED FOR THE STRICTEST
+    PLATFORM. An earlier version of this docstring justified it by saying that
+    renaming a directory rewrites that directory's own ``..`` entry. That is not a
+    portable account of anything and it is not what was measured. What WAS
+    measured: on darwin, renaming a directory whose own mode denies this account
+    write fails with ``EACCES`` even though the parent is writable and the parent
+    is the only thing changing; on Linux the same rename SUCCEEDS, because rename
+    permission there is decided by the containing directories alone. So the probe
+    is necessary on darwin and over restrictive on Linux, and asking it everywhere
+    is deliberate: a rehearsal has to mean the same thing wherever it runs, the
+    cost of the strict answer is a refusal that tells somebody to make their own
+    library directory writable, and the cost of the loose one is a restore that
+    stops with the coupled state half replaced.
 
     Each is asked of the nearest EXISTING ancestor, because a restore legitimately
     creates directories that are not there yet, and asking about a path that does
@@ -1506,6 +1554,18 @@ def _prune_staged_companions(store: Path) -> None:
 
     IT NEVER RAISES. This is housekeeping running after the work has landed, and
     nothing after the point of no return may fail a restore that succeeded.
+
+    THAT IS A CLAIM ABOUT THE CALL SITE, and the call site is what makes it
+    load bearing. :func:`_perform` calls this from the RELEASE branch, which is
+    OUTSIDE the ``try`` that turns an ``OSError`` into a refusal, and by then
+    ``reconcile.retract_in_flight`` has already discharged the latch. So an
+    escaping error would arrive at the process boundary raw, with no reason, no
+    remedy and no reserved exit code; :func:`run` would never return; and
+    ``recovery_session`` would close the record ABANDONED for a restore that
+    completed, which is the state a person then tries to recover from. That is
+    exactly the defect fix round 2 closed one function away in
+    :func:`_replace_directory`, and ``tests/test_restore.py`` covers this instance
+    of it the same way that one is covered.
     """
     # ORDERED BY MODIFICATION TIME, not by name. The directory names are capture
     # stamps, whose second-resolution prefix is followed by a RANDOM tail, so
@@ -1788,9 +1848,31 @@ DEFAULT_KEEP = 5
 #: does not silently accumulate a year of database copies.
 DEFAULT_MAX_AGE = timedelta(days=30)
 
-#: How many attempts' worth of staged companion files survive. The same number
-#: the capture store keeps, carried rather than re-chosen so two answers to one
-#: question cannot exist.
+#: How many attempts' worth of staged companion files survive.
+#:
+#: THE DEFAULT RETENTION COUNT, carried rather than re-chosen, so the number is
+#: written down in exactly one place: :data:`DEFAULT_KEEP`, which is also
+#: ``RetentionPolicy.keep``'s default.
+#:
+#: IT IS NOT "WHATEVER THE CAPTURE STORE KEEPS ON THIS RUN", and an earlier
+#: version of this comment claimed it was. :func:`retention_plan` takes a
+#: ``policy`` per call, so a caller passing ``RetentionPolicy(keep=20)`` gets
+#: twenty captures and still five staged attempts, and the claim that two answers
+#: to one question cannot exist was simply false against that signature.
+#:
+#: THEY ARE TWO QUESTIONS, WHICH IS WHY THE ASYMMETRY STAYS. A policy argument
+#: answers "how many captures should this run keep". The prune runs inside
+#: :func:`_perform` at the RELEASE step of a restore, where there is no policy in
+#: scope and no caller in a position to supply one, and threading one through
+#: would mean an argument to the retention verb silently decided how much
+#: unrecoverable write-ahead log a later restore throws away. What the two do
+#: share is the default, and that is what this line says and all it says.
+#:
+#: ``tests/test_restore.py`` pins this and :data:`DEFAULT_KEEP` by consequence
+#: with LITERAL expected values. Writing the constant into its own expected value
+#: is an assertion that passes at every value the constant can take, which is how
+#: a silent change from five to one used to leave four attempts' worth of
+#: write-ahead log deleted with the suite green.
 KEEP_STAGED_ATTEMPTS = DEFAULT_KEEP
 
 
@@ -1876,14 +1958,15 @@ def shares_the_database_volume(cfg: config.Config, *, root: Path | None = None) 
     identifier rather than on path prefixes, because a bind mount, a symlink or a
     nested mount point all make a prefix comparison confidently wrong.
 
-    "REPORTED" IS AN OVERSTATEMENT OF WHAT LANDED, AND THE GAP HAS A NUMBER.
+    "REPORTED" IS AN OVERSTATEMENT OF WHAT LANDED, AND THE GAP IS RECORDED.
     This function computes the answer and ``RetentionPlan`` carries it, and
     nothing in ``src/`` renders it: there is no command-line surface, no doctor
     check, and no session-time warning, so a user is never told. The honest status
-    is COMPUTED, NOT REPORTED, and it is recorded as **R-19** in
-    ``docs/residual-findings.md`` with a named owner, because an obligation
-    carried only by a docstring on a closing unit is owned by nobody the moment
-    that unit closes, which is the argument this unit makes twice in
+    is COMPUTED, NOT REPORTED, and it is written down in
+    ``docs/residual-findings.md`` under the title named by
+    :data:`RESIDUAL_CAPTURE_VOLUME_UNREPORTED`, with an owner, because an
+    obligation carried only by a docstring on a closing unit is owned by nobody
+    the moment that unit closes, which is the argument this unit makes twice in
     ``tests/_pending.py`` about somebody else's markers.
     """
     store = root if root is not None else snapshot.store_root(cfg)
@@ -2321,8 +2404,10 @@ def bare_metal_session(
     assertions run before the one gate that creates a file, so a refused recovery
     leaves the disk exactly as it found it.
 
-    NOTHING CAN YET SPEND THE SESSION THIS YIELDS, and that is recorded as **R-20**
-    rather than left to be discovered. The value it hands back authorises the
+    NOTHING CAN YET SPEND THE SESSION THIS YIELDS, and that is written down in
+    ``docs/residual-findings.md`` under the title named by
+    :data:`RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH` rather than left to be
+    discovered. The value it hands back authorises the
     replacement target, while :func:`plan` and :func:`run` resolve every path from
     ``cfg.library.root`` and refuse a session that does not authorise what they are
     about to write. That refusal is what closed a verified bypass in which this
@@ -2384,6 +2469,8 @@ __all__ = [
     "PRE_RESTORE_DIR",
     "PRE_CUTOVER_RESTORE",
     "RECOVERY_LOCK_KEY",
+    "RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH",
+    "RESIDUAL_CAPTURE_VOLUME_UNREPORTED",
     "Act",
     "Guard",
     "Held",

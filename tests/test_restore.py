@@ -53,6 +53,7 @@ import pytest
 
 from cratekit.core import (
     config,
+    rb_writer,
     reconcile,
     restore,
     session,
@@ -2689,12 +2690,19 @@ def test_round3_the_capacity_estimate_is_above_the_measured_peak(
     )
 
 
-def test_round3_a_volume_between_the_two_rules_is_refused(cfg, held):
+def test_round3_a_volume_between_the_two_rules_is_refused(cfg, held, monkeypatch):
     """The gap the single-step rule opened, driven directly.
 
     Free space above what that rule demanded and below the real high-water mark is
     exactly the band in which the preflight passed and the restore ran out of room
     with the two halves at different generations.
+
+    The seam is taken through the ``monkeypatch`` fixture rather than by assigning
+    to the module and restoring in a ``finally``: an assignment is undone only by
+    the block that made it, so a rewrite that moves an assertion above the
+    ``try`` leaks a stubbed free-space probe into every test that runs after it in
+    the same process, and a suite whose capacity probe is a lambda is green for
+    the wrong reason.
     """
     _build_capacity_shape(cfg, database=8, wal=4, items=2000)
     record, _captured = completed_session(cfg)
@@ -2708,13 +2716,9 @@ def test_round3_a_volume_between_the_two_rules_is_refused(cfg, held):
     estimate = restore.space_peak_bytes(decided)
     assert estimate > largest_single, "the estimate is still one step's worth"
 
-    original = snapshot._free_bytes
-    snapshot._free_bytes = lambda _root: int(largest_single * 1.2)
-    try:
-        with pytest.raises(CratekitError) as excinfo:
-            restore.run(decided, cfg, held=held, dry_run=True)
-    finally:
-        snapshot._free_bytes = original
+    monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: int(largest_single * 1.2))
+    with pytest.raises(CratekitError) as excinfo:
+        restore.run(decided, cfg, held=held, dry_run=True)
 
     assert excinfo.value.cause.reason == "snapshot-store-full"
     assert config.state_path("rekordbox_db", cfg).read_bytes()[:1] == b"d"
@@ -3019,12 +3023,22 @@ def test_round3_staged_companions_are_bounded_by_the_keep_count(cfg):
     takes a fresh directory, so attempts accumulate copies on the volume being
     restored onto. Pruned only from the step that claims a restore finished,
     because a failed attempt's log is the one most likely to be wanted.
+
+    EVERY NUMBER HERE IS A LITERAL, and the earlier version of this test had
+    ``restore.KEEP_STAGED_ATTEMPTS`` in all three of them: the loop count, the
+    expected surviving count, and the expected surviving payload. That version
+    passed at every value of the constant except zero, so it asserted "the prune
+    keeps the newest and drops the oldest" and asserted nothing whatever about the
+    bound being five. Silently changing five to one then deleted four attempts'
+    worth of write-ahead log, which ``_stage_companion_aside`` calls the only
+    surviving record of work nobody can otherwise recover, with the suite green.
+    Six restores, five survivors, and the first one gone.
     """
     acknowledge(cfg)
     record, _captured = completed_session(cfg)
     store = None
 
-    for attempt in range(restore.KEEP_STAGED_ATTEMPTS + 3):
+    for attempt in range(6):
         _wal_path(cfg).write_bytes(f"attempt {attempt}".encode())
         with restore.recovery_session(cfg, **gate_seams(cfg)) as open_session:
             decided = restore.plan(cfg, record.session_id, held=open_session)
@@ -3032,7 +3046,7 @@ def test_round3_staged_companions_are_bounded_by_the_keep_count(cfg):
             store = decided.pre_restore_root.parent
 
     kept = sorted(entry for entry in store.iterdir() if entry.is_dir())
-    assert len(kept) == restore.KEEP_STAGED_ATTEMPTS
+    assert len(kept) == 5, "six attempts must leave five staged directories"
     # The NEWEST survive: the oldest stranded log is the one given up first.
     surviving = {
         path.read_bytes()
@@ -3040,5 +3054,316 @@ def test_round3_staged_companions_are_bounded_by_the_keep_count(cfg):
         for path in root.iterdir()
         if path.name.endswith("wal")
     }
-    assert b"attempt 0" not in surviving
-    assert f"attempt {restore.KEEP_STAGED_ATTEMPTS + 2}".encode() in surviving
+    assert surviving == {
+        b"attempt 1",
+        b"attempt 2",
+        b"attempt 3",
+        b"attempt 4",
+        b"attempt 5",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Fix round 4: the halves of a claimed fix that nothing could see
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _staged_attempt(store: Path, name: str, *, age: int, payload: bytes = b"") -> Path:
+    """One staged-companion directory, aged so the prune's order is decided.
+
+    Ordered on ``st_mtime`` because the prune is, and set explicitly rather than
+    left to creation order: several directories made inside one call are
+    separated by microseconds, and a test whose subject is which one gets deleted
+    should not rest on that.
+    """
+    attempt = store / name
+    attempt.mkdir(parents=True)
+    (attempt / "master.db-wal").write_bytes(payload)
+    when = 1_700_000_000 + age
+    os.utime(attempt, (when, when))
+    return attempt
+
+
+def test_round4_a_completed_restore_survives_a_staged_attempt_it_cannot_prune(cfg):
+    """Round 3 added a second instance of the defect round 2 fixed, with no test.
+
+    ``_prune_staged_companions`` is called from the RELEASE branch of ``_perform``,
+    which is OUTSIDE the try that turns an ``OSError`` into a refusal, and by then
+    ``reconcile.retract_in_flight`` has already discharged the latch. A staged
+    directory an earlier attempt left behind that this account cannot remove
+    therefore makes ``shutil.rmtree`` raise ``PermissionError`` at the end of a
+    restore that has already landed. Without the ``except OSError`` inside that
+    loop it escapes ``run`` raw: no reason, no remedy, no reserved exit code, and
+    ``recovery_session`` closes the record ABANDONED for a restore that completed.
+
+    This is ``test_round2_a_successful_restore_over_an_unremovable_old_copy_still
+    _succeeds`` one function away, and it is modelled on it deliberately: round 2
+    proved the invariant at ``_replace_directory`` and round 3 reintroduced the
+    same shape somewhere else.
+    """
+    acknowledge(cfg)
+    record, _captured = completed_session(cfg)
+    _wal_path(cfg).write_bytes(b"transactions no capture holds")
+
+    store = config.state_path("rekordbox_db", cfg).parent / restore.PRE_RESTORE_DIR
+    # One attempt older than everything else, holding a log this account cannot
+    # delete, and enough younger ones that the prune has to reach it.
+    locked = _staged_attempt(store, "attempt-locked", age=0, payload=b"the earliest log")
+    fillers = [
+        _staged_attempt(store, f"attempt-{index}", age=index + 1)
+        for index in range(restore.KEEP_STAGED_ATTEMPTS)
+    ]
+    locked.chmod(0o500)
+
+    try:
+        with restore.recovery_session(cfg, **gate_seams(cfg)) as open_session:
+            recovery_id = open_session.record.session_id
+            decided = restore.plan(cfg, record.session_id, held=open_session)
+            outcome = restore.run(decided, cfg, held=open_session)
+    finally:
+        locked.chmod(0o700)
+
+    assert outcome.converged, "a restore that landed correctly reported failure"
+    assert session.read_record(recovery_id, cfg).state is session.SessionState.CLOSED, (
+        "the completed restore's own record was closed ABANDONED"
+    )
+    # The prune ran and did what it could: the oldest removable attempt is gone.
+    assert not fillers[0].exists(), "the prune never reached the bound"
+    # And the one it could not remove is still there, logged rather than raised.
+    assert (locked / "master.db-wal").read_bytes() == b"the earliest log"
+    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
+        b"database, generation one"
+    )
+
+
+def test_round4_an_unwritable_state_directory_refuses_at_the_rehearsal(cfg, held):
+    """The parent half of ``_assert_writable``, which no test could see.
+
+    ``_replace_directory`` stages a sibling beside its target, so every staging
+    write lands in the target's PARENT. The only test in the area chmods the
+    TARGET and asserts the parent stays writable, so it structurally cannot see
+    this half, and the one test that does chmod a parent builds a plan whose
+    coupled step is a REMOVE rather than a REPLACE_TREE, so a different step
+    refuses and the parent probe is never consulted.
+
+    With the probe gone nothing refuses at all: the rehearsal reports every step
+    performed, and the real run stages the log aside, replaces the database, and
+    dies inside ``shutil.copytree`` into the unwritable parent, leaving the
+    database at the new generation and the coupled state at the old. No other step
+    covers it, because the database's parent is ``<library>/db`` and this one is
+    ``<library>/<state>``.
+    """
+    write_state(cfg, "label_watermarks", {"source": "before"})
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+    coupled = config.library_coupled_dir(cfg)
+    assert any(
+        step.act is restore.Act.REPLACE_TREE and step.target == coupled
+        for step in decided.steps
+    ), "the plan does not replace the coupled directory, so this proves nothing"
+    parent = coupled.parent
+    assert parent != config.state_path("rekordbox_db", cfg).parent, (
+        "the coupled parent and the database parent must be different directories"
+    )
+    parent.chmod(0o500)
+    assert os.access(coupled, os.W_OK), "the target must stay writable"
+
+    try:
+        with pytest.raises(CratekitError) as excinfo:
+            restore.run(decided, cfg, held=held, dry_run=True)
+    finally:
+        parent.chmod(0o700)
+
+    assert excinfo.value.cause.reason == "restore-step-failed"
+    assert str(parent) in excinfo.value.cause.message
+    # Nothing was touched: the rehearsal refused before the first destructive step.
+    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
+        b"database, generation one"
+    )
+    assert reconcile.outstanding(cfg) == ()
+
+
+def _playlist_xml_path(cfg) -> Path:
+    """rekordbox's own playlist document, which travels with the database.
+
+    Named through ``rb_writer`` rather than spelled, and it matters here because
+    it is the one restorable source that is NOT inside the coupled directory and
+    is not a database sidecar, which is what puts a REMOVE step ahead of the
+    coupled REPLACE_TREE in an ordinary plan.
+    """
+    return config.state_path("rekordbox_db", cfg).parent / rb_writer.MASTER_PLAYLIST_XML
+
+
+def test_round4_the_peak_of_an_ordinary_plan_is_an_exact_number(cfg, held):
+    """The one assertion shape that can see a 2,048-byte term.
+
+    Every other capacity test asserts an inequality: the estimate is above the
+    measured peak, below the sum of everything, above the largest single step.
+    All three survive charging ``freed_bytes`` the directory-entry overhead, which
+    is the asymmetry ``snapshot.freed_bytes`` says is load bearing, because what a
+    step gives back reaches the peak only through the running total and only at a
+    LATER step, and on this product's plans the largest step is last. So the whole
+    term is worth one directory entry and nothing could see it.
+
+    Derived BY HAND from the four quantities pinned below, not by calling
+    ``space_peak_bytes``:
+
+    * replace the database:   peak = 0 + 6,144 = 6,144;  occupied = 6,144 - 4,096 = 2,048
+    * remove the absent xml:  it is not there live, so this frees nothing
+    * replace the coupled tree: peak = max(6,144, 2,048 + 8,192) = 10,240
+
+    With the entry overhead charged on both sides the two ``freed`` figures become
+    6,144 and the answer becomes 8,192.
+    """
+    write_state(cfg, "label_watermarks", {"source": "before"})
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    captured = {
+        entry.source.name: entry.captured
+        for entry in snapshot.read_manifest(decided.capture_root).sources
+        if entry.captured is not None
+    }
+    # The shape this arithmetic assumes, pinned so a filesystem that allocates
+    # differently fails HERE and says so rather than failing on the total.
+    assert snapshot.incoming_bytes(captured["master.db"]) == 6144
+    assert snapshot.incoming_bytes(captured["coupled"]) == 8192
+    assert snapshot.freed_bytes(config.state_path("rekordbox_db", cfg)) == 4096
+    assert snapshot.freed_bytes(config.library_coupled_dir(cfg)) == 4096
+
+    assert restore.space_peak_bytes(decided) == 10240
+
+
+def test_round4_a_removal_ahead_of_a_tree_replacement_lowers_the_peak(cfg, held):
+    """The ``Act.REMOVE`` subtraction is observable, and nothing asserted it.
+
+    ``_file_steps`` appends steps in MANIFEST order, and rekordbox's playlist
+    document sits beside the database rather than inside the coupled directory, so
+    a plan that removes it does so BEFORE the coupled tree is replaced. The
+    subtraction then lowers the running total and therefore lowers the peak for
+    every later step. The direction is safe, because the removal genuinely happens
+    first and ``_remove`` raises rather than failing silently, but the arithmetic
+    was unguarded.
+
+    Derived BY HAND, same four quantities as the plan above plus the removal:
+
+    * replace the database:   peak = 6,144;  occupied = 2,048
+    * remove a 1 MiB xml:     occupied = 2,048 - 1,048,576 = -1,046,528
+    * replace the coupled tree: max(6,144, -1,046,528 + 8,192) = 6,144
+
+    Without the subtraction the third line is max(6,144, 2,048 + 8,192) = 10,240,
+    so the restore would be asked for 4,096 bytes it does not need on top of a
+    library that is about to shed a megabyte.
+    """
+    write_state(cfg, "label_watermarks", {"source": "before"})
+    record, _captured = completed_session(cfg)
+    # Created AFTER the capture, so the manifest records it absent and the plan
+    # removes it, and it is on disk now, so removing it gives real bytes back.
+    playlists = _playlist_xml_path(cfg)
+    playlists.write_bytes(b"p" * 1024 * 1024)
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    acts = [step.act for step in decided.steps if step.target is not None]
+    assert acts.index(restore.Act.REMOVE) < acts.index(restore.Act.REPLACE_TREE), (
+        "the removal must precede the tree replacement or this proves nothing"
+    )
+    assert snapshot.freed_bytes(playlists) == 1048576
+
+    assert restore.space_peak_bytes(decided) == 6144
+
+
+def test_round4_the_default_retention_count_is_five(cfg):
+    """``DEFAULT_KEEP`` survived being changed to one, because nothing used it.
+
+    Every retention test passes an explicit ``RetentionPolicy``, so the default
+    was reachable only through ``retention_plan(cfg)`` with no policy, and the one
+    test that did that asserted something else entirely. Seven captures, all past
+    the default age bound, and the count is the only thing standing between them
+    and deletion: five survive because the count protects the first five, and the
+    two the count does not reach are old enough for the age bound to take.
+    """
+    now = datetime.now(UTC)
+    made = [take_capture(cfg, stamp=f"capture-{index}") for index in range(7)]
+    for index, captured in enumerate(made):
+        _age_capture(captured.root, days=90 - index, now=now)
+
+    decided = restore.retention_plan(cfg, protected_provider=set, now=now)
+
+    assert len(decided.keeping) == 5, "the default count is not five"
+    assert len(decided.deleting) == 2
+    # Newest first, so the two oldest are the two that go.
+    assert [entry.root for entry in decided.deleting] == [made[1].root, made[0].root]
+
+
+def test_round4_a_volume_just_above_what_the_rule_demands_is_not_refused(
+    cfg, held, monkeypatch
+):
+    """P7 on the capacity rule: a fix round fails by being too strict just as often.
+
+    Round 2's defect was a FALSE REFUSAL, from a rule that demanded 1.10 times the
+    sum of every captured source. Round 3 replaced it with a running total, and
+    nothing synthesised a free-space value just ABOVE what the new rule demands to
+    prove it still lets a restore through. Free space is pinned to exactly what
+    the preflight asks for, which is the tightest volume that may proceed, and the
+    restore has to land.
+    """
+    _build_capacity_shape(cfg, database=8, wal=4, items=2000)
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    demanded = int(restore.space_peak_bytes(decided) * snapshot.CAPACITY_HEADROOM)
+    summed = sum(
+        snapshot.incoming_bytes(entry.source)
+        for entry in snapshot.read_manifest(decided.capture_root).sources
+        if entry.captured is not None
+    )
+    assert demanded < int(summed * snapshot.CAPACITY_HEADROOM), (
+        "this volume is not tight enough to say anything: the round 1 rule would "
+        "have accepted it too"
+    )
+
+    monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: demanded)
+    outcome = restore.run(decided, cfg, held=held)
+
+    assert outcome.converged, "the tightest volume the rule allows was refused"
+    assert config.state_path("rekordbox_db", cfg).read_bytes()[:1] == b"d"
+
+
+def test_round4_the_residual_findings_this_module_names_still_exist():
+    """Source references residual findings by TITLE, and the titles have to resolve.
+
+    ``docs/residual-findings.md`` is appended to by every branch, and the standing
+    rule renumbers an entry when two of them reach for one number at a merge. A
+    number written into a docstring therefore repoints SILENTLY: it still reads as
+    a citation and it now names somebody else's finding. That has already happened
+    in this repository, where ``core/convergence.py`` said "See R-15" and R-15 on
+    the merged tree was a different entry.
+
+    So the module names them by title and this asserts the titles resolve. A
+    renumber leaves this green, which is correct. A retitle or a deletion turns it
+    red, which is also correct.
+    """
+    headings = {
+        match.group(1).strip()
+        for match in re.finditer(
+            r"^## R-\d+\.\s*(.+)$",
+            (REPO_ROOT / "docs" / "residual-findings.md").read_text(encoding="utf-8"),
+            re.MULTILINE,
+        )
+    }
+    named = {
+        restore.RESIDUAL_CAPTURE_VOLUME_UNREPORTED,
+        restore.RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH,
+    }
+
+    assert named <= headings, sorted(named - headings)
+
+    # And each name is actually CITED, rather than defined, exported and then
+    # ignored while the prose goes back to writing a number.
+    source = Path(inspect.getfile(restore)).read_text(encoding="utf-8")
+    for name in (
+        "RESIDUAL_CAPTURE_VOLUME_UNREPORTED",
+        "RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH",
+    ):
+        # The definition, the export, and at least one docstring citation.
+        assert source.count(name) >= 3, f"nothing in restore.py cites {name}"

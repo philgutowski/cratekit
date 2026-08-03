@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 from pathlib import Path
 
@@ -269,6 +270,53 @@ def test_a_stamp_is_sortable_and_carries_no_character_a_filesystem_rejects():
     first = snapshot.new_stamp()
     assert ":" not in first and " " not in first and "/" not in first
     assert first != snapshot.new_stamp(), "two stamps in one second collided"
+
+
+def test_a_stamps_random_tail_is_sixty_four_bits():
+    """The tail is an IDENTITY, not decoration, and its width is pinned as one.
+
+    ``restore`` derives one staged-companion directory per ATTEMPT from this
+    string, and a restore repeated after a failure runs several attempts inside
+    one second, so the second-resolution prefix is identical across them and the
+    whole of the distinctness rests on the tail. A collision has one attempt's
+    ``os.replace`` put its write-ahead log over another's, and those bytes are in
+    no capture: it is precisely the loss the staging exists to prevent. At the
+    original sixteen bits a run of eight attempts collides about once in two
+    thousand runs, which is a rate a person meets.
+
+    Written as a LITERAL sixteen hexadecimal characters rather than as
+    ``len(secrets.token_hex(n))``, because an expected value computed from the
+    thing under test is an assertion that passes at every width.
+    """
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{6}Z-[0-9a-f]{16}", snapshot.new_stamp())
+
+
+def test_a_sparse_file_is_charged_the_room_its_copy_will_actually_need(tmp_path):
+    """``ALLOCATION_UNIT`` is observable on exactly one shape, so drive that shape.
+
+    ``_allocated_file`` returns the larger of ``st_blocks * 512`` and the length
+    rounded up to :data:`snapshot.ALLOCATION_UNIT`. For an ordinary file on a
+    filesystem whose block size is also 4,096 those two agree, which is why the
+    constant survived being changed to 1 with nothing red. They differ only for a
+    SPARSE file, whose ``st_blocks`` under-reports what the destination will
+    occupy because this module's copier does not preserve holes, and that is the
+    case the ``max`` exists for.
+
+    The length is deliberately not a multiple of the unit: at 10 MiB exactly, both
+    candidate answers are the same number and the test would prove nothing.
+    """
+    sparse = tmp_path / "sparse.bin"
+    with sparse.open("wb") as handle:
+        handle.truncate(10 * 1024 * 1024 + 1)
+    assert sparse.stat().st_blocks * 512 < sparse.stat().st_size, (
+        "this filesystem did not make a sparse file, so there is nothing here for "
+        "the rounding term to be larger than"
+    )
+
+    # 10,485,761 bytes rounds up to 2,561 units of 4,096, which is 10,489,856,
+    # plus one directory entry. With the unit at 1 the answer is 10,485,761.
+    assert snapshot.incoming_bytes(sparse) == 10489856 + snapshot.DIRECTORY_ENTRY_OVERHEAD
+    assert snapshot.freed_bytes(sparse) == 10489856
 
 
 def test_writing_a_second_capture_into_an_existing_stamp_refuses(cfg):

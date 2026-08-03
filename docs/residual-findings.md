@@ -533,11 +533,21 @@ ready.
 **Found:** during the U32 adversarial review, 2026-08-02. Confirmed against
 `src/` before it was recorded.
 
-**Numbered R-19 rather than R-14.** `main` already defines R-14 and R-15, U27's
-branch is renumbering its own to R-16, and U16's fix round is adding R-17. R-19
-is above every number in flight, so this entry cannot collide with one landing
-beside it. This file is one another branch appends to, and two entries sharing a
-number is the shape where one of them silently becomes unreadable.
+**Numbered R-19 rather than R-14, and it WILL move again at the merge.** When
+this entry was written, `main` defined R-14 and R-15, U27's branch was
+renumbering its own to R-16, and U16's fix round was adding R-17. Both of those
+predictions were wrong: **U36 took R-16 and R-17 when it merged**, and `main` now
+ends at R-17. So the three entries this branch adds renumber sequentially at the
+merge, to **R-18, R-19 and R-20**, and all three of these headings move.
+
+That is exactly why `core/restore.py` cites these findings by TITLE rather than
+by number, and why `tests/test_restore.py` asserts the titles still resolve. A
+number written into source survives a renumber by pointing at somebody else's
+finding: the citation still reads correctly and is silently false, which is the
+failure already caught once here, where `core/convergence.py` said "See R-15" and
+R-15 on the merged tree named a different entry. This file is one another branch
+appends to, and two entries sharing a number is the shape where one of them
+silently becomes unreadable.
 
 **The unmet sentence, verbatim from R30:** *"the capture store does not sit on
 the same filesystem as the database, so that one volume failure cannot take both
@@ -655,18 +665,42 @@ that finds out whether the derivation above is right.
 
 ---
 
-## R-21. What the U36 merge owes, from this side. Six items, and two of them are silent
+## R-21. What the U36 merge owes, from this side. Four conflicts, six items, and one thing not to undo
 
 **Found:** by the verification of U32's second fix round, 2026-08-03, against a
-real trial merge rather than by inference.
+real trial merge rather than by inference. **Re-verified during fix round 4**
+against a scratch three-way merge of this branch onto `main` at `c114afa` from
+merge base `4368171`. Every count below was measured on that merge.
 
-U36 records the same obligation as R-14 on its own branch, with four items. Two
-more were found and both are worse than a failing test, so the list is kept on
-both sides rather than trusted to one. **U36's R-14 needs the same two additions.**
+U36 records the same obligation on its own side. It was **R-14 on its branch and
+is R-16 on `main` now**, and its own text says so; an earlier version of this
+paragraph cited the branch number, which is the same silent-repointing hazard
+item 7 is about. Two of the items below were found only from this side and both
+are worse than a failing test, so the list is kept on both sides rather than
+trusted to one. **U36's entry needs the same additions.**
+
+### The four textual conflicts
+
+`git merge` stops on every one of these, so none is silent. They belong on the
+checklist anyway, because a list that omits them reads as "this merges cleanly
+and then needs six edits", and that is not what happens.
+
+1. `docs/residual-findings.md`. Both sides append entries at the end.
+2. `src/cratekit/core/cause.py`. Both sides add to the same region.
+3. `tests/test_layering.py`. **BOTH SIDES MUST SURVIVE.** `main` widened the rule
+   to `(r"^cratekit\.core\.(tree_registry|convergence)$", "write")` and this branch
+   adds `(r"^cratekit\.core\.restore$", "write")`. Taking either side wholesale
+   fails RED, so the resolution keeps both entries rather than picking one.
+4. `tests/test_pending_units.py`. Both sides edit `EXPECTED_PENDING`.
+
+### The six items to apply
 
 **1. Delete the stale `cratekit.core.restore` entry from `tests/_pending.py`.**
-Required, and it AUTO-RESOLVES: U32 deletes the line, U36 leaves it untouched, and
-a three-way merge takes the deletion. Listed so nobody re-adds it by hand.
+Required, and it AUTO-RESOLVES. **Confirmed on the scratch merge:**
+`cratekit.core.restore` is still present in `main`'s `_pending.py` and in `main`'s
+`EXPECTED_PENDING`, this branch deletes it from both, and the three-way merge
+takes this branch's deletion from both files with no conflict. Listed so nobody
+re-adds it by hand.
 
 **2. Delete the `cratekit.write.rebuild` entry from `tests/_pending.py` and from
 `EXPECTED_PENDING` in `tests/test_pending_units.py`.** The countdown fires the
@@ -677,24 +711,62 @@ moment U36's module exists, which is the mechanism working.
 Item 2's register text names this as the act that discharges it.
 
 **4. Add `rollback_effects=(RollbackEffect.NONE,)` to the `tree_convergence`
-entry in `core/config.py`.** Neither branch can write this alone: the enum is
-U32's and the entry is U36's. The three facts that entry holds are about rows in
-this database and nothing outside the coupled set, so NONE is the right answer.
+entry in `core/config.py`.** **Still not writable by U32 alone, re-confirmed:**
+`grep tree_convergence src/cratekit/core/config.py` on this branch returns
+nothing at all. The `StateFile` entry exists only on `main` and the
+`RollbackEffect` enum exists only here, so neither branch can write the line by
+itself and it stays a merge item. `main`'s own comment at `config.py:1246-1265`
+names the exact line. The three facts that entry holds are about rows in this
+database and nothing outside the coupled set, so NONE is the right answer.
 
 **5. Drop the `@requires("cratekit.write.rebuild")` decorator in
-`tests/test_restore.py`.** THIS ONE IS SILENT AND IS THE REASON THE LIST IS
-KEPT HERE. `_pending.requires` raises `KeyError` at IMPORT time for a key that is
-no longer in `PENDING`, so leaving the decorator after item 2 makes the whole file
-fail to COLLECT. That is not one red test, it is roughly two hundred tests that
-never run, and a suite that never runs looks exactly like a suite that passed.
+`tests/test_restore.py`.** **IT IS NOT SILENT, AND THE EARLIER TEXT HERE WAS
+WRONG ABOUT BOTH ITS SHAPE AND ITS SIZE.** With items 2, 3 and 4 applied and this
+one skipped, `tests/test_restore.py` fails to COLLECT: `_pending.requires` raises
+`KeyError` at IMPORT time, at `tests/_pending.py:267`, for a key no longer in
+`PENDING`. A plain `pytest` run then EXITS 2 with `Interrupted: 1 error during
+collection` and runs NOTHING at all. It does not look like a suite that passed,
+it looks like a suite that refused to start. It is invisible only to a run that
+was explicitly told to continue past collection errors, or to a subset run that
+does not name this file. The magnitude is **123 tests, not "roughly two
+hundred"**: collection drops from 3,419 to 3,296.
 
 **6. Rewrite `test_the_tree_shortness_handoff_calls_the_module_that_owns_the_gate`
 to patch `convergence.mark_unconverged` instead of `restore._convergence_module`.**
-Also silent in the same way: item 3 deletes the attribute the test patches, so it
-raises `AttributeError` at setup.
+Silent in the way item 5 is not: item 3 deletes the attribute the test patches, so
+it raises `AttributeError` at setup, and that is one red test.
 
-**Verified:** with all six applied, the merged tree is green, and the only
-remaining differences are the two documentation notes recorded below.
+### The one thing not to undo
+
+**7. The residual-finding citations in `core/restore.py` are by TITLE, and the
+merge must keep them that way.** `shares_the_database_volume` and
+`bare_metal_session` used to cite **R-19** and **R-20** by number. `main` now ends
+at R-17, so this branch's three entries renumber sequentially to R-18, R-19 and
+R-20 at the merge, at which point BOTH citations name the wrong finding and the
+second one names this checklist. They now cite
+`restore.RESIDUAL_CAPTURE_VOLUME_UNREPORTED` and
+`restore.RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH`, whose values are the finding
+titles, and `test_round4_the_residual_findings_this_module_names_still_exist`
+asserts each title still names a heading in this file. A renumber leaves that
+green, which is correct; a retitle turns it red, which is also correct. This is
+the shape already caught at the U36 merge, where `core/convergence.py` said "See
+R-15" and R-15 on the merged tree was a different finding.
+
+### The verified numbers
+
+**With the four conflicts resolved and NONE of the six items applied:** exactly
+**three failures**, each one mapping to an item on this list, and nothing fails
+that is not on it.
+
+**With all six applied:** **3,402 passed, 17 skipped, 3,419 collected**, `ruff`
+clean, `scripts/scan_repo.py` exit 0. The six are NECESSARY and SUFFICIENT: the
+only remaining differences are the two documentation notes recorded below.
+
+**Those counts were measured against branch tip `c7a1a7d`,** and fix round 4 adds
+nine tests on this side afterwards, so a merge of the current tip lands nine
+higher: 3,411 passed and 3,428 collected. The three failures, the six items and
+the four conflicts are unchanged by that round, which touched no file `main`
+touched except this one.
 
 **Two documentation corrections the merge should also carry.** U36's
 `assert_no_latched_restore` docstring says U32's `LATCHING_KINDS` does not include
