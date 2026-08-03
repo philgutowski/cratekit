@@ -627,8 +627,8 @@ landed code had the same shape. None of them was new to this unit, and U27's own
 verbs sit on top of all three, which is why it is recorded here rather than
 carried in somebody's head.
 
-**Closed here: the credential presence index.** `secrets._index_add` and
-`_index_remove` now hold an exclusive lock across the read and the write, and
+**Closed here: the credential presence index.** `secrets.set` and
+`secrets.delete` now hold an exclusive lock across the read and the write, and
 `credential_index_lock` is declared in `STATE_FILES` beside the file it guards,
 in the shape `core/jobs.py` and `core/review.py` already use. Three things made
 it separable from the two below rather than part of them: it is in a different
@@ -727,3 +727,61 @@ resolves and then fails on write reports green here, which is exactly why
 `secrets.set` verifies its write by reading it back. **Closes when:** the detail
 says what was asked, or the check performs a real round trip against a scratch
 entry, which is a decision about whether a health check may write.
+
+---
+
+## R-18. Five places where "I could not look" is still not said out loud
+
+**Found:** during the fourth review of U27, 2026-08-03, while closing the four
+that were blocking. Recorded rather than fixed because each needs a decision or a
+platform this run could not drive, and none of them reports a false GREEN: they
+either err toward a refusal or are loud.
+
+**NUMBERING.** `main` carries R-14 and R-15; this branch adds R-16, R-17 and this
+entry. A merge that finds another R-18 renumbers whichever arrives second.
+
+**1. Windows has no row in the mount-location table, so the derive refuses
+nothing there.** `preflight._VOLUME_MOUNT_LOCATIONS` declares macOS and Linux.
+`volume_mount_locations` answers with an empty tuple everywhere else, and the
+caller reads that as "nothing to refuse", which is right for a platform nobody
+has described and wrong for Windows specifically: `windows_volume_identity`
+exists, so an identity IS recorded there, and it is recorded off whatever the
+walk finds with the drive detached. The reason it is not fixed here is that a
+Windows volume is a drive root rather than a directory under a mount directory,
+so the row is a different shape, and inventing an untested shape for the one
+platform this machine cannot drive is how the guard becomes a no-op that reads
+as coverage. **Closes when:** somebody with Windows adds the row and drives it,
+or the derive refuses outright on a platform with an identity adapter and no
+mount-location row.
+
+**2. A volume hand-mounted somewhere the table does not name is accepted while
+it is unmounted.** The rule only asks about slots it knows about, so a volume
+mounted at a path of the user's own choosing has no slot, and the identity read
+with it detached is its parent's. Stated in `identity_source`'s own docstring.
+**Closes when:** the wizard offers to record the mount location it observed, or
+the table is read from configuration.
+
+**3. `deepest_existing` and `containing_mount` raise on an ancestor this account
+cannot traverse, and only DOCTOR survives it.** `Path.exists` re-raises a
+permission error rather than answering False. `doctor.answer` now turns that into
+a failed check, so the report survives; `cli/setup.py:_seed_taxonomy` and
+`_resolve_volume_id` call the same functions with no handler, so the WIZARD still
+exits with a traceback on a library root under a sealed directory. Refusing is
+the safe direction for a recorder, and a traceback is loud rather than wrong,
+which is why this is a service defect rather than a blocking one. **Closes when:**
+the wizard reports the unreachable ancestor as a refusal with a remedy, or
+`deepest_existing` returns a third answer for "cannot tell".
+
+**4. `secrets.exists` answers False for a presence index it could not read.**
+`_index_read` catches `OSError` and `ValueError` alike and returns an empty set,
+so an index this account cannot open reads as "nothing recorded". It errs toward
+a FAIL that tells the user to record a credential the keychain may already hold,
+which is the loop R-16 measured, reachable from a permission rather than from a
+race. **Closes when:** the reader tells a missing index from an unreadable one
+and doctor says which it saw.
+
+**5. Two answers from R-17 still claim more than they observed.**
+`library.db_containment` infers an atomic rename from pure path containment, and
+`keychain.reachable` states an observation when its probe is a heuristic about a
+backend class. Both were judged in round three and the judgement stands; they are
+repeated here so that a reader of the newest entry sees the whole set.

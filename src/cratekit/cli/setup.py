@@ -47,14 +47,16 @@ disk's identity is recorded as the library's. Every destructive verb's identity
 precondition then passes against the boot disk, and doctor reports four greens
 over it.
 
-What is refused is a gap A VOLUME WOULD FILL, which took two corrections to get
-right and both of the wrong answers refused a disk that was attached and
-readable. Requiring the root to exist refuses every first run. Allowing a gap of
-one directory refuses every library nested deeper than one, which is the ordinary
-layout. Neither absence nor depth was ever the hazard: the hazard is that the
-missing directory is where a volume APPEARS, so that is the question
-``preflight.identity_source`` asks, against a declared table of where this
-platform mounts one.
+What is refused is AN EMPTY MOUNT SLOT, which took three corrections to get
+right. The first two refused a disk that was attached and readable: requiring the
+root to exist refuses every first run, and allowing a gap of one directory
+refuses every library nested deeper than one, which is the ordinary layout. The
+third refused the gap where a volume would appear, which is the right subject and
+the wrong evidence, because an ejected volume leaves its mount point behind as an
+empty directory and then there is no gap to refuse. Neither absence nor depth was
+ever the hazard: the hazard is that nothing is MOUNTED at the place the path goes
+through, so that is the question ``preflight.identity_source`` asks, against a
+declared table of where this platform mounts one.
 
 **NOTHING LIBRARY-SCOPED IS WRITTEN UNTIL THE VOLUME IS ASSERTED.** The active
 taxonomy is the one thing this verb writes beside the library, and it used to be
@@ -464,19 +466,19 @@ def _resolve_volume_id(
     once, that identity is what every destructive verb then asserts, against the
     disk holding the user's operating system.
 
-    WHAT IS REFUSED IS A GAP A VOLUME WOULD FILL, and getting there took two
-    corrections, both of which refused a volume that was attached and readable.
-    "The root must already exist" refused every first run. "The gap may be at
+    WHAT IS REFUSED IS AN EMPTY MOUNT SLOT, and getting there took three
+    corrections. The first two refused a volume that was attached and readable:
+    "the root must already exist" refused every first run, and "the gap may be at
     most one level" refused every library nested two or more directories down,
-    which is the ordinary layout: driven on one attached volume in one run,
-    ``/Volumes/NAME/library`` was accepted and ``/Volumes/NAME/Music/library``
-    was refused with a message telling the user to attach a disk that was already
-    mounted. Depth was never the hazard.
+    which is the ordinary layout. The third refused too little rather than too
+    much. It asked whether the first MISSING directory was a mount location,
+    which reads absence as the hazard, and an ejected volume routinely leaves its
+    mount point behind as an empty directory: nothing was missing, nothing was
+    refused, and the boot disk was recorded exactly as before.
 
-    ``preflight.identity_source`` answers the question that is actually load
-    bearing: is the first missing directory a place where this platform MOUNTS a
-    volume. That is the only shape where the identity found by walking up is not
-    the identity the library will sit on.
+    ``preflight.identity_source`` asks of the SLOT rather than of the gap. For
+    every place on the way down where this platform mounts a volume, is a volume
+    mounted there right now. Depth is not consulted and absence is not consulted.
 
     The identity provider comes from the run's ``Probes`` rather than from the
     platform default here, so the volume this wizard reads is the volume doctor
@@ -490,21 +492,23 @@ def _resolve_volume_id(
         wizard.asked.append("library.volume_id (from the command line)")
         return flag
     provider = machine.identity_provider or preflight.default_identity_provider()
+    slots = preflight.mount_location_ancestors(Path(root))
     source = preflight.identity_source(Path(root))
     if source is None:
+        empty = ", ".join(str(slot) for slot in slots)
         raise _refuse(
-            f"{root} sits below {preflight.deepest_existing(Path(root))}, and the "
-            f"first directory missing under it is where this platform mounts a "
-            f"volume. Whatever mounts there is not the filesystem an identity "
-            f"read now would find, and recording that one would make every "
-            f"destructive refusal pass against the wrong disk. Attach the library "
-            f"volume and run setup again, or supply the identity with "
-            f"--volume-id",
+            f"{root} sits under {empty}, which is where this platform mounts a "
+            f"volume, and no volume is mounted there right now. The identity a "
+            f"read would find belongs to the filesystem ABOVE that point rather "
+            f"than to the disk this library will sit on, and recording it would "
+            f"make every destructive refusal pass against the wrong disk. Attach "
+            f"the library volume and run setup again, or supply the identity "
+            f"with --volume-id",
             remedy=Remedy.MOUNT_LIBRARY_VOLUME,
             detail={
                 "key": "library.volume_id",
                 "root": root,
-                "deepest_existing": str(preflight.deepest_existing(Path(root))),
+                "empty_mount_points": [str(slot) for slot in slots],
             },
             reason="library-volume-unmounted",
         )

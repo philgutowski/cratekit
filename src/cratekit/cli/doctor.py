@@ -820,8 +820,29 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
     unreadable = _library_state_unreadable(inputs, "the active template")
     if unreadable is not None:
         return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
-    shipped = taxonomy.shipped_template_names()
+    shipped, unlistable = taxonomy.shipped_templates()
     named = inputs.cfg.taxonomy.template
+    if unlistable is not None:
+        # "NOT PRESENT" AND "COULD NOT LOOK" ARE DIFFERENT ANSWERS, and the empty
+        # tuple was serving as both. The walk swallows an unreadable packaged
+        # directory so that building the command tree cannot die on a partial
+        # install, which is right; what was wrong is reading the resulting
+        # emptiness as a fact about the shipped set. A user with a damaged
+        # install was told their configuration named a template nothing ships and
+        # sent to re-run setup, which cannot repair packaged data.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"{unlistable}. Whether a template named {named!r} ships was "
+                f"therefore not established, and neither was the active copy "
+                f"beside the database. This is a damaged or partial install "
+                f"rather than a configuration error, so re-running setup would "
+                f"not repair it"
+            ),
+            remedy=Remedy.REPORT_DEFECT,
+        )
     if named not in shipped:
         # ASSERTED rather than assumed, and it was assumed. The OK branch below
         # claimed the configured template "is active" while comparing nothing to
@@ -842,10 +863,7 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
     path = config.state_path("taxonomy_active", inputs.cfg)
     try:
         text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        # UnicodeDecodeError is a ValueError, not an OSError, so a template that
-        # is present and is not text would otherwise escape this check as an
-        # internal defect rather than as the unusable template it is.
+    except (FileNotFoundError, NotADirectoryError):
         return Finding(
             key=key,
             title=title,
@@ -856,6 +874,29 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
                 f"database, and routing has no declared tree without it"
             ),
             remedy=Remedy.RUN_SETUP,
+        )
+    except (OSError, UnicodeDecodeError) as exc:
+        # UnicodeDecodeError is a ValueError, not an OSError, so a template that
+        # is present and is not text would otherwise escape this check as an
+        # internal defect rather than as the unusable template it is.
+        #
+        # AND IT IS A SEPARATE ANSWER FROM "IT IS NOT THERE". One handler over
+        # both said "no active taxonomy template at X" for a file that is at X
+        # and cannot be read by this account, and then attached run-setup, which
+        # takes the branch below that leaves an existing file alone. The user
+        # re-runs setup forever.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"the active taxonomy template at {path} exists and could not be "
+                f"read ({exc}), so whether the library declares a usable tree was "
+                f"not established. Setup leaves an existing copy alone, so this is "
+                f"a permission or a corruption to repair rather than an answer to "
+                f"give again"
+            ),
+            remedy=Remedy.REPORT_DEFECT,
         )
     try:
         declared = taxonomy.load_taxonomy(text)
@@ -1512,8 +1553,15 @@ def _log_directory_unreadable(cfg: config.Config) -> Path | None:
     and "cannot tell".
     """
     directory = session.log_dir(cfg)
-    if not directory.exists():
-        return None
+    try:
+        if not directory.exists():
+            return None
+    except OSError:
+        # ``Path.exists`` re-raises anything that is not "it is not there", so a
+        # state directory this account cannot TRAVERSE arrived here as an
+        # exception rather than as False. Doctor lost the whole report to it.
+        # Unreadable is the honest answer and it is the one the caller renders.
+        return directory
     try:
         # Listed rather than stat-ed. A directory with no execute bit stats fine
         # and cannot be read, which is exactly the state that produced an empty
@@ -1712,7 +1760,7 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
     hook = git_dir / "hooks" / "pre-commit"
     try:
         body = hook.read_text()
-    except OSError:
+    except (FileNotFoundError, NotADirectoryError):
         return Finding(
             key=key,
             title=title,
@@ -1722,6 +1770,24 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
                 f"before a commit and a personal path or a credential reaches the "
                 f"history unchallenged. Run `pre-commit install` in {root}"
             ),
+        )
+    except (OSError, UnicodeDecodeError) as exc:
+        # A HOOK THAT IS THERE AND CANNOT BE READ IS NOT A MISSING HOOK. One
+        # handler over both reported "no pre-commit hook at X" for a file sitting
+        # at X, and sent the user to `pre-commit install`, which rewrites a file
+        # it may not be able to open either. Git will still try to RUN it, so
+        # whether the scan happens is genuinely unknown here, which is the answer.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"a pre-commit hook exists at {hook} and could not be read ({exc}), "
+                f"so whether the repository scan runs before a commit was not "
+                f"established. Git runs the file regardless of whether this check "
+                f"can open it, so the answer is unknown rather than no"
+            ),
+            remedy=Remedy.REPORT_DEFECT,
         )
     problem = _hook_dispatch_problem(body, root)
     if problem is not None:
@@ -1797,12 +1863,52 @@ CHECKS: tuple[Check, ...] = (
 CHECK_KEYS: tuple[str, ...] = tuple(check.key for check in CHECKS)
 
 
+def answer(check: Check, inputs: _Inputs) -> Finding:
+    """One check's answer, and a THIRD outcome for the check that cannot give one.
+
+    "Never raises" was a sentence in :func:`run`'s docstring and nothing made it
+    true. Every check here reaches the outside world, and three of those reaches
+    raise on an ordinary broken machine rather than returning a value:
+    ``psutil`` refusing to enumerate processes, and ``Path.exists`` and
+    ``Path.is_dir`` re-raising a permission error instead of answering False,
+    which is what a library root under a directory this account cannot traverse
+    produces. One of those took the ENTIRE report down, on precisely the machine
+    the module's own opening argument says the report exists for: "a doctor that
+    fails by throwing them away is useless in exactly the case it exists for".
+
+    It is a FAIL rather than an INFO, and that is the load-bearing half. INFO is
+    "worth knowing, nothing to do now", and a check that did not complete has not
+    established that there is nothing to do. Green over an unanswered question is
+    the defect this whole unit keeps being sent back for, and a rescue that
+    reported one would be that defect wearing a handler.
+
+    It is deliberately NOT per check. A handler inside each one is a handler that
+    the next check written here will not have, and the property wanted is about
+    every check rather than about the ones somebody remembered.
+    """
+    try:
+        return check.run(inputs)
+    except Exception as exc:  # noqa: BLE001 - see the docstring
+        return Finding(
+            key=check.key,
+            title=check.key,
+            status=Status.FAIL,
+            detail=(
+                f"this check did not complete: {type(exc).__name__}: {exc}. The "
+                f"answer is unknown rather than good, and the rest of the report "
+                f"is below rather than discarded with it"
+            ),
+            remedy=Remedy.REPORT_DEFECT,
+        )
+
+
 def run(cfg: config.Config | None = None, *, probes: Probes | None = None) -> Report:
     """Answer every check, always, and never raise.
 
     Every check answers on every run, including the ones that cannot be evaluated,
     because a report whose length depends on the machine is a report a consumer
-    cannot diff. A check that cannot run says so as INFO and names why.
+    cannot diff. A check that cannot run says so as INFO and names why, and a
+    check that BREAKS trying says so as FAIL through :func:`answer`.
 
     ``cfg`` is loaded here rather than required from the caller, because doctor's
     first job on a broken install is to report that there is no configuration,
@@ -1815,7 +1921,7 @@ def run(cfg: config.Config | None = None, *, probes: Probes | None = None) -> Re
         except config.ConfigError as exc:
             cfg, error = None, exc
     inputs = _Inputs(cfg, error, probes or Probes())
-    return Report(tuple(check.run(inputs) for check in CHECKS))
+    return Report(tuple(answer(check, inputs) for check in CHECKS))
 
 
 # ---------------------------------------------------------------------------
@@ -2024,6 +2130,7 @@ __all__ = [
     "Probes",
     "Report",
     "Status",
+    "answer",
     "build",
     "build_status",
     "contract_members",

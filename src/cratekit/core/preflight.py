@@ -346,11 +346,30 @@ def volume_mount_locations() -> tuple[tuple[Path, int], ...]:
     is. An empty answer means this module knows of no auto-mount location here,
     and the caller treats that as "nothing to refuse", because inventing a
     location would refuse ordinary paths on a platform nobody has described.
+
+    EVERY ROW IS RESOLVED, and that is not tidiness. The paths this is compared
+    against are resolved, so one symlinked location silently matches nothing and
+    the guard built on it becomes a no-op with no symptom: on a machine where the
+    temporary directory is reached through a symlink, a synthetic ``/Volumes``
+    under it never matched and every path under it was accepted.
     """
     return tuple(
-        (Path(directory), depth)
+        (Path(directory).resolve(), depth)
         for directory, depth in _VOLUME_MOUNT_LOCATIONS.get(sys.platform, ())
     )
+
+
+def is_mount_point(path: Path) -> bool:
+    """Whether the kernel has a filesystem mounted EXACTLY at ``path``.
+
+    A named seam rather than a bare ``os.path.ismount`` call for the reason
+    ``default_identity_provider`` is one: it is the single fact about the running
+    machine that the rule below turns on, and a suite cannot mount a real volume.
+    It answers False for a path that does not exist and for one it cannot stat,
+    and both of those are the safe direction here, because the caller's refusal
+    is what stops an identity being read off the wrong disk.
+    """
+    return os.path.ismount(path)
 
 
 def _is_a_volume_mount_location(
@@ -367,9 +386,24 @@ def _is_a_volume_mount_location(
     return False
 
 
-def identity_source(
-    path: Path, *, locations: Sequence[tuple[Path, int]] | None = None
-) -> Path | None:
+def mount_location_ancestors(path: Path) -> tuple[Path, ...]:
+    """Every place a volume would mount on the way down to ``path``.
+
+    ``path`` itself counts, because a library root may BE a mount point. More
+    than one can match and they are all returned: the removable-media mounters on
+    Linux use ``/media/<label>`` and ``/media/<user>/<label>``, so one real path
+    answers at two declared depths and only one of them is the mount.
+    """
+    resolved = Path(path).resolve()
+    known = volume_mount_locations()
+    return tuple(
+        candidate
+        for candidate in (resolved, *resolved.parents)
+        if _is_a_volume_mount_location(candidate, known)
+    )
+
+
+def identity_source(path: Path) -> Path | None:
     """The mount whose identity may be RECORDED for ``path``, or None.
 
     The question is narrower than "which mount contains this path", and the
@@ -380,39 +414,47 @@ def identity_source(
     and recording THAT identity as the library's makes every destructive refusal
     pass against the disk holding the operating system.
 
-    WHAT IS REFUSED IS A GAP THAT A VOLUME WOULD FILL, and that is a correction
-    to two earlier rules that were both about the wrong thing. "The root must
-    already exist" refused every first run. "The gap may be at most one level"
-    refused every library nested two or more directories under an attached
-    volume, which is the ordinary layout: ``/Volumes/NAME/Music/library`` is
-    exactly as safe as ``/Volumes/NAME/library`` and was refused, on a volume
-    that was mounted and readable, with a message telling the user to attach it.
-    Depth was never the hazard. The hazard is that the missing path is where a
-    volume APPEARS, so that is what is asked, against a declared table of where
-    this platform mounts one.
+    WHAT IS REFUSED IS A MOUNT SLOT THAT NOTHING IS MOUNTED IN, and that is the
+    third rule here, because the first two were both about the wrong thing and
+    the third was right about the question and wrong about the evidence.
 
-    Three shapes, and only the third is refused:
+    * "The root must already exist" refused every first run.
+    * "The gap may be at most one level" refused every library nested two or more
+      directories under an attached volume, which is the ordinary layout.
+    * "Refuse only when the first MISSING directory is a mount location" reads
+      absence as the whole hazard, and absence is only half of it. An ejected
+      volume routinely leaves its mount point behind as an empty directory on the
+      boot disk: that is the FIRST of the three broken states this module's own
+      opening paragraphs exist to tell apart. With ``/Volumes/NAME`` sitting
+      there as an ordinary directory, ``/Volumes/NAME/library`` crosses no gap at
+      all, so the walk fell straight through to ``/`` and handed back the boot
+      disk, which is verbatim the defect the first rule was written for.
 
-    * the path EXISTS, so the identity is read from the volume it is on;
-    * it does not exist and the first missing directory is an ordinary one, so it
-      would be created on the volume its parent is already on, and that volume's
-      identity is the right one to record;
-    * it does not exist and the first missing directory is a mount location, so
-      the volume that will occupy it is not the volume this read would find.
+    So the question is asked of the SLOT rather than of the gap: for every place
+    on the way down where this platform mounts a volume, is a volume mounted
+    there right now. Depth is not consulted, absence is not consulted, and what
+    the filesystem is asked is the one thing it can actually answer.
+
+    Three shapes:
+
+    * no mount slot on the way down, so the path is on ordinary storage and the
+      identity of whatever holds it is the identity it will keep. Accepted at any
+      depth, existing or not;
+    * a mount slot with a volume in it, so the identity read is that volume's.
+      Accepted, at any depth below it;
+    * a mount slot with nothing mounted in it, whether the directory is absent or
+      is a leftover. REFUSED, because the identity a walk finds now belongs to
+      whatever filesystem is above the slot rather than to the volume that will
+      occupy it.
 
     A residual, stated because it is not covered: a volume hand-mounted somewhere
-    this table does not name, whose mount point directory does not currently
-    exist. The identity read would be its parent's. Attaching the volume first,
-    which creates the mount point, resolves it, and so does naming the identity.
+    this table does not name. It is accepted while mounted, which is correct, and
+    accepted while unmounted, which is not. Naming the identity resolves it, and
+    so does adding the location to the table.
     """
     resolved = Path(path).resolve()
-    deepest = deepest_existing(resolved)
-    if deepest == resolved:
-        return containing_mount(resolved)
-    gap = resolved.relative_to(deepest)
-    first_missing = deepest / gap.parts[0]
-    known = volume_mount_locations() if locations is None else locations
-    if _is_a_volume_mount_location(first_missing, known):
+    slots = mount_location_ancestors(resolved)
+    if slots and not any(is_mount_point(slot) for slot in slots):
         return None
     return containing_mount(resolved)
 

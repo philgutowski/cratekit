@@ -466,6 +466,30 @@ def shipped_template_names() -> tuple[str, ...]:
     family and writing "never raises" is the shape of overclaim this unit has
     been shipping all week, so both are caught and the sentence is true.
 
+    WHICH LEAVES THE OTHER HALF, and it is why this delegates. An empty answer is
+    honest to an argument parser, which only ever needed a list of choices, and
+    it is a LIE to a health check, which needs to know whether nothing ships or
+    nothing could be read. Those have opposite remedies and the check was giving
+    the wrong one. :func:`shipped_templates` returns both halves; this returns
+    the half a parser can use.
+    """
+    return shipped_templates()[0]
+
+
+def shipped_templates() -> tuple[tuple[str, ...], str | None]:
+    """The shipped template names, AND why the directory could not be listed.
+
+    Two returns rather than one because "no template ships under that name" and
+    "the packaged directory could not be read" are different diagnoses with
+    opposite remedies, and collapsing them into an empty tuple gave every caller
+    the first sentence for the second condition. Doctor told a user with a
+    damaged install that their configuration named a template nothing ships and
+    sent them to re-run setup, which cannot repair packaged data.
+
+    The problem is a SENTENCE rather than the exception, because the caller
+    renders it into a report and the only thing it needs from the failure is what
+    went wrong with which directory.
+
     A NAME IS ONLY OFFERED IF CONFIGURATION WOULD ACCEPT IT. Anything between the
     prefix and the suffix is a candidate on disk, so ``taxonomy.deep.house.toml``
     yields ``deep.house``, which ``config.validate`` refuses because the name is
@@ -473,11 +497,14 @@ def shipped_template_names() -> tuple[str, ...]:
     layer down is the same two-answers-to-one-question defect this function was
     written to close, so the filter is applied here, from the module that owns
     the rule.
+
+    IT NEVER RAISES either, for the reason above it: the argument parser reaches
+    this through :func:`shipped_template_names` on every invocation of every verb.
     """
     try:
         entries = list((resources.files("cratekit") / "templates").iterdir())
-    except (OSError, ValueError):
-        return ()
+    except (OSError, ValueError) as exc:
+        return (), f"the packaged template directory could not be listed: {exc}"
     found = []
     for item in entries:
         name = item.name
@@ -486,7 +513,7 @@ def shipped_template_names() -> tuple[str, ...]:
         short = name[len(_TEMPLATE_PREFIX) : -len(_TEMPLATE_SUFFIX)]
         if config.template_name_is_usable(short):
             found.append(short)
-    return tuple(sorted(found))
+    return tuple(sorted(found)), None
 
 
 def shipped_template_text(name: str) -> str:
