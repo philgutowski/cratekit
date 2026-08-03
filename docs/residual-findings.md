@@ -535,3 +535,50 @@ fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather
 than skips, so the battery runs either way and a supplied fixture strengthens it.
 The natural owner is U27, which lands doctor and is the unit that makes a machine
 ready.
+
+---
+
+## R-14. What the U36 and U32 merge owes, verified rather than inferred
+
+**Found:** during U36's first review round, 2026-08-02, by running the merge.
+
+Both branches were merged in a scratch clone and the whole suite was run against
+the result. Six tests fail, all of them in `tests/test_restore.py`, and every one
+is a merge-resolution item rather than a defect in either branch. Recorded here
+so whoever merges is not discovering them one at a time.
+
+1. **`record_cutover` needs `source`.** Four failures. U36 made `source` a
+   required keyword-only argument with no default, because the only value it
+   could pick is `TAXONOMY` and picking it writes "yes, this tree can be
+   rebuilt" about a tree nobody checked into a one-way record. U32 added a
+   fixture call afterwards. **Add `source=DerivationSource.TAXONOMY` to
+   `_cut_over` in `tests/test_restore.py`.**
+2. **`test_the_rebuild_verb_has_no_way_to_declare_a_recovery_intent`.** U32's
+   own test, whose docstring says "if that ever changes this reasoning should be
+   revisited rather than inherited". It changed: `write_tree_membership` now
+   takes an `intent`, so the rebuild is no longer refused by the latch whose
+   refusal names it. **Delete or invert that test.**
+3. **`test_every_coupled_entry_declares_what_leaves_the_coupled_set`.** U36's
+   `tree_convergence` entry cannot name `RollbackEffect` on a branch where U32's
+   enum does not exist. **Add `rollback_effects=(RollbackEffect.NONE,)`;** the
+   comment at the entry in `config.py` gives the line and the argument.
+4. **`test_a_restore_predating_a_cutover_marks_that_tree_unconverged`** asserts
+   `reconcile.unconverged_trees(cfg) == ("routing",)`. That is stale against
+   U32's own hand-over: `restore._hand_tree_shortness_over` routes the fact to
+   `convergence.mark_unconverged` whenever that module is present, and it now is.
+   **Assert `convergence.read(cfg).blocking_trees()` instead.** Patched that way
+   in the scratch merge, the handoff passes, which is the positive confirmation
+   that ownership of tree shortness now sits in one module.
+
+**Also in the merge, and not a test failure**, so nothing will catch it: U32
+re-keyed its pending entry to `cratekit.write.tree_rebuild` on the belief that
+U36 would ship that filename. U36 ships `src/cratekit/write/rebuild.py`, which is
+what issue #36's Files line names, so U32's key can never resolve and its
+countdown sits switched off while the suite stays green. **Re-key it to
+`cratekit.write.rebuild` in `tests/_pending.py` and `tests/test_pending_units.py`.**
+The entry then fires, and discharging it is the commit that removes the fallback
+branch in `restore._hand_tree_shortness_over` and the
+`reconcile.Kind.UNCONVERGED_TREE` path behind it.
+
+**Closes when:** both branches are on `main` and the six items above are
+resolved.

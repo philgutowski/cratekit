@@ -175,6 +175,24 @@ PENDING: dict[str, tuple[str, str]] = {
         "U20 narrowed from building the record to READING it. Building a second "
         "one would still give two answers",
     ),
+    # THREE THINGS THE MERGE WITH U32 HAS TO DO IN THIS FILE AND ITS SIBLINGS,
+    # verified against a real merge on 2026-08-02 rather than inferred:
+    #
+    # 1. U32 carries an entry keyed ``cratekit.write.tree_rebuild``, re-keyed
+    #    there from ``cratekit.write.rebuild`` on the belief that U36 would ship
+    #    the former. U36 ships ``src/cratekit/write/rebuild.py``, which is what
+    #    issue #36's Files line names, so on the merged tree U32's key is the one
+    #    that can never resolve. RE-KEY IT BACK TO ``cratekit.write.rebuild``.
+    #    Left alone it is a permanent red light that teaches people to ignore the
+    #    audit, which is the exact failure the U32 comment beside it describes.
+    # 2. ``tests/test_pending_units.py`` carries the same spelling in
+    #    ``EXPECTED_PENDING`` and moves with it.
+    # 3. Once re-keyed, ``_is_absent`` answers False and the meta-test goes red,
+    #    which is the countdown FIRING rather than a problem. Discharging it means
+    #    deleting the entry in a commit that also removes the fallback branch in
+    #    ``restore._hand_tree_shortness_over`` and the
+    #    ``reconcile.Kind.UNCONVERGED_TREE`` path behind it, exactly as U32's own
+    #    entry text asks.
     "cratekit.cli.rebuild": (
         "U20",
         "the command-line surface for the rebuild verb, and the obligation that "
