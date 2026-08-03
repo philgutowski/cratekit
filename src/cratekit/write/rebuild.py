@@ -1027,42 +1027,114 @@ class RebuildReport:
 REBUILD_ACTOR = "tree-rebuild"
 
 
-def close_restore_marker(cfg: config.Config, tree_id: str) -> bool | None:
-    """Close U32's UNCONVERGED_TREE marker for this tree, on evidence. Three answers.
+def _reconcile():  # type: ignore[no-untyped-def]
+    """``cratekit.core.reconcile`` if this build has it, else None. Never raises.
 
-    TWO RECORDS EXIST FOR ONE FACT AND THIS IS THE JOINT BETWEEN THEM, stated
-    plainly rather than hidden. ``cratekit.core.convergence`` holds a per-tree
-    unconverged flag, set by the out-of-band restore detection and read by every
-    governed write to that tree. ``cratekit.core.reconcile`` holds an
-    ``UNCONVERGED_TREE`` marker, set by a Cratekit restore that landed on the far
-    side of a cutover and read by the session gate that every destructive session
-    passes through. They describe the same condition from two sides, and until
-    they are collapsed into one, a rebuild that cleared only one of them leaves
-    the library refusing every destructive session with no exit except the bare
-    disposition call, which is precisely the softening path U32's own register
-    entry warns against. So the rebuild closes both.
-
-    IT CLOSES ONLY ON THE EVIDENCE OF A REAL CHECK. The caller reaches this after
-    the second convergence check reported no difference at all, which is the one
-    thing that makes a closure honest. A marker closed with a verdict and no
-    check would satisfy every test in this repository and leave the tree exactly
-    as short as it was.
-
-    IT RETURNS None WHEN THE MODULE IS NOT PRESENT, and the import is guarded for
-    exactly one reason: ``cratekit.core.reconcile`` lands in U32, on a branch that
-    has not met this one yet. That absence is REPORTED rather than swallowed, up
-    the return value and into the log, because "the other record was not reached"
-    and "the other record had nothing open" are different facts and reading one
-    as the other is the defect shape this whole wave is about. Once the two
-    branches meet, the guard has nothing left to catch and comes out.
-
-    THE DUPLICATION SURVIVES THIS FIX AND NEEDS A FOLLOW-UP. Two records for one
-    fact is two things that can disagree, and this function is a bridge rather
-    than a resolution.
+    RESOLVED AT CALL TIME AND THAT IS DELIBERATE. That module lands with U32, on
+    a branch this one has not met yet, so a module-level import would make this
+    module unimportable until it does, and a hard requirement on a module that
+    does not exist is not a handoff, it is a breakage. The same shape U32's own
+    ``restore._convergence_module`` uses to reach this half from the other side,
+    written the same way on purpose. Every caller REPORTS the absence rather than
+    treating it as an answer.
     """
     try:
-        from cratekit.core import reconcile
+        from cratekit.core import reconcile  # noqa: PLC0415
     except ImportError:
+        return None
+    return reconcile
+
+
+def assert_no_outstanding_effects(cfg: config.Config) -> None:
+    """Refuse a rebuild while a restore has left effects nobody has answered for.
+
+    THE OTHER HALF OF A BOUNDED EXEMPTION, and it is here because the intent the
+    rebuild declares is wider than the thing it needs. The membership write is
+    made with ``Intent.RECOVERY`` so the restore-reconciliation latch cannot
+    refuse the rebuild that latch's own refusal names. ``RECOVERY`` sheds that
+    whole latch, and the latch guards two different kinds of marker: an
+    UNCONVERGED TREE, whose only remedy IS this rebuild, and an EFFECT, which is
+    something a restore could not undo out in the world and whose remedy is a
+    person deciding what to do about it. A rebuild has no business shedding the
+    second one, so it asserts it here by name.
+
+    THE SPLIT MATCHES WHERE THE FACT NOW LIVES. U32 settled ownership of tree
+    shortness on ``core.convergence`` and hands it over rather than latching it,
+    so on a merged build the tree kind should not appear in that store at all.
+    This assertion is written against the EFFECT kind alone, so it stays correct
+    either way: it refuses over the markers that are not this rebuild's business,
+    and it stays silent about the ones that are.
+    """
+    reconcile = _reconcile()
+    if reconcile is None:
+        return
+    effects = [
+        record
+        for record in reconcile.outstanding(cfg)
+        if record.marker.kind is reconcile.Kind.EFFECT
+    ]
+    if not effects:
+        return
+    raise refuse(
+        "tree-unconverged",
+        "a restore of this library left "
+        + f"{len(effects)} effect(s) it could not undo, and nobody has said what "
+        "should happen about them; a rebuild is exempt from the tree markers "
+        "whose remedy it is and from nothing else, because an effect is a fact "
+        "about the world outside this library that no rebuild repairs",
+        remedy=Remedy.COMPLETE_PENDING_ACTION,
+        steps=(
+            "close each outstanding restore effect by deciding what to do about "
+            "it, then run this rebuild again",
+        ),
+        scope=Scope.RUN,
+        origin=("tree_rebuild",),
+        detail={"markers": [record.marker.marker_id for record in effects]},
+    )
+
+
+def close_restore_marker(cfg: config.Config, tree_id: str) -> bool | None:
+    """Close a legacy UNCONVERGED_TREE marker for this tree, on evidence. Three answers.
+
+    TWO RECORDS EXISTED FOR ONE FACT AND THIS IS THE JOINT BETWEEN THEM.
+    ``cratekit.core.convergence`` holds a per-tree unconverged flag, set by the
+    out-of-band restore detection and read by every governed write to that tree.
+    ``cratekit.core.reconcile`` holds an ``UNCONVERGED_TREE`` marker, set by a
+    Cratekit restore that landed on the far side of a cutover and read by the
+    session gate every destructive session passes through. They describe one
+    condition from two sides, and a rebuild that cleared only one of them left
+    the library refusing every destructive session with no exit except a bare
+    disposition, which is the softening path U32's own register entry warns
+    against.
+
+    U32'S FIX ROUND SETTLED THE OWNERSHIP ON ``convergence``, and this function is
+    what makes the transition safe rather than a second answer. Its restore now
+    hands the trees over with ``convergence.mark_unconverged`` and only falls back
+    to writing its own marker on a build where ``convergence`` is absent. So on a
+    merged build there should be no tree marker to close, and this normally
+    answers False. What it exists for is the window: a marker written by a build
+    that had ``reconcile`` and not ``convergence`` outlives the merge, and without
+    this it would stand open forever because the fact it records is now cleared
+    somewhere else.
+
+    IT CLOSES ONLY ON THE EVIDENCE OF A REAL CHECK. The caller reaches this after
+    the second convergence check reported no difference at all. A marker closed
+    with a verdict and no check would satisfy every test in this repository and
+    leave the tree exactly as short as it was.
+
+    IT RETURNS None WHEN THE MODULE IS NOT PRESENT, reported up the return value
+    and into the log rather than swallowed, because "the other record had nothing
+    open" and "the other record was not reached" are different facts and reading
+    one as the other is the defect shape this whole round is about.
+
+    THE DUPLICATION IS NOT FULLY RESOLVED AND NEEDS A FOLLOW-UP. U32 registered
+    it: the commit that discharges its pending entry deletes the fallback branch
+    in ``restore._hand_tree_shortness_over`` and the whole
+    ``reconcile.Kind.UNCONVERGED_TREE`` path behind it, at which point this
+    function has nothing left to close and comes out with them.
+    """
+    reconcile = _reconcile()
+    if reconcile is None:
         logger.warning(
             "the restore reconciliation record is not part of this build, so the "
             "tree %s may still carry an open marker there; the convergence flag "
@@ -1187,19 +1259,32 @@ def rebuild_tree(
     for the reason R29 gives, and which is handed the rebuild purpose so the
     convergence latches whose remedy is this function do not refuse it.
 
-    THE TWO LATCHES THIS RUN IS AND IS NOT HELD BY, spelled out because they look
-    alike and are not. The membership write is made with ``Intent.RECOVERY``, so
-    the restore-reconciliation latch does not refuse it: that latch's outstanding
-    markers include "this tree needs rebuilding", and a latch that condemns its
-    own remedy leaves a library with no exit but a hand-edited file. The
-    unresolved-session latch is a different fact with a different remedy, a
-    restore rather than a rebuild, and ``RECOVERY`` lifts it too, so this asserts
-    it HERE and by name. A rebuild over a library whose last commit could not be
-    read back would be adding to something nobody can vouch for.
+    THE LATCHES THIS RUN IS AND IS NOT HELD BY, spelled out because they look
+    alike and are not, and because an exemption nobody bounds is an override.
+
+    The membership write declares ``Intent.RECOVERY``, which sheds the
+    restore-reconciliation latch whole. That latch's outstanding markers include
+    "this tree needs rebuilding", and a latch that condemns its own remedy leaves
+    a library with no exit but a hand-edited file, which this repository has
+    already shipped once. But ``RECOVERY`` is WIDER than what is needed, in two
+    directions, so both are put back by name:
+
+    * the unresolved-session latch, whose remedy is a restore rather than a
+      rebuild. A rebuild over a library whose last commit could not be read back
+      would be adding to something nobody can vouch for.
+    * the reconciliation latch's EFFECT markers, which are facts about the world
+      outside this library that no rebuild repairs. Only the tree markers are
+      this rebuild's business.
+
+    What is genuinely shed is exactly three things, all of them naming this
+    function as their own remedy: this tree's convergence flag, the out-of-band
+    restore REFUSAL (the detection still runs and still marks), and the
+    reconciliation latch's unconverged-tree markers.
     """
     source = registry.derivation_source(tree_id)
     tree_registry.assert_rebuildable(tree_id, source)
     session.assert_no_unresolved_session(cfg)
+    assert_no_outstanding_effects(cfg)
     collection = tuple(rows)
     root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
     placements, not_compared = declared_membership(
@@ -1382,6 +1467,7 @@ __all__ = [
     "TreeNode",
     "Truth",
     "assert_addressable",
+    "assert_no_outstanding_effects",
     "check",
     "close_restore_marker",
     "declared_membership",
