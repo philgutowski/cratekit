@@ -458,12 +458,8 @@ CLOSING_SPELLINGS_GITHUB_ACTS_ON = (
     "Closes #36, #33",
     "This closes #36.",
     "feat: a thing\n\nCloses #36\n",
-    # GitHub's other three documented reference forms. The keywords were widened
-    # first and these were left, which made the coverage nine times ONE form
-    # while the commit message claimed eleven ways.
+    # The other reference form that closes an issue HERE.
     "Closes GH-36",
-    "Closes owner/repo#36",
-    "Closes https://github.com/owner/repo/issues/36",
     # A revert. It really does close the issue, and the refusal is the point: a
     # revert un-lands the module, so the register re-owes the unit exactly then.
     'Revert "feat(write): converge (closes #36)"',
@@ -486,6 +482,14 @@ MESSAGES_THAT_CLOSE_NOTHING = (
     "feat(write): converge\n\nCloses #21\n\nand #36 stays open until the export CLI lands.\n",
     # A link with a fragment is not a closing reference.
     "see https://example.com/notes/fixes#36 for the reasoning",
+    # CROSS-REPOSITORY references close an issue in the NAMED repository and
+    # nothing here. Matching them refused commits over units they have no
+    # relationship to, and this is the realistic trigger rather than a
+    # hypothetical: this repository vendors pyrekordbox, the owed unit numbers
+    # run from 8 to 38, and upstream numbers collide with them constantly.
+    "fixes numpy/numpy#36",
+    "fixes https://github.com/dylanljones/pyrekordbox/issues/36",
+    "chore(vendor): bump pyrekordbox\n\nfixes dylanljones/pyrekordbox#36 upstream\n",
 )
 
 
@@ -599,4 +603,44 @@ def test_the_two_message_paths_are_cleaned_differently_because_they_have_to_be()
 
     assert board.unresolved_closes("docs: x\r\n\r\nCloses #36\r\n", owed, raw=True), (
         "CRLF was already handled and must not regress"
+    )
+
+
+def test_a_refusal_names_what_the_package_actually_contains():
+    """The diagnosis, put where the refusal is read.
+
+    A register key can name a module nobody will build, and the loudest symptom
+    is a permanent exit 2 saying only that a module is owed. `cratekit.write.rebuild`
+    absent while `cratekit.write.tree_rebuild` exists is a one-word difference
+    invisible in that message.
+
+    This is deliberately a NOTE rather than an assertion. A rule that asserted
+    the mismatch was measured and rejected: it is a substring heuristic, and
+    `cratekit.core.restore` is U32's live key today, so it would have gone red
+    against a unit that did nothing wrong. And the failure was never silent to
+    begin with, because a register entry keeps its unit owed for as long as the
+    entry sits in the file, so Rule B refuses in either merge order. All the note
+    does is move the diagnosis earlier, which is worth nothing if it costs a
+    false positive and worth having if it costs none.
+    """
+    board = _board()
+    landed = TESTS_DIR.parent / "src" / "cratekit" / "write" / "tree_rebuild.py"
+    assert not landed.exists(), "this fixture simulates U36 landing; it has landed"
+    landed.write_text("# simulation, removed below\n")
+    try:
+        refusals = board.unresolved_closes(
+            "Closes #32", {32: ["cratekit.write.rebuild", "cratekit.core.restore"]}
+        )
+    finally:
+        landed.unlink()
+
+    assert len(refusals) == 1
+    assert "tree_rebuild" in refusals[0], (
+        "the refusal must name the sibling that exists, or the reader is left to "
+        "guess why a module is owed that nobody is going to write"
+    )
+    assert "cratekit.core.restore" not in refusals[0].split("note:", 1)[1], (
+        "U32's live key has no near miss in its package and must not acquire a "
+        "note; a note on a correct key is the false positive the rejected rule "
+        "would have asserted"
     )

@@ -284,19 +284,26 @@ def owed_by_unit() -> dict[int, list[str]]:
 CLOSING_KEYWORDS = ("close", "closes", "closed", "fix", "fixes", "fixed",
                     "resolve", "resolves", "resolved")
 
-#: GitHub's THREE documented reference forms, plus the bare one. An earlier
-#: version of this file widened the keywords and left the reference form alone,
-#: then claimed in a commit message to recognize "the eleven ways somebody
-#: actually types it". It recognized nine keywords times ONE form. Widening the
-#: rest is a few characters, so it is cheaper to be right than to write down the
-#: limitation.
+#: The reference forms that close an issue IN THIS REPOSITORY. Two of them, and
+#: the two that are missing are missing on purpose.
 #:
-#: Ordered longest-first. At a given position the alternation tries branches left
-#: to right, so the bare `#n` must come last or `owner/repo#36` would never be
-#: reached.
+#: GitHub documents four. The two cross-repository forms, `owner/repo#n` and the
+#: full issue URL, close an issue in the NAMED repository and nothing here. A
+#: previous version matched both and read the number out of them, so
+#: `fixes numpy/numpy#36` and a link to an upstream pyrekordbox issue each
+#: refused a commit over a unit they have no relationship to. That is not
+#: hypothetical: this repository VENDORS pyrekordbox, the owed unit numbers run
+#: from 8 to 38, and upstream issue numbers collide with them constantly, so a
+#: vendor bump citing an upstream issue is the realistic trigger.
+#:
+#: Reading them correctly would mean knowing this repository's own slug, and
+#: `repo_slug()` needs `gh`, which would end this function's purity and with it
+#: its place in a hook and in the dependency-free CI job. Dropping them costs
+#: nothing, because a commit closing a unit here writes `#n` or `GH-n`.
+#:
+#: Ordered longest-first: at a given position the alternation tries branches left
+#: to right, so the bare `#n` must come last.
 REFERENCE_FORMS = (
-    r"https?://github\.com/[\w.-]+/[\w.-]+/issues/(\d+)",
-    r"[\w.-]+/[\w.-]+#(\d+)",
     r"GH-(\d+)",
     r"#(\d+)",
 )
@@ -390,10 +397,11 @@ def closing_references(text: str, *, raw: bool = True) -> list[int]:
     which closes the issue and cascades every unit waiting on it. What matters is
     what GitHub acts on, not what the contract asks for.
 
-    Nine keywords times FOUR reference forms: the bare `#n`, `GH-n`,
-    `owner/repo#n`, and the full issue URL. An earlier version widened the
-    keywords, left the reference form alone, and claimed to cover "the eleven
-    ways somebody actually types it".
+    Nine keywords times the two reference forms that close an issue HERE, the
+    bare `#n` and `GH-n`. GitHub documents two more, `owner/repo#n` and the full
+    issue URL, and both are deliberately not matched: they close an issue in the
+    named repository, so matching them refused commits over units they had no
+    relationship to. See :data:`REFERENCE_FORMS`.
 
     The comma continuation is caught DELIBERATELY OVER-INCLUSIVELY, and confined
     to ONE LINE. Whether GitHub closes the second issue in `Closes #36, #33` has
@@ -461,13 +469,56 @@ def unresolved_closes(
     found = []
     for uid in dict.fromkeys(closing_references(text, raw=raw)):
         modules = owed.get(uid)
-        if modules:
-            found.append(
-                f"this message closes #{uid}, but U{uid} is still owed "
-                f"{', '.join(modules)}. Either land them, or re-point them at "
-                f"the unit that will."
-            )
+        if not modules:
+            continue
+        lines = [
+            f"this message closes #{uid}, but U{uid} is still owed "
+            f"{', '.join(modules)}. Either land them, or re-point them at "
+            f"the unit that will."
+        ]
+        lines += [f"      {note}" for note in _near_misses(modules)]
+        found.append("\n".join(lines))
     return found
+
+
+def _near_misses(modules: list[str]) -> list[str]:
+    """For each owed module that is absent, what its package DOES contain.
+
+    THE DIAGNOSIS, moved to where the refusal is read. A register key can name a
+    module nobody will ever build, and the loudest symptom is a permanent exit 2
+    with no hint why. `cratekit.write.rebuild` absent while
+    `cratekit.write.tree_rebuild` exists is a one-word spelling difference that
+    is invisible in a message saying only that a module is owed.
+
+    This replaces a rule that would have ASSERTED the mismatch. That rule was
+    rejected on measurement: `cratekit.core.restore` is U32's live key today and
+    a substring heuristic would false-positive on it against a unit that did
+    nothing wrong. Telling the reader what is in the package costs no false
+    positives at all, and the failure was never silent to begin with, because a
+    register entry keeps its unit owed for as long as it sits in the file.
+    """
+    root = Path(__file__).resolve().parent.parent / "src"
+    notes: list[str] = []
+    for module in modules:
+        if module.startswith("path:"):
+            continue
+        parts = module.split(".")
+        package = root.joinpath(*parts[:-1])
+        target = package / f"{parts[-1]}.py"
+        if not package.is_dir() or target.exists() or (package / parts[-1]).is_dir():
+            continue
+        siblings = sorted(
+            child.stem
+            for child in package.glob("*.py")
+            if child.stem != "__init__" and parts[-1] in child.stem
+        )
+        if siblings:
+            notes.append(
+                f"note: {module} is absent and {package.name} already contains "
+                f"{', '.join(siblings)}. If that is the same module under "
+                f"another name, the register key is what needs correcting."
+            )
+    return notes
 
 
 def cmd_closing(args) -> int:
