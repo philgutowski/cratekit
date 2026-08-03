@@ -607,15 +607,19 @@ third copy, in `_resolved_imports`, and it has already diverged from the
 `tests/test_layering.py` copy over CapWords and dunder handling, which that file
 excludes from module expansion and this one does not.
 
-**Measured in round 2, and it changes no verdict today.** Both walks were run
-over all four modules of the reports package and their outputs compared. They
-agree everywhere except one entry: `from typing import Sequence` in
+**Measured in round 2, corrected in round 3, and it changes no verdict today.**
+Both walks were run over all four modules of the reports package and their
+outputs compared. Round 2 recorded the divergence as one entry wide. It is
+THREE entries across TWO modules: `from typing import Sequence` in
 `duplicates.py` resolves to `typing.Sequence` here and to `typing` in
-`test_layering.py`, which is the CapWords rule and nothing else. Both are
-permitted by `_permitted`, because an allowlisted entry admits its dotted
+`test_layering.py`, and `export.py` diverges the same way twice, on
+`collections.Counter` against `collections` and on `pathlib.Path` against
+`pathlib`. All three are the CapWords rule and nothing else. All six spellings
+are permitted by `_permitted`, because an allowlisted entry admits its dotted
 children, so the forbidden set is empty under either walk for every module. The
-divergence is real, it is one entry wide, and it is not currently capable of
-letting an import through or of failing a correct one.
+conclusion survives the correction and the count does not: the divergence is
+real, it is three entries wide, and it is not currently capable of letting an
+import through or of failing a correct one.
 
 **Not fixed here**, deliberately. U12 is concurrently generalizing
 `_source_guards.ReviewImports` into a module-parameterized `ImportsOf`, which is
@@ -667,3 +671,48 @@ location together.
 **Closes when:** the deletion surface either re-verifies a chosen option against
 the export it is acting on before deleting anything, or the pair agree on an
 identity that survives both a re-import and a rename. The natural owner is U24.
+
+---
+
+## R-20. Two reflection spellings reach a writer past both structural guards
+
+**Found:** during the U34 round 3 verification, 2026-08-03.
+
+Rule 4 of `filesystem_mutations` covers `getattr` and only `getattr`. The
+attribute dictionary reaches the same method by SUBSCRIPT, and a subscript is not
+a call, so neither the attribute rule nor the call rules have anything to read:
+
+```python
+Path.__dict__["write_text"](path, decided)
+vars(Path)["write_text"](path, decided)
+```
+
+Both write a file, and both were run to confirm it rather than reasoned about.
+The CLASS has to be named, not the instance's type: `Path("x")` is a `PosixPath`
+and `write_text` is defined on `Path`, so `type(obj).__dict__["write_text"]`
+raises `KeyError` on an inherited method. That is a detail worth writing down,
+because getting it wrong makes the escape look like it does not exist. `forbidden_imports` says nothing, because nothing is imported
+that is not already permitted. `filesystem_mutations` says nothing, because the
+mutating name appears only inside a string subscript and the outer call's `func`
+is itself a subscript expression. The allowlist audit says nothing for the same
+reason, so a helper spelled this way in an admitted module is never forced into
+`FILESYSTEM_MUTATIONS` either.
+
+**Not fixed here**, deliberately, and this is an accepted boundary rather than a
+deferred repair. Round 2 widened rule 4 to cover the reflective shape that a
+person actually writes; this pair is exotic in a way `getattr` is not, and it was
+equally uncovered before round 2, so recording it is a widening of what the
+guards claim rather than a regression they introduced. The cost of covering it is
+a rule that reports every constant string subscript whose value happens to name a
+method, which is the P7 shape this whole guard is written around: the first
+correct `mapping["write_text"]` in a report would fail it.
+
+Both spellings are written out above so the next person can add them as fixtures
+rather than rediscover them. The behavioural half is not blind to either: a
+report that writes through one still moves a byte or a modified time, and
+`_tree_digest` carries both.
+
+**Closes when:** a rule exists that separates a reflective method lookup from an
+ordinary constant subscript, or the structural guards state in their own
+docstrings that subscript reach is out of scope. The natural owner is whichever
+unit next widens `filesystem_mutations`.
