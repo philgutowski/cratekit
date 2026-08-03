@@ -146,16 +146,29 @@ PENDING: dict[str, tuple[str, str]] = {
     # textually, which is a conflict somebody reads.
     "cratekit.analysis": (
         "U25",
-        "that both analysis pools are sized by cratekit.core.pool and by nothing "
-        "else, which is R23 turned from a claim about a module into a claim about "
-        "a run. U12 ships the sizing and nothing that uses it, so until the heavy "
-        "passes land there is no pool in this product to exhaust anything. The "
-        "source system derives BOTH of its pool widths from the core count, and a "
-        "port that carries that arithmetic across reproduces the nine-worker kill "
-        "with every test U12 wrote still green. Registered here rather than left "
-        "in a docstring because the repository-wide guard U12 arms can only see a "
-        "module building its OWN pool: sizing through the right seam from the "
-        "wrong number passes it (P5)",
+        "six things about every module in the analysis package, listed rather "
+        "than summarized because the first version of this entry summarized and "
+        "the summary claimed more than the guard checked. The package must plan "
+        "through cratekit.core.pool.plan_pool and run through "
+        "cratekit.core.pool.map_workers; no module there may build a process "
+        "pool of its own in any import shape; no module there may build a "
+        "PoolPlan of its own in any import shape; no map_workers call may be "
+        "given a plan the module fabricated; and no module there may read a core "
+        "count at any of the four spellings the sizing module itself is held to. "
+        "Together that is R23 turned from a claim about a module into a claim "
+        "about a run. U12 ships the sizing and nothing that uses it, so until the "
+        "heavy passes land there is no pool in this product to exhaust anything. "
+        "The source system derives BOTH of its pool widths from the core count, "
+        "and a port that carries that arithmetic across reproduces the "
+        "nine-worker kill with every arithmetic test U12 wrote still green. "
+        "Registered here rather than left in a docstring because the "
+        "repository-wide guards U12 arms cover the shipped tree and this package "
+        "does not exist yet (P5). WHAT THE EARLIER ENTRY GOT WRONG, kept legible "
+        "because it is the reason the list above is a list: it claimed the pools "
+        "were sized here and by nothing else, while the guard checked only that "
+        "SOME module called the planner and SOME module called the runner. A "
+        "package whose light pass was sized correctly and whose vocal pass handed "
+        "the same runner a hand-built plan of nine workers passed it",
     ),
     "cratekit.write.routing_cli": (
         "U20",
