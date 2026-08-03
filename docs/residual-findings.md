@@ -580,6 +580,14 @@ The entry then fires, and discharging it is the commit that removes the fallback
 branch in `restore._hand_tree_shortness_over` and the
 `reconcile.Kind.UNCONVERGED_TREE` path behind it.
 
+**Re-verified after U36's second review round, 2026-08-02.** The merge was run
+again. With items 1 and 4 applied the merged suite is 3390 tests and two
+failures, both of them items 2 and 3 above; with all four applied it is 3389
+tests, 0 failures, 18 skips. Item 4's fix is the positive confirmation that
+ownership of tree shortness now sits in one module: `restore` hands the trees to
+`convergence.mark_unconverged` and `reconcile.unconverged_trees` is correctly
+empty.
+
 **Closes when:** both branches are on `main` and the six items above are
 resolved.
 
