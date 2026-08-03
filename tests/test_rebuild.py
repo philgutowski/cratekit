@@ -1871,16 +1871,31 @@ def test_the_rebuild_reports_that_the_other_record_was_not_reached(
 ):
     """TWO RECORDS FOR ONE FACT, and the honest third answer.
 
-    ``cratekit.core.reconcile`` is U32's and is not part of this build, so the
-    rebuild cannot close the marker it keeps. That absence is REPORTED rather
-    than swallowed: None means the question could not be asked, which is a
-    different fact from False, and reading one as the other is the defect shape
-    this whole part is about.
+    ``cratekit.core.reconcile`` is U32's. On a build without it the rebuild
+    cannot reach the marker it keeps, and that absence is REPORTED rather than
+    swallowed: None means the question could not be asked, which is a different
+    fact from False, and reading one as the other is the defect shape this whole
+    part is about.
+
+    WRITTEN TO SURVIVE THE MERGE rather than to pin this branch's answer, because
+    the two facts it keeps apart are exactly the two the merge swaps between. It
+    asserts the answer MATCHES REALITY: None where the module is absent, a boolean
+    where it is present, and never a boolean standing in for an unasked question.
     """
+    import importlib.util
+
+    present = importlib.util.find_spec("cratekit.core.reconcile") is not None
     report = _rebuild(cfg, db, adopted_root, declared, [PLAIN])
     assert report.cleared
-    assert report.restore_marker_closed is None
-    assert rebuild.close_restore_marker(cfg, TREE_ID) is None
+
+    if present:
+        # Nothing was ever marked here, so there is nothing to close, and False
+        # is the answer to a question that WAS asked.
+        assert report.restore_marker_closed is False
+        assert rebuild.close_restore_marker(cfg, TREE_ID) is False
+    else:
+        assert report.restore_marker_closed is None
+        assert rebuild.close_restore_marker(cfg, TREE_ID) is None
 
 
 def test_the_rebuild_declares_a_recovery_intent_so_the_restore_latch_lets_it_past(
