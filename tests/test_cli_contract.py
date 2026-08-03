@@ -34,7 +34,10 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
+from types import MappingProxyType
+from typing import Mapping
 
 import pytest
 
@@ -1275,25 +1278,282 @@ def test_conformance_2_no_module_builds_an_exit_code_from_a_bare_integer():
     assert not offenders, f"ExitCode built from a literal: {offenders}"
 
 
-@pytest.mark.parametrize("entry", LANDED, ids=lambda e: e.name)
-def test_conformance_3_every_declared_gate_refuses_and_then_proceeds(entry, configured):
-    positional = _sample_arguments(entry)
-    for spec in entry.gates:
-        code, out, _ = drive(["--output", "json", *entry.path, *positional])
-        assert code == int(ExitCode.DECISION_REQUIRED)
+#: Gates that CANNOT be reached in a test environment, each with the reason.
+#:
+#: This map exists because the honest alternative is worse in both directions. A
+#: rule requiring every declared gate to fire would fail every correct verb
+#: declaring the cloud-sync decision, and a rule requiring none would let a verb
+#: ship with a gate its handler no longer reaches. So the exemption is NAMED,
+#: per gate, with what makes it unreachable, and everything not in here must
+#: fire.
+#:
+#: An entry here is a claim that can expire. If a listed gate is ever reached,
+#: the assertion below fails and says to delete the entry, because a gate that
+#: fires is a gate the suite can hold a verb to.
+UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
+    {
+        "write.cloudsync.unreadable": (
+            "raised by the guarded writer only when rekordbox's Cloud Library "
+            "Sync state cannot be READ, which is a property of the machine "
+            "rather than of the verb. A test environment has no rekordbox "
+            "installation to have an unreadable sync state, so no drive can "
+            "provoke it and requiring it would refuse every correct verb that "
+            "declares it. Closes with the disposable database fixture R-13 "
+            "names, which is the first environment able to produce the state."
+        ),
+    }
+)
+
+
+def _assert_gate_reach(entry: registry.Entry, reached: list[str]) -> None:
+    """Every gate the entry declares fired, except the ones named unreachable.
+
+    The half that a returned list nobody compared cannot provide. A declaration
+    is a promise to the person reading the registry that this verb asks this
+    question, and the only thing that can hold a handler to it is a drive that
+    counts what actually fired.
+    """
+    declared = {spec.name for spec in entry.gates}
+    exempt = declared & set(UNREACHABLE_GATES)
+    expected = declared - exempt
+
+    silent = sorted(expected - set(reached))
+    assert not silent, (
+        f"{entry.name} declares {silent} and its handler never reached them. A "
+        f"declared gate that cannot fire is a decision the registry promises and "
+        f"the verb does not ask, and for a destructive verb that is the "
+        f"concurrent-writer question going unasked with the suite green. Either "
+        f"reach it, drop the declaration, or name it in UNREACHABLE_GATES with "
+        f"the reason no drive can provoke it."
+    )
+
+    surprising = sorted(set(reached) & exempt)
+    assert not surprising, (
+        f"{entry.name} reached {surprising}, which UNREACHABLE_GATES says no "
+        f"drive can provoke. The exemption is stale: delete the entry so every "
+        f"verb declaring that gate is held to reaching it."
+    )
+
+
+def _conformance_3(entry: registry.Entry, positional: list[str]) -> list[str]:
+    """Drive one gated verb to OK the way R34 says it is reached, and say how.
+
+    Returns the gates it actually refused at, in the order it refused at them,
+    having first asserted that the set of them is exactly what the entry declares
+    minus :data:`UNREACHABLE_GATES`.
+
+    THAT EQUALITY IS THE POINT, and an earlier version of this function dropped
+    it. Returning the reached list and leaving the caller to ignore it made a
+    verb that declares two gates and reaches neither pass, and made a verb whose
+    handler stopped reaching a declared gate pass. A destructive database verb
+    could have shipped with its concurrent-writer decision unreachable and the
+    suite would have been green, because no other assertion anywhere holds a
+    handler to the gates its entry declares.
+
+    The narrowing that replaced it was real but far too wide: it covered every
+    gate when the justification covered one. A gate that cannot be provoked is
+    named in the map above with the reason, and every other declared gate must
+    fire.
+    """
+    declared = {spec.name: spec for spec in entry.gates}
+    answered: list[str] = []
+    reached: list[str] = []
+    run_id: str | None = None
+
+    # One drive per gate, plus the one that succeeds. A verb that refuses more
+    # often than it has gates is refusing at something it did not declare, and
+    # falling out of the loop rather than spinning is what makes that visible.
+    for _ in range(len(declared) + 1):
+        resume = ["--run", run_id] if run_id is not None else []
+        argv = ["--output", "json", *answered, *resume, *entry.path, *positional]
+        code, out, err = drive(argv)
+        if code == int(ExitCode.OK):
+            _assert_gate_reach(entry, reached)
+            return reached
+        assert code == int(ExitCode.DECISION_REQUIRED), err or out
+
         envelope = json.loads(out)
         # The gate and its options ride on the CAUSE, not on
         # ``pending_human_action``: that field means a person must act OUTSIDE
         # the tool, and the envelope asserts it implies status PENDING_HUMAN in
         # both directions. A decision is answerable in the tool, so putting it
         # there would make the two fields contradict each other.
-        assert envelope["cause"]["detail"]["gate"] == spec.name
-        assert envelope["cause"]["detail"]["options"] == list(spec.options)
-
-        code, _, _ = drive(
-            ["-d", f"{spec.name}={spec.options[0]}", *entry.path, *positional]
+        detail = envelope["cause"]["detail"]
+        assert detail["gate"] in declared, (
+            f"{entry.name} refused at {detail['gate']!r}, which it does not "
+            f"declare; a gate outside the registry is invisible to every "
+            f"conformance assertion"
         )
-        assert code == int(ExitCode.OK)
+        spec = declared[detail["gate"]]
+        assert detail["options"] == list(spec.options)
+        assert detail["explicit"] is spec.explicit
+        assert envelope["resumable"] is True
+        reached.append(spec.name)
+
+        if not spec.explicit:
+            # ONE ACT. An ordinary gate is answerable in the invocation that
+            # discovered it, and the flags accumulate rather than replacing each
+            # other so a second gate further in is reached with the first still
+            # answered.
+            answered += ["-d", f"{spec.name}={spec.options[0]}"]
+            continue
+
+        # TWO ACTS (R34). The inline answer is refused AGAIN, because an
+        # explicit gate is satisfiable only by a deliberate, separate act
+        # recorded with its actor. Asserting OK here instead, which is what this
+        # function did for four waves, asserts that an explicit gate must NOT be
+        # honoured, and every verb declaring one was unlandable by construction.
+        run_id = envelope["run_id"]
+        inline = ["-d", f"{spec.name}={spec.options[0]}"]
+        code, _, _ = drive([*answered, *inline, "--run", run_id, *entry.path, *positional])
+        assert code == int(ExitCode.DECISION_REQUIRED), (
+            f"{spec.name} is explicit, and an inline answer satisfied it. R34's "
+            f"whole content is that this class of decision cannot be typed onto "
+            f"the command that was already running"
+        )
+        assert spec.name not in gates.load(run_id).decisions, (
+            "the refused inline answer was recorded anyway, so the second act "
+            "would find the gate already answered by the first"
+        )
+
+        code, _, err = drive(
+            ["run", "decide", run_id, spec.name, spec.options[0], "--actor", "a-person"]
+        )
+        assert code == int(ExitCode.OK), err
+        assert gates.load(run_id).decisions[spec.name].actor == "a-person", (
+            "an explicit decision names who asserted it, or the record cannot "
+            "tell a person's answer from the process asking itself"
+        )
+
+    raise AssertionError(
+        f"{entry.name} still refuses after every gate it declares was answered"
+    )
+
+
+@pytest.mark.parametrize("entry", LANDED, ids=lambda e: e.name)
+def test_conformance_3_every_gate_refuses_and_then_the_verb_proceeds(entry, configured):
+    """Assertion 3, rewritten: a gate refuses, and OK comes only after R34's acts.
+
+    WHAT WAS WRONG. The previous version drove every gate the same way: refuse,
+    then hand the answer back on ``-d`` in a fresh invocation, then assert OK.
+    For an ordinary gate that is the contract. For an EXPLICIT one it is the
+    opposite of the contract. ``Gates.require`` refuses an inline answer whenever
+    nothing is recorded against the run, and ``cli.run`` mints a new run whenever
+    ``--run`` is absent, so an explicitly gated verb refuses the second drive too,
+    every time, by design. Asserting OK there asserted that R34 must be violated.
+
+    Nothing caught it because no landed entry declares an explicit gate. Fifteen
+    declare one and all fifteen are planned, so the branch was never driven, and
+    four units in one wave independently concluded their verb "cannot land" and
+    parked the obligation somewhere else. The test below drives the branch against
+    a synthetic entry so it is proved before the first real one arrives.
+    """
+    if not entry.gates:
+        return
+    _conformance_3(entry, _sample_arguments(entry))
+
+
+def _swap_in(monkeypatch, promoted: registry.Entry) -> None:
+    """Put a modified entry in front of the dispatcher, everywhere it is looked up.
+
+    ``_BY_NAME`` is patched alongside ``ENTRIES`` because ``run decide`` resolves
+    the owning entry BY NAME to find the gate it is answering, so a swap that
+    reached only the parser would leave the second act looking at the unmodified
+    spec and quietly prove nothing.
+    """
+    monkeypatch.setattr(
+        registry,
+        "ENTRIES",
+        tuple(promoted if e.name == promoted.name else e for e in registry.ENTRIES),
+    )
+    monkeypatch.setattr(
+        registry, "_BY_NAME", {**dict(registry._BY_NAME), promoted.name: promoted}
+    )
+
+
+def test_conformance_3_admits_an_explicitly_gated_verb(configured, monkeypatch):
+    """The branch above, driven, before any landed verb declares an explicit gate.
+
+    Fifteen planned entries declare one and none has landed, so assertion 3's
+    explicit half would otherwise ship untested and be discovered by the unit
+    that lands the first one. That is precisely how the defect it replaces
+    survived four waves.
+
+    The synthetic entry is the REAL ``profile.set`` with its one gate promoted to
+    explicit, rather than a verb invented here. A verb invented for the test
+    proves the test can invent a verb; promoting a real one means the dispatcher,
+    the run record, ``run decide`` and the resume path are all the shipped ones,
+    and the single difference is the flag under examination.
+    """
+    base = registry.entry("profile.set")
+    promoted = replace(base, gates=(replace(base.gates[0], explicit=True),))
+    _swap_in(monkeypatch, promoted)
+
+    assert _conformance_3(promoted, ["slim"]) == ["profile.set.apply"]
+    config.reset_cache()
+    assert config.load().profile.name == "slim", (
+        "the verb reported OK without doing its work, so the two acts bought a "
+        "status rather than a profile change"
+    )
+
+
+#: A second gate to hang on a one-gate verb, so the two-gate shape is driven
+#: rather than assumed. Explicit, because that is the shape four registry entries
+#: carry: their own confirmation plus the shared cloud-sync decision.
+_SECOND_GATE = registry.GateSpec(
+    name="profile.set.second",
+    options=("go", "abort"),
+    prompt="A second decision on the same verb?",
+    explicit=True,
+)
+
+
+def _require_every_gate(ctx):
+    """A handler that reaches all of its entry's gates, in declaration order."""
+    for spec in ctx.entry.gates:
+        ctx.gate.require(spec)
+    return ctx.envelope(data={"checks": [], "summary": {}})
+
+
+@pytest.mark.parametrize(
+    "explicit_first", [False, True], ids=["plain-then-explicit", "explicit-then-explicit"]
+)
+def test_conformance_3_admits_a_verb_carrying_two_gates(
+    explicit_first, configured, monkeypatch
+):
+    """The OTHER half of what assertion 3 could not express, driven both ways.
+
+    The previous version drove once per DECLARED gate and answered only that one
+    gate, on a fresh run every time. A verb with two gates therefore refused on
+    whichever gate the current drive had not answered, so it exited
+    DECISION_REQUIRED for both iterations and could never pass, with no explicit
+    flag involved at all. Four registry entries carry two gates, ``restore.run``,
+    ``name.apply``, ``route.inbox`` and ``adopt.apply``, and every one of them was
+    unlandable for this reason on top of the R34 one.
+
+    ``_conformance_3`` answers gates CUMULATIVELY instead, which is what makes one
+    loop cover both shapes: an ordinary gate accumulates a flag and the next drive
+    reaches past it, an explicit one takes its two acts and the run carries the
+    answer forward under ``--run``. Both orderings are driven because they are not
+    the same path. Plain-then-explicit has to carry an inline answer across the
+    switch to a resumed run, and explicit-then-explicit has to record two separate
+    decisions against one run without the first being re-asked.
+
+    The handler is the one piece that cannot be borrowed, because no landed verb
+    declares two gates and a verb that declares them without reaching them proves
+    nothing. Everything else on the path is shipped: the parser, the dispatcher,
+    the run record, ``run decide``, and the resume.
+    """
+    base = registry.entry("profile.set")
+    first = replace(base.gates[0], explicit=explicit_first)
+    promoted = replace(base, gates=(first, _SECOND_GATE))
+    _swap_in(monkeypatch, promoted)
+    monkeypatch.setattr("cratekit.cli.verbs.profile.apply_profile", _require_every_gate)
+
+    assert _conformance_3(promoted, ["slim"]) == [first.name, _SECOND_GATE.name], (
+        "the verb reached OK without both of its gates refusing first, so one of "
+        "them was answered by something other than a decision"
+    )
 
 
 def test_the_csv_writer_guard_bites_and_stays_quiet_on_correct_code():
@@ -1756,3 +2016,122 @@ def test_human_mode_renders_the_gate_with_its_options_and_how_to_answer(configur
     assert "profile.set.apply" in err
     assert "apply, abort" in err
     assert "crate run decide" in err
+
+
+def _reaches_no_gate(ctx):
+    """A handler that declares gates and asks none of them."""
+    return ctx.envelope(data={"checks": [], "summary": {}})
+
+
+def _reaches_only_the_first_gate(ctx):
+    ctx.gate.require(ctx.entry.gates[0])
+    return ctx.envelope(data={"checks": [], "summary": {}})
+
+
+def test_conformance_3_fails_a_verb_that_declares_a_gate_and_never_asks_it(
+    configured, monkeypatch
+):
+    """THE NEGATIVE CONTROL THE PREVIOUS VERSION DID NOT HAVE.
+
+    ``_conformance_3`` returned the gates it reached and every caller threw the
+    value away, so nothing compared reached against declared. Both shapes below
+    passed against unmutated product source, and neither is exotic: the second is
+    one refactor away, where a writer's check moves behind a path the verb no
+    longer takes. A destructive database verb would then ship with its
+    concurrent-writer decision unreachable and every assertion in this file
+    green, because no other test in the suite holds a handler to the gates its
+    registry entry declares.
+
+    Driven rather than argued, in both shapes, and both are asserted to FAIL now.
+    """
+    base = registry.entry("profile.set")
+    promoted = replace(base, gates=(base.gates[0], _SECOND_GATE))
+    _swap_in(monkeypatch, promoted)
+
+    monkeypatch.setattr("cratekit.cli.verbs.profile.apply_profile", _reaches_no_gate)
+    with pytest.raises(AssertionError, match="never reached them"):
+        _conformance_3(promoted, ["slim"])
+
+    monkeypatch.setattr(
+        "cratekit.cli.verbs.profile.apply_profile", _reaches_only_the_first_gate
+    )
+    with pytest.raises(AssertionError, match="never reached them"):
+        _conformance_3(promoted, ["slim"])
+
+
+def test_the_unreachable_exemption_covers_one_named_gate_and_expires_on_its_own(
+    configured, monkeypatch
+):
+    """The exemption is per gate WITH a reason, not a hole the whole rule falls in.
+
+    Both directions are driven. A verb declaring the exempt gate and not reaching
+    it passes, which is the case the narrowing exists for and the case a
+    universal rule would have refused. A verb declaring a gate that is NOT exempt
+    and not reaching it fails, which is what the universal exemption gave away.
+
+    And the entry expires. If the exempt gate is ever reached, the assertion says
+    to delete it, because a gate that can fire is a gate the suite can hold every
+    verb to. That is the countdown shape this repository already uses for a
+    pending module, applied to a pending environment.
+    """
+    base = registry.entry("profile.set")
+    with_exempt = replace(
+        base, gates=(base.gates[0], registry.CLOUD_SYNC_UNREADABLE_GATE)
+    )
+    _swap_in(monkeypatch, with_exempt)
+    monkeypatch.setattr(
+        "cratekit.cli.verbs.profile.apply_profile", _reaches_only_the_first_gate
+    )
+    assert _conformance_3(with_exempt, ["slim"]) == ["profile.set.apply"], (
+        "the cloud-sync gate cannot be provoked in this environment, so a verb "
+        "that declares it and reaches its own gate is correct"
+    )
+
+    # The stale half: reaching an exempt gate must say the exemption is over.
+    monkeypatch.setattr(
+        "cratekit.cli.verbs.profile.apply_profile", _require_every_gate
+    )
+    with pytest.raises(AssertionError, match="exemption is stale"):
+        _conformance_3(with_exempt, ["slim"])
+
+
+#: EXACT MEMBERSHIP, because the three checks below are each satisfiable by a
+#: plausible-looking addition. `registry.gate` only asks that SOME entry among
+#: sixty-three declares the name, and the reason check is a length test rather
+#: than a truth test, so a gate a landed verb declares and does not reach can be
+#: exempted with one entry and an eighty-one character sentence. Verified: it
+#: passed silently with all three guards green.
+#:
+#: Adding a gate here is now a red suite, which is the point. It is the same
+#: shape `EXPECTED_PENDING` uses: the duplication IS the mechanism, because the
+#: second place is a line a reviewer reads in a diff.
+EXPECTED_UNREACHABLE_GATES = frozenset({"write.cloudsync.unreadable"})
+
+
+def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
+    """One gate is exempt. A second one is a decision, not a diff.
+
+    Note what this pin does NOT prove, so nobody reads more into a green run than
+    is there: the map is INERT against the real registry today. All twelve
+    entries declaring `write.cloudsync.unreadable` are planned, and `profile.set`
+    is the only landed entry with a gate at all, so no parametrized run of
+    assertion 3 exercises the exemption. Its behaviour, including its
+    self-expiry, is proved by the synthetic tests above and by nothing else until
+    the first such verb lands.
+    """
+    assert set(UNREACHABLE_GATES) == EXPECTED_UNREACHABLE_GATES, (
+        f"the exemption set is {sorted(UNREACHABLE_GATES)} and this file "
+        f"declares {sorted(EXPECTED_UNREACHABLE_GATES)}. Every entry here is a "
+        f"gate no verb has to reach, which is the assertion switched off for "
+        f"that gate across every entry that declares it."
+    )
+
+
+def test_every_unreachable_gate_is_real_and_carries_a_reason():
+    """An exemption naming a gate nobody declares is an exemption nobody can audit."""
+    for name, reason in UNREACHABLE_GATES.items():
+        registry.gate(name)  # raises KeyError if no entry declares it
+        assert len(reason) > 80, (
+            f"{name} is exempted from assertion 3 with a reason too thin to "
+            f"judge; say what makes it unprovokable and what would change that"
+        )
