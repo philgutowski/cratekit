@@ -32,6 +32,7 @@ import errno
 import hashlib
 import io
 import json
+import logging
 import os
 import sqlite3
 import sys
@@ -1709,3 +1710,302 @@ def test_a_name_that_is_all_suffix_is_numbered_without_a_leading_space(tmp_path)
     (directory / ".flac").write_bytes(b"")
     claimed = trash._free_name(directory, ".flac")
     assert claimed.name == ".flac 2"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 7: what the second review round found
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_reference_set_it_built_is_reported_on_every_run(cfg, gates_pass, caplog):
+    """The module docstring sells this as the answer, so it is asserted like one.
+
+    ``missing`` is the tally the proof deliberately does not block on, and a
+    tally nothing ever reports is indistinguishable from a tally nobody computes:
+    the whole reference set could have come back empty for a configuration reason
+    and the run would still have read as clean.
+    """
+    _music(cfg, ONE)
+    run.plan(cfg, FakeDb([], usn=40), actor="cli")
+    db = FakeDb(
+        [
+            _content(cfg, ONE, "1", deleted=False, usn=44),
+            _content(cfg, "Never Existed.flac", "2", deleted=False, usn=45),
+        ],
+        usn=50,
+    )
+    with caplog.at_level(logging.INFO, logger="cratekit.deletion.run"):
+        run.plan(cfg, db, actor="cli")
+
+    said = [record.getMessage() for record in caplog.records if "reference set" in record.getMessage()]
+    assert said, "the pass no longer reports the reference set it built"
+    assert "'indexed': 1" in said[0] and "'missing': 1" in said[0]
+
+
+def test_an_anchor_that_answered_nothing_is_named_in_a_warning(cfg, gates_pass, tmp_path, caplog):
+    """The all-or-nothing version of this was silenced by ONE unrelated good row.
+
+    Its whole reason for existing is a prefix rule pointing at an existing but
+    wrong directory, which is the case where the rest of the library resolves
+    perfectly well, so a warning keyed on the global set being empty could never
+    fire for it.
+    """
+    wrong = tmp_path / "real-but-not-the-one"
+    wrong.mkdir()
+    _music(cfg, ONE)
+    run.plan(cfg, FakeDb([], usn=40), actor="cli")
+    elsewhere = FakeRow(
+        ID="9",
+        FolderPath=f"{RECORDED_ELSEWHERE}/Music/Track 0.flac",
+        FileSize=11,
+        rb_local_deleted=0,
+        rb_local_usn=45,
+        Title="Track 0",
+        ArtistName=ARTIST,
+        ISRC=None,
+    )
+    db = FakeDb([_content(cfg, ONE, "1", deleted=False, usn=44), elsewhere], usn=50)
+
+    with caplog.at_level(logging.WARNING, logger="cratekit.deletion.run"):
+        found = run.plan(
+            cfg,
+            db,
+            actor="cli",
+            prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(wrong))],
+        )
+
+    assert found.references.by_identity, (
+        "this library indexes a row, which is what silenced the previous warning"
+    )
+    warned = [record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING]
+    assert warned, "an anchor that proved nothing went unmentioned"
+    assert str(wrong) in warned[0]
+
+
+def test_a_prefix_target_that_exists_but_is_wrong_is_flagged_and_does_not_refuse(cfg, tmp_path):
+    """THE HOLE THE ANCHOR SPLIT DOES NOT CLOSE, pinned so it cannot widen quietly.
+
+    The check asks whether the anchor IS THERE. It cannot ask whether it is
+    RIGHT, so a rule aimed at an existing but wrong directory still produces an
+    empty index under it, ``complete`` still true. R-16 in the residual findings
+    carries the reasoning: every rule that refuses on this needs a threshold, and
+    every threshold that catches it also refuses a rule that legitimately matches
+    a handful of rows whose files the user moved by hand.
+
+    What IS asserted is that the signal is there, per anchor, with the rest of
+    the library resolving normally beside it.
+    """
+    wrong = tmp_path / "real-but-not-the-one"
+    wrong.mkdir()
+    _music(cfg, ONE)
+    references = _references(
+        cfg,
+        [_row(cfg, ONE, "root-1"), *_elsewhere(1)],
+        prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(wrong))],
+    )
+    assert len(references.by_identity) == 1
+    assert references.missing == ("e0",)
+    assert references.unanchored == ()
+    assert references.suspect_anchors == (str(wrong),)
+    assert references.complete, "recorded as open in R-16, not asserted as safe"
+
+
+def test_an_anchor_with_one_missing_row_and_one_good_row_is_not_suspect(cfg):
+    """The other side of the same rule, so the signal is not simply "any missing".
+
+    A library where one file was moved by hand under a root that indexes
+    thousands is the ordinary state of every real library, and a signal that
+    fired on it would be a signal nobody reads.
+    """
+    _music(cfg, ONE)
+    references = _references(
+        cfg, [_row(cfg, ONE, "1"), _row(cfg, "Never Existed.flac", "2")]
+    )
+    assert references.missing == ("2",)
+    assert references.suspect_anchors == ()
+
+
+def test_a_volume_that_goes_away_mid_walk_refuses_rather_than_shrinking_the_proof(
+    cfg, tmp_path
+):
+    """The cache has a direction and the unsafe one used to win silently.
+
+    Eject BEFORE the first row through an anchor and every row is unanchored and
+    the run refuses, which is right. Eject AFTER and the cached "present" stood,
+    so the remaining rows landed in ``missing`` and quietly shrank the set the
+    proof is made of. The anchors are re-asked at the end for exactly this.
+    """
+    volume = tmp_path / "ejected-halfway"
+    volume.mkdir()
+    real = os.stat
+    asked = {"count": 0}
+
+    def ejects_after_the_first_look(path):
+        if path == str(volume):
+            asked["count"] += 1
+            if asked["count"] > 1:
+                raise FileNotFoundError(path)
+        return real(path)
+
+    references = _references(
+        cfg,
+        _elsewhere(3),
+        prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(volume))],
+        stat=ejects_after_the_first_look,
+    )
+    assert references.missing == ("e0", "e1", "e2"), "the shape the old cache produced"
+    assert references.unstable_anchors == (str(volume),)
+    assert not references.complete
+
+    with pytest.raises(CratekitError) as excinfo:
+        candidates.assert_complete(references)
+    assert excinfo.value.cause.reason == "deletion-reference-set-incomplete"
+    assert "two different filesystems" in excinfo.value.cause.message
+    assert excinfo.value.cause.detail["unstable_anchors"] == [str(volume)]
+
+
+def test_a_rule_onto_the_filesystem_root_names_an_anchor_a_person_can_read(cfg):
+    """``PrefixRule`` right strips its target, so a rule onto "/" stores "".
+
+    The anchor was then the empty string, which stats as absent, so a rule that
+    is perfectly valid refused the whole run and named a directory nobody could
+    read in the refusal.
+    """
+    rule = locations.PrefixRule(RECORDED_ELSEWHERE, "/")
+    assert rule.target == ""
+    references = _references(
+        cfg,
+        [
+            trees.ContentRow(
+                content_id="9",
+                recorded=f"{RECORDED_ELSEWHERE}/no/such/file.flac",
+                deleted=False,
+            )
+        ],
+        prefix_map=[rule],
+    )
+    assert references.unanchored == () and references.dead_anchors == ()
+    assert references.missing == ("9",)
+
+
+def test_the_library_root_anchor_is_folded_the_way_a_rule_target_is(cfg):
+    """One directory, two composition forms, and this project's own worst incident.
+
+    ``PrefixRule`` NFC folds its target in ``__post_init__``; the library root
+    arrives raw from configuration. Unfolded, one root spelled NFD and one rule
+    target spelled NFC are two cache keys and two stats for one directory, and
+    two directories that ARE one compare as different. APFS hides it by
+    normalizing on lookup. An exFAT external drive, which is what a mapped music
+    volume usually is, does not.
+    """
+    # Spelled with explicit escapes, because the two forms are the same
+    # glyphs on screen and an editor that normalizes on save would quietly
+    # turn this test into a comparison of one string with itself.
+    composed = "/library/Caf\u00e9"
+    decomposed = "/library/Cafe\u0301"
+    under_root = locations.ResolvedPath(
+        locations.Resolution.UNDER_ROOT, path=f"{decomposed}/Music/x.flac"
+    )
+    rule = locations.PrefixRule(RECORDED_ELSEWHERE, composed)
+    remapped = locations.ResolvedPath(
+        locations.Resolution.REMAPPED, path=f"{composed}/Music/x.flac", rule_index=0
+    )
+    assert candidates._anchor_of(
+        under_root, root=decomposed, prefix_map=[rule]
+    ) == candidates._anchor_of(remapped, root=decomposed, prefix_map=[rule])
+
+
+def test_revoking_a_decline_whose_review_item_is_gone_still_lifts_it(cfg, gates_pass):
+    """A revoke that finds nothing to reopen has SUCCEEDED.
+
+    Reproduced before this: the decline was written revoked and the call then
+    raised ``review-item-unknown``, naming a queue identifier the user never
+    typed, for an item the queue legitimately may not hold after an export and
+    re-import or after somebody cleared it themselves.
+    """
+    _music(cfg, ONE)
+    record = stores.record_decline(cfg, _removed(cfg, ONE, "1"), actor="cli")
+    assert len(stores.declines(cfg).suppressions()) == 1
+
+    lifted = run.revoke(cfg, record.suppression_id, actor="cli")
+
+    assert lifted.revoked
+    assert stores.declines(cfg).suppressions() == ()
+
+
+def test_a_revoke_that_cannot_reopen_the_item_leaves_the_decline_standing(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """The queue is written FIRST, and this is why the order is the design.
+
+    There is no transaction across the two files, so one of the intermediate
+    states is reachable and the only question is which. Store first left the bad
+    one: the decline lifted, the item still REJECTED, and the very next apply
+    re-recording the decline, so a failed revoke ended as one standing decline
+    with no trace anybody had tried. Queue first leaves the harmless one.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    db = _prepared(cfg)
+    found = run.plan(cfg, db, actor="cli")
+    _confirm(cfg, run.present(cfg, found)[0].item_id, review.Verdict.REJECTED)
+    run.apply(cfg, db, actor="cli", home=home)
+    held = stores.declines(cfg).suppressions()[0]
+
+    real = review.clear
+    broken = {"on": True}
+
+    def unreadable(store, item_id, *, actor):
+        if broken["on"]:
+            raise refuse(
+                "review-file-unusable",
+                "the queue could not be written",
+                scope=Scope.RUN,
+                origin=("review",),
+                detail={},
+            )
+        return real(store, item_id, actor=actor)
+
+    # Patched by flag rather than undone, because ``monkeypatch.undo`` would also
+    # revert the volume identity and process probes the gates fixture installed.
+    monkeypatch.setattr(run.review, "clear", unreadable)
+    with pytest.raises(CratekitError) as excinfo:
+        run.revoke(cfg, held.suppression_id, actor="cli")
+    assert excinfo.value.cause.reason == "review-file-unusable"
+
+    assert len(stores.declines(cfg).suppressions()) == 1, (
+        "the decline was lifted while the rejection that re-creates it was still "
+        "armed, which is the one half-done state that must not be reachable"
+    )
+    broken["on"] = False
+    again = run.plan(cfg, db, actor="cli")
+    assert [item.category for item in again.candidates] == [candidates.Category.DECLINED]
+
+    # And retrying completes it, which is what makes the pair recoverable rather
+    # than merely ordered.
+    run.revoke(cfg, held.suppression_id, actor="cli")
+    reopened = run.plan(cfg, db, actor="cli")
+    assert [item.category for item in reopened.candidates] == [candidates.Category.DELETABLE]
+    assert run.present(cfg, reopened)[0].verdict is None
+
+
+def test_a_trash_directory_that_is_the_problem_is_not_blamed_on_one_name(
+    tmp_path, monkeypatch
+):
+    """ENAMETOOLONG and EINVAL can be facts about the DESTINATION, not the name.
+
+    Attributing those to the name would report one item scoped skip per confirmed
+    file, hundreds of them, each blaming a track, while the one true sentence
+    about the Trash is never said.
+    """
+    absent = tmp_path / "no-such-trash"
+
+    def too_long(*args, **kwargs):
+        raise OSError(errno.ENAMETOOLONG, "file name too long")
+
+    monkeypatch.setattr(os, "open", too_long)
+    with pytest.raises(OSError) as excinfo:
+        trash._free_name(absent, ONE)
+    assert excinfo.value.errno == errno.ENAMETOOLONG, (
+        "a fact about the Trash was converted into an item scoped skip about a track"
+    )

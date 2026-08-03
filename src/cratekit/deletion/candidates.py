@@ -46,11 +46,11 @@ the row. "This row's file is gone" is an answer. "Every row that went through
 prefix rule 2 points into a directory that is not there" is the MAPPING failing,
 which is the same fault class as a prefix nothing maps, and that one already
 refuses. Fused, the two produce a perverse property: OMITTING a prefix rule
-refuses loudly, while adding a WRONG one proceeds silently. One character wrong
-in a configured target, a mapped volume nobody plugged in, and a drive somebody
-renamed all land there, and all three end the same way, with every active row
-counted as a missing file, an EMPTY reference set, ``complete`` true, and every
-removed row proved unreferenced against nothing at all.
+refuses loudly, while adding a WRONG one proceeds silently. A target with one
+character wrong in it and a mapped volume nobody plugged in both land there, and
+both end the same way, with every active row counted as a missing file, an EMPTY
+reference set, ``complete`` true, and every removed row proved unreferenced
+against nothing at all.
 
 So the DIRECTORY a resolved path is anchored in is checked, once per anchor: the
 library root for a row under it, and the rule's target for a row a rule remapped.
@@ -62,6 +62,27 @@ a rule whose target does not exist can say nothing about any row that went
 through it. The same split runs over the removed rows in :func:`categorize`,
 where fusing them is worse still, since ``GONE`` is finished business and the
 watermark passes over it.
+
+**WHAT THE ANCHOR CHECK DOES NOT CATCH, STATED BECAUSE THE FIRST VERSION OF THIS
+PARAGRAPH CLAIMED MORE THAN THE CODE DELIVERS.** The check asks whether the
+anchor IS THERE. It cannot ask whether the anchor is RIGHT. A rule whose target
+exists and is the wrong directory produces the original defect in full: every row
+through it is missing, nothing is indexed under it, ``complete`` is true, and a
+candidate that would have collided with an active row is judged deletable and
+trashed. A drive somebody renamed only reaches the refusing branch while nothing
+else is mounted at the old name; mount anything there and it does not. This is
+recorded rather than fixed, and R-16 in ``docs/residual-findings.md`` carries the
+reproduction and the reasoning, which is short: every rule that catches it needs
+a threshold, and every threshold that catches the dangerous case also refuses the
+ordinary one, which is a rule matching a handful of rows whose files the user
+moved by hand.
+
+What IS delivered against it is a signal with no threshold in it.
+``suspect_anchors`` names every anchor that exists, contributed no filesystem
+identity at all, and had at least one row go missing under it. That is per
+ANCHOR rather than per run, which is what the previous all-or-nothing version got
+wrong: one unrelated active row resolving anywhere in the library silenced it
+entirely.
 
 **AND ``missing`` IS NEVER SILENT, even where it correctly does not refuse.** It
 is counted, it rides on the reference set, it is reported in the refusal detail,
@@ -215,17 +236,36 @@ class ReferenceSet:
     #: "none of these could be a row that references a file" is a claim, and a
     #: claim nobody can see the size of is a claim nobody can check.
     not_a_path: tuple[str, ...] = ()
+    #: Anchors that ARE there and contributed no filesystem identity at all while
+    #: at least one row through them was missing. Does not refuse, and the reason
+    #: it does not is written out in the module docstring: the same shape is a
+    #: prefix rule pointing at the wrong existing directory, which is dangerous,
+    #: and a rule that legitimately matches one row whose file the user moved by
+    #: hand, which is ordinary. Nothing here can tell those apart, so this is the
+    #: loudest honest signal rather than a refusal with a threshold in it.
+    suspect_anchors: tuple[str, ...] = ()
+    #: Anchors whose existence answer was different at the end of the walk from
+    #: the one the walk was built on: a volume ejected or mounted underneath a
+    #: run in progress. Refuses, because half this set describes one filesystem
+    #: and half describes another.
+    unstable_anchors: tuple[str, ...] = ()
 
     @property
     def complete(self) -> bool:
-        return not self.unmapped and not self.uninspectable and not self.unanchored
+        return not (
+            self.unmapped or self.uninspectable or self.unanchored or self.unstable_anchors
+        )
 
     @property
     def counts(self) -> Mapping[str, int]:
-        """Every tally in one mapping, for a log line and for a refusal detail.
+        """Every ROW tally in one mapping, for a log line and for a refusal detail.
 
         DERIVED here rather than assembled at each reader, because the whole
         defect this field set exists to close was a count that nothing read.
+
+        Rows only. The three anchor tuples are named directories rather than
+        tallies and travel beside this under their own keys, so nothing has to
+        guess whether ``dead_anchors`` in a detail mapping is a number or a list.
         """
         return {
             "indexed": len(self.by_identity),
@@ -235,6 +275,28 @@ class ReferenceSet:
             "missing": len(self.missing),
             "not_a_path": len(self.not_a_path),
         }
+
+
+def _anchor_text(value: str) -> str:
+    """ONE spelling for an anchor, whichever side of the map it arrived from.
+
+    THE SEAM THE 144-FILE INCIDENT IS ABOUT, in the one place this module builds
+    a path string from two sources. ``PrefixRule`` NFC folds and right-strips its
+    target in ``__post_init__``; the library root arrives raw from configuration.
+    Without this, one library root spelled in NFD and one rule target spelled in
+    NFC are two cache keys and two stats for one directory, and worse, two
+    directories that ARE one compare as different. macOS hides it, because APFS
+    and HFS+ normalize on lookup and both spellings open the same inode. An ext4
+    or exFAT root does not, and exFAT is what an external music drive is usually
+    formatted as, which is exactly the disk a prefix rule exists to reach.
+
+    An anchor that strips to nothing is the filesystem root. ``PrefixRule`` right
+    strips its target, so a rule mapping onto ``/`` stores the empty string, and
+    a resolved path under it is genuinely anchored at ``/`` rather than nowhere.
+    Returning the empty string would stat ``""``, fail, and refuse the run naming
+    an anchor the user cannot read.
+    """
+    return locations.norm_for_compare(value).rstrip("/") or "/"
 
 
 def _anchor_of(
@@ -252,9 +314,9 @@ def _anchor_of(
     statement about the configuration and not about any row that went through it.
     """
     if resolved.resolution is locations.Resolution.UNDER_ROOT:
-        return str(root)
+        return _anchor_text(str(root))
     if resolved.resolution is locations.Resolution.REMAPPED and resolved.rule_index is not None:
-        return prefix_map[resolved.rule_index].target
+        return _anchor_text(prefix_map[resolved.rule_index].target)
     return None  # pragma: no cover - the resolver produces a path no other way
 
 
@@ -266,25 +328,50 @@ class _Anchors:
     differ between them. Caching also makes the answer CONSISTENT within a run: a
     volume that unmounts halfway through must not make the first half of the
     reference set mean something different from the second half.
+
+    **THE CACHE HAS A DIRECTION AND THE UNSAFE ONE IS "PRESENT".** Eject a volume
+    BEFORE its first row and every row through it is unanchored and the run
+    refuses, which is right. Eject it AFTER and the cached "present" stands, so
+    the remaining rows through it answer ``FileNotFoundError``, land in
+    ``missing``, and quietly shrink the very set the proof is made of. Saying
+    which half wins is not enough, because the half that wins is the wrong one.
+    So :meth:`changed` re-asks at the end and the caller refuses on any anchor
+    whose answer moved. One extra stat per ANCHOR, not per row, buys the property
+    that the reference set describes one filesystem rather than two.
     """
 
     def __init__(self, stat: Stat) -> None:
         self._stat = stat
         self._known: dict[str, bool] = {}
 
+    def _ask(self, anchor: str) -> bool:
+        try:
+            self._stat(anchor)
+        except (OSError, ValueError):
+            return False
+        return True
+
     def present(self, anchor: str | None) -> bool:
         if anchor is None:
             return True
         held = self._known.get(anchor)
         if held is None:
-            try:
-                self._stat(anchor)
-            except (OSError, ValueError):
-                held = False
-            else:
-                held = True
+            held = self._ask(anchor)
             self._known[anchor] = held
         return held
+
+    def changed(self) -> tuple[str, ...]:
+        """Anchors whose answer is no longer the answer this run was built on.
+
+        Asked once, at the end, over the anchors that were actually consulted. It
+        catches the mount that went away mid-pass in the direction that matters
+        and the one that arrived in the direction that does not, and it reports
+        both, because either one means the set was assembled against a filesystem
+        that no longer exists and neither is a state to guess about.
+        """
+        return tuple(
+            anchor for anchor, held in self._known.items() if self._ask(anchor) != held
+        )
 
 
 def reference_set(
@@ -317,6 +404,12 @@ def reference_set(
     unanchored: list[str] = []
     not_a_path: list[str] = []
     dead: dict[str, None] = {}
+    # Per anchor rather than per run, because the global tally is exactly what
+    # the all-or-nothing warning got wrong: one unrelated active row that
+    # resolves anywhere in the library made the whole set look productive while
+    # every row through one rule answered nothing.
+    indexed_under: dict[str, int] = {}
+    missing_under: dict[str, int] = {}
     rules = list(prefix_map)
     anchors = _Anchors(stat)
     for row in active:
@@ -334,12 +427,14 @@ def reference_set(
         if resolved.path is None:
             unmapped.append(row.content_id)
             continue
+        anchor = _anchor_of(resolved, root=root, prefix_map=rules)
         try:
             stats = stat(resolved.path)
         except FileNotFoundError:
-            anchor = _anchor_of(resolved, root=root, prefix_map=rules)
             if anchors.present(anchor):
                 missing.append(row.content_id)
+                if anchor is not None:
+                    missing_under[anchor] = missing_under.get(anchor, 0) + 1
             else:
                 unanchored.append(row.content_id)
                 dead[str(anchor)] = None
@@ -357,6 +452,8 @@ def reference_set(
             uninspectable.append(row.content_id)
             continue
         found.setdefault(FileIdentity.of(stats), []).append(row.content_id)
+        if anchor is not None:
+            indexed_under[anchor] = indexed_under.get(anchor, 0) + 1
     return ReferenceSet(
         by_identity={identity: tuple(ids) for identity, ids in found.items()},
         unmapped=tuple(unmapped),
@@ -365,6 +462,10 @@ def reference_set(
         unanchored=tuple(unanchored),
         dead_anchors=tuple(dead),
         not_a_path=tuple(not_a_path),
+        suspect_anchors=tuple(
+            anchor for anchor in missing_under if not indexed_under.get(anchor)
+        ),
+        unstable_anchors=anchors.changed(),
     )
 
 
@@ -390,6 +491,26 @@ def assert_complete(references: ReferenceSet) -> None:
         if references.unanchored
         else ""
     )
+    if references.unstable_anchors:
+        # ITS OWN SENTENCE, because the act is different from every other way
+        # this set comes up short. Nothing is misconfigured and no row is at
+        # fault: a volume appeared or went away while the walk was running, so
+        # half of the set describes one filesystem and half describes another,
+        # and the answer is to run it again rather than to repair anything.
+        raise refuse(
+            "deletion-reference-set-incomplete",
+            f"the directory at {', '.join(references.unstable_anchors)} was "
+            f"there for part of this run and not for the rest, so the reference "
+            f"set was assembled against two different filesystems and proves "
+            f"nothing about either; nothing is offered this run",
+            steps=(
+                "leave the library volume and every mapped volume mounted, then "
+                "run this again",
+            ),
+            scope=Scope.RUN,
+            origin=("deletion.candidates",),
+            detail={**references.counts, "unstable_anchors": list(references.unstable_anchors)},
+        )
     raise refuse(
         "deletion-reference-set-incomplete",
         f"{len(references.unmapped)} active rows record a location this machine "
@@ -397,6 +518,20 @@ def assert_complete(references: ReferenceSet) -> None:
         f"that could not be inspected, and {anchored}so the proof that a removed "
         f"file is unreferenced would be a proof about the rows that happened to "
         f"answer; nothing is offered this run",
+        # THE STEPS ARE SPELLED OUT FOR THE ANCHOR CASE because "run doctor" on
+        # its own is not service here. The commonest way to meet this refusal is
+        # a two drive library with the second drive unplugged, and that person is
+        # one act away from a run that works. Saying which act is the difference
+        # between a refusal and a wall.
+        steps=(
+            (
+                f"mount the volume holding {', '.join(references.dead_anchors)}, "
+                f"or correct the volume prefix rule that points at it, then run "
+                f"this again"
+            ),
+        )
+        if references.dead_anchors
+        else (),
         remedy=Remedy.RUN_DOCTOR,
         scope=Scope.RUN,
         origin=("deletion.candidates",),

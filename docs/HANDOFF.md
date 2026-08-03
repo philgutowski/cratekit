@@ -22,7 +22,10 @@ which blocks which. Read BOARD.md for what to update when a merge lands.
 and U35, plus the W1 through W6 hardening, the A4 whitelist addition, and U9's
 verdicts. Pushed to the private remote. On `main` as this branch left it,
 **3252 passed, 15 skipped**, ruff clean, `scan_repo` clean. This branch's own
-battery is **3286 passed, 15 skipped**, ruff clean, `scan_repo` clean.
+battery is **3281 passed, 15 skipped** out of 3296 collected, ruff clean,
+`scan_repo` clean. Quote the PASS count here, never the collected total: they
+differ by the skips, and an earlier line in this file and one commit trailer both
+quoted the collected number as if it were passes.
 
 ## What U24 changed
 
@@ -80,16 +83,36 @@ has to make about closing #24 with that entry outstanding.
 U24's other countdown is DISCHARGED: the guard that declines and tombstones go
 through the revocable stores is armed and now runs over the whole package.
 
-**THE FIX ROUND CHANGED TWO THINGS THAT MOVE FILES.** A prefix rule whose target
-directory does not exist used to make every active row answer "the file is
-missing", which left the reference set empty, `complete` true, and every removed
-row proved unreferenced against nothing at all: omitting a rule refused loudly
-and adding a wrong one proceeded silently. The split is now at the ANCHOR, the
-library root or the rule's target, and a row under an anchor that is not there
-refuses and names the directory. Separately, a declined row used to report
-`handled`, so the watermark passed its sequence and R35's revocability clause was
-dead on arrival: `HANDLED` is `{GONE}` alone now, and revoking a decline also
-clears the review item that carried the rejection.
+**THE FIX ROUNDS CHANGED THREE THINGS THAT MOVE FILES OR LOSE DECISIONS.** A
+prefix rule whose target directory does not exist used to make every active row
+answer "the file is missing", which left the reference set empty, `complete`
+true, and every removed row proved unreferenced against nothing at all: omitting
+a rule refused loudly and adding a wrong one proceeded silently. The split is now
+at the ANCHOR, the library root or the rule's target, and a row under an anchor
+that is not there refuses and names the directory. Separately, a declined row
+used to report `handled`, so the watermark passed its sequence and R35's
+revocability clause was dead on arrival: `HANDLED` is `{GONE}` alone now, and
+revoking a decline also clears the review item that carried the rejection.
+
+The second round found the third. Revoking wrote the STORE first and the QUEUE
+second, with no transaction across them and no compensation, so a queue write
+that failed for any reason left the decline lifted with the rejection that
+re-creates it still armed, and the very next apply put the decline straight back.
+The order is inverted now, deliberately, because one of the four intermediate
+states is going to be reachable and only one of them is safe to be interrupted
+in: queue first leaves the decline standing, which is exactly what the person
+asked for last time, and re-running the revoke finishes it. A review item that is
+simply not there is treated as already reopened rather than as a refusal, since a
+revoke that finds nothing holding the file shut has succeeded.
+
+**WHAT THE ANCHOR SPLIT DOES NOT DO** is check that an anchor is RIGHT, only that
+it is THERE, so a rule aimed at an existing but wrong directory still reproduces
+the original defect. That is recorded as R-16 Open 4 with its reproduction, and
+what ships against it is `ReferenceSet.suspect_anchors` plus a per anchor
+WARNING, because every refusal rule for it needs a threshold and every threshold
+also refuses libraries that are fine. R-16 Open 5 records the availability this
+cost: a mapped volume that is not plugged in now refuses the whole pass, which is
+a library that used to run.
 
 **One rule that had two producers now has one implementation.**
 `trees.soft_delete_marker` is the single read of rekordbox's soft-delete marker,

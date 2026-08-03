@@ -268,12 +268,19 @@ def plan(
     # state of a real library, and at WARNING when the number is the entire
     # active collection, which is not.
     logger.info("deletion reference set: %s", dict(references.counts))
-    if references.missing and not references.by_identity:
+    for anchor in references.suspect_anchors:
+        # PER ANCHOR, NOT PER RUN. The first version of this warning fired only
+        # when the WHOLE reference set was empty, which one unrelated active row
+        # resolving anywhere in the library was enough to silence, and the case
+        # it exists for is precisely a rule that points at an existing but wrong
+        # directory, where the rest of the library resolves perfectly well.
         logger.warning(
-            "every active row that named a path (%d) points at a file that is "
-            "not there, so nothing was indexed and no candidate can collide with "
-            "anything; check the volume prefix map before acting on this run",
-            len(references.missing),
+            "every active row that resolves through %s points at a file that is "
+            "not there, so nothing under it was indexed and no candidate can be "
+            "shown to collide with any of those rows; if that is not the "
+            "directory those rows actually live in, this run cannot prove "
+            "anything about the files it is about to offer",
+            anchor,
         )
     referenced = library.playlist_referenced(db.get_playlist_songs())
 
@@ -612,13 +619,35 @@ def apply(
 def _reopen_review_item(cfg: config.Config, record: review.Suppression, *, actor: str) -> None:
     """Clear the verdict that produced a decline, so the file is asked about again.
 
-    THE SECOND HALF OF REVOKING A DECLINE, and without it the first half does
+    THE FIRST HALF OF REVOKING A DECLINE, and without it the other half does
     nothing a person can see. Lifting the decline lets the row be categorised as
     deletable again, and ``present`` then re-offers it, but ``review.offer`` is
     idempotent by design and hands back the item that is already there WITH THE
     REJECTION STILL ON IT. The next apply reads that verdict and records the
     decline again, so a run that revoked would end exactly where it started, and
     the only trace would be a revocation in a store nothing consults.
+
+    **IT RUNS BEFORE THE STORE WRITE, AND THE ORDER IS THE WHOLE DESIGN.** These
+    are two writes to two files with no transaction across them, so one of the
+    four intermediate states is going to be reachable and the only question is
+    which. Store first left the bad one: the decline lifted, the item still
+    REJECTED, and the very next apply re-recording the decline, so a failed
+    revoke ended as one standing decline with no trace that anybody had tried.
+    Queue first leaves the harmless one. The decline still stands, so the file is
+    still not offered, which is exactly what the person asked for last time; the
+    item is open, which is idempotent; and re-running the revoke completes it.
+    A partial revoke must never be the state where the suppression is gone and
+    the thing that re-creates it is still armed.
+
+    **A MISSING ITEM IS A REVOKE THAT HAS ALREADY SUCCEEDED, NOT A REFUSAL.**
+    ``review.clear`` goes through ``review.get``, which refuses an identifier it
+    cannot resolve, and that refusal is right for somebody who typed one. Here
+    nobody typed it: it is derived from the record, and the queue legitimately
+    may not hold it after an export and re-import, after a ``review.clear`` a
+    person ran themselves, or after any pruning. Nothing is holding the file
+    shut, which is the state this function exists to reach, so it returns having
+    reached it. The reason is a DECLARED field on the cause and is what a caller
+    may branch on; the message is not.
 
     The item is addressed by derivation rather than by search: the decline and
     the review item are built from the same kind and the same identity, so the
@@ -629,11 +658,19 @@ def _reopen_review_item(cfg: config.Config, record: review.Suppression, *, actor
     if not record.identity:
         return  # pragma: no cover - a record predating the identity field
     with review.open_store(cfg) as store:
-        review.clear(
-            store,
-            review.item_id_for(review.Queue.DELETION, record.kind, record.identity),
-            actor=actor,
-        )
+        try:
+            review.clear(
+                store,
+                review.item_id_for(review.Queue.DELETION, record.kind, record.identity),
+                actor=actor,
+            )
+        except CratekitError as exc:
+            if exc.cause.reason != "review-item-unknown":
+                raise
+            logger.info(
+                "no review item held the decline being revoked, so there was "
+                "nothing to reopen; the revocation stands"
+            )
 
 
 def revoke(cfg: config.Config, suppression_id: str, *, actor: str) -> review.Suppression:
@@ -649,14 +686,17 @@ def revoke(cfg: config.Config, suppression_id: str, *, actor: str) -> review.Sup
     two suppress different things. A decline answers a question this queue asked,
     so lifting it puts that question back. A tombstone answers a question an
     acquisition pass will ask later and no item in this queue is holding it.
+
+    THE QUEUE IS WRITTEN BEFORE THE STORE. See ``_reopen_review_item``: there is
+    no transaction across the two files, so the order chooses which half-done
+    state is reachable, and only one of the two is safe to be interrupted in.
     """
     for held in (stores.tombstones(cfg), stores.declines(cfg)):
         for record in held.suppressions(include_revoked=True):
             if record.suppression_id == suppression_id:
-                lifted = held.revoke(suppression_id, actor=actor)
                 if held.key == tombstone.DECLINE_STORE_KEY:
-                    _reopen_review_item(cfg, lifted, actor=actor)
-                return lifted
+                    _reopen_review_item(cfg, record, actor=actor)
+                return held.revoke(suppression_id, actor=actor)
     # Neither store holds it. The refusal comes from the store rather than being
     # written here, so a person gets the same sentence whichever way they arrive
     # at an identifier that resolves nowhere.

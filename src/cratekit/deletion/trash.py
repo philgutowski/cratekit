@@ -287,6 +287,20 @@ def assert_usable(
     return status.layout
 
 
+def _is_a_directory(directory: Path) -> bool:
+    """Whether the destination is still a directory this account can look at.
+
+    Asked only when a create has already failed, to decide whether the failure
+    was about the NAME or about the place it was going. It swallows the error
+    because the answer it owes is a boolean and the caller is already holding the
+    exception that matters.
+    """
+    try:
+        return directory.is_dir()
+    except OSError:  # pragma: no cover - a path the account cannot even stat
+        return False
+
+
 def _free_name(directory: Path, name: str) -> Path:
     """Claim an unused name in ``directory``, atomically, and return it.
 
@@ -319,10 +333,18 @@ def _free_name(directory: Path, name: str) -> Path:
         except FileExistsError:
             continue
         except OSError as exc:
-            if exc.errno not in _NAME_REFUSED_BY_FILESYSTEM:
+            if exc.errno not in _NAME_REFUSED_BY_FILESYSTEM or not _is_a_directory(directory):
                 # Out of space, read only, no permission: every one of those is
                 # about the volume and the next file will meet it too, so it goes
                 # up as it came and the caller stops the run.
+                #
+                # THE DIRECTORY IS CHECKED BEFORE THE ERRNO IS BELIEVED, because
+                # the same two errno values can be facts about the DESTINATION
+                # rather than about the name: an over-long Trash path, or a
+                # directory the filesystem will not accept a create in at all.
+                # Attributing that to the name would report one item scoped skip
+                # per confirmed file, hundreds of them, each blaming a track,
+                # while the one true sentence about the Trash is never said.
                 raise
             raise refuse(
                 "trash-unavailable",

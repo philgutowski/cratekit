@@ -609,3 +609,67 @@ file that was supposed to be there.
 a file, so a later run can tell an interrupted reservation from a real trashed
 track and reclaim it. Every shape of that costs a second name or a sidecar, and
 choosing one is a decision rather than a repair.
+
+**Open 4: the anchor check asks whether the anchor is THERE, never whether it is
+RIGHT.** Added 2026-08-03, after the second review round reproduced it end to
+end. One real file, one removed row on it, and one active row on the same file
+through a prefix rule whose target EXISTS but is the wrong directory: the
+reference set comes back empty, `complete` is true, `assert_complete` passes, the
+candidate is `DELETABLE`, and the only copy of the file moves to the Trash. With
+the rule correct the same library reports `COLLIDES_WITH_ACTIVE_ROW`. It is the
+original defect in full, reachable through a narrower door.
+
+**Why it is not fixed here.** Every rule that catches it needs a threshold on
+some missing fraction, and every threshold that catches it also refuses the
+ordinary case, which is a prefix rule that legitimately matches a handful of rows
+whose files the user moved by hand. The reproduction above has exactly ONE row
+through the rule, so any rule with a minimum row count misses it and any rule
+without one refuses libraries that are fine. Picking a number there is a product
+decision about how much availability to spend, not a repair.
+
+**What is delivered instead** is a signal with no threshold in it.
+`ReferenceSet.suspect_anchors` names every anchor that exists, indexed nothing at
+all, and had at least one row go missing under it, and the pass logs a WARNING
+per anchor naming the directory. That is per ANCHOR rather than per run, which
+is what the first version got wrong: it fired only when the whole reference set
+was empty, and one unrelated active row resolving anywhere in the library
+silenced it. The module docstring now states the limit rather than claiming the
+split closed it.
+
+**Closes when:** the pass can tell a rule target that is right from one that is
+merely present, which needs something on the volume to identify it, in the shape
+`R38`'s volume identity already has for the library root. That is the same
+config change Open 1 needs, and the two should land together.
+
+**Open 5: a mapped volume that is not plugged in refuses the WHOLE pass, and
+that is an availability regression this round introduced.** A two drive library
+with the archive volume deliberately detached: one root row indexed, three
+archive rows unanchored, refused, including for candidates that live entirely on
+the library root. Deleting the rule does not help, because those rows become
+`unmapped` and refuse too. There is no configuration in which a deletion runs
+while a mapped volume is detached.
+
+Before this round that library ran, and for root resident candidates its proof
+was in fact sound, because a file on an unmounted volume cannot share a
+`(dev, ino)` with a file on a mounted one.
+
+**Why the refusal is not scoped to the affected candidates.** `categorize`
+already scopes correctly per candidate, returning `UNRESOLVED` rather than
+`GONE`, and it was tempting to make `reference_set` do the same. It is not sound.
+A dead anchor means the mapping is broken, and the code cannot tell "the rule is
+right and the volume is out" from "the rule is wrong", which is Open 4 above. In
+the second case the row's file is not on any detached volume; it is somewhere
+this machine can reach, possibly under the library root, where it could be
+exactly the file a candidate is about to trash. Narrowing the refusal would
+assume the rule is correct, which is the assumption the whole anchor split exists
+to stop making.
+
+**Reduced rather than closed:** the refusal now carries a step naming the
+directory to mount or the rule to correct, so the person meeting it is one act
+from a run that works rather than reading "run doctor".
+
+**Closes when:** configuration can record that a mapped target is expected to be
+offline, so the user asserts once that those rows live on that volume and the
+pass may then scope the refusal to candidates resolving through it. That is a
+deliberate assertion by a named person, in the same class as the backup
+acknowledgment, and it is config surface rather than a repair.
