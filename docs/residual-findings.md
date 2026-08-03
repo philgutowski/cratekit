@@ -584,3 +584,82 @@ correcting conformance 3 now, so this may be spent before U27 reaches it.
 **This entry needs its own issue.** `main` already defines R-14 and R-15, U27 is
 renumbering its own to R-16, U16 is adding R-17 and U32 is adding R-19, so R-20
 and R-21 are the next free numbers as of this merge.
+
+---
+
+## R-22. The adoption revert cannot recognize its own file after another Cratekit write
+
+**Found:** during U23's third review round, 2026-08-03. It is the residue of a
+defect that was fixed twice in the wrong direction first, so the history matters
+more than usual.
+
+`revert_tags` will not restore a file whose bytes are no longer the bytes
+adoption left there, because restoring onto a replaced file writes one
+recording's genre onto another recording's audio, with no record of what it
+destroyed. That refusal is correct. What it cannot do is tell a REPLACEMENT apart
+from this product's own later write of a different field: `energylevel` is in
+`core.tags.FIELDS` for the analysis workflow, so writing one after an adoption is
+ordinary, and it changes the file's bytes exactly as a replacement does.
+
+**Two attempts to close it both made things worse, which is why it is a residual
+rather than a third attempt.**
+
+1. The first version compared size and modification time only. It refused three
+   ordinary libraries: the analysis write above, a byte-identical file whose time
+   moved, and an interrupted revert pass retried.
+2. The second added "the field still holds the value adoption wrote" as a
+   positive recognition and called it proof. It is not proof: the value written
+   is a taxonomy bucket's DISPLAY name, shared by most of the library, so a
+   stranger's recording whose own genre is that bucket satisfied it. Measured, a
+   revert then overwrote the replacement's genre and dropped the record.
+3. The inode was considered and rejected on measurement rather than on taste:
+   `Path.write_bytes` and `cp` both truncate in place and keep it, so an inode
+   match does not mean the content is unchanged.
+
+**Fixed far enough to be safe.** Two of the three legitimate cases are closed
+properly rather than heuristically. The byte-identical restore is recognized by a
+digest recorded at write time, and the interrupted pass is eliminated
+structurally: each record is dropped from the ledger as its file is restored, so
+an interrupted pass leaves exactly the records it never reached. The remaining
+case refuses, names the single record it refused, and `force` takes a list of
+`(path, field)` pairs so overriding one never touches another.
+
+**Closes when:** the record carries a digest of the DECODED AUDIO rather than of
+the file, which a tag write does not change and a replacement does, or every
+Cratekit writer that rewrites a file re-stamps any outstanding revert record for
+it. The first needs a decoder in the write path and `core.tags` deliberately has
+none. The second is a real obligation on whichever unit lands the analysis
+writer, and it cannot be wired from here: `core.tags` is below `adopt` in the
+layering and must not call up into it.
+
+---
+
+## R-23. Two accepted shapes in the adoption ledger, recorded rather than fixed
+
+**Found:** during U23's third review round, 2026-08-03. Both predate the review
+rounds and neither is reachable from any shipped caller today.
+
+**An empty `written` bricks the whole document.**
+`write_tag_with_record(written="")` persists a record whose `written` is the
+empty string, and `read` then refuses the entire ledger, because it recognizes
+`written` positively as a non-empty string. Every other record in that document
+becomes unreadable with it, which is the one outcome this reader's positive
+recognition exists to avoid. Nothing in `apply_plan` can produce it: `wanted` is
+checked for None and a bucket display name is never empty. The two halves are a
+writer that does not validate its own argument and a reader that refuses the
+document rather than the record.
+
+**Closes when:** `write_tag_with_record` refuses an empty `written` at the call,
+which is where the caller can still be told, rather than at the next read.
+
+**An entry whose container this build cannot write can never reach applied.**
+`apply_plan` refuses the entry before placing it, which is correct and is the fix
+for a worse shape where it landed a membership it could never complete. But the
+entry stays outstanding forever, reported identically on every run, with nothing
+a person can acknowledge. There is one undocumented escape: a run with
+`tag_value=None` never asks the container question at all, so it places the entry
+and marks it applied.
+
+**Closes when:** the plan can carry an acknowledged exclusion, which is a review
+queue verdict rather than a flag, so a person who knows a `.aac` will never be
+tagged can settle it once instead of reading it in every report.

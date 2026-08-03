@@ -40,6 +40,7 @@ Layer: modules. It reads configuration and the disk and names no verb.
 
 from __future__ import annotations
 
+import os
 import stat as stat_module
 from dataclasses import dataclass
 from enum import StrEnum
@@ -297,6 +298,35 @@ def _probe(path: Path) -> Readability:
     return Readability.READABLE
 
 
+def _as_recorded_text(recorded: object) -> str | None:
+    """One recorded location as text, or None when it is not a location at all.
+
+    THE ANNOTATION SAYS ``str`` AND A DATABASE DOES NOT HAVE TO AGREE, so this
+    coerces what can be coerced and refuses the rest, both without raising. Two
+    shapes have already cost a whole census between them:
+
+    * ``None``, an ordinary null ``FolderPath``. The decoder asks a string method
+      of whatever it is handed, so a null raised ``AttributeError`` out of the
+      census generator and took every later row with it.
+    * a :class:`~pathlib.Path`, which is what a caller building rows from disk
+      naturally holds. Refusing it as "not a string" excluded EVERY row in such a
+      library and named the category ``not-a-path``, which is the whole-library
+      misclassification this module exists to prevent, arriving through the fix
+      for it. ``os.fspath`` is what turns it back into the location it always was.
+
+    Anything else is refused rather than passed through ``str()``. The resolver
+    this replaced coerced unconditionally, which turns an integer into ``"5"`` and
+    an arbitrary object into its repr; both then classify as ``not-a-path``
+    anyway, so refusing here reaches the same answer without inventing a location.
+    """
+    if isinstance(recorded, str):
+        return recorded
+    if isinstance(recorded, os.PathLike):
+        coerced = os.fspath(recorded)
+        return coerced if isinstance(coerced, str) else None
+    return None
+
+
 def _resolved_path(
     recorded: str,
     *,
@@ -330,18 +360,11 @@ def _resolved_path(
     layer down. This function adds nothing to that decision; it translates it
     into this module's vocabulary once, so no caller re-interprets it.
     """
-    if not isinstance(recorded, str):
-        # A NULL COLUMN. The annotation says ``str`` and a rekordbox row does not
-        # have to agree: a null ``FolderPath`` is ordinary. The decoder below asks
-        # a string method of whatever it is handed, so a None raised
-        # ``AttributeError`` straight out of the census generator and took every
-        # later row with it, which is the failure the probe two functions down was
-        # just hardened against. Resolving it here rather than there because this
-        # is where the value stops being the caller's and starts being a path, and
-        # because the resolver this replaced survived it by coercing with ``str``.
+    text = _as_recorded_text(recorded)
+    if text is None:
         return None, Readability.NOT_A_PATH
     try:
-        decoded = locations.location_to_path(recorded)
+        decoded = locations.location_to_path(text)
     except locations.LocationDecodeError:
         # A location naming another host. There is no local path behind it and
         # inventing one is what the decoder refuses to do, so the row is reported

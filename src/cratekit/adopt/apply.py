@@ -469,9 +469,10 @@ def apply_plan(
     one source per run and this module is not a run.
 
     IT IS NO LONGER THE CASE THAT A GATE REFUSAL COSTS A FILE WRITE, which is the
-    half of that gap that was not honest. See the module docstring: ``place`` runs
-    first and a refusal wider than one item ends the run, so a caller whose gates
-    refuse gets zero files rewritten rather than one per entry.
+    half of that gap that was not honest. ``place`` runs first, so a caller whose
+    gates refuse gets zero files rewritten however many entries the plan holds.
+    The refusal is reported once per entry and the loop does not stop, for the
+    reason given above and in the module docstring.
     """
     granted = require_approval(plan, approval)
     ledger = read(cfg)

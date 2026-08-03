@@ -496,6 +496,31 @@ def test_a_row_whose_location_column_is_NULL_does_not_end_the_census(cfg, declar
     assert scanned[1].readability is adopt_scan.Readability.READABLE
 
 
+def test_a_recorded_location_handed_over_as_a_Path_still_resolves(cfg, declared):
+    """Refusing what can be coerced is the same defect as raising on it.
+
+    Guarding the null column by demanding a ``str`` excluded every row in a
+    library whose caller builds rows from :class:`~pathlib.Path` values, and named
+    the category ``not-a-path``: the whole-library misclassification this module
+    exists to prevent, arriving through the fix for it. The resolver this replaced
+    coerced, so nothing about the annotation was ever load-bearing.
+    """
+    music = Path(cfg.library.root) / "Music"
+    present = music / "AsPath.flac"
+    present.write_bytes(b"audio")
+    rows = [
+        adopt_scan.CollectionRow("as-path", present, "House", False),  # type: ignore[arg-type]
+        adopt_scan.CollectionRow("as-text", str(present), "House", False),
+    ]
+    found = {
+        track.content_id: track
+        for track in adopt_scan.scan_rows(rows, declared, root=cfg.library.root)
+    }
+    assert found["as-path"].readability is adopt_scan.Readability.READABLE
+    assert found["as-path"].path == found["as-text"].path
+    assert found["as-path"].readability is found["as-text"].readability
+
+
 def test_an_excluded_track_is_carried_in_the_plan_rather_than_dropped(cfg, declared):
     music = Path(cfg.library.root) / "Music"
     rows = [adopt_scan.CollectionRow("gone", str(music / "Gone.flac"), "House", False)]
@@ -1277,9 +1302,10 @@ def test_a_refusal_from_the_writer_rewrites_no_files_at_all(cfg, declared, tmp_p
     six files on disk holding adoption's genre instead of their own. One refusal
     multiplied into one irreversible file write per entry in the plan.
 
-    Two things fix it and this asserts both: the recoverable write goes first, and
-    a refusal whose own declared scope condemns more than one item ENDS the run
-    rather than being counted and stepped over.
+    THE ORDERING IS THE FIX AND THIS ASSERTS IT: the recoverable write goes
+    first, so no file is rewritten however many entries meet the same refusal.
+    Round 2 also stopped the run on a scope wider than one item, which broke the
+    per-track rule U19 paid for, so the count below is every entry rather than one.
     """
     plan = _plan_over_real_files(cfg, declared, tmp_path, [".flac"] * 6)
     assert len(plan.applicable()) == 6
@@ -1402,7 +1428,10 @@ def test_a_container_this_build_cannot_write_costs_one_entry_not_the_run(
         "the entry this build cannot finish still had its membership written, so "
         "every re-run writes it again"
     )
-    assert len(placed) == 3, "entries after the awkward container were never attempted"
+    assert len(placed) == 3, (
+        "3 is the full complement here: the .aac is refused before place, so "
+        "every entry this build can finish was attempted"
+    )
 
     second = adopt_apply.apply_plan(
         cfg,
@@ -1570,20 +1599,40 @@ def test_a_container_that_refuses_the_write_is_a_failure_not_a_restore(cfg, tmp_
     assert list(report.failed) == [(str(path), "genre")]
 
 
-#: The seven containers the ledger has to be exact in. Named here rather than
-#: imported from the writer's own list so a container silently dropped from one
-#: of the two shows up as a difference.
-LEDGER_CONTAINERS = [".flac", ".mp3", ".wav", ".aiff", ".m4a", ".ogg", ".opus"]
+#: EVERY container the writer claims, derived from the writer's own table rather
+#: than listed beside it. A hand-kept copy named seven of eleven, and the four it
+#: omitted were ``.aif``, ``.aifc``, ``.m4b`` and ``.mp4``: ``.aif`` is an
+#: ordinary DJ container, and nothing anywhere asserted a relationship between
+#: the two lists, so a container ADDED to the writer and not to this list showed
+#: up as nothing at all (P3).
+LEDGER_CONTAINERS = sorted(tags._DIALECT_BY_SUFFIX)
 
-#: Every shape of "what the file held" the convenient reader loses, and what it
-#: loses it to. Each of these round trips as itself or the ledger is lying.
+#: Every shape of "what the file held" that an exact reader has to preserve.
+#: The first four are the losses the convenient reader has. The rest are the
+#: transformations a plausible reader applies without anyone noticing, mapped by
+#: mutating the reader until each one survived: normalizing composition form,
+#: keeping only the first two values, deduplicating, and sorting. Each of these
+#: round trips as itself or the ledger is lying.
 LOSSY_SHAPES = [
     pytest.param(["House "], id="trailing-space"),
     pytest.param(["   "], id="whitespace-only"),
     pytest.param([""], id="empty-string"),
     pytest.param(["House", "Techno"], id="two-values"),
     pytest.param(None, id="absent"),
+    pytest.param([unicodedata.normalize("NFD", "Café")], id="decomposed"),
+    pytest.param(["A", "B", "C"], id="three-values"),
+    pytest.param(["House", "House"], id="repeated-value"),
+    pytest.param(["Techno", "House"], id="unsorted-values"),
 ]
+
+#: Fields driven through the exact pair, one per dialect SHAPE rather than one
+#: per name. ``genre`` is a native key in all three dialects, ``title`` is the
+#: other native one, and ``energylevel`` is the freeform shape: ``TXXX`` in ID3
+#: and a ``----`` atom in MP4, which carries bytes rather than text and is the
+#: only branch where a reader has to decode. Both oracle tests asked only for
+#: ``genre`` before, so a reader exact for one field and lossy for every other
+#: passed.
+LEDGER_FIELDS = ["genre", "title", "energylevel"]
 
 
 @pytest.mark.parametrize("suffix", LEDGER_CONTAINERS)
@@ -1627,7 +1676,7 @@ def test_the_ledger_records_what_the_file_ACTUALLY_HELD(cfg, tmp_path, suffix, o
     if original is not None:
         assert tags.write_tag_values(path, "genre", original) is True
 
-    expected = _expected_after_writing(original, suffix)
+    expected = _expected_after_writing(original, suffix, "genre")
     assert _oracle_values(path, "genre") == expected, (
         "the fixture did not put on disk what this test believes it did, so "
         "every assertion below would be about the wrong file"
@@ -1648,17 +1697,23 @@ def test_the_ledger_records_what_the_file_ACTUALLY_HELD(cfg, tmp_path, suffix, o
 
 #: The one shape a container genuinely cannot hold, stated rather than tolerated.
 #: mutagen drops an ID3 text frame whose only value is the empty string, so the
-#: field really IS absent afterwards and an exact reader has to say so. Naming it
-#: here means a container that starts or stops doing this fails the test instead
-#: of being absorbed by a lenient assertion.
-ID3_DROPS_THE_EMPTY_STRING = frozenset({".mp3", ".wav", ".aiff"})
+#: field really IS absent afterwards and an exact reader has to say so. Derived
+#: from the dialect rather than listed by suffix, so an ID3 container added to
+#: the writer is covered without editing this.
+def _drops_the_empty_string(suffix: str, field: str) -> bool:
+    # Measured across every frame shape rather than assumed: a TXXX frame drops
+    # an empty value exactly as a plain text frame does, so the rule is the
+    # DIALECT and nothing finer. Guessing that TXXX kept it was wrong in five
+    # parametrisations, which is the whole reason the oracle exists.
+    assert field in tags.FIELDS
+    return tags.dialect_of(suffix) is tags.Dialect.ID3
 
 
-def _expected_after_writing(original, suffix: str) -> tuple[str, ...] | None:
+def _expected_after_writing(original, suffix: str, field: str) -> tuple[str, ...] | None:
     """What the file must hold, derived from the LITERAL rather than from a read."""
     if original is None:
         return None
-    if original == [""] and suffix in ID3_DROPS_THE_EMPTY_STRING:
+    if original == [""] and _drops_the_empty_string(suffix, field):
         return None
     return tuple(original)
 
@@ -1690,20 +1745,46 @@ def _oracle_values(path: Path, field: str) -> tuple[str, ...] | None:
     )
 
 
+@pytest.mark.parametrize("field", LEDGER_FIELDS)
 @pytest.mark.parametrize("suffix", LEDGER_CONTAINERS)
 @pytest.mark.parametrize("original", LOSSY_SHAPES)
-def test_the_exact_reader_agrees_with_the_container_itself(tmp_path, suffix, original):
+def test_the_exact_reader_agrees_with_the_container_itself(
+    tmp_path, suffix, original, field
+):
     """The reader against an oracle, with no ledger in the way.
 
     Separate from the ledger test above so a failure says WHICH of the two is
     wrong: the reader, or what the ledger did with what the reader returned.
+
+    Driven over every field SHAPE as well as every container, because a reader
+    exact for one key and lossy for the freeform ones is a reader that loses a
+    field only some tracks have, in only some containers, which is the failure
+    class this whole module exists around.
     """
     path = _synth(tmp_path, suffix)
     if original is not None:
-        assert tags.write_tag_values(path, "genre", original) is True
-    expected = _expected_after_writing(original, suffix)
-    assert _oracle_values(path, "genre") == expected
-    assert tags.read_tag_values(path, "genre") == expected
+        assert tags.write_tag_values(path, field, original) is True
+    expected = _expected_after_writing(original, suffix, field)
+    assert _oracle_values(path, field) == expected
+    assert tags.read_tag_values(path, field) == expected
+
+
+def test_the_container_list_is_the_writers_own(tmp_path):
+    """Both lists, against each other, so neither can drift alone (P3).
+
+    Derived rather than compared, which is stronger: the list IS the writer's
+    table, so a container added there is driven by every test that uses it on the
+    next run. This asserts the derivation is still real and that the containers
+    genuinely exist, since a suffix nothing can encode would be a silently empty
+    parametrisation.
+    """
+    assert set(LEDGER_CONTAINERS) == set(tags._DIALECT_BY_SUFFIX)
+    assert len(LEDGER_CONTAINERS) == len(tags._DIALECT_BY_SUFFIX)
+    assert {tags.dialect_of(s) for s in LEDGER_CONTAINERS} == set(tags.Dialect), (
+        "a whole tag dialect has no container in the list that drives it"
+    )
+    for suffix in LEDGER_CONTAINERS:
+        assert _synth_in(tmp_path / suffix[1:], suffix).exists()
 
 
 @pytest.mark.parametrize("suffix", LEDGER_CONTAINERS)
@@ -1821,15 +1902,20 @@ def test_a_file_replaced_since_adoption_wrote_it_is_refused_not_overwritten(cfg,
     )
 
 
-def test_a_later_write_of_another_field_does_not_strand_the_revert(cfg, tmp_path):
-    """The stamp is circumstantial evidence; the field's own value is direct.
+def test_a_later_write_of_another_field_refuses_and_says_so_per_record(cfg, tmp_path):
+    """The one legitimate library this guard cannot recognize, held to explicitly.
 
     ``energylevel`` is in this module's own ``FIELDS`` table, put there for the
     analysis workflow, so writing one after an adoption is an ordinary thing for
-    this product to do to its own library. It moves the size and the time, and a
-    guard comparing only those refused the adoption revert permanently: nothing
-    restored, the record stuck in the ledger, the genre left as adoption wrote
-    it, and every retry identical.
+    this product to do to its own library. It changes the bytes, and there is no
+    evidence available without decoding the audio that separates it from somebody
+    putting a different recording at the path. Two attempts to find one both let
+    the catastrophic case through, so this refuses and the person overrides the
+    one record.
+
+    ASSERTED RATHER THAN LEFT UNTESTED, so the cost is visible: a reader who
+    thinks this should pass silently has a test to argue with, and residual R-22
+    names what would close it properly.
     """
     path = _synth(tmp_path, ".flac")
     tags.write_genre(path, "Original Genre")
@@ -1844,7 +1930,13 @@ def test_a_later_write_of_another_field_does_not_strand_the_revert(cfg, tmp_path
         "the fixture did not move the stamp, so this test proves nothing"
     )
 
-    report = adopt_revert.revert_tags(cfg)
+    key = (str(path), "genre")
+    refused = adopt_revert.revert_tags(cfg)
+    assert list(refused.failed) == [key]
+    assert repr(key) in refused.failed[key]
+    assert adopt_revert.read(cfg).snapshots != ()
+
+    report = adopt_revert.revert_tags(cfg, force=[key])
     assert report.failed == {}, report.failed
     assert tags.read_genre_from_file(path) == "Original Genre"
     assert tags.read_tag(path, "energylevel") == "7", "the revert undid another field"
@@ -1915,9 +2007,15 @@ def test_an_interrupted_revert_pass_can_be_retried(cfg, tmp_path):
     with pytest.raises(_Died):
         adopt_revert.revert_tags(cfg, restore=restore_then_die)
     assert tags.read_genre_from_file(seen[0]) == originals[seen[0]]
-    assert len(adopt_revert.read(cfg).snapshots) == 2, (
-        "the fixture rewrote the ledger, so it is not the interrupted shape"
+    # THE RECORD IT FINISHED IS ALREADY GONE, which is what makes the retry
+    # possible. Batching the drops to the end of the pass left this record on
+    # disk describing a file that no longer matched it, so it could never be
+    # recognized again and was refused forever while every other record settled.
+    remaining = adopt_revert.read(cfg).snapshots
+    assert len(remaining) == 1, (
+        "an interrupted pass left a record for a file it had already restored"
     )
+    assert remaining[0].path != str(seen[0])
 
     retry = adopt_revert.revert_tags(cfg)
     assert retry.failed == {}, retry.failed
@@ -1926,36 +2024,185 @@ def test_an_interrupted_revert_pass_can_be_retried(cfg, tmp_path):
     assert adopt_revert.read(cfg).snapshots == ()
 
 
-def test_a_genuinely_replaced_file_is_still_refused_and_force_gets_through(cfg, tmp_path):
+@pytest.mark.parametrize(
+    "stranger_genre",
+    [
+        # THE FIRST ONE IS THE CASE THE GUARD IS ACTUALLY FOR, and the round 2
+        # version of this test used only the second. ``written`` is a taxonomy
+        # bucket's DISPLAY name, so the value adoption writes is shared by most of
+        # the library: a stranger's recording whose own genre is that bucket is
+        # the LIKELIEST replacement, not an exotic one. Picking an unrelated
+        # string dodged the branch under test and made the widening invisible.
+        "THE BUCKET ADOPTION WROTE",
+        "Different B",
+    ],
+    ids=["stranger-shares-the-bucket", "stranger-has-its-own-genre"],
+)
+def test_a_genuinely_replaced_file_is_still_refused_and_force_gets_through(
+    cfg, declared, tmp_path, stranger_genre
+):
     """The guard still bites, and it is evidence rather than permission (P7).
 
     Loosening a refusal is only safe if the case it exists for still refuses, so
-    this drives the original finding again. And a heuristic over somebody else's
-    file with no override is a heuristic that decides: a wrong refusal strands the
-    only copy of a value as surely as a wrong restore overwrites one.
+    this drives the original finding again, in BOTH shapes the replacement can
+    take. Measured on the version that trusted the field's value: the stranger
+    variant came back ``restored: 1  failed: {}``, the replacement's own genre was
+    overwritten with a record belonging to different audio, and the ledger record
+    was dropped, which is verbatim the harm the refusal message names.
     """
+    routable, _genre = _bucket_and_genre(declared)
+    written = declared.bucket(routable).display
+    if stranger_genre == "THE BUCKET ADOPTION WROTE":
+        stranger_genre = written
+
     path = _synth(tmp_path, ".flac")
     tags.write_genre(path, "Original A")
     adopt_revert.write_tag_with_record(
-        cfg, path, field="genre", written="Adopted", entry_id="e1"
+        cfg, path, field="genre", written=written, entry_id="e1"
     )
+    # A DIFFERENT RECORDING at the same path. Different bytes, so this is not the
+    # backup-restore case; the size differs too, which is the ordinary shape.
     replacement = _synth_in(tmp_path / "other", ".flac")
-    tags.write_genre(replacement, "Different B")
+    tags.write_tags(replacement, {"genre": stranger_genre, "title": "Somebody Else"})
     path.write_bytes(replacement.read_bytes())
 
+    key = (str(path), "genre")
     refused = adopt_revert.revert_tags(cfg)
-    assert refused.restored == ()
-    assert list(refused.failed) == [(str(path), "genre")]
-    assert "force" in refused.failed[(str(path), "genre")], (
-        "the refusal does not name the way through, so a person who knows the "
-        "file is theirs cannot act on it"
+    assert refused.restored == (), (
+        "the revert put one file's tag onto another file's audio"
     )
-    assert tags.read_genre_from_file(path) == "Different B"
+    assert list(refused.failed) == [key]
+    assert repr(key) in refused.failed[key], (
+        "the refusal does not name the record it can be overridden for, so a "
+        "person who knows this one file is theirs cannot act on it without "
+        "acting on every other refused file too"
+    )
+    assert tags.read_genre_from_file(path) == stranger_genre
+    assert adopt_revert.read(cfg).snapshots != (), "the record was dropped anyway"
 
-    forced = adopt_revert.revert_tags(cfg, force=True)
-    assert forced.restored == ((str(path), "genre"),)
+    forced = adopt_revert.revert_tags(cfg, force=[key])
+    assert forced.restored == (key,)
     assert tags.read_genre_from_file(path) == "Original A"
     assert adopt_revert.read(cfg).snapshots == ()
+
+
+def test_force_overrides_the_record_it_names_and_no_other(cfg, tmp_path):
+    """A per-record message must not hand out a pass-wide override.
+
+    The refusal is emitted once per record, so a person reads "override this"
+    beside the one file they recognize. A boolean turns that into consent for
+    every other refused record in the ledger, and those are precisely the
+    dangerous ones: the benign cases already passed the guard silently.
+    ``entry_id`` cannot separate them either, because two files written through
+    one plan entry are two records under one identifier.
+    """
+    mine = _synth_in(tmp_path / "mine", ".flac")
+    stranger = _synth_in(tmp_path / "stranger", ".flac")
+    for path, genre in ((mine, "Original Mine"), (stranger, "Original Stranger")):
+        tags.write_genre(path, genre)
+        adopt_revert.write_tag_with_record(
+            cfg, path, field="genre", written="Adopted", entry_id="one_entry"
+        )
+    for path in (mine, stranger):
+        other = _synth_in(tmp_path / f"swap{path.parent.name}", ".flac")
+        tags.write_tags(other, {"genre": "Replaced", "title": "Somebody Else"})
+        path.write_bytes(other.read_bytes())
+
+    assert len(adopt_revert.revert_tags(cfg).failed) == 2
+
+    report = adopt_revert.revert_tags(cfg, force=[(str(mine), "genre")])
+    assert report.restored == ((str(mine), "genre"),)
+    assert list(report.failed) == [(str(stranger), "genre")]
+    assert tags.read_genre_from_file(mine) == "Original Mine"
+    assert tags.read_genre_from_file(stranger) == "Replaced", (
+        "forcing one record overwrote a file the person never named"
+    )
+
+    # Nor can the entry identifier stand in for naming them, since both records
+    # were written through one plan entry.
+    both = adopt_revert.revert_tags(cfg, entry_id="one_entry")
+    assert list(both.failed) == [(str(stranger), "genre")]
+
+
+def test_one_unreadable_record_costs_one_record_not_the_pass(cfg, tmp_path):
+    """The per-track rule U19 paid for, applied to the undo log.
+
+    ``record.field`` comes off disk, where ``read`` recognizes it as a non-empty
+    string and deliberately does NOT check it against ``tags.FIELDS``: refusing a
+    whole document over one unknown field would strand every other record in it.
+    So a ledger written by a build with one more field is ordinary, and it used to
+    raise ``ValueError`` out of the pass before the lock released, so nothing
+    settled and every retry died on the same record.
+    """
+    good = [_synth_in(tmp_path / f"g{i}", ".flac") for i in range(2)]
+    for index, path in enumerate(good):
+        tags.write_genre(path, f"Original {index}")
+        adopt_revert.write_tag_with_record(
+            cfg, path, field="genre", written="Adopted", entry_id="e1"
+        )
+
+    document = json.loads(adopt_revert.path_for(cfg).read_text())
+    document["snapshots"].append(
+        {
+            "file": "a" * 24,
+            "field": "bpm",  # a field THIS build does not know
+            "path": str(good[0]),
+            "original": ["124"],
+            "written": "125",
+            "recorded": "2026-08-03T00:00:00+00:00",
+            "entry": "e1",
+            "entries": ["e1"],
+        }
+    )
+    adopt_revert.path_for(cfg).write_text(json.dumps(document))
+    assert len(adopt_revert.read(cfg).snapshots) == 3
+
+    report = adopt_revert.revert_tags(cfg)
+    assert len(report.restored) == 2, (
+        "one record naming a field this build cannot write ended the pass, so "
+        "nothing settled and every retry dies on the same record"
+    )
+    assert list(report.failed) == [(str(good[0]), "bpm")]
+    for index, path in enumerate(good):
+        assert tags.read_genre_from_file(path) == f"Original {index}"
+    assert len(adopt_revert.read(cfg).snapshots) == 1, (
+        "the two records that were spent are still in the ledger"
+    )
+
+
+def test_the_value_adoption_WROTE_is_never_treated_as_the_files_identity(
+    cfg, declared, tmp_path
+):
+    """A bucket display name is shared by most of the library it was written to.
+
+    This is the assertion that stops the guard being widened back into the shape
+    that failed: whatever else it consults, it must not conclude "this is the file
+    adoption wrote to" from the field holding a value thousands of files hold.
+    Asserted about the RECORD's stored evidence rather than about a message, so
+    it stays true however the checks are reordered.
+    """
+    routable, _genre = _bucket_and_genre(declared)
+    written = declared.bucket(routable).display
+    path = _synth(tmp_path, ".flac")
+    tags.write_genre(path, "Original A")
+    record, landed = adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written=written, entry_id="e1"
+    )
+    assert landed
+    info = path.stat()
+    assert record.digest == hashlib.sha256(path.read_bytes()).hexdigest(), (
+        "the record does not carry the bytes adoption left, so the only thing "
+        "left to recognize the file by is a value the whole bucket shares"
+    )
+    assert (record.size, record.mtime_ns) == (info.st_size, info.st_mtime_ns)
+    assert record.written == written
+    assert tags.read_genre_from_file(path) == written
+    # AND THE INODE IS NOT RECORDED, deliberately. It is the other thing that
+    # looks like identity: the same inode is the same file and says nothing
+    # about its content, because write_bytes and cp both truncate in place and
+    # keep it, which is how a track is actually replaced.
+    stored = json.loads(adopt_revert.path_for(cfg).read_text())["snapshots"][0]
+    assert "ino" not in stored and "dev" not in stored
 
 
 def test_a_targeted_revert_answers_for_the_entry_that_actually_wrote(cfg, tmp_path):

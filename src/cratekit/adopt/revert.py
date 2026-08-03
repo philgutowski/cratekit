@@ -56,13 +56,13 @@ across both, and :func:`revert_tags` holds the same lock across its whole pass.
 Two applies still serialize into first-write-wins, which is the property that was
 already true and is not weakened by the write moving inside the lock.
 
-**A record says what the file looked like when adoption left it.** Size and
-modification time, stamped after the write, and consulted only AFTER the field's
-own value has failed to settle the question. Without any of it the revert writes
-the recorded original onto whatever is at that path now, which after somebody
-replaced the file is a stranger's audio getting a genre it never had. Without the
-field check first, three ordinary libraries are refused forever; see
-:func:`_changed_since_adoption`.
+**A record says what the file looked like when adoption left it.** Size,
+modification time and a digest of the whole file, all stamped after the write.
+Without them the revert writes the recorded original onto whatever is at that path
+now, which after somebody replaced the file is a stranger's audio getting a genre
+it never had. What that evidence may and may not conclude is the subject of
+:func:`_changed_since_adoption`, and it is the part of this module that has been
+wrong most often.
 
 **THE LOCK IS NOT REENTRANT, AND TWO PUBLIC PARAMETERS CAN REACH IT.** ``flock``
 is held per open file description, so a second acquisition from the same process
@@ -95,8 +95,9 @@ import json
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Collection, Mapping
 
+from cratekit.adopt.scan import DATALESS_FLAG
 from cratekit.cli.output import timestamp
 from cratekit.core import config, locations, tags
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope
@@ -180,11 +181,32 @@ class TagSnapshot:
     the second entry would otherwise match nothing and report a clean pass over a
     file it left holding adoption's value.
 
-    ``size`` and ``mtime_ns`` are the file as adoption LEFT it, stamped after the
+    THE LAST THREE FIELDS ARE THE FILE AS ADOPTION LEFT IT, stamped after the
     write rather than before it, so a later revert can tell its own handiwork
-    from a file somebody has since replaced. Both are None on a record whose
+    from a file somebody has since replaced. They are absent on a record whose
     write did not complete, which is the crash seam and is treated as
     unverifiable rather than as a mismatch.
+
+    ALL THREE ARE ABOUT THE BYTES, and that is the whole of the design. ``size``
+    and ``mtime_ns`` say the file has not been touched at all. ``digest`` is over
+    the file exactly as adoption left it, and it is the only evidence that
+    survives those same bytes being copied back from somewhere else.
+
+    TWO THINGS THAT LOOK LIKE IDENTITY AND ARE NOT. Each was proposed as proof
+    and each is measured wrong, which is why they are named here rather than
+    left for somebody to propose a third time.
+
+    * **The value in the field.** ``written`` is a taxonomy bucket's DISPLAY
+      name, so it is shared by most of the library it was written into. A
+      stranger's recording whose own genre is that bucket satisfies "the field
+      still holds what adoption wrote" exactly, and a revert that trusted it put
+      one file's genre onto another file's audio, destroyed the replacement's own
+      genre with no record anywhere, and dropped the ledger record.
+    * **The inode.** The same inode is the same file, but it is not the same
+      CONTENT. Both ``Path.write_bytes`` and ``cp`` truncate in place and keep
+      the inode, measured True for both, and that is how a track is actually
+      replaced. So an inode match cannot separate "this product rewrote a tag"
+      from "somebody put a different recording here", and it is not recorded.
     """
 
     file: str
@@ -197,6 +219,7 @@ class TagSnapshot:
     entries: tuple[str, ...] = ()
     size: int | None = None
     mtime_ns: int | None = None
+    digest: str = ""
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -210,6 +233,7 @@ class TagSnapshot:
             "entries": list(self.entries),
             "size": self.size,
             "mtime_ns": self.mtime_ns,
+            "digest": self.digest,
         }
 
     def written_by(self, entry_id: str) -> bool:
@@ -467,6 +491,7 @@ def read(cfg: config.Config) -> RevertLedger:
             entries=_entry_list(entry, path=path, position=position),
             size=_optional_int(entry, "size", path=path, position=position),
             mtime_ns=_optional_int(entry, "mtime_ns", path=path, position=position),
+            digest=str(entry.get("digest") or ""),
         )
         if _key(record) in seen:
             raise RevertLedgerUnreadable(
@@ -534,13 +559,44 @@ def _record_locked(
     return ledger, amended
 
 
+def digest_of(path: Path) -> str:
+    """A digest of the whole file. Empty when it cannot be read.
+
+    Over the file's own bytes rather than its decoded audio, deliberately. What a
+    later revert needs is "are these the bytes adoption left", and a copy that
+    reproduces them exactly is the case this exists for. Decoding would answer a
+    different and more expensive question, and would call a file whose tag
+    somebody edited a match.
+    """
+    hasher = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                hasher.update(block)
+    except OSError:
+        return ""
+    return hasher.hexdigest()
+
+
 def _stamped(record: TagSnapshot, path: Path) -> TagSnapshot:
-    """``record`` carrying the file as adoption has just left it."""
+    """``record`` carrying the file as adoption has just left it.
+
+    THE DIGEST COSTS ONE EXTRA READ PER FILE, and it is the only evidence in this
+    record that survives the file being copied back from a backup: the inode
+    moves, the time moves, and the bytes do not. The read is sequential and
+    happens immediately after mutagen has rewritten the same file, so the pages
+    are already warm.
+    """
     try:
         info = path.stat()
     except OSError:  # pragma: no cover - the write above already succeeded
         return record
-    return replace(record, size=info.st_size, mtime_ns=info.st_mtime_ns)
+    return replace(
+        record,
+        size=info.st_size,
+        mtime_ns=info.st_mtime_ns,
+        digest=digest_of(path),
+    )
 
 
 def _write_one(path: Path, field: str, value: str) -> bool:
@@ -702,64 +758,75 @@ def restore_tag(path: Path, tag_field: str, original: tuple[str, ...] | None) ->
     return tags.write_tag_values(path, tag_field, original)
 
 
-def _changed_since_adoption(
-    record: TagSnapshot,
-    target: Path,
-    *,
-    read_field: Callable[[Path, str], tuple[str, ...] | None],
-) -> str | None:
+def _changed_since_adoption(record: TagSnapshot, target: Path) -> str | None:
     """Why this file is not the one adoption wrote to, or None when it is.
 
-    THE FIELD IS ASKED BEFORE THE STAMP IS, and that ordering is the whole of
-    this function. Size and modification time are CIRCUMSTANTIAL evidence about
-    the file; the field's own value is DIRECT evidence about the thing the record
-    describes. A guard that consults only the circumstantial evidence refuses
-    three ordinary libraries, all of them measured:
+    IT ACCEPTS ONLY EVIDENCE ABOUT THE BYTES, and the two ways this function has
+    been wrong before are both the same mistake: reaching for something that
+    correlates with identity and calling it identity.
 
-    * A later write of any other field this module owns. Writing an energy
-      rating, which is in :data:`cratekit.core.tags.FIELDS` for the analysis
-      workflow, moved the size and the time and permanently blocked the adoption
-      revert on a file still carrying adoption's own genre.
-    * A byte-identical file whose time moved. A backup restore, an rsync without
-      timestamps, a cloud re-download. Same bytes, same genre, refused forever.
-    * An interrupted revert pass. It restores a file and dies before the ledger
-      is rewritten, so on retry that record's stamp no longer matches its own
-      successful restore, and it is refused for good while every other record
-      settles. The file is correct and the ledger keeps a record nobody can ever
-      clear.
+    * **The field's own value is not identity.** ``record.written`` is a taxonomy
+      bucket's DISPLAY name, shared by most of the library it was written into, so
+      a stranger's recording whose own genre is that bucket satisfies it exactly.
+      Measured: the revert then put one file's genre onto another file's audio,
+      destroyed the replacement's own genre with no record anywhere, and dropped
+      the ledger record.
+    * **The inode is not identity either**, which is the version that did not
+      ship. The same inode is the same FILE and says nothing about its CONTENT:
+      ``Path.write_bytes`` and ``cp`` both truncate in place and keep it, measured
+      True for both, and that is how a track is actually replaced.
 
-    So two positive recognitions come first. The field still holding exactly what
-    adoption WROTE is proof this is adoption's own output whatever the stamp
-    says. The field already holding the recorded ORIGINAL is proof a restore
-    already landed, and doing it again writes the same bytes and lets the record
-    settle. Only when neither is true does the stamp decide, and only when the
-    stamp is present: an unstamped record can only come from a crash between the
-    write and the stamp, and refusing those would leave a record that can never
-    be spent on a file that genuinely does carry adoption's value.
+    So there are exactly two acceptances, both definitive:
 
-    Even then the refusal is EVIDENCE RATHER THAN PERMISSION. See
-    :func:`revert_tags`'s ``force``: a person who knows the file is theirs has to
-    be able to say so, or a wrong guess here is as unrecoverable as the write it
-    was guarding.
+    1. **Size and time unchanged.** The file has not been touched since adoption
+       left it. One ``stat``, no read.
+    2. **The bytes are the ones adoption left.** Only asked when the size still
+       matches, because different sizes cannot be the same bytes, so the one
+       branch that reads the file is also the only one that could ever succeed.
+       This is what a backup restore, an rsync without timestamps and a cloud
+       re-download all look like: same content, new time.
+
+    WHAT IS DELIBERATELY NOT COVERED, and it used to be. A later write of another
+    field this module owns, ``energylevel`` for the analysis workflow, changes the
+    bytes, so it refuses and the person overrides it per record. There is no
+    evidence available here that separates that from a replacement without
+    decoding the audio, and the last two attempts to find one both let the
+    catastrophic case through. Refusing costs an override on a run somebody asked
+    for; accepting costs a file nobody can put back. Recorded as residual R-22
+    with the fix that would close it properly.
+
+    An UNSTAMPED record is unverifiable rather than suspect and passes. It can
+    only come from a crash between the write and the stamp, and refusing those
+    would leave a record that can never be spent on a file that genuinely does
+    carry adoption's value.
+
+    The refusal is EVIDENCE RATHER THAN PERMISSION. See :func:`revert_tags`'s
+    ``force``: a person who knows the file is theirs has to be able to say so, per
+    record, or a wrong guess here is as unrecoverable as the write it was guarding.
     """
-    current = read_field(target, record.field)
-    if current is not None and tuple(current) == (record.written,):
-        return None
-    if current == record.original:
-        return None
     if record.size is None or record.mtime_ns is None:
         return None
-    try:
-        info = target.stat()
-    except OSError as exc:
-        return str(exc)
+    info = target.stat()
     if info.st_size == record.size and info.st_mtime_ns == record.mtime_ns:
         return None
+    if record.digest and info.st_size == record.size:
+        if getattr(info, "st_flags", 0) & DATALESS_FLAG:
+            # Reading it would fetch the whole file from a provider, which is what
+            # the census refuses to do per file across a library. A dataless file
+            # is also one nothing local has rewritten, so there is nothing to gain.
+            return _replaced(record, "its bytes are not on this machine to compare")
+        if digest_of(target) == record.digest:
+            return None
+    return _replaced(record, "its bytes are not the ones adoption left there")
+
+
+def _replaced(record: TagSnapshot, why: str) -> str:
+    """The refusal, naming the key that overrides THIS record and no other."""
     return (
-        "the file has changed since adoption wrote it and no longer carries the "
-        "value adoption wrote, so the recorded original describes bytes that are "
-        "no longer there; restoring it would put one file's tag onto another "
-        "file's audio. Revert with force to override this."
+        f"the file has changed since adoption wrote it: {why}. The recorded "
+        f"original describes bytes that are no longer there, and restoring it "
+        f"would put one file's tag onto another file's audio. Override this one "
+        f"record by reverting with force={(record.path, record.field)!r}."
     )
 
 
@@ -767,9 +834,8 @@ def revert_tags(
     cfg: config.Config,
     *,
     entry_id: str | None = None,
-    force: bool = False,
+    force: Collection[tuple[str, str]] = (),
     restore: Callable[[Path, str, tuple[str, ...] | None], bool] = restore_tag,
-    read_field: Callable[[Path, str], tuple[str, ...] | None] = tags.read_tag_values,
 ) -> RevertReport:
     """Put every recorded original back on disk, exactly.
 
@@ -780,14 +846,21 @@ def revert_tags(
     FIRST record: matching on the creator alone answers "nothing to do" for work
     that demonstrably happened and leaves the file holding adoption's value.
 
-    ``force`` spends a record whose file no longer looks like the one adoption
-    wrote to. IT EXISTS BECAUSE THE GUARD IS EVIDENCE AND NOT PERMISSION. The
-    check in :func:`_changed_since_adoption` is a heuristic over a file somebody
-    else owns, and a heuristic with no override is a heuristic that decides: a
-    wrong refusal strands the only copy of a value exactly as surely as a wrong
-    restore overwrites one. It is a parameter here rather than something the
-    ``restore`` callback could reach, because the check runs BEFORE the callback
-    and no callback can therefore see past it.
+    ``force`` NAMES THE RECORDS IT OVERRIDES, one ``(path, field)`` pair each,
+    which is the same key :class:`RevertReport` reports them under. It exists
+    because the guard is evidence and not permission: a heuristic over a file
+    somebody else owns with no override is a heuristic that decides, and a wrong
+    refusal strands the only copy of a value as surely as a wrong restore
+    overwrites one.
+
+    IT IS NOT A BOOLEAN, and that is the whole of its design. A pass-wide flag,
+    which is what this was, is offered by a message printed PER RECORD: a person
+    reads "override this" beside the one file they know is theirs, sets the flag,
+    and overwrites every other refused file in the ledger at the same time.
+    Naming them individually also makes ``entry_id`` unable to stand in, since two
+    files written through one plan entry are two records. A caller that genuinely
+    means all of them passes ``report.failed`` keys, which is an explicit act over
+    a list it has just been shown.
 
     THE WHOLE PASS IS UNDER THE LEDGER'S LOCK, which is the same lock
     :func:`write_tag_with_record` holds across a record and its write. That is
@@ -801,48 +874,70 @@ def revert_tags(
     value would report every file restored whatever happened to it, which is the
     reporting failure this whole ledger exists to avoid one step earlier.
 
-    A RECORD IS DROPPED FROM THE LEDGER ONLY AFTER ITS FILE IS WRITTEN. The
-    reverse order loses the record for a write that then failed, which is the same
-    data loss the ledger exists to prevent arriving through the undo.
+    A RECORD IS DROPPED FROM THE LEDGER ONLY AFTER ITS FILE IS WRITTEN, AND
+    IMMEDIATELY AFTER. Batching the drops to the end of the pass looked like the
+    same rule and was not: a pass that restored one file and then died left that
+    record on disk describing a file that no longer matched it, so on the retry it
+    could not be recognized and was refused forever while every other record
+    settled. The file was correct and the ledger kept a record nobody could ever
+    clear. Settling each record as it lands means an interrupted pass leaves
+    exactly the records it did not reach, which is the only state a retry can act
+    on. The cost is one small document write per file instead of one per pass.
 
-    ``restore`` and ``read_field`` BOTH RUN INSIDE THE LOCK and must not take it
-    again. See the module docstring: ``flock`` is per open file description, so a
-    callback reaching back into this module hangs forever rather than raising.
+    ONE BAD RECORD COSTS ONE RECORD, which is the per-track versus per-pass rule
+    this repository keeps paying for, applied to the undo log. The whole body of
+    the loop is guarded, not just the ``restore`` call: ``record.field`` comes off
+    disk, where :func:`read` recognizes it as a non-empty string and deliberately
+    does not check it against :data:`cratekit.core.tags.FIELDS`, because refusing
+    the whole document over one unknown field would strand every other record in
+    it. A ledger written by a build with one more field is therefore ordinary, and
+    it used to raise ``ValueError`` out of the pass before the lock released, so
+    nothing settled and every retry died on the same record.
+
+    ``restore`` RUNS INSIDE THE LOCK and must not take it again. See the module
+    docstring: ``flock`` is per open file description, so a callback reaching back
+    into this module hangs forever rather than raising.
     """
     restored: list[tuple[str, str]] = []
     failed: dict[tuple[str, str], str] = {}
-    settled: set[tuple[str, str]] = set()
+    forced = {(str(path), str(field)) for path, field in force}
     with config._exclusive_lock(lock_path(cfg)):
         ledger = read(cfg)
         for record in ledger.snapshots:
             if entry_id is not None and not record.written_by(entry_id):
                 continue
             reported = (record.path, record.field)
-            target = Path(record.path)
-            if not target.exists():
-                failed[reported] = "the file is no longer there"
-                continue
-            replaced = (
-                None
-                if force
-                else _changed_since_adoption(record, target, read_field=read_field)
-            )
-            if replaced is not None:
-                failed[reported] = replaced
-                continue
             try:
-                landed = restore(target, record.field, record.original)
+                refusal = _revert_one(record, reported in forced, restore=restore)
             except (OSError, ValueError, tags.UnsupportedContainer) as exc:
                 failed[reported] = str(exc)
                 continue
-            if not landed:
-                failed[reported] = "the container refused the write"
+            if refusal is not None:
+                failed[reported] = refusal
                 continue
             restored.append(reported)
-            settled.add((record.file, record.field))
-        if settled:
-            write(cfg, ledger.without(frozenset(settled)))
+            ledger = ledger.without(frozenset({(record.file, record.field)}))
+            write(cfg, ledger)
     return RevertReport(restored=tuple(restored), failed=failed)
+
+
+def _revert_one(
+    record: TagSnapshot,
+    forced: bool,
+    *,
+    restore: Callable[[Path, str, tuple[str, ...] | None], bool],
+) -> str | None:
+    """Put one record's original back. None on success, else why not."""
+    target = Path(record.path)
+    if not target.exists():
+        return "the file is no longer there"
+    if not forced:
+        replaced = _changed_since_adoption(record, target)
+        if replaced is not None:
+            return replaced
+    if not restore(target, record.field, record.original):
+        return "the container refused the write"
+    return None
 
 
 __all__ = [

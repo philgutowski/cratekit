@@ -73,8 +73,9 @@ depend on.
 the membership write and a refusal from the membership writer was caught per
 entry, so one systemic refusal inside the caller's destructive session produced
 one irreversible file write per entry with zero memberships landed. The
-recoverable write goes first now, and a refusal whose own declared scope
-condemns more than one item ends the run.
+recoverable write goes first now, which is the whole fix: a refusal costs no file
+write at all, so the loop can go on reporting it per entry the way U19 requires.
+Round 2 briefly also stopped the run on it, and see below for why that was wrong.
 
 **A revert issued during an apply lost the original permanently.** The lock
 covered each document's read-modify-write and nothing about apply against
@@ -121,6 +122,35 @@ else's file with no override is a heuristic that decides.
 unsupported container got its membership, was failed, and could never reach
 applied, so every re-run placed it again. The question is now asked before
 anything happens for the entry.
+
+### What round 3 fixed, which was round 2's own over-correction
+
+**The loosened revert guard defeated itself in the likeliest case.** Round 2
+accepted "the field still holds what adoption wrote" as proof the file was
+adoption's own output. The value adoption writes is a taxonomy bucket's DISPLAY
+name, shared by most of the library, so a stranger's recording whose own genre is
+that bucket satisfied it exactly. Measured: the revert then wrote one file's genre
+onto another file's audio, destroyed the replacement's own genre with no record,
+and dropped the ledger record. The round 2 test that claimed the guard still bit
+had picked the one replacement genre that dodged the branch.
+
+The guard now accepts only evidence about the BYTES: size and time unchanged, or
+a digest recorded at write time. The inode was measured and rejected, because
+`write_bytes` and `cp` both truncate in place and keep it. The interrupted-pass
+case is closed structurally instead of heuristically, by dropping each record as
+its file is restored. The one remaining legitimate refusal, a later write of
+another field this product owns, is residual R-22 with the fix named.
+
+**And the same commit that took a per-track-versus-per-pass failure out of
+`apply_plan` put one into the undo log.** A record naming a field this build does
+not know made the whole revert raise before the lock released, so nothing settled
+and every retry died on the same record. The loop body is guarded per record now.
+
+Also: `force` takes a list of `(path, field)` pairs, because a refusal printed per
+record must not hand out a pass-wide override; a `Path`-valued `recorded` resolves
+instead of excluding the whole library; the guard opens no audio file at all in
+the common path; and the container list under test is derived from the writer's
+own table, which grew it from seven suffixes to eleven.
 
 
 
