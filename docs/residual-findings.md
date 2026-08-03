@@ -495,10 +495,12 @@ ready.
 
 ---
 
-## R-14. Three accepted findings from the U38 review
+## R-14. Five accepted findings from the U38 reviews
 
-**Found:** during U38's adversarial review, 2026-08-02. All three were confirmed
-against the tree, and none of them is fixed by U38.
+**Found:** during U38's two adversarial review rounds, 2026-08-02 and
+2026-08-03. The first three were confirmed against the tree and none of them is
+fixed by U38. The last two are limits of the guards U38 ships, stated here and
+pinned by tests rather than left to be discovered.
 
 **1. `core.secrets` reaches the boundary as `internal-error` on every path but
 one.** `cratekit/acquire/provider_session.py:128` catches
@@ -550,3 +552,37 @@ table as live behaviour.
 **Closes when:** the command-line boundary converts a module refusal through
 `code_for` and `remediation_for`, which is the unit that lands the standalone
 utility verbs.
+
+**4. The second-table guard cannot tell a duration from a status for a slug that
+IS a cause.** Added during U38's second review round, and pinned by
+`test_the_residual_is_pinned_rather_than_discovered` rather than left to be met
+in a failing build. `BACKOFF_SECONDS = {"rekordbox-running": 30}` is reported as
+a reservation of 30, because by shape alone it is one.
+
+The alternative is matching on the variable's name, and a guard a rename defeats
+is not a guard, so this direction was chosen. What keeps it small is the key
+rule: a key counts only when somebody DECLARED the string a refusal cause, in the
+reservation table, in the package-wide derivation, or as an enum member in the
+same file. The tree holds 66 kebab-keyed pairs across `cli/registry.py`,
+`core/binaries.py`, `core/cause.py` and `core/naming.py` and not one of them is a
+declared cause, so none of them can trip it.
+
+**Closes when:** nothing has to close it. It is a stated limit with a fixture, and
+the escape for a module that genuinely needs it is `TABLE_OWNERS`, which is a
+decision written into the suite rather than a comment.
+
+**5. `NOT_A_CAUSE` is a classification a person has to keep making.** Every
+package enum reaching an exception's constructor is treated as a refusal cause
+vocabulary unless it is listed there with a reason. That is deliberate: the
+failure mode is a loud demand to classify a new enum, never silence, and going
+silent takes an explicit edit with an argument beside it.
+
+The cost is real and is recorded here so nobody meets it as a surprise. Landing an
+exception that carries, say, a new `Portion`-shaped enum will fail
+`test_every_structured_refusal_cause_in_the_package_is_reserved` with a demand to
+reserve its members, and the fix is one line in `NOT_A_CAUSE` plus a sentence
+saying why it is not a cause. `test_every_enum_declared_not_a_cause_exists` keeps
+the list from going stale.
+
+**Closes when:** nothing has to close it. Recorded as a maintenance cost that was
+chosen over a rule a rename can flip.

@@ -319,23 +319,32 @@ EXIT_CODE_MODULE = "cratekit.core.exit_codes"
 EXIT_CODE_PACKAGE = "cratekit.core"
 
 #: A cause slug as this repository spells one: lowercase words joined by single
-#: hyphens. The reserved set is passed in as well, so a slug that does not match
-#: this shape is still recognized once it is reserved. The shape is what lets the
-#: guard see a table for causes NOBODY has reserved yet, which is the case the
-#: table exists to prevent and the case a reserved-keys-only guard cannot see.
+#: hyphens.
+#:
+#: NOT a key rule on its own, and it was one for exactly one round. Any kebab
+#: string mapped to an integer inside the reserved range counted, which is a
+#: logging level, a column width, a timeout, a retention in days, a retry budget,
+#: a loudness target, a schema version, or any two-element tuple of a label and a
+#: number. None of those is a reservation and every one of them would have fired.
+#: The shape is now one half of a test whose other half is a DECLARATION: the
+#: string has to be a cause somebody declares, either in the registry, in the
+#: package-wide derivation the caller passes in, or as an enum member in this very
+#: file. See ``ReservedCodeTable``.
 CAUSE_SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$")
 
 
 class ExitCodeImports:
     """How one source file reaches ``ExitCode``, in every import shape.
 
-    U12 COORDINATION. This is the same walk ``ReviewImports`` does, asked about a
-    different module, and U12 is concurrently generalizing that one into a
-    module-parameterized ``ImportsOf``. When both land, this class collapses into
-    ``ImportsOf(tree, EXIT_CODE_MODULE)`` with one narrowing, because this one
-    records only the ``ExitCode`` symbol where ``ImportsOf`` records every symbol
-    a source imported. The two merge textually clean in either order, so nothing
-    will flag the duplication; it is written down here instead.
+    U12 COORDINATION, and it is now a THREE way duplication rather than a two.
+    This is the same walk ``ReviewImports`` does, asked about a different module.
+    U12 is generalizing that one into a module-parameterized ``ImportsOf``, and
+    the conformance branch has a third copy of it as ``SoftDeleteNames``. All
+    three merge textually clean in any order, so nothing will flag it. When they
+    land together, this class collapses into ``ImportsOf(tree,
+    EXIT_CODE_MODULE)`` with one narrowing, because this one records only the
+    ``ExitCode`` symbol where ``ImportsOf`` records every symbol a source
+    imported, and ``SoftDeleteNames`` collapses the same way.
 
     Five shapes are recognized, and they are every shape this repository's own
     modules use between them::
@@ -428,13 +437,13 @@ def _bound_symbol_names(tree: ast.AST, module: str, symbol: str) -> set[str]:
 
 
 def _module_level_literals(tree: ast.AST) -> dict[str, ast.AST]:
-    """Every ``NAME = <expression>`` at module level, for one hop of resolution.
+    """Every ``NAME = <expression>`` at module level, for resolution by name.
 
-    One hop only, and deliberately. ``CAUSES = (...)`` beside
-    ``dict(zip(CAUSES, CODES))`` is how a real module spells a table, and a guard
-    that only understood the inlined spelling would be one refactor away from
-    seeing nothing. Chasing further than one hop needs dataflow, which is the
-    line this file does not cross.
+    ``PRECONDITION = 30`` beside ``CODES = {"tagger-art-rejected": PRECONDITION}``
+    is how a real module writes a table, because a bare 30 in a mapping tells a
+    reader nothing about which band it belongs to. A guard that read only the
+    inlined integer was defeated by the more careful spelling, which is the wrong
+    way round.
     """
     found: dict[str, ast.AST] = {}
     for node in getattr(tree, "body", []):
@@ -448,54 +457,182 @@ def _module_level_literals(tree: ast.AST) -> dict[str, ast.AST]:
     return found
 
 
+def _class_level_literals(tree: ast.AST) -> dict[str, dict[str, ast.AST]]:
+    """Every ``CLASS.MEMBER = <expression>``, one level deep, by class name.
+
+    Covers a module holding its codes on a class or in an ``IntEnum`` of its own,
+    which is the same table written with a namespace round it.
+    """
+    found: dict[str, dict[str, ast.AST]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        members: dict[str, ast.AST] = {}
+        for statement in node.body:
+            if isinstance(statement, ast.Assign):
+                for target in statement.targets:
+                    if isinstance(target, ast.Name):
+                        members[target.id] = statement.value
+            elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
+                if isinstance(statement.target, ast.Name):
+                    members[statement.target.id] = statement.value
+        if members:
+            found[node.name] = members
+    return found
+
+
+def _declared_enum_values(tree: ast.AST) -> set[str]:
+    """Every cause-shaped string this source declares as an enum member value.
+
+    This is the DECLARATION half of the key test. A module that writes
+    ``ART_REJECTED = "tagger-art-rejected"`` inside an enum has declared that
+    string to be one of its causes, in its own file, before anybody reserved it.
+    Mapping that same string to a status somewhere else in the same file is a
+    reservation whoever wrote it, and no registry has to have heard of it.
+
+    Matched on the BASE being an enum, which is how Python spells an enum, not on
+    what the class or the variable holding it was called. A rename of either
+    changes nothing.
+    """
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        bases = [_dotted(base) or "" for base in node.bases]
+        if not any(base.split(".")[-1].endswith("Enum") for base in bases):
+            continue
+        for statement in node.body:
+            values = []
+            if isinstance(statement, ast.Assign):
+                values = [statement.value]
+            elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
+                values = [statement.value]
+            for value in values:
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    if CAUSE_SLUG.match(value.value):
+                        found.add(value.value)
+    return found
+
+
+#: How far a code is chased through names, members and arithmetic. Bounded so a
+#: mutually recursive pair of constants cannot hang the suite.
+MAX_HOPS = 6
+
+
+def resolve_int(
+    node: ast.AST | None,
+    names: dict[str, ast.AST],
+    members: dict[str, dict[str, ast.AST]],
+    hops: int = 0,
+) -> int | None:
+    """The integer an expression evaluates to, through names, members and arithmetic.
+
+    Shared by both guards on purpose. A code held in a constant is the CAREFUL
+    spelling, because a bare 30 in a mapping or an exit call tells a reader
+    nothing about which band it belongs to, and for one round the guards read
+    only the careless one. That is a guard rewarding the wrong habit.
+
+    ``True`` is not an integer here even though the language says it is, and a
+    name that resolves to nothing resolves to nothing rather than to a guess.
+    """
+    if node is None or hops > MAX_HOPS:
+        return None
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, bool) or not isinstance(node.value, int):
+            return None
+        return node.value
+    if isinstance(node, ast.Name):
+        return resolve_int(names.get(node.id), names, members, hops + 1)
+    if isinstance(node, ast.Attribute):
+        owner = _dotted(node.value) or ""
+        return resolve_int(members.get(owner, {}).get(node.attr), names, members, hops + 1)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        inner = resolve_int(node.operand, names, members, hops + 1)
+        return None if inner is None else -inner
+    if isinstance(node, ast.BinOp):
+        left = resolve_int(node.left, names, members, hops + 1)
+        right = resolve_int(node.right, names, members, hops + 1)
+        if left is None or right is None:
+            return None
+        if isinstance(node.op, ast.Add):
+            return left + right
+        if isinstance(node.op, ast.Sub):
+            return left - right
+        if isinstance(node.op, ast.Mult):
+            return left * right
+        return None
+    if isinstance(node, ast.Call) and _dotted(node.func) == "int" and len(node.args) == 1:
+        return resolve_int(node.args[0], names, members, hops + 1)
+    return None
+
+
 class ReservedCodeTable:
     """Reads one source for a second opinion about what a refusal cause exits with.
 
-    TWO SIDES HAVE TO BE RIGHT AT ONCE, and the first version of this guard got
-    each of them wrong in a different direction.
+    TWO SIDES HAVE TO BE RIGHT AT ONCE, and the first two versions of this guard
+    got each of them wrong in a different direction.
 
-    WHAT COUNTS AS A KEY. Not "a cause already reserved". A module that maps its
-    OWN new causes to its own codes is the whole defect the table exists to
-    prevent, and a guard keyed on the existing registry is blind to exactly that
-    module. So a key counts when it is a reserved cause OR when it is spelled the
-    way this repository spells a cause slug (``CAUSE_SLUG``). One word with no
-    hyphen is not, which is what keeps a module's own data keyed on its own
-    vocabulary out of it: ``{"files": ..., "settings": ...}`` is a portion table.
+    WHAT COUNTS AS A KEY: a string somebody DECLARED to be a cause. Three
+    declarations count, and the union of them is what the caller passes in plus
+    what this file says about itself:
+
+    * a cause in the reservation table;
+    * a cause the package-wide derivation found, so a module's table for its own
+      brand new causes is seen the moment the module declares them;
+    * a cause-shaped string this very source declares as an enum member value,
+      which is what catches a module whose exception has not been written yet.
+
+    The middle rule is why this and the completeness check now share one answer to
+    "what is a cause" rather than each having its own. Keying on the RESERVED set
+    alone was blind to the whole case the table exists for. Keying on the SHAPE
+    alone, which is what the round before this did, fired on any kebab string
+    mapped to a number in range: a logging level, a column width, a timeout, a
+    retention in days, a retry budget, a schema version, or any two-element tuple
+    of a label and a size. The tree holds 66 kebab-keyed pairs today and not one
+    of them is a reservation.
 
     WHAT COUNTS AS A CODE, and this is where a guard that fires on correct code
-    gets itself switched off (P7). An ``ExitCode`` member is unambiguous. A bare
-    integer is not: a cause slug mapped to 3 is an attempt budget, mapped to 1 is
-    a display order, mapped to 5 is a backoff in seconds, and six of the reserved
-    keys are also remediation tokens, so every one of those maps is ordinary
-    correct code keyed on a slug. The only integers that can be a second
-    reservation are the ones inside the RESERVED RANGE, which the caller passes
-    in from the live table rather than repeating here. ``True`` and ``False`` are
-    integers to ``isinstance`` and are never a status, so they are excluded
-    before the range is even consulted.
+    gets itself switched off (P7). An ``ExitCode`` member is unambiguous. So is a
+    code reached through a NAME, a class attribute, a module's own ``IntEnum``
+    member, or a small piece of arithmetic, all of which resolve here, because
+    naming a constant is what a careful author does and the careless spelling was
+    the only one the guard could read. A bare integer is ambiguous, so only the
+    ones inside the RESERVED RANGE count, and the range comes from the live table
+    rather than being repeated here. ``True`` and ``False`` are integers to
+    ``isinstance`` and are never a status.
 
-    THE RESIDUAL LIMIT, stated rather than hidden: a backoff of 30 seconds keyed
-    by a cause slug is indistinguishable from a reservation of 30 by shape alone,
-    and this reports it. That direction was chosen deliberately, because the
-    alternative is matching on the variable's NAME, and a guard a rename defeats
-    is not a guard.
+    THE RESIDUAL LIMIT, pinned by a fixture rather than left to be discovered: a
+    backoff of 30 seconds keyed by a slug that IS a declared cause is
+    indistinguishable from a reservation of 30 by shape alone, and this reports
+    it. That direction was chosen deliberately, because the alternative is
+    matching on the variable's name, and a guard a rename defeats is not a guard.
+    The narrowing above is what makes that residual small: it can only happen for
+    a string somebody already declared to be a refusal cause.
     """
 
     def __init__(self, tree: ast.AST, causes: frozenset[str], code_range: tuple[int, int]) -> None:
         self.tree = tree
-        self.causes = causes
         self.low, self.high = code_range
         self.codes = ExitCodeImports(tree)
-        self.literals = _module_level_literals(tree)
+        self.constants = _module_level_literals(tree)
+        self.members = _class_level_literals(tree)
+        self.causes = set(causes) | _declared_enum_values(tree)
 
     def cause_key(self, node: ast.AST | None) -> str | None:
-        """The cause slug a key names, whether or not anyone has reserved it."""
+        """The cause slug a key names, or None when nobody declared it a cause."""
         if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
             return None
-        if node.value in self.causes or CAUSE_SLUG.match(node.value):
-            return node.value
-        return None
+        return node.value if node.value in self.causes else None
 
-    def status(self, node: ast.AST | None) -> str | None:
+    def _as_int(
+        self, node: ast.AST | None, extra: dict[str, ast.AST] | None = None
+    ) -> int | None:
+        """This source's constants, plus whatever locals the caller is inside."""
+        names = dict(self.constants)
+        names.update(extra or {})
+        return resolve_int(node, names, self.members)
+
+    def status(self, node: ast.AST | None, extra: dict[str, ast.AST] | None = None) -> str | None:
         """What this expression reserves as a process status, or None."""
         if node is None:
             return None
@@ -506,55 +643,70 @@ class ReservedCodeTable:
             # wrapped round it is still a code, and both spellings read as
             # ordinary Python rather than as an evasion.
             wraps_a_code = _dotted(node.func) == "int" or self.codes.names_the_class(node.func)
-            if wraps_a_code and self.status(node.args[0]) is not None:
+            if wraps_a_code and self.status(node.args[0], extra) is not None:
                 return ast.unparse(node)
-        if isinstance(node, ast.Constant) and isinstance(node.value, int):
-            if isinstance(node.value, bool):
-                return None
-            if self.low <= node.value < self.high:
-                return f"bare status {node.value}"
-        return None
+        value = self._as_int(node, extra)
+        if value is None or not self.low <= value < self.high:
+            return None
+        spelled = ast.unparse(node)
+        return f"status {value}" if spelled == str(value) else f"status {value} as {spelled}"
 
     def _sequence(self, node: ast.AST) -> list[ast.AST] | None:
         """A literal sequence, through at most one module-level name."""
         if isinstance(node, ast.Name):
-            node = self.literals.get(node.id, node)
+            node = self.constants.get(node.id, node)
         if isinstance(node, (ast.Tuple, ast.List)):
             return list(node.elts)
         return None
 
-    def pairs(self) -> list[tuple[ast.AST, ast.AST]]:
+    def _crossed(self, elements: list[ast.AST]) -> list[tuple[ast.AST, ast.AST, None]]:
+        """Cause keys paired with statuses sitting in the SAME construct.
+
+        This is what reads ``("tagger-art-rejected", 41, "the note")`` and
+        ``Entry("tagger-art-rejected", 41, "the note")``, which is U38's own
+        idiom: the reservation table in ``cli/exit_codes.py`` is a tuple of
+        dataclasses, so the second module to copy the house style was the one
+        shape a two-element rule could not see.
+
+        Split rather than multiplied out, so a long tuple costs one pass rather
+        than a square, and so a mapping of causes to SENTENCES contributes
+        nothing on either side.
+        """
+        keys = [element for element in elements if self.cause_key(element)]
+        values = [element for element in elements if self.status(element)]
+        return [(key, value, None) for key in keys for value in values]
+
+    def pairs(self) -> list[tuple[ast.AST, ast.AST, str | None]]:
         """Every place a key and a value are bound together, in any shape.
 
         Every shape below was written as an evasion first and only then as a
         rule, which is why the list is this specific.
         """
-        found: list[tuple[ast.AST, ast.AST]] = []
+        found: list[tuple[ast.AST, ast.AST, str | None]] = []
         for node in ast.walk(self.tree):
             if isinstance(node, ast.Dict):
                 # A mapping literal, including the one inside ``dict(**{...})``,
-                # ``MappingProxyType({...})`` and ``CODES.update({...})``.
+                # ``MappingProxyType({...})`` and ``CODES.update({...})``. Keys
+                # stay bound to THEIR value: crossing a mapping would pair a
+                # cause whose value is a sentence with an unrelated number.
                 for key, value in zip(node.keys, node.values):
                     if key is not None:
-                        found.append((key, value))
-            elif isinstance(node, (ast.Tuple, ast.List)) and len(node.elts) == 2:
-                # One pair, wherever it sits: a tuple of pairs, the argument to
-                # ``dict([...])`` or ``OrderedDict([...])``, or the iterable a
-                # dict comprehension unpacks.
-                found.append((node.elts[0], node.elts[1]))
+                        found.append((key, value, None))
+            elif isinstance(node, (ast.Tuple, ast.List)):
+                found.extend(self._crossed(list(node.elts)))
             elif isinstance(node, ast.DictComp):
                 # ``{slug: 30 for slug in (...)}``: the value is the code and
                 # every slug in the iterables is a key it is given to.
                 for generator in node.generators:
                     for element in ast.walk(generator.iter):
                         if isinstance(element, ast.Constant):
-                            found.append((element, node.value))
+                            found.append((element, node.value, None))
             elif isinstance(node, ast.Assign):
                 # ``CODES[slug] = 30`` after ``CODES = {}``, which is a table
                 # built a line at a time and is a table all the same.
                 for target in node.targets:
                     if isinstance(target, ast.Subscript):
-                        found.append((target.slice, node.value))
+                        found.append((target.slice, node.value, None))
             elif isinstance(node, ast.Call):
                 function = node.func
                 if (
@@ -562,13 +714,18 @@ class ReservedCodeTable:
                     and function.attr == "setdefault"
                     and len(node.args) == 2
                 ):
-                    found.append((node.args[0], node.args[1]))
+                    found.append((node.args[0], node.args[1], None))
                 elif _dotted(function) in {"dict", "OrderedDict"} and len(node.args) == 1:
                     found.extend(self._zipped(node.args[0]))
+                else:
+                    # Any other call, because a reservation built by a
+                    # constructor is a reservation. Argument order is not assumed.
+                    arguments = list(node.args) + [keyword.value for keyword in node.keywords]
+                    found.extend(self._crossed(arguments))
         found.extend(self._branches())
         return found
 
-    def _zipped(self, argument: ast.AST) -> list[tuple[ast.AST, ast.AST]]:
+    def _zipped(self, argument: ast.AST) -> list[tuple[ast.AST, ast.AST, None]]:
         """``dict(zip(slugs, codes))``, with either sequence named once."""
         if not (isinstance(argument, ast.Call) and _dotted(argument.func) == "zip"):
             return []
@@ -578,18 +735,22 @@ class ReservedCodeTable:
         values = self._sequence(argument.args[1])
         if keys is None or values is None:
             return []
-        return list(zip(keys, values))
+        return [(key, value, None) for key, value in zip(keys, values)]
 
-    def _branches(self) -> list[tuple[ast.AST, ast.AST]]:
+    def _branches(self) -> list[tuple[ast.AST, ast.AST, str | None]]:
         """A table written as control flow: a match statement or an if chain.
 
         Narrowed to what the branch RETURNS. A module that waits 30 seconds
-        inside a branch keyed on a cause is doing something ordinary, and a guard
-        that reported it would be the false positive that gets the whole check
-        suppressed. A module that RETURNS 30 from that branch is answering the
-        question this table answers.
+        inside a branch and does not return it is doing something ordinary, and a
+        guard that reported it would be the false positive that gets the whole
+        check suppressed.
+
+        The returned expression is resolved through the branch's OWN locals, so
+        ``code = 41`` then ``return code`` reads the same as ``return 41``.
+        Without that, the two sides of this guard swapped on a spelling that has
+        nothing to do with what the code means.
         """
-        found: list[tuple[ast.AST, ast.AST]] = []
+        found: list[tuple[ast.AST, ast.AST, str | None]] = []
         for node in ast.walk(self.tree):
             if isinstance(node, ast.Match):
                 for case in node.cases:
@@ -608,14 +769,26 @@ class ReservedCodeTable:
                 found.extend(self._returned(keys, node.body))
         return found
 
-    @staticmethod
-    def _returned(keys: list[ast.AST], body: list[ast.stmt]) -> list[tuple[ast.AST, ast.AST]]:
+    def _returned(
+        self, keys: list[ast.AST], body: list[ast.stmt]
+    ) -> list[tuple[ast.AST, ast.AST, str | None]]:
+        locals_here: dict[str, ast.AST] = {}
+        for statement in body:
+            if isinstance(statement, ast.Assign):
+                for target in statement.targets:
+                    if isinstance(target, ast.Name):
+                        locals_here[target.id] = statement.value
         returned = [
-            statement.value
+            (statement.value, self.status(statement.value, locals_here))
             for statement in body
             if isinstance(statement, ast.Return) and statement.value is not None
         ]
-        return [(key, value) for key in keys for value in returned]
+        return [
+            (key, value, label)
+            for key in keys
+            for value, label in returned
+            if label is not None
+        ]
 
 
 def reserved_code_tables(
@@ -629,20 +802,20 @@ def reserved_code_tables(
     code; this function is the walk over every shape a table can be written in.
 
     Deliberately NOT restricted to dict literals, which is what the first version
-    was while its docstring claimed otherwise. A tuple of pairs, a comprehension,
-    ``dict(zip(...))``, a mapping filled a key at a time, ``setdefault``, a match
-    statement and an if chain are all a table, and a guard that only understood
-    the punctuation of one of them is a guard the next module walks past without
-    meaning to.
+    was while its docstring claimed otherwise, and not to two-element pairs,
+    which is what the second was while the file it protects declares its own
+    table as a tuple of three-field dataclasses.
     """
     table = ReservedCodeTable(ast.parse(source), causes, code_range)
     found: list[str] = []
     seen: set[tuple[int, str, str]] = set()
-    for key, value in table.pairs():
+    for key, value, label in table.pairs():
         slug = table.cause_key(key)
         if slug is None:
             continue
-        status = table.status(value)
+        # A branch return carries its label already, because proving it needed
+        # that branch's own locals and they are out of scope here.
+        status = label if label is not None else table.status(value)
         if status is None:
             continue
         entry = (key.lineno, slug, status)
@@ -653,61 +826,247 @@ def reserved_code_tables(
     return sorted(found)
 
 
+# ---------------------------------------------------------------------------
+# Ending the process with a bare integer.
+# ---------------------------------------------------------------------------
+
+#: The standard-library modules that can end a process, and the attribute of each
+#: that does it. Held by module IDENTITY rather than by the name a source bound,
+#: so ``import sys as system``, ``system = sys`` and ``os.sys`` are one question.
+EXIT_ATTRIBUTES = {"sys": "exit", "os": "_exit"}
+
+#: Modules recognized by identity for any purpose here.
+TRACKED_MODULES = frozenset({"sys", "os", "builtins", "importlib"})
+
+
+def _walk_scope(node: ast.AST):
+    """Every node in ONE lexical scope, not entering a nested def, class or lambda.
+
+    Scope matters because a binding is not a property of a file. A module-level
+    ``stop = sys.exit`` makes ``stop`` an exit inside the functions that inherit
+    it and NOT inside a function that takes a parameter of the same name, and a
+    guard that walked the whole module fired on the second.
+    """
+    stack = list(ast.iter_child_nodes(node))
+    while stack:
+        current = stack.pop()
+        yield current
+        if isinstance(
+            current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+        ):
+            continue
+        stack.extend(ast.iter_child_nodes(current))
+
+
+def _parameter_names(node: ast.AST) -> set[str]:
+    arguments = getattr(node, "args", None)
+    if not isinstance(arguments, ast.arguments):
+        return set()
+    every = (
+        list(arguments.posonlyargs)
+        + list(arguments.args)
+        + list(arguments.kwonlyargs)
+        + [argument for argument in (arguments.vararg, arguments.kwarg) if argument]
+    )
+    return {argument.arg for argument in every}
+
+
 class ProcessExits:
-    """Every local name in one source that ends the process with a status.
+    """Every way one lexical scope can reach the call that ends the process.
 
-    Four bindings reach a process status, and the first version of this guard
-    recognized one and a half of them::
+    Bound by module IDENTITY, never by the text of a name, because every shape
+    below is ordinary Python that somebody would write without meaning to evade
+    anything::
 
-        import sys; sys.exit(30)            # recognized
-        import sys as system; system.exit(30)   # recognized
-        from sys import exit; exit(30)      # NOT, and it needs no attribute
-        from os import _exit; _exit(30)     # NOT
-        e = sys.exit; e(30)                 # NOT
-        SE = SystemExit; raise SE(30)       # NOT
-        class Refused(SystemExit): ...      # NOT, and it reads as good design
+        import sys; sys.exit(30)
+        import sys as system; system.exit(30)
+        system = sys; system.exit(30)          # rebound, not imported
+        from sys import exit; exit(30)
+        from os import _exit; _exit(30)
+        stop = sys.exit; stop(30)
+        getattr(sys, "exit")(30)               # inline or held in a name
+        importlib.import_module("sys").exit(30)
+        os.sys.exit(30)
+        raise SystemExit(30)
+        raise builtins.SystemExit(30)
+        Stop = SystemExit; raise Stop(30)
+        class Refused(SystemExit): ...; raise Refused(30)
 
-    The two ``from`` shapes are the ones that matter, because they are ordinary
-    Python that anybody might write without meaning to evade anything, and
-    because both sibling classes in this file already handle ``ast.ImportFrom``.
-    The aliases are cheaper to close than to argue about, so they are closed.
-
-    Resolution runs to a fixed point, so ``a = sys.exit`` then ``b = a`` binds
-    both, and a class deriving from a class deriving from ``SystemExit`` is one.
+    The ``getattr`` shape is the one that matters most, because it disarms the
+    guard on its own and reads as perfectly innocent. Resolution runs to a fixed
+    point, so mutual and multi-hop aliases both settle whatever order they are
+    written in.
     """
 
-    def __init__(self, tree: ast.AST) -> None:
-        #: Names that, CALLED, end the process.
-        self.exits: set[str] = {
-            f"{name}.exit" for name in _bound_module_names(tree, "sys")
-        } | {f"{name}._exit" for name in _bound_module_names(tree, "os")}
-        self.exits |= _bound_symbol_names(tree, "sys", "exit")
-        self.exits |= _bound_symbol_names(tree, "os", "_exit")
-        #: Names that ARE the exception whose argument is a process status.
-        self.statuses: set[str] = {"SystemExit"}
-        assignments = _assignments(tree)
-        classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+    def __init__(
+        self,
+        node: ast.AST,
+        *,
+        inherited: ProcessExits | None = None,
+        shadowed: set[str] | None = None,
+    ) -> None:
+        if inherited is None:
+            self.modules: dict[str, str] = {}
+            self.exits: set[str] = set()
+            self.statuses: set[str] = {"SystemExit"}
+            self.importers: set[str] = {"__import__"}
+        else:
+            self.modules = dict(inherited.modules)
+            self.exits = set(inherited.exits)
+            self.statuses = set(inherited.statuses)
+            self.importers = set(inherited.importers)
+        for name in shadowed or ():
+            self.modules.pop(name, None)
+            self.exits.discard(name)
+            self.statuses.discard(name)
+            self.importers.discard(name)
+        self._bind(node)
+
+    def extended(self, node: ast.AST) -> ProcessExits:
+        """This scope's bindings, plus the ones a nested scope makes for itself."""
+        return ProcessExits(node, inherited=self, shadowed=_parameter_names(node))
+
+    # ── Binding: what this scope's imports and assignments name ─────────
+
+    def _bind(self, node: ast.AST) -> None:
+        classes: list[ast.ClassDef] = []
+        assignments: list[tuple[str, ast.AST]] = []
+        for child in _walk_scope(node):
+            if isinstance(child, ast.Import):
+                for alias in child.names:
+                    if alias.name in TRACKED_MODULES:
+                        self.modules[alias.asname or alias.name] = alias.name
+            elif isinstance(child, ast.ImportFrom) and not child.level:
+                self._bind_symbols(child)
+            elif isinstance(child, ast.ClassDef):
+                classes.append(child)
+            elif isinstance(child, ast.Assign):
+                for target in child.targets:
+                    if isinstance(target, ast.Name):
+                        assignments.append((target.id, child.value))
+            elif isinstance(child, ast.AnnAssign) and child.value is not None:
+                if isinstance(child.target, ast.Name):
+                    assignments.append((child.target.id, child.value))
         changed = True
         while changed:
             changed = False
             for name, value in assignments:
-                dotted = _dotted(value)
-                if dotted in self.exits and name not in self.exits:
+                if self._is_exit(value) and name not in self.exits:
                     self.exits.add(name)
                     changed = True
-                if dotted in self.statuses and name not in self.statuses:
+                elif self._is_status(value) and name not in self.statuses:
                     self.statuses.add(name)
                     changed = True
-            for node in classes:
-                if node.name in self.statuses:
+                else:
+                    identity = self.module_identity(value)
+                    if identity and self.modules.get(name) != identity:
+                        self.modules[name] = identity
+                        changed = True
+                    elif (
+                        isinstance(value, ast.Attribute)
+                        and value.attr == "import_module"
+                        and self.module_identity(value.value) == "importlib"
+                        and name not in self.importers
+                    ):
+                        self.importers.add(name)
+                        changed = True
+            for definition in classes:
+                if definition.name in self.statuses:
                     continue
-                if any(_dotted(base) in self.statuses for base in node.bases):
-                    self.statuses.add(node.name)
+                if any(self._is_status(base) for base in definition.bases):
+                    self.statuses.add(definition.name)
                     changed = True
 
+    def _bind_symbols(self, node: ast.ImportFrom) -> None:
+        module = node.module or ""
+        for alias in node.names:
+            bound = alias.asname or alias.name
+            if module in EXIT_ATTRIBUTES and alias.name == EXIT_ATTRIBUTES[module]:
+                self.exits.add(bound)
+            elif module == "builtins" and alias.name == "SystemExit":
+                self.statuses.add(bound)
+            elif module == "builtins" and alias.name == "__import__":
+                self.importers.add(bound)
+            elif module == "importlib" and alias.name == "import_module":
+                self.importers.add(bound)
+            elif module in TRACKED_MODULES and alias.name in TRACKED_MODULES:
+                self.modules[bound] = alias.name
+
+    # ── Resolution: what an expression IS, whatever it was called ───────
+
+    def module_identity(self, node: ast.AST | None) -> str | None:
+        """Which tracked module this expression IS, whatever it was called."""
+        if isinstance(node, ast.Name):
+            return self.modules.get(node.id)
+        if isinstance(node, ast.Attribute):
+            # ``os.sys`` is the one attribute chain that names another module.
+            if self.module_identity(node.value) == "os" and node.attr == "sys":
+                return "sys"
+            return None
+        if isinstance(node, ast.Call):
+            return self._imported_module(node)
+        return None
+
+    def _imported_module(self, node: ast.Call) -> str | None:
+        if not node.args:
+            return None
+        named = node.args[0]
+        if not (isinstance(named, ast.Constant) and isinstance(named.value, str)):
+            return None
+        function = node.func
+        imports_by_name = (
+            isinstance(function, ast.Name) and function.id in self.importers
+        ) or (
+            isinstance(function, ast.Attribute)
+            and function.attr == "import_module"
+            and self.module_identity(function.value) == "importlib"
+        )
+        if imports_by_name and named.value in TRACKED_MODULES:
+            return named.value
+        return None
+
+    def _fetched(self, node: ast.Call) -> tuple[str | None, str | None]:
+        """``getattr(<module>, "name")`` as (module identity, attribute)."""
+        if not (isinstance(node.func, ast.Name) and node.func.id == "getattr"):
+            return None, None
+        if len(node.args) < 2:
+            return None, None
+        attribute = node.args[1]
+        if not (isinstance(attribute, ast.Constant) and isinstance(attribute.value, str)):
+            return None, None
+        return self.module_identity(node.args[0]), attribute.value
+
+    def _is_exit(self, node: ast.AST) -> bool:
+        """Whether this expression IS the callable that ends the process."""
+        if isinstance(node, ast.Name):
+            return node.id in self.exits
+        if isinstance(node, ast.Attribute):
+            identity = self.module_identity(node.value)
+            if identity in EXIT_ATTRIBUTES and node.attr == EXIT_ATTRIBUTES[identity]:
+                return True
+            return (_dotted(node) or "") in self.exits
+        if isinstance(node, ast.Call):
+            identity, attribute = self._fetched(node)
+            return bool(
+                identity in EXIT_ATTRIBUTES and attribute == EXIT_ATTRIBUTES[identity]
+            )
+        return False
+
+    def _is_status(self, node: ast.AST) -> bool:
+        """Whether this expression IS the exception whose argument is a status."""
+        if isinstance(node, ast.Name):
+            return node.id in self.statuses
+        if isinstance(node, ast.Attribute):
+            if self.module_identity(node.value) == "builtins" and node.attr == "SystemExit":
+                return True
+            return (_dotted(node) or "") in self.statuses
+        if isinstance(node, ast.Call):
+            identity, attribute = self._fetched(node)
+            return identity == "builtins" and attribute == "SystemExit"
+        return False
+
     def ends_the_process(self, node: ast.AST) -> bool:
-        target = _dotted(node)
-        return target is not None and (target in self.exits or target in self.statuses)
+        return self._is_exit(node) or self._is_status(node)
 
 
 def process_status_literals(source: str) -> list[str]:
@@ -715,26 +1074,76 @@ def process_status_literals(source: str) -> list[str]:
 
     ``sys.exit(21)`` bypasses the whole vocabulary: nothing imports, nothing
     looks anything up, and the integer arrives at the shell meaning whatever the
-    author believed that day. Every name is bound through the import graph, so
-    ``import sys as system`` and ``from sys import exit`` are both caught and
-    ``runner.exit(21)`` on somebody's own object is not.
+    author believed that day. Every name is bound through the import graph and
+    resolved by module identity, so every spelling ``ProcessExits`` lists is
+    caught and ``runner.exit(21)`` on somebody's own object is not.
+
+    THE STATUS IS RESOLVED, not just read. ``PRECONDITION = 30`` then
+    ``sys.exit(PRECONDITION)`` is the same bare integer reaching the same shell,
+    spelled the way a careful author spells it, and reading only the inlined
+    literal meant the guard rewarded the careless spelling. Names resolve through
+    the scope they are read in, so a parameter shadowing a module constant
+    resolves to nothing, which is what it is.
 
     Zero is excluded. ``sys.exit(0)`` is success spelled plainly and is not a
     refusal, and reporting it would be the false positive that gets the whole
     guard suppressed. ``True`` is excluded for the same reason and a stronger
-    one: it is an integer only by accident of the language.
+    one: it is an integer only by accident of the language. A status this cannot
+    evaluate stays silent: ``sys.exit(int(code_for(cause)))`` is the sanctioned
+    path and reports nothing.
     """
     tree = ast.parse(source)
-    exits = ProcessExits(tree)
     found: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or len(node.args) != 1:
+    _scan_for_exits(
+        tree,
+        ProcessExits(tree),
+        _module_level_literals(tree),
+        _class_level_literals(tree),
+        found,
+    )
+    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(":")), entry))
+
+
+def _scope_literals(node: ast.AST, inherited: dict[str, ast.AST]) -> dict[str, ast.AST]:
+    """The constants readable inside one scope: what it inherits, minus what it shadows."""
+    names = dict(inherited)
+    for parameter in _parameter_names(node):
+        names.pop(parameter, None)
+    for child in _walk_scope(node):
+        if isinstance(child, ast.Assign):
+            for target in child.targets:
+                if isinstance(target, ast.Name):
+                    names[target.id] = child.value
+        elif isinstance(child, ast.AnnAssign) and child.value is not None:
+            if isinstance(child.target, ast.Name):
+                names[child.target.id] = child.value
+    return names
+
+
+def _scan_for_exits(
+    node: ast.AST,
+    exits: ProcessExits,
+    names: dict[str, ast.AST],
+    members: dict[str, dict[str, ast.AST]],
+    found: list[str],
+) -> None:
+    nested: list[ast.AST] = []
+    for child in _walk_scope(node):
+        if isinstance(
+            child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+        ):
+            nested.append(child)
             continue
-        argument = node.args[0]
-        if not (isinstance(argument, ast.Constant) and isinstance(argument.value, int)):
+        if not isinstance(child, ast.Call) or len(child.args) != 1:
             continue
-        if argument.value == 0 or isinstance(argument.value, bool):
+        status = resolve_int(child.args[0], names, members)
+        if status is None or status == 0:
             continue
-        if exits.ends_the_process(node.func):
-            found.append(f"line {node.lineno}: {ast.unparse(node)}")
-    return found
+        if exits.ends_the_process(child.func):
+            spelled = ast.unparse(child)
+            suffix = "" if str(status) in spelled else f" (status {status})"
+            found.append(f"line {child.lineno}: {spelled}{suffix}")
+    for scope in nested:
+        _scan_for_exits(
+            scope, exits.extended(scope), _scope_literals(scope, names), members, found
+        )
