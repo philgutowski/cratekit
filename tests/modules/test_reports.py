@@ -270,6 +270,55 @@ def test_a_playlist_section_with_no_root_node_refuses():
     assert "no root node" in raised.value.cause.message
 
 
+def test_a_document_carrying_both_names_in_the_wrong_order_refuses():
+    """Something else that happens to contain both names is not a damaged export.
+
+    The check that the sections sit INSIDE the document element killed no test
+    when it was reverted, so the inline comment explaining it was the only thing
+    holding it up. The shape is real: concatenate a fragment of an export onto
+    the front of anything and the two leads are both present, in a file where
+    the collection is not part of any document this build understands.
+    """
+    body = _document(collection=_collection([]), root_children=[], root_count=0)
+    opening = b'<DJ_PLAYLISTS Version="1.0.0">\r\n'
+    section = b'  <COLLECTION Entries="0">\r\n  </COLLECTION>\r\n'
+    assert section in body and opening in body
+    moved = body.replace(section, b"").replace(opening, section + opening)
+
+    with pytest.raises(CratekitError) as raised:
+        export.read_export(moved)
+    assert "outside the document element" in raised.value.cause.message
+
+
+def test_the_entry_count_is_read_from_the_section_and_never_from_a_track():
+    """The window that bounds the attribute search, which nothing used to reach.
+
+    ``attribute_span`` returns the FIRST match in the window it is given, so
+    widening the window changes nothing while the COLLECTION tag carries its own
+    count. The case that separates them is a section that carries NONE, where an
+    unbounded search walks on into the tracks and reads a number out of a value
+    somebody typed. The document below is malformed, deliberately: an unescaped
+    quote inside a display name is exactly the class of file this reader exists
+    to refuse over, and the refusal has to be "no entry count" rather than a
+    count invented from a track's name.
+    """
+    content = _document(
+        collection=[
+            "  <COLLECTION>",
+            '    <TRACK TrackID="1" Name="live Entries="99" set" '
+            'Artist="a" Location="file://localhost/library/a.flac"/>',
+            "  </COLLECTION>",
+        ],
+        root_children=[],
+        root_count=0,
+    )
+    assert b'Entries="99"' in content
+
+    with pytest.raises(CratekitError) as raised:
+        export.read_export(content)
+    assert "declares no entry count" in raised.value.cause.message
+
+
 def test_a_truncated_export_refuses_because_the_declared_count_disagrees():
     """The half-copied file, which is the case the count check exists for.
 
@@ -996,6 +1045,7 @@ def test_a_grouping_carries_the_number_of_tracks_in_it(view):
         ("2_30_26 february thirtieth", None),
         ("2026-02-30 also not a day", None),
         ("phil_5_01_1999", None),
+        ("phil_5_01_2500", None),
         ("phil_5_01_99", date(2099, 5, 1)),
     ],
 )
@@ -1006,10 +1056,13 @@ def test_the_intake_naming_conventions_all_parse(name, expected):
     reported as undated rather than coerced into the nearest thing that parses,
     because a name in front of a person is what gets the name fixed.
 
-    A four-digit year outside this century reads as undated. A TWO-digit one
-    always lands in it, so ``_99`` is 2099 rather than 1999, and a grouping dated
-    in the future is simply not stale. Reading it as 1999 instead would report an
-    age of nine thousand days and tell somebody to throw the list away.
+    A four-digit year outside this century reads as undated, ON BOTH SIDES. Only
+    the floor used to be reached: ``_1999`` was here and ``_2500`` was not, so
+    the ceiling survived being moved to 9999 with the whole suite green, which
+    made it a number nobody was holding. A TWO-digit year always lands inside the
+    window, so ``_99`` is 2099 rather than 1999, and a grouping dated in the
+    future is simply not stale. Reading it as 1999 instead would report an age of
+    nine thousand days and tell somebody to throw the list away.
     """
     assert aging.parse_intake_date(name) == expected
 
@@ -1049,23 +1102,103 @@ def test_the_oldest_grouping_is_reported_first():
     ]
 
 
+def test_two_groupings_of_one_age_are_ordered_by_path_not_by_the_walk():
+    """The TIE-BREAK, which the fixture above never reached.
+
+    Every grouping there carries a different date, so the secondary key was never
+    consulted and dropping it killed no test at all: the guard was held up by its
+    own docstring. Two lists dated the same day are ordinary, since a person
+    files two intakes in one evening, and they are emitted here in the reverse of
+    their path order. Sorting on the age alone is STABLE, so it hands them back
+    in walk order, and two runs of a library somebody merely reordered disagree
+    about a report that should not have changed.
+    """
+    tracks = [(1, "n", "a", "file://localhost/library/a.flac")]
+    root_children = [
+        _folder(INTAKE.display, 2, 1),
+        *_playlist("phil_01_01_2026 zulu", [1], 2),
+        *_playlist("phil_01_01_2026 alpha", [1], 2),
+        _close(1),
+    ]
+    view = export.read_export(
+        _document(collection=_collection(tracks), root_children=root_children, root_count=1)
+    )
+    report = aging.intake_aging(
+        view,
+        intake=INTAKE,
+        thresholds=aging.AgingThresholds(stale_days=1, expired_days=2),
+        today=TODAY,
+    )
+    ages = {group.age_days for group in report.expired}
+    assert len(ages) == 1, f"the two groupings must be the same age to tie: {ages}"
+    assert [group.display for group in report.expired] == [
+        "phil_01_01_2026 alpha",
+        "phil_01_01_2026 zulu",
+    ]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # The verification: both run against a copy and write nothing
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _tree_digest(root: Path) -> dict[str, str]:
-    """Every file under ``root``, by repo-relative path and content hash.
+def _tree_digest(root: Path) -> dict[str, tuple[str, int]]:
+    """Every file under ``root``, by relative path, content hash AND modified time.
 
     Walked rather than enumerated (P3). A test that listed the files it expected
     to be unchanged would be blind to the one a report created, which is the
     interesting case.
+
+    THE MODIFIED TIME IS PART OF THE DIGEST, because a hash alone cannot see a
+    rewrite of identical bytes and cannot see a bare ``touch`` at all. Both are
+    writes to the library, and the second is the one a sighting ledger would
+    reach for: the source system's aging report kept a file recording when it
+    first SAW each name, and the cheapest possible version of that is stamping
+    the thing it saw. A report that leaves the content alone and moves the clock
+    has still written to somebody's library.
     """
     return {
-        str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+        str(path.relative_to(root)): (
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            path.stat().st_mtime_ns,
+        )
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
+
+
+def test_the_digest_sees_a_write_that_changed_no_byte(tmp_path):
+    """The INSTRUMENT, checked before anything is concluded from it.
+
+    Two tests below assert that a report changed nothing by comparing this
+    digest before and after. What they are really asserting is whatever the
+    digest is capable of noticing, and a content hash alone cannot notice a
+    rewrite of identical bytes or a bare ``touch``. Both are writes to somebody's
+    library, and the second is the shape the source system's aging report
+    actually reached for: it kept a file recording when it first SAW each name.
+
+    So the modified time is part of the digest, and this is what makes that fact
+    load bearing rather than a comment. Without it this test is the only thing in
+    the suite that fails.
+    """
+    probe_root = tmp_path / "probe"
+    probe_root.mkdir()
+    stamped = probe_root / "unchanged.bin"
+    stamped.write_bytes(b"identical either way")
+
+    before = _tree_digest(probe_root)
+    moved = stamped.stat().st_mtime_ns + 1_000_000_000
+    os.utime(stamped, ns=(moved, moved))
+    after = _tree_digest(probe_root)
+
+    assert after != before, (
+        "the digest cannot see a write that leaves the bytes alone, so the two "
+        "read-only comparisons built on it are weaker than they read"
+    )
+    assert after["unchanged.bin"][0] == before["unchanged.bin"][0], (
+        "and the difference has to be the stamp rather than the content, or this "
+        "is measuring the wrong thing"
+    )
 
 
 def _database_rows(path: Path) -> list[tuple]:
@@ -1104,9 +1237,14 @@ def test_the_aging_report_changes_no_byte_anywhere(cfg, library_on_disk, tmp_pat
     The aging report offers nothing and therefore has no exception to declare.
     Every file under the temporary tree, the library and the installation state
     alike, is hashed before and after.
+
+    The rows are read FIRST and the digest second, so that opening the database
+    to read them sits outside the window under test. Otherwise the harness's own
+    connection is inside the measurement, and a digest that carries the modified
+    time would report the test's own read as the report's write.
     """
-    before = _tree_digest(tmp_path)
     rows_before = _database_rows(cfg.library.db_path)
+    before = _tree_digest(tmp_path)
 
     aging.intake_aging(
         export.read_export_file(library_on_disk),
@@ -1129,8 +1267,8 @@ def test_the_duplicate_audit_changes_nothing_except_the_review_queue(
     queue is the ONLY thing it touches: no audio file, no export, no database
     row, and above all no private ledger of its own.
     """
-    before = _tree_digest(tmp_path)
     rows_before = _database_rows(cfg.library.db_path)
+    before = _tree_digest(tmp_path)
 
     with review.open_store(cfg) as store:
         duplicates.audit_and_offer(
@@ -1152,14 +1290,96 @@ def test_the_duplicate_audit_changes_nothing_except_the_review_queue(
     assert _database_rows(cfg.library.db_path) == rows_before
 
 
+def test_every_report_runs_with_the_library_directory_read_only(
+    cfg, library_on_disk, tmp_path
+):
+    """READ ONLY, proved by taking the permission away rather than by watching.
+
+    The digests above are an OBSERVATION: they say nothing moved on the paths
+    those two calls happened to take. This is the PROPERTY: with the library
+    directory and every file in it stripped of write permission, both reports
+    still produce their answers. A scratch file beside the export, a lock, a
+    sighting ledger, a rewrite of the export, a chmod, all of them fail here
+    whatever the digest happened to be looking at.
+
+    THE LOCK IS PROVED BEFORE IT IS TRUSTED. A test that only asserts success
+    under a permission change it never confirmed is the absence-read-as-absence
+    shape aimed at itself: on a filesystem that ignores the mode, or as a user
+    who outranks it, it would pass while proving nothing. So the first thing
+    inside the window is a write that MUST fail.
+
+    AND IT FAILS RATHER THAN SKIPS when the lock does not hold, which is
+    deliberate and is the repository's own rule rather than a preference:
+    ``tests/test_pending_units.py`` allows no skip constructed outside the
+    pending register, because a skip is a guard switched off with nothing
+    counting down to its return. A run that cannot express this property has not
+    checked the unit's central claim, and saying so out loud is the only honest
+    report of that.
+
+    The review queue stays writable on purpose, because it is not in the library.
+    That is the whole architecture in one line: the one thing this package
+    persists lives in the decision store, and the library is a document it reads.
+    """
+    music = cfg.library.root / "Music"
+    locked = [library_on_disk, *sorted(music.glob("*.flac"))]
+    modes = {path: path.stat().st_mode for path in [music, *locked]}
+    scratch = music / "scratch.tmp"
+    for path in locked:
+        path.chmod(0o444)
+    music.chmod(0o555)
+    try:
+        try:
+            scratch.write_bytes(b"the lock has to be real")
+            held = False
+        except OSError:
+            held = True
+        assert held, (
+            "the library directory is still writable after chmod 0o555, so this "
+            "proof would pass without proving anything. It needs an ordinary "
+            "user and a filesystem that honours permission bits; running as root "
+            "defeats it. There is deliberately no skip here, because a read-only "
+            "claim that quietly stops being checked is the defect this unit is."
+        )
+
+        view = export.read_export_file(library_on_disk)
+        report = aging.intake_aging(
+            view, intake=INTAKE, thresholds=aging.thresholds_from(cfg), today=TODAY
+        )
+        assert [group.display for group in report.expired] == ["phil_5_01_25"]
+        assert [group.display for group in report.undated] == ["white labels"]
+
+        with review.open_store(cfg) as store:
+            audited = duplicates.audit_and_offer(view, store, template=TEMPLATE)
+        assert len(audited.items) == 1
+        assert audited.items[0].payload["copies"] == 2
+    finally:
+        for path, mode in modes.items():
+            path.chmod(mode)
+        # Only reachable when the lock did not hold, and the tree digest tests
+        # run against their own temporary directories, so this is tidiness rather
+        # than isolation. It is here because a file left behind by a failing
+        # read-only proof is the one piece of evidence somebody debugging it
+        # would most want to be sure came from the test.
+        scratch.unlink(missing_ok=True)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # The structural half: the package cannot write, whatever a test drives
 # ═══════════════════════════════════════════════════════════════════════════
 
 #: Every top-level module the reports package may import, and every dotted target
-#: inside this one. DERIVED FROM WHAT READING NEEDS, so the allowlist is the
-#: argument: nothing here can open a database, spawn a process, or touch a file
-#: except through ``pathlib``, whose write methods are forbidden separately below.
+#: inside this one. DERIVED FROM WHAT READING NEEDS.
+#:
+#: THE LIST IS NOT THE WHOLE ARGUMENT, and an earlier version of this comment
+#: said it was: nothing admitted here can open a database, spawn a process, or
+#: touch a file except through ``pathlib``. That is not true and was never
+#: checked. ``cratekit.core.config`` writes the configuration file from two
+#: public functions, one of them called ``load_from_path``, and
+#: ``cratekit.core.naming`` opens a file in ``claim_target``. What makes the list
+#: safe is the list PLUS ``FILESYSTEM_MUTATIONS`` naming every writer the
+#: admitted modules expose, and
+#: ``test_the_allowlist_admits_no_writer_this_guard_cannot_name`` is what keeps
+#: those two in step as those modules change.
 #:
 #: ``cratekit.core.review`` is the single deliberate exception and is the reason
 #: this is an allowlist rather than a blocklist. The package IS allowed to
@@ -1229,6 +1449,35 @@ FILESYSTEM_MUTATIONS = frozenset(
         "unlink",
         "write_bytes",
         "write_text",
+        # ── APPENDED: the write surface the ALLOWLIST itself admits ─────────
+        #
+        # Appended rather than filed alphabetically for the reason the verb
+        # registry, the pending register and the cause mapping all give: two
+        # units inserting into the middle of one literal auto-merge, and an
+        # append conflicts textually, which is a conflict somebody reads.
+        #
+        # The names above are pathlib and shutil. These are this repository's
+        # own, and they are here because the allowlist's argument was WRONG.
+        # That comment said nothing admitted here can touch a file except
+        # through pathlib, and
+        # ``test_the_allowlist_admits_no_writer_this_guard_cannot_name`` walks
+        # the admitted modules and shows otherwise: ``cratekit.core.config``
+        # exposes three writers and a locking context manager, and
+        # ``cratekit.core.naming``, which ``duplicates`` already imports,
+        # exposes one. ``load`` and ``load_from_path`` are the dangerous pair,
+        # because their names read as pure loads and they write the file back.
+        #
+        # None of these is reachable from correct code in this package: a report
+        # is HANDED a ``Config`` by its caller and neither loads nor saves one,
+        # and claiming a target filename is what a WRITER does with a name this
+        # package only ever parses. The walking test is what keeps this list true
+        # as those modules change, rather than a reviewer's snapshot of them.
+        "_exclusive_lock",
+        "_mkdir_private",
+        "claim_target",
+        "load",
+        "load_from_path",
+        "save",
     }
 )
 
@@ -1361,7 +1610,15 @@ def filesystem_mutations(source: str) -> list[str]:
     correct code, because a guard that does is a guard somebody routes around
     (P7).
 
-    1. A call to one of the named mutating methods.
+    1. One of the named mutating methods, REACHED rather than merely called.
+       An attribute access spelling one of those names is reported wherever it
+       appears, because ``keep = Path(p).write_text`` followed by ``keep(x)``
+       writes a file with no mutating name in any call position at all: the
+       outer call's ``func`` is a plain local. That is round one's bound-``open``
+       hole one step further out, and the same answer closes it. A bare name
+       call is still checked separately, since ``rmtree(a)`` after a ``from
+       shutil import rmtree`` has no attribute to read (the import guard is what
+       catches that one first).
     2. A call to ``open`` whose mode is anything other than a literal read mode.
        Narrowed rather than banned outright because ``open(path, "rb")`` is a
        perfectly correct read. A mode this cannot READ is a violation, since a
@@ -1380,13 +1637,42 @@ def filesystem_mutations(source: str) -> list[str]:
        never appears anywhere, which is the same walk-past as the computed mode
        and gets the same answer.
     """
+    return mutations_in(ast.parse(source))
+
+
+def mutations_in(tree: ast.AST, *, reflection: bool = True) -> list[str]:
+    """The four rules above, applied to any node rather than to a whole module.
+
+    Split out so the allowlist audit below can ask the same question about ONE
+    function. A second copy of these rules answering it would be the divergence
+    ``tests/_source_guards.py`` exists because of, and it would diverge in the
+    direction that matters: the audit would stop recognizing a write shape this
+    guard had just learned.
+
+    ``reflection`` turns rule 4 off, and only the audit does that. Rules 1 to 3
+    each describe an act that CHANGES A FILE; rule 4 describes an act this
+    checker cannot read, which is a violation inside a package that has promised
+    not to write and is ordinary everywhere else. Left on, it reported four
+    reflective helpers in ``config``, ``naming`` and ``taxonomy`` as writers, and
+    an audit that cries wolf about ``getattr(row, field)`` is an audit somebody
+    switches off.
+    """
     found: list[str] = []
-    for node in ast.walk(ast.parse(source)):
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr in FILESYSTEM_MUTATIONS:
+            # The ATTRIBUTE rather than the call around it, so a bound method
+            # captured now and called later is caught at the point it is
+            # reached. A called one lands here too and only here: the walk
+            # visits the enclosing Call first, where the branch below
+            # deliberately checks a bare name only, so nothing is reported
+            # twice.
+            found.append(f"line {node.lineno}: {node.attr}")
+            continue
         if not isinstance(node, ast.Call):
             continue
         func = node.func
         name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
-        if name in FILESYSTEM_MUTATIONS:
+        if isinstance(func, ast.Name) and name in FILESYSTEM_MUTATIONS:
             found.append(f"line {node.lineno}: {name}")
         elif name == "open":
             mode = _open_mode(node, bound=isinstance(func, ast.Attribute))
@@ -1394,7 +1680,7 @@ def filesystem_mutations(source: str) -> list[str]:
                 found.append(f"line {node.lineno}: open(mode={mode!r})")
         elif name == "replace" and len(node.args) == 1 and not node.keywords:
             found.append(f"line {node.lineno}: replace(one argument)")
-        elif name == "getattr" and len(node.args) >= 2:
+        elif reflection and name == "getattr" and len(node.args) >= 2:
             wanted = node.args[1]
             if not isinstance(wanted, ast.Constant) or not isinstance(wanted.value, str):
                 found.append(f"line {node.lineno}: getattr(<computed attribute>)")
@@ -1518,6 +1804,84 @@ def test_no_report_module_calls_a_filesystem_mutation():
         if filesystem_mutations(source)
     }
     assert not problems, f"the reports package can change a file: {problems}"
+
+
+#: The one module in ``ALLOWED_IMPORTS`` that is ALLOWED to write, which is the
+#: whole of R12 and the reason the allowlist is an allowlist. Named once so the
+#: audit below can exempt it without spelling it a second time.
+SANCTIONED_PERSISTENCE = "cratekit.core.review"
+
+
+def _admitted_repository_modules() -> list[tuple[str, Path]]:
+    """Every entry in the allowlist that is a file in THIS repository.
+
+    Walked from the allowlist rather than listed (P3). A module added to the
+    allowlist in a future diff is audited by the test below without anybody
+    remembering to add it here, which is the property a hand-listed copy loses
+    on its first edit.
+    """
+    out: list[tuple[str, Path]] = []
+    for dotted in sorted(ALLOWED_IMPORTS):
+        if not dotted.startswith("cratekit."):
+            continue
+        path = SRC_ROOT.joinpath(*dotted.split(".")).with_suffix(".py")
+        if path.is_file():
+            out.append((dotted, path))
+    return out
+
+
+def test_the_allowlist_admits_no_writer_this_guard_cannot_name():
+    """The allowlist's ARGUMENT, checked instead of asserted.
+
+    The comment above ``ALLOWED_IMPORTS`` says the list is the argument: nothing
+    admitted can open a database, spawn a process, or touch a file except through
+    ``pathlib``, whose write methods are forbidden separately. That sentence was
+    false, and nothing in the suite could see it, which is the exact shape this
+    repository keeps producing: a guard whose docstring calls it the answer while
+    nothing exercises the claim.
+
+    ``cratekit.core.config`` exposes ``save``, ``load_from_path``,
+    ``atomic_write_bytes``, ``_mkdir_private`` and an ``_exclusive_lock`` that
+    chmods; ``cratekit.core.naming``, which ``duplicates`` imports already,
+    exposes ``claim_target``, which opens a file. A report module calling any of
+    them wrote a file with no forbidden import and no forbidden call name
+    anywhere in it.
+
+    So the rule is: every reachable entry point of an admitted module that can
+    change a file must itself be a name ``FILESYSTEM_MUTATIONS`` carries, and the
+    only exemption is the one module R12 licenses to persist. There are two ways
+    to answer a failure and both are correct: name the writer in the set, or take
+    the module off the allowlist. What is not available is leaving the argument
+    written down and untrue.
+    """
+    unnamed: dict[str, list[str]] = {}
+    for dotted, path in _admitted_repository_modules():
+        if dotted == SANCTIONED_PERSISTENCE:
+            continue
+        tree = ast.parse(path.read_text())
+        loose: list[str] = []
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                # The reachable name is what a caller in the reports package
+                # would have to spell: the function, or the class it constructs
+                # to get at a writing method or a context manager.
+                if mutations_in(node, reflection=False) and node.name not in FILESYSTEM_MUTATIONS:
+                    unnamed.setdefault(dotted, []).append(node.name)
+            else:
+                # A write at module level has no name to guard at all, so
+                # importing the module performs it. That is never acceptable on
+                # the allowlist, whatever it is called.
+                loose += mutations_in(node, reflection=False)
+        if loose:
+            unnamed.setdefault(dotted, []).append(f"<at import time> {sorted(set(loose))}")
+
+    assert not unnamed, (
+        f"the reports allowlist admits modules whose writers this guard cannot "
+        f"name: {unnamed}. Either add each name to FILESYSTEM_MUTATIONS so a "
+        f"report calling it is caught, or drop the module from ALLOWED_IMPORTS. "
+        f"The allowlist's comment claims nothing it admits can touch a file "
+        f"except through pathlib, and that claim is what this asserts."
+    )
 
 
 #: A module that hides its writer behind an alias, which is the shape that
@@ -1650,6 +2014,41 @@ def remember(path, decided):
     getattr(Path(path), "write_" + "text")(decided)
 """
 
+#: The mutating method BOUND AND NOT CALLED, then called through the local it
+#: was bound to. Every mutating name has left the call positions the guard read,
+#: which is round one's bound-``open`` hole one step further out.
+EVASIVE_CAPTURED_BOUND_METHOD = """
+from pathlib import Path
+
+
+def remember(path, decided):
+    keep = Path(path).write_text
+    keep(decided)
+"""
+
+#: The writer reached through a module the ALLOWLIST admits, with no forbidden
+#: import anywhere in the file. ``config.save`` writes the configuration file and
+#: ``config.load_from_path`` writes it back too, which its name does not say.
+EVASIVE_ALLOWLISTED_WRITER = """
+from cratekit.core import config
+
+
+def remember(cfg, path):
+    config.save(cfg)
+    return config.load_from_path(path)
+"""
+
+#: And through the other admitted module that opens a file for writing.
+#: ``duplicates`` already imports ``cratekit.core.naming`` for the head stripping,
+#: so this one needs no new import at all.
+EVASIVE_ALLOWLISTED_CLAIM = """
+from cratekit.core import naming
+
+
+def remember(target):
+    return naming.claim_target(target)
+"""
+
 #: A private ledger in a SIBLING module whose name merely starts with this
 #: package's. It is not inside the package, so ``_report_modules`` never scans
 #: it, and the bare-prefix allowlist waved the import through, which is the pair
@@ -1663,24 +2062,33 @@ def remember(path, decided):
 """
 
 #: Correct code, in both directions: the one persistence this package is allowed,
-#: a read through every read primitive available, and ordinary string, mapping
-#: and date methods whose names collide with filesystem verbs.
+#: a read through every read primitive available including a BOUND READ METHOD
+#: captured before it is called, and the methods whose names collide with
+#: filesystem verbs. ``dataclasses.replace`` is the third of those and is the one
+#: that matters, because ``dataclasses`` is on the allowlist while ``str`` and
+#: ``date`` merely turn up: it takes one positional argument, so only the
+#: keywords beside it keep the arity rule off correct code.
 CORRECT_MODULE = """
+import dataclasses
 from pathlib import Path
 
 from cratekit.core import review
 from cratekit.core.review import Option
 
 
-def run(store, path, name, today):
+def run(store, path, name, today, option):
     content = Path(path).read_bytes()
     bound = Path(path).open("rb")
     bound.close()
     builtin = open(path, "rb")
     builtin.close()
+    reader = Path(path).read_text
+    reader()
     tidied = name.replace("_", " ").casefold()
     first_of_month = today.replace(day=1)
+    renamed = dataclasses.replace(option, summary=tidied)
     queue = getattr(review, "Queue")
+    assert renamed is not None
     return review.offer(
         store,
         queue=queue.DUPLICATES,
@@ -1749,16 +2157,29 @@ def test_the_import_allowlist_bites_every_shape_of_the_evasion(source):
         EVASIVE_COMPUTED_MODE,
         EVASIVE_PATH_REPLACE,
         EVASIVE_COMPUTED_ATTRIBUTE,
+        EVASIVE_CAPTURED_BOUND_METHOD,
+        EVASIVE_ALLOWLISTED_WRITER,
+        EVASIVE_ALLOWLISTED_CLAIM,
     ],
 )
 def test_the_mutation_guard_bites_the_private_ledger_in_every_shape(source):
-    """Six spellings of one act, three of which used to pass.
+    """Nine spellings of one act, six of which used to pass.
 
     ``Path(p).open("w")`` is the idiomatic one and was read as mode ``"r"``,
     because the mode was taken from the position the BUILTIN puts it in.
     ``Path(a).replace(b)`` overwrites its destination while its sibling
     ``rename`` was already forbidden. And ``getattr`` with a computed attribute
     name never spells the method at all.
+
+    The last three are round two's, and the last two are the more serious pair
+    because they need no evasion at all. BINDING WITHOUT CALLING takes every
+    mutating name out of the call positions the guard read, which is the bound
+    ``open`` hole one step further out. The other two write through modules the
+    ALLOWLIST admits: the allowlist's stated argument was that nothing it lets
+    in can touch a file except through ``pathlib``, and
+    ``test_the_allowlist_admits_no_writer_this_guard_cannot_name`` walks the
+    admitted modules and finds four writers that are not ``pathlib``. A report
+    calling ``config.load_from_path`` would not even look like a write.
     """
     assert filesystem_mutations(source)
 
@@ -1808,6 +2229,33 @@ def test_the_package_initializer_may_import_its_own_siblings_relatively():
     assert forbidden_imports(
         "from . import aging\n", REPORTS_PACKAGE
     ) == []
+
+
+def test_a_from_import_of_a_package_resolves_to_the_module_it_names():
+    """``_PACKAGE_DEPTH``, which round one's filesystem read quietly subsumed.
+
+    ``_is_package`` asks the source tree, and the source tree answers for every
+    package in this repository, so the depth rule stopped being reachable for
+    anything under ``cratekit`` the moment that read landed. It survived being
+    moved to ZERO with the whole suite green, which is a tuning constant nobody
+    is holding.
+
+    What it still does is the STANDARD LIBRARY, which is not in the source tree
+    and which ``_is_package`` therefore answers False for. Without the depth
+    rule, ``from collections import abc`` resolves to the bare package rather
+    than to the module it names. Both are permitted today because both are on
+    the allowlist, so no verdict moves, and that is exactly why the resolution
+    itself has to be the assertion: an allowlist that later admits a submodule
+    without its parent would start waving through the parent instead.
+    """
+    planted = "cratekit.modules.reports.planted"
+    assert _resolved_imports("from collections import abc\n", planted) == ["collections.abc"]
+    assert _resolved_imports("from cratekit.core import review\n", planted) == [
+        "cratekit.core.review"
+    ]
+    assert _resolved_imports("from cratekit.core.review import Option\n", planted) == [
+        "cratekit.core.review"
+    ]
 
 
 def test_the_real_package_reaches_the_review_queue_at_all():

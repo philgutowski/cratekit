@@ -577,6 +577,18 @@ behavioural assertion per registered producer, which is what
 the item is read back out of a store opened in a second process. That is the
 shape to generalize, and generalizing it belongs with the file it lives in.
 
+**Narrowed in round 2.** Recording this finding turned out to have hidden a
+second one underneath it. The guard the finding describes the floor of,
+`_target_offers_into`, could be stubbed to `return True` with the entire suite
+still green: every table entry but one is still a countdown and takes the early
+return, and the one that has landed is covered from the other side by a test
+calling a different helper. Its module-shape branch had never executed at all. So
+the assertion that a landed producer really produces was carried by a function
+nothing could show was capable of saying no, which is a strictly worse problem
+than the reachability floor this entry names. The helper is now asserted in both
+shapes and both polarities. What remains open is only the original floor: a
+producer could still satisfy it with an offer in a function nothing calls.
+
 **Closes when:** each entry in `NEW_SURFACE_OWED_BY` is answered by driving its
 producer rather than by reading its source, once enough of them have landed for
 the shared harness to be worth writing. The natural owner is U26, which is the
@@ -595,6 +607,16 @@ third copy, in `_resolved_imports`, and it has already diverged from the
 `tests/test_layering.py` copy over CapWords and dunder handling, which that file
 excludes from module expansion and this one does not.
 
+**Measured in round 2, and it changes no verdict today.** Both walks were run
+over all four modules of the reports package and their outputs compared. They
+agree everywhere except one entry: `from typing import Sequence` in
+`duplicates.py` resolves to `typing.Sequence` here and to `typing` in
+`test_layering.py`, which is the CapWords rule and nothing else. Both are
+permitted by `_permitted`, because an allowlisted entry admits its dotted
+children, so the forbidden set is empty under either walk for every module. The
+divergence is real, it is one entry wide, and it is not currently capable of
+letting an import through or of failing a correct one.
+
 **Not fixed here**, deliberately. U12 is concurrently generalizing
 `_source_guards.ReviewImports` into a module-parameterized `ImportsOf`, which is
 where this walk belongs, and collapsing three copies into a shared helper in this
@@ -609,3 +631,39 @@ accident.
 **Closes when:** `ImportsOf` lands from U12 and all three call sites read it,
 including the CapWords and dunder rule, which must be settled in one place rather
 than three. The natural owner is U12.
+
+---
+
+## R-19. The option a person picks is addressed by an identifier a re-import changes
+
+**Found:** during the U34 round 2 verification, 2026-08-03.
+
+`duplicates.DuplicateGroup.options` builds one `review.Option` per copy with
+`option_id=member.track_id`, and the track id is the rekordbox `TrackID` from the
+export. That identifier is unique WITHIN one document, which U34 now refuses over
+when it is not, and it is not stable ACROSS documents: re-importing a library
+gives every row a new one, and `test_a_renamed_or_re_imported_copy_keeps_the_decision`
+demonstrates exactly that, one line below the assertion that the item id survives.
+
+So the item survives a re-import and the answer inside it does not. An ACCEPTED
+verdict on a duplicate group names which copy is kept, and after a re-import that
+name points at whatever row now holds the number. `review.offer` leaves a resolved
+item's options alone by design, which is correct and is also what freezes the
+stale identifier in place. Nothing in this unit reads a verdict back, so nothing
+is wrong today; the surface that acts on it is the deletion pass R35 and R36
+declare, which is U24's.
+
+There is no stable per-copy identifier available in a collection export. The
+track id moves on re-import and the location moves on a rename, and the module
+promises that neither of those orphans a decision. That is why this is recorded
+rather than patched: choosing one of the two would trade a wrong answer in one
+direction for a wrong answer in the other, and the choice belongs with the unit
+that consumes it.
+
+What is available to the consumer is already carried: each option's `detail`
+holds the copy's location, and the payload holds every member's track id and
+location together.
+
+**Closes when:** the deletion surface either re-verifies a chosen option against
+the export it is acting on before deleting anything, or the pair agree on an
+identity that survives both a re-import and a rename. The natural owner is U24.
