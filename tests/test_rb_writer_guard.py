@@ -1166,3 +1166,156 @@ def test_no_refusal_returns_a_bare_integer_or_raises_a_bare_exception():
     source = inspect.getsource(W)
     assert "RuntimeError(" not in source
     assert "SystemExit" not in source
+
+
+# ── the soft-delete marker: read it, never default it ────────────────────────
+#
+# THREE TIMES ON ONE COLUMN. U18 removed the permissive default, U19 shipped it
+# again and its review caught it as a blocking defect, and U21 shipped it a third
+# time on the genre lookup at ``write/metadata.py:195``, where it reached main.
+# That is not three careless authors, it is a rule that lived in a docstring.
+# ``tests/_source_guards.py:permissive_soft_delete_reads`` is the rule as code and
+# these are its fixtures, in both directions (P7).
+
+
+def _source_guard():
+    from tests import _source_guards
+
+    return _source_guards
+
+
+def test_the_soft_delete_guard_fires_on_every_evasion():
+    """The literal, the indirection, the mapping row, and the named default.
+
+    Each of these is a shape somebody reaches for when a guard is in the way, and
+    a guard that recognizes only the first is one rename from being switched off.
+    That is not hypothetical here: the armed copy of the comma-separated-writer
+    question in this repository was defeated by ``import csv as spreadsheet``.
+    """
+    guard = _source_guard()
+    fires = guard.permissive_soft_delete_reads
+
+    assert fires('x = getattr(row, "rb_local_deleted", 0)'), "the shape that reached main"
+    assert fires('x = getattr(row, "rb_local_deleted", False)')
+    assert fires('x = getattr(row, "rb_local_deleted", None)'), (
+        "bool(None) is the same permissive answer as 0, wearing a different word"
+    )
+    assert fires(
+        'COLUMN = "rb_local_deleted"\nx = getattr(row, COLUMN, 0)\n'
+    ), "the column named through a constant, which is one hop of indirection"
+    assert fires(
+        'ACTIVE = 0\nx = getattr(row, "rb_local_deleted", ACTIVE)\n'
+    ), "the same evasion pointed at the default instead of at the column"
+    assert fires(
+        "from cratekit.core.rb_writer import SOFT_DELETE_COLUMN\n"
+        "x = getattr(row, SOFT_DELETE_COLUMN, 0)\n"
+    ), "correct spelling of the column, still a permissive read"
+    assert fires(
+        "from cratekit.core import rb_writer as w\n"
+        "x = getattr(row, w.SOFT_DELETE_COLUMN, 0)\n"
+    ), "an aliased module is what defeated the last guard in this repository"
+    assert fires('x = row.get("rb_local_deleted", 0)'), "a row that arrived as a mapping"
+    assert fires('x = row.get("rb_local_deleted")'), (
+        "a one-argument get defaults to None all by itself, which is the "
+        "permissive answer arrived at by omission rather than by decision"
+    )
+
+
+def test_the_soft_delete_guard_stays_quiet_on_correct_code():
+    """The half that gets skipped, and the half that decides whether a guard survives.
+
+    A guard that fires on correct code gets switched off, and this repository has
+    already shipped that mistake once. Every shape here is a correct reader, and
+    every one of them fails loudly or not at all rather than answering "active"
+    for a row that never said so.
+    """
+    guard = _source_guard()
+    fires = guard.permissive_soft_delete_reads
+
+    assert not fires(
+        "_ABSENT = object()\n"
+        'marker = getattr(row, "rb_local_deleted", _ABSENT)\n'
+        "if marker is _ABSENT or marker is None:\n"
+        "    raise Refused()\n"
+    ), "the sanctioned shape: a sentinel the caller then compares against"
+    assert not fires('marker = getattr(row, "rb_local_deleted")'), (
+        "no default at all raises AttributeError, which is loud, not permissive"
+    )
+    assert not fires("marker = row.rb_local_deleted"), "a plain attribute access"
+    assert not fires('SOFT_DELETE_COLUMN = "rb_local_deleted"'), (
+        "defining the column is not reading it, or the module that owns the "
+        "name would have to be carved out of its own guard"
+    )
+    assert not fires('columns = {"rb_local_deleted", "usn"}'), "naming it in a set"
+    assert not fires('x = getattr(row, "rb_local_synced", 0)'), (
+        "a different bookkeeping column entirely, which this guard has no "
+        "opinion about"
+    )
+    assert not fires('x = getattr(row, "rb_local_deleted", SENTINEL)'), (
+        "an unresolvable name is not assumed permissive; assuming it would fire "
+        "on the correct shape whenever the sentinel is imported"
+    )
+
+
+def test_no_module_in_the_package_reads_the_soft_delete_marker_permissively():
+    """The guard, armed over every module we author. This is the assertion.
+
+    Walked rather than aimed at the two modules known to read the column, because
+    a check that names its targets is blind to the third one, and the third one is
+    always the defect.
+    """
+    guard = _source_guard()
+    offenders: dict[str, list[str]] = {}
+    for path, source in _package_sources():
+        found = guard.permissive_soft_delete_reads(source)
+        if found:
+            offenders[path] = found
+    assert not offenders, (
+        f"a soft-deleted row would read as active in: {offenders}. The column is "
+        f"bookkeeping, so a binding that stops exposing it applies this default "
+        f"to every row at once and nothing reports it."
+    )
+
+
+#: EXACT MEMBERSHIP, which is the only shape that catches a widening (R-15). The
+#: assertion above says what must not happen; this says who is allowed to be in
+#: the conversation at all, and a fourth reader is a two-line diff that passes
+#: every other assertion in this suite.
+#:
+#: IT IS ALSO THE RECONCILIATION MECHANISM. U24 lands
+#: ``trees.soft_delete_marker`` as the single sanctioned implementation of this
+#: read. The moment that branch merges, this pin has three readers and goes red
+#: until they are collapsed into one, so the merge cannot quietly leave two
+#: implementations of one rule in the tree. Enforced rather than remembered.
+SOFT_DELETE_READERS = {
+    "cratekit/write/metadata.py",
+    "cratekit/write/routing_pass.py",
+}
+
+
+def test_only_the_declared_modules_read_the_soft_delete_marker_at_all():
+    guard = _source_guard()
+    readers = {
+        path for path, source in _package_sources() if guard.reads_soft_delete_marker(source)
+    }
+    assert readers == SOFT_DELETE_READERS, (
+        f"the modules reading the soft-delete marker are {sorted(readers)}, and "
+        f"the pin declares {sorted(SOFT_DELETE_READERS)}. Every reader is a place "
+        f"the rule has to be got right again, so adding one is a decision rather "
+        f"than a diff."
+    )
+
+
+def _package_sources() -> list[tuple[str, str]]:
+    """Every module we author, vendored third-party code excluded.
+
+    The vendored downloader is not ours to restyle and knows nothing about
+    rekordbox; holding it to a rule written after it was published would only
+    produce a suppression comment somebody later reads as permission.
+    """
+    root = Path(W.__file__).resolve().parent.parent
+    return [
+        (path.relative_to(root.parent).as_posix(), path.read_text())
+        for path in sorted(root.rglob("*.py"))
+        if "_vendor" not in path.parts
+    ]

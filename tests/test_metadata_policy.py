@@ -383,6 +383,78 @@ def test_the_genre_lookup_table_is_not_creatable_structurally():
     assert "djmdGenre" not in rb_writer.PERMITTED_ROW_TABLES
 
 
+def test_a_genre_row_that_cannot_report_the_marker_refuses_rather_than_resolving():
+    """The permissive default U18 removed, live on main until now at line 195.
+
+    ``rb_local_deleted`` is a bookkeeping column, so it is precisely the column a
+    binding change can stop exposing, and a default is then applied to EVERY row
+    at once. Defaulting it to 0 made a soft-deleted genre resolve, and the write
+    that followed pointed a track's ``GenreID`` at a row rekordbox has retired.
+    """
+    db = FakeGenres([Row("6", Name="Melodic House")])
+    with pytest.raises(CratekitError) as caught:
+        metadata.resolve_genre_id(db, "Melodic House")
+    cause = caught.value.cause
+    assert cause.reason == "soft-delete-marker-unreadable"
+    assert cause.detail["table"] == "djmdGenre"
+    assert cause.detail["column"] == rb_writer.SOFT_DELETE_COLUMN
+
+
+def test_an_explicit_none_marker_refuses_alongside_a_missing_attribute():
+    """``bool(None)`` is the same permissive answer, so it takes the same path.
+
+    A binding that supplies the column but leaves it NULL is the shape that gets
+    missed, because the attribute is present and only its value is uninformative.
+    """
+    db = FakeGenres([Row("6", Name="Melodic House", rb_local_deleted=None)])
+    with pytest.raises(CratekitError) as caught:
+        metadata.resolve_genre_id(db, "Melodic House")
+    assert caught.value.cause.reason == "soft-delete-marker-unreadable"
+
+
+def test_an_unreadable_marker_is_not_collapsed_into_the_genre_unknown_skip():
+    """The refusal must be distinguishable from a miss, and this is why.
+
+    ``None`` from this function already means one specific thing, "no active
+    genre by that name", and the plan turns it into a per-row ``genre-unknown``
+    skip. A binding regression folded into that None would surface as thousands
+    of skips naming the user's TAXONOMY, sending them to fix something that was
+    never wrong. The two outcomes are asserted here side by side so a later
+    simplification cannot quietly merge them.
+    """
+    live = FakeGenres([Row("7", Name="Melodic House", rb_local_deleted=0)])
+    assert metadata.resolve_genre_id(live, "Nonexistent Genre") is None
+
+    metadata.enable()
+    plan = metadata.plan_genre_retag(
+        [Row("1", GenreID=None)], {"1": "Nonexistent Genre"}, db=live
+    )
+    assert [s.reason for s in plan.skipped] == ["genre-unknown"]
+
+    unreadable = FakeGenres([Row("6", Name="Nonexistent Genre")])
+    with pytest.raises(CratekitError):
+        metadata.plan_genre_retag(
+            [Row("1", GenreID=None)], {"1": "Nonexistent Genre"}, db=unreadable
+        )
+
+
+def test_a_deleted_marker_is_not_an_error_here_the_way_it_is_for_a_track():
+    """The asymmetry that decides the shape of this fix.
+
+    A tombstoned CONTENT row is a track somebody removed, and the routing pass
+    partitions on it. A tombstoned LOOKUP row is an ordinary thing to walk past:
+    the right response is to keep reading, because the next row may be the live
+    namesake. So "deleted" is not a refusal here, and only "cannot say" is.
+    """
+    db = FakeGenres(
+        [
+            Row("6", Name="Melodic House", rb_local_deleted=1),
+            Row("7", Name="Melodic House", rb_local_deleted=0),
+        ]
+    )
+    assert metadata.resolve_genre_id(db, "Melodic House") == "7"
+
+
 # ---------------------------------------------------------------------------
 # Scenario 7: the dry-run difference matches the applied result exactly
 # ---------------------------------------------------------------------------
