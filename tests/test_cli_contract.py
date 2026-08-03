@@ -1221,6 +1221,14 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "review.clear": ["no-such-item"],
         "review.export": [str(library / "review-export.json")],
         "review.import": [str(library / "no-such-export.json")],
+        # U23. The census takes no positional argument at all: a taxonomy
+        # declares exactly one routing tree by stable identifier, so a flag
+        # naming one would be a second opinion about a value the template
+        # already holds (R19). It queues rather than scanning, which is
+        # conformance 5's property, and queueing needs no database, which is
+        # what lets the half of adoption that is ready land while its
+        # destructive sibling waits.
+        "adopt.scan": [],
     }[entry.name]
 
 

@@ -492,3 +492,95 @@ fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather
 than skips, so the battery runs either way and a supplied fixture strengthens it.
 The natural owner is U27, which lands doctor and is the unit that makes a machine
 ready.
+
+---
+
+## R-20. Adoption's tag write takes no destructive session and no library lock
+
+**Found:** during U23's review, 2026-08-02. `apply_plan` says so itself, in its
+own docstring, and called it "the residue". It was recorded in no residual, no
+handoff entry and no `_pending` obligation, which is what makes it a finding
+rather than a documented decision: a gap only its own author can find is not
+written down.
+
+`cratekit.adopt.apply.apply_plan` writes a genre tag onto a user's file. That is
+the one operation outside the database snapshot entirely: no snapshot holds it,
+no re-import puts it back, and only the unit's own revert ledger can undo it.
+The loop takes no write session and no library lock, so:
+
+- nothing asserts rekordbox is closed, that a backup was acknowledged, or that
+  the volume identity still matches, before a file is rewritten;
+- two apply runs over one plan both see the same entries outstanding. What stops
+  them reaching the DATABASE twice is R31's lock, taken one layer up. Nothing
+  stops them reaching the FILE twice.
+
+**Not as bad as it was.** The review's blocking finding here was that the tag
+write happened BEFORE the membership write and a refusal from the membership
+writer was caught per entry, so a systemic refusal inside the caller's own
+destructive session rewrote every file in the plan while zero memberships landed.
+Measured at 6 of 6. That is fixed: the recoverable write goes first, and a
+refusal whose declared scope condemns more than one item ends the run. So a
+caller whose gates refuse now rewrites nothing.
+
+Two concurrent applies over one file are also safe, and measured so: 40 of 40
+originals preserved, because the ledger's first-write-wins rule holds and both
+the read and the write now sit inside one flock.
+
+**Not fixed here** because the fix is not a line in this module. R29 declares the
+destructive-session boundary as ONE SOURCE PER RUN, and this loop is not a run.
+`cratekit.write.trees.write_tree_membership` owns its own session for exactly
+that reason and refuses a caller-supplied gates factory. Opening a second session
+here would give one run two sources, which is the composition R-12 already
+records as a unit's decision rather than a merge's.
+
+**Closes when:** `adopt.apply`'s command line lands and opens ONE session around
+the whole loop, passing its own open guard down. That is registered in
+`tests/_pending.py` against `cratekit.adopt.apply_cli`, so the obligation is
+tracked by the file the board audit reads rather than by this paragraph.
+
+---
+
+## R-21. Conformance 3 cannot pass a verb with an explicit gate, and the reason is not the database
+
+**Found:** during U23's review, 2026-08-02, while establishing which half of the
+adoption CLI could land.
+
+R-13 records "no destructive database verb can land on a machine without a
+database" and says it closes when conformance 3 can run against a disposable
+database fixture. **That close condition will not close it**, and this entry
+exists because acting on R-13 as written would produce a fixture nobody needs and
+leave the wall standing.
+
+The wall is two properties of `test_conformance_3` itself, both established by
+elimination:
+
+1. It answers each gate INLINE, with `-d gate=option`, in the same invocation
+   that reaches the gate. `Gates.require` correctly refuses an inline answer to a
+   gate declared `explicit=True`, because R34 says a blanket affirmative never
+   satisfies one. So the test cannot drive any explicit gate to `OK`, and that is
+   R34 working rather than failing.
+2. It drives once per declared gate, on a FRESH run, answering only that one
+   gate. A verb declaring two gates therefore exits `DECISION_REQUIRED` on
+   whichever one it was not answering.
+
+`adopt.apply` has both shapes at once: an explicit approval gate plus the shared
+cloud-sync gate. Removing `explicit=True` from both still gave exit 10, which is
+what rules the database out as the cause: there is no database in either case and
+the failure mode does not change.
+
+**What this unblocked already.** `adopt.scan` shared one `module=` string with
+`adopt.apply` and was held behind the same wall for no reason of its own. It
+declares no gate, writes nothing, and is not destructive, so conformance 3 is an
+empty loop for it. Split onto `cratekit.adopt.scan_cli`, it lands and passes
+conformance 1, 2, 3, 5, 7 and 8.
+
+**Closes when:** conformance 3 answers an explicit gate the way a person does,
+through a recorded decision on the run in a separate act (`crate run decide`),
+and drives once with EVERY gate answered rather than once per gate. Both are
+changes to the test, not to any verb. The natural owner is U27, which lands
+doctor and is the unit that makes a machine ready; a separate branch is
+correcting conformance 3 now, so this may be spent before U27 reaches it.
+
+**This entry needs its own issue.** `main` already defines R-14 and R-15, U27 is
+renumbering its own to R-16, U16 is adding R-17 and U32 is adding R-19, so R-20
+and R-21 are the next free numbers as of this merge.

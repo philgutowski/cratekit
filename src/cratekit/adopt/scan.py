@@ -40,6 +40,7 @@ Layer: modules. It reads configuration and the disk and names no verb.
 
 from __future__ import annotations
 
+import stat as stat_module
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -56,6 +57,14 @@ PLACEHOLDER_SUFFIX = ".icloud"
 
 #: The prefix that same synchroniser puts on the placeholder's own name.
 PLACEHOLDER_PREFIX = "."
+
+#: ``UF_DATALESS``. macOS sets this in ``st_flags`` on a file whose bytes a file
+#: provider has evicted, which is the ONE authoritative answer to "are the bytes
+#: here" that costs nothing and downloads nothing. Spelled as a literal because
+#: Python's :mod:`stat` module does not export it; the value is from the
+#: platform's own ``sys/stat.h`` and is inert on every platform that has no
+#: ``st_flags`` at all.
+DATALESS_FLAG = 0x40000000
 
 
 class Readability(StrEnum):
@@ -90,8 +99,14 @@ class Readability(StrEnum):
     #: fusion :func:`cratekit.core.locations.resolve_recorded_path` refuses.
     UNMAPPED = "unmapped"
 
-    #: The recorded location is not a path at all: a streaming pseudo-location or
-    #: something device-relative. Not a failure, and not a file either.
+    #: The recorded location is not a path on this machine at all: a streaming
+    #: pseudo-location, something device-relative, a location naming ANOTHER HOST
+    #: (which has no local path and must not be guessed into one), or a string
+    #: the operating system cannot name a file with. Not a failure, and not a
+    #: file either. These are folded together on purpose and the fusion is the
+    #: one in this enumeration: every one of them is a row whose location this
+    #: installation can do nothing local about, so they share a remedy where the
+    #: other five do not.
     NOT_A_PATH = "not-a-path"
 
 
@@ -120,6 +135,14 @@ class Disposition(StrEnum):
     #: The file is not in an adoptable category. The plan carries the track with
     #: the category that says why, so it is reported rather than omitted.
     EXCLUDED = "excluded"
+
+    #: The destination folder already exists holding tracks this plan does not
+    #: name, and a person answered "leave that folder alone". Its own member
+    #: rather than a silent removal from the applicable set: the track was
+    #: routable, the genre was right, and the reason it is not being placed is a
+    #: decision somebody made rather than anything about the track. Set by the
+    #: plan layer, which is where collisions and their verdicts live.
+    WITHHELD = "withheld"
 
     #: The genre resolved to a bucket and the taxonomy declares no sub-playlist
     #: under it for a track with no energy reading. Set by the plan layer rather
@@ -183,45 +206,90 @@ class ScannedTrack:
 def probe_readability(path: Path) -> Readability:
     """Classify one resolved path on this machine. The default probe.
 
-    THREE QUESTIONS IN ONE ORDER, and the order is what keeps the categories
-    apart.
+    TOTAL BY CONSTRUCTION, and that is a property of THIS function rather than
+    of the inputs it happens to be given. The census is a generator, so anything
+    raising out of a probe does not fail one row, it kills the walk and takes
+    every row after it with no output and no count. Two ordinary library shapes
+    do exactly that to the obvious implementation: a directory with no execute
+    bit anywhere under the library makes every probe under it raise
+    ``PermissionError``, and a recorded location carrying a null byte makes
+    ``stat`` raise ``ValueError``, which is not an ``OSError`` and is not caught
+    by anything that only expects one. So every answer is a named category and
+    the two outer handlers are the reason the walk cannot end early.
 
-    First, a placeholder beside the name. A file evicted to the cloud is
-    replaced by a stub whose name is the original with a dot in front and a
-    suffix on the end, and the library still records the ORIGINAL. Asking about
-    the recorded name alone reports the track missing, which sends the person
-    looking for a drive that is already attached.
+    THE ORDER, AND WHY THE RECORDED NAME IS ASKED ABOUT FIRST. The file itself
+    decides. A synchroniser that evicts a file's bytes leaves a stub whose name
+    is the original with a dot in front and a suffix on the end, and the library
+    still records the ORIGINAL, so the stub is what distinguishes "the bytes are
+    in the cloud" from "the file is gone". But a stub is DEBRIS as often as it is
+    evidence: it outlives the file coming back, and a probe that asked about it
+    first reported a file it could have read in full as online-only, refusing to
+    adopt a track that was sitting right there. So the stub is consulted only
+    where the recorded name is absent, which is the only case it can settle.
 
-    Second, presence. Nothing there is MISSING, and it is asked before the read
-    so that a missing file is never reported as an unreadable one.
-
-    Third, whether the bytes are actually here. A dataless file reports a size
-    and occupies no blocks, because the size is metadata the synchroniser kept
-    and the contents are not on this disk. Opening it triggers a download, which
-    is precisely what a scan over a whole library must not do, so the block count
-    is asked instead of the file being read. A platform whose stat has no block
-    count falls through to the read, which is the honest answer where the cheap
-    question cannot be asked.
+    WHETHER THE BYTES ARE HERE IS ASKED WITHOUT READING THEM. Opening a dataless
+    file triggers a download, and doing that per file across a library is the
+    opposite of a scan. The platform answers it exactly, in ``st_flags``, and
+    :func:`_is_dataless` says why that replaced the block count it used to ask.
     """
+    try:
+        return _probe(path)
+    except ValueError:
+        # A string the operating system cannot name a file with at all, an
+        # embedded null byte being the one that reaches here from a real library.
+        # It is not a path, which is a fact about the row rather than the disk.
+        return Readability.NOT_A_PATH
+    except OSError:
+        # A permission, an input-output error, a filesystem that answered and
+        # refused. Something is there and this account cannot read it.
+        return Readability.UNREADABLE
+
+
+def _placeholder_beside(path: Path) -> bool:
+    """Whether a synchroniser's stub sits beside the recorded name."""
     placeholder = path.with_name(f"{PLACEHOLDER_PREFIX}{path.name}{PLACEHOLDER_SUFFIX}")
-    if placeholder.exists():
-        return Readability.ONLINE_ONLY
     try:
-        stat = path.stat()
+        return placeholder.exists()
+    except OSError:
+        # The directory refused the question. That is not evidence of a stub,
+        # and the recorded name has already answered what it could.
+        return False
+
+
+def _is_dataless(info) -> bool:
+    """Whether the name is here and the bytes are not, asked without a read.
+
+    THE BLOCK COUNT IS NOT THE QUESTION, and it used to be. "This file reports a
+    size and occupies no blocks" describes a dataless file and it also describes
+    a SPARSE file, and on a filesystem that does not populate the count at all it
+    describes every file there is. Some network and FUSE mounts do exactly that,
+    so the block count would exclude a whole library and report it as cloud
+    backed, which is a worse failure than the one it was guarding: an excluded
+    track is one nobody decided about, and there would be no readable file
+    anywhere in the census to make it look wrong.
+
+    The flag is the platform's own answer to the actual question, it costs
+    nothing, and it has no second meaning. A platform that does not expose it has
+    no file provider doing this either, and falls through to the read, which is
+    the honest answer where the cheap question cannot be asked.
+    """
+    return bool(getattr(info, "st_flags", 0) & DATALESS_FLAG)
+
+
+def _probe(path: Path) -> Readability:
+    """The probe's actual questions. Raises; :func:`probe_readability` does not."""
+    try:
+        info = path.stat()
     except FileNotFoundError:
+        return (
+            Readability.ONLINE_ONLY if _placeholder_beside(path) else Readability.MISSING
+        )
+    if not stat_module.S_ISREG(info.st_mode):
         return Readability.MISSING
-    except OSError:
-        return Readability.UNREADABLE
-    if not path.is_file():
-        return Readability.MISSING
-    blocks = getattr(stat, "st_blocks", None)
-    if blocks == 0 and stat.st_size > 0:
+    if _is_dataless(info):
         return Readability.ONLINE_ONLY
-    try:
-        with path.open("rb") as handle:
-            handle.read(1)
-    except OSError:
-        return Readability.UNREADABLE
+    with path.open("rb") as handle:
+        handle.read(1)
     return Readability.READABLE
 
 
@@ -233,13 +301,40 @@ def _resolved_path(
 ) -> tuple[str | None, Readability | None]:
     """Where a recorded location lives here, or the category that says why not.
 
-    The two unresolved answers are kept apart because their remedies are, which
-    is the whole argument :func:`locations.resolve_recorded_path` already makes
-    one layer down. This function adds nothing to that decision; it translates it
+    IT IS DECODED FIRST, AND THAT IS NOT A DETAIL. rekordbox's ``Location``
+    column is a percent-encoded file URL. It opens ``file://localhost`` or
+    ``file://`` and the mount point follows, so it is a URL and not a path.
+    :func:`locations.resolve_recorded_path` refuses anything that does not
+    open with a slash, correctly, because a value that is not a path must not be
+    guessed into one. Hand it the raw column and EVERY row in a real library
+    comes back ``NOT_A_PATH``, every one of them is excluded, and the plan then
+    carries the whole library in a category none of it belongs to.
+
+    That failure is invisible to the arithmetic that is supposed to catch it:
+    :func:`cratekit.adopt.plan.covers` compares content identifiers, so a plan
+    holding every row under the wrong category satisfies "nothing fell out"
+    exactly as well as a correct one does. The proof is about presence, not about
+    correctness, and only a test using the shape rekordbox actually writes can
+    see the difference.
+
+    So both consumers of a recorded location decode before they resolve. The
+    sibling is :func:`cratekit.write.trees._comparable`, whose docstring already
+    said both sides must; this is the side that was not.
+
+    The unresolved answers are kept apart because their remedies are, which is
+    the whole argument :func:`locations.resolve_recorded_path` already makes one
+    layer down. This function adds nothing to that decision; it translates it
     into this module's vocabulary once, so no caller re-interprets it.
     """
+    try:
+        decoded = locations.location_to_path(recorded)
+    except locations.LocationDecodeError:
+        # A location naming another host. There is no local path behind it and
+        # inventing one is what the decoder refuses to do, so the row is reported
+        # rather than resolved.
+        return None, Readability.NOT_A_PATH
     resolution = locations.resolve_recorded_path(
-        recorded, root=root, prefix_map=prefix_map
+        decoded, root=root, prefix_map=prefix_map
     )
     if resolution.resolution is locations.Resolution.NOT_A_PATH:
         return None, Readability.NOT_A_PATH
@@ -298,6 +393,15 @@ def scan_rows(
     omission. A soft-deleted row is a track the user removed from their library
     on purpose; proposing to adopt it would put it back. The census is total over
     the LIVE collection, which is what the row's own marker defines.
+
+    THE INJECTED PROBE IS NOT TRUSTED TO BE TOTAL, even though the default one
+    is. A probe is a parameter, so its totality is somebody else's property, and
+    the cost of being wrong about it is not one misclassified row: this is a
+    generator, so an exception ends the walk and every row after it is never
+    produced, never counted, and never reported missing by anything. The two
+    shapes a filesystem raises are caught and named here for that reason. A
+    programming error in a caller's probe still surfaces, because nothing wider
+    is caught.
     """
     for row in rows:
         if row.deleted:
@@ -313,7 +417,12 @@ def scan_rows(
                 genre=row.genre,
             )
             continue
-        readability = probe(Path(path or ""))
+        try:
+            readability = probe(Path(path or ""))
+        except ValueError:
+            readability = Readability.NOT_A_PATH
+        except OSError:
+            readability = Readability.UNREADABLE
         if readability not in ADOPTABLE:
             yield ScannedTrack(
                 content_id=row.content_id,

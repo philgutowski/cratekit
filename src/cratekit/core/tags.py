@@ -45,11 +45,46 @@ does not know, so there is no code path from the public surface to a tempo frame
 at all. Making the field set user-definable would reopen that hole through
 configuration, which is why this one table stays a module constant while the
 taxonomy around it becomes declared configuration.
+
+TWO READERS AND TWO WRITERS, AND WHY THAT IS NOT DUPLICATION.
+:func:`read_tag` and :func:`write_tags` are the CONVENIENT pair. They speak in
+single strings, the reader strips surrounding whitespace and reports an empty
+value as absent, and the writer coerces whatever it is handed to text. That is
+the right shape for every consumer that asks a file a question ("what genre does
+this claim to be") and for every producer that states an answer.
+
+:func:`read_tag_values` and :func:`write_tag_values` are the EXACT pair, and
+they exist because an undo log cannot use the convenient one. A ledger recording
+what a file held before an irreversible write has to be able to tell ``"House "``
+from ``"House"``, ``""`` from absent, and ``["House", "Techno"]`` from
+``"House"``. Each of those three is a difference the convenient reader
+deliberately erases, and each erasure turns a restore into a silent edit: a
+stripped value comes back stripped, an empty value comes back DELETED, and a
+second value comes back not at all. The exact pair is driven by the same
+:data:`FIELDS` table and the same ``_open``, so it cannot disagree with its
+sibling about where a field lives; it only disagrees about how much of what is
+there it is willing to lose. :mod:`cratekit.adopt.revert` is the caller that
+needs the difference.
+
+WHY AN ID3v1 TRAILER IS PUT BACK BYTE FOR BYTE. ``mutagen``'s ID3 save defaults
+to ``v1=1``, which means "if this file already carries an ID3v1 trailer, rewrite
+it from the ID3v2 frames". That is a reasonable default and it destroys data this
+module never recorded: an ID3v1 genre is a single byte indexing a fixed list, so
+any v2 genre outside that list rewrites the byte to 255, and the original index
+is gone. A legacy library whose files carry both tags therefore loses the v1
+genre on the first write and never gets it back, because the revert ledger tracks
+the v2 field alone. So the 128-byte trailer is captured before the save and
+written back over itself afterwards, in place and only when a trailer was there
+both before and after. That is confined to a real ``.mp3``: WAV and AIFF keep
+their ID3 in a CHUNK, mutagen may legitimately grow that chunk at the end of the
+file, and rewriting their last 128 bytes would be the corruption this module
+exists to prevent.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -193,6 +228,68 @@ def _open(path: Path):
     return MP3(path)
 
 
+#: An ID3v1 tag is exactly the last 128 bytes of the file and opens with this.
+_ID3V1_MAGIC = b"TAG"
+_ID3V1_LENGTH = 128
+
+
+def _id3v1_trailer(path: Path) -> bytes | None:
+    """The file's ID3v1 tag as raw bytes, or None when it has none.
+
+    Read rather than parsed. What has to survive a save is the exact byte the
+    genre index lives in, and every other field beside it, so nothing here needs
+    to know what any of them mean.
+    """
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() < _ID3V1_LENGTH:
+                return None
+            handle.seek(-_ID3V1_LENGTH, os.SEEK_END)
+            block = handle.read(_ID3V1_LENGTH)
+    except OSError:
+        return None
+    return block if block[:3] == _ID3V1_MAGIC else None
+
+
+def _restore_id3v1_trailer(path: Path, trailer: bytes) -> None:
+    """Put a captured ID3v1 tag back over the one mutagen just rewrote.
+
+    IN PLACE AND NEVER APPENDED. The trailer is only written where a trailer
+    already is, so this can change 128 bytes and can never change the file's
+    length. If the save removed the tag outright, re-adding it here would be this
+    module inventing a tag rather than preserving one, so it declines.
+    """
+    try:
+        with path.open("r+b") as handle:
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() < _ID3V1_LENGTH:
+                return
+            handle.seek(-_ID3V1_LENGTH, os.SEEK_END)
+            if handle.read(_ID3V1_LENGTH)[:3] != _ID3V1_MAGIC:
+                return
+            handle.seek(-_ID3V1_LENGTH, os.SEEK_END)
+            handle.write(trailer)
+    except OSError as exc:  # pragma: no cover - the save above already succeeded
+        log.debug("could not preserve the ID3v1 trailer on %s: %s", path, exc)
+
+
+def _save(path: Path, handle) -> None:
+    """Save ``handle``, preserving a real ``.mp3``'s ID3v1 trailer verbatim.
+
+    The one save seam, so the writer and the deleter cannot disagree about
+    whether the legacy tag survives. See the module docstring for why mutagen's
+    own default destroys it and why only ``.mp3`` takes this branch.
+    """
+    if path.suffix.lower() not in MP3_SUFFIXES:
+        handle.save()
+        return
+    trailer = _id3v1_trailer(path)
+    handle.save()
+    if trailer is not None:
+        _restore_id3v1_trailer(path, trailer)
+
+
 def write_tags(path: Path, fields: dict[str, object]) -> bool:
     """Write logical fields into ``path`` using its container's own tag format.
 
@@ -263,7 +360,7 @@ def write_tags(path: Path, fields: dict[str, object]) -> bool:
                         encoding=3, text=[value]
                     )
 
-        handle.save()
+        _save(path, handle)
         return True
     except Exception as exc:  # noqa: BLE001 - one bad file must not abort a batch
         log.debug("tag write failed for %s: %s", path, exc)
@@ -326,7 +423,7 @@ def clear_tags(path: Path, fields: Sequence[str]) -> bool:
                 return True
             for name in fields:
                 handle.tags.pop(FIELDS[name].id3, None)
-        handle.save()
+        _save(path, handle)
         return True
     except Exception as exc:  # noqa: BLE001 - one bad file must not abort a batch
         log.debug("tag clear failed for %s: %s", path, exc)
@@ -391,6 +488,134 @@ def read_tag(path: Path, field: str) -> str | None:
     except Exception as exc:  # noqa: BLE001 - see the note above this function
         log.debug("tag read failed for %s: %s", path, exc)
         return None
+
+
+def read_tag_values(path: Path, field: str) -> tuple[str, ...] | None:
+    """Every value one logical field holds, EXACTLY, or None when it is absent.
+
+    THE EXACT SIBLING OF :func:`read_tag`, and the three differences are the
+    whole reason it exists. Nothing is stripped, nothing empty is folded into
+    absence, and a field holding more than one value comes back holding more than
+    one value. A caller recording what a file said before overwriting it needs all
+    three, because each one it did not get back is a difference a later restore
+    would silently introduce.
+
+    None means the field IS NOT THERE. That is a different fact from a field
+    holding one empty string, which comes back as ``("",)``, and the whole point
+    of separating them is that restoring the first means deleting the field while
+    restoring the second means writing an empty value.
+
+    The ID3 branch reads the frame's own ``text`` list rather than stringifying
+    the frame. Stringifying joins the values on a null byte, which round-trips by
+    accident through mutagen and reads as one corrupted value everywhere else.
+
+    Shares :func:`read_tag`'s asymmetry with the writers: an unsupported
+    container reads as None rather than raising, because reading damages nothing.
+    """
+    spec = FIELDS.get(field)
+    if spec is None:
+        raise ValueError(f"unknown tag field: {field!r}; known fields are {sorted(FIELDS)}")
+
+    try:
+        dialect = dialect_of(path.suffix.lower())
+    except UnsupportedContainer:
+        return None
+    key = spec.key_for(dialect)
+    try:
+        import mutagen
+
+        handle = mutagen.File(path)
+        if handle is None or handle.tags is None:
+            return None
+        tags = handle.tags
+        if key not in tags:
+            return None
+        raw = tags[key]
+        if dialect is Dialect.ID3:
+            # Every frame this table can name is a text frame, so its values are
+            # the ``text`` list. A frame with no text list at all is not
+            # something this module wrote and is reported as absent rather than
+            # guessed at.
+            values = getattr(raw, "text", None)
+            if values is None:
+                return None
+            return tuple(str(value) for value in values)
+        if not isinstance(raw, list):
+            raw = [raw]
+        return tuple(_as_text(value) for value in raw)
+    except Exception as exc:  # noqa: BLE001 - see the note above read_tag
+        log.debug("exact tag read failed for %s: %s", path, exc)
+        return None
+
+
+def _as_text(value: object) -> str:
+    """One stored value as text. An MP4 freeform atom carries bytes, not text."""
+    if isinstance(value, (bytes, bytearray)):
+        return bytes(value).decode("utf-8")
+    return str(value)
+
+
+def write_tag_values(path: Path, field: str, values: Sequence[str]) -> bool:
+    """Write one logical field's values EXACTLY, multi-value included.
+
+    THE EXACT SIBLING OF :func:`write_tags`, which coerces to text and writes one
+    value per field because that is what a detection pass has to give. A restore
+    has something better: the values it read off the file itself, unmodified, and
+    handing those to a writer that can only hold one of them loses the rest with
+    no record that it happened.
+
+    AN EMPTY SEQUENCE CLEARS THE FIELD, through :func:`clear_tags` rather than by
+    writing nothing. A field present with zero values is not a state any of these
+    containers represents distinguishably from absence, so the honest write for
+    it is the deletion, taken through the one deleter so the container
+    classification stays single.
+
+    Returns True on success and False on any failure, matching both siblings: one
+    awkward file must not abort a batch. An unknown FIELD still raises, because
+    that is the beat-grid rule's enforcement point.
+    """
+    if field not in FIELDS:
+        raise ValueError(
+            f"unknown tag fields: {[field]}. The writable field set is a module "
+            f"constant, not configuration, because a configurable field set would "
+            f"reopen the beat-grid rule through the config file (R17)."
+        )
+    if not values:
+        return clear_tags(path, [field])
+
+    suffix = path.suffix.lower()
+    dialect = dialect_of(suffix)
+    text = [str(value) for value in values]
+    try:
+        handle = _open(path)
+        if dialect is Dialect.VORBIS:
+            handle[FIELDS[field].vorbis] = text
+        elif dialect is Dialect.MP4:
+            from mutagen.mp4 import MP4FreeForm
+
+            atom = FIELDS[field].mp4
+            handle[atom] = (
+                [MP4FreeForm(value.encode("utf-8")) for value in text]
+                if atom.startswith("----")
+                else list(text)
+            )
+        else:
+            import mutagen.id3 as id3
+
+            if handle.tags is None:
+                handle.add_tags()
+            frame_spec = FIELDS[field].id3
+            if frame_spec.startswith("TXXX:"):
+                handle.tags[frame_spec] = id3.TXXX(
+                    encoding=3, desc=frame_spec[len("TXXX:"):], text=text
+                )
+            else:
+                handle.tags[frame_spec] = getattr(id3, frame_spec)(encoding=3, text=text)
+        _save(path, handle)
+        return True
+    except Exception as exc:  # noqa: BLE001 - one bad file must not abort a batch
+        log.debug("exact tag write failed for %s: %s", path, exc)
+        return False
 
 
 def _read_int(path: Path, field: str) -> int | None:

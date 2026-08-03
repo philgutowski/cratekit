@@ -2288,8 +2288,35 @@ def test_the_adoption_plan_becomes_review_items_rather_than_a_file():
     Walked over the whole package rather than pointed at one file, because a
     countdown satisfied by one module inside a package is blind to the rest of
     the unit (P3).
+
+    WHAT THIS ALONE CANNOT SEE, SAID PLAINLY, because a guard that reads as
+    complete and is not is worse than one that reads as partial. This is a SHAPE
+    check: it asks whether the package contains an ``offer`` call reaching this
+    queue, and a package whose only such call sits under ``if False:``, after a
+    ``raise NotImplementedError``, inside a discarded lambda, or in a private
+    function nothing calls passes it, as does a ``build_adoption_plan`` that
+    returns its rows unchanged. Five such shapes were built and all five went
+    green here. The behavioural half is ``tests/test_adoption.py``, which drives
+    the real producer end to end and explodes on collection against every one of
+    them, and naming it here is what U16's sibling countdown does and what this
+    one was missing.
+
+    THE COMMA SEPARATED CLAUSE IS THE HALF THAT WAS ABSENT FROM THE SHAPE CHECK
+    ITSELF, and it is not covered by the behavioural half either. A module that
+    offers correctly AND ALSO writes a file for a person to edit satisfied every
+    assertion here, in a test whose own name ends "rather than a file". Its U16
+    and U24 siblings both assert it; this one did not.
     """
     assert _package_offers_into("cratekit.adopt", "Queue.ADOPTION")
+    offenders: list[str] = []
+    for name, source in package_modules(SRC_ROOT / "cratekit" / "adopt"):
+        if constructs_a_csv_writer(source):
+            offenders.append(name)
+    assert not offenders, (
+        f"the adoption package writes a comma separated file for a person to "
+        f"edit: {offenders}. That is the surface R12 replaces, and a module can "
+        f"offer into the queue and write one anyway."
+    )
 
 
 @requires("cratekit.intake")

@@ -24,7 +24,71 @@ verdicts. Pushed to the private remote. **3164 passed, 16 skipped**, ruff clean,
 
 **There are no unmerged branches and no worktrees.**
 
-## What U21 changed
+## What U23 changed
+
+**Library adoption: a census nothing falls out of, an approval nothing stands in
+for, and an undo that is exact.** `adopt/scan.py` classifies every collection row
+into one of six named categories and one of five dispositions, so an unreadable
+or cloud-backed file is a REPORTED fact rather than a row that quietly failed to
+appear (AE12). `adopt/plan.py` carries every scanned row, including the ones it
+will never touch, which is what makes "nothing was dropped" a set comparison
+instead of a count. `adopt/approval.py` refuses every blanket affirmative at
+runtime (R34). `adopt/apply.py` applies one entry at a time and resumes by entry
+IDENTIFIER rather than by position. `adopt/revert.py` is the undo log for the one
+write that sits outside the database snapshot entirely.
+
+**`adopt scan` ships as a command line; `adopt apply` does not.** The census
+verb queues its work through the job engine and reports a `job_state` envelope,
+which needs no database, so it lands and the conformance suite drives it. The
+apply verb is destructive, declares two gates, and stays behind the wall R-13
+describes. The two used to share one `module=` string, which is what held the
+census back.
+
+### What round 1 of the adversarial review fixed
+
+Eleven blocking defects. The four that mattered most:
+
+**The unit would have silently no-opped against a real library.** The census
+passed rekordbox's raw `Location` column to `resolve_recorded_path`, which
+correctly refuses anything that is not a path. A real `Location` is a
+percent-encoded file URL, so every row in a real library classified as
+`not-a-path` and was excluded, while `covers()` reported that nothing had fallen
+out of the plan. The arithmetic that was supposed to catch this compares content
+identifiers, so it is a proof about PRESENCE and says nothing about correctness.
+Every test around it built its rows from bare filesystem paths. The fix is one
+`location_to_path` call; what would have caught it is a test using the shape
+rekordbox actually writes, which now exists.
+
+**The revert ledger recorded a corrupted copy of the original.** `read_tag`
+strips whitespace, folds an empty value into absence, and returns the first of
+several values. For a router asking a file what genre it claims to be, all three
+are right. For an undo log they are three silent edits: a stripped value comes
+back stripped, a value the ledger recorded as absent comes back DELETED, and a
+second value comes back not at all. `core/tags.py` grows an EXACT pair,
+`read_tag_values` and `write_tag_values`, beside the convenient one rather than
+changing it, because the stripping is pre-existing behaviour four other callers
+depend on.
+
+**A gate refusal rewrote every file in the plan.** The tag write happened before
+the membership write and a refusal from the membership writer was caught per
+entry, so one systemic refusal inside the caller's destructive session produced
+one irreversible file write per entry with zero memberships landed. The
+recoverable write goes first now, and a refusal whose own declared scope
+condemns more than one item ends the run.
+
+**A revert issued during an apply lost the original permanently.** The lock
+covered each document's read-modify-write and nothing about apply against
+revert. `write_tag_with_record` holds one lock across the record and the write,
+and `revert_tags` holds the same lock across its whole pass.
+
+The rest: the census died mid-generator on a permission error or a null byte and
+took every later row with it; an unsupported container raised out of `apply_plan`
+so the plan could never complete; mutagen's default ID3v1 handling destroyed a
+legacy genre byte the ledger never recorded; the block-count probe called sparse
+files and whole FUSE mounts cloud-backed; a stale `.icloud` stub hid a readable
+file; the collision question was asked and nothing consumed the answer.
+
+
 
 **The per-field metadata policy, and the registration that inverts it.**
 `write/metadata.py` is the only place feature operation names appear. U17 had
@@ -402,12 +466,18 @@ entries remain, and the growth is the mechanism working rather than debt piling
 up: U11 and U19 between them added five, each one an obligation that used to live
 in a docstring.
 
+U23 cleared its own `cratekit.adopt` entry and added `cratekit.adopt.apply_cli`
+in its place, which is the same mechanism at a finer grain: the engine landed,
+so the engine's countdown expired, and the CLI obligation it left behind now has
+a target of its own instead of being owned by a `planned_in` marker on a closing
+issue. That last shape is R-13's failure and is live three times over already.
+
 | Unit | Target | Owes |
 |---|---|---|
 | U16 | `cratekit.acquire.match_cli` | the needs-review state becomes queue items; matched and missing stay a plain match result |
 | U20 | `cratekit.write.routing_cli` | the routing CLI, plus closing through `close_run` and converging after a rename. See R-13: U20 is an inference, not a decision |
-| U23 | `cratekit.adopt` | the adoption review surface |
 | U24 | `cratekit.deletion.cli` | declines and tombstones go through the revocable decision store |
+| U27 | `cratekit.adopt.apply_cli` | the apply shell, and the destructive session and library lock `apply_plan` says it does not take (R-20). See R-20 for what the wall in front of it actually is, which is not what R-13 says |
 | U27 | `cratekit.cli.doctor` | a database acknowledged outside the library root is reported every run |
 | U28 | `path:skills` | the shipped skills tree |
 | U32 | `cratekit.core.restore` | the restore verb, and the three obligations U8 registered against it |

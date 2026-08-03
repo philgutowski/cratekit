@@ -22,7 +22,10 @@ THE TWO QUESTIONS A PLAN ASKS A PERSON, and neither is "is this plan ok".
    library means writing into a tree somebody already curated. A folder named
    like a declared bucket that already holds tracks this plan does not name is
    surfaced rather than merged, because merging is the one outcome that cannot be
-   undone by re-running anything.
+   undone by re-running anything. The ANSWER BINDS, through
+   :func:`with_collision_verdicts`: asking the question and then applying into
+   the folder regardless is worse than never asking, because it puts the person's
+   name on a merge they refused.
 
 THE IDENTITY OF A COLLISION IS THE NODE, NEVER ITS NAME. This is the shape U19
 shipped as a blocking defect and it is worth stating twice. Its membership dedup
@@ -503,6 +506,56 @@ def with_verdicts(
     return AdoptionPlan(tree=plan.tree, entries=tuple(updated), collisions=plan.collisions)
 
 
+def with_collision_verdicts(
+    plan: AdoptionPlan, answers: Mapping[str, str]
+) -> AdoptionPlan:
+    """Fold answered collision questions back into the plan. The answer BINDS.
+
+    ``answers`` maps a folder's NODE identifier to one of the two declared
+    verdicts, which is what the review item is addressed by (see
+    :meth:`Collision.identity`) and the one thing about the folder a user cannot
+    change between two runs.
+
+    THIS IS THE FUNCTION THE QUESTION WAS MISSING. :func:`offer_plan` asked
+    whether to write into a folder that already exists holding strangers, and
+    nothing anywhere read the answer back: :func:`with_verdicts` handles genre
+    answers only, :func:`cratekit.adopt.apply.apply_plan` takes no verdicts at
+    all, and both option identifiers appeared nowhere outside their own
+    definition. A plan with a real collision therefore applied into that folder
+    whatever the person said, so somebody who answered "leave that folder alone"
+    got precisely the merge this module says it exists to prevent, and it is the
+    one outcome that cannot be undone by re-running anything.
+
+    ``keep-separate`` withholds every entry routed to that bucket.
+    ``adopt-existing`` leaves them applicable, which is what they already were,
+    so an unanswered collision behaves exactly as an approved one does. That
+    asymmetry is deliberate and it is the safe direction ONLY because the
+    collision is surfaced and the plan cannot be approved without its digest,
+    which moves the moment a verdict lands.
+
+    THE ENTRY IDENTIFIER DOES NOT MOVE. A withheld entry is the same piece of
+    work as the entry it came from, addressed to the same destination, and it
+    keeps its bucket and sub so the identifier stays derivable from the record it
+    names. Somebody who changes their answer gets the work back under the
+    identifier the ledger already knows, rather than as a second piece of work
+    that has never been done.
+    """
+    withheld = {
+        collision.bucket
+        for collision in plan.collisions
+        if answers.get(collision.node_id) == COLLISION_SEPARATE
+    }
+    if not withheld:
+        return plan
+    updated = tuple(
+        replace(entry, disposition=Disposition.WITHHELD)
+        if entry.applicable and entry.bucket in withheld
+        else entry
+        for entry in plan.entries
+    )
+    return AdoptionPlan(tree=plan.tree, entries=updated, collisions=plan.collisions)
+
+
 def to_json(plan: AdoptionPlan) -> dict[str, Any]:
     """The plan as a structured document, for R32's output mode.
 
@@ -557,5 +610,6 @@ __all__ = [
     "find_collisions",
     "offer_plan",
     "to_json",
+    "with_collision_verdicts",
     "with_verdicts",
 ]

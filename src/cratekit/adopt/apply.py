@@ -9,11 +9,33 @@ somebody answers a genre question between two runs, which is the ordinary case
 this feature exists for. An identifier is a fact about the work rather than about
 the run, so a plan that grew, shrank, or reordered still resumes correctly.
 
+THE ORDER PER ENTRY IS: PLACE, RECORD THE ORIGINAL, WRITE THE TAG, MARK APPLIED.
+The first step is the one that moved, and it moved because of what sits behind
+each of these two writes. A membership row goes into the rekordbox database,
+which is snapshotted before every write session and restorable afterwards (KTD21b,
+R30). A genre string goes into a file on disk, which is outside all of that: no
+snapshot holds it, no re-import puts it back, and the value it replaced is gone
+the instant the write returns. Doing the recoverable write first and the
+irrecoverable one second is the only order where a refusal costs nothing.
+
+WHAT THE REVERSE ORDER COST, MEASURED. With the tag write first, a systemic
+refusal raised inside ``place`` (rekordbox running, a backup gate unanswered, a
+snapshot not verified) was caught per entry and the loop continued, so a plan of
+six files came back ``applied=0 failed=6`` with an empty applied ledger and all
+six files on disk holding adoption's genre instead of their own. Every gate that
+stands in front of a destructive run is structurally DOWNSTREAM of this module's
+own irreversible write, so the per-entry catch multiplied one refusal into one
+file rewrite per entry in the plan. Two things fix it and both are needed: the
+irreversible write is now second, and a refusal whose own declared scope is wider
+than one item STOPS THE RUN instead of being counted and stepped over.
+
 WHAT A SECOND RUN DOES AFTER A CRASH AT EACH STEP, stated rather than implied,
 because "idempotent" asserted in a docstring is what a green suite cannot check:
 
-* Crash BEFORE the revert record. Nothing was written. The re-run takes the
-  snapshot and proceeds. No loss.
+* Crash BEFORE ``place``. Nothing was written. The re-run proceeds. No loss.
+* Crash BETWEEN ``place`` and the revert record. The membership landed and the
+  entry is not marked, so the re-run places it again, which the membership
+  writer's own dedup makes a no-op, and carries on. No file was touched at all.
 * Crash BETWEEN the revert record and the tag write. The ledger holds an original
   identical to what the file still has, so reverting is a no-op that restores the
   same bytes. The re-run finds the record already there, keeps it, and writes the
@@ -26,10 +48,10 @@ because "idempotent" asserted in a docstring is what a green suite cannot check:
 * Crash BETWEEN the applied record and the end of the run. Nothing is
   outstanding for that entry, so the re-run skips it. Correct.
 
-The order is therefore: record the original, write, record applied. The reverse
-order at either seam loses something no restore can put back, because the writes
-in question are on the user's own files and outside the database snapshot
-entirely.
+The record and the tag write are ONE act rather than two adjacent ones, through
+:func:`cratekit.adopt.revert.write_tag_with_record`. Adjacent is not good enough:
+a revert issued in the window between them takes the record away and the write
+then lands on a file with nothing behind it.
 
 WHY THE MEMBERSHIP WRITE ARRIVES AS A PARAMETER. The two media a tree can be
 written in belong to :mod:`cratekit.write.trees`, and which one is correct for a
@@ -358,6 +380,13 @@ class ApplyReport:
     is the number a person recognizes from the plan they approved. It is derived
     from the outstanding set rather than counted, so it is correct after a plan
     has grown or shrunk between two runs.
+
+    ``stopped_at`` names the entry a systemic refusal ended the run on, and is
+    None for a run that reached the end of its work. It is a declared field
+    rather than something inferred from the counts, because "one entry failed and
+    the rest were fine" and "the first entry refused and nothing after it was
+    attempted" produce the same shape of report otherwise, and only one of them
+    means the person still has a whole plan to apply.
     """
 
     tree: str
@@ -367,6 +396,7 @@ class ApplyReport:
     already_applied: tuple[str, ...] = ()
     failed: Mapping[str, str] = field(default_factory=dict)
     resumed_at: int | None = None
+    stopped_at: str | None = None
 
     def __len__(self) -> int:
         return len(self.applied)
@@ -408,10 +438,21 @@ def apply_plan(
     own session for that reason, refusing a caller-supplied gates factory. So
     this loop takes no session and no library lock: two apply runs racing over
     one plan would each see the same entries outstanding, and what stops them
-    reaching the database twice is R31's lock, taken one layer up. The tag write
-    is NOT covered by that lock, which is the residue: two runs both writing the
-    same value to the same file is harmless, and the revert ledger's
-    first-write-wins rule is what keeps the original safe if they are not.
+    reaching the database twice is R31's lock, taken one layer up.
+
+    THE TAG WRITE IS OUTSIDE THAT LOCK, WHICH IS THE RESIDUE, and it is now
+    written down where somebody will find it rather than only here: residual
+    finding R-20, and the obligation rides with the apply command line in
+    ``tests/_pending.py``. Two runs both writing the same value to the same file
+    is harmless, and the revert ledger's first-write-wins rule is what keeps the
+    original safe if they are not. What is genuinely missing is a session and a
+    library lock AROUND this loop, which only the verb can open, because R29 says
+    one source per run and this module is not a run.
+
+    IT IS NO LONGER THE CASE THAT A GATE REFUSAL COSTS A FILE WRITE, which is the
+    half of that gap that was not honest. See the module docstring: ``place`` runs
+    first and a refusal wider than one item ends the run, so a caller whose gates
+    refuse gets zero files rewritten rather than one per entry.
     """
     granted = require_approval(plan, approval)
     ledger = read(cfg)
@@ -423,6 +464,7 @@ def apply_plan(
 
     applied: list[str] = []
     failed: dict[str, str] = {}
+    stopped_at: str | None = None
     for entry in pending:
         try:
             folder, sub = destination(declared, entry.bucket, entry.sub)
@@ -430,27 +472,49 @@ def apply_plan(
             # PER ENTRY, never out of the run. See ``membership_plan``.
             failed[entry.entry_id] = str(exc)
             continue
+
+        # THE RECOVERABLE WRITE GOES FIRST. A membership row is inside the
+        # database snapshot; the tag write below is outside every safety net this
+        # product has. See the module docstring for what the other order cost.
+        try:
+            place(entry, folder, sub)
+        except CratekitError as exc:
+            failed[entry.entry_id] = exc.cause.message
+            if exc.cause.scope is not Scope.ITEM:
+                # A REFUSAL THAT CONDEMNS MORE THAN THIS ENTRY ENDS THE RUN. Its
+                # own declared scope says so, and stepping over it would offer
+                # the same refusal one entry at a time for the length of the
+                # plan while doing the irreversible half of each one.
+                stopped_at = entry.entry_id
+                break
+            continue
+
         wanted = None if tag_value is None else tag_value(entry, declared)
         if wanted is not None and entry.path:
-            # THE ORIGINAL GOES DOWN FIRST. See the module docstring for what a
-            # crash at each seam costs; this is the seam where the reverse order
-            # loses a value that no snapshot and no re-import can put back.
-            revert.snapshot_before_write(
+            target = Path(entry.path)
+            try:
+                # ASKED BEFORE ANYTHING IS RECORDED. ``write_tags`` raises this
+                # out of its own try block, so an unsupported container used to
+                # leave the run with no report at all and a revert record for a
+                # write that never happened, and every re-run died on the same
+                # file. One awkward container costs one entry.
+                tags.dialect_of(target.suffix.lower())
+            except tags.UnsupportedContainer as exc:
+                failed[entry.entry_id] = str(exc)
+                continue
+            # THE ORIGINAL AND THE WRITE ARE ONE ACT. See the module docstring:
+            # a revert landing between them leaves the write with no record.
+            _record, landed = revert.write_tag_with_record(
                 cfg,
-                entry.path,
+                target,
                 field=ADOPTED_TAG_FIELD,
                 written=wanted,
                 entry_id=entry.entry_id,
                 now=now,
             )
-            if not tags.write_tags(Path(entry.path), {ADOPTED_TAG_FIELD: wanted}):
+            if not landed:
                 failed[entry.entry_id] = "the container refused the tag write"
                 continue
-        try:
-            place(entry, folder, sub)
-        except CratekitError as exc:
-            failed[entry.entry_id] = exc.cause.message
-            continue
         # MARKED ONLY AFTER THE WRITE. A mark that ran first would suppress the
         # work on the next run while the library never received it, which is the
         # order U19 established for exactly this shape and the one direction that
@@ -477,6 +541,7 @@ def apply_plan(
         already_applied=already,
         failed=failed,
         resumed_at=report_resumed,
+        stopped_at=stopped_at,
     )
 
 
