@@ -44,14 +44,15 @@ reading as an empty store, and an empty store here means "nothing is
 outstanding", which is the permissive answer to the one question this module
 exists to answer conservatively.
 
-WHAT THIS MODULE DOES NOT OWN: WHETHER A TREE IS SHORT. It records that fact and
-reports it, and the GATE on it belongs to ``core.convergence``, which holds the
-same fact arriving from the other direction (a database recovered out of band),
-gates it per tree at the writer where a rebuild can declare its purpose, and
-clears it only on a convergence check that found no difference. Two modules each
-latching "is this tree short" would be two implementations of one rule, which is
-how they come to disagree; and the version of this module that did latch on it
-refused the rebuild it named as its own remedy. See :func:`assert_converged`.
+WHAT THIS MODULE DOES NOT OWN: WHETHER A TREE IS SHORT. ``core.convergence``
+owns that fact. It holds the same condition arriving from the other direction, a
+database recovered out of band, gates it per tree at the writer, and clears it
+only on a convergence check that found no difference. ``core.restore`` hands the
+trees to that module whenever it is present, so on a complete build this store
+holds no tree markers at all. It still LATCHES on one if it finds one, because a
+marker written by a build that had this record and not that one outlives the
+merge, and a fact recorded in a store nothing reads is worse than no record.
+See :func:`assert_converged` for why latching on it does not condemn its remedy.
 
 LAYER: infrastructure. It reads configuration, does input and output, names no
 verb, and carries remediation TOKENS and steps rather than any text a user types
@@ -121,13 +122,14 @@ class Kind(StrEnum):
     would let somebody disposition a tree away with a sentence, which is exactly
     the escape R39 refuses.
 
-    THE TREE KIND IS TRANSITIONAL AND ITS GATE LIVES ELSEWHERE. See
-    :func:`assert_converged`: tree shortness is owned by ``core.convergence``,
-    which holds the same fact for an out-of-band recovery, gates it at the writer
-    where a rebuild can declare itself, and clears it only on a convergence check.
-    This module records the fact when that module is not present and reports it;
-    it does not latch on it, because the latch's own named remedy is a rebuild and
-    a rebuild is an ordinary destructive session.
+    THE TREE KIND IS TRANSITIONAL AND ITS OWNER IS ELSEWHERE. ``core.convergence``
+    owns tree shortness: it holds the same fact for an out-of-band recovery, gates
+    it per tree at the writer, and clears it only on a convergence check.
+    ``core.restore`` hands the trees to that module whenever it is present, so on
+    a complete build no marker of this kind is ever written. What remains here is
+    a marker written before that module existed, which outlives the merge and is
+    closed by the first rebuild of that tree. It is latched all the same, because
+    a fact recorded in a store nothing reads is worse than no record at all.
     """
 
     EFFECT = "effect"
@@ -291,6 +293,70 @@ def _unusable(cfg: config.Config, what: str) -> CratekitError:
     )
 
 
+def _assert_library_is_readable(cfg: config.Config) -> None:
+    """Refuse a READ when the library this record belongs to is not there at all.
+
+    A MISSING FILE ON A MISSING VOLUME IS NOT AN EMPTY STORE, and the empty
+    reading is the permissive answer to the one question this module exists to
+    answer conservatively.
+
+    THIS IS THE WEAK HALF AND ITS LIMIT IS STATED RATHER THAN IMPLIED. The
+    directory a volume was mounted at survives the unmount on every platform, so a
+    library root can exist with everything under it gone, and from inside this
+    function that state is INDISTINGUISHABLE from a library this installation has
+    been pointed at and has not yet written to. Both are "the root is there and
+    the document is not". A stricter rule here was tried and refused the fresh
+    install, which is a guard firing on correct behaviour and therefore a guard
+    people route around (P7).
+
+    WHAT ACTUALLY CLOSES THE GAP is upstream, at the two gates that have both the
+    recorded volume identity and the seams to ask about it:
+    ``session.assert_gates`` asserts the volume before it reaches this module at
+    all, and ``session.close_session`` now does the same before its convergence
+    gate, which was the one caller that did not. The write half below is separately
+    strict, because a write is proof that something is being recorded and has no
+    fresh-install reading.
+    """
+    root = Path(cfg.library.root)
+    if not root.is_dir():
+        raise _unusable(
+            cfg, f"the library at {root} is not there, so its state cannot be read"
+        )
+
+
+def _assert_library_is_writable(cfg: config.Config) -> None:
+    """Refuse a WRITE when the library is the husk an unmounted volume leaves.
+
+    STRICTER THAN THE READ, and the asymmetry is the point rather than an
+    inconsistency. A read against a library with nothing recorded yet is an
+    ordinary thing that happens on the first run of every install, so it cannot
+    refuse. A write is different in two ways: it is proof that something is being
+    recorded right now, and it CREATES the directory it writes into. Against a
+    library whose volume has gone, that meant rebuilding this installation's whole
+    state tree on whatever disk the mount point happens to sit on and recording
+    into it, so the record landed somewhere no library will ever read it and
+    nothing refused.
+
+    So a write asks for the two things a configured library cannot be without:
+    this installation's state directory, or the database the configuration names.
+    A library that has been written to has the first, one that has only been
+    pointed at has the second, and a husk has neither.
+    """
+    _assert_library_is_readable(cfg)
+    if config.library_state_dir(cfg).is_dir():
+        return
+    if Path(cfg.library.db_path).exists():
+        return
+    raise _unusable(
+        cfg,
+        f"the directory at {cfg.library.root} holds neither this installation's "
+        f"state nor the database the configuration names, so it is the empty folder "
+        f"an unmounted volume leaves behind rather than a library with nothing "
+        f"recorded yet; writing here would rebuild the state tree on whichever disk "
+        f"that path now sits on",
+    )
+
+
 @contextmanager
 def _locked(cfg: config.Config) -> Iterator[None]:
     """Hold the sibling lock across one read then write cycle.
@@ -307,6 +373,12 @@ def _locked(cfg: config.Config) -> Iterator[None]:
     cannot be applied would leave exactly the defect, reachable by anybody on
     that platform.
     """
+    # BEFORE the directory is created, not after. Creating the lock's parent first
+    # meant a write against a library whose volume had gone rebuilt the state tree
+    # on whatever disk the mount point happens to sit on, and then recorded into
+    # it, so the refusal below never fired and the record landed somewhere no
+    # library will ever see it.
+    _assert_library_is_writable(cfg)
     target = lock_path(cfg)
     config._mkdir_private(target.parent)
     handle = None
@@ -414,23 +486,14 @@ def _optional_str(value: Any) -> str | None:
 def _read(cfg: config.Config) -> dict[str, Record]:
     """Load the record, treating anything it cannot RECOGNIZE as a refusal.
 
-    A MISSING FILE ON A MISSING VOLUME IS NOT AN EMPTY STORE. Every reader here
-    resolves through the library-scoped state root, so with the library volume
-    unmounted the document's path simply does not exist, and reading that as
-    "nothing is outstanding" is the permissive answer arriving by the back door.
-    ``session.assert_gates`` asserts the volume before it asks, so the shape is
-    unreachable there; ``close_session``'s own gate does not, and that is the path
-    on which the latch used to pass silently against an absent library. Asked HERE
-    rather than at each of the four readers, so all four keep answering
-    identically.
+    Absence is checked through :func:`_assert_library_is_readable`, which is where
+    the argument for what "absent" means, and what this cannot see, lives. It is
+    asked HERE rather than at each of the four readers, so all four keep answering
+    identically, which they are separately asserted to do.
     """
     path = path_for(cfg)
     if not path.exists():
-        root = Path(cfg.library.root)
-        if not root.is_dir():
-            raise _unusable(
-                cfg, f"the library at {root} is not there, so its state cannot be read"
-            )
+        _assert_library_is_readable(cfg)
         return {}
     try:
         text = path.read_text()
@@ -567,11 +630,23 @@ def effect_markers(
 
 def in_flight_marker(
     *,
-    session_id: str,
-    capture_stamp: str | None = None,
+    capture_stamp: str,
     now: datetime | None = None,
 ) -> Marker:
     """The latch a restore writes before its first destructive step.
+
+    IT IS KEYED ON THE CAPTURE AND CARRIES NO SESSION, which is the opposite of
+    every other marker here and is deliberate. The first version keyed it on the
+    restore's own recovery session, which mints a new identifier every attempt, so
+    the product's own printed advice, "run the restore again, it is safe to
+    repeat", produced a second permanent row on every repeat. Two attempts of one
+    restore are one restore, and what identifies a restore is the capture it is
+    putting back, which is stable across every attempt. So a repeat collides with
+    the row already there and is idempotent, which is what the advice promises.
+
+    The run that started it is not lost: the session log holds a record for every
+    restore, and the detail below names the capture, which is the field a person
+    matches against the listing.
 
     IT IS WRITTEN EVEN WHEN THERE IS NOTHING ELSE TO WRITE, which is the whole
     point. Seven of the twelve coupled entries declare ``RollbackEffect.NONE``, so
@@ -595,15 +670,16 @@ def in_flight_marker(
     """
     return Marker(
         kind=Kind.IN_FLIGHT_RESTORE,
-        identity=session_id,
+        identity=capture_stamp,
         effect=None,
-        session_id=session_id,
+        session_id=None,
         capture_stamp=capture_stamp,
         detail=(
-            "a restore of this library started and was not seen to finish, so the "
-            "database and the state coupled to it may be at different generations; "
-            "until one completes, anything written now is written against a "
-            "library whose halves do not agree"
+            f"a restore of this library from the capture {capture_stamp} started "
+            f"and was not seen to finish, so the database and the state coupled to "
+            f"it may be at different generations; until a restore completes, "
+            f"anything written now is written against a library whose halves do "
+            f"not agree"
         ),
         observed=timestamp(now),
     )
@@ -670,39 +746,47 @@ def record_markers(cfg: config.Config, markers: Sequence[Marker]) -> tuple[Recor
         return tuple(recorded[key] for key in sorted(recorded))
 
 
-def retract_marker(cfg: config.Config, marker_id: str) -> bool:
-    """Remove a marker whose fact has ceased to be true. Returns whether it was there.
+def retract_in_flight(cfg: config.Config) -> tuple[str, ...]:
+    """Discharge EVERY in-flight latch. Returns the identifiers that were there.
 
-    DELETION RATHER THAN A DISPOSITION, and only for the in-flight latch, because
-    the two operations mean different things. A disposition is a person's answer
-    about something that happened and will always have happened, so it is kept
-    forever and never restamped. "A restore is in flight" is not that kind of
-    fact: it is true for the length of one restore and false afterwards, and
-    recording a decision about it would put a permanent row in the store for
-    something nobody decided.
+    DELETION RATHER THAN A DISPOSITION, because the two operations mean different
+    things. A disposition is a person's answer about something that happened and
+    will always have happened, so it is kept forever and never restamped. "A
+    restore is in flight" is not that kind of fact: it is true for the length of
+    one restore and false afterwards, and recording a decision about it would put
+    a permanent row in the store for something nobody decided. It is restricted to
+    that one kind rather than offered generally, because a general delete is the
+    softening path in its purest form: every refusal this module raises could be
+    answered by removing the marker that raised it, with no record that anything
+    was ever outstanding.
 
-    Restricted to that one kind rather than offered generally. A general delete is
-    the softening path in its purest form: every refusal this module raises could
-    be answered by removing the marker that raised it, with no record that
-    anything was ever outstanding.
+    EVERY LATCH, NOT THE CALLER'S OWN, and that is the correction rather than a
+    convenience. The refusal these markers raise says an unfinished restore is
+    closed by finishing one. When only the caller's own row was retracted that
+    sentence was false: restore 1 interrupted and restore 2 run to completion
+    SUCCESSFULLY left restore 1's latch standing, the outcome reported itself
+    unconverged, and the next ordinary session refused with a remedy that had
+    already been carried out. The claim in the refusal is what decides the scope
+    here, and the claim is right: the library lock is exclusive, so restores do
+    not overlap, and one that ran to the end left this library whole whatever was
+    in flight before it. A latch is a claim that the halves may not agree, and a
+    completed restore is evidence that they do.
     """
     with _locked(cfg):
         recorded = _read(cfg)
-        existing = recorded.get(marker_id)
-        if existing is None:
-            return False
-        if existing.marker.kind is not Kind.IN_FLIGHT_RESTORE:
-            raise refuse(
-                "internal-error",
-                f"the marker {marker_id!r} is a {existing.marker.kind} and only an "
-                f"{Kind.IN_FLIGHT_RESTORE} may be retracted; everything else is "
-                f"closed by a person's disposition, which is kept",
-                remedy=Remedy.REPORT_DEFECT,
-                detail={"marker_id": marker_id, "kind": str(existing.marker.kind)},
+        discharged = tuple(
+            sorted(
+                key
+                for key, record in recorded.items()
+                if record.marker.kind is Kind.IN_FLIGHT_RESTORE
             )
-        del recorded[marker_id]
+        )
+        if not discharged:
+            return ()
+        for key in discharged:
+            del recorded[key]
         _write(cfg, recorded)
-        return True
+        return discharged
 
 
 def records(cfg: config.Config) -> tuple[Record, ...]:
@@ -784,20 +868,16 @@ def close_marker(
 # ---------------------------------------------------------------------------
 
 
-#: The kinds this module LATCHES on at the session boundary. Written as the set
-#: that is held rather than as the set that is exempt, for the reason
-#: ``convergence.Purpose`` gives for the same choice: a kind added later must
-#: inherit the checking behaviour, not the exemption, and the only way to make
-#: that true is to name what is held.
-LATCHING_KINDS: frozenset[Kind] = frozenset({Kind.EFFECT, Kind.IN_FLIGHT_RESTORE})
+#: The kinds this module LATCHES on at the session boundary.
+#:
+#: EVERY KIND, and it is written as a set rather than left implicit so that the
+#: question "which kinds does this hold" has one answer somewhere a reader can
+#: find, and so that a kind added later has to be placed deliberately.
+LATCHING_KINDS: frozenset[Kind] = frozenset(Kind)
 
 
 def converged(cfg: config.Config) -> bool:
-    """True when nothing this module LATCHES on is still open.
-
-    Not "nothing is open". An unconverged tree can be open and this still answers
-    True, because a tree's gate is not here. See :func:`assert_converged`.
-    """
+    """True when nothing this module LATCHES on is still open."""
     return not [
         record for record in outstanding(cfg) if record.marker.kind in LATCHING_KINDS
     ]
@@ -815,32 +895,39 @@ def assert_converged(cfg: config.Config) -> None:
     hand-edited file. That is the lesson U8 paid for and it applies unchanged
     here.
 
-    AN UNCONVERGED TREE IS DELIBERATELY NOT LATCHED HERE, and the first version of
-    this function got that wrong in exactly the way the rule forbids. The refusal
-    it raised carried ``remedy=rebuild-tree`` and read "a tree is closed only by a
-    full rebuild, never by a decision". That rebuild is a database write through
-    ``write.trees.write_tree_membership``, which enters ``session.assert_gates``
-    with the default ``Intent.WRITE`` and has no ``intent`` parameter to declare
-    anything else. So this latch, sitting inside those gates, refused the one act
-    it named as its own remedy, and the only remaining exit was a bare disposition
-    of the tree marker, which is precisely the softening path this unit registered
-    against U36 to forbid. A latch may not condemn its own remedy; the rule has
-    been paid for twice in this repository now and it is cheap to apply.
+    AN UNCONVERGED TREE IS LATCHED HERE, AND THE ARGUMENT FOR THAT WAS RE-DERIVED
+    ONCE FROM A FALSE PREMISE. The first fix round removed it, reasoning that the
+    refusal names a rebuild as its remedy, that a rebuild writes through
+    ``write.trees.write_tree_membership``, and that ``write_tree_membership`` has
+    no ``intent`` parameter and therefore cannot enter these gates as anything but
+    an ordinary write. The last clause was true of this branch alone and is false
+    of the product: the unit that builds the rebuild gives that function both a
+    ``purpose`` and an ``intent``, and its rebuild declares
+    ``session.Intent.RECOVERY`` precisely so this latch cannot refuse it. So the
+    remedy CAN declare itself, the latch does not condemn it, and the rule that
+    was invoked to remove this does not apply. Removing it cost more than it
+    saved: with the latch gone, a pre-cutover restore recorded a tree marker that
+    nothing anywhere read, and both the next destructive session and the next run
+    close were allowed over a library holding a tree that is provably short.
 
-    WHERE THE TREE GATE LIVES INSTEAD. ``core.convergence`` holds the same fact
-    for a database recovered out of band, gates it per tree inside
-    ``write_tree_membership``, exempts a write that declares
-    ``convergence.Purpose.REBUILD``, and clears it only on a convergence check
-    reporting no difference. That is a strictly better mechanism than a second one
-    here would be, and the alternative is the shape its own layering comment
-    names: a check that lived with each writer would be several implementations of
-    one rule, which is how they come to disagree. So tree shortness is recorded
-    here, reported here, and gated there. See ``core.restore`` for the handoff.
+    THE EXEMPTION IS WIDER THAN THE REBUILD NEEDS AND THE REBUILD NARROWS IT BACK.
+    ``RECOVERY`` sheds this whole latch, including the EFFECT markers, which are
+    facts about the world outside this library that no rebuild repairs. That is
+    the rebuild's to put back by name, and it does.
+
+    WHERE THE FACT LIVES ON A COMPLETE BUILD. ``core.convergence`` owns tree
+    shortness: it holds the same condition arriving from an out-of-band recovery,
+    gates it per tree at the writer, and clears it only on a convergence check
+    reporting no difference. ``core.restore`` hands the trees to that module when
+    it is present, so on a complete build this store holds no tree markers at all
+    and this branch of the refusal is unreachable. What it covers is the window in
+    which this record exists and that one does not, and a marker written before
+    the merge that outlives it.
 
     The kinds are reported SEPARATELY inside one refusal, because their remedies
-    are not the same act: an effect is closed by a person saying what they want
-    done about it, and an interrupted restore is closed by a restore that
-    finishes, which is a recovery and therefore exempt from this.
+    are three different acts: an effect is closed by a person saying what they
+    want done about it, an unfinished restore by finishing one, and a tree only by
+    a full rebuild, never by a decision.
     """
     open_records = [
         record for record in outstanding(cfg) if record.marker.kind in LATCHING_KINDS
@@ -849,33 +936,40 @@ def assert_converged(cfg: config.Config) -> None:
         return
     effects = [r for r in open_records if r.marker.kind is Kind.EFFECT]
     in_flight = [r for r in open_records if r.marker.kind is Kind.IN_FLIGHT_RESTORE]
+    trees = sorted({r.marker.identity for r in open_records if r.marker.kind is Kind.UNCONVERGED_TREE})
     lines = [f"  - {r.marker.marker_id}: {r.marker.detail}" for r in open_records]
     raise refuse(
         "restore-reconciliation-outstanding",
         "a restore of this library left "
-        + (
-            f"{len(effects)} effect it could not undo"
-            if len(effects) == 1
-            else f"{len(effects)} effects it could not undo"
-        )
-        + (
-            f" and {len(in_flight)} restore that was never seen to finish"
-            if len(in_flight) == 1
-            else f" and {len(in_flight)} restores that were never seen to finish"
+        + ", ".join(
+            part
+            for part in (
+                f"{len(effects)} effect(s) it could not undo" if effects else "",
+                f"{len(in_flight)} restore(s) never seen to finish" if in_flight else "",
+                f"{len(trees)} tree(s) that need rebuilding" if trees else "",
+            )
+            if part
         )
         + ", and every further write is refused until each one is closed. An "
         "effect is closed by a person deciding what to do about it; an "
-        "unfinished restore is closed by finishing one, which declares itself a "
+        "unfinished restore is closed by finishing one; a tree is closed only by "
+        "a full rebuild, never by a decision. Each of those declares itself a "
         "recovery and is not held by this:\n"
         + "\n".join(lines),
-        remedy=Remedy.RESTORE_FROM_SNAPSHOT if in_flight else Remedy.COMPLETE_PENDING_ACTION,
+        remedy=(
+            Remedy.REBUILD_TREE
+            if trees
+            else Remedy.RESTORE_FROM_SNAPSHOT
+            if in_flight
+            else Remedy.COMPLETE_PENDING_ACTION
+        ),
         scope=Scope.RUN,
         origin=("reconcile",),
         detail={
             "markers": [r.marker.marker_id for r in open_records],
             "effects": [r.marker.marker_id for r in effects],
             "in_flight_restores": [r.marker.marker_id for r in in_flight],
-            "unconverged_trees": list(unconverged_trees(cfg)),
+            "unconverged_trees": trees,
         },
     )
 
@@ -899,7 +993,7 @@ __all__ = [
     "path_for",
     "record_markers",
     "records",
-    "retract_marker",
+    "retract_in_flight",
     "tree_markers",
     "unconverged_trees",
 ]

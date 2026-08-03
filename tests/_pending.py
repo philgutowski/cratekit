@@ -178,16 +178,21 @@ PENDING: dict[str, tuple[str, str]] = {
         "composition; what is left is the one wiring call, and it is left here "
         "because core may not import the modules layer",
     ),
-    # KEYED ON THE MODULE U36 ACTUALLY LANDS. This entry said
-    # ``cratekit.write.rebuild`` and no such module was ever going to exist: U36
-    # lands ``cratekit.write.tree_rebuild``, and both the `converge` and `rebuild`
-    # verbs are declared against ``cratekit.write.converge_cli`` in
-    # ``cli/registry.py`` against U20. So ``_is_absent`` was permanently True and
-    # ``scripts/board.py contradictions()`` would have returned exit 2 for the rest
-    # of the project's life the moment U36 closed, which ``sync`` deliberately will
-    # not repair. A key that can never resolve is not a countdown, it is a
-    # permanent red light that teaches people to ignore the audit.
-    "cratekit.write.tree_rebuild": (
+    # KEYED ON THE MODULE U36 ACTUALLY SHIPS, CHECKED AGAINST U36'S TREE RATHER
+    # THAN INFERRED. This key has now been wrong in both directions, which is worth
+    # recording because the lesson is about the method rather than the spelling.
+    # It began as ``cratekit.write.rebuild``, was moved to
+    # ``cratekit.write.tree_rebuild`` on the strength of reading U36's file list at
+    # one moment, and is moved back here because U36 renamed the module to
+    # ``src/cratekit/write/rebuild.py``, which is what issue #36's Files line names
+    # and what U36's own register says in as many words. A key that cannot resolve
+    # is not a countdown, it is a permanent red light that teaches people to ignore
+    # the audit: ``_is_absent`` answers True forever, the guard behind it skips
+    # forever, and ``scripts/board.py contradictions()`` returns exit 2 for the rest
+    # of the project's life once U36 closes, which ``sync`` deliberately will not
+    # repair. The method that keeps it right is not reading harder, it is the guard
+    # below, which fails the moment the module appears under this name.
+    "cratekit.write.rebuild": (
         "U36",
         "TWO OBLIGATIONS, both about the same fact recorded in two places. "
         "FIRST, that an unconverged tree is cleared ONLY through a convergence "

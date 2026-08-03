@@ -244,16 +244,20 @@ class Guard(StrEnum):
     BARE_METAL = "bare-metal-recovery"
 
 
-#: Every ``Held`` this module's own guards have issued and not yet withdrawn.
+#: What each live token was issued FOR: the guard that minted it, the directory it
+#: authorises, and the lock it was taken against.
 #:
-#: A ``Held`` is a plain frozen dataclass, so anything can build one, and until
-#: this existed anything that built one with the right three fields was accepted.
-#: The token is an object identity rather than a value: it cannot be spelled in a
-#: literal, it cannot be reconstructed from a serialized form, and the guard
-#: withdraws it on the way out of its own block. Membership therefore answers two
-#: questions at once that neither the lock nor the intent could answer: this value
-#: came from a guard in this module, and that guard has not exited.
-_ISSUED: set[int] = set()
+#: A MEMBERSHIP TEST WAS NOT ENOUGH, and the gap it left is the original bypass one
+#: line longer. ``Held`` is exported, is a plain frozen dataclass, and carries its
+#: token in a public field, so inside a ``bare_metal_session`` a caller could read
+#: the real token off the value the guard yielded and rebuild a ``Held`` around it
+#: claiming a different guard and a different authorised directory. Every check
+#: passed, because the only question being asked was whether that token was live.
+#: Measured: the library database on the volume the identity gate had just refused
+#: was rewritten with no acknowledgment. What the guard minted is therefore
+#: recorded beside the token and compared, so a value may carry a live token and
+#: still be refused for claiming something the guard never issued.
+_ISSUED: dict[int, tuple[Guard, str, str]] = {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -312,15 +316,23 @@ class Held:
         yielded it, and a caller who kept one and used it afterwards would be
         writing with no lock at all while every signature said otherwise.
 
-        BOTH QUESTIONS, because either alone is answerable by an accident. The
+        THREE QUESTIONS, because each alone is answerable by an accident. The
         session module's own record of what this process holds is the only
         non-stale answer about the LOCK, and it is the same set the lock
         acquisition maintains; but it is a set of paths, so any lock this process
         happens to hold satisfies it, including one taken for something else
-        entirely. The token answers the other half: this exact value was issued by
-        one of this module's guards and that guard has not yet returned.
+        entirely. The token answers whether a guard in this module is still inside
+        its own block. And the token's RECORDED TERMS answer the question a
+        membership test cannot: whether this value claims what that guard actually
+        issued, or whether somebody read a live token off a legitimate value and
+        rebuilt a different claim around it.
         """
-        if self.token is None or id(self.token) not in _ISSUED:
+        if self.token is None:
+            return False
+        terms = _ISSUED.get(id(self.token))
+        if terms is None:
+            return False
+        if terms != (self.issued_by, str(self.authorises), str(self.lock.absolute())):
             return False
         return str(self.lock.absolute()) in session._HELD
 
@@ -399,6 +411,13 @@ def recovery_session(
                 cfg,
                 state=session.SessionState.CLOSED,
                 intent=session.Intent.RECOVERY,
+                # The same seams this guard was entered with. The close now
+                # asserts the volume, and a close that probed the platform
+                # directly would ask a different question from the one the gates
+                # around it asked, which is how a session passes its gates and
+                # then fails to end.
+                identity_provider=identity_provider,
+                mount_enumerator=mount_enumerator,
                 now=now,
             )
 
@@ -432,11 +451,11 @@ def _issued(
         record=record,
         token=token,
     )
-    _ISSUED.add(id(token))
+    _ISSUED[id(token)] = (issued_by, str(authorises), str(lock.absolute()))
     try:
         yield held
     finally:
-        _ISSUED.discard(id(token))
+        _ISSUED.pop(id(token), None)
 
 
 # ---------------------------------------------------------------------------
@@ -678,11 +697,7 @@ def plan(
     trees = reconcile.tree_markers(
         unconverged, session_id=session_id, capture_stamp=captured.stamp, now=now
     )
-    latch = reconcile.in_flight_marker(
-        session_id=_restoring_session_id(held, session_id),
-        capture_stamp=captured.stamp,
-        now=now,
-    )
+    latch = reconcile.in_flight_marker(capture_stamp=captured.stamp, now=now)
 
     # ALWAYS, never `if markers:`. Seven of the twelve coupled entries declare
     # RollbackEffect.NONE, so a restore whose window touched only those derives no
@@ -750,8 +765,8 @@ def plan(
         Step(
             act=Act.RELEASE,
             detail=(
-                "retract the in-flight latch, which is the only claim in this plan "
-                "that the restore finished, and is therefore last"
+                "retract every in-flight restore latch, which is the only claim in "
+                "this plan that a restore finished, and is therefore last"
             ),
         )
     )
@@ -761,7 +776,7 @@ def plan(
         capture_root=root,
         steps=tuple(steps),
         latch=latch,
-        pre_restore_root=_pre_restore_root(cfg, latch.identity),
+        pre_restore_root=_pre_restore_root(cfg, now=now),
         discarded_sessions=tuple(entry.session_id for entry in later),
         discarded_change=_merged_change(later),
         markers=tuple((*effects, *trees)),
@@ -771,32 +786,25 @@ def plan(
     )
 
 
-def _restoring_session_id(held: Held, restoring_to: str) -> str:
-    """Who to name on the in-flight latch.
-
-    The restore's OWN open session when there is one, because that is the run
-    whose interruption the latch is about. A bare-metal recovery opens no session
-    record, since the log it would be written to is on the volume that died, so it
-    falls back to naming the capture's session with a prefix: the latch still has
-    to be unique per restore, and the alternative is two bare-metal attempts
-    colliding on one identifier and the second being swallowed.
-    """
-    if held.record is not None:
-        return held.record.session_id
-    return f"{held.issued_by}:{restoring_to}"
-
-
-def _pre_restore_root(cfg: config.Config, session_id: str) -> Path:
+def _pre_restore_root(cfg: config.Config, *, now: datetime | None = None) -> Path:
     """Where a restore puts the live companion files it takes out of the way.
 
     Beside the database, so the move is a rename on one filesystem rather than a
     copy that can itself run out of room. Under a dotted directory that nothing in
     the state inventory declares, so no capture takes it and no restore replaces
     it: these bytes exist precisely because they are outside every capture.
+
+    ONE DIRECTORY PER ATTEMPT, NOT PER LATCH, and the two are now different things.
+    The latch keys on the capture so that repeating a restore collides with the
+    row already there; the staged bytes must do the OPPOSITE, because the second
+    attempt's log is not the first attempt's log and writing it over the top would
+    destroy the very bytes this staging exists to keep. So it takes a fresh stamp,
+    whose random tail makes two attempts inside one second distinct.
     """
-    safe = "".join(character if character.isalnum() else "-" for character in session_id)
     return (
-        config.state_path(snapshot.DATABASE_KEY, cfg).parent / PRE_RESTORE_DIR / safe
+        config.state_path(snapshot.DATABASE_KEY, cfg).parent
+        / PRE_RESTORE_DIR
+        / snapshot.new_stamp(now)
     )
 
 
@@ -1147,9 +1155,14 @@ def _preflight(decided: Plan, cfg: config.Config, *, held: Held) -> None:
             _assert_writable(step)
 
     snapshot.assert_room_for(
-        snapshot.restore_cost(captured),
+        snapshot.restore_peak_bytes(captured),
         config.state_path(snapshot.DATABASE_KEY, cfg).parent,
-        what="putting this capture back",
+        what="the largest single step of putting this capture back",
+        steps=(
+            "free space on the LIBRARY volume, which is the one being written to "
+            "here; pruning captures helps only if the capture store is on it, and "
+            "the retention plan reports whether it is",
+        ),
     )
 
 
@@ -1184,9 +1197,16 @@ def _assert_writable(step: Step) -> None:
     Asked of the nearest EXISTING ancestor, because a restore legitimately creates
     directories that are not there yet, and asking about a path that does not exist
     answers about nothing.
+
+    A DIRECTORY REPLACEMENT NEEDS ITS PARENT, NOT ITSELF. :func:`_replace_directory`
+    stages a sibling and renames twice, so every write it makes is in the target's
+    PARENT; the target itself is only ever renamed. Probing the target answered a
+    question nobody was asking and let a genuinely unwritable parent through.
     """
     target = step.target
     assert target is not None
+    if step.act is Act.REPLACE_TREE:
+        target = target.parent
     probe = target if target.exists() else target.parent
     while not probe.exists() and probe.parent != probe:
         probe = probe.parent
@@ -1327,7 +1347,18 @@ def _perform(
     if step.act is Act.RESOLVE:
         return _resolve_unverified(decided, cfg, now=now)
     if step.act is Act.RELEASE:
-        reconcile.retract_marker(cfg, decided.latch.marker_id)
+        # EVERY latch, not this plan's own. See reconcile.retract_in_flight: the
+        # refusal these markers raise says an unfinished restore is closed by
+        # finishing one, and retracting only this restore's row made that sentence
+        # false for the restore that came after an interrupted one.
+        discharged = reconcile.retract_in_flight(cfg)
+        if len(discharged) > 1:
+            logger.info(
+                "this restore discharged %d in-flight latches, including %d left "
+                "by earlier attempts",
+                len(discharged),
+                len(discharged) - 1,
+            )
         return ()
     if step.target is None:  # pragma: no cover - every other act carries a target
         raise refuse(
@@ -1609,7 +1640,24 @@ def _replace_directory(source: Path, target: Path) -> None:
         _remove(previous)
         os.replace(target, previous)
     os.replace(staged, target)
-    _remove(previous)
+    # THE SWAP HAS LANDED, SO NOTHING AFTER THIS POINT MAY FAIL THE RESTORE. The
+    # old copy is tidy-up, and an unwritable subtree inside it, which is invisible
+    # to a check that probes only the top of each target, used to raise here: the
+    # new directory was correct on disk, every earlier step had succeeded, and the
+    # restore reported ``restore-step-failed`` and never reached the step that
+    # retracts its own latch. A correct restore that latches the library
+    # permanently is a worse outcome than a directory left behind, so this leaves
+    # the directory behind and says where it is.
+    try:
+        _remove(previous)
+    except OSError as exc:
+        logger.warning(
+            "the restore of %s landed and the previous copy at %s could not be "
+            "removed (%s); it is left in place and can be deleted by hand",
+            target,
+            previous,
+            exc,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2006,11 +2054,22 @@ def assert_library_volume_is_gone(
 #: Answers "is this directory the root of its own filesystem". A SEAM, for the
 #: same reason ``preflight.IdentityProvider`` and ``session.has_controlling_terminal``
 #: are: the real answer depends on a mounted volume, and a battery that needed one
-#: could not drive this refusal at all. It is not a safety escape. The default is
-#: the real probe, the substitute is supplied per call rather than globally, and a
-#: substitute that answers "yes" makes the refusals below STRICTER on every other
-#: axis rather than weaker, because the mount-point answer is the only thing that
-#: excuses a target from the stub checks.
+#: could not drive this refusal at all. The default is the real probe and the
+#: substitute is supplied per call rather than set globally.
+#:
+#: IT IS A REAL SOFTENING PATH AND THE DECISION TO KEEP IT IS DELIBERATE, so it is
+#: stated rather than left for somebody to find. Passing a probe that always
+#: answers yes disables the strongest of the three substitutes a bare-metal
+#: recovery makes, which is the check that stops a whole library being written onto
+#: the internal disk. Nothing in ``src/`` passes one. The battery does, for every
+#: bare-metal test, because a temporary directory is a mount point on no platform
+#: and without it the refusals under test are unreachable; each stub test then
+#: answers no to drive the refusal directly. What keeps the default honest is
+#: ``test_round2_the_real_mount_probe_is_armed_by_default``, which supplies nothing
+#: and asserts the real probe still refuses a stub. The alternative considered and
+#: rejected was making the tests run against a real mount point, which needs a disk
+#: image and a mount, and would make the one refusal that protects a boot disk the
+#: only refusal in this unit with no coverage at all.
 MountProbe = Callable[[Path], bool]
 
 
@@ -2142,6 +2201,15 @@ def bare_metal_session(
     THE ORDER IS THE SAME ORDER, and for the same reason. The two read-only
     assertions run before the one gate that creates a file, so a refused recovery
     leaves the disk exactly as it found it.
+
+    NOTHING CAN YET SPEND THE SESSION THIS YIELDS, and that is recorded as **R-20**
+    rather than left to be discovered. The value it hands back authorises the
+    replacement target, while :func:`plan` and :func:`run` resolve every path from
+    ``cfg.library.root`` and refuse a session that does not authorise what they are
+    about to write. That refusal is what closed a verified bypass in which this
+    function's session was spent on the library the identity gate had just refused,
+    and the cost of closing it that way is that R-8's third open item is unserved
+    again. See ``docs/residual-findings.md`` for what closes it and who owns it.
     """
     assert_library_volume_is_gone(
         cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator

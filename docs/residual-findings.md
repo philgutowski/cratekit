@@ -592,3 +592,63 @@ by a marker on a closing unit is owned by nobody the moment that unit closes, an
    changes. The value is cheap to recompute on every run precisely because it is
    derived from the filesystem rather than from a recorded answer, and a recorded
    answer would go stale the first time somebody moves their library.
+
+---
+
+## R-20. Closing the bare-metal bypass removed the bare-metal write path
+
+**Found:** by the independent verification of U32's first fix round, 2026-08-02.
+Recorded here rather than fixed, because the fix is a feature and the bypass had
+to close tonight.
+
+**What R-8's third item asked for.** Every gate KTD21 publishes is library-scoped
+on purpose, so all three sit on the disk that died and the ordinary restore
+refuses by naming a drive that no longer exists. U32 answered that with
+`restore.bare_metal_session`, which substitutes one gate at a time against a
+replacement target.
+
+**What the first fix round did.** The reviewer found that a `bare_metal_session`
+yielded a session that `plan` and `run` accepted for a restore of
+`cfg.library.root`, so composing it against a replacement drive rewrote the
+library on the volume the identity gate had just refused, with no acknowledgment
+and with the library lock held by another process. That is closed: a `Held` now
+carries the directory it authorises, and `plan` and `run` refuse one that does not
+authorise the path they are about to write.
+
+**The residue, stated plainly.** `plan` and `run` resolve every path from
+`cfg.library.root`, and a bare-metal session authorises the replacement target, so
+there is now no composition in which a bare-metal session reaches a plan at all.
+Neither function takes a `target`, and nothing in `src/` consumes
+`bare_metal_session`. The bypass was closed by removing the path rather than by
+correcting it, and R-8's third item is unserved again. The honest status of
+`bare_metal_session` today is: it validates a target, substitutes three gates,
+takes an installation-scoped lock, and hands back a session that can be used for
+nothing.
+
+**Why that is the right order anyway.** A recovery path that cannot run is a
+missing feature. A recovery path that rewrites the library on a volume the
+identity gate refused is data loss with the product's own gates reporting success.
+Shipping the first while the second is open is not a trade this unit is entitled
+to make.
+
+**What closes it.** `plan` and `run` resolve their paths from the session rather
+than from `cfg.library.root`: the `Held` already carries `authorises`, so the
+change is to derive the target set from that directory and to build a
+configuration rooted at it, rather than to add a `target=` parameter that the two
+functions would then have to agree with the session about. The `Held` machinery
+this round added is what makes that safe, because the authorisation check then
+reads the same field the paths are derived from.
+
+**Owner: U27,** which owns the operator-facing surface and already carries this
+unit's `cratekit.session.restore_cli` obligation. The bare-metal verb is the one
+place this composition would be made, so the unit that writes the verb is the unit
+that finds out whether the derivation above is right.
+
+**What must NOT close it.**
+
+1. **Relaxing the authorisation check for bare metal.** That is the bypass,
+   re-opened, with a comment explaining why it is fine.
+2. **A `target=` parameter on `plan` and `run` that is trusted without being
+   checked against the session.** Two sources for one answer is how the first
+   version got here: `assert_recovery_target` validated a target and then dropped
+   it, and everything downstream resolved a different one.

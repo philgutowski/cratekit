@@ -1530,6 +1530,8 @@ def close_session(
     *,
     state: SessionState = SessionState.CLOSED,
     intent: Intent = Intent.WRITE,
+    identity_provider: preflight.IdentityProvider | None = None,
+    mount_enumerator: preflight.MountEnumerator | None = None,
     now: datetime | None = None,
 ) -> SessionRecord:
     """End a session, releasing the capture it referenced.
@@ -1557,8 +1559,25 @@ def close_session(
     because a restore is what the refusal names as its own remedy and a latch
     that condemned its remedy leaves a library with no exit but a hand-edited
     file.
+
+    THE VOLUME IS ASSERTED BEFORE THE CONVERGENCE GATE, and it was not, which made
+    that gate silently permissive in one specific state. ``assert_gates`` asserts
+    the volume first and every other reader of the reconciliation record sits
+    behind it; this close does not go through ``assert_gates`` at all. With the
+    library volume gone, the record's path simply does not exist, and the reader
+    cannot tell that from a library with nothing recorded yet, so an open
+    reconciliation marker vanished and the close it should have refused was
+    allowed. The reader cannot be made to tell the difference without the recorded
+    volume identity, and this is where that identity is available. Asserted only on
+    the gated path, because abandoning is deliberately not gated: gating it would
+    leave somebody with a run they can neither finish nor give up on.
     """
     if state is SessionState.CLOSED and intent is not Intent.RECOVERY:
+        assert_volume_identity(
+            cfg,
+            identity_provider=identity_provider,
+            mount_enumerator=mount_enumerator,
+        )
         reconcile.assert_converged(cfg)
     if state not in TERMINAL_STATES:
         raise refuse(

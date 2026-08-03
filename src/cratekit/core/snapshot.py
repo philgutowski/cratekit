@@ -325,7 +325,7 @@ ALLOCATION_UNIT = 4096
 DIRECTORY_ENTRY_OVERHEAD = 2048
 
 
-def _allocated_size(path: Path) -> int:
+def _allocated_size(path: Path, *, entry_overhead: int = DIRECTORY_ENTRY_OVERHEAD) -> int:
     """What ``path`` costs a filesystem, not what its bytes add up to.
 
     THE DIFFERENCE IS TWO ORDERS OF MAGNITUDE ON THE SHAPE THIS PRODUCT ACTUALLY
@@ -351,6 +351,14 @@ def _allocated_size(path: Path) -> int:
     have just fitted, and an under-estimate writes the truncated capture this
     exists to prevent.
 
+    ``entry_overhead`` IS ZERO ON THE RESTORE SIDE, and the asymmetry is real
+    rather than a tuning knob. The term above accounts for growth in the
+    DESTINATION's own directory structure, which a capture genuinely causes: it
+    writes a tree of entries that did not exist. A restore writes a tree back over
+    one of nearly the same shape, so those entries already exist and the marginal
+    growth is not a fresh allocation. Charging it on both sides refused restores
+    that fit.
+
     Absence is normal rather than exceptional, exactly as it is everywhere else
     in this module: a database just folded in by the engine has no companion
     files, and a library that has never run a sweep has no coupled directory yet.
@@ -359,19 +367,19 @@ def _allocated_size(path: Path) -> int:
     """
     try:
         if path.is_dir():
-            total = DIRECTORY_ENTRY_OVERHEAD
+            total = entry_overhead
             for current, directories, files in os.walk(path):
                 here = Path(current)
-                total += DIRECTORY_ENTRY_OVERHEAD * len(directories)
+                total += entry_overhead * len(directories)
                 for name in files:
-                    total += _allocated_file(here / name)
+                    total += _allocated_file(here / name, entry_overhead=entry_overhead)
             return total
-        return _allocated_file(path)
+        return _allocated_file(path, entry_overhead=entry_overhead)
     except OSError:
         return 0
 
 
-def _allocated_file(path: Path) -> int:
+def _allocated_file(path: Path, *, entry_overhead: int = DIRECTORY_ENTRY_OVERHEAD) -> int:
     """One file's cost: its blocks, or its rounded-up length, whichever is larger.
 
     The larger of the two, because ``st_blocks`` under-reports a SPARSE file and a
@@ -385,7 +393,7 @@ def _allocated_file(path: Path) -> int:
     blocks = getattr(stat_result, "st_blocks", None)
     occupied = 0 if blocks is None else int(blocks) * 512
     rounded = -(-int(stat_result.st_size) // ALLOCATION_UNIT) * ALLOCATION_UNIT
-    return max(occupied, rounded) + DIRECTORY_ENTRY_OVERHEAD
+    return max(occupied, rounded) + entry_overhead
 
 
 def _free_bytes(root: Path) -> int | None:
@@ -461,6 +469,10 @@ def assert_room_for(
     destination: Path | str,
     *,
     what: str,
+    steps: tuple[str, ...] = (
+        "free space on the volume holding this path, or prune older captures, "
+        "and run this again",
+    ),
     headroom: float = CAPACITY_HEADROOM,
     free_bytes: int | None = None,
 ) -> int:
@@ -503,10 +515,7 @@ def assert_room_for(
         f"{where} has {available} bytes free and {what} needs about {required}; "
         f"refusing before the copy rather than writing a truncated one and "
         f"committing behind it",
-        steps=(
-            "free space on the volume holding this path, or prune older captures, "
-            "and run this again",
-        ),
+        steps=steps,
         scope=Scope.SESSION,
         detail={
             "root": str(where),
@@ -517,18 +526,36 @@ def assert_room_for(
     )
 
 
-def restore_cost(record: Capture) -> int:
-    """What putting this capture back onto the library volume will allocate.
+def restore_peak_bytes(record: Capture) -> int:
+    """The largest TRANSIENT a restore of this capture needs. Not the sum.
 
-    Measured on the CAPTURE rather than on the live library, because the capture
-    is what is about to be copied. It is the same allocation-aware measure
-    :func:`assert_room_for_capture` uses, so the two halves of a recovery point
-    cannot disagree about what one costs.
+    A CAPTURE AND A RESTORE HAVE OPPOSITE SHAPES AND ASKING THE SAME QUESTION OF
+    BOTH REFUSES RESTORES THAT FIT. A capture copies everything into a directory
+    that did not exist, so its cost is the SUM and the whole sum has to be free at
+    once. A restore replaces things one at a time: a file is staged beside its
+    target and renamed over it, which frees the old copy before the next step
+    begins, and a directory is staged beside its target and swapped, which frees
+    the old tree the same way. So at no moment does a restore hold more than one
+    replacement's worth of extra space, and the steady-state delta is near zero
+    because the library already holds the previous versions of everything being
+    written.
+
+    Measured on the shape that exposed it: an 8 MiB database, a 4 MiB write-ahead
+    log and a 2,000 item coupled tree summed to 24,879,104 bytes and demanded
+    27,367,014, so a volume with 9,437,184 free was refused, against a real peak
+    of roughly 8.4 MiB. The peak measure asks for 9,227,468 and lets it through.
+
+    Measured on the CAPTURE rather than on the live library, because the capture is
+    what is about to be copied, and with ``entry_overhead`` at zero for the reason
+    :func:`_allocated_size` gives.
     """
-    return sum(
-        _allocated_size(entry.captured)
-        for entry in record.sources
-        if entry.captured is not None
+    return max(
+        (
+            _allocated_size(entry.captured, entry_overhead=0)
+            for entry in record.sources
+            if entry.captured is not None
+        ),
+        default=0,
     )
 
 
@@ -794,6 +821,6 @@ __all__ = [
     "database_paths",
     "new_stamp",
     "read_manifest",
-    "restore_cost",
+    "restore_peak_bytes",
     "store_root",
 ]

@@ -430,5 +430,14 @@ def test_a_real_session_record_makes_its_capture_protected_from_pruning():
 
     # And a finished session RELEASES it, which is the other half: a terminal
     # state that did not release would keep every capture forever.
-    session.close_session(record, cfg)
+    # The volume seam is injected because a GATED close now asserts the volume,
+    # for the reason session.close_session states: that gate was silently
+    # permissive against a library whose volume had gone. The question here is
+    # capture protection, not this machine's disks.
+    session.close_session(
+        record,
+        cfg,
+        identity_provider=lambda _path: cfg.library.volume_id,
+        mount_enumerator=lambda: (),
+    )
     assert W.default_protected_snapshot_paths(cfg) == set()
