@@ -492,3 +492,85 @@ fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather
 than skips, so the battery runs either way and a supplied fixture strengthens it.
 The natural owner is U27, which lands doctor and is the unit that makes a machine
 ready.
+
+---
+
+## R-14. A pool is sized once and then runs for as long as the work takes
+
+**Found:** during U12 round 2 verification, 2026-08-03.
+
+`plan_pool` takes one reading of available memory and one reading of pressure,
+and the plan it returns is spent by `map_workers` over every generation of the
+run. At the shipped defaults a ten thousand track folder is fifty generations,
+each one a fresh set of children and a fresh model load per child, and every one
+of them is built at the width decided before the first child started.
+
+The module's own first brake is described as the one that "adapts to what the
+machine is doing right now, which none of the others can see". That is true of
+the moment the plan is made and of no moment after it. A machine that had five
+gibibytes free when the run was planned and has half a gibibyte an hour later
+keeps building two model-loading children per generation, and nothing in the
+module looks again.
+
+**Not fixed here, deliberately.** Re-reading between generations is not a
+one-line change, it is a change to what a plan IS. Today a `PoolPlan` is the
+record of the decision that governed a run, and a width that moves mid-run makes
+it the record of the decision that started one. Both `PoolPlan.generations` and
+the deadlock reasoning that fixes a generation at `workers * max_tasks_per_child`
+are written against a fixed width. Doing this properly means a seam that returns
+a new plan per generation, and a caller that can say which plan a result came
+from.
+
+**Closes when:** the first heavy analysis pass lands in U25 and can say whether a
+run is long enough for the machine to have changed under it. If it is, the seam
+is a per-generation re-plan with the narrowing bounded so a transient reading
+cannot collapse a run to one worker.
+
+---
+
+## R-15. The work items are the one thing map_workers does not refuse
+
+**Found:** during U12 round 2 verification, 2026-08-03.
+
+`map_workers` refuses a function, an initializer, and now an initializer
+argument that could not be sent to a child, on both paths, so that the same call
+does not mean two different things depending on how much memory the machine had.
+The ITEMS are not held to that rule. A plan of one worker calls
+`function(item)` on whatever object it was handed and a plan of two pickles every
+item to a child, so a run over unpicklable items still succeeds on a tight
+machine and fails on a roomy one, which is precisely the divergence the refusal
+exists to close.
+
+**Not fixed here, deliberately.** The refusal costs one pickle per value, which
+is nothing for a function and an initializer and is a full serialization pass
+over the whole workload for the items. The pooled path pays that pass anyway, so
+the cost falls entirely on the in-process path, which is the path a TIGHT machine
+takes. Paying a full pickle of every item on the machine with the least memory,
+to catch a shape nobody has written yet, is a fix aimed at the wrong machine.
+
+**Closes when:** U25 says what its items are. If they are paths and identifiers,
+this is unreachable and the entry closes as not applicable. If any pass wants to
+map over objects, the check goes in at that call site where the cost is known.
+
+---
+
+## R-16. A probe child can outlive a parent that dies between start and reap
+
+**Found:** during U12 round 2 verification, 2026-08-03.
+
+`_spawned_probe` starts a real child, waits for its answer, and reaps it with an
+escalation that terminates and then kills. That covers every way the PROBE
+fails. It does not cover the parent itself being killed in the window between
+`Process.start()` and `_reap`, which leaves a child loading a model with nobody
+left to end it, on a machine that this module had already decided was tight.
+
+**Considered and rejected here:** marking the probe child a daemon, so the
+interpreter's own shutdown ends it. It closes this and it costs more than it
+buys: a daemonic process is not allowed to create children of its own, so a
+loader that spawns anything internally would fail inside the probe, and a probe
+failure returns the floor silently. Trading a rare orphan for a silent
+under-measurement of the exact case this module exists to size is the wrong
+trade, and it is the shape of a fix that is too restrictive rather than wrong.
+
+**Closes when:** a probe run is cheap enough to supervise from outside, or the
+first real loader is known well enough to say whether it spawns.

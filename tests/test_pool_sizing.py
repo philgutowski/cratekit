@@ -50,7 +50,9 @@ import os
 import subprocess
 import sys
 import time
+from concurrent.futures import process as _process_pool
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -593,6 +595,253 @@ def test_the_real_pressure_reading_answers_with_two_believable_numbers():
 
 
 # ---------------------------------------------------------------------------
+# The tuning constants, pinned by what they DO
+# ---------------------------------------------------------------------------
+#
+# EVERY CONSTANT IN THE SIZING MODULE SURVIVED BEING MOVED. The whole set was
+# swept one at a time against this suite as it stood after the first fix round,
+# and the swap threshold went from a gibibyte to a SINGLE BYTE, the absolute
+# reserve went from two gibibytes to one byte, the general headroom went from
+# three quarters to all of it, the darwin headroom went from a half to nearly
+# three quarters, the used-percent ceiling went from eighty five to a hundred,
+# and the recycle budget went from a hundred tasks to one. Every one of those
+# left the suite green.
+#
+# ONE SHAPE PRODUCED ALL OF THEM. The test that looked like it covered a
+# constant computed what it expected BY READING THE CONSTANT, so it restated the
+# source instead of checking it. ``affordable_for`` and ``threshold_for`` take
+# the shipped percent and the shipped reserve, so every boundary they derive
+# moves with the number it was supposed to pin. The pressure gate's parameters
+# were spelled ``DEFAULT_SWAP_PRESSURE_BYTES`` and ``DEFAULT_SWAP_PRESSURE_BYTES
+# - 1``, so at one byte a reading of one byte is still "at the line" and a
+# reading of zero is still "below" it, and both cases passed while every machine
+# on earth was being refused a pool.
+#
+# TWO CONSTANTS COULD NOT BE COVERED AT ALL FROM HERE, and that is a second
+# shape rather than the same one: ``GENERAL_HEADROOM_PERCENT`` and the windows
+# pool limit are both on the arm this platform never executes. A number nothing
+# on this machine can reach is a number nothing on this machine can check, so
+# both are driven through an argument and through a named platform instead.
+#
+# So every test below puts a machine on each side of a number and asserts the
+# DECISION differs. None of them names a constant on both sides of an equals.
+
+
+def _workers_for(percent: int) -> int:
+    """The pool a hundred gibibytes affords at this headroom, in workers.
+
+    THE FIXTURE IS CHOSEN SO THE COUNT IS THE PERCENT. A hundred gibibytes, no
+    reserve and a one gibibyte worker means the count comes out equal to the
+    share, so a percent moved by one moves the answer by one and the assertion
+    can be a literal. The platform limit is taken out of the way because this
+    question is about the arithmetic and windows would otherwise cap it at 61.
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(pool, "platform_worker_ceiling", lambda: None)
+        plan = pool.plan_pool(
+            worker_bytes=1 * GIB,
+            items=10_000,
+            ceiling=10_000,
+            headroom_percent=percent,
+            reserve_bytes=0,
+            read_available=reader(100 * GIB),
+        )
+    return plan.workers
+
+
+def test_the_general_headroom_claims_three_quarters_of_what_is_left():
+    """Seventy five, pinned by the pool it produces rather than by its spelling.
+
+    THE ARM THIS MACHINE NEVER RUNS. On darwin the shipped default is the darwin
+    number and the general one is never reached by any default-configuration
+    call, so it moved from seventy five to a hundred with the whole suite green.
+    The only thing asserted about it was that it was LARGER than the darwin
+    share, which every number above fifty satisfies.
+    """
+    assert _workers_for(pool.GENERAL_HEADROOM_PERCENT) == 75
+
+
+def test_the_darwin_headroom_claims_half_because_half_is_what_was_measured():
+    """Fifty, pinned the same way. It moved to seventy four with the suite green.
+
+    Half is the share that survives the measured split between the inactive
+    queue and free memory being as bad as it was measured to be. "Smaller than
+    the general share" is not that claim, it is a fact about two numbers, and it
+    was the only thing under test.
+    """
+    assert _workers_for(pool.DARWIN_HEADROOM_PERCENT) == 50
+
+
+def test_the_absolute_reserve_is_two_gibibytes_of_the_reading_that_was_never_ours():
+    """The reserve, pinned at the reading where a machine starts affording anything.
+
+    Two gibibytes is the working set of a desktop with a browser and an editor
+    open, measured rather than guessed. Driven at a hundred percent headroom so
+    the percent is out of the way and the subtraction is the only thing being
+    measured: a machine holding exactly one worker's worth beyond the reserve
+    affords that worker, and one byte short of it affords none. At one byte of
+    reserve the first case affords two, and at a petabyte the second case is the
+    only case there is.
+    """
+    common = dict(
+        worker_bytes=WORKER,
+        items=500,
+        ceiling=64,
+        headroom_percent=100,
+        reserve_bytes=pool.DEFAULT_MEMORY_RESERVE_BYTES,
+    )
+    affords_one = pool.plan_pool(**common, read_available=reader(2 * GIB + WORKER))
+    affords_none = pool.plan_pool(**common, read_available=reader(2 * GIB + WORKER - 1))
+    assert affords_one.workers == 1
+    assert affords_one.bound is pool.Bound.AVAILABLE_MEMORY
+    assert affords_none.bound is pool.Bound.INSUFFICIENT_MEMORY
+
+
+def test_the_default_ceiling_is_two_because_two_is_what_survived_a_real_run():
+    """The shipped ceiling, pinned by the pool a roomy machine actually gets.
+
+    The test beside this one asserts the count EQUALS the constant, which it
+    does at any value, so the ceiling moved to 1024 with only two deaths and
+    neither of them was that one.
+    """
+    assert affordable_for(64 * GIB) > 2, "the reading no longer leaves the ceiling binding"
+    plan = pool.plan_pool(worker_bytes=WORKER, items=500, read_available=reader(64 * GIB))
+    assert plan.workers == 2
+    assert plan.bound is pool.Bound.CEILING
+
+
+@pytest.mark.parametrize(
+    "swap,gated",
+    [
+        (512 * MIB, False),
+        (1 * GIB - 1, False),
+        (1 * GIB, True),
+        (4 * GIB, True),
+    ],
+    ids=["stale-swap", "one-byte-under", "a-full-gibibyte", "deep-in-swap"],
+)
+def test_the_swap_threshold_is_a_gibibyte_and_the_gibibyte_is_load_bearing(swap, gated):
+    """THE RECORDED DEFECT. This number moved to ONE BYTE with the suite green.
+
+    The readings here are literals rather than the constant and its predecessor,
+    which is the whole difference. Half a gibibyte is an ordinary darwin machine
+    that was briefly busy last week: the platform's swap counter is sticky, so
+    pages counted once stay counted after they are read back, and such a machine
+    must still get a pool or the feature is retired on every machine that has
+    ever been busy. A full gibibyte is a machine that has already been asked for
+    more memory than it has, and it must not.
+    """
+    plan = pool.plan_pool(
+        worker_bytes=WORKER,
+        items=500,
+        ceiling=64,
+        read_available=reader(64 * GIB),
+        read_pressure=pressure(swap_used_bytes=swap),
+    )
+    assert (plan.bound is pool.Bound.MEMORY_PRESSURE) is gated
+    assert (plan.workers == 1) is gated
+
+
+@pytest.mark.parametrize(
+    "used,gated",
+    [(60.0, False), (84.9, False), (85.0, True), (99.0, True)],
+    ids=["a-working-machine", "just-under", "at-the-line", "reclaiming-hard"],
+)
+def test_the_used_percent_ceiling_is_eighty_five_and_the_number_is_load_bearing(used, gated):
+    """Eighty five is where the platform reclaims to serve ordinary allocations.
+
+    It moved to a hundred with the suite green, for the same reason the swap
+    threshold moved to one byte: the only test of it took both of its readings
+    from the constant, so the constant could not disagree with them. Above this
+    line the next worker's model is paid for out of somebody else's resident
+    pages rather than out of room.
+    """
+    plan = pool.plan_pool(
+        worker_bytes=WORKER,
+        items=500,
+        ceiling=64,
+        read_available=reader(64 * GIB),
+        read_pressure=pressure(used_percent=used),
+    )
+    assert (plan.bound is pool.Bound.MEMORY_PRESSURE) is gated
+
+
+@pytest.mark.parametrize(
+    "items,generations",
+    [(10_000, 50), (500, 3)],
+    ids=["a-ten-thousand-track-folder", "an-ordinary-folder"],
+)
+def test_the_recycle_budget_retires_a_child_occasionally_rather_than_constantly(
+    items, generations
+):
+    """A hundred tasks per child, pinned by how often a real folder retires one.
+
+    Each retirement buys a fresh interpreter and a fresh model load, so this
+    number is a trade rather than a preference. At one task per child a ten
+    thousand track folder pays five thousand model loads, and at a million it
+    pays none at all and the allocator is bounded by nothing. The counts here
+    are literals, which is what the test beside them was missing: it asserted
+    that the plan CARRIES the constant, which the plan does at any value.
+    """
+    plan = pool.plan_pool(
+        worker_bytes=WORKER, items=items, ceiling=2, read_available=reader(64 * GIB)
+    )
+    assert plan.workers == 2
+    assert plan.generations == generations
+
+
+def test_the_probe_deadline_the_module_ships_is_finite_and_is_the_one_it_uses():
+    """A hundred and twenty seconds, pinned as a band because a wait cannot be waited.
+
+    The lower half of this is already covered by the probe that really spawns: a
+    deadline under a spawn and an import reports the floor for a machine that
+    would have answered. The upper half cannot be driven end to end without a
+    test that waits the deadline out, so what is pinned instead is the promise
+    the docstring makes, that every failure returns the floor and a loader that
+    never returns is a failure. That promise is only kept if the wait is finite
+    and short enough that a run survives it. Ten minutes is the outer edge of
+    "the run survived"; past it the number is a hang wearing a deadline.
+    """
+    given: list[float] = []
+
+    def capture(loader, *, timeout_seconds):
+        given.append(timeout_seconds)
+        raise RuntimeError("the probe was not run here; only its deadline was read")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(pool, "_spawned_probe", capture)
+        assert pool.measure_worker_bytes(_nothing, floor_bytes=7) == 7
+    assert given, "measure_worker_bytes did not reach the probe at all"
+    assert 30.0 <= given[0] <= 600.0, (
+        f"the shipped probe deadline is {given[0]} seconds; under half a minute "
+        f"reports the floor for a cold model load that would have answered, and "
+        f"over ten minutes is a hang that a caller cannot tell from one"
+    )
+
+
+def test_the_windows_pool_limit_is_the_interpreters_own_and_falls_back_to_sixty_one():
+    """Both arms of a function neither of which runs on the machine that ships it.
+
+    The literal in the fallback is unreachable on every machine this product is
+    developed on, so it moved to one with the suite green while the test beside
+    it asserted only that the answer is None off windows. Driven by naming the
+    platform and by taking the interpreter's own number away.
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(sys, "platform", "win32")
+        patch.setattr(_process_pool, "_MAX_WINDOWS_WORKERS", 32, raising=False)
+        assert pool.platform_worker_ceiling() == 32
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(sys, "platform", "win32")
+        patch.delattr(_process_pool, "_MAX_WINDOWS_WORKERS", raising=False)
+        assert pool.platform_worker_ceiling() == 61
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(sys, "platform", "win32")
+        patch.setattr(_process_pool, "_MAX_WINDOWS_WORKERS", 0, raising=False)
+        assert pool.platform_worker_ceiling() == 61
+
+
+# ---------------------------------------------------------------------------
 # Affording exactly one, and affording none, which are two different machines
 # ---------------------------------------------------------------------------
 
@@ -975,20 +1224,54 @@ def _allocate_the_probe_fixture() -> object:
     return bytearray(_PROBE_FIXTURE_BYTES)
 
 
+def test_the_probe_fixture_sits_above_the_allocator_retention_cliff():
+    """The fixture size is the only reason the probe's own test is able to fail.
+
+    Stated as an assertion rather than left in a comment, because the size is a
+    tuning constant of this file and it moved to a single mebibyte with the
+    suite green: the test that uses it derives its threshold BY READING IT, so
+    it agrees with any value at all. What the size actually buys is that the
+    probe's own test can tell a probe that holds the model across the reading
+    from one that frees it first, and under the cliff it cannot.
+
+    The literal here is a measurement rather than a second tuning constant.
+    Measured on this machine, the platform allocator retains freed blocks up to
+    about 112 mebibytes and hands anything from 128 upwards straight back to the
+    kernel, which is why a 96 mebibyte fixture passed over a probe that measured
+    nothing at all for every model this module exists to size.
+    """
+    assert _PROBE_FIXTURE_BYTES >= 128 * MIB
+
+
 def _nothing() -> None:
     """A loader that loads nothing, for the baseline half of the probe measurement."""
     return None
 
 
-def _never_returns() -> object:
-    """A loader that hangs, which is the one failure the floor did not cover."""
-    time.sleep(3600)
+def _still_running_when_the_deadline_passes() -> object:
+    """A loader that has not finished when the probe gives up on it.
+
+    EIGHT SECONDS RATHER THAN AN HOUR, and the difference is not cosmetic. The
+    deadline this is driven at is one second, so any sleep past that exercises
+    exactly the same path. What the length changes is what a REGRESSION costs:
+    if the reaping ever stops working, this child is what is left behind, and a
+    child left behind is joined by the interpreter's own shutdown, so an hour
+    long loader turns one failing assertion into a suite that never exits. That
+    is the same shape as the deadlock this unit already had to test around,
+    arrived at from the test side.
+    """
+    time.sleep(8)
     return None
 
 
 def _raises_in_the_worker() -> object:
     """A loader failing the way a machine with no model installed fails."""
     raise RuntimeError("no checkpoint on this machine")
+
+
+def _dies_without_answering() -> object:
+    """A loader that takes its whole worker down, the way a segmentation fault does."""
+    os._exit(70)
 
 
 def test_a_plan_of_one_worker_runs_the_work_in_this_process():
@@ -1226,6 +1509,87 @@ def test_work_above_the_recycle_threshold_finishes(tmp_path, workers, tasks, ite
     assert finished.stdout.strip() == str(items)
 
 
+_A_CHILD_THAT_DIES = '''\
+"""A run in which one child is taken down mid task, above the generation boundary."""
+
+from cratekit.core import pool
+
+
+def double_but_die_on_the_fourth(value):
+    if value == 3:
+        import os
+
+        os._exit(70)
+    return value * 2
+
+
+def calm():
+    return pool.Pressure(swap_used_bytes=0, used_percent=1.0)
+
+
+def main():
+    plan = pool.plan_pool(
+        worker_bytes=1,
+        items=8,
+        ceiling=2,
+        max_tasks_per_child=2,
+        read_available=lambda: 64 * 1024 ** 3,
+        read_pressure=calm,
+    )
+    assert plan.workers == 2, plan
+    assert plan.generations == 2, plan
+    try:
+        pool.map_workers(plan, double_but_die_on_the_fourth, range(8))
+    except BaseException as failure:
+        print(type(failure).__name__)
+        return
+    print("returned")
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+
+def test_a_child_that_dies_mid_generation_ends_the_run_rather_than_hanging(tmp_path):
+    """The other half of "a recycle that finishes", and the half nothing drove.
+
+    THE PLATFORM RECYCLE COULD LEAVE A POOL SHORT A WORKER FOREVER, which is the
+    defect this module replaced it for: a child was retired one at a time and its
+    replacement was skipped, and the queue was left with no consumer. A GENERATION
+    IS TORN DOWN AND REBUILT AS A UNIT, so there is no partial replacement to
+    skip, and the failure a dead child can produce is bounded: the generation ends
+    with an exception rather than with a queue nobody is reading.
+
+    The child is killed outright rather than made to raise, because those are two
+    different things to an executor. A task that raises returns an exception
+    through the result channel and the pool is intact; a task that takes its
+    process down leaves the pool broken with work outstanding, which is the shape
+    that hangs if the teardown is waiting on a worker that is gone.
+
+    RUN IN A CHILD WITH A WATCHDOG, for the reason the deadlock test is: what is
+    being guarded against is a hang, and a hung test does not go red, it takes
+    the suite with it and reports nothing.
+    """
+    script = tmp_path / "a_child_that_dies.py"
+    script.write_text(_A_CHILD_THAT_DIES)
+    finished = subprocess.run(
+        [sys.executable, str(script)],
+        capture_output=True,
+        text=True,
+        timeout=_WATCHDOG_SECONDS,
+        cwd=tmp_path,
+    )
+    assert finished.returncode == 0, (
+        f"the reproduction itself failed: {finished.stderr.strip()}"
+    )
+    raised = finished.stdout.strip()
+    assert raised and raised != "returned", (
+        f"a run whose child was killed mid generation came back with results "
+        f"({raised!r}); the death of a worker was not surfaced to the caller"
+    )
+
+
 # --- the contract that used to depend on how much memory the machine had -----
 
 
@@ -1260,6 +1624,32 @@ def test_an_initializer_no_child_could_receive_is_refused_on_the_same_terms():
     with pytest.raises(ValueError) as refusal:
         pool.map_workers(plan, _report, range(4), initializer=loads_here, initargs=("x",))
     assert "initializer" in str(refusal.value)
+
+
+def test_an_initializer_argument_no_child_could_receive_is_refused_on_the_same_terms():
+    """One argument over from the refusal that was written, and the same defect.
+
+    The function and the initializer were both refused and the VALUES handed to
+    the initializer were not, so the same call still meant two different things
+    on two different machines: a plan of one worker calls the initializer here
+    with whatever it was given, and a plan of two pickles those values to a
+    child. A closure is exactly the sort of thing that arrives as an initializer
+    argument, since the argument is where a caller puts the thing the
+    initializer needs.
+    """
+    tight = pool.plan_pool(worker_bytes=WORKER, items=4, read_available=reader(2 * GIB))
+    roomy = pool.plan_pool(
+        worker_bytes=WORKER, items=4, ceiling=2, read_available=reader(64 * GIB)
+    )
+    assert tight.in_process is True
+    assert roomy.in_process is False
+
+    for plan in (tight, roomy):
+        with pytest.raises(ValueError) as refusal:
+            pool.map_workers(
+                plan, _report, range(4), initializer=_load, initargs=(lambda: None,)
+            )
+        assert "initializer argument 0" in str(refusal.value)
 
 
 def test_one_raising_item_discards_every_completed_result():
@@ -1328,11 +1718,67 @@ def test_a_loader_that_never_returns_lands_on_the_floor_like_every_other_failure
     """
     started = time.monotonic()
     measured = pool.measure_worker_bytes(
-        _never_returns, floor_bytes=4242, timeout_seconds=1.0
+        _still_running_when_the_deadline_passes, floor_bytes=4242, timeout_seconds=1.0
     )
     elapsed = time.monotonic() - started
     assert measured == 4242
     assert elapsed < 60, f"the probe took {elapsed:.1f} seconds to give up on a hung loader"
+
+
+def test_a_probe_that_gave_up_leaves_no_child_still_allocating():
+    """The escalation, which nothing exercised. A timed out probe is still loading.
+
+    A probe that gave up is a probe whose child is still allocating the very
+    thing the machine already said it could not afford, and abandoning it leaves
+    exactly the allocation this module exists to refuse. The reaping code says
+    so in its own docstring, and made a no-op the whole suite stayed green,
+    because the one test of a loader past its deadline asserts only that the
+    PARENT came back quickly, and the parent comes back quickly either way.
+
+    Asserted against the process table rather than against elapsed time, because
+    what is wrong in the broken case is not the parent's timing. It is that a
+    child of this process is still running after the call has returned.
+    """
+    before = set(multiprocessing.active_children())
+    started = time.monotonic()
+    measured = pool.measure_worker_bytes(
+        _still_running_when_the_deadline_passes, floor_bytes=4242, timeout_seconds=2.0
+    )
+    elapsed = time.monotonic() - started
+    assert measured == 4242
+    assert elapsed < 8, "the probe waited out a loader it had already abandoned"
+    left = [child for child in multiprocessing.active_children() if child not in before]
+    assert not left, (
+        f"a probe child outlived the probe that started it: {left}. It is still "
+        f"holding whatever its loader had allocated when the deadline passed."
+    )
+
+
+def test_a_probe_child_that_dies_without_answering_gives_up_at_once():
+    """The pipe is what tells a dead child from a slow one, and nothing tested it.
+
+    The parent closes its own copy of the write end so the pipe reaches end of
+    file the moment the child's copy does. Left open, a child that died looks
+    exactly like a child that is still loading, and the run waits out the whole
+    deadline for an answer that can never come, which at the shipped deadline is
+    two minutes of nothing per probe. Removed, the suite stayed green, because
+    every other probe failure sends a value back BEFORE it fails and only a
+    worker that dies outright sends nothing at all.
+
+    Driven at a deadline long enough that waiting it out is unmistakable and
+    short enough that a failure here costs half a minute rather than the run.
+    """
+    started = time.monotonic()
+    measured = pool.measure_worker_bytes(
+        _dies_without_answering, floor_bytes=4242, timeout_seconds=30.0
+    )
+    elapsed = time.monotonic() - started
+    assert measured == 4242
+    assert elapsed < 15, (
+        f"the probe waited {elapsed:.1f} seconds for a child that was already gone; "
+        f"the parent is holding the write end of the pipe open, so end of file "
+        f"never arrives and a dead child is indistinguishable from a slow one"
+    )
 
 
 def test_a_real_loader_that_raises_lands_on_the_floor_without_printing_anything(capfd):
@@ -1351,6 +1797,164 @@ def test_a_real_loader_that_raises_lands_on_the_floor_without_printing_anything(
     assert "Traceback" not in printed.err, (
         f"a probe failure printed out of its worker: {printed.err}"
     )
+
+
+# ---------------------------------------------------------------------------
+# A container, where the machine's reading is not this process's reading
+# ---------------------------------------------------------------------------
+#
+# THE ONE WAY THE READING LIES THAT NO BRAKE ABOVE CAN SEE. The reserve, the
+# headroom and the pressure gate all answer "the number is optimistic". A
+# container answers "the number belongs to a different machine": psutil reads the
+# host's counters, so a process capped at half a gibibyte on a sixty four
+# gibibyte host is told it has sixty four, and the pressure gate cannot help
+# because the host's swap and the host's used percent are both fine.
+#
+# This is the same blindness the core count is refused for. The guard below
+# forbids ``sched_getaffinity`` and ``cpu_affinity`` by name, and the reason
+# written beside them is that those are what somebody reaches for on reading
+# that a core count ignores cgroup limits. A module that refused cores for being
+# cgroup blind while reading memory cgroup blind had moved the defect rather
+# than ended it.
+
+
+def _version_two(root: Path, *, limit: str, current: str | None = "0") -> Path:
+    """A cgroup version two directory: one file for the cap, one for the usage."""
+    (root / "memory.max").write_text(limit)
+    if current is not None:
+        (root / "memory.current").write_text(current)
+    return root
+
+
+def _version_one(root: Path, *, limit: str, usage: str = "0") -> Path:
+    """The older layout, which is still what a good many hosts publish."""
+    memory = root / "memory"
+    memory.mkdir()
+    (memory / "memory.limit_in_bytes").write_text(limit)
+    (memory / "memory.usage_in_bytes").write_text(usage)
+    return root
+
+
+def test_a_cgroup_with_a_cap_reports_what_is_left_inside_it(tmp_path):
+    _version_two(tmp_path, limit=str(512 * MIB), current=str(64 * MIB))
+    assert pool.cgroup_memory_headroom_bytes(tmp_path) == 448 * MIB
+
+
+def test_the_older_cgroup_layout_is_read_too(tmp_path):
+    _version_one(tmp_path, limit=str(2 * GIB), usage=str(512 * MIB))
+    assert pool.cgroup_memory_headroom_bytes(tmp_path) == 1536 * MIB
+
+
+def test_a_cap_whose_usage_cannot_be_read_is_still_a_cap(tmp_path):
+    """A ceiling that is certainly not too small beats no ceiling at all.
+
+    Throwing the limit away because the usage file was unreadable would report
+    the host's sixty four gibibytes for a process that can never have more than
+    half of one, which is the whole defect back again.
+    """
+    _version_two(tmp_path, limit=str(512 * MIB), current=None)
+    assert pool.cgroup_memory_headroom_bytes(tmp_path) == 512 * MIB
+
+
+def test_a_cgroup_already_over_its_cap_has_no_headroom_rather_than_negative(tmp_path):
+    """A subtraction is where a byte count goes negative, and a negative reading
+    is treated as unreadable one layer up, which would silently restore the host
+    number on the tightest machine there is."""
+    _version_two(tmp_path, limit=str(512 * MIB), current=str(600 * MIB))
+    assert pool.cgroup_memory_headroom_bytes(tmp_path) == 0
+
+
+@pytest.mark.parametrize(
+    "contents",
+    ["max", "", "not a number", "-1", str(1 << 62), "9223372036854771712"],
+    ids=["v2-unlimited", "empty", "text", "negative", "at-the-sentinel", "v1-unlimited"],
+)
+def test_a_cgroup_that_declares_no_limit_reports_none(tmp_path, contents):
+    """Every way of not having a cap is one answer, and the answer is not a guess.
+
+    ``max`` is what version two writes for a group with no limit. The very large
+    numbers are what version one writes instead, and it has written two different
+    ones across kernel versions, which is why the test here is "absurdly large"
+    rather than equality with either.
+    """
+    _version_two(tmp_path, limit=contents)
+    assert pool.cgroup_memory_headroom_bytes(tmp_path) is None
+
+
+def test_a_machine_with_no_cgroups_at_all_reports_none(tmp_path):
+    """P7's other half. This is every developer machine this product is built on."""
+    assert pool.cgroup_memory_headroom_bytes(tmp_path / "nothing here") is None
+    assert pool.cgroup_memory_headroom_bytes(tmp_path) is None
+
+
+def test_a_container_capped_below_its_host_is_sized_by_the_cap(tmp_path, monkeypatch):
+    """The whole point, driven end to end: the cap decides, and the pool is one.
+
+    Sixty four gibibytes on the host, half a gibibyte for this process. Under
+    the host reading alone the plan is the full ceiling, two children each
+    holding a model, inside a cgroup that cannot hold one of them.
+    """
+    import psutil
+
+    _version_two(tmp_path, limit=str(512 * MIB), current=str(64 * MIB))
+    monkeypatch.setattr(
+        psutil, "virtual_memory", lambda: SimpleNamespace(available=64 * GIB, percent=10.0)
+    )
+
+    host_only = pool.plan_pool(
+        worker_bytes=WORKER, items=500, ceiling=64, read_available=reader(64 * GIB)
+    )
+    assert host_only.workers > 1, "the fixture no longer distinguishes the two readings"
+
+    inside = pool.available_bytes(cgroup_root=tmp_path)
+    assert inside == 448 * MIB
+    capped = pool.plan_pool(
+        worker_bytes=WORKER, items=500, ceiling=64, read_available=lambda: inside
+    )
+    assert capped.workers == 1
+    assert capped.in_process is True
+    assert capped.bound is pool.Bound.INSUFFICIENT_MEMORY
+
+
+def test_an_uncapped_machine_reads_exactly_what_the_platform_reports(tmp_path, monkeypatch):
+    """The half that gets skipped (P7), and the one that would break every laptop.
+
+    A cgroup guess on a machine that never had one narrows every pool everywhere
+    to fix a container nobody is running, which is what a fix that is too
+    restrictive looks like from the inside.
+    """
+    import psutil
+
+    monkeypatch.setattr(psutil, "virtual_memory", lambda: SimpleNamespace(available=7 * GIB))
+    assert pool.available_bytes(cgroup_root=tmp_path / "nothing here") == 7 * GIB
+    _version_two(tmp_path, limit="max")
+    assert pool.available_bytes(cgroup_root=tmp_path) == 7 * GIB
+
+
+def test_a_host_tighter_than_the_container_cap_still_wins(tmp_path, monkeypatch):
+    """The minimum is taken in both directions, because either can be the smaller.
+
+    A generous cap on a busy host is as real as a tight cap on an idle one, and a
+    reading that took the cgroup number whenever there was one would size against
+    memory the host has already handed to somebody else.
+    """
+    import psutil
+
+    _version_two(tmp_path, limit=str(32 * GIB), current="0")
+    monkeypatch.setattr(psutil, "virtual_memory", lambda: SimpleNamespace(available=1 * GIB))
+    assert pool.available_bytes(cgroup_root=tmp_path) == 1 * GIB
+
+
+def test_the_real_available_reading_is_a_believable_byte_count():
+    """The seam is only worth having if the reading behind it is a reading.
+
+    Asserted against the SHAPE rather than a value, for the same reason the
+    pressure reading is: the value is a property of whatever this machine is
+    doing while the suite runs. What this pins is that the cgroup lookup does
+    not break the reader on a machine that has no cgroups, which is this one.
+    """
+    taken = pool.available_bytes()
+    assert isinstance(taken, int) and taken > 0
 
 
 # ---------------------------------------------------------------------------
@@ -1884,6 +2488,22 @@ PLAN_PROVENANCE_CORRECT = (
     # Somebody else's class of the same name, which is not this one.
     "from elsewhere import PoolPlan\n"
     "def run():\n    return PoolPlan(workers=9)\n",
+    # A SIBLING INSIDE cratekit/core, in the relative shape such a module writes.
+    # The walk was blind to this one in BOTH directions, and the false negative
+    # is the cheaper half: it could not see a fabricated plan written this way,
+    # and it could not see this correct call either, so the countdown would have
+    # reported a correctly sized package as having no planner at all.
+    "from . import pool\n"
+    "def run(items, cost):\n"
+    "    plan = pool.plan_pool(worker_bytes=cost, items=len(items))\n"
+    "    return pool.map_workers(plan, analyse, items)\n"
+    "def analyse(item):\n    return item\n",
+    # The same through an ancestor package, which is ordinary idiom.
+    "from cratekit import core\n"
+    "def run(items, cost):\n"
+    "    plan = core.pool.plan_pool(worker_bytes=cost, items=len(items))\n"
+    "    return core.pool.map_workers(plan, analyse, items)\n"
+    "def analyse(item):\n    return item\n",
 )
 
 PLAN_PROVENANCE_EVASIONS = (
@@ -1916,6 +2536,38 @@ PLAN_PROVENANCE_EVASIONS = (
     "def run(items):\n"
     "    return sizing.PoolPlan(workers=9, items=1, bound=None, worker_bytes=1,\n"
     "                           available_bytes=None, max_tasks_per_child=None)\n",
+    # FIVE SHAPES THAT REACH THE MODULE THROUGH AN ANCESTOR PACKAGE, every one of
+    # them executed against this guard and found silent. The walk was keyed on
+    # the module's own dotted path, so a source that never spells that path was
+    # not merely allowed, it was not examined: the guard returned an empty list
+    # before looking at a single call. The pool construction guard above had
+    # already closed exactly this shape for its own question, by deriving the
+    # import shapes rather than listing them, and the two walks sat in one file
+    # giving two different answers.
+    "import cratekit.core\n"
+    "def run(items):\n"
+    "    return cratekit.core.pool.PoolPlan(workers=9, items=1, bound=None,\n"
+    "                                       worker_bytes=1, available_bytes=None,\n"
+    "                                       max_tasks_per_child=None)\n",
+    "from cratekit import core\n"
+    "def run(items):\n"
+    "    return core.pool.PoolPlan(workers=9, items=1, bound=None, worker_bytes=1,\n"
+    "                              available_bytes=None, max_tasks_per_child=None)\n",
+    "import cratekit\n"
+    "def run(items):\n"
+    "    return cratekit.core.pool.PoolPlan(workers=9, items=1, bound=None,\n"
+    "                                       worker_bytes=1, available_bytes=None,\n"
+    "                                       max_tasks_per_child=None)\n",
+    # The two a sibling inside cratekit/core writes, which is the package the
+    # sizing module itself lives in and therefore the likeliest place of all.
+    "from . import pool\n"
+    "def run(items):\n"
+    "    return pool.PoolPlan(workers=9, items=1, bound=None, worker_bytes=1,\n"
+    "                         available_bytes=None, max_tasks_per_child=None)\n",
+    "from .pool import PoolPlan\n"
+    "def run(items):\n"
+    "    return PoolPlan(workers=9, items=1, bound=None, worker_bytes=1,\n"
+    "                    available_bytes=None, max_tasks_per_child=None)\n",
 )
 
 
@@ -2081,6 +2733,49 @@ ANALYSIS_CORRECT = (
             "    return pool.map_workers(plan, analyse, items)\n",
         ),
     ],
+    # Correctly sized through an ancestor package, which the walk could not see.
+    # This one is the false ACCUSATION rather than the missed evasion: before the
+    # walk was widened the countdown reported this package as calling neither the
+    # planner nor the runner, and a guard that fires on correct code is a guard
+    # somebody routes around (P7).
+    [
+        (
+            "light.py",
+            "from cratekit import core\n"
+            "def run(items, cost):\n"
+            "    plan = core.pool.plan_pool(worker_bytes=cost, items=len(items))\n"
+            "    return core.pool.map_workers(plan, analyse, items)\n"
+            "def analyse(item):\n    return item\n",
+        ),
+    ],
+    # The same false accusation through a relative import, which is what a module
+    # inside the package one level over actually writes.
+    #
+    # THE TWO RELATIVE SHAPES ARE TWO PACKAGES HERE, NOT TWO MODULES IN ONE, and
+    # that is the whole reason they discriminate. The countdown asks whether ANY
+    # module in the package calls the planner, so a package holding both shapes
+    # covers for itself: break the walk's handling of either one and the other
+    # still answers, and the fixture passes while half the walk is dead.
+    [
+        (
+            "light.py",
+            "from ..core import pool\n"
+            "def run(items, cost):\n"
+            "    plan = pool.plan_pool(worker_bytes=cost, items=len(items))\n"
+            "    return pool.map_workers(plan, analyse, items)\n"
+            "def analyse(item):\n    return item\n",
+        ),
+    ],
+    [
+        (
+            "light.py",
+            "from ..core.pool import map_workers, plan_pool\n"
+            "def run(items, cost):\n"
+            "    plan = plan_pool(worker_bytes=cost, items=len(items), ceiling=2)\n"
+            "    return map_workers(plan, analyse, items)\n"
+            "def analyse(item):\n    return item\n",
+        ),
+    ],
 )
 
 ANALYSIS_EVASIONS = (
@@ -2130,6 +2825,23 @@ ANALYSIS_EVASIONS = (
             "def analyse(item):\n    return item\n",
         ),
     ],
+    # The hand built plan again, through an ancestor package. Nine children, one
+    # import line different, and invisible to the countdown until the walk under
+    # it learned the shape.
+    [
+        _ANALYSIS_LIGHT,
+        (
+            "vocals.py",
+            "from cratekit import core\n"
+            "def run(items):\n"
+            "    plan = core.pool.PoolPlan(workers=9, items=len(items),\n"
+            "                              bound=core.pool.Bound.CEILING,\n"
+            "                              worker_bytes=1024 ** 3, available_bytes=None,\n"
+            "                              max_tasks_per_child=100)\n"
+            "    return core.pool.map_workers(plan, analyse, items)\n"
+            "def analyse(item):\n    return item\n",
+        ),
+    ],
     # Nothing sizes anything.
     [
         (
@@ -2143,7 +2855,17 @@ ANALYSIS_EVASIONS = (
 )
 
 
-@pytest.mark.parametrize("modules", ANALYSIS_CORRECT, ids=["two-passes", "split-planner"])
+@pytest.mark.parametrize(
+    "modules",
+    ANALYSIS_CORRECT,
+    ids=[
+        "two-passes",
+        "split-planner",
+        "ancestor-package",
+        "relative-package-import",
+        "relative-symbol-import",
+    ],
+)
 def test_the_analysis_countdown_stays_silent_on_correctly_sized_modules(modules):
     """The half that gets skipped, run before the half that does not (P7)."""
     assert analysis_sizing_violations(modules) == []
@@ -2152,7 +2874,14 @@ def test_the_analysis_countdown_stays_silent_on_correctly_sized_modules(modules)
 @pytest.mark.parametrize(
     "modules",
     ANALYSIS_EVASIONS,
-    ids=["hand-built-plan", "core-count-in-a-hand-built-plan", "private-pool", "no-sizing", "empty"],
+    ids=[
+        "hand-built-plan",
+        "core-count-in-a-hand-built-plan",
+        "private-pool",
+        "hand-built-plan-through-an-ancestor",
+        "no-sizing",
+        "empty",
+    ],
 )
 def test_the_analysis_countdown_bites_the_evasions_that_used_to_pass_it(modules):
     """Two of these five passed the countdown as written, and both spawn nine children."""

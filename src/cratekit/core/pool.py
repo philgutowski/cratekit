@@ -27,7 +27,8 @@ made it worse than a restriction. It made the SAME call mean two different thing
 depending on the machine: an in-process plan runs the closure happily and a
 pooled plan raises about a local object, so a caller could develop against a busy
 laptop and discover the rule on a quiet server. :func:`map_workers` now refuses an
-unsendable callable on both paths, before either runs.
+unsendable callable, and an unsendable initializer argument, on both paths
+before either runs.
 
 **Five brakes, and none of them is redundant.** Each one covers a failure of the
 others:
@@ -72,6 +73,22 @@ comes off the top BEFORE the percent, the percent itself is lower on darwin than
 elsewhere, and a machine already in swap is refused a pool outright. Those are
 three separate answers to three separate ways the reading lies, which is why none
 of them replaced another.
+
+**A container is a sixth way the reading lies, and the only one where the
+number belongs to a different machine rather than merely being optimistic.**
+psutil answers out of the host's own counters. A process capped at half a
+gibibyte inside a container on a sixty four gibibyte host is told it has sixty
+four gibibytes, and every brake above then does its arithmetic on a number a
+hundred times the truth: the reserve comes off it, the percent scales what is
+left, and the pressure gate reads the host's swap and the host's used percent,
+both of which are fine. So the reading is the SMALLER of what the machine says
+and what this process's own memory cgroup allows, and a machine with no cgroup
+at all reads exactly what it read before. This is the same blindness the core
+count is refused for: the four spellings forbidden below include the two
+affinity calls precisely because somebody reaches for them on reading that a
+core count ignores cgroup limits, and a module that refused cores for that
+reason while reading memory the same way would have moved the defect rather
+than ended it.
 
 **A recycle this module performs itself, because the platform's own deadlocks.**
 ``ProcessPoolExecutor(max_tasks_per_child=N)`` hangs forever, with no timeout and
@@ -145,6 +162,7 @@ from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import process as _process_pool
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, TypeVar
 
@@ -393,18 +411,97 @@ class PoolPlan:
         return f"{where}, bound by {BOUND_PHRASES[self.bound]}"
 
 
-def available_bytes() -> int:
+#: Where the kernel publishes a container's own memory limit.
+#:
+#: A CONSTANT AND AN ARGUMENT, because a machine with no cgroups cannot execute
+#: either branch of the reader below, and a branch no test can reach is a branch
+#: that is wrong the day somebody edits it. Every test here points the reader at
+#: a directory it wrote itself.
+CGROUP_ROOT = Path("/sys/fs/cgroup")
+
+#: A published limit at least this large is the kernel saying "no limit".
+#:
+#: Version one writes the largest page-aligned value it can rather than a
+#: sentinel word, and that value has been two different numbers across kernel
+#: versions, so the test here is "absurdly large" rather than equality with
+#: either of them. Four exbibytes is far above any cap a machine could enforce
+#: and below both of the numbers the kernel has used.
+_CGROUP_UNLIMITED_ABOVE = 1 << 62
+
+
+def _cgroup_number(path: Path) -> int | None:
+    """One byte count the kernel published, or None when there is not one there.
+
+    Every way of not getting a number is the same answer. The file may not
+    exist, this process may not be allowed to read it, the path may be a
+    directory, and version two writes the word ``max`` where a number would go
+    on a group with no limit. None of those is a limit, and none of them is a
+    reason to invent one.
+    """
+    try:
+        text = path.read_text().strip()
+    except OSError:
+        return None
+    try:
+        value = int(text)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
+
+
+def cgroup_memory_headroom_bytes(root: Path = CGROUP_ROOT) -> int | None:
+    """Room left inside this process's own memory cgroup, or None when uncapped.
+
+    NONE MEANS NO CAP, and it also means no cap this process could read. Those
+    are deliberately the same answer. A guess at a limit is a number that is too
+    small on every machine that never had one, and narrowing every pool on every
+    developer's laptop to fix a container nobody is running is what a fix that
+    is too restrictive looks like from the inside.
+
+    A CAP WITH NO USAGE READING IS STILL A CAP. Version two publishes the limit
+    and the current usage as two files, and a process that can read one but not
+    the other still knows a ceiling it can never exceed. Reporting the limit
+    there is not optimism, because it is certainly not smaller than the truth,
+    and the machine's own reading is still taken as the other half of the
+    minimum below.
+    """
+    limit = _cgroup_number(root / "memory.max")
+    used = _cgroup_number(root / "memory.current")
+    if limit is None:
+        version_one = root / "memory"
+        limit = _cgroup_number(version_one / "memory.limit_in_bytes")
+        used = _cgroup_number(version_one / "memory.usage_in_bytes")
+    if limit is None or limit >= _CGROUP_UNLIMITED_ABOVE:
+        return None
+    if used is None:
+        return limit
+    return max(0, limit - used)
+
+
+def available_bytes(*, cgroup_root: Path = CGROUP_ROOT) -> int:
     """Memory a new process could obtain right now, in bytes.
 
     AVAILABLE, never free. See the module docstring for why the two are not
     interchangeable and why this one is the right question.
+
+    THE SMALLER OF TWO CEILINGS, because the machine imposes one and a container
+    imposes the other and neither knows about the other. The platform reading is
+    a HOST reading, and a cgroup's headroom says nothing about whether the host
+    can actually serve it, so only the minimum is bounded by both. On a machine
+    with no cgroup the second ceiling is absent and this returns exactly what it
+    always returned.
+
+    ``cgroup_root`` is keyword-only and defaulted, so this is still the zero
+    argument reader :data:`AvailableReader` describes.
 
     psutil is imported lazily so a caller that injects its own reader, which
     every sizing test does, never loads the extension module at all.
     """
     import psutil
 
-    return int(psutil.virtual_memory().available)
+    reading = int(psutil.virtual_memory().available)
+    capped = cgroup_memory_headroom_bytes(cgroup_root)
+    return reading if capped is None else min(reading, capped)
 
 
 def memory_pressure() -> Pressure:
@@ -822,7 +919,7 @@ def executor_arguments(
     }
 
 
-def _refuse_a_callable_no_child_could_receive(value: object, role: str) -> None:
+def _refuse_what_no_child_could_receive(value: object, role: str) -> None:
     """Refuse now what a wider machine would refuse later, and a tight one never would.
 
     Without this, the SAME call has two different contracts depending on how much
@@ -836,6 +933,14 @@ def _refuse_a_callable_no_child_could_receive(value: object, role: str) -> None:
     So the stricter of the two contracts is the only contract. It is checked on
     both paths, before either one runs, and the cost is one pickle of a function
     reference.
+
+    THE INITIALIZER'S ARGUMENTS ARE HELD TO IT TOO, and leaving them out was the
+    same defect one argument over. A plan of one worker calls the initializer
+    here with whatever it was handed and a plan of two pickles those values to a
+    child, so a closure passed as an initializer argument was still a call that
+    meant two different things on two different machines. A value that cannot be
+    sent to a child is refused wherever it appears rather than only where it was
+    first noticed.
     """
     try:
         pickle.dumps(value)
@@ -892,9 +997,11 @@ def map_workers(
     than by every caller remembering. A call site that builds its own executor
     keeps its own copy of that branch, and the copies drift.
     """
-    _refuse_a_callable_no_child_could_receive(function, "function")
+    _refuse_what_no_child_could_receive(function, "function")
     if initializer is not None:
-        _refuse_a_callable_no_child_could_receive(initializer, "initializer")
+        _refuse_what_no_child_could_receive(initializer, "initializer")
+    for position, argument in enumerate(initargs):
+        _refuse_what_no_child_could_receive(argument, f"initializer argument {position}")
     ordered = list(items)
     if plan.in_process:
         if initializer is not None:
@@ -917,6 +1024,7 @@ __all__ = [
     "AvailableReader",
     "BOUND_PHRASES",
     "Bound",
+    "CGROUP_ROOT",
     "DARWIN_HEADROOM_PERCENT",
     "DEFAULT_HEADROOM_PERCENT",
     "DEFAULT_MAX_TASKS_PER_CHILD",
@@ -931,6 +1039,7 @@ __all__ = [
     "PressureReader",
     "ProbeRunner",
     "available_bytes",
+    "cgroup_memory_headroom_bytes",
     "default_headroom_percent",
     "executor_arguments",
     "map_workers",

@@ -33,9 +33,6 @@ import ast
 #: The module every question here is asked about.
 REVIEW_MODULE = "cratekit.core.review"
 
-#: The package it lives in, for the ``from cratekit.core import review`` shape.
-REVIEW_PACKAGE = "cratekit.core"
-
 #: The two constructors that produce a comma separated writer. Named once so the
 #: files that need this question cannot ask it two different ways.
 CSV_WRITER_NAMES = frozenset({"writer", "DictWriter"})
@@ -54,20 +51,50 @@ def _dotted(node: ast.AST) -> str | None:
     return None
 
 
+def _dotted_tail_of(candidate: str, path: str) -> bool:
+    """Whether ``candidate`` is a whole dotted tail of ``path``.
+
+    A relative import cannot be resolved to an absolute module without knowing
+    where the importing file sits, so it is matched by its tail instead.
+    ``from .pool import PoolPlan`` written inside ``cratekit/core`` and
+    ``from ..core.pool import PoolPlan`` written one package deeper both name the
+    same module, and both end the same way.
+    """
+    if not candidate:
+        return False
+    wanted = candidate.split(".")
+    return path.split(".")[-len(wanted):] == wanted
+
+
 class ImportsOf:
     """How one source file reaches ONE named module, if it reaches it at all.
 
-    Four shapes are recognized, and they are the four this repository's own
-    modules use between them::
+    Four shapes were recognized first, and they are the four this repository's
+    own modules use between them::
 
         import cratekit.core.review            # cratekit.core.review.offer(...)
         import cratekit.core.review as rv      # rv.offer(...)
         from cratekit.core import review       # review.offer(...)
         from cratekit.core.review import offer # offer(...)
 
-    A relative import is recognized too. Nothing in the package uses one today,
-    and a guard that failed the first module to do so would be a guard somebody
-    routes around rather than a defect anybody fixes.
+    AN ANCESTOR PACKAGE REACHES THE MODULE TOO, which is five more shapes, and
+    the hole was live rather than theoretical. ``from cratekit import core``
+    followed by ``core.pool.PoolPlan(...)`` builds the very object the provenance
+    guard exists to forbid, and ``import cratekit.core`` does the same thing one
+    import shorter. Neither names the module, so a walk keyed on the module's own
+    dotted path saw nothing at all and the guard returned an empty list. That is
+    the same shape the pool construction guard in ``tests/test_pool_sizing.py``
+    had already closed for its own question, by deriving the import shapes rather
+    than listing them, and the two walks sat in one wave giving two different
+    answers to one question.
+
+    A relative import is recognized too, INCLUDING THE BARE ``from . import
+    pool`` that a sibling inside the module's own package writes, which is the
+    package the sizing module lives in. That one was invisible in BOTH
+    directions, which is the more expensive half: the countdown could not see a
+    fabricated plan built that way, and it could not see a correct ``plan_pool``
+    call built that way either, so a correctly sized package would have been
+    reported as having no planner in it at all.
 
     PARAMETERIZED BY MODULE, because the review queue is no longer the only
     obligation a countdown holds a later unit to. U12 asks the same question
@@ -78,58 +105,77 @@ class ImportsOf:
 
     def __init__(self, tree: ast.AST, module: str) -> None:
         self.module = module
-        package, _, leaf = module.rpartition(".")
-        #: Local names that ARE the module.
-        self.module_names: set[str] = set()
+        parts = module.split(".")
+        #: Every dotted prefix of the module, mapped to the path still to be
+        #: walked from it. The module itself maps to the empty string. Derived
+        #: from the module's own name rather than listed, because a listed set of
+        #: shapes is a set somebody has to remember to extend.
+        ancestors = {
+            ".".join(parts[:size]): ".".join(parts[size:])
+            for size in range(1, len(parts) + 1)
+        }
+        #: Local name -> the path still to be walked from it to reach the module.
+        self.paths: dict[str, str] = {}
         #: Local name -> the module attribute it was imported as.
         self.symbols: dict[str, str] = {}
-        tail = module.split(".")[-2:]
-        package_tail = package.split(".")[-1:]
+
+        def remainder(reached: str, *, relative: bool) -> str | None:
+            """What is left to walk from an imported name, or None if it misses."""
+            if reached in ancestors:
+                return ancestors[reached]
+            if not relative:
+                return None
+            for path in sorted(ancestors, key=len, reverse=True):
+                if _dotted_tail_of(reached, path):
+                    return ancestors[path]
+            return None
+
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    if alias.name == module:
-                        self.module_names.add(alias.asname or module)
+                    if alias.name in ancestors:
+                        self.paths[alias.asname or alias.name] = ancestors[alias.name]
             elif isinstance(node, ast.ImportFrom):
                 imported = node.module or ""
-                names_the_module = imported == module or (
-                    node.level > 0 and imported.split(".")[-2:] == tail
-                )
-                names_the_package = imported == package or (
-                    node.level > 0 and imported.split(".")[-1:] == package_tail
-                )
-                if names_the_module:
+                relative = node.level > 0
+                if imported == module or (relative and _dotted_tail_of(imported, module)):
                     for alias in node.names:
                         self.symbols[alias.asname or alias.name] = alias.name
-                elif names_the_package:
-                    for alias in node.names:
-                        if alias.name == leaf:
-                            self.module_names.add(alias.asname or leaf)
+                    continue
+                for alias in node.names:
+                    reached = f"{imported}.{alias.name}" if imported else alias.name
+                    rest = remainder(reached, relative=relative)
+                    if rest is not None:
+                        self.paths[alias.asname or alias.name] = rest
+        #: Local names that ARE the module, kept as its own set because that is
+        #: the question most of this file asks.
+        self.module_names: set[str] = {name for name, rest in self.paths.items() if not rest}
 
     @property
     def reaches(self) -> bool:
         """Whether this source imports the module at all, in any shape."""
-        return bool(self.module_names or self.symbols)
+        return bool(self.paths or self.symbols)
 
     def resolves(self, node: ast.AST, wanted: str) -> bool:
         """Whether ``node`` names the module's ``wanted`` attribute.
 
         ``wanted`` may itself be dotted, so ``Queue.VERSION_MATCH`` is one
         question rather than two, and it is answered the same way whether the
-        source spelled the module, an alias for it, or imported ``Queue`` on its
-        own.
+        source spelled the module, an alias for it, an ancestor package of it, or
+        imported ``Queue`` on its own.
         """
         dotted = _dotted(node)
         if dotted is None:
             return False
-        for module_name in self.module_names:
-            if dotted == f"{module_name}.{wanted}":
+        for name, rest in self.paths.items():
+            reached = f"{name}.{rest}" if rest else name
+            if dotted == f"{reached}.{wanted}":
                 return True
-        head, _, rest = dotted.partition(".")
+        head, _, tail = dotted.partition(".")
         symbol = self.symbols.get(head)
         if symbol is None:
             return False
-        return (f"{symbol}.{rest}" if rest else symbol) == wanted
+        return (f"{symbol}.{tail}" if tail else symbol) == wanted
 
 
 class ReviewImports(ImportsOf):
