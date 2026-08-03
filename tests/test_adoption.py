@@ -2117,8 +2117,14 @@ def test_the_remaining_adoption_obligation_is_owned_by_the_file_the_board_reads(
         "somebody reads is the one that is wrong"
     )
     # The entry has to say what the wall IS, because R-13 states a close
-    # condition that will not close it.
-    assert "explicit" in what and "two gates" in what.lower().replace("TWO GATES", "two gates")
+    # condition that will not close it: not the database, but conformance 3's
+    # inline answer against an explicit gate, and its one-gate-per-drive loop
+    # against a verb declaring two.
+    lowered = what.lower()
+    assert "explicit" in lowered and "two gates" in lowered, (
+        "the entry does not say what the wall is, so the next reader acts on "
+        "R-13's close condition, which will not close it"
+    )
     assert "R-20" in what, "the residue apply_plan admits to is owned by nothing"
 
 
