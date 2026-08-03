@@ -1480,7 +1480,24 @@ def test_bare_metal_recovery_refuses_a_target_that_already_holds_a_library(cfg, 
         terminal=lambda: True,
         **seams,
     ) as open_session:
-        assert open_session.workflow == restore.BARE_METAL_WORKFLOW
+        assert open_session.workflow == "bare-metal-recovery"
+
+    # A LITERAL above, and DISTINCT here. Three workflow labels land in one log
+    # field, and both constants' docstrings say the separate label is what keeps
+    # the weaker gates visible afterwards. Reading the expected value off the
+    # constant leaves that claim unpinned: the label could be set equal to either
+    # of the other two and the suite would stay green while the log lost the
+    # distinction it exists to keep.
+    assert (
+        len(
+            {
+                restore.BARE_METAL_WORKFLOW,
+                restore.CAPTURE_RESTORE_WORKFLOW,
+                backup.RESTORE_WORKFLOW,
+            }
+        )
+        == 3
+    ), "two workflows that land in the same log field share a label"
 
 
 def test_bare_metal_recovery_needs_a_terminal_and_an_explicit_decision(cfg, tmp_path):
@@ -2342,7 +2359,12 @@ def test_the_tree_shortness_handoff_calls_the_module_that_owns_the_gate(
     decided = restore.plan(cfg, record.session_id, held=held)
     restore.run(decided, cfg, held=held)
 
-    assert calls == [(cfg, ("routing",), restore.PRE_CUTOVER_RESTORE)]
+    # The reason is a LITERAL. It is the vocabulary the OWNING module records
+    # reasons in, so its value is the whole point of naming it once, and an
+    # expected value read back off the constant that produced it passes at every
+    # value the constant can take.
+    assert calls == [(cfg, ("routing",), "restore-predates-cutover")]
+    assert restore.PRE_CUTOVER_RESTORE == "restore-predates-cutover"
     assert reconcile.unconverged_trees(cfg) == (), (
         "the fact was recorded twice, which is the duplication this fixes"
     )
@@ -2744,21 +2766,27 @@ def test_round3_a_staged_log_is_counted_as_permanent_growth(cfg, held):
     assert restore.space_peak_bytes(decided) >= companions
 
 
-def test_round2_the_restore_capacity_refusal_names_the_library_volume(cfg, held):
+def test_round2_the_restore_capacity_refusal_names_the_library_volume(
+    cfg, held, monkeypatch
+):
     """The refusal reused the capture message and sent people to prune captures.
 
     The captures may be on another volume entirely, which this unit computes and
     the retention plan carries.
+
+    The seam is taken through ``monkeypatch`` for the reason spelled out at the
+    round 3 test above: an assignment restored in a ``finally`` is undone only by
+    the block that made it, so a later rewrite that moves an assertion above the
+    ``try`` leaks a stubbed free-space probe into every test that runs after it in
+    the same process. This was the last direct assignment of the eight sites, and
+    leaving one instance of a pattern the file condemns forty lines earlier is how
+    the pattern comes back.
     """
     record, _captured = completed_session(cfg)
     decided = restore.plan(cfg, record.session_id, held=held)
-    original = snapshot._free_bytes
-    snapshot._free_bytes = lambda _root: 1
-    try:
-        with pytest.raises(CratekitError) as excinfo:
-            restore.run(decided, cfg, held=held, dry_run=True)
-    finally:
-        snapshot._free_bytes = original
+    monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: 1)
+    with pytest.raises(CratekitError) as excinfo:
+        restore.run(decided, cfg, held=held, dry_run=True)
 
     assert excinfo.value.cause.reason == "snapshot-store-full"
     assert "LIBRARY volume" in " ".join(excinfo.value.cause.remediation.steps)
@@ -3152,6 +3180,20 @@ def test_round4_an_unwritable_state_directory_refuses_at_the_rehearsal(cfg, held
     database at the new generation and the coupled state at the old. No other step
     covers it, because the database's parent is ``<library>/db`` and this one is
     ``<library>/<state>``.
+
+    THE REFUSAL IS READ OFF ``detail["unwritable"]`` RATHER THAN OUT OF THE
+    MESSAGE, and the difference is the whole point of this test. The parent here
+    is ``<library>/.cratekit`` and the target is ``<library>/.cratekit/coupled``,
+    so the parent's path is a PREFIX of the target's; a substring test against the
+    message is satisfied by the sentence's second half, "would stop at <target>",
+    no matter what the first half names. Measured: deleting the unwritable
+    directory from the message entirely left that assertion green, so it could not
+    tell the parent probe from the target probe, which is the one distinction this
+    test exists to make. The detail field carries the probe's own answer and
+    nothing else, so it can. The message is asserted too, anchored at the front
+    rather than searched, because a person reads the sentence and not the detail
+    dictionary: an anchored match cannot be satisfied by the target's path and
+    goes red when the directory is dropped out of the sentence.
     """
     write_state(cfg, "label_watermarks", {"source": "before"})
     record, _captured = completed_session(cfg)
@@ -3175,7 +3217,8 @@ def test_round4_an_unwritable_state_directory_refuses_at_the_rehearsal(cfg, held
         parent.chmod(0o700)
 
     assert excinfo.value.cause.reason == "restore-step-failed"
-    assert str(parent) in excinfo.value.cause.message
+    assert excinfo.value.cause.detail["unwritable"] == str(parent)
+    assert excinfo.value.cause.message.startswith(f"{parent} is not writable")
     # Nothing was touched: the rehearsal refused before the first destructive step.
     assert config.state_path("rekordbox_db", cfg).read_bytes() == (
         b"database, generation one"
@@ -3245,31 +3288,65 @@ def test_round4_a_removal_ahead_of_a_tree_replacement_lowers_the_peak(cfg, held)
     first and ``_remove`` raises rather than failing silently, but the arithmetic
     was unguarded.
 
-    Derived BY HAND, same four quantities as the plan above plus the removal:
+    THE PROPORTIONS ARE THE TEST. An earlier version removed a 1 MiB document
+    ahead of an 8 KiB coupled tree, which drove the running total so far below
+    zero that the coupled step could not reach the database step's 6,144 either
+    way; DOUBLING the subtraction killed nothing, so the term was pinned for
+    PRESENCE and not for magnitude while this docstring said it was derived by
+    hand. So the removal is now SMALLER than the tree that follows it, which is
+    the only arrangement in which the subtraction reaches the peak at all.
 
-    * replace the database:   peak = 6,144;  occupied = 2,048
-    * remove a 1 MiB xml:     occupied = 2,048 - 1,048,576 = -1,046,528
-    * replace the coupled tree: max(6,144, -1,046,528 + 8,192) = 6,144
+    Derived BY HAND from the five quantities pinned below:
 
-    Without the subtraction the third line is max(6,144, 2,048 + 8,192) = 10,240,
-    so the restore would be asked for 4,096 bytes it does not need on top of a
-    library that is about to shed a megabyte.
+    * replace the database:    peak = 0 + 6,144 = 6,144;  occupied = 2,048
+    * remove an 8 KiB xml:     occupied = 2,048 - 8,192 = -6,144
+    * replace the coupled tree: peak = max(6,144, -6,144 + 1,060,864) = 1,054,720
+
+    The coupled figure is the ordinary plan's 8,192 plus the queue this fixture
+    puts inside it before the capture: one directory entry at 2,048, and one
+    1 MiB document at 1,048,576 blocks plus its own 2,048 entry.
+
+    Every wrong version of the subtraction now moves the answer. Dropping it
+    gives 1,062,912, doubling it gives 1,046,528, and charging the entry overhead
+    the way ``incoming_bytes`` does gives 1,052,672. An over-count puts the
+    estimate BELOW the real peak, which is the direction that lets a preflight
+    pass on a volume that cannot hold the restore.
     """
     write_state(cfg, "label_watermarks", {"source": "before"})
+    queue = config.state_path("review_queue", cfg)
+    assert config.library_coupled_dir(cfg) in queue.parents, (
+        "the queue must be inside the coupled directory or the capture does not "
+        "carry it and this fixture proves nothing"
+    )
+    queue.mkdir(parents=True, exist_ok=True)
+    (queue / "item-00000.json").write_bytes(b"q" * 1024 * 1024)
     record, _captured = completed_session(cfg)
     # Created AFTER the capture, so the manifest records it absent and the plan
     # removes it, and it is on disk now, so removing it gives real bytes back.
     playlists = _playlist_xml_path(cfg)
-    playlists.write_bytes(b"p" * 1024 * 1024)
+    playlists.write_bytes(b"p" * 8192)
     decided = restore.plan(cfg, record.session_id, held=held)
 
     acts = [step.act for step in decided.steps if step.target is not None]
     assert acts.index(restore.Act.REMOVE) < acts.index(restore.Act.REPLACE_TREE), (
         "the removal must precede the tree replacement or this proves nothing"
     )
-    assert snapshot.freed_bytes(playlists) == 1048576
+    captured = {
+        entry.source.name: entry.captured
+        for entry in snapshot.read_manifest(decided.capture_root).sources
+        if entry.captured is not None
+    }
+    assert snapshot.incoming_bytes(captured["master.db"]) == 6144
+    assert snapshot.incoming_bytes(captured["coupled"]) == 1060864
+    assert snapshot.freed_bytes(config.state_path("rekordbox_db", cfg)) == 4096
+    assert snapshot.freed_bytes(config.library_coupled_dir(cfg)) == 1052672
+    assert snapshot.freed_bytes(playlists) == 8192
+    # Those five literals already say the removal is SMALLER than the tree behind
+    # it, which is the proportion the whole test turns on. Restating it as
+    # ``freed_bytes(playlists) < incoming_bytes(coupled)`` would read both sides
+    # back out of the code under test, which is the shape this round is removing.
 
-    assert restore.space_peak_bytes(decided) == 6144
+    assert restore.space_peak_bytes(decided) == 1054720
 
 
 def test_round4_the_default_retention_count_is_five(cfg):
@@ -3306,6 +3383,20 @@ def test_round4_a_volume_just_above_what_the_rule_demands_is_not_refused(
     prove it still lets a restore through. Free space is pinned to exactly what
     the preflight asks for, which is the tightest volume that may proceed, and the
     restore has to land.
+
+    WHAT THIS CANNOT SEE IS THE HEADROOM'S VALUE, and an earlier version of it
+    implied otherwise. Its precondition read
+    ``demanded < int(summed * CAPACITY_HEADROOM)`` with ``demanded`` computed from
+    the same constant, so the constant appeared on both sides and CANCELLED: the
+    whole assertion reduced to "the peak is below the sum", and changing 1.10 to
+    1.00 left it, and the entire suite, green. The precondition below says that
+    directly, without pretending to constrain a value it cannot. The value itself
+    is pinned with literals in the test that follows.
+
+    The boundary is still worth asking relationally, and only relationally: the
+    claim here is that free space equal to EXACTLY what the rule demands is
+    accepted, which is a statement about the comparison operator in
+    ``assert_room_for`` and turns red if ``>=`` ever becomes ``>``.
     """
     _build_capacity_shape(cfg, database=8, wal=4, items=2000)
     record, _captured = completed_session(cfg)
@@ -3317,9 +3408,10 @@ def test_round4_a_volume_just_above_what_the_rule_demands_is_not_refused(
         for entry in snapshot.read_manifest(decided.capture_root).sources
         if entry.captured is not None
     )
-    assert demanded < int(summed * snapshot.CAPACITY_HEADROOM), (
-        "this volume is not tight enough to say anything: the round 1 rule would "
-        "have accepted it too"
+    assert restore.space_peak_bytes(decided) < summed, (
+        "this volume is not tight enough to say anything: the round 1 rule "
+        "demanded the same multiple of the SUM, so it would have accepted this "
+        "one too"
     )
 
     monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: demanded)
@@ -3327,6 +3419,107 @@ def test_round4_a_volume_just_above_what_the_rule_demands_is_not_refused(
 
     assert outcome.converged, "the tightest volume the rule allows was refused"
     assert config.state_path("rekordbox_db", cfg).read_bytes()[:1] == b"d"
+
+
+def test_round5_the_capacity_headroom_decides_a_refusal_at_two_literal_volumes(
+    cfg, held, monkeypatch
+):
+    """``CAPACITY_HEADROOM`` governs a REFUSAL and nothing could see its value.
+
+    Measured on the round 4 tip: changing it from 1.10 to 1.00 left the whole
+    suite green, 3,297 passed. It died only at 0.0. Every test that touched it
+    computed its own input from it, so the constant cancelled and the assertions
+    reduced to statements that are true at every value above zero.
+
+    1.00 IS THE VALUE SOMEBODY REACHES FOR, which is what makes the blindness
+    expensive rather than theoretical: the constant's own docstring names false
+    refusals as the pressure on it. At 1.00 a restore is allowed to start on a
+    volume holding precisely the estimate, another process writes during the copy,
+    and ``shutil.copytree`` dies part way through the coupled tree with the
+    database already at the new generation and the coupled state at the old.
+
+    SO BOTH FREE-SPACE FIGURES ARE LITERALS, and neither the input nor the
+    expected answer reads the constant or calls ``space_peak_bytes``. The plan is
+    the ordinary one whose peak is 10,240 bytes, derived by hand above from the
+    four quantities pinned again here:
+
+    * 10,240 x 1.05 = 10,752 free bytes must still be REFUSED
+    * 10,240 x 1.10 = 11,264 free bytes must be ACCEPTED
+
+    Together they bound the constant into ``(1.05, 1.10]``. At 1.00 or 1.05 the
+    first half goes red, at 1.15 the second does.
+    """
+    write_state(cfg, "label_watermarks", {"source": "before"})
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    captured = {
+        entry.source.name: entry.captured
+        for entry in snapshot.read_manifest(decided.capture_root).sources
+        if entry.captured is not None
+    }
+    # The shape the two literals are derived from, pinned so a filesystem that
+    # allocates differently fails HERE and says which quantity moved.
+    assert snapshot.incoming_bytes(captured["master.db"]) == 6144
+    assert snapshot.incoming_bytes(captured["coupled"]) == 8192
+    assert snapshot.freed_bytes(config.state_path("rekordbox_db", cfg)) == 4096
+    assert snapshot.freed_bytes(config.library_coupled_dir(cfg)) == 4096
+
+    monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: 10752)
+    with pytest.raises(CratekitError) as excinfo:
+        restore.run(decided, cfg, held=held, dry_run=True)
+
+    assert excinfo.value.cause.reason == "snapshot-store-full"
+    assert excinfo.value.cause.detail["required_bytes"] == 11264
+    # The rehearsal refused, so the library is byte for byte as it was found.
+    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
+        b"database, generation one"
+    )
+
+    monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: 11264)
+    outcome = restore.run(decided, cfg, held=held)
+
+    assert outcome.converged, "the volume the headroom asks for was refused"
+
+
+def test_round5_a_staged_companion_is_never_written_over(cfg, held):
+    """The staging side had a probabilistic answer where the capture side has a rule.
+
+    ``_stage_companion_aside`` called ``_mkdir_private``, which RETURNS SILENTLY on
+    a directory that already exists, and then ``os.replace``, which overwrites. The
+    only thing standing between two attempts and one destroyed log was the 64 bits
+    of random in the stamp. ``snapshot.capture`` refuses an occupied stamp outright
+    one module away, on the same reasoning, so the asymmetry was accidental rather
+    than argued.
+
+    The bytes at stake are the ones this whole staging exists for: a write-ahead
+    log holds transactions that are in the main file nowhere and in no capture at
+    all, so overwriting a staged one destroys the only copy that exists anywhere.
+    Refusing costs a restore that can be run again; not refusing costs the work.
+    """
+    log = _wal_path(cfg)
+    log.write_bytes(b"the live log, transactions committed since the checkpoint")
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+    assert log in [
+        step.target for step in decided.steps if step.act is restore.Act.CLEAR
+    ], "this plan does not stage the log aside, so it proves nothing"
+
+    # An earlier attempt's log, already resting under the name this one wants.
+    decided.pre_restore_root.mkdir(parents=True)
+    survivor = decided.pre_restore_root / log.name
+    survivor.write_bytes(b"an earlier attempt's log, recoverable from nowhere else")
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore.run(decided, cfg, held=held)
+
+    assert excinfo.value.cause.reason == "internal-error"
+    assert survivor.read_bytes() == (
+        b"an earlier attempt's log, recoverable from nowhere else"
+    )
+    assert log.read_bytes() == (
+        b"the live log, transactions committed since the checkpoint"
+    ), "the live log was moved anyway"
 
 
 def test_round4_the_residual_findings_this_module_names_still_exist():
@@ -3342,6 +3535,13 @@ def test_round4_the_residual_findings_this_module_names_still_exist():
     So the module names them by title and this asserts the titles resolve. A
     renumber leaves this green, which is correct. A retitle or a deletion turns it
     red, which is also correct.
+
+    THE CITATION HALF ASKS WHERE THE NAME APPEARS, NOT HOW OFTEN. It used to count
+    occurrences and require three, which is the definition, the export and one
+    citation; the count was exactly three, so it had no slack in either direction.
+    Dropping the ``__all__`` export while keeping the citation was a FALSE RED, and
+    three mentions anywhere at all, none of them prose, was a false green. Parsing
+    the docstrings answers the question that was being asked in the first place.
     """
     headings = {
         match.group(1).strip()
@@ -3358,12 +3558,19 @@ def test_round4_the_residual_findings_this_module_names_still_exist():
 
     assert named <= headings, sorted(named - headings)
 
-    # And each name is actually CITED, rather than defined, exported and then
-    # ignored while the prose goes back to writing a number.
+    # And each name is actually CITED IN PROSE, rather than defined, exported and
+    # then ignored while the docstrings go back to writing a number.
     source = Path(inspect.getfile(restore)).read_text(encoding="utf-8")
+    documented = [
+        ast.get_docstring(node) or ""
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+    ]
+    assert documented, "restore.py parsed to no docstrings at all"
     for name in (
         "RESIDUAL_CAPTURE_VOLUME_UNREPORTED",
         "RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH",
     ):
-        # The definition, the export, and at least one docstring citation.
-        assert source.count(name) >= 3, f"nothing in restore.py cites {name}"
+        assert any(name in text for text in documented), (
+            f"no docstring in restore.py cites {name}"
+        )

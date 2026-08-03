@@ -1611,11 +1611,34 @@ def _stage_companion_aside(target: Path, staging: Path) -> None:
     THE STAGED COPY IS NOT DELETED BY THE RESTORE THAT MADE IT. It is the only
     surviving record of work nobody can otherwise recover, so the restore that
     supersedes it is not entitled to decide it is worthless.
+
+    AND A COLLISION IS REFUSED RATHER THAN LEFT TO THE STAMP'S WIDTH.
+    :func:`_pre_restore_root` takes a fresh stamp per attempt with a 64-bit random
+    tail, which makes two attempts landing on one directory vanishingly unlikely,
+    but ``_mkdir_private`` returns silently when the directory is already there and
+    ``os.replace`` overwrites, so the consequence of the unlikely event is the
+    silent destruction of the one copy of transactions in no capture. The
+    probability was the whole defence and the docstring used to read as though the
+    rename were the whole answer. ``snapshot.capture`` refuses an occupied stamp
+    for exactly this reason one module away, and the two sides now answer the same
+    way: the staging side is per FILE rather than per directory, because one
+    attempt legitimately stages several companions into one directory and only a
+    name already taken means two attempts.
     """
     if not target.exists():
         return
+    resting = staging / target.name
+    if resting.exists():
+        raise refuse(
+            "internal-error",
+            f"a staged companion already sits at {resting}, so this restore would "
+            f"move a live log onto the log an earlier attempt saved; those bytes "
+            f"are in no capture and overwriting them destroys the only copy",
+            remedy=Remedy.REPORT_DEFECT,
+            detail={"target": str(target), "staged": str(resting)},
+        )
     config._mkdir_private(staging)
-    os.replace(target, staging / target.name)
+    os.replace(target, resting)
 
 
 #: Why a tree this restore left short is short, in the vocabulary the module that
@@ -1867,6 +1890,18 @@ DEFAULT_MAX_AGE = timedelta(days=30)
 #: would mean an argument to the retention verb silently decided how much
 #: unrecoverable write-ahead log a later restore throws away. What the two do
 #: share is the default, and that is what this line says and all it says.
+#:
+#: THAT ARGUMENT WAS PUT AS A DICHOTOMY AND THERE ARE THREE OPTIONS. It offered
+#: two: thread a policy down to the RELEASE step, or correct this comment. The
+#: first is genuinely out of scope, confirmed rather than asserted: :func:`run`
+#: takes no policy, :class:`Plan` carries no policy field, and
+#: :class:`RetentionPolicy` is constructed in exactly one place and is never
+#: persisted. The third option is to move the count into ``core.config`` as a
+#: configured value, at which point both sides READ one persisted number and the
+#: "one answer to one question" claim becomes true with no coupling at all. It is
+#: not taken here because it is a configuration surface this unit did not ship,
+#: and it is written down because a decline argued from an option set that is
+#: missing its best member is a decline the next reader cannot check.
 #:
 #: ``tests/test_restore.py`` pins this and :data:`DEFAULT_KEEP` by consequence
 #: with LITERAL expected values. Writing the constant into its own expected value

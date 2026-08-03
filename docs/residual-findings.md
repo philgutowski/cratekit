@@ -728,8 +728,17 @@ one skipped, `tests/test_restore.py` fails to COLLECT: `_pending.requires` raise
 collection` and runs NOTHING at all. It does not look like a suite that passed,
 it looks like a suite that refused to start. It is invisible only to a run that
 was explicitly told to continue past collection errors, or to a subset run that
-does not name this file. The magnitude is **123 tests, not "roughly two
-hundred"**: collection drops from 3,419 to 3,296.
+does not name this file. The magnitude is **every test in
+`tests/test_restore.py`, not "roughly two hundred"**.
+
+**THE COUNT MOVES WITH THIS BRANCH'S TIP AND THE FLOOR DOES NOT.** It read "123
+tests, collection drops from 3,419 to 3,296", which was measured at `c7a1a7d` and
+was already wrong two rounds later, because every round since has added tests to
+that one file while the paragraph under "the verified numbers" updated the totals
+and left this sentence alone. Stated so it stays true: the loss is the whole of
+`tests/test_restore.py`, **132 tests at tip `f37cfae` plus fix round 5**, and what
+a person on the checklist should compare against is the FLOOR, **3,298 collected**,
+which does not move while this branch's new tests keep landing in that file.
 
 **6. Rewrite `test_the_tree_shortness_handoff_calls_the_module_that_owns_the_gate`
 to patch `convergence.mark_unconverged` instead of `restore._convergence_module`.**
@@ -762,11 +771,21 @@ that is not on it.
 clean, `scripts/scan_repo.py` exit 0. The six are NECESSARY and SUFFICIENT: the
 only remaining differences are the two documentation notes recorded below.
 
-**Those counts were measured against branch tip `c7a1a7d`,** and fix round 4 adds
-nine tests on this side afterwards, so a merge of the current tip lands nine
-higher: 3,411 passed and 3,428 collected. The three failures, the six items and
-the four conflicts are unchanged by that round, which touched no file `main`
-touched except this one.
+**Those counts were measured against branch tip `c7a1a7d`,** and every fix round
+since has added tests on this side, so a merge of the current tip lands higher:
+fix round 4 added nine, giving 3,411 passed and 3,428 collected, and fix round 5
+added two more, giving **3,413 passed, 17 skipped, 3,430 collected**. The three
+failures, the six items and the four conflicts are unchanged by either round,
+neither of which touched a file `main` touched except this one.
+
+**WHICH NUMBERS HERE ARE TIP DEPENDENT, so the next round does not have to guess.**
+The passed and collected totals in this section move every time this branch adds
+a test, and so does the test count in item 5; they are the only figures that do.
+The three failures, the six items, the four conflicts, the merge base `4368171`,
+and item 5's floor of 3,298 collected are all properties of the two sides rather
+than of a tip, and none of them has moved across four fix rounds. Update the
+former, leave the latter, and re-measure rather than deriving if `main` moves off
+`c114afa`.
 
 **Two documentation corrections the merge should also carry.** U36's
 `assert_no_latched_restore` docstring says U32's `LATCHING_KINDS` does not include
@@ -775,3 +794,58 @@ back, so the premise is false while the derivation it justifies is still exactly
 right: the exemption is now LIVE rather than inert. Nothing behaves differently,
 because that function subtracts the tree kind by name from whatever the set holds.
 The reverse direction is already correct in `reconcile.assert_converged`.
+
+---
+
+## R-22. Two identity generators in one codebase, 16 bits and 64, and only one of them was argued
+
+**Found:** by the independent verification of U32's fix round 4, 2026-08-03.
+Recorded rather than fixed, because the file is outside this unit's scope.
+
+**What this branch changed.** `core/snapshot.py:new_stamp` builds a capture stamp
+as a timestamp plus `secrets.token_hex(8)`, 64 bits of random tail. It was widened
+during this unit's rounds because the stamp keys the pre-restore staging
+directory, and two restore attempts landing on one stamp would put the second
+attempt's write-ahead log on top of the first attempt's, destroying bytes that are
+in no capture. Fix round 5 also made that collision a deterministic refusal in
+`restore._stage_companion_aside`, so the width is now a second line rather than
+the only one.
+
+**What was left.** `cli/output.py:261:new_run_id` still builds a run identifier as
+a timestamp plus `secrets.token_hex(2)`, 16 bits. So the product now has two
+identity generators with a 48-bit difference between them, and nothing anywhere
+says why they differ.
+
+**Why it is worth a number rather than a shrug.** `new_run_id`'s own docstring
+states a consequence at least as serious as the one this branch acted on: *"two
+runs can start inside the same second, and a collision would let one run's
+decisions answer another run's gate."* A gate answered by the wrong run's
+decisions is a person approving one thing and a different thing happening. Sixteen
+bits inside one second is roughly a one-in-a-quarter-million chance per colliding
+pair, which is small and is not the same as the capture stamp's, and the two
+numbers were chosen by different rounds for different reasons that were never
+compared.
+
+**The test does not close it either.** `tests/test_cli_contract.py:687` asserts
+`output.new_run_id() != output.new_run_id()`, which reads both sides out of the
+function under test. It is not vacuous, since it does catch a constant
+identifier, but at 16 bits inside one second it is the assertion that flakes
+rather than the guard that holds, and it is the only coverage the tail has.
+`tests/test_snapshot.py` makes the same shape against `snapshot.new_stamp`, where
+64 bits puts the flake rate past caring.
+
+**What closes it.** Either widen `new_run_id` to match, which costs four
+characters in a log line and nothing else, or write one sentence in its docstring
+saying why a run identifier tolerates a width a capture stamp does not. Either
+outcome makes the asymmetry deliberate. The current state is that it is
+accidental.
+
+**Owner: whoever next edits `cli/output.py`.** It is one line and one docstring,
+and it is recorded here rather than fixed inside a restore unit because a fix
+round reaching into a CLI module it was not reviewing is how the next round
+inherits an unreviewed change.
+
+**What must NOT close it.** Narrowing the capture stamp to 16 bits for symmetry.
+The stamp's width is load bearing for a reason written down beside it, and
+symmetry achieved by taking the argued side down to the unargued one is the wrong
+direction.

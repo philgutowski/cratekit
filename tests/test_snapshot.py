@@ -314,8 +314,11 @@ def test_a_sparse_file_is_charged_the_room_its_copy_will_actually_need(tmp_path)
     )
 
     # 10,485,761 bytes rounds up to 2,561 units of 4,096, which is 10,489,856,
-    # plus one directory entry. With the unit at 1 the answer is 10,485,761.
-    assert snapshot.incoming_bytes(sparse) == 10489856 + snapshot.DIRECTORY_ENTRY_OVERHEAD
+    # plus one 2,048-byte directory entry: 10,491,904. Written as a LITERAL rather
+    # than as 10,489,856 plus DIRECTORY_ENTRY_OVERHEAD, because an expected value
+    # that reads the constant it is meant to pin is satisfied at every value that
+    # constant can take. With the unit at 1 the answer is 10,485,761.
+    assert snapshot.incoming_bytes(sparse) == 10491904
     assert snapshot.freed_bytes(sparse) == 10489856
 
 
