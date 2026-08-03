@@ -164,12 +164,8 @@ restored anyway, `restored: 1  failed: {}`, the replacement's genre destroyed an
 the record dropped. That is verbatim the harm the refusal message names, reached
 past definitive contrary evidence already in the record.
 
-The digest is now the answer whenever there is one. Size and time may stand alone
-only where there is no digest at all, or where the file's bytes are not on this
-machine, which is the cloud-eviction case and is the reason that flag check is
-now load-bearing instead of unreachable. The performance argument that talked
-round 3 out of the read does not survive contact with the next line: accepting is
-immediately followed by `restore_tag`, which opens the same file and REWRITES it.
+Round 4 made the digest the answer whenever there was one, and left three states
+in which there was not one. Round 5 removed all three; see below.
 
 **And "the interrupted pass is eliminated structurally" is a stronger claim than
 the code makes.** Dropping each record as its file is restored narrows the window
@@ -183,6 +179,62 @@ Also: the deleted-file refusal now asserts its REASON rather than only its key,
 which is what made the existence check kill zero tests. Round 3's mutation table
 would have caught all three: the size-and-time acceptance, the cloud-eviction
 check and the existence check each killed zero tests out of 3705.
+
+### What round 5 fixed: the same shape, a fourth and fifth time
+
+The unit had one recurring defect and it appeared four times in one function:
+**taking something that is not identity for identity.** Round 3 took size and
+mtime. Round 4 fixed that and left three more doors, and all three were doors
+that stepped around the digest rather than reading it.
+
+**An unstamped record accepted any file at all, and an ordinary Ctrl C reached
+it.** `snapshot_before_write` persists the record, the mutagen tag write runs,
+and only then does the stamp go on. The whole tag write sits in that window and
+it is the slowest part of the operation. The guard returned "unchanged" from a
+record with no size, no time and no digest BEFORE consulting anything. Driven
+with no forgery and no I/O error: interrupt in the window, replace the track
+months later with a different recording of a different size, and the revert wrote
+the old genre onto the stranger's audio, destroyed the replacement's own genre
+and dropped the record. It now refuses and `force` spends it.
+
+The 115 parametrisations that died when that branch was mutated were not coverage
+of it. They all rode one fixture that took the record half and wrote the tag
+separately, so every one of them traversed the widest branch in the guard without
+being about it. They go through `write_tag_with_record` now, which is what
+`apply_plan` uses.
+
+**A failed stamping read silently downgraded the guard to forgeable metadata.**
+`digest_of` answered `""` on `OSError` and `_stamped` stored it without comment,
+producing a record indistinguishable on disk from a document predating digests.
+The two are not the same thing: one is a file this build wrote seconds earlier
+where the read could be retried. `DigestState` makes them three named states, the
+read is retried once, and a record that still cannot produce a digest refuses.
+
+**The eviction branch skipped the digest to avoid a download the accept path then
+performed one line later.** Driven with the real writer instead of the stub the
+old test used: `restore_tag` opens the file with mutagen and rewrites it, so the
+provider fetches it either way. The branch is gone. The cost that remains, a
+whole-file hash on the refusing path, is recorded honestly as R-25 rather than
+argued away as free.
+
+**Four zero-death guards, three of them round 4's own new code.** Round 4's
+report said "no zero-death guard remains", which was false. The eviction
+branch's `untouched` half, the two refusal constants it introduced ("named once
+so a report and a test cannot spell them apart", which nothing spelled), and
+`scan.DATALESS_FLAG` itself, which survived being set to `0x1`.
+
+**And the self-referential assertion that hid the last one.** Two tests set
+`st_flags = adopt_scan.DATALESS_FLAG` and then asserted the behaviour that
+constant produces. That reduces to X equals X: the flag could be `0x1` and both
+tests would pass while every file carrying `UF_NODUMP` took the eviction branch.
+Both fixtures now spell the literal `0x40000000` from `sys/stat.h`, and a test
+pins the constant to it. The same treatment is applied to every refusal message:
+the suite asserts the literal string in the report, never the constant the report
+is built from.
+
+**Net:** one acceptance where there were three, and it is the recorded digest
+matching the file's bytes. Everything else refuses, names which of the four ways
+it is, and names the `(path, field)` pair that overrides it.
 
 
 

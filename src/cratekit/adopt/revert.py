@@ -56,13 +56,19 @@ across both, and :func:`revert_tags` holds the same lock across its whole pass.
 Two applies still serialize into first-write-wins, which is the property that was
 already true and is not weakened by the write moving inside the lock.
 
-**A record says what the file looked like when adoption left it.** Size,
-modification time and a digest of the whole file, all stamped after the write.
-Without them the revert writes the recorded original onto whatever is at that path
-now, which after somebody replaced the file is a stranger's audio getting a genre
-it never had. What that evidence may and may not conclude is the subject of
-:func:`_changed_since_adoption`, and it is the part of this module that has been
-wrong most often.
+**A record says what the file looked like when adoption left it.** A digest of
+the whole file, stamped after the write, plus the size and modification time.
+Only the digest decides anything. Without it the revert writes the recorded
+original onto whatever is at that path now, which after somebody replaced the
+file is a stranger's audio getting a genre it never had. What that evidence may
+and may not conclude is the subject of :func:`_changed_since_adoption`, and it is
+the part of this module that has been wrong most often.
+
+**A record that cannot produce that digest REFUSES, and says which of the ways it
+is.** There is no state in which the metadata stands in for the bytes, because
+every value except the digest can be set by any tool that copies a file, and
+every attempt to let one of them decide has ended with a file nobody could put
+back. :class:`DigestState` is why an empty digest is no longer two facts at once.
 
 **THE LOCK IS NOT REENTRANT, AND TWO PUBLIC PARAMETERS CAN REACH IT.** ``flock``
 is held per open file description, so a second acquisition from the same process
@@ -94,10 +100,10 @@ import hashlib
 import json
 from dataclasses import dataclass, field, replace
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Callable, Collection, Mapping
 
-from cratekit.adopt.scan import DATALESS_FLAG
 from cratekit.cli.output import timestamp
 from cratekit.core import config, locations, tags
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope
@@ -160,6 +166,43 @@ def file_id(path: str) -> str:
     ).hexdigest()[:24]
 
 
+class DigestState(StrEnum):
+    """What a record is able to say about the bytes adoption left behind.
+
+    THREE NAMED STATES RATHER THAN AN EMPTY STRING, and the reason is the shape
+    this module has now been wrong about four times: one value standing for two
+    different facts. ``digest = ""`` meant BOTH "nothing about the bytes was ever
+    written down" and "the read that was supposed to write them down failed", and
+    on disk the two were indistinguishable forever afterwards. The second is a
+    file this build wrote seconds earlier, where the digest could have been
+    retried; the first is a document from a build that had no digest at all. They
+    have different causes, they deserve different reports, and collapsing them
+    meant nothing could ever tell them apart again.
+
+    All three are recorded per record and none of them is an acceptance. Only
+    :attr:`RECORDED` carries evidence, so only :attr:`RECORDED` can be compared
+    against a file; the other two refuse and name themselves, and ``force``
+    spends them one record at a time.
+    """
+
+    #: ``digest`` holds a sha256 of the whole file exactly as adoption left it.
+    #: The one state :func:`_changed_since_adoption` can conclude anything from.
+    RECORDED = "recorded"
+
+    #: The stamping read was attempted and failed, after a retry. The record
+    #: knows it should be carrying a digest and knows it is not.
+    UNREADABLE = "unreadable"
+
+    #: Nothing about the bytes was ever written down here. A record whose write
+    #: never reached the stamp, or a document from a build that had no digest.
+    ABSENT = "absent"
+
+
+#: The states a document may spell, derived from the enum rather than listed
+#: beside it, so a fourth state cannot arrive without the reader recognizing it.
+_DIGEST_STATES: frozenset[str] = frozenset(str(member) for member in DigestState)
+
+
 @dataclass(frozen=True, slots=True)
 class TagSnapshot:
     """One file's values for one tag field, as they were before adoption wrote.
@@ -181,20 +224,26 @@ class TagSnapshot:
     the second entry would otherwise match nothing and report a clean pass over a
     file it left holding adoption's value.
 
-    THE LAST THREE FIELDS ARE THE FILE AS ADOPTION LEFT IT, stamped after the
+    THE LAST FOUR FIELDS ARE THE FILE AS ADOPTION LEFT IT, stamped after the
     write rather than before it, so a later revert can tell its own handiwork
     from a file somebody has since replaced. They are absent on a record whose
-    write did not complete, which is the crash seam and is treated as
-    unverifiable rather than as a mismatch.
+    write did not complete, which is the crash seam, and that record REFUSES
+    rather than passing: see :class:`DigestState`.
 
     ONLY ``digest`` IS ABOUT THE BYTES, and confusing the other two for it is the
     mistake that shipped. ``size`` and ``mtime_ns`` are metadata that CORRELATE
-    with the bytes: they are cheap, they are what an unstamped or older record has
-    instead of a digest, and either of them can be set to any value by any tool
-    that copies a file. ``digest`` is over the file exactly as adoption left it,
-    it is the only one of the three a replacement cannot forge, and it is also the
-    only evidence that survives those same bytes being copied back from somewhere
-    else. :func:`_changed_since_adoption` therefore asks it whenever it is there.
+    with the bytes: they are cheap, and either of them can be set to any value by
+    any tool that copies a file. ``mtime_ns`` therefore DECIDES NOTHING and is
+    recorded only so a person reading the ledger can see when adoption ran;
+    ``size`` is consulted only as a shortcut that cannot change an answer, since
+    two different sizes cannot be the same bytes. ``digest`` is over the file
+    exactly as adoption left it, it is the only one of the three a replacement
+    cannot forge, and it is also the only evidence that survives those same bytes
+    being copied back from somewhere else. It is the ONLY thing
+    :func:`_changed_since_adoption` accepts on.
+
+    ``digest_state`` SAYS WHICH FACT AN EMPTY DIGEST IS, and it exists because
+    the empty string was two facts at once. See :class:`DigestState`.
 
     TWO THINGS THAT LOOK LIKE IDENTITY AND ARE NOT. Each was proposed as proof
     and each is measured wrong, which is why they are named here rather than
@@ -224,6 +273,7 @@ class TagSnapshot:
     size: int | None = None
     mtime_ns: int | None = None
     digest: str = ""
+    digest_state: DigestState = DigestState.ABSENT
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -238,6 +288,7 @@ class TagSnapshot:
             "size": self.size,
             "mtime_ns": self.mtime_ns,
             "digest": self.digest,
+            "digest_state": str(self.digest_state),
         }
 
     def written_by(self, entry_id: str) -> bool:
@@ -391,6 +442,73 @@ def _optional_int(entry: dict, name: str, *, path: Path, position: int) -> int |
     return found
 
 
+def _digest(entry: dict, *, path: Path, position: int) -> str:
+    """The recorded digest, recognized as a STRING rather than by truthiness.
+
+    ``str(entry.get("digest") or "")`` was the shape here, and every falsy JSON
+    value went through it into the same empty string: ``null``, ``0``, ``false``,
+    ``""``, ``[]`` and ``{}`` all read back as "no digest" and took the fallback,
+    while ``12345`` and ``["abc"]`` were stringified into a digest that could
+    never match. Six shapes silently weakening a guard and two shapes quietly
+    guaranteeing a refusal is not a recognition, it is a coincidence of what
+    Python calls false.
+
+    An absent key and an explicit null are the same fact here, unlike ``original``
+    next door: both mean no digest was written, and neither can be read as one.
+    Everything else is a document this build did not write.
+    """
+    found = entry.get("digest")
+    if found is None:
+        return ""
+    if not isinstance(found, str):
+        raise RevertLedgerUnreadable(
+            f"{path} holds a record at position {position} whose digest is a "
+            f"{type(found).__name__} rather than a string; a record whose only "
+            f"unforgeable evidence is unreadable cannot be spent on a guess",
+            path=path,
+            remedy=Remedy.RUN_DOCTOR,
+        )
+    return found
+
+
+def _digest_state(
+    entry: dict, digest: str, *, path: Path, position: int
+) -> DigestState:
+    """Which fact this record's digest, or lack of one, actually is.
+
+    A DOCUMENT WITHOUT THE KEY IS DERIVED RATHER THAN REFUSED, because every
+    record written before this state existed carries the ambiguity the state was
+    added to remove, and refusing them would strand a whole ledger. The
+    derivation is deliberately the conservative one: a digest present means it
+    was recorded, and anything else means nothing about the bytes is available.
+    Neither derived answer accepts a file; only the first can even be compared.
+
+    A STATE AND A DIGEST THAT CONTRADICT EACH OTHER ARE REFUSED, because a record
+    claiming to carry evidence it does not carry is the exact confusion this
+    field exists to end.
+    """
+    found = entry.get("digest_state")
+    if found is None:
+        return DigestState.RECORDED if digest else DigestState.ABSENT
+    if not isinstance(found, str) or found not in _DIGEST_STATES:
+        raise RevertLedgerUnreadable(
+            f"{path} holds a record at position {position} whose digest_state is "
+            f"{found!r}, which is not one of {sorted(_DIGEST_STATES)}",
+            path=path,
+            remedy=Remedy.RUN_DOCTOR,
+        )
+    state = DigestState(found)
+    if state is DigestState.RECORDED and not digest:
+        raise RevertLedgerUnreadable(
+            f"{path} holds a record at position {position} that says its digest "
+            f"was recorded and carries none; a record cannot claim evidence it "
+            f"does not have",
+            path=path,
+            remedy=Remedy.RUN_DOCTOR,
+        )
+    return state
+
+
 def read(cfg: config.Config) -> RevertLedger:
     """The effective ledger for this library. An absent file is the empty one.
 
@@ -484,6 +602,7 @@ def read(cfg: config.Config) -> RevertLedger:
                 remedy=Remedy.RUN_DOCTOR,
             )
         original = _original_values(entry["original"], path=path, position=position)
+        digest = _digest(entry, path=path, position=position)
         record = TagSnapshot(
             file=str(entry["file"]),
             field=str(entry["field"]),
@@ -495,7 +614,8 @@ def read(cfg: config.Config) -> RevertLedger:
             entries=_entry_list(entry, path=path, position=position),
             size=_optional_int(entry, "size", path=path, position=position),
             mtime_ns=_optional_int(entry, "mtime_ns", path=path, position=position),
-            digest=str(entry.get("digest") or ""),
+            digest=digest,
+            digest_state=_digest_state(entry, digest, path=path, position=position),
         )
         if _key(record) in seen:
             raise RevertLedgerUnreadable(
@@ -571,6 +691,13 @@ def digest_of(path: Path) -> str:
     reproduces them exactly is the case this exists for. Decoding would answer a
     different and more expensive question, and would call a file whose tag
     somebody edited a match.
+
+    THE EMPTY ANSWER IS NOT A DIGEST AND BOTH CALLERS TREAT IT AS ITS OWN FACT.
+    No sha256 is the empty string, so "" is unambiguous here; what was ambiguous
+    was what the callers did with it. :func:`_stamped` used to store it as though
+    it were "no digest was recorded", and :func:`_changed_since_adoption` used to
+    let it fall into the inequality and report a file nobody had touched as
+    somebody else's bytes. Both now name it.
     """
     hasher = hashlib.sha256()
     try:
@@ -582,6 +709,34 @@ def digest_of(path: Path) -> str:
     return hasher.hexdigest()
 
 
+#: How many times the stamping read is attempted before the record gives up and
+#: SAYS SO. Two rather than one because the read happens microseconds after a
+#: successful write of the same file, so the failures that reach it are the
+#: transient ones: a descriptor exhausted by a parallel pass, a brief input
+#: output error, a provider stalling. Two rather than many because a permission
+#: that is not going to change does not become a different answer by being asked
+#: again, and the honest response to that is a recorded state rather than a
+#: retry loop holding the ledger's lock.
+_STAMP_READ_ATTEMPTS = 2
+
+
+def _stamp_digest(path: Path) -> str:
+    """The digest of what was just written, retried before it is given up on.
+
+    Empty means every attempt failed, which the caller records as
+    :attr:`DigestState.UNREADABLE` rather than as "no digest". THAT DISTINCTION
+    IS THE WHOLE POINT: a build that wrote this file seconds ago and could not
+    read it back is not the same thing as a document written before digests
+    existed, and the previous version stored both as an empty string.
+    """
+    found = ""
+    for _attempt in range(_STAMP_READ_ATTEMPTS):
+        found = digest_of(path)
+        if found:
+            break
+    return found
+
+
 def _stamped(record: TagSnapshot, path: Path) -> TagSnapshot:
     """``record`` carrying the file as adoption has just left it.
 
@@ -590,16 +745,29 @@ def _stamped(record: TagSnapshot, path: Path) -> TagSnapshot:
     moves, the time moves, and the bytes do not. The read is sequential and
     happens immediately after mutagen has rewritten the same file, so the pages
     are already warm.
+
+    EVERY EXIT FROM HERE LEAVES THE RECORD SAYING WHAT IT KNOWS. A failed
+    ``stat`` and a failed digest read are both recorded as
+    :attr:`DigestState.UNREADABLE`, so neither can later be mistaken for a
+    document that simply predates the digest. The failed ``stat`` branch used to
+    carry a ``pragma: no cover`` asserting it could not happen because the write
+    above had succeeded, which does not follow: a write returning does not make a
+    later ``stat`` succeed, and the pragma was a claim about a branch nothing
+    drove. It is driven now.
     """
     try:
         info = path.stat()
-    except OSError:  # pragma: no cover - the write above already succeeded
-        return record
+    except OSError:
+        return replace(record, digest_state=DigestState.UNREADABLE)
+    digest = _stamp_digest(path)
     return replace(
         record,
         size=info.st_size,
         mtime_ns=info.st_mtime_ns,
-        digest=digest_of(path),
+        digest=digest,
+        digest_state=(
+            DigestState.RECORDED if digest else DigestState.UNREADABLE
+        ),
     )
 
 
@@ -681,11 +849,19 @@ def write_tag_with_record(
     bought is that a revert can no longer interleave with either of them.
 
     THE STAMP GOES ON AFTER THE WRITE, not before. What a later revert needs to
-    know is whether the file is still the one adoption wrote to, so the size and
-    time it compares against have to be adoption's own output. A crash between
-    the write and the stamp leaves the record unstamped, which reverts without
-    the check rather than refusing, because the alternative is a record that can
-    never be spent.
+    know is whether the file is still the one adoption wrote to, so the digest it
+    compares against has to be adoption's own output.
+
+    A CRASH BETWEEN THE WRITE AND THE STAMP LEAVES A RECORD THAT REFUSES, and it
+    used to leave one that accepted anything at all. The window is not exotic: it
+    is the whole mutagen tag write, which is the slowest part of this call, so an
+    ordinary interrupt lands inside it. The record on disk then says size None,
+    mtime None and no digest, and the previous version returned "unchanged" from
+    that before consulting anything, so a file replaced months later with a
+    different recording was restored over and reported clean. It now refuses and
+    names itself for ``force``, which is the trade this module makes everywhere:
+    refusing costs an override on a run somebody asked for, accepting costs a
+    file nobody can put back. Residual R-26 records what that override costs.
 
     ``write_field`` RUNS INSIDE THE LOCK and must not take it again. See the
     module docstring: ``flock`` is per open file description, so a callback that
@@ -765,9 +941,11 @@ def restore_tag(path: Path, tag_field: str, original: tuple[str, ...] | None) ->
 def _changed_since_adoption(record: TagSnapshot, target: Path) -> str | None:
     """Why this file is not the one adoption wrote to, or None when it is.
 
-    IT ACCEPTS ONLY EVIDENCE ABOUT THE BYTES, and the three ways this function
-    has been wrong before are all the same mistake: reaching for something that
-    correlates with identity and calling it identity.
+    IT ACCEPTS ONLY EVIDENCE ABOUT THE BYTES, and the four ways this function has
+    been wrong before are all the same mistake: taking something that is not
+    identity for identity. Three of them reached for a value that merely
+    correlates with the bytes; the fourth reached for no value at all and called
+    the absence of evidence a pass.
 
     * **The field's own value is not identity.** ``record.written`` is a taxonomy
       bucket's DISPLAY name, shared by most of the library it was written into, so
@@ -792,31 +970,58 @@ def _changed_since_adoption(record: TagSnapshot, target: Path) -> str | None:
       verbatim the harm this function's own refusal message names, reached while
       definitive contrary evidence sat unread in the record.
 
-    So the recorded digest, WHEN THERE IS ONE, is the answer and nothing shortcuts
-    it. There are three acceptances and only the first is unconditional:
+    * **NOTHING RECORDED IS NOT EVIDENCE EITHER, AND THAT ONE SHIPPED TWICE.**
+      An unstamped record returned None before any evidence was consulted, and a
+      record whose stamping read had failed fell back to the two values above.
+      Both are reachable without forgery, an input output error or a cloud: the
+      whole mutagen tag write sits between the record landing on disk and the
+      stamp, and it is the slowest part of the operation, so an ordinary
+      interrupt lands in it. Measured: a replaced recording of a different size
+      and different content restored anyway, ``restored: 1  failed: {}``, the
+      replacement's own genre destroyed with no record anywhere.
 
-    1. **The bytes are the ones adoption left.** Asked whenever a digest was
-       recorded and the size still matches, because different sizes cannot be the
-       same bytes. This is what an untouched file, a backup restore, an rsync
-       without timestamps and a cloud re-download all look like.
-    2. **Size and time unchanged, on a record carrying NO digest.** Older
-       documents and the rare write whose stamping read failed have nothing
-       better, so the cheap evidence is all there is rather than a shortcut past
-       something stronger.
-    3. **Size and time unchanged, on a file whose bytes are not on this machine.**
-       A cloud-evicted file cannot be read without fetching the whole thing from
-       a provider, which is what the census refuses to do per file across a
-       library (:data:`cratekit.adopt.scan.DATALESS_FLAG`). Eviction is also not a
-       rewrite: a local write faults the file in and clears the flag. Refusing
-       instead would strand every evicted file behind an override.
+    SO THERE IS EXACTLY ONE ACCEPTANCE AND IT IS THE BYTES.
 
-    THE READ COSTS NOTHING THIS PASS WAS NOT ALREADY SPENDING, which is what
-    retires the argument that talked the previous version out of it. Accepting is
-    immediately followed by :func:`restore_tag`, which opens the same file with
-    mutagen and REWRITES it. A sequential read of a file about to be rewritten is
-    strictly cheaper than the write behind it, and it happens only for records
-    that were going to be spent. "The guard opens no audio file" was true of the
-    guard and irrelevant to the pass.
+    1. **The recorded digest was asked and the file answered with it.** Reached
+       only from :attr:`DigestState.RECORDED`, and nothing shortcuts it except a
+       size mismatch, which cannot change the answer because two different sizes
+       cannot be the same bytes. This is what an untouched file, a backup
+       restore, an rsync without timestamps, a cloud re-download and a
+       cloud-evicted file that nobody has rewritten all look like.
+
+    Every other path REFUSES and names which of the five it is, and ``force``
+    spends any of them one record at a time:
+
+    * the digest disagrees, so the bytes are somebody else's;
+    * the file cannot be read here to produce a digest at all;
+    * the record was never stamped, which is the crash between the write and the
+      stamp;
+    * the record says its stamping read failed, so a digest was attempted and
+      could not be taken;
+    * the record carries no digest at all, which is a document predating them.
+
+    THE EVICTION SHORTCUT WAS REMOVED RATHER THAN KEPT, and the measurement is
+    why. It skipped the digest on a cloud-evicted file to avoid fetching it from
+    a provider, and then the acceptance it produced called :func:`restore_tag`
+    one line later, which opens the same file with mutagen and REWRITES it. The
+    file is materialized either way, so on the accepting path the skip saved
+    nothing and cost the only unforgeable evidence in the record. Nor is the
+    population large: the census refuses to adopt an online-only file at all
+    (:data:`cratekit.adopt.scan.ADOPTABLE`), so a record can only name an evicted
+    file that was readable when adoption wrote it and was evicted afterwards. The
+    cost that remains is real and is recorded as residual R-25.
+
+    WHAT THE READ COSTS, stated for the case that dominates at scale rather than
+    for the flattering one. On the ACCEPTING path it is strictly cheaper than the
+    mutagen rewrite immediately behind it, so it is close to free. On the
+    REFUSING path it is a whole-file hash that buys a refusal and no write, and a
+    library re-tagged by another tool is entirely that case: driven over a four
+    record ledger whose every file had been re-tagged elsewhere, this pass
+    performed 4 whole-file sha256 reads, 0 writes and 4 refusals. That is not a
+    cost the pass was already spending, and the previous version of this
+    paragraph claimed it was. The read is kept because it is NECESSARY, not
+    because it is free: without it the refusals above are decided by metadata
+    anybody can forge.
 
     WHAT IS DELIBERATELY NOT COVERED, and it used to be. A later write of another
     field this module owns, ``energylevel`` for the analysis workflow, changes the
@@ -827,47 +1032,72 @@ def _changed_since_adoption(record: TagSnapshot, target: Path) -> str | None:
     for; accepting costs a file nobody can put back. Recorded as residual R-22
     with the fix that would close it properly.
 
-    An UNSTAMPED record is unverifiable rather than suspect and passes. It can
-    only come from a crash between the write and the stamp, and refusing those
-    would leave a record that can never be spent on a file that genuinely does
-    carry adoption's value.
-
     The refusal is EVIDENCE RATHER THAN PERMISSION. See :func:`revert_tags`'s
     ``force``: a person who knows the file is theirs has to be able to say so, per
-    record, or a wrong guess here is as unrecoverable as the write it was guarding.
+    record, or a wrong refusal strands a value as surely as a wrong restore
+    overwrites one. That is the trade the module makes everywhere: refusing costs
+    an override on a run somebody asked for, accepting costs a file nobody can
+    put back.
     """
-    if record.size is None or record.mtime_ns is None:
-        return None
+    if record.digest_state is not DigestState.RECORDED:
+        return _replaced(record, _why_nothing_to_compare(record))
     info = target.stat()
-    untouched = info.st_size == record.size and info.st_mtime_ns == record.mtime_ns
-    if not record.digest:
-        # Nothing stronger was recorded, so the metadata is not a shortcut past
-        # better evidence, it is the only evidence.
-        return None if untouched else _replaced(record, _NOT_THE_RECORDED_BYTES)
-    if info.st_size != record.size:
+    if record.size is not None and info.st_size != record.size:
+        # The one shortcut in front of the digest, kept only because it can never
+        # change an answer: no hash of a differently sized file can match.
         return _replaced(record, _NOT_THE_RECORDED_BYTES)
-    if getattr(info, "st_flags", 0) & DATALESS_FLAG:
-        # Reading it would fetch the whole file from a provider, which is what the
-        # census refuses to do per file across a library. Eviction is not a
-        # rewrite either: a local write faults the file in and clears the flag.
-        return None if untouched else _replaced(record, _NOT_HERE_TO_COMPARE)
-    if digest_of(target) == record.digest:
-        return None
-    return _replaced(record, _NOT_THE_RECORDED_BYTES)
+    found = digest_of(target)
+    if not found:
+        # An unreadable file is not a verdict about its content. Reporting it as
+        # "these are somebody else's bytes" would send a person looking for a
+        # replacement that never happened.
+        return _replaced(record, _NOT_READABLE_TO_COMPARE)
+    if found != record.digest:
+        return _replaced(record, _NOT_THE_RECORDED_BYTES)
+    return None
 
 
-#: The two refusals, named once so a report and a test cannot spell them apart.
+def _why_nothing_to_compare(record: TagSnapshot) -> str:
+    """Which of the three ways this record can say nothing about the bytes.
+
+    All three refuse, so this decides only what a person is told, and that is
+    worth getting right: "the run died before it finished recording" and "this
+    document predates digests" send somebody to different places.
+    """
+    if record.digest_state is DigestState.UNREADABLE:
+        return _THE_STAMP_COULD_NOT_BE_READ
+    if record.size is None or record.mtime_ns is None:
+        return _THE_STAMP_NEVER_LANDED
+    return _NO_DIGEST_WAS_RECORDED
+
+
+#: The refusals, named once so a report and a test cannot spell them apart. Each
+#: one is asserted as a LITERAL in the suite rather than by reading the constant
+#: back, because a test comparing the output against the constant the output is
+#: built from asserts that X equals X and passes whatever either says.
 _NOT_THE_RECORDED_BYTES = "its bytes are not the ones adoption left there"
-_NOT_HERE_TO_COMPARE = "its bytes are not on this machine to compare"
+_NOT_READABLE_TO_COMPARE = "its bytes cannot be read here to compare"
+_THE_STAMP_NEVER_LANDED = (
+    "adoption never finished recording what it left there, which is a run "
+    "interrupted between the tag write and the stamp"
+)
+_THE_STAMP_COULD_NOT_BE_READ = (
+    "adoption could not read back what it had just written, so the bytes it "
+    "left were never recorded"
+)
+_NO_DIGEST_WAS_RECORDED = (
+    "this record carries no digest, so nothing in it is about the bytes at all"
+)
 
 
 def _replaced(record: TagSnapshot, why: str) -> str:
     """The refusal, naming the key that overrides THIS record and no other."""
     return (
-        f"the file has changed since adoption wrote it: {why}. The recorded "
-        f"original describes bytes that are no longer there, and restoring it "
-        f"would put one file's tag onto another file's audio. Override this one "
-        f"record by reverting with force={(record.path, record.field)!r}."
+        f"the file cannot be recognized as the one adoption wrote to: {why}. "
+        f"Restoring the recorded original onto a file that is not that one puts "
+        f"one file's tag onto another file's audio, and nothing anywhere records "
+        f"what it destroyed. Override this one record by reverting with "
+        f"force={(record.path, record.field)!r}."
     )
 
 
@@ -936,6 +1166,17 @@ def revert_tags(
     onto a file that already holds it. Residual R-24 states the window and the
     journal that would close it.
 
+    THAT BOUND IS ABOUT THE WINDOW AFTER THE RESTORE, NOT THE ONE INSIDE IT, and
+    the two are different windows. A death DURING ``restore``'s own rewrite is
+    mutagen's write window rather than this pass's, and this module has no bound
+    to offer for it: the container may be left half rewritten, and no undo log
+    can put back bytes a partial write destroyed. What this module still
+    guarantees there is the half it owns. The record is dropped only AFTER the
+    restore returns, so a death inside the rewrite leaves the record on disk with
+    the original still in it, the retry refuses because the bytes are neither the
+    recorded ones nor anything else it knows, and the recorded original is still
+    available to ``force``. Written down rather than claimed away, in R-24.
+
     ONE BAD RECORD COSTS ONE RECORD, which is the per-track versus per-pass rule
     this repository keeps paying for, applied to the undo log. The whole body of
     the loop is guarded, not just the ``restore`` call: ``record.field`` comes off
@@ -997,6 +1238,7 @@ __all__ = [
     "LOCK_KEY",
     "SCHEMA_VERSION",
     "STATE_KEY",
+    "DigestState",
     "RevertLedger",
     "RevertLedgerUnreadable",
     "RevertReport",

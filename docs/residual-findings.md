@@ -623,9 +623,18 @@ rather than a third attempt.**
    while the two it can forge decided. Measured in round 4: different audio
    written to the path, padded to the recorded size and stamped back to the
    recorded time with `os.utime`, restored anyway, `restored: 1  failed: {}`.
-   Fixed in round 4. The digest is now asked whenever one was recorded, and size
-   and time may stand alone only where there is no digest or where the file's
-   bytes are not on this machine.
+   Fixed in round 4, incompletely: round 4 asked the digest whenever one was
+   recorded, and left three states in which it was not asked at all.
+
+5. The fifth version, round 5, removed those three. An UNSTAMPED record returned
+   "unchanged" before consulting anything, and an ordinary interrupt reaches it
+   because the whole mutagen tag write sits between the record landing and the
+   stamp. A record whose stamping read had FAILED stored an empty digest that was
+   indistinguishable on disk from a document predating digests, and fell back to
+   the same forgeable metadata. A CLOUD-EVICTED file skipped the digest to avoid
+   a download that the acceptance it produced then performed one line later
+   through `restore_tag`. All three are now refusals. There is exactly one
+   acceptance left and it is the recorded digest matching the file's bytes.
 
 **A second instance of the same wall, named because the module contemplates it in
 writing.** `_key`'s own docstring says adoption may write more than one field to
@@ -633,16 +642,31 @@ one file, and the ledger keys on the file AND the field so that it can. It can
 record them; it cannot revert the first of them. The second field's write moves
 the bytes, so the first record's digest no longer matches and that record refuses
 on every pass. Measured with `genre` then `title` through
-`write_tag_with_record`: `restored: 1  failed: 1`, and the failure is always the
-alphabetically first field because the ledger sorts by key. Nothing shipped
-reaches it, because `apply_plan` writes `ADOPTED_TAG_FIELD` and nothing else, but
-a second field is a supported call away and it is the same wall as the analysis
-write above rather than a separate defect.
+`write_tag_with_record`: `restored: 1  failed: 1`, and **the failure is always
+the field written FIRST**, whose digest the second write invalidates.
+
+This entry previously said the failure was "always the alphabetically first field
+because the ledger sorts by key". Both halves of that were wrong and it was
+driven in both orders to be sure: writing `(genre, title)` fails `genre`, and
+writing `(title, genre)` fails `title`. Alphabetical order was a coincidence of
+the one test case that produced the observation, and the ledger's sort decides
+the order records are VISITED, not which record's evidence has gone stale. The
+mechanism is write order and nothing else.
+
+**How close to shipped it is, precisely.** Not live, and one supported public
+call away from being live. The only shipped call that reaches the ledger outside
+`revert.py`'s own plumbing is `apply.py:541`, which passes
+`field=ADOPTED_TAG_FIELD`, a module constant whose value is `"genre"`, so today
+every record in a real ledger is a genre record and no file carries two. But
+`cratekit.adopt.__init__` re-exports `write_tag_with_record`, so any caller
+inside or outside this package can write a second field to an adopted file
+without touching `apply.py` at all. It is latent rather than unreachable, and it
+is the same wall as the analysis write above rather than a separate defect.
 
 **Fixed far enough to be safe.** The byte-identical restore is recognized by a
-digest recorded at write time, and the digest is now consulted whenever one
-exists rather than being shortcut past. The remaining cases refuse, name the
-single record they refused, and `force` takes a list of `(path, field)` pairs so
+digest recorded at write time, and the digest is the ONLY thing the guard accepts
+on. Every other case refuses, names which of the four ways it is, names the
+single record it refused, and `force` takes a list of `(path, field)` pairs so
 overriding one never touches another.
 
 **One claim in this entry was too strong and is corrected here.** The interrupted
@@ -719,6 +743,27 @@ rather than argued, in
 which pins the real behaviour so the stronger claim cannot drift back in off a
 green suite.
 
+**THAT BOUND COVERS THE WINDOW AFTER THE RESTORE AND NOT THE ONE INSIDE IT, and
+the two are different windows.** Round 4 stated the boundedness for a death
+BETWEEN the restore landing and the record's drop. A death DURING mutagen's own
+rewrite of the container is a separate window with a weaker guarantee, and the
+distinction was not characterised until round 5.
+
+What is NOT bounded there is the file. A container caught mid rewrite can be left
+truncated or half written, and no undo log can put back bytes a partial write
+destroyed. That is true of any interrupted file write and it is mutagen's window
+rather than this pass's; this module's contribution is that it does not make it
+worse.
+
+What IS still guaranteed is the half this module owns, and it is driven in
+`test_a_death_INSIDE_the_rewrite_is_a_different_window_and_a_weaker_bound`. The
+record is dropped only after `restore` RETURNS, so a death inside the rewrite
+leaves the record on disk with the recorded original still in it. The retry
+refuses, because the bytes on disk are neither the recorded ones nor anything the
+guard knows, and it refuses with `its bytes are not the ones adoption left
+there`. `force` still reaches the original. So the ledger never loses the value;
+only the container is at risk, and only for the duration of one `save`.
+
 **Why it cannot be closed from here.** The surviving state after such a crash is
 a file whose bytes are not the recorded ones and a record that cannot tell that
 apart from a replacement without decoding the audio, which is R-22's wall. Doing
@@ -729,3 +774,82 @@ only copy of the original permanently.
 to restore, so a retry can tell "I was in the middle of this one" from "somebody
 replaced this file". That is a journal, it belongs with the destructive session
 the apply command line opens (R-20), and it is the same unit's work.
+
+---
+
+## R-25. A revert hashes every file it considers, including cloud-evicted ones
+
+**Found:** during U23's fifth review round, 2026-08-03, as the accepted cost of
+removing the last shortcut in front of the digest.
+
+`_changed_since_adoption` now accepts on one thing only: the recorded digest
+matching the file's bytes. There is no branch that skips the read. Two costs
+follow and both are real.
+
+**A library re-tagged by another tool pays a full hash and then refuses
+everything.** Driven on a four record ledger whose every file had been re-tagged
+elsewhere: 4 whole-file sha256 reads, 0 writes, 4 refusals. Round 4's docstring
+claimed "the read costs nothing this pass was not already spending" on the
+grounds that an acceptance is followed by a mutagen rewrite that is more
+expensive. That is true of the ACCEPTING path and false of the refusing one,
+which is the path that dominates exactly when a library has drifted. The prose
+is corrected; the read is kept, because without it the refusal is decided by
+metadata anybody can forge.
+
+**A cloud-evicted file is now read, which materializes it.** The branch that
+skipped the digest for a file carrying `SF_DATALESS` is gone. It was removed
+because on the ACCEPTING path it saved nothing: the acceptance calls
+`restore_tag` one line later, mutagen opens the file and rewrites it, and the
+provider fetches it regardless. Driven with the real writer rather than the stub
+the old test used. What the removal genuinely costs is the REFUSING path: an
+evicted file whose bytes have changed is now downloaded in order to be refused.
+
+**Why the exposure is small, stated rather than assumed.** `scan.ADOPTABLE` is
+`{READABLE}`, so adoption refuses to tag an online-only file at all, and a ledger
+record can only name an evicted file that was readable when adoption wrote it and
+was evicted afterwards. `SF_DATALESS` is also not settable from userspace and is
+0 on Linux and on network mounts, so the population is macOS file-provider
+libraries whose tracks were adopted locally and evicted later.
+
+**Closes when:** the pass can ask a provider whether a file's bytes are local
+WITHOUT the answer being a shortcut past the evidence, which means an eviction
+check that changes only the ORDER of work and never the verdict: batch the
+evicted records, tell the person how much would be downloaded, and let them
+decide once for the run instead of the guard deciding per file. That is a command
+line concern and belongs with the adopt verb.
+
+---
+
+## R-26. An interrupted adoption leaves a record only a human can spend
+
+**Found:** during U23's fifth review round, 2026-08-03, as the accepted cost of
+closing the widest hole in the guard.
+
+`snapshot_before_write` persists the record, the mutagen tag write runs, and only
+then does `_stamped` put the digest on. A run interrupted inside that window
+leaves a record with no size, no time and no digest. Round 4 accepted such a
+record unconditionally and returned before consulting anything, so a file replaced
+months later with a different recording was restored over and reported clean. It
+now refuses.
+
+**What that costs.** The file in that window genuinely does carry adoption's
+value, and the record genuinely is the only copy of the original. The person has
+to name it: `revert_tags`' `force` takes `(path, field)` pairs and the refusal message
+prints the exact pair for the record it refused. So the cost is one override per
+interrupted record, on a run somebody asked for, versus a file nobody can put
+back. That is the trade the module states in its own docstring and this is it
+being paid rather than avoided.
+
+**Why the window cannot simply be closed.** The stamp cannot go on BEFORE the
+write, because what a later revert needs to recognize is adoption's own output.
+It cannot be written in the same operation as the tag write either, because the
+tag write is mutagen's and the record is this module's, and they are different
+files on different filesystems.
+
+**Closes when:** the record carries a PRE-write digest as well as a post-write
+one. A record with a pre-write digest and no post-write digest can then be
+compared against the file: matching the pre-write digest proves the tag write
+never landed, so the revert is a no-op and can settle the record without asking
+anybody. It costs one extra whole-file hash per adopted file at write time, which
+is the same cost the post-write stamp already pays, and it belongs with whichever
+unit is willing to double that.
