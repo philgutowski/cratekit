@@ -118,9 +118,19 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
     # was then RETURNED by the next run before any guard looked at it, so the
     # only escape from one transposed letter was to hand-edit the TOML this verb
     # exists to abolish.
+    #
+    # ``or None`` IS LOAD BEARING, and so is the fact that the walk behind it
+    # cannot raise. THIS FUNCTION RUNS ON EVERY INVOCATION OF EVERY VERB: the
+    # command tree builds each landed entry's parser before anything dispatches,
+    # so a packaged directory that is missing or unreadable would take
+    # ``crate doctor`` and ``crate --help`` down with it, on exactly the machine
+    # doctor exists to report on. An install with no readable templates offers no
+    # closed set rather than an empty one, since an empty ``choices`` rejects
+    # every value including the correct one, and the wizard then reports the
+    # missing template as a finding.
     parser.add_argument(
         "--taxonomy",
-        choices=taxonomy.shipped_template_names(),
+        choices=taxonomy.shipped_template_names() or None,
         help="which shipped taxonomy template to adopt",
     )
     parser.set_defaults(_handler=setup)
@@ -444,9 +454,18 @@ def _resolve_volume_id(
     library root does not fail the read, it succeeds against whatever is mounted
     further up, which on every platform this ships for is the boot disk. Recorded
     once, that identity is what every destructive verb then asserts, against the
-    disk holding the user's operating system. The configured root must therefore
-    exist before an identity is read from it, and a root that does not exist is a
-    refusal naming both ways forward: attach the volume, or supply the identity.
+    disk holding the user's operating system.
+
+    WHAT IS REFUSED IS THE CROSSING, NOT THE ABSENCE, and the distinction is a
+    correction to this guard's first version. "The root must already exist" is
+    too strong by exactly the case a first run is in: a library folder that has
+    not been created yet, directly under a mount point that is attached and
+    readable. There the identity read comes from precisely the right volume, and
+    refusing it told the user to attach a drive that was already attached, with
+    the only escape being a flag whose value nothing in the product prints.
+    ``preflight.identity_source`` answers the narrower question, which is whether
+    the walk crossed a directory that is not there, since a directory that is not
+    there is exactly where a mount point appears when the volume is attached.
 
     The identity provider comes from the run's ``Probes`` rather than from the
     platform default here, so the volume this wizard reads is the volume doctor
@@ -460,19 +479,26 @@ def _resolve_volume_id(
         wizard.asked.append("library.volume_id (from the command line)")
         return flag
     provider = machine.identity_provider or preflight.default_identity_provider()
-    if not Path(root).is_dir():
+    source = preflight.identity_source(Path(root))
+    if source is None:
         raise _refuse(
-            f"the library root {root} does not exist, so there is no volume to "
-            f"read an identity from. Reading one anyway would record the identity "
-            f"of whatever filesystem is mounted above it, which on this machine "
-            f"is the boot disk, and every destructive refusal would then pass "
-            f"against that disk. Attach the library volume and run setup again, "
-            f"or supply the identity with --volume-id",
+            f"{root} is not on any volume that is mounted right now: the search "
+            f"for one walked up past a directory that does not exist, and a "
+            f"directory that does not exist is where a mount point appears when a "
+            f"volume is attached. Reading an identity from further up would "
+            f"record whatever filesystem happens to be above it, and every "
+            f"destructive refusal would then pass against that disk. Attach the "
+            f"library volume and run setup again, or supply the identity with "
+            f"--volume-id",
             remedy=Remedy.MOUNT_LIBRARY_VOLUME,
-            detail={"key": "library.volume_id", "root": root},
+            detail={
+                "key": "library.volume_id",
+                "root": root,
+                "deepest_existing": str(preflight.deepest_existing(Path(root))),
+            },
             reason="library-volume-unmounted",
         )
-    observed = provider(preflight.containing_mount(Path(root)))
+    observed = provider(source)
     if observed:
         wizard.asked.append("library.volume_id (read from the mounted volume)")
         return observed
@@ -507,14 +533,21 @@ def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) 
     ``resolve_mount_state`` rather than ``assert_library_mounted``: this wants
     the diagnosis rather than an exception, and the suite neutralizes the
     asserting entry point everywhere, so a guard written on top of that one would
-    be a guard no test could see. What the diagnosis MEANS is
-    ``preflight.library_state_is_reachable``, which is the same call doctor makes
-    before reporting on this file: one rule, so the write and the report about
-    the write cannot disagree. It is why the rule is not "the state must be OK".
-    A platform with no identity adapter answers "identity unavailable" for every
-    volume it will ever see, so that rule would lock every such platform out of
-    its own library state, permanently, which is a guard firing on a correct
-    setup (P7).
+    be a guard no test could see.
+
+    What the diagnosis MEANS is ``preflight.library_state_may_be_written``, and
+    that is a DIFFERENT question from the one doctor asks before reporting on
+    this same file. The two differ in exactly one mount outcome: a matching
+    identity with an absent root is nothing to READ and is precisely when
+    creating the directory and copying the template into it is correct, which is
+    a first run on the right volume, or a library folder somebody renamed. One
+    rule serving both questions refused that write and explained the refusal with
+    a sentence its own parenthetical contradicted.
+
+    It is also why the rule is not "the state must be OK". A platform with no
+    identity adapter answers "identity unavailable" for every volume it will ever
+    see, so that rule would lock every such platform out of its own library
+    state, permanently, which is a guard firing on a correct setup (P7).
     """
     status = preflight.resolve_mount_state(
         cfg.library.root,
@@ -522,18 +555,19 @@ def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) 
         identity_provider=machine.identity_provider,
         mount_enumerator=machine.mount_enumerator,
     )
-    if not preflight.library_state_is_reachable(status):
+    if not preflight.library_state_may_be_written(status):
         wizard.note(
             "setup.taxonomy",
             "active taxonomy template",
             doctor.Status.FAIL,
             (
-                f"nothing was written under {cfg.library.root}: the volume "
-                f"recorded for this library is not the one mounted there "
-                f"({status.state.value}, recorded {status.recorded_identity}, "
-                f"observed {status.observed_identity or 'nothing'}). The active "
-                f"template is state that belongs to the library, and this run "
-                f"would have put it on whichever filesystem is at that path"
+                f"nothing was written under {cfg.library.root}: this run could not "
+                f"establish that the volume there is the one recorded for this "
+                f"library ({status.state.value}, recorded "
+                f"{status.recorded_identity}, observed "
+                f"{status.observed_identity or 'no identity'}). The active "
+                f"template is state that belongs to the library, and writing it "
+                f"anyway would put it on whichever filesystem is at that path"
             ),
             Remedy.MOUNT_LIBRARY_VOLUME,
         )

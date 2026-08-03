@@ -304,6 +304,21 @@ def set(name: str, value: str) -> None:
     discarded, the presence index records the name anyway, doctor reports the
     credential as set, every read raises ``CredentialMissing``, and the user
     follows that remedy, re-records it successfully, and loops forever.
+
+    THE INDEX LOCK IS TAKEN BEFORE THE KEYCHAIN IS TOUCHED, and the order is the
+    fix for a defect the lock itself introduced. Taken afterwards, an
+    unobtainable lock refused a write that had ALREADY happened: the keychain
+    held the value, the index did not name it, ``exists`` answered False, and
+    doctor sent the user to record a credential the machine was already holding,
+    which is the exact failure the lock was added to prevent, reachable through
+    the lock's own refusal. Now the refusal happens while both stores are still
+    untouched, so a refusal means nothing changed anywhere.
+
+    What that leaves is one narrow window and it fails in the safe direction: the
+    keychain write succeeds and the index write then fails on its own (a full
+    disk). The value is stored and reads as unrecorded, so the user records it
+    again, which is idempotent. The opposite order would leave the index naming a
+    credential the keychain never accepted, which is the loop above.
     """
     if not value:
         raise CredentialMissing(
@@ -312,32 +327,48 @@ def set(name: str, value: str) -> None:
             f"others, so the presence check could not answer honestly.",
             name=str(name),
         )
-    try:
-        keyring.set_password(SERVICE, str(name), value)
-        stored = keyring.get_password(SERVICE, str(name))
-    except Exception as exc:  # see _unavailable: the keychain's failures are open-ended
-        raise _unavailable("record", str(name), exc) from exc
-    if stored != value:
-        raise _unavailable(
-            "record",
-            str(name),
-            RuntimeError("the keychain accepted the write and stored nothing"),
-        )
-    # Only after the read-back. The index must never claim a credential the
-    # keychain does not actually hold, because the whole reason the index exists
-    # is to answer the presence question without retrieving anything.
-    _index_add(str(name))
+    with _index_locked("record"):
+        try:
+            keyring.set_password(SERVICE, str(name), value)
+            stored = keyring.get_password(SERVICE, str(name))
+        except Exception as exc:  # see _unavailable: the keychain's failures are open-ended
+            raise _unavailable("record", str(name), exc) from exc
+        if stored != value:
+            raise _unavailable(
+                "record",
+                str(name),
+                RuntimeError("the keychain accepted the write and stored nothing"),
+            )
+        # Only after the read-back. The index must never claim a credential the
+        # keychain does not actually hold, because the whole reason the index
+        # exists is to answer the presence question without retrieving anything.
+        _record_name(str(name))
 
 
 def delete(name: str) -> None:
-    """Remove a credential. Absent is not an error; the end state is what matters."""
-    try:
-        keyring.delete_password(SERVICE, str(name))
-    except keyring.errors.PasswordDeleteError:
-        pass
-    except Exception as exc:  # see _unavailable: the keychain's failures are open-ended
-        raise _unavailable("remove", str(name), exc) from exc
-    _index_remove(str(name))
+    """Remove a credential. Absent is not an error; the end state is what matters.
+
+    THE INDEX ENTRY GOES FIRST, under the lock, and the keychain entry second.
+    The reverse order is what shipped and it produced the one disagreement that
+    makes a report lie: the keychain entry was removed, the index write then
+    failed or was refused, and ``exists`` answered TRUE for a credential that was
+    gone, so doctor reported green over nothing and the workflow that spent it
+    failed later with a missing credential.
+
+    This order cannot produce that. A failure between the two leaves the index
+    saying "not recorded" for a value the keychain may still hold, which reads as
+    work to do rather than as work already done, and re-recording is idempotent.
+    Taking the lock first means a lock that cannot be taken changes neither
+    store at all.
+    """
+    with _index_locked("remove"):
+        _forget_name(str(name))
+        try:
+            keyring.delete_password(SERVICE, str(name))
+        except keyring.errors.PasswordDeleteError:
+            pass
+        except Exception as exc:  # see _unavailable: the keychain's failures are open-ended
+            raise _unavailable("remove", str(name), exc) from exc
 
 
 def get_json(name: str) -> dict:
@@ -451,7 +482,7 @@ def _index_lock_path() -> Path:
 
 
 @contextmanager
-def _index_locked():
+def _index_locked(action: str = "update"):
     """Hold the sibling lock across ONE read then write cycle over the index.
 
     MEASURED, not theorised. Two processes recording one credential each left the
@@ -470,6 +501,12 @@ def _index_locked():
     persists after release, for the reason the config lock states at length:
     unlinking the name lets a second process lock a fresh inode while the first
     still holds the old one, and both then believe they are alone.
+
+    ``action`` names what the caller was about to do, so the refusal can say that
+    NOTHING was done. Callers take this lock before touching the keychain, not
+    after, so "the index could not be locked" and "nothing changed" are the same
+    sentence, and the message has to say so or the user is left guessing whether
+    a value was stored.
     """
     config._mkdir_private(_index_lock_path().parent)
     handle = None
@@ -496,7 +533,10 @@ def _index_locked():
             f"the credential presence index at {_index_path()} could not be "
             f"locked ({type(exc).__name__}), and writing it unlocked loses "
             f"whatever a second process is recording at the same time, silently, "
-            f"while reporting success.",
+            f"while reporting success. NOTHING WAS CHANGED: the lock is taken "
+            f"before the keychain is touched, so no credential was stored or "
+            f"removed by the attempt to {action} one, and the keychain and this "
+            f"index still agree.",
             name=None,
         ) from exc
     try:
@@ -505,18 +545,34 @@ def _index_locked():
         handle.close()  # closing the descriptor releases the lock; the file stays
 
 
+def _record_name(name: str) -> None:
+    """The read then write half, WITHOUT taking the lock. Callers hold it.
+
+    Split from the locking wrapper because ``flock`` is held per open file
+    description, so a second acquisition from inside a cycle that already holds
+    one deadlocks against itself. ``set`` and ``delete`` take the lock around
+    their whole operation, keychain included, so they call these directly.
+    """
+    names = _index_read()
+    if name not in names:
+        _index_write(names | {name})
+
+
+def _forget_name(name: str) -> None:
+    """The removal half, WITHOUT taking the lock. See :func:`_record_name`."""
+    names = _index_read()
+    if name in names:
+        _index_write(names - {name})
+
+
 def _index_add(name: str) -> None:
-    with _index_locked():
-        names = _index_read()
-        if name not in names:
-            _index_write(names | {name})
+    with _index_locked("record"):
+        _record_name(name)
 
 
 def _index_remove(name: str) -> None:
-    with _index_locked():
-        names = _index_read()
-        if name in names:
-            _index_write(names - {name})
+    with _index_locked("remove"):
+        _forget_name(name)
 
 
 __all__ = [

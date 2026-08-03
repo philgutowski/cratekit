@@ -168,6 +168,20 @@ TAXONOMY_TEMPLATE_KEY = "taxonomy.template"
 #: A shipped template's short name: a bare token, never a path fragment.
 _TEMPLATE_NAME_SHAPE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
+
+def template_name_is_usable(value: object) -> bool:
+    """Whether ``value`` is a shape this configuration can carry as a template name.
+
+    Public because the module that walks the packaged templates has to apply the
+    SAME rule when it decides which files to offer. A file called
+    ``taxonomy.deep.house.toml`` is a candidate on disk and its short name is one
+    this validator refuses, so a walker without this filter offers a closed-set
+    choice that configuration then rejects: two layers, one question, two
+    answers. That is the defect the shared walk was written to close, and it
+    reappears one layer down unless the shape is shared too.
+    """
+    return isinstance(value, str) and bool(_TEMPLATE_NAME_SHAPE.match(value))
+
 # Environment overrides. Exactly three, mirroring the source system's three,
 # and each one RELOCATES a configured value. None of them SUPPLIES one.
 #
@@ -2015,9 +2029,7 @@ def validate(data: Mapping) -> list[str]:
             )
 
     template = _dig(data, TAXONOMY_TEMPLATE_KEY)
-    if template is not None and (
-        not isinstance(template, str) or not _TEMPLATE_NAME_SHAPE.match(template)
-    ):
+    if template is not None and not template_name_is_usable(template):
         problems.append(
             f"{TAXONOMY_TEMPLATE_KEY} must be the short name of a shipped "
             f"template, letters, digits, underscores and dashes only, found "
@@ -2808,5 +2820,6 @@ __all__ = [
     "state_file",
     "state_files_for",
     "state_path",
+    "template_name_is_usable",
     "validate",
 ]

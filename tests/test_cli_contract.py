@@ -1629,6 +1629,21 @@ def test_conformance_8_every_declared_precondition_can_pass_and_can_refuse(confi
     Neither half can be satisfied by a constant. A check that always answers OK
     fails the second, one that always refuses fails the first, and one that
     answers with an empty finding fails the shape assertion under both.
+
+    TWO LIMITS, RECORDED RATHER THAN HIDDEN, because both are the kind of thing a
+    later reader would otherwise discover as a surprise:
+
+    * It covers the keys some verb DECLARES, which is 9 of the doctor's 23. The
+      other 14 are asserted one at a time in ``tests/test_doctor.py``, and
+      nothing here forces a new check to be reachable or refusable until a verb
+      depends on it.
+    * ``machines.hostile()`` is ``machines.green()`` with seams overridden, so it
+      breaks the machine and not the configuration. A future precondition whose
+      correct answer on that machine is INFO rather than FAIL, a check about
+      something no seam describes, will fail this test. THE FIX IS TO EXTEND
+      ``hostile()`` so that precondition is genuinely broken there, not to relax
+      the assertion: "this check cannot refuse" is the finding, and softening the
+      guard is how it stops being one.
     """
     import importlib
 

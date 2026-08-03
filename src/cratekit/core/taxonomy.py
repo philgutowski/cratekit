@@ -14,13 +14,23 @@ Parameterising five drifted copies would have preserved the drift in a config
 file, where it is harder to see. So the drift was resolved against the live
 library, and only the resolved result became declarable.
 
-WHY IT TAKES NO CONFIGURATION. This module reads no config and imports none
-(KTD23, seam decision S3). A resolver that reaches for global configuration
-cannot be tested against two different taxonomies in one process, and proving
-that a friend's differently-named tree routes correctly with no code change is
-exactly the verification this unit owes. So a Taxonomy is a value the caller
-supplies, and the only file this module reads is the read-only default that ships
-inside the wheel.
+WHY IT TAKES NO CONFIGURATION. This module reads no configuration VALUE (KTD23,
+seam decision S3). A resolver that reaches for global configuration cannot be
+tested against two different taxonomies in one process, and proving that a
+friend's differently-named tree routes correctly with no code change is exactly
+the verification this unit owes. So a Taxonomy is a value the caller supplies,
+and the only file this module reads is the read-only default that ships inside
+the wheel.
+
+The one thing it does import from ``core/config`` is a pure predicate over a
+string, ``template_name_is_usable``, and the distinction is worth stating because
+the sentence above used to say "imports none". Nothing is READ: no path is
+resolved, no document is loaded, no global is consulted, and every function here
+is still a function of its arguments. What the import buys is that the set of
+template names this module OFFERS and the set configuration ACCEPTS are one set.
+Spelling the rule twice is how a wizard comes to offer a name that validation
+then refuses, which is the same two-answers-to-one-question defect the shared
+walk below exists to close.
 
 WHY VALIDATION HAPPENS AT LOAD. Every rule below fails at load time and again in
 the setup wizard, never at write time. A friend whose template omits a tempo
@@ -36,6 +46,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from importlib import resources
 from typing import Any, Mapping, Sequence
+
+from cratekit.core import config
 
 # A stable identifier. Lowercase snake, because it is compared, persisted, and
 # never rendered. The pattern is enforced rather than documented so that a
@@ -437,12 +449,36 @@ def shipped_template_names() -> tuple[str, ...]:
     configuration naming a template that is not one of them. A copy of this walk
     in the CLI would let a name be offered that the check rejects, or accepted by
     the check with nothing shipping it.
+
+    IT NEVER RAISES, and that is not defensive habit. Its caller is an ARGUMENT
+    PARSER, and the whole command tree is built before anything dispatches, so a
+    packaged directory that is missing or unreadable used to take every command
+    down with an unhandled ``OSError``, including the health report. That report
+    exists for the broken machine, and a partial install is a broken machine: it
+    has to be able to describe one. An empty answer here is the honest one, and
+    the caller reports the missing template as a finding rather than as a
+    traceback.
+
+    A NAME IS ONLY OFFERED IF CONFIGURATION WOULD ACCEPT IT. Anything between the
+    prefix and the suffix is a candidate on disk, so ``taxonomy.deep.house.toml``
+    yields ``deep.house``, which ``config.validate`` refuses because the name is
+    composed into a resource path. Offering a value that is then rejected one
+    layer down is the same two-answers-to-one-question defect this function was
+    written to close, so the filter is applied here, from the module that owns
+    the rule.
     """
+    try:
+        entries = list((resources.files("cratekit") / "templates").iterdir())
+    except OSError:
+        return ()
     found = []
-    for item in (resources.files("cratekit") / "templates").iterdir():
+    for item in entries:
         name = item.name
-        if name.startswith(_TEMPLATE_PREFIX) and name.endswith(_TEMPLATE_SUFFIX):
-            found.append(name[len(_TEMPLATE_PREFIX) : -len(_TEMPLATE_SUFFIX)])
+        if not name.startswith(_TEMPLATE_PREFIX) or not name.endswith(_TEMPLATE_SUFFIX):
+            continue
+        short = name[len(_TEMPLATE_PREFIX) : -len(_TEMPLATE_SUFFIX)]
+        if config.template_name_is_usable(short):
+            found.append(short)
     return tuple(sorted(found))
 
 

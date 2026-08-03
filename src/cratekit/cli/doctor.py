@@ -81,7 +81,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
+import shlex
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -756,15 +756,19 @@ def _check_db_containment(inputs: _Inputs) -> Finding:
     )
 
 
-def _library_state_unreachable(inputs: _Inputs, what: str) -> str | None:
+def _library_state_unreadable(inputs: _Inputs, what: str) -> str | None:
     """Why library-scoped state may not be read here, or None when it may.
 
     Both callers below report on a file that sits under the library root by
     construction, and for both of them "the file is not there" and "the disk the
     file lives on is not there" produce the same bytes: none. The rule for
     telling those apart is ``core/preflight``'s, because that is the module that
-    owns what a mount outcome means, and because the wizard applies the same rule
-    before it WRITES one of these files. Two copies would be two answers.
+    owns what a mount outcome means.
+
+    The wizard asks a NEIGHBOURING question before it writes one of these files,
+    and the two are deliberately separate functions over separate tables: a
+    matching identity with an absent root is nothing to read here and exactly the
+    right moment to write there.
 
     The caller reports it as INFO, for the reason the mount check gives when it
     defers to the identity check: the volume is one problem and it is reported
@@ -773,13 +777,39 @@ def _library_state_unreachable(inputs: _Inputs, what: str) -> str | None:
     write this unit had to be stopped from making.
     """
     status = inputs.mount()
-    if status is None or preflight.library_state_is_reachable(status):
+    if status is None or preflight.library_state_is_readable(status):
         return None
     return (
-        f"not asserted: {what} lives on the library volume, and the volume "
-        f"question is unanswered ({status.state.value}), so nothing at the "
-        f"configured root could be read and nothing may be written there. The "
-        f"volume is reported by its own checks"
+        f"not asserted: {what} lives on the library volume, and this run could "
+        f"not establish that the volume is there ({status.state.value}), so "
+        f"nothing at the configured root was read. The volume is reported by its "
+        f"own checks"
+    )
+
+
+def _volume_clause(inputs: _Inputs) -> str:
+    """What an OK detail may CLAIM about the disk it just read from.
+
+    Derived from ``_IDENTITY_VERDICT``, the same total mapping the identity check
+    itself answers with, so the two can never disagree about whether a comparison
+    happened. Only the two outcomes that mean "observed equals recorded" earn the
+    strong sentence.
+
+    It exists because the OK details asserted the strong one unconditionally. A
+    machine with no identity adapter reaches these checks through the leg of the
+    reachability rule whose entire meaning is that the identity could not be
+    ASKED, and it then read "on the recorded library volume" on the same report
+    as ``library.identity`` failing with "the filesystem at the configured root
+    reports no volume identity". That is a positive claim about a disk nobody
+    looked at, which is the class of defect this whole pass exists to remove, so
+    it may not be reintroduced by the pass itself.
+    """
+    status = inputs.mount()
+    if status is not None and _IDENTITY_VERDICT[status.state][0] is Status.OK:
+        return "on the recorded library volume"
+    return (
+        "at the configured root, on a volume whose identity could not be "
+        "compared here, so which disk it is was not established"
     )
 
 
@@ -787,9 +817,9 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
     key, title = "taxonomy.active", "active taxonomy template"
     if inputs.cfg is None:
         return _unchecked(key, title)
-    unreachable = _library_state_unreachable(inputs, "the active template")
-    if unreachable is not None:
-        return Finding(key=key, title=title, status=Status.INFO, detail=unreachable)
+    unreadable = _library_state_unreadable(inputs, "the active template")
+    if unreadable is not None:
+        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
     shipped = taxonomy.shipped_template_names()
     named = inputs.cfg.taxonomy.template
     if named not in shipped:
@@ -842,9 +872,9 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
         title=title,
         status=Status.OK,
         detail=(
-            f"an active template at {path}, on the recorded library volume, "
-            f"parses and declares {len(declared.buckets)} buckets; "
-            f"taxonomy.template names the shipped {named!r}"
+            f"an active template at {path}, {_volume_clause(inputs)}, parses and "
+            f"declares {len(declared.buckets)} buckets; taxonomy.template names "
+            f"the shipped {named!r}"
         ),
     )
 
@@ -1498,9 +1528,9 @@ def _check_unresolved_session(inputs: _Inputs) -> Finding:
     key, title = "session.unresolved", "destructive sessions"
     if inputs.cfg is None:
         return _unchecked(key, title)
-    unreachable = _library_state_unreachable(inputs, "the session log")
-    if unreachable is not None:
-        return Finding(key=key, title=title, status=Status.INFO, detail=unreachable)
+    unreadable = _library_state_unreadable(inputs, "the session log")
+    if unreadable is not None:
+        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
     unreadable_directory = _log_directory_unreadable(inputs.cfg)
     if unreadable_directory is not None:
         return Finding(
@@ -1539,8 +1569,8 @@ def _check_unresolved_session(inputs: _Inputs) -> Finding:
             title=title,
             status=Status.OK,
             detail=(
-                f"the recorded library volume is mounted and its session log was "
-                f"read: {len(parsed)} recorded session(s), none of them open"
+                f"the session log {_volume_clause(inputs)} was read: "
+                f"{len(parsed)} recorded session(s), none of them open"
             ),
         )
     condemning = [
@@ -1579,9 +1609,33 @@ _HOOK_CONFIG_DEFAULT = ".pre-commit-config.yaml"
 _HOOK_DISPATCH = "hook-impl"
 _HOOK_STAGE = "--hook-type=pre-commit"
 
-#: Which configuration file that call names. Optional in the hook, so its absence
-#: means the default above rather than a defect.
-_HOOK_CONFIG_FLAG = re.compile(r"--config[= ](\S+)")
+def _hook_config_name(body: str) -> str:
+    """Which configuration file the hook's dispatch line names.
+
+    READ WITH ``shlex``, BECAUSE IT WAS WRITTEN WITH ``shlex``. ``pre_commit``
+    builds that argument vector with ``shlex.join``, which quotes any path
+    carrying a character a shell would treat specially, so a regular expression
+    matching non-space characters stops at the space in ``my config.yaml`` and
+    reports that a file called ``my`` does not exist. That is a refusal aimed at
+    a developer whose hook is installed and working, and doctor exits 30 over it.
+
+    Absence is not a defect: pre-commit's own default is what it means, and the
+    default is named here once so the answer this returns is always a real
+    filename rather than sometimes None.
+    """
+    for line in body.splitlines():
+        if _HOOK_DISPATCH not in line:
+            continue
+        try:
+            tokens = shlex.split(line)
+        except ValueError:  # an unbalanced quote: not a line we can read
+            continue
+        for index, token in enumerate(tokens):
+            if token.startswith("--config="):
+                return token[len("--config=") :]
+            if token == "--config" and index + 1 < len(tokens):
+                return tokens[index + 1]
+    return _HOOK_CONFIG_DEFAULT
 
 
 def _hook_dispatch_problem(body: str, root: Path) -> str | None:
@@ -1608,8 +1662,7 @@ def _hook_dispatch_problem(body: str, root: Path) -> str | None:
         return f"it never invokes pre-commit's {_HOOK_DISPATCH}"
     if _HOOK_STAGE not in body:
         return f"it does not carry {_HOOK_STAGE}"
-    match = _HOOK_CONFIG_FLAG.search(body)
-    named = match.group(1) if match else _HOOK_CONFIG_DEFAULT
+    named = _hook_config_name(body)
     # Relative names are resolved by pre-commit against the repository it runs
     # in, which is this one.
     configured = Path(named)
@@ -1688,7 +1741,7 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
         status=Status.OK,
         detail=(
             f"{hook} invokes pre-commit's hook implementation for the pre-commit "
-            f"stage against this repository's own {_HOOK_CONFIG_DEFAULT}"
+            f"stage against this repository's own {_hook_config_name(body)}"
         ),
     )
 

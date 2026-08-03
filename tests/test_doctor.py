@@ -1753,15 +1753,17 @@ def test_a_library_with_no_sessions_still_reports_a_clean_log(configured):
     """And the OK says what it established, rather than what it failed to find."""
     finding = find(doctor.run(configured, probes=probes()), "session.unresolved")
     assert finding.status is doctor.Status.OK
-    assert "mounted" in finding.detail and "read" in finding.detail
+    assert "on the recorded library volume was read" in finding.detail
+    assert "0 recorded session(s), none of them open" in finding.detail
 
 
-def test_whether_library_state_can_be_reached_is_total_over_the_mount_states():
-    """One table over a closed enum, three values, and only one of them is a yes.
+@pytest.mark.parametrize("table", ["_STATE_READABLE", "_STATE_WRITABLE"])
+def test_whether_library_state_can_be_reached_is_total_over_the_mount_states(table):
+    """Two tables over a closed enum, three values each, one yes each.
 
-    Written as a table rather than as a branch for the reason the identity
-    verdict is: a chain of branches acquires a fall-through, and the fall-through
-    is what claims something about a disk nobody observed.
+    Written as tables rather than as branches for the reason the identity verdict
+    is: a chain of branches acquires a fall-through, and the fall-through is what
+    claims something about a disk nobody observed.
 
     The third value is the interesting one. Two states mean the identity could
     not be ASKED, not that it was answered wrongly, and a platform with no
@@ -1773,15 +1775,32 @@ def test_whether_library_state_can_be_reached_is_total_over_the_mount_states():
     """
     from cratekit.core import preflight
 
-    table = preflight._STATE_REACHABLE
-    assert set(table) == set(preflight.MountState)
-    assert [state for state, verdict in table.items() if verdict is True] == [
-        preflight.MountState.OK
-    ]
-    assert {state for state, verdict in table.items() if verdict is None} == {
+    mapping = getattr(preflight, table)
+    assert set(mapping) == set(preflight.MountState)
+    assert {state for state, verdict in mapping.items() if verdict is None} == {
         preflight.MountState.IDENTITY_UNAVAILABLE,
         preflight.MountState.IDENTITY_NOT_RECORDED,
     }
+
+
+def test_reading_and_writing_library_state_are_two_questions_that_differ_by_one_row():
+    """The row that differs is the whole reason there are two tables.
+
+    ``LIBRARY_PATH_MISSING`` means the recorded identity MATCHED and only the
+    directory is absent. There is nothing to read, and it is exactly the moment
+    when creating the directory and copying the template into it is the correct
+    act: a first run on the right volume, or a library folder somebody renamed.
+    One rule serving both questions refused that write and explained the refusal
+    with a sentence its own parenthetical contradicted.
+    """
+    from cratekit.core import preflight
+
+    readable = preflight._STATE_READABLE
+    writable = preflight._STATE_WRITABLE
+    differ = {state for state in readable if readable[state] != writable[state]}
+    assert differ == {preflight.MountState.LIBRARY_PATH_MISSING}
+    assert readable[preflight.MountState.LIBRARY_PATH_MISSING] is False
+    assert writable[preflight.MountState.LIBRARY_PATH_MISSING] is True
 
 
 @pytest.mark.parametrize(
@@ -1808,7 +1827,47 @@ def test_a_platform_with_no_identity_adapter_still_reaches_its_own_library(
         status = preflight.MountStatus(
             state=getattr(preflight.MountState, state), configured_root=root
         )
-        assert preflight.library_state_is_reachable(status) is expected
+        assert preflight.library_state_is_readable(status) is expected
+        assert preflight.library_state_may_be_written(status) is expected
+
+
+def test_a_renamed_library_folder_on_the_right_volume_is_written_not_refused(
+    configured, tmp_path, monkeypatch
+):
+    """Reachable with no flags at all: set up, rename the folder, run setup.
+
+    The identity still matches, because the volume is the same one; only the
+    directory is gone. The first version of this guard called that "the volume
+    recorded for this library is not the one mounted there" while printing
+    "recorded F1E2-D3C4, observed F1E2-D3C4" in the same sentence, and refused
+    the one write that was correct.
+    """
+    configured.library.root.rename(tmp_path / "renamed-by-hand")
+    wizard = setup_verb._Wizard({}, silent())
+
+    setup_verb._seed_taxonomy(wizard, configured, probes())
+
+    assert config.state_path("taxonomy_active", configured).is_file()
+    assert all(note.status is not doctor.Status.FAIL for note in wizard.notes), [
+        note.detail for note in wizard.notes
+    ]
+
+
+def test_a_refusal_to_write_never_contradicts_its_own_parenthetical(configured):
+    """The refusal that remains has to describe the state it printed.
+
+    A wrong volume is still a refusal, and the sentence has to be one the
+    observed and recorded identities beside it can support.
+    """
+    wizard = setup_verb._Wizard({}, silent())
+    setup_verb._seed_taxonomy(
+        wizard, configured, probes(identity_provider=lambda _p: "0000-0000")
+    )
+    note = wizard.notes[0]
+    assert note.status is doctor.Status.FAIL
+    assert "could not establish" in note.detail
+    assert "0000-0000" in note.detail and VOLUME in note.detail
+    assert not config.state_path("taxonomy_active", configured).exists()
 
 
 # ── taxonomy.active: two claims, neither of them checked ─────────────────────
@@ -2119,3 +2178,404 @@ def test_a_contained_database_says_the_snapshot_commits_with_a_rename(configured
     finding = find(doctor.run(configured, probes=probes()), "library.db_containment")
     assert finding.status is doctor.Status.OK
     assert "under library.root" in finding.detail
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 9. What the second review found: a truth teller that could refuse to run
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# The pass that removed the false greens added three ways to be unavailable and
+# two claims nobody checked. A doctor that cannot start on a broken machine is
+# worse than one that reports the wrong thing about it, because the broken
+# machine is the one it exists for.
+
+
+class _StubResources:
+    """``importlib.resources`` with its package root pointed somewhere else.
+
+    A stand-in for a partial install: the package imports, and the packaged data
+    beside it is missing or unreadable. Injected rather than simulated by
+    deleting real files, because the real ones are the ones this suite runs on.
+    """
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+
+    def files(self, _package: str) -> Path:
+        return self.root
+
+
+@pytest.fixture
+def stripped_install(monkeypatch, tmp_path):
+    """A cratekit whose templates directory does not exist."""
+    from cratekit.core import taxonomy as taxonomy_module
+
+    monkeypatch.setattr(taxonomy_module, "resources", _StubResources(tmp_path / "pkg"))
+    return tmp_path
+
+
+@pytest.fixture
+def unreadable_install(monkeypatch, tmp_path):
+    """A cratekit whose templates directory exists and cannot be listed."""
+    from cratekit.core import taxonomy as taxonomy_module
+
+    templates = tmp_path / "pkg" / "templates"
+    templates.mkdir(parents=True)
+    (templates / "taxonomy.default.toml").write_text("")
+    templates.chmod(0o000)
+    monkeypatch.setattr(taxonomy_module, "resources", _StubResources(tmp_path / "pkg"))
+    yield tmp_path
+    templates.chmod(0o700)
+
+
+@pytest.mark.parametrize("install", ["stripped_install", "unreadable_install"])
+def test_the_whole_command_line_survives_an_install_with_no_readable_templates(
+    install, request, configured, monkeypatch
+):
+    """BLOCKING. The command tree builds EVERY landed verb's parser on EVERY run.
+
+    Putting ``choices=shipped_template_names()`` on the wizard's flag therefore
+    walked packaged data before anything dispatched, so a missing or unreadable
+    templates directory took ``crate doctor`` and ``crate --help`` down with an
+    unhandled OSError. Doctor exists for the broken machine and a partial install
+    is a broken machine; it has to be able to report on one, and this was a
+    strict regression against the build before the fix.
+    """
+    request.getfixturevalue(install)
+    monkeypatch.setattr(doctor, "Probes", lambda: probes())
+
+    assert drive(["--help"])[0] == int(ExitCode.OK)
+
+    code, out, err = drive(["--output", "json", "doctor"])
+    assert code == int(ExitCode.PRECONDITION), err
+    checks = {c["key"]: c for c in json.loads(out)["data"]["checks"]}
+    # It reports, and what it reports is the truth about this install.
+    assert checks["taxonomy.active"]["status"] == "fail"
+    assert "no template ships under that name" in checks["taxonomy.active"]["detail"]
+
+
+def test_a_missing_templates_directory_is_an_empty_answer_not_an_exception(
+    stripped_install,
+):
+    from cratekit.core import taxonomy as taxonomy_module
+
+    assert taxonomy_module.shipped_template_names() == ()
+
+
+def test_an_install_with_no_templates_offers_no_closed_set_rather_than_an_empty_one(
+    stripped_install, tmp_path, monkeypatch
+):
+    """An empty ``choices`` rejects every value including the correct one.
+
+    So the flag carries no closed set when nothing ships, and the wizard reports
+    the missing template as a finding instead of arguing with the user about a
+    name that would have been right on a whole install.
+    """
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    monkeypatch.setattr(doctor, "Probes", lambda: probes())
+
+    code, out, err = drive(
+        [
+            "--output", "json", "setup",
+            "--library-root", str(root),
+            "--volume-id", VOLUME,
+            "--db-path", str(root / "db" / "master.db"),
+            "--staging", str(tmp_path / "staging"),
+            "--profile", "slim",
+            "--taxonomy", "default",
+        ]
+    )
+    assert code != int(ExitCode.USAGE), err
+    checks = {c["key"]: c for c in json.loads(out)["data"]["checks"]}
+    assert checks["setup.taxonomy"]["status"] == "fail"
+    assert "no shipped template is named" in checks["setup.taxonomy"]["detail"]
+
+
+def test_a_shipped_name_configuration_would_reject_is_never_offered(
+    monkeypatch, tmp_path
+):
+    """Two layers, one question, one answer, one layer further down.
+
+    Anything between the prefix and the suffix is a candidate on disk, so
+    ``taxonomy.deep.house.toml`` yields ``deep.house``, which validation refuses
+    because the name is composed into a packaged resource path. Offering it as a
+    closed-set choice and then refusing it is the defect the shared walk exists
+    to prevent, reappearing one layer down.
+    """
+    from cratekit.core import taxonomy as taxonomy_module
+
+    templates = tmp_path / "pkg" / "templates"
+    templates.mkdir(parents=True)
+    for name in ("taxonomy.default.toml", "taxonomy.deep.house.toml", "taxonomy..toml"):
+        (templates / name).write_text("")
+    monkeypatch.setattr(taxonomy_module, "resources", _StubResources(tmp_path / "pkg"))
+
+    assert taxonomy_module.shipped_template_names() == ("default",)
+
+
+def test_every_name_the_wheel_actually_ships_is_one_configuration_accepts(library):
+    """The real packaged set, against the real validator."""
+    from cratekit.core import taxonomy as taxonomy_module
+
+    shipped = taxonomy_module.shipped_template_names()
+    assert shipped, "the wheel ships no taxonomy template"
+    for name in shipped:
+        document = document_for(library)
+        document["taxonomy"] = {"template": name}
+        assert config.validate(document) == [], name
+
+
+# ── the derive guard that over-fired ────────────────────────────────────────
+
+
+def test_a_library_folder_not_yet_created_under_a_real_mount_is_not_refused():
+    """BLOCKING. The first run this guard was most likely to meet, refused.
+
+    ``Path(root).is_dir()`` was too strong by exactly one case: a library folder
+    that does not exist yet, directly under a mount point that is attached and
+    readable. The identity read there comes from the right volume, and the
+    refusal told the user to attach a drive that was already attached, with the
+    only escape being a flag whose value nothing in the product prints.
+
+    The filesystem root is used as the mount, because it is a mount point on
+    every platform this runs on and needs no privileges to arrange.
+    """
+    from cratekit.core import preflight
+
+    wizard = setup_verb._Wizard({}, silent())
+    not_yet_created = Path("/") / "cratekit-library-that-does-not-exist"
+    assert not not_yet_created.exists()
+    assert preflight.deepest_existing(not_yet_created) == Path("/")
+
+    derived = setup_verb._resolve_volume_id(
+        wizard, str(not_yet_created), None, probes(identity_provider=lambda _p: VOLUME)
+    )
+    assert derived == VOLUME
+
+
+def test_the_derive_still_refuses_when_the_walk_crossed_a_missing_directory(tmp_path):
+    """And the case that cost a library is still refused.
+
+    ``/Volumes/NAME/Music`` with the drive unplugged walks up past an absent
+    ``/Volumes/NAME``, and a directory that is not there is exactly where a mount
+    point appears when the volume is attached.
+    """
+    from cratekit.core import preflight
+
+    volumes = tmp_path / "Volumes"
+    volumes.mkdir()
+    root = volumes / "EP_LIBRARY" / "Music"
+    assert preflight.deepest_existing(root) == volumes.resolve()
+    assert preflight.identity_source(root) != volumes.resolve()
+
+    wizard = setup_verb._Wizard({}, silent())
+    with pytest.raises(CratekitError) as excinfo:
+        setup_verb._resolve_volume_id(
+            wizard, str(root), None, probes(identity_provider=lambda _p: "BOOT")
+        )
+    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
+    assert "walked up past a directory that does not exist" in excinfo.value.cause.message
+
+
+def test_the_identity_source_is_the_mount_only_when_the_walk_crossed_nothing(tmp_path):
+    """The rule itself, over the three shapes that matter."""
+    from cratekit.core import preflight
+
+    existing = tmp_path / "library"
+    existing.mkdir()
+    # It exists: the identity comes from the volume it is on.
+    assert preflight.identity_source(existing) == preflight.containing_mount(existing)
+    # Its deepest existing ancestor IS a mount point: the directory would be
+    # created on that volume.
+    assert preflight.identity_source(Path("/") / "no-such-cratekit-root") == Path("/")
+    # The walk crossed a gap.
+    assert preflight.identity_source(tmp_path / "missing" / "deeper") is None
+
+
+# ── an OK detail may claim only what the run established ────────────────────
+
+
+def test_no_ok_detail_claims_a_volume_the_run_never_identified(configured):
+    """BLOCKING. Two greens asserting a disk nobody looked at.
+
+    Both are reached through the leg of the reachability rule whose entire
+    meaning is that the identity could not be ASKED, and on a machine with no
+    identity adapter they appeared on the same report as ``library.identity``
+    failing with "reports no volume identity". The pre-fix details claimed
+    nothing at all, so this was a claim ADDED by the round that exists to remove
+    exactly those.
+    """
+    from cratekit.core import preflight
+
+    seed_taxonomy(configured)
+    report = doctor.run(
+        configured, probes=probes(identity_provider=preflight.null_volume_identity)
+    )
+
+    assert find(report, "library.identity").status is doctor.Status.FAIL
+    for key in ("taxonomy.active", "session.unresolved"):
+        finding = find(report, key)
+        assert finding.status is doctor.Status.OK, finding.detail
+        assert "recorded library volume" not in finding.detail, finding.detail
+        assert "could not be compared" in finding.detail
+
+
+def test_the_strong_claim_survives_where_the_identity_really_was_compared(configured):
+    seed_taxonomy(configured)
+    report = doctor.run(configured, probes=probes())
+    for key in ("taxonomy.active", "session.unresolved"):
+        assert "on the recorded library volume" in find(report, key).detail
+
+
+# ── the credential store and its index never disagree ───────────────────────
+
+
+def _refuse_the_index_lock(monkeypatch):
+    """Make the presence index unlockable, the way a read-only state root does."""
+    import os as os_module
+
+    real_open = os_module.open
+
+    def refuse(path, *args, **kwargs):
+        if str(path).endswith("credential_index.lock"):
+            raise PermissionError("no")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(os_module, "open", refuse)
+
+
+def test_a_refused_index_lock_leaves_the_keychain_untouched_on_a_record(
+    monkeypatch,
+):
+    """BLOCKING. The lock's own refusal reintroduced the lie it was added to fix.
+
+    Taken AFTER the keychain write, an unobtainable lock refused a write that had
+    already happened: the keychain held the value, the index did not name it,
+    ``exists`` answered False, and doctor sent the user to record a credential
+    the machine already had. The lock is taken first now, so a refusal means
+    nothing changed anywhere.
+    """
+    _refuse_the_index_lock(monkeypatch)
+
+    with pytest.raises(secrets.CredentialIndexUnusable) as excinfo:
+        secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
+
+    assert "NOTHING WAS CHANGED" in str(excinfo.value)
+    assert not secrets.exists(secrets.Credential.IDENTIFY_KEY)
+    with pytest.raises(secrets.CredentialMissing):
+        secrets.get(secrets.Credential.IDENTIFY_KEY)
+
+
+def test_a_refused_index_lock_leaves_the_keychain_untouched_on_a_delete(monkeypatch):
+    """The other direction, which was the one that made doctor report green.
+
+    The keychain entry was removed first and the index write then failed, so
+    ``exists`` answered TRUE for a credential that was gone and doctor reported a
+    green credential over nothing.
+    """
+    secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
+    _refuse_the_index_lock(monkeypatch)
+
+    with pytest.raises(secrets.CredentialIndexUnusable):
+        secrets.delete(secrets.Credential.IDENTIFY_KEY)
+
+    assert secrets.exists(secrets.Credential.IDENTIFY_KEY)
+    assert secrets.get(secrets.Credential.IDENTIFY_KEY) == "value-from-the-user"
+
+
+def test_a_delete_that_fails_between_the_two_stores_never_reports_green(monkeypatch):
+    """The index entry goes first, so the surviving disagreement is the safe one.
+
+    Index absent with a keychain entry still there reads as work to do, and
+    re-recording is idempotent. The reverse reads as work already done, over a
+    credential that is gone.
+    """
+    secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
+
+    import keyring
+
+    def refuse(_service, _name):
+        raise RuntimeError("the keychain went away mid-delete")
+
+    monkeypatch.setattr(keyring, "delete_password", refuse)
+    with pytest.raises(secrets.CredentialBackendUnavailable):
+        secrets.delete(secrets.Credential.IDENTIFY_KEY)
+
+    assert not secrets.exists(secrets.Credential.IDENTIFY_KEY)
+
+
+def test_recording_and_removing_still_work_when_the_lock_is_available():
+    """The correct path, since every guard above is a refusal."""
+    secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
+    assert secrets.exists(secrets.Credential.IDENTIFY_KEY)
+    assert secrets.get(secrets.Credential.IDENTIFY_KEY) == "value-from-the-user"
+
+    secrets.delete(secrets.Credential.IDENTIFY_KEY)
+    assert not secrets.exists(secrets.Credential.IDENTIFY_KEY)
+
+
+# ── the hook check, against what pre-commit actually writes ──────────────────
+
+
+@pytest.mark.parametrize("filename", ["my config.yaml", "cfg(2).yaml", "plain.yaml"])
+def test_a_hook_whose_configuration_name_needed_quoting_still_passes(
+    library, tmp_path, filename
+):
+    """``pre_commit`` builds that line with ``shlex.join``, which QUOTES.
+
+    A greedy match over non-space characters therefore stopped at the space and
+    reported "the configuration it names, my, does not exist", so doctor exited
+    30 for a developer whose hook was installed and working. Built here with the
+    real ``shlex.join`` rather than with a hand-written string, because the
+    hand-written string is what agreed with the regex.
+    """
+    import shlex
+
+    checkout = tmp_path / "checkout"
+    (checkout / ".git" / "hooks").mkdir(parents=True)
+    (checkout / filename).write_text("repos: []\n")
+    args = shlex.join(
+        ["hook-impl", f"--config={filename}", "--hook-type=pre-commit"]
+    )
+    (checkout / ".git" / "hooks" / "pre-commit").write_text(
+        f"#!/usr/bin/env bash\nARGS=({args})\nexec pre-commit \"${{ARGS[@]}}\"\n"
+    )
+
+    finding = hook_finding(library, checkout)
+    assert finding.status is doctor.Status.OK, finding.detail
+    assert filename in finding.detail, "the detail names a file it did not check"
+
+
+def test_the_hook_ok_names_the_configuration_it_actually_resolved(library, tmp_path):
+    """It interpolated the DEFAULT name whatever the hook said."""
+    checkout = hooked_checkout(
+        tmp_path / "checkout",
+        "ARGS=(hook-impl --config=tools/hooks.yaml --hook-type=pre-commit)\n",
+        config_file=False,
+    )
+    (checkout / "tools").mkdir()
+    (checkout / "tools" / "hooks.yaml").write_text("repos: []\n")
+
+    finding = hook_finding(library, checkout)
+    assert finding.status is doctor.Status.OK, finding.detail
+    assert "tools/hooks.yaml" in finding.detail
+    assert ".pre-commit-config.yaml" not in finding.detail
+
+
+# ── two partial tables over one key space ───────────────────────────────────
+
+
+def test_the_two_remote_tables_never_answer_for_the_same_type():
+    """Every other table in this module is total over a closed enum and asserted.
+
+    These two are partial by necessity, since rclone's provider list is not ours
+    to close, so what can be asserted instead is that they do not overlap: one
+    type answering in both is one type with two answers, and which one wins is
+    the order the branches happen to be written in.
+    """
+    overlap = set(doctor._REMOTE_TRASH_POLICY) & doctor._NON_TRASHING_REMOTE_TYPES
+    assert not overlap, overlap
+    for kind, policy in doctor._REMOTE_TRASH_POLICY.items():
+        assert policy.option is None or policy.disabled in ("true", "false"), kind

@@ -291,13 +291,62 @@ def containing_mount(path: Path) -> Path:
     The walk exists because a library root may legitimately be a SUBDIRECTORY of
     a mount. ``ismount`` on such a path is False even when everything is
     perfectly healthy, so asking it directly would refuse a working setup.
+
+    Reporting is what this is for. A caller deciding whether an identity may be
+    RECORDED wants :func:`identity_source`, which is this walk plus the question
+    of whether it crossed anything that is not there.
+    """
+    current = deepest_existing(path)
+    while not os.path.ismount(current) and current != current.parent:
+        current = current.parent
+    return current
+
+
+def deepest_existing(path: Path) -> Path:
+    """The deepest ancestor of ``path``, or ``path`` itself, that exists.
+
+    Named because two callers need it and because it is half of what
+    ``containing_mount`` does: that function starts here and then climbs to a
+    mount point. Keeping the first half addressable is what lets a caller ask
+    whether the climb crossed anything.
     """
     current = Path(path).resolve()
     while not current.exists() and current != current.parent:
         current = current.parent
-    while not os.path.ismount(current) and current != current.parent:
-        current = current.parent
     return current
+
+
+def identity_source(path: Path) -> Path | None:
+    """The mount whose identity may be RECORDED for ``path``, or None.
+
+    The question is narrower than "which mount contains this path", and the
+    difference is the whole point. ``containing_mount`` answers by walking up to
+    the deepest existing ancestor and then to a mount point, which is correct for
+    reporting and dangerous for recording: with the library drive unplugged,
+    ``/Volumes/NAME/Music`` walks past the absent mount point to the boot disk,
+    and recording THAT identity as the library's makes every destructive
+    refusal pass against the disk holding the operating system.
+
+    Two shapes are safe and the second is the one a first-run wizard is actually
+    in:
+
+    * the path EXISTS, so the identity is read from the volume it is on;
+    * the path does not exist and its deepest existing ancestor is ITSELF a mount
+      point, so the directory would be created directly on that volume and the
+      identity read from it is the identity it would sit on.
+
+    Everything else means the walk crossed a directory that is not there, and a
+    directory that is not there is exactly where a mount point appears when the
+    volume is attached. Refusing only that shape is what stops the guard firing
+    on the common correct case, which is a library folder that has not been
+    created yet under a mount that is right there.
+    """
+    resolved = Path(path).resolve()
+    deepest = deepest_existing(resolved)
+    mount = containing_mount(resolved)
+    if deepest == resolved or deepest == mount:
+        return mount
+    return None
 
 
 def resolve_mount_state(
@@ -369,8 +418,8 @@ def resolve_mount_state(
     )
 
 
-#: Whether the configured root may be treated as this library's own storage, per
-#: mount outcome. A TOTAL mapping over the enum, and three values rather than two.
+#: Whether library-scoped state at the configured root may be READ, per mount
+#: outcome. A TOTAL mapping over the enum, and three values rather than two.
 #:
 #: ``True`` and ``False`` are the obvious ones. ``None`` means the identity
 #: question could not be ASKED, which is not the same as being answered wrongly:
@@ -379,10 +428,10 @@ def resolve_mount_state(
 #: library state entirely or hand it the same blanket yes it hands a machine with
 #: the wrong disk attached. For those two states the fallback is the only signal
 #: left, which is whether the configured root exists at all.
-_STATE_REACHABLE: dict[MountState, bool | None] = {
+_STATE_READABLE: dict[MountState, bool | None] = {
     MountState.OK: True,
-    # The volume matched and the ROOT is not on it. Nothing library-scoped is
-    # under a path that is not there.
+    # The volume matched and the ROOT is not on it. There is nothing under a
+    # path that is not there, so there is nothing to read and no answer to give.
     MountState.LIBRARY_PATH_MISSING: False,
     MountState.NOT_MOUNTED: False,
     MountState.MOUNTED_ELSEWHERE: False,
@@ -391,35 +440,70 @@ _STATE_REACHABLE: dict[MountState, bool | None] = {
     MountState.IDENTITY_NOT_RECORDED: None,
 }
 
+#: Whether library-scoped state at the configured root may be WRITTEN. A SECOND
+#: table over the same enum, and it differs from the first in exactly one row.
+#:
+#: That row is the reason there are two tables. ``LIBRARY_PATH_MISSING`` means
+#: the recorded identity MATCHED and only the directory is absent, which is
+#: nothing to read and precisely the moment when creating the directory and
+#: copying the template into it is the correct act: a first run on the right
+#: volume, or a library folder somebody renamed. One table serving both questions
+#: refused that write and printed a sentence its own parenthetical contradicted,
+#: "the volume recorded for this library is not the one mounted there" beside
+#: "recorded X, observed X".
+_STATE_WRITABLE: dict[MountState, bool | None] = {
+    MountState.OK: True,
+    MountState.LIBRARY_PATH_MISSING: True,
+    MountState.NOT_MOUNTED: False,
+    MountState.MOUNTED_ELSEWHERE: False,
+    MountState.FOREIGN_VOLUME: False,
+    MountState.IDENTITY_UNAVAILABLE: None,
+    MountState.IDENTITY_NOT_RECORDED: None,
+}
 
-def library_state_is_reachable(status: MountStatus) -> bool:
-    """Whether library-scoped state at the configured root can be read or written.
 
-    ONE RULE WITH TWO CALLERS, and they are on opposite sides of the same
-    hazard. The wizard asks before it copies the active taxonomy beside the
-    library, because writing library state onto whatever filesystem happens to be
-    at that path creates a leftover mount point on the boot disk and leaves
-    coupled state where no snapshot of that library will ever capture it. Doctor
-    asks before it reports on the same file and on the session log, because a
-    path that is not there and a path on a disk that is not there produce
-    identical bytes, none, and reading the second as "nothing to report" is a
-    positive claim about a disk nobody looked at.
-
-    Two implementations of that rule would be two answers to one question, and
-    the disagreement would be a report that is green about a write it did not
-    make.
-
-    It is deliberately more permissive than the destructive gate:
-    ``assert_library_volume`` already treats an unreadable identity as tolerable
-    for non-destructive work, on the argument that the worst case there is a
-    wrong report rather than deleted music. Reading a template and copying one
-    are in that class. Deciding a DELETION is not, and that decision still goes
-    through the assertion above, which is stricter on purpose.
-    """
-    verdict = _STATE_REACHABLE[status.state]
+def _reachable(table: dict[MountState, bool | None], status: MountStatus) -> bool:
+    verdict = table[status.state]
     if verdict is None:
+        # The identity could not be asked, so the only remaining signal is
+        # whether anything is at the configured root at all.
         return Path(status.configured_root).is_dir()
     return verdict
+
+
+def library_state_is_readable(status: MountStatus) -> bool:
+    """Whether library-scoped state at the configured root may be read and believed.
+
+    Doctor asks before it reports on the active template and on the session log,
+    because a path that is not there and a path on a disk that is not there
+    produce identical bytes, none, and reading the second as "nothing to report"
+    is a positive claim about a disk nobody looked at.
+
+    Deliberately more permissive than the destructive gate:
+    ``assert_library_volume`` already treats an unreadable identity as tolerable
+    for non-destructive work, on the argument that the worst case there is a
+    wrong report rather than deleted music. Reading a template is in that class.
+    Deciding a DELETION is not, and that decision still goes through the
+    assertion above, which is stricter on purpose.
+    """
+    return _reachable(_STATE_READABLE, status)
+
+
+def library_state_may_be_written(status: MountStatus) -> bool:
+    """Whether library-scoped state may be CREATED at the configured root.
+
+    The wizard asks before it copies the active taxonomy beside the library,
+    because writing library state onto whatever filesystem happens to be at that
+    path leaves a leftover mount point on the boot disk and puts coupled state
+    where no snapshot of that library will ever capture it.
+
+    It is a separate question from :func:`library_state_is_readable` rather than
+    the same one phrased twice, and the row that differs is the proof: a matching
+    identity with an absent root is nothing to read and exactly the right moment
+    to write. Sharing one answer between the two made the wizard refuse a correct
+    first run and made doctor's explanation of the refusal false.
+    """
+    return _reachable(_STATE_WRITABLE, status)
 
 
 def assert_library_volume(

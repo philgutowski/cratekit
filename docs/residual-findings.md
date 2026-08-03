@@ -41,6 +41,16 @@ requirements now: the body invokes pre-commit's own `hook-impl`, it carries
 configuration file it names resolves INSIDE this checkout and exists. Each is
 driven against a hook that passes the old substring and runs nothing.
 
+**The third requirement is read with `shlex`, because the line was written with
+`shlex`.** `pre_commit` builds that argument vector with `shlex.join`, which
+quotes any path carrying a shell-special character, so a regular expression over
+non-space characters stops at the space in `my config.yaml` and reports that a
+file called `my` does not exist. That is a refusal aimed at a developer whose
+hook is installed and working, and it drives the whole health report to exit 30.
+The tightening and the false alarm arrived in the same commit, which is the
+usual shape: a guard made stronger against its evasion, and weaker against the
+real thing it was guarding.
+
 Two more details are worth carrying, because both are ways the same check gets
 written wrongly:
 
