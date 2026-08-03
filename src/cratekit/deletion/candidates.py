@@ -96,6 +96,7 @@ reachable without a filesystem shaped for it.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -157,8 +158,22 @@ class Category(StrEnum):
     STILL_REFERENCED = "still-referenced"
     #: The file is already gone. Somebody deleted it by hand, or a previous run
     #: of this pass trashed it and was interrupted before it advanced the
-    #: watermark. Finished business either way, which is what makes a run that
-    #: crashed mid-trash resume rather than re-offer.
+    #: watermark. Finished business, which is what makes a run that crashed
+    #: mid-trash resume rather than re-offer.
+    #:
+    #: **IT IS ONLY FINISHED BUSINESS BECAUSE THE MOVE AND THE TOMBSTONE ARE ONE
+    #: ACT, AND THIS SENTENCE USED TO SAY "either way" AS IF THEY WERE NOT.**
+    #: This category is in :data:`HANDLED`, so the watermark passes over the row
+    #: and it is never offered again. That is correct for a file whose deletion
+    #: was RECORDED and wrong for one whose deletion was not: a run that trashed
+    #: a file and then failed to write its tombstone would leave the file in the
+    #: Trash, the version un-suppressed, and this category quietly retiring the
+    #: only row that could ever have said so. What makes the reading safe is that
+    #: the state cannot be reached: ``run._record_or_put_it_back`` puts the file
+    #: back when the tombstone cannot be written, so a file that is absent at the
+    #: start of a run is a file whose deletion completed. The docstring is stated
+    #: as a consequence of that guarantee rather than as a property of absence,
+    #: because absence on its own does not carry it.
     GONE = "gone"
     #: A person was shown this file and said to keep it (R35). Never offered
     #: again until the decline is revoked, which means it is suspended rather
@@ -249,11 +264,21 @@ class ReferenceSet:
     #: run in progress. Refuses, because half this set describes one filesystem
     #: and half describes another.
     unstable_anchors: tuple[str, ...] = ()
+    #: The rows inside ``not_a_path`` that ARE a path, spelled in a form this
+    #: build cannot name. Refuses. See :func:`_unnameable`: the excusal that
+    #: ``not_a_path`` performs is only sound for a row that references no file at
+    #: all, and reading a real path as one of those is how the proof comes back
+    #: empty and every candidate passes it.
+    unnameable: tuple[str, ...] = ()
 
     @property
     def complete(self) -> bool:
         return not (
-            self.unmapped or self.uninspectable or self.unanchored or self.unstable_anchors
+            self.unmapped
+            or self.uninspectable
+            or self.unanchored
+            or self.unstable_anchors
+            or self.unnameable
         )
 
     @property
@@ -274,7 +299,54 @@ class ReferenceSet:
             "unanchored": len(self.unanchored),
             "missing": len(self.missing),
             "not_a_path": len(self.not_a_path),
+            "unnameable": len(self.unnameable),
         }
+
+
+#: A recorded value opening with a drive letter, the one path shape that is
+#: absolutely a path and that ``resolve_recorded_path`` cannot name. It tests for
+#: a leading ``/`` and returns NOT_A_PATH for everything else, which is right on
+#: macOS, where the rows that fail it are streaming pseudo-locations referencing
+#: no file. On Windows every ``C:\`` row fails it too.
+_DRIVE_LETTER = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def _unnameable(recorded: str) -> bool:
+    """Whether a row excused as "not a path" is in fact a path, unnameably spelled.
+
+    **THE EXCUSAL IS SOUND FOR ONE REASON AND ONE ONLY**, which the reference
+    set's docstring states: a streamed track has a pseudo-location rather than a
+    file, so it cannot be the row that references a file, and counting it against
+    completeness would refuse the whole run for any library that has ever
+    streamed anything. That argument is about rows THAT REFERENCE NO FILE. It
+    does not extend one inch to a row that references a file perfectly well and
+    is written in a form this build does not decode, and the difference is not
+    cosmetic: such a row contributes no filesystem identity, so a candidate that
+    would have collided with it is proved unreferenced against nothing.
+
+    Two shapes reach that state today and both are recognised here rather than in
+    ``core.locations``, which belongs to another unit and is not rewritten from
+    inside this one:
+
+    * a DRIVE LETTER. ``resolve_recorded_path`` requires a leading ``/``, so on
+      Windows every row in the collection is excused, the reference set comes
+      back empty, ``complete`` is true, and every removed row passes a proof
+      about nothing. ``core.locations`` already ships a Windows separator seam,
+      so the platform is anticipated elsewhere in the same module.
+    * a ``file://`` LOCATION. ``core.locations.location_to_path`` is the decoder
+      built for exactly the two spellings rekordbox has used, and neither this
+      module nor ``library.read_collection`` routes a recorded value through it,
+      so a percent-encoded location is excused the same way.
+
+    REFUSING IS THE NARROW ANSWER RATHER THAN THE BROAD ONE. It fires only for a
+    row that positively looks like a path, so a genuinely streamed library still
+    runs, which is the case the excusal was built for and the case that must not
+    be broken by fixing this one. A destructive verb proving a file unreferenced
+    against an empty reference set is the worst shape this unit has, and this is
+    the half of it U24 can close from inside its own package.
+    """
+    text = str(recorded).strip()
+    return bool(_DRIVE_LETTER.match(text)) or locations.looks_like_location(text)
 
 
 def _anchor_text(value: str) -> str:
@@ -396,6 +468,13 @@ def reference_set(
     as missing evidence would refuse the whole run for a library that has ever
     streamed anything. It IS counted, in ``not_a_path``, because a set of rows
     excused from the proof is worth being able to see the size of.
+
+    THAT EXCUSAL IS SPLIT IN TWO, and :func:`_unnameable` is the half that
+    refuses. The argument above holds for a row referencing no file and for
+    nothing else, and the resolver answers ``NOT_A_PATH`` for a drive-letter path
+    and a ``file://`` location as readily as for a streaming pseudo-location. A
+    row of the second kind names a real file, so excusing it removes real
+    evidence from the proof rather than declining to add irrelevant evidence.
     """
     found: dict[FileIdentity, list[str]] = {}
     unmapped: list[str] = []
@@ -403,6 +482,7 @@ def reference_set(
     missing: list[str] = []
     unanchored: list[str] = []
     not_a_path: list[str] = []
+    unnameable: list[str] = []
     dead: dict[str, None] = {}
     # Per anchor rather than per run, because the global tally is exactly what
     # the all-or-nothing warning got wrong: one unrelated active row that
@@ -422,7 +502,10 @@ def reference_set(
             continue
         resolved = locations.resolve_recorded_path(row.recorded, root=root, prefix_map=rules)
         if resolved.resolution is locations.Resolution.NOT_A_PATH:
-            not_a_path.append(row.content_id)
+            if _unnameable(row.recorded):
+                unnameable.append(row.content_id)
+            else:
+                not_a_path.append(row.content_id)
             continue
         if resolved.path is None:
             unmapped.append(row.content_id)
@@ -462,6 +545,7 @@ def reference_set(
         unanchored=tuple(unanchored),
         dead_anchors=tuple(dead),
         not_a_path=tuple(not_a_path),
+        unnameable=tuple(unnameable),
         suspect_anchors=tuple(
             anchor for anchor in missing_under if not indexed_under.get(anchor)
         ),
@@ -491,6 +575,33 @@ def assert_complete(references: ReferenceSet) -> None:
         if references.unanchored
         else ""
     )
+    if references.unnameable:
+        # ITS OWN SENTENCE AND ITS OWN STEPS, because nothing the user can mount
+        # or remap answers it. The rows are readable, they name real files, and
+        # this build cannot turn the spelling into a path, so the honest report
+        # is that the proof would be built out of nothing rather than out of
+        # less. Named before the generic sentence below for the same reason the
+        # dead anchors are: it is the shape a person can act on.
+        raise refuse(
+            "deletion-reference-set-incomplete",
+            f"{len(references.unnameable)} active rows record a location that is "
+            f"a path this build cannot name, a drive letter or a file:// "
+            f"location rather than an absolute path; those rows were excused "
+            f"from the proof as though they referenced no file at all, so a "
+            f"removed file would be shown unreferenced against a reference set "
+            f"they are missing from; nothing is offered this run",
+            steps=(
+                "run this on the machine and platform the library was recorded "
+                "on, or report this with the recorded locations below, because "
+                "no volume prefix rule can spell a path this build cannot read",
+            ),
+            scope=Scope.RUN,
+            origin=("deletion.candidates",),
+            detail={
+                **references.counts,
+                "unnameable_rows": list(references.unnameable[:20]),
+            },
+        )
     if references.unstable_anchors:
         # ITS OWN SENTENCE, because the act is different from every other way
         # this set comes up short. Nothing is misconfigured and no row is at

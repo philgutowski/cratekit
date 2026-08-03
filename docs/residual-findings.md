@@ -673,3 +673,108 @@ offline, so the user asserts once that those rows live on that volume and the
 pass may then scope the refusal to candidates resolving through it. That is a
 deliberate assertion by a named person, in the same class as the backup
 acknowledgment, and it is config surface rather than a repair.
+
+**Now pinned:** that step was the round 2 remediation and NOTHING asserted it.
+`grep '\.steps' tests/test_deletion.py` returned zero hits, so deleting the
+expression left the suite green and the person met the wall the step exists to
+remove. Both branches are asserted now, the one that names a directory and the
+one that must offer none, and the assertion goes through `render.render_cause`
+so it covers the step reaching a person rather than only existing.
+
+---
+
+## R-17. Case folding merges two different releases into one identity
+
+**Found:** during the U24 round 3 review, 2026-08-03. Verified in the
+interpreter against `cratekit.core.tombstone.fold`.
+
+`fold` calls `str.casefold`, which is the correct Unicode operation for
+case-insensitive comparison and which also performs full case folding. Full case
+folding is not a bijection: it maps several distinct characters onto one
+sequence. Three verified examples, each a pair that folds to one string and
+therefore produces ONE `version_identity`:
+
+- `Straße` and `Strasse` both fold to `strasse`
+- `Maße` and `MASSE` both fold to `masse`
+- `ﬁre`, spelled with the `fi` ligature, and `fire` both fold to `fire`
+
+So two different releases whose titles differ only in one of those ways address
+one tombstone, and deleting either reports the other suppressed. That is the
+over-suppression direction, which the module's own docstring names as the worse
+one: a missed suppression re-acquires something and REPORTS it, while an
+over-eager one silently withholds music the user wants.
+
+**Why it is not fixed here.** Every alternative is worse in a way that is not
+smaller. `str.lower` is not full case folding and gets Turkish dotless i and
+Greek final sigma wrong, which are real title characters, and it would change the
+identity of every record already written. Comparing the unfolded strings as well
+would make the identity carry two spellings of one field, so a recorder and a
+consulter that normalised differently would stop matching, which is exactly the
+property the two-field identity exists to guarantee. There is no folding here
+that is both case-insensitive and injective.
+
+**Frequency, stated so the cost is legible:** low. It needs two releases in one
+library whose titles differ only by an eszett, a ligature, or the equivalent, and
+one of them deleted. It is recorded rather than fixed because the fix costs a
+correctness property that is load-bearing every day, to close a collision that is
+rare, and that trade should be made deliberately rather than inside a fix round.
+
+**Closes when:** the identity can carry a discriminator that both a recorder and
+a consulter always have and that survives folding, or the product decides the
+Turkish and Greek cost is acceptable and moves to a narrower fold. Either one is
+a decision about the identity contract rather than a repair.
+
+---
+
+## R-18. A recorded location that is not an absolute path is excused from the completeness proof, and `locations` cannot tell two kinds apart
+
+**Found:** during the U24 round 3 review, 2026-08-03. **The file is
+`src/cratekit/core/locations.py`, which belongs to another unit and is not
+rewritten from inside U24.** Half of it is closed in U24's own consumer; this
+entry is the half that is not.
+
+`resolve_recorded_path` returns `NOT_A_PATH` for any recorded value that does not
+start with `/`, and `reference_set` EXCUSES those rows from the completeness
+proof rather than refusing. The excusal is sound for exactly one reason, which
+the module states: a streamed track has a pseudo-location rather than a file, so
+it cannot be the row that references a file, and counting it against completeness
+would refuse the whole feature for any library that has ever streamed anything.
+
+That argument covers rows referencing NO file. It does not cover a row that
+references a file perfectly well and is spelled in a form this build does not
+decode, and two such shapes exist:
+
+1. **Windows.** Every `C:\` row fails the leading-slash test, so on Windows every
+   active row is excused, the reference set comes back EMPTY, `complete` is true,
+   and every removed row is proved unreferenced against nothing at all. That is
+   the 144-file shape with a different door. `locations` already ships a Windows
+   separator seam in `_native_to_url_path`, so the platform is anticipated
+   elsewhere in the same module.
+2. **A percent-encoded `file://` location.** `locations.location_to_path` is the
+   decoder built for exactly the two spellings rekordbox has used, and
+   `deletion.library.read_collection` reads `FolderPath` raw and never routes it
+   through the decoder, so such a value is excused the same way.
+
+**What U24 closed from inside its own package.** `candidates._unnameable`
+inspects the recorded value of every row the resolver excused and splits it: a
+drive-letter path or a `file://` location is `unnameable` and REFUSES through
+`assert_complete`, and anything else stays `not_a_path` and still runs. The split
+is on whether the value looks like a path rather than on how many rows were
+excused, so there is no threshold to tune wrong, and a genuinely streamed library
+is asserted to still run. A destructive verb proving a file unreferenced against
+an empty reference set is the worst shape this unit has, and this closes it for
+the two spellings that are known.
+
+**What is still open, and why it is not U24's to close.** The recogniser is a
+list of two known shapes rather than a decision the resolver makes, so a third
+spelling nobody has met yet is still excused silently. The real repair is in
+`locations`: `resolve_recorded_path` should distinguish "this is not a path" from
+"this is a path this build cannot name", and `read_collection` should route
+recorded values through `location_to_path` so the decoder that already exists is
+actually used. Both are edits to another unit's file, and a deletion pass
+reaching into the resolver to fix the resolver is how two decoders end up in one
+tree, which is the fault that cost 144 files.
+
+**Closes when:** `core.locations` returns the two answers separately and the
+library reader decodes through it, at which point U24's consumer drops its
+recogniser and reads the resolver's own answer.

@@ -1163,16 +1163,29 @@ ENTRIES: tuple[Entry, ...] = (
     # revocable, which is a sentence the engine alone cannot satisfy because a
     # person cannot reach the engine.
     #
-    # ``delete.review`` genuinely cannot land yet, and the reason is one wall
-    # rather than two. It declares an EXPLICIT gate, R34 makes that answerable
-    # only by a separate recorded act against the run, and conformance 3 drives
-    # the inline answer and then requires exit OK, so as that assertion is
-    # written today no explicitly gated verb in this registry can land. What it
-    # does NOT do is refuse on a missing database: it declares ``files`` and no
-    # database surface, takes no cloud-sync gate, and names no database doctor
-    # check. Recording that correction here because the previous version of this
-    # note asserted the opposite and a wrong reason outlives the decision it was
-    # written for.
+    # ``delete.review`` genuinely cannot land yet, AND THE REASON RECORDED HERE
+    # ON 2026-08-02 IS NO LONGER THE REASON. That note said the wall was the
+    # explicit gate: R34 makes an explicit gate answerable only by a separate
+    # recorded act, conformance 3 drove the inline answer and then required exit
+    # OK, so no explicitly gated verb could land. Main's 3269ab1 rewrote
+    # conformance 3 and that wall is DOWN. Driven rather than argued, against a
+    # real build of this verb on a throwaway merge of main, 2026-08-03: the verb
+    # refuses at ``delete.review.confirm`` and reports it resumable; an inline
+    # ``-d`` answer on the same run is REFUSED and is not recorded, which is R34
+    # honoured; ``run decide`` records it with its actor; and the resumed
+    # invocation carries the answer forward and proceeds past the gate.
+    #
+    # It stops at the NEXT step, which is the wall the old note explicitly denied:
+    # exit 22, ``library-directory-missing``. Reading the collection is what this
+    # verb IS, so it cannot exit OK on a machine with no rekordbox database, and
+    # the conformance fixture is exactly such a machine. That is R-13's original
+    # database wall, unchanged, whose closing condition is a disposable fixture on
+    # the ``CRATEKIT_TEST_DB`` convention and whose natural owner is U27.
+    #
+    # Recorded at this length because the correction is the same fault twice: a
+    # wrong reason outliving the decision it was written for. The 2026-08-02 note
+    # replaced a wrong reason with another wrong one, and asserted the true wall
+    # was not a wall.
     #
     # Splitting the module is what lets the landable half land. It costs one file
     # and it buys the only user-facing surface this feature has, which is the

@@ -19,10 +19,30 @@ same way because there is only one way to spell it.
 **KTD16: a tombstone identifies a VERSION, not a recording**, chosen over
 recording-level and fuzzy matching because the library is remix-heavy and fuzzy
 identity is the precise defect the three-state match exists to prevent. The
-identity is therefore the artist and the title, and the title is what carries the
-version: ``Something (Someone's Remix)`` and ``Something`` are two identities, so
-deleting one never suppresses the other. That is AE17 stated as a data structure
-rather than as a policy somebody has to remember.
+identity is therefore the artist and the title, and THE TITLE IS REQUIRED TO
+CARRY THE VERSION: ``Something (Someone's Remix)`` and ``Something`` are two
+identities, so deleting one never suppresses the other. That is AE17 stated as a
+data structure rather than as a policy somebody has to remember.
+
+**AND "REQUIRED TO" IS THE CORRECTION. IT USED TO READ "IS", WHICH REKORDBOX'S
+OWN SCHEMA CONTRADICTS.** ``djmdContent`` has a dedicated ``RemixerName`` column
+and a ``Subtitle`` beside it, so a remix-heavy library routinely holds two
+different versions of one recording whose ``Title`` is the same bare string and
+whose mix name sits in a column of its own. Asserting that the title carries the
+version made the identity of "deadmau5 / Strobe (Michael Woods Remix)" collapse
+onto the identity of the original whenever rekordbox had filed the mix name
+where it belongs, and the consequence runs in the direction this module calls the
+worse one: deleting the remix reports the ORIGINAL suppressed and never
+re-acquires it. Over-suppression silently withholds music the user wants.
+
+So a producer that holds the version in a separate field COMPOSES IT INTO THE
+TITLE before asking for an identity, through :func:`version_title`, and the rule
+lives here rather than at each producer for the same reason the store key does.
+Composition can only ever split one identity into two, never merge two into one,
+so it moves strictly away from over-suppression. It also keeps the two-field
+identity intact, which the ISRC paragraph below is the argument for: a provider
+candidate arrives with the mix name already inside its title and no separate
+field to offer, so a THIRD key would be a key one side never has.
 
 **WHY THE ISRC IS NOT IN THE IDENTITY, recorded because it is the obvious
 suggestion and it is wrong.** An ISRC does identify a specific recording, and a
@@ -100,6 +120,33 @@ def fold(value: str) -> str:
     is shown the payload, which keeps the original spelling.
     """
     return _SPACING.sub(" ", unicodedata.normalize("NFC", str(value)).casefold()).strip()
+
+
+def version_title(title: str, version: str) -> str:
+    """The title with the version in it, for a producer that holds the two apart.
+
+    Both halves of the guard matter and each closes a real shape.
+
+    AN EMPTY VERSION CHANGES NOTHING, so the ordinary row, which is most of them,
+    produces exactly the identity it produced before this function existed.
+
+    A VERSION ALREADY INSIDE THE TITLE IS NOT ADDED TWICE. rekordbox libraries
+    are inconsistent about this: the same collection holds ``Strobe`` with
+    ``Michael Woods`` in ``RemixerName`` and ``Strobe (Michael Woods Remix)``
+    with the column filled in as well. Appending unconditionally would give those
+    two rows two identities, so re-importing a track under the other convention
+    would walk straight past its own tombstone. The containment test is done on
+    the FOLDED forms, because that is the only spelling either side agrees on.
+
+    The bracket shape is the one a provider uses, which is the whole point: the
+    consulter never calls this, it simply passes the title it was handed, and the
+    two meet only if the composed string is spelled the way titles are spelled in
+    the wild.
+    """
+    folded_version = fold(version)
+    if not folded_version or folded_version in fold(title):
+        return title
+    return f"{title} ({version})" if title else version
 
 
 def version_identity(*, artist: str, title: str) -> dict[str, str]:
@@ -185,4 +232,5 @@ __all__ = [
     "fold",
     "removed_file_identity",
     "version_identity",
+    "version_title",
 ]

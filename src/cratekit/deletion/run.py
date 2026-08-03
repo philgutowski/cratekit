@@ -375,6 +375,78 @@ def _item_id(item: Candidate) -> str:
     )
 
 
+def _record_or_put_it_back(
+    cfg: config.Config, moved: Candidate, target: Path, *, actor: str
+) -> review.Suppression:
+    """Write the tombstone the move owes, or undo the move. Never neither (R36).
+
+    **THE ONE WINDOW IN THIS PASS WHERE FAILING HAS ALREADY DESTROYED
+    SOMETHING**, and until this function existed the pass fell through it
+    silently. The pre-flight ``list_tombstones`` above proves the store
+    READABLE, which is a different claim from writable: a store on a full disk,
+    on a volume that went read only, or whose sibling lock cannot be taken reads
+    perfectly and refuses every write. So the sequence "the file is in the Trash,
+    the tombstone is not written" is reachable, and it used to end the run by
+    propagating, which LOOKS safe because the watermark never advances.
+
+    It is not safe, and the reason is the next run rather than this one. The file
+    is gone from where the row named, so the categoriser answers ``GONE``,
+    ``GONE`` is the one member of ``HANDLED``, and the watermark passes straight
+    over the row. Net result: the file sits in the Trash forever with no
+    tombstone, R36's "every completed deletion writes one" is false, the version
+    is re-acquirable, and nothing anywhere records that any of it happened. It is
+    the only state in this unit where the product loses an invariant with no
+    trace at all.
+
+    So the move is UNDONE instead. ``trash.recover`` renames the file back to
+    where the row named, which puts the library exactly where it was before this
+    candidate was touched: the row is still removed, the file is still on disk,
+    the re-run categorises it deletable again, and the person's confirmation is
+    still in the queue. The store's own refusal then propagates untouched,
+    carrying the remedy it was built with, because the thing to fix is the store
+    and it is the store that knows what is wrong with it.
+
+    WHEN THE UNDO ITSELF FAILS the refusal is REPLACED rather than chained
+    quietly, because the two states need different sentences from the person.
+    A store that will not write is an errand. A file in the Trash with no
+    tombstone and no way back is a fact about their music, and the only thing
+    that helps is being told both paths so they can move it themselves. The
+    original cause rides inside so nothing about why is lost.
+    """
+    try:
+        return stores.record_tombstone(cfg, moved.row, actor=actor, trashed_to=str(target))
+    except Exception as exc:
+        original = moved.resolved or moved.row.recorded
+        try:
+            trash.recover(target, original)
+        except Exception as undo:
+            cause = exc.cause if isinstance(exc, CratekitError) else None
+            raise refuse(
+                "internal-error",
+                f"{original} was moved to {target} and the tombstone R36 "
+                f"requires could not be written ({exc}), so the deletion is "
+                f"half done; putting the file back failed too ({undo}), which "
+                f"leaves it in the Trash with nothing recording that this "
+                f"library deliberately stopped holding it",
+                steps=(
+                    f"move {target} back to {original} by hand, then run this "
+                    f"again once the suppression store can be written",
+                ),
+                scope=Scope.RUN,
+                origin=("deletion.run",),
+                detail={"path": original, "trashed_to": str(target)},
+                inner=cause,
+            ) from exc
+        logger.warning(
+            "the tombstone for %s could not be written (%s), so the file was "
+            "moved back out of the Trash and this deletion did not happen; "
+            "nothing further was attempted",
+            original,
+            exc,
+        )
+        raise
+
+
 def apply(
     cfg: config.Config,
     db: Any,
@@ -466,6 +538,23 @@ def apply(
         decided = _verdicts(cfg)
         rules = _rules(cfg, prefix_map)
         referenced = library.playlist_referenced(db.get_playlist_songs())
+        # THE RE-CHECK GETS THE SAME PREDICATE THE PLAN GOT, and its absence was
+        # the one assertion the re-check quietly dropped. ``recheck`` defaults
+        # ``declined`` to a predicate that answers False for every row, so a
+        # re-check built without this argument reads "no decline is recorded"
+        # rather than asking, which is absence taken as evidence of absence in
+        # the one function whose docstring says it re-runs EVERY assertion. The
+        # window is narrow, a decline recorded between the plan this apply just
+        # built and the move below, but the thing on the other side of it is a
+        # file that moves.
+        #
+        # ONE SNAPSHOT, TAKEN AFTER THE PLAN, rather than a read per row. That is
+        # ``decline_predicate``'s own argument and it holds here for the same
+        # reason: a store consulted per row could change underneath one pass, so
+        # two rows in one report would have been judged against two different
+        # sets of declines. Reading it here rather than reusing the plan's is
+        # what narrows the window to the smallest one a single read can leave.
+        declined_now = stores.decline_predicate(cfg)
         handled: list[tuple[int, bool]] = []
 
         for item in found.candidates:
@@ -510,6 +599,7 @@ def apply(
                 root=cfg.library.root,
                 prefix_map=rules,
                 referenced=referenced,
+                declined=declined_now,
                 identifiable=stores.identifiable,
                 stat=stat,
             )
@@ -590,9 +680,7 @@ def apply(
                     origin=("deletion.run",),
                     detail={"path": fresh.resolved, "trash": str(layout.files)},
                 ) from exc
-            record = stores.record_tombstone(
-                cfg, fresh.row, actor=actor, trashed_to=str(target)
-            )
+            record = _record_or_put_it_back(cfg, fresh, target, actor=actor)
             trashed.append(
                 Trashed(candidate=fresh, target=str(target), suppression_id=record.suppression_id)
             )
@@ -613,6 +701,56 @@ def apply(
         declined=tuple(declined),
         refused=tuple(refused),
         watermark=advanced,
+    )
+
+
+#: The key set ``tombstone.removed_file_identity`` produces, spelled once so the
+#: check below compares against the identity's own shape rather than against two
+#: strings somebody typed here. A decline addressed by anything else did not come
+#: out of ``stores.record_decline``.
+_DECLINE_IDENTITY_FIELDS: frozenset[str] = frozenset({"content_id", "recorded"})
+
+
+def _assert_addressable(record: review.Suppression) -> None:
+    """Refuse a decline whose review identifier cannot be DERIVED, before deriving it.
+
+    **ONE VALUE MEANING TWO THINGS, WHICH IS THIS WAVE'S RECURRING FAULT.** The
+    caller below treats ``review-item-unknown`` as "the queue legitimately does
+    not hold this item", which is the case it is for: after an export and
+    re-import, after a ``review.clear`` a person ran themselves, after any
+    pruning. But that same reason arrives for a second, opposite cause: the
+    identifier was DERIVED WRONG, from a record this function cannot address at
+    all. The queue then holds the item perfectly well under a different
+    identifier, the clear misses it, and the caller logs that the revocation
+    stands while the REJECTED verdict is still armed. The next apply reads it,
+    re-records the decline, and the revoke a person asked for is undone by the
+    run that was supposed to complete it, with a cheerful INFO line as the only
+    trace. Round 1 raised on this shape; round 2's narrowing gave it back.
+
+    The derivation is a function of exactly two fields, so those two are checked
+    POSITIVELY here and the ambiguity is gone by construction: past this point
+    ``review-item-unknown`` can only mean the queue does not hold it. It is a
+    check on the RECORD rather than a threshold, so it costs nothing and cannot
+    refuse a legitimate revoke. A record in the declines store always comes from
+    ``stores.record_decline``, which spells both fields once, so anything else is
+    a build mismatch or a corrupt document, and REPORT_DEFECT says so instead of
+    a sentence claiming a file was released that was not.
+    """
+    if record.kind == REVIEW_KIND and frozenset(record.identity or {}) == _DECLINE_IDENTITY_FIELDS:
+        return
+    raise refuse(
+        "internal-error",
+        f"the decline {record.suppression_id} is addressed by "
+        f"{sorted(record.identity or {})} under kind {record.kind!r}, and a "
+        f"deletion review item is addressed by {sorted(_DECLINE_IDENTITY_FIELDS)} "
+        f"under {REVIEW_KIND!r}; the identifier that would reopen the review item "
+        f"cannot be derived from it, and clearing a derived-wrong identifier "
+        f"would report the file released while the verdict that holds it shut is "
+        f"still there",
+        remedy=Remedy.REPORT_DEFECT,
+        scope=Scope.ITEM,
+        origin=("deletion.run",),
+        detail={"suppression_id": record.suppression_id, "kind": record.kind},
     )
 
 
@@ -654,9 +792,16 @@ def _reopen_review_item(cfg: config.Config, record: review.Suppression, *, actor
     identifier is a function of the record. A record written before identities
     were kept has nothing to derive from and is left alone, which costs that one
     record a re-offer rather than costing the revocation its meaning.
+
+    **AND THE DERIVATION IS ASSERTED BEFORE IT IS TRUSTED.** See
+    :func:`_assert_addressable`. Reading "the queue does not hold it" off a
+    reason that a wrong derivation produces just as readily is the reading that
+    let this function report a revocation complete while the verdict re-creating
+    the decline was still armed.
     """
     if not record.identity:
         return  # pragma: no cover - a record predating the identity field
+    _assert_addressable(record)
     with review.open_store(cfg) as store:
         try:
             review.clear(

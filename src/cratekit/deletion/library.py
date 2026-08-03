@@ -54,6 +54,14 @@ class RemovedRow:
     artist: str
     title: str
     isrc: str | None = None
+    #: The mix name, when rekordbox filed it in a column of its own rather than
+    #: inside the title. READ BECAUSE THE IDENTITY IS OTHERWISE NOT UNIQUE: a
+    #: remix-heavy library holds two versions of one recording whose ``Title`` is
+    #: the same bare string, and a tombstone keyed on artist and title alone
+    #: suppresses both of them from one deletion. Kept beside the title rather
+    #: than folded into it here, so the payload a person reads still shows what
+    #: the row actually says while ``stores.version_of`` composes the identity.
+    version: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +197,33 @@ def _text(row: Any, attribute: str) -> str:
     return str(getattr(row, attribute, "") or "")
 
 
+#: The columns that can hold a mix name, in the order they are believed.
+#: ``RemixerName`` is rekordbox's own dedicated field and is what the application
+#: fills in from a tag; ``Subtitle`` is where the same information lands when it
+#: arrived from a file whose tags spelled it that way. FIRST NON-EMPTY WINS
+#: rather than both being joined, because two columns describing one mix would
+#: otherwise produce a title carrying it twice, and that is a second identity for
+#: one version.
+_VERSION_COLUMNS: tuple[str, ...] = ("RemixerName", "Subtitle")
+
+
+def _version_of(row: Any) -> str:
+    """The mix name from whichever column holds it, or the empty string.
+
+    Read through :func:`_text`, so a binding that does not expose the column at
+    all answers "" rather than raising. That is the right default HERE and would
+    be the wrong one for the soft-delete marker: an absent mix name leaves the
+    identity exactly as wide as it was before this was read, which is the
+    behaviour that shipped, while an absent marker would decide whether a row is
+    somebody's music.
+    """
+    for column in _VERSION_COLUMNS:
+        found = _text(row, column)
+        if found:
+            return found
+    return ""
+
+
 def _size_of(row: Any) -> int | None:
     value = getattr(row, "FileSize", None)
     if value is None:
@@ -237,6 +272,7 @@ def read_collection(rows: Iterable[Any], *, since: int) -> CollectionRead:
                 artist=_text(row, "ArtistName"),
                 title=_text(row, "Title"),
                 isrc=_text(row, "ISRC") or None,
+                version=_version_of(row),
             )
         )
     return CollectionRead(active=tuple(active), removed=tuple(removed))

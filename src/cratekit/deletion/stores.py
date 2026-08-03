@@ -57,7 +57,19 @@ def row_identity(row: RemovedRow) -> dict[str, str]:
 
 
 def version_of(row: RemovedRow) -> dict[str, str]:
-    return tombstone.version_identity(artist=row.artist, title=row.title)
+    """This row's version identity, with the mix name folded into the title.
+
+    THE COMPOSITION IS WHY THE IDENTITY IS ACTUALLY UNIQUE. rekordbox files a
+    mix name in ``RemixerName`` or ``Subtitle`` as readily as inside ``Title``,
+    so two different remixes of one recording reach here as two rows carrying one
+    title. Handing those straight to ``version_identity`` gave them ONE identity,
+    and deleting either reported the other suppressed and never re-acquired it.
+    ``tombstone.version_title`` is where the rule lives, below both this and the
+    acquisition side, so a recorder and a consulter cannot compose differently.
+    """
+    return tombstone.version_identity(
+        artist=row.artist, title=tombstone.version_title(row.title, row.version)
+    )
 
 
 def identifiable(row: RemovedRow) -> bool:
@@ -143,6 +155,11 @@ def record_tombstone(
         payload={
             "artist": row.artist,
             "title": row.title,
+            # RIDES BESIDE THE TITLE RATHER THAN INSIDE IT, so a person reading a
+            # listing can see which of two same-titled versions this record is
+            # about. The identity composes the two; the payload keeps the row's
+            # own spelling, which is the same separation ``describe`` makes.
+            "version": row.version,
             "isrc": row.isrc or "",
             "content_id": row.content_id,
             "recorded": row.recorded,

@@ -25,14 +25,24 @@ seven modules and the split is by what each one can be wrong ABOUT:
 
 HALF THE COMMAND-LINE SURFACE IS STILL MISSING, and that is recorded rather than
 implied: ``tests/_pending.py`` registers ``cratekit.deletion.cli`` against U24,
-which is this unit. ``delete.review`` declares an EXPLICIT gate; R34 makes an
-explicit gate answerable only by a separate recorded act against the run, and
-conformance 3 as it is written drives the inline answer and then requires exit
-OK, so no explicitly gated verb in the registry can land until that assertion
-answers a gate the way the product says a gate is answered. That is one wall and
-it is not about databases: this verb writes files, opens no database with write
-intent, and declares no database doctor check. The engine lands with its guards
-armed and the review shell follows the wall coming down.
+which is this unit.
+
+**THE REASON RECORDED FOR THAT ON 2026-08-02 IS STALE AND THIS IS THE
+CORRECTION.** It said the wall was R34 and conformance 3: ``delete.review``
+declares an EXPLICIT gate, conformance 3 drove the inline answer and then
+required exit OK, so no explicitly gated verb could land. Main rewrote
+conformance 3 and that wall is gone. Built and driven on a throwaway merge of
+main, 2026-08-03: the verb refuses at its gate, refuses the inline answer without
+recording it, takes the answer from a separate ``run decide`` act with its actor,
+and resumes past the gate. Every act R34 asks for now works.
+
+What stops it is the wall the stale note DENIED. This verb reads the collection,
+so it cannot exit OK on a machine with no rekordbox database, and the conformance
+fixture is such a machine: the drive ends at exit 22,
+``library-directory-missing``. That is R-13's database wall, unchanged since it
+was written, and it closes on a disposable database fixture rather than on
+anything this package can do. The engine lands with its guards armed and the
+review shell follows the fixture, not the gate.
 """
 
 from __future__ import annotations
