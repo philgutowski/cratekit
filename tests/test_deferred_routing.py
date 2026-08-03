@@ -2059,7 +2059,10 @@ def test_the_routing_verbs_name_a_unit_that_can_actually_land_them():
 def test_the_routing_command_line_module_is_owed_in_the_register():
     """P5. A later unit's obligation goes in the register, never in a docstring.
 
-    ``scripts/board.py`` reads ``tests/_pending.py`` and nothing else, so an
+    ``scripts/board.py`` reads ``tests/_pending.py`` FIRST, and since 2026-08-02
+    also the ``planned_in`` markers on the verb registry, so a closed unit
+    carrying either is now a reported contradiction. This file is still where the
+    obligation belongs, because it is the one a person reads. An
     obligation recorded only as a ``planned_in`` marker is owned by nobody the
     moment the unit that carried the marker closes.
     """

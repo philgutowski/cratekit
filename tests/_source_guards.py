@@ -377,6 +377,13 @@ class SoftDeleteNames:
         #: Local names bound to something FALSEY, which is what a permissive
         #: default looks like once it has been given a name.
         self.falsey_names: set[str] = set()
+        # The one hop, and the module alias chain. Resolved after the imports so
+        # an alias assigned from an imported constant is seen, and iterated to a
+        # fixed point over the module's own assignments so ordering in the file
+        # does not decide it, and so `M = W` where `W` is itself an alias
+        # resolves. An earlier version claimed "one hop in both directions" and
+        # was FALSE for a module alias at even one hop.
+        #: Local names that ARE the rb_writer module.
         pairs = _assignments(tree)
         for _ in range(len(pairs) + 1):
             grew = False
@@ -387,8 +394,30 @@ class SoftDeleteNames:
                 if name not in self.falsey_names and self._is_falsey(value):
                     self.falsey_names.add(name)
                     grew = True
+                dotted = _dotted(value)
+                if dotted in self.module_names and name not in self.module_names:
+                    self.module_names.add(name)
+                    grew = True
             if not grew:
                 break
+
+        #: Names bound at MODULE level. A `.get` on one of these is a lookup
+        #: table, not a row. Without this, `COLUMN_TYPES.get(SOFT_DELETE_COLUMN)`
+        #: fires, and per-column maps are in-house style here: this repository
+        #: already ships `BOOKKEEPING_COLUMNS` and `GRIDLESS_ON_CREATE_COLUMNS`.
+        #: A guard that fires on the most likely correct shape is a guard that
+        #: gets switched off, which is the failure this repository has shipped.
+        self.module_level: set[str] = set()
+        for node in getattr(tree, "body", []):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    name = _dotted(target)
+                    if name is not None:
+                        self.module_level.add(name)
+            elif isinstance(node, ast.AnnAssign):
+                name = _dotted(node.target)
+                if name is not None:
+                    self.module_level.add(name)
 
     def _is_column(self, node: ast.AST) -> bool:
         if isinstance(node, ast.Constant) and node.value == SOFT_DELETE_COLUMN_LITERAL:
@@ -404,8 +433,41 @@ class SoftDeleteNames:
         )
 
     def _is_falsey(self, node: ast.AST) -> bool:
-        if isinstance(node, ast.Constant):
-            return not node.value
+        """Whether this expression evaluates to something that reads as 'active'.
+
+        Constant-folded rather than pattern-matched on a literal, because `0` is
+        not the only way to write zero. `int()`, `1 - 1` and `""` are all the
+        permissive answer, and a guard that only knew the literal would be one
+        arithmetic expression away from silent.
+        """
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            # `int()`, `bool()`, `str()`, `list()`: a zero-argument builtin
+            # constructor is that type's empty value, which is falsey.
+            if not node.args and not node.keywords:
+                if node.func.id in {"int", "bool", "float", "str", "list", "dict",
+                                    "set", "tuple", "bytes", "frozenset"}:
+                    return True
+        if isinstance(node, ast.BinOp) and isinstance(
+            node.op, (ast.Add, ast.Sub, ast.Mult)
+        ):
+            # ``literal_eval`` folds `-1` but refuses `1 - 1`, so arithmetic on
+            # two numbers is folded here. Deliberately shallow: this is closing
+            # the gap between "0" and "a way of writing 0", not evaluating the
+            # module.
+            left, right = node.left, node.right
+            if isinstance(left, ast.Constant) and isinstance(right, ast.Constant):
+                if isinstance(left.value, (int, float)) and isinstance(
+                    right.value, (int, float)
+                ):
+                    if isinstance(node.op, ast.Add):
+                        return not (left.value + right.value)
+                    if isinstance(node.op, ast.Sub):
+                        return not (left.value - right.value)
+                    return not (left.value * right.value)
+        try:
+            return not ast.literal_eval(node)
+        except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+            pass
         dotted = _dotted(node)
         return dotted is not None and dotted in self.falsey_names
 
@@ -427,12 +489,20 @@ class SoftDeleteNames:
         return self._is_falsey(node)
 
 
-def _soft_delete_reads(tree: ast.AST, names: SoftDeleteNames) -> list[tuple[ast.AST, ast.AST | None]]:
+def _soft_delete_reads(
+    tree: ast.AST, names: SoftDeleteNames
+) -> list[tuple[ast.AST, ast.AST | None]]:
     """Every read of the marker, paired with the default it supplied, if any.
 
     Three access shapes, because a rekordbox row reaches this package as an
     object from the binding AND as a mapping from a raw query, and a guard that
     understood only one of them would be answered by rewriting the other.
+
+    The ``.get`` shape excludes a MODULE LEVEL receiver, because that is a
+    per-column lookup table rather than a row. A row is a parameter or a local;
+    a name bound once at module level and asked about a column is
+    ``COLUMN_TYPES.get(SOFT_DELETE_COLUMN)``, and firing on it would be firing
+    on the shape most likely to be correct.
     """
     found: list[tuple[ast.AST, ast.AST | None]] = []
     for node in ast.walk(tree):
@@ -444,17 +514,119 @@ def _soft_delete_reads(tree: ast.AST, names: SoftDeleteNames) -> list[tuple[ast.
         if not isinstance(node, ast.Call):
             continue
         func = node.func
-        if isinstance(func, ast.Name) and func.id == "getattr" and len(node.args) >= 2:
-            if names.names_the_column(node.args[1]):
+        if isinstance(func, ast.Name) and func.id == "getattr":
+            if len(node.args) >= 2 and names.names_the_column(node.args[1]):
                 found.append((node, node.args[2] if len(node.args) > 2 else None))
+                continue
+            # ``getattr(row, *pair)``. The arguments are not readable as written,
+            # so the pair is resolved one hop: a tuple whose first element names
+            # the column is this read wearing a disguise.
+            for argument in node.args:
+                if not isinstance(argument, ast.Starred):
+                    continue
+                packed = _packed_pair(argument.value, tree)
+                if packed is not None and names.names_the_column(packed[0]):
+                    found.append((node, packed[1] if len(packed) > 1 else None))
         elif isinstance(func, ast.Attribute) and func.attr == "get" and node.args:
-            if names.names_the_column(node.args[0]):
-                # A one-argument ``.get`` defaults to None ALL BY ITSELF, which
-                # is the permissive answer arrived at by omission rather than by
-                # decision. It is reported as a read whose default is a synthetic
-                # None so it lands on the same side of the line.
-                default = node.args[1] if len(node.args) > 1 else ast.Constant(value=None)
-                found.append((node, default))
+            if not names.names_the_column(node.args[0]):
+                continue
+            receiver = _dotted(func.value)
+            if receiver is not None and receiver in names.module_level:
+                continue
+            # A one-argument ``.get`` defaults to None ALL BY ITSELF, which is
+            # the permissive answer arrived at by omission rather than by
+            # decision. It is reported as a read whose default is a synthetic
+            # None so it lands on the same side of the line.
+            default = node.args[1] if len(node.args) > 1 else ast.Constant(value=None)
+            found.append((node, default))
+    return found
+
+
+def _packed_pair(node: ast.AST, tree: ast.AST) -> list[ast.AST] | None:
+    """The elements of a tuple or list, directly or through one named binding."""
+    if isinstance(node, (ast.Tuple, ast.List)):
+        return list(node.elts)
+    dotted = _dotted(node)
+    if dotted is None:
+        return None
+    for name, value in _assignments(tree):
+        if name == dotted and isinstance(value, (ast.Tuple, ast.List)):
+            return list(value.elts)
+    return None
+
+
+def _scopes(tree: ast.AST):
+    """Each function body, plus the module's own top level, as separate trees.
+
+    Scoped rather than whole-file, because the rules below ask whether a name
+    that HOLDS a marker is later overwritten with a permissive value, and two
+    functions that both call a local ``marker`` are not talking about the same
+    variable. Asking it file-wide would fire on unrelated code.
+    """
+    yield tree
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            yield node
+
+
+def _laundered_reads(tree: ast.AST, names: SoftDeleteNames) -> list[ast.AST]:
+    """Reads that are correct at the call and made permissive one line later.
+
+    THREE ROUTES, and the first is the one that matters because it is a single
+    edit away from the sanctioned shape::
+
+        marker = getattr(row, COL, _ABSENT)     # correct so far
+        if marker is _ABSENT:
+            marker = 0                          # and now it is not
+
+        try:                                    # the shape a person reaches for
+            marker = row.rb_local_deleted
+        except AttributeError:
+            marker = 0
+
+        marker = row.rb_local_deleted if hasattr(row, COL) else 0
+
+    All three are one question: does a name that received the marker get
+    assigned something falsey in the same scope, or does the marker appear in a
+    conditional expression whose other branch is falsey. The sentinel route and
+    the try route are the same shape to an analyzer, which is why they are not
+    three separate rules.
+    """
+    found: list[ast.AST] = []
+    for scope in _scopes(tree):
+        holders: dict[str, ast.AST] = {}
+        for statement in ast.walk(scope):
+            targets: list[ast.AST] = []
+            value: ast.AST | None = None
+            if isinstance(statement, ast.Assign):
+                targets, value = list(statement.targets), statement.value
+            elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
+                targets, value = [statement.target], statement.value
+            if value is None:
+                continue
+            if not _soft_delete_reads(value, names):
+                continue
+            for target in targets:
+                name = _dotted(target)
+                if name is not None:
+                    holders[name] = statement
+
+        if not holders:
+            continue
+        for statement in ast.walk(scope):
+            if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+                continue
+            name = _dotted(statement.targets[0])
+            if name in holders and names.is_permissive(statement.value):
+                found.append(statement)
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.IfExp):
+            continue
+        for kept, other in ((node.body, node.orelse), (node.orelse, node.body)):
+            if _soft_delete_reads(kept, names) and names.is_permissive(other):
+                found.append(node)
+                break
     return found
 
 
@@ -473,19 +645,38 @@ def permissive_soft_delete_reads(source: str) -> list[str]:
     the fallback silently promotes every tombstone in the library to a live row
     and nothing anywhere reports it.
 
+    AND A READ THAT IS LAUNDERED ONE LINE LATER. A default at the call site is
+    only the most obvious spelling. The sentinel route, where the correct
+    ``getattr(row, COL, _ABSENT)`` is followed by ``if marker is _ABSENT: marker
+    = 0``, is a SINGLE EDIT away from the sanctioned shape and reads as
+    defensive rather than as a defect. See :func:`_laundered_reads`.
+
     WHAT IS LEFT ALONE, so the guard cannot fire on correct code (P7): a read
     with a sentinel default that the caller then compares against, a read with no
-    default at all, a plain attribute access, and the constant's own definition.
-    All four fail loudly or not at all, and none of them can answer "active" for
-    a row that never said so.
+    default at all, a plain attribute access, the constant's own definition, and
+    a ``.get`` on a MODULE LEVEL name, which is a per-column lookup table rather
+    than a row. All of them fail loudly or not at all, and none can answer
+    "active" for a row that never said so.
+
+    KNOWN LIMITS, written down rather than implied, because a guard whose reach
+    is unstated gets trusted past it. Not caught: a row subclass carrying a
+    falsey class-level default under a plain attribute read, the column arriving
+    from a function call or a dictionary lookup, and an attribute name computed
+    at runtime. Each needs type or value inference this does not have. They are
+    recorded in R-19 rather than left for a reader to discover by being wrong.
     """
     tree = ast.parse(source)
     names = SoftDeleteNames(tree)
-    return [
+    found = [
         f"line {node.lineno}: {ast.unparse(node)}"
         for node, default in _soft_delete_reads(tree, names)
         if default is not None and names.is_permissive(default)
     ]
+    found += [
+        f"line {node.lineno}: {ast.unparse(node)}"
+        for node in _laundered_reads(tree, names)
+    ]
+    return sorted(set(found))
 
 
 def reads_soft_delete_marker(source: str) -> bool:

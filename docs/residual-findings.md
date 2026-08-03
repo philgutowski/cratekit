@@ -703,3 +703,75 @@ need somebody to answer each one.
 package name is settled in both records, and the `closing` check has refused and
 been answered at least once so the refusal path is known to be usable rather than
 merely correct.
+
+---
+
+## R-19. What the soft-delete guard cannot see, and two gaps in the gate contract
+
+**Found:** 2026-08-02, by the second adversarial review of
+`fix/conformance-3-and-soft-delete-reader`. **Needs its own issue.**
+
+Three unrelated things, filed together because all three are "the assertion is
+correct and its reach is narrower than a reader would assume".
+
+### The guard's known blind spots
+
+`tests/_source_guards.py:permissive_soft_delete_reads` catches a falsey default
+at the call site however the column and the default are spelled, an alias chain
+of any depth, a splatted argument pair, and three routes that launder a correct
+read one line later. Verified against fourteen evasions and nine correct shapes.
+
+**Not caught, and each needs inference this does not have:**
+
+1. **A row subclass with a falsey class-level default** plus a plain attribute
+   read. `class Row: rb_local_deleted = 0` makes `row.rb_local_deleted` answer
+   "active" for a row that never said so, and the read looks exactly like the
+   correct one. Needs type inference to know what `row` is.
+2. **The column arriving from a call, a class attribute, or a dictionary
+   lookup.** `getattr(row, COLUMNS["soft_delete"], 0)` and
+   `getattr(row, spec.column, 0)` are invisible. One hop through a named binding
+   is resolved; a hop through a container is not.
+3. **A computed attribute name.** `getattr(row, "rb_" + suffix, 0)` cannot be
+   read statically at all.
+
+Recorded rather than chased because each fix widens the analyzer toward
+evaluating the module, and an analyzer that guesses fires on correct code, which
+is how a guard gets switched off. The pin on `SOFT_DELETE_READERS` is the
+backstop: all three shapes still have to live in a module, and a new module
+reading the column at all turns the pin red.
+
+### `_MARKER_ABSENT` is defined twice and will be three times
+
+`write/routing_pass.py` and `write/metadata.py` each define their own sentinel,
+with the same name and the same purpose, and U24 adds a third alongside
+`trees.soft_delete_marker`. One symbol meaning one thing in three modules is the
+shape the session contract names as what a green suite cannot see. **Closes with
+the U24 reconciliation**, which collapses the readers into one implementation and
+should take the sentinel with them.
+
+### The gate contract, two gaps neither assertion catches
+
+Both are **pre-existing on `main`** and neither is introduced here, but the
+assertions rewritten on this branch pin the current behaviour, so they are
+written down rather than left implied.
+
+**The actor is supplied, not derived.** `crate run decide --actor` takes the
+actor as a caller-supplied argument, and conformance 3 now asserts that the
+recorded decision carries it. `core/session.py:derive_actor()` says R34's
+sharpest clause is that the actor must be DERIVED and never named by the caller,
+precisely so an agent driving the command line cannot mint a human's assertion.
+The CLI's decision path takes the weaker form and the new assertion pins it.
+Which is right is a decision above this branch: the flag is what makes a decision
+answerable by a second person in a later session, which is R33's whole point, so
+the two rules are in genuine tension rather than one being simply wrong.
+
+**A second run inherits the first run's decisions.** A run resumed under `--run`
+carries its recorded decisions, which is correct. Nothing asserts what happens
+when a decision recorded against one run is reachable from another invocation of
+the same verb, and a probe confirms the whole suite stays green either way.
+Neither the old assertion nor the new one covers it.
+
+**Closes when:** the three guard blind spots are either covered or explicitly
+declined in the guard's own docstring with the same reasoning; the sentinel is
+single-sourced by the U24 reconciliation; and somebody rules on derived versus
+supplied actors, with conformance 3 asserting whichever survives.

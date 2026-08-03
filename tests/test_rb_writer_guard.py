@@ -1214,10 +1214,90 @@ def test_the_soft_delete_guard_fires_on_every_evasion():
         "from cratekit.core import rb_writer as w\n"
         "x = getattr(row, w.SOFT_DELETE_COLUMN, 0)\n"
     ), "an aliased module is what defeated the last guard in this repository"
-    assert fires('x = row.get("rb_local_deleted", 0)'), "a row that arrived as a mapping"
-    assert fires('x = row.get("rb_local_deleted")'), (
+    assert fires('def g(row):\n    return row.get("rb_local_deleted", 0)\n'), (
+        "a row that arrived as a mapping"
+    )
+    assert fires('def g(row):\n    return row.get("rb_local_deleted")\n'), (
         "a one-argument get defaults to None all by itself, which is the "
         "permissive answer arrived at by omission rather than by decision"
+    )
+    assert fires(
+        "import cratekit.core.rb_writer as W\n"
+        "M = W\n"
+        "x = getattr(row, M.SOFT_DELETE_COLUMN, 0)\n"
+    ), (
+        "an alias OF an alias. The previous version claimed one hop of "
+        "indirection in both directions and that claim was false for a module "
+        "alias at even one hop"
+    )
+    assert fires('x = getattr(row, "rb_local_deleted", int())'), (
+        "zero written as a constructor call rather than as the digit"
+    )
+    assert fires('x = getattr(row, "rb_local_deleted", 1 - 1)'), "zero written as arithmetic"
+    assert fires('x = getattr(row, "rb_local_deleted", "")'), "the empty string is falsey too"
+    assert fires('pair = ("rb_local_deleted", 0)\nx = getattr(row, *pair)\n'), (
+        "the arguments packed into a tuple and splatted back out"
+    )
+
+
+def test_the_soft_delete_guard_catches_a_read_laundered_one_line_later():
+    """The routes that are correct AT THE CALL and permissive by the next statement.
+
+    These matter more than the plain default, not less. The sentinel route is a
+    SINGLE EDIT from the shape this repository sanctions, and it reads as somebody
+    being careful: the sentinel is there, the comparison is there, and the branch
+    quietly answers "active" instead of refusing. A guard that checked only the
+    call site would certify it.
+
+    The try route is what a person reaches for first, because "the attribute
+    might not exist" is an AttributeError-shaped thought. The ternary is the same
+    idea written shorter. To an analyzer all three are one question: does a name
+    holding the marker get assigned something falsey in the same scope, or does
+    the marker sit in a conditional whose other branch is falsey.
+    """
+    guard = _source_guard()
+    fires = guard.permissive_soft_delete_reads
+
+    assert fires(
+        "_ABSENT = object()\n"
+        "def read(row):\n"
+        '    marker = getattr(row, "rb_local_deleted", _ABSENT)\n'
+        "    if marker is _ABSENT:\n"
+        "        marker = 0\n"
+        "    return marker\n"
+    ), "the sentinel taken and then thrown away, one edit from the correct shape"
+
+    assert fires(
+        "def read(row):\n"
+        "    try:\n"
+        "        marker = row.rb_local_deleted\n"
+        "    except AttributeError:\n"
+        "        marker = 0\n"
+        "    return marker\n"
+    ), "the shape somebody writes when the thought is 'it might not be there'"
+
+    assert fires(
+        'marker = row.rb_local_deleted if hasattr(row, "rb_local_deleted") else 0'
+    ), "the same idea as a conditional expression"
+
+    assert not fires(
+        "_ABSENT = object()\n"
+        "def read(row):\n"
+        '    marker = getattr(row, "rb_local_deleted", _ABSENT)\n'
+        "    if marker is _ABSENT:\n"
+        "        raise Refused()\n"
+        "    return marker\n"
+    ), "the sanctioned shape must survive the launder check, or nothing can pass"
+
+    assert not fires(
+        "def unrelated():\n"
+        "    marker = 0\n"
+        "    return marker\n"
+        "def read(row):\n"
+        '    return getattr(row, "rb_local_deleted", _ABSENT)\n'
+    ), (
+        "two functions using the name 'marker' are not talking about one "
+        "variable; scoping this file-wide would fire on unrelated code"
     )
 
 
@@ -1255,6 +1335,23 @@ def test_the_soft_delete_guard_stays_quiet_on_correct_code():
         "an unresolvable name is not assumed permissive; assuming it would fire "
         "on the correct shape whenever the sentinel is imported"
     )
+    assert not fires(
+        "import cratekit.core.rb_writer as W\n"
+        "COLUMN_TYPES = {}\n"
+        "def kind():\n"
+        "    return COLUMN_TYPES.get(W.SOFT_DELETE_COLUMN)\n"
+    ), (
+        "a per-column lookup table asked about this column is not a row read, "
+        "and this repository already ships BOOKKEEPING_COLUMNS and "
+        "GRIDLESS_ON_CREATE_COLUMNS, so it is the in-house shape most likely to "
+        "arm the guard against correct code"
+    )
+    assert not fires(
+        'COLUMN = "rb_local_deleted"\n'
+        "LABELS = {}\n"
+        "def label():\n"
+        '    return LABELS.get(COLUMN, "")\n'
+    ), "the same table reached through the named constant"
 
 
 def test_no_module_in_the_package_reads_the_soft_delete_marker_permissively():
@@ -1282,14 +1379,19 @@ def test_no_module_in_the_package_reads_the_soft_delete_marker_permissively():
 #: the conversation at all, and a fourth reader is a two-line diff that passes
 #: every other assertion in this suite.
 #:
-#: IT IS ALSO THE RECONCILIATION MECHANISM. U24 lands
-#: ``trees.soft_delete_marker`` as the single sanctioned implementation of this
-#: read. The moment that branch merges, this pin has three readers and goes red
-#: until they are collapsed into one, so the merge cannot quietly leave two
-#: implementations of one rule in the tree. Enforced rather than remembered.
+#: IT IS ALSO THE RECONCILIATION MECHANISM, and the mechanism is not the one an
+#: earlier version of this comment claimed. U24 lands
+#: ``trees.soft_delete_marker`` as the single sanctioned implementation AND moves
+#: `routing_pass`'s direct read into it, so `routing_pass` drops OUT of this set
+#: while `trees` comes in. Simulated against that tree the pin goes from two
+#: readers to a DIFFERENT two, not from two to three. It still goes red, by set
+#: inequality rather than by growth, so the outcome the pin exists for is intact
+#: and the merge cannot quietly leave two implementations of one rule in the
+#: tree. The reason is corrected here because a pin whose stated mechanism is
+#: wrong is a pin somebody deletes when it fires the way it was not described.
 SOFT_DELETE_READERS = {
-    "cratekit/write/metadata.py",
-    "cratekit/write/routing_pass.py",
+    "src/cratekit/write/metadata.py",
+    "src/cratekit/write/routing_pass.py",
 }
 
 
@@ -1307,15 +1409,25 @@ def test_only_the_declared_modules_read_the_soft_delete_marker_at_all():
 
 
 def _package_sources() -> list[tuple[str, str]]:
-    """Every module we author, vendored third-party code excluded.
+    """Every module we author: the package, the scripts, and the test tree.
 
-    The vendored downloader is not ours to restyle and knows nothing about
-    rekordbox; holding it to a rule written after it was published would only
-    produce a suppression comment somebody later reads as permission.
+    NOT JUST ``src``. A permissive read in a script or a test helper is a
+    permissive read, and the whole reason this guard exists is that the rule kept
+    being reimplemented by whoever needed it next. `scripts/` reads the registers
+    and `tests/` builds row doubles, so both are places somebody writes
+    `getattr(row, ..., 0)` without thinking of themselves as writing product
+    code. None exists in either today, which is the moment to arm it.
+
+    The vendored downloader is excluded. It is not ours to restyle and knows
+    nothing about rekordbox; holding it to a rule written after it was published
+    would only produce a suppression comment somebody later reads as permission.
     """
-    root = Path(W.__file__).resolve().parent.parent
+    repo = Path(W.__file__).resolve().parent.parent.parent.parent
+    trees = [repo / "src" / "cratekit", repo / "scripts", repo / "tests"]
     return [
-        (path.relative_to(root.parent).as_posix(), path.read_text())
+        (path.relative_to(repo).as_posix(), path.read_text())
+        for root in trees
+        if root.is_dir()
         for path in sorted(root.rglob("*.py"))
         if "_vendor" not in path.parts
     ]

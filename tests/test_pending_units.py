@@ -259,6 +259,15 @@ def test_a_cli_shaped_register_key_names_a_module_some_verb_declares():
 
     A key that is genuinely not a verb module goes in the exemption map WITH a
     reason, rather than the rule being narrowed until it stops firing.
+
+    WHAT THIS DOES NOT REACH, said plainly, because a rule whose scope is
+    implied gets trusted past it. It is a spelling check on ONE THIRD of the
+    surface: register keys that look like verb modules. A non-CLI typo has
+    identical consequences and is invisible here, `cratekit.core.restor` planted
+    for U32 being the obvious one, and a misspelling on the REGISTRY side is
+    structurally beyond it, since the registry is the thing being compared
+    against. Rule B is what catches both of those, at the moment the unit closes,
+    which is why the two ship together rather than either one alone.
     """
     registry_modules = _registry_modules()
     unclaimed = sorted(
@@ -288,8 +297,8 @@ def test_a_cli_shaped_register_key_names_a_module_some_verb_declares():
 KNOWN_PACKAGE_NAME_DISAGREEMENTS = {("U23", "cratekit.adopt", "cratekit.adoption")}
 
 
-def test_the_two_registers_agree_on_each_unit_s_package_name():
-    """A near-miss spelling of one package, held by two records of one unit.
+def test_no_unit_declares_two_confusingly_similar_package_roots():
+    """A NAME SIMILARITY HEURISTIC, and it is named as one because that is what it is.
 
     NEAR-MISS RATHER THAN DIFFERENCE, deliberately. A unit owning modules in two
     unrelated packages is ordinary and correct: U32 owes an engine in
@@ -297,11 +306,21 @@ def test_the_two_registers_agree_on_each_unit_s_package_name():
     `cratekit.modules` and `cratekit.reports`. Flagging those would be a guard
     firing on correct code, which is how a guard gets switched off.
 
-    What is never correct is one unit declaring two package roots where one is a
-    PREFIX of the other. That is not two packages, it is one package spelled two
-    ways, and the shorter spelling is what somebody typed the day they were
-    thinking about the longer one. Run over the whole tree this fires exactly
-    once, on the one case that is genuinely wrong.
+    THE TEST IS `str.startswith`, NOT A DOTTED-SEGMENT TEST, and that is a real
+    limitation rather than an oversight. The segment-aware form,
+    `longer.startswith(shorter + ".")`, is the one that is always true, and it
+    would stop catching the case this exists for: `cratekit.adoption` is not a
+    package UNDER `cratekit.adopt`, it is a different word that starts the same
+    way. So this is a heuristic on spelling, and it can be wrong. `cratekit.tag`
+    beside `cratekit.tagging` would fire, and `cratekit.tagging` is already a real
+    planned root for U37.
+
+    WHAT MAKES THAT ACCEPTABLE is the second condition, which the shape depends
+    on: both roots must be declared by the SAME UNIT. One unit owing both `tag`
+    and `tagging` is worth a human look whether or not it is a typo. And because
+    membership is pinned exactly, a false positive is a red suite whose cheapest
+    honest answer is to add the pair to the pin with a note, which is a recorded
+    decision in a diff, not a widened allowance that kills the rule.
     """
     per_unit: dict[str, set[str]] = {}
     for key, (unit, _) in _pending.PENDING.items():
