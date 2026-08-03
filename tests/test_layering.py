@@ -441,7 +441,7 @@ def test_layer_ladder_is_the_ktd23_order():
         ("cratekit.core.convergence", "write"),
         ("cratekit.write.rbxml", "write"),
         ("cratekit.write.trees", "write"),
-        ("cratekit.write.tree_rebuild", "write"),
+        ("cratekit.write.rebuild", "write"),
         ("cratekit.acquire.download", "modules"),
         ("cratekit.intake.collection_xml", "modules"),
         ("cratekit.cli.sync", "cli"),

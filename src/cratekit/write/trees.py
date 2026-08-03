@@ -734,6 +734,7 @@ def write_tree_membership(
     prefix_map: Sequence[locations.PrefixRule] | None = None,
     workflow: str = MEMBERSHIP_WORKFLOW,
     purpose: convergence.Purpose = convergence.Purpose.ROUTINE,
+    intent: session.Intent = session.Intent.WRITE,
 ) -> MembershipReport:
     """Write membership for a database-native tree, for rows that already exist.
 
@@ -779,6 +780,23 @@ def write_tree_membership(
     :class:`cratekit.core.convergence.Purpose`. Everything above stays: the
     medium check, the anchored root, all three session gates, the verified
     capture, the analysis watch, and the guarded commit.
+
+    ``intent`` IS THE SAME DECLARATION ONE LAYER DOWN, and it exists because this
+    function had no way to make it. ``assert_gates`` is where the LATCHES live,
+    and a latch that condemns its own remedy is the failure this repository has
+    already shipped once. U32 puts a second latch there: an unreconciled restore
+    refuses every ordinary destructive session, and the markers it refuses over
+    include "this tree needs rebuilding". Calling into the gates with the default
+    intent therefore meant the rebuild was refused by the latch whose refusal
+    names the rebuild, with a hand-edited state file as the only way out. It is a
+    parameter rather than something derived from ``purpose`` because the two
+    words answer different questions to different modules, and folding one into
+    the other is how a caller ends up declaring something it did not mean.
+
+    IT DOES NOT WIDEN ANYTHING BY ITSELF. A ``RECOVERY`` intent also lifts the
+    unresolved-session latch, whose remedy is a restore rather than a rebuild, so
+    the rebuild asserts that one for itself before it calls this. See
+    :func:`cratekit.write.rebuild.rebuild_tree`.
     """
     watched = [Path(root) for root in analysis_roots]
     if not watched:
@@ -814,7 +832,9 @@ def write_tree_membership(
     skipped: list[RowMatch] = []
     touched: list[str] = []
 
-    with session.assert_gates(cfg, workflow=workflow, analysis_roots=watched):
+    with session.assert_gates(
+        cfg, workflow=workflow, analysis_roots=watched, intent=intent
+    ):
         capture = snapshot.capture(cfg, db=db)
         snapshot.assert_verified(capture)
 

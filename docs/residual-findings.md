@@ -487,16 +487,48 @@ all queue behind it. Recorded here rather than acted on, because relaxing a
 conformance rule that four waves have honored is a deliberate act and not a
 side effect of landing a CLI.
 
-**U36 hit the same wall and was resolved the same way, 2026-08-02.** `converge`
-and `rebuild` were declared against `cratekit.write.converge_cli` with
-`planned_in="U36"`, and U36's brief names no CLI module it could have landed:
-`rebuild` writes `db_tree` and is destructive, so it is squarely behind the wall
-above. U36 landed the whole engine instead, `cratekit.core.convergence` and
-`cratekit.write.tree_rebuild`, and re-pointed both markers through a
-`CONVERGE_CLI_UNIT` constant naming **U20**, with the obligation registered in
-`tests/_pending.py` where the board audit reads it. Two verbs is now six waiting
-on the same wall, which is the count that decides how urgent the close condition
-below is.
+**The wall has three independent parts and only one of them is the database.**
+Stating them apart matters, because a verb held by none of them was parked here
+once already:
+
+1. the **explicit-gate refusal**, which is conformance 3's requirement that a
+   landed gated verb refuse and then proceed;
+2. the **one-gate-per-drive shape**, which is what makes the first part
+   drivable at all;
+3. the **database**, which is the part that cannot be satisfied where no
+   rekordbox database exists.
+
+A verb that declares no gate and writes nothing is behind none of the three.
+Conformance 3's loop body never executes for it, conformance 5 and 6 filter it
+out, and conformance 1 and 8 already assert over every entry landed or not. A
+separate branch, `fix/conformance-3-and-soft-delete-reader`, is correcting
+conformance 3 itself; nothing in this entry touches it.
+
+**U36 hit part of this wall, and a correction is recorded here because the first
+answer was wrong, 2026-08-02.** `converge` and `rebuild` were declared against
+one module, `cratekit.write.converge_cli`, with `planned_in="U36"`. Only
+`rebuild` belongs behind the wall: it writes `db_tree` and is destructive. Its
+sibling `converge` declares no gate, writes nothing and is destructive of
+nothing, and it was parked purely because both verbs named ONE module and the
+countdown in `tests/_pending.py` keys on the module rather than on the verb.
+Parking it parked the remedy: both of U36's refusals name `converge` as
+remediation step one, and it is exactly what a person reaches for when a tree is
+already refusing every write.
+
+The correction: U36 split the modules and landed `cratekit.cli.converge`, with
+its conformance properties asserted like any other landed verb. Only
+`cratekit.cli.rebuild` stays behind the wall, registered in `tests/_pending.py`
+against **U20** through a `REBUILD_CLI_UNIT` constant, and backed by a real
+`requires(...)` guard rather than by prose. That brings the count waiting on the
+wall to five verbs rather than six.
+
+**A false claim made in this document on 2026-08-02 is withdrawn.** The
+paragraph that stood here said "U36's brief names no CLI module it could have
+landed". Issue #36's Files line reads `src/cratekit/write/rebuild.py`,
+**`src/cratekit/cli/rebuild.py`**, `tests/test_rebuild.py`. The brief names a CLI
+module explicitly. The sentence was true of U19, whose file list genuinely
+contained none, and it was reused for U36 where the fact does not hold, in the
+document a human adjudicates from.
 
 **Closes when:** conformance 3 can be satisfied against a disposable database
 fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather

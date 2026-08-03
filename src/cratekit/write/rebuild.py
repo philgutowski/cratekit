@@ -42,6 +42,33 @@ tree would make every check a tautology and every rebuild a no-op.
 
 LAYER: write. It reads state and files, calls the session spine through the
 membership writer rather than rebuilding it, and names no verb (D2).
+
+THE MODULE FILENAME IS THE ONE ISSUE #36'S BRIEF NAMES, and the detour taken to
+avoid it is recorded because the reasoning behind it was WRONG. This file shipped
+once as ``tree_rebuild.py``, justified as "the layering guard forbids a below-CLI
+module from spelling the string ``rebuild``". It does not.
+``higher_concept_violations`` in ``tests/test_layering.py`` walks the AST for
+STRING CONSTANTS and compares each against ``registry.VERB_NAMES``. Nothing in it
+keys on a module's filename, and ``layer_of("cratekit.write.rebuild")`` resolves
+through the existing ``^cratekit\\.write\\.`` rule with no edit at all. A reviewer
+disproved the claim by experiment: renaming the file back failed on exactly two
+string constants, both produced by the mechanical rename, and restoring those
+gave a green suite with the file named ``rebuild.py``.
+
+THE COST OF THE DETOUR WAS NOT COSMETIC, which is why it was reversed rather than
+left. U32 registered ``cratekit.write.rebuild`` against this unit in
+``tests/_pending.py``. A module shipped under any other name leaves that
+countdown's probe permanently answering "absent", so ``_pending.py`` auto-merges
+clean, the suite goes green over a guard that is switched off, and closing issue
+#36 raises a board contradiction whose documented remedy is to clear the entry,
+which destroys the obligation instead of meeting it.
+
+WHAT THE ``origin`` CONSTANTS BELOW ARE, AND WHY THEY DO NOT SPELL "rebuild".
+``rebuild`` IS a verb name, so a string constant spelling it in a module below
+the CLI layer is exactly what the layering guard is for. The origin trail is a
+label for a reader of a refusal rather than an import path, so it stays
+``tree_rebuild``: a non-verb spelling, in a file named for what the brief asked
+for.
 """
 
 from __future__ import annotations
@@ -54,7 +81,16 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
-from cratekit.core import config, convergence, locations, routing, tags, taxonomy, tree_registry
+from cratekit.core import (
+    config,
+    convergence,
+    locations,
+    routing,
+    session,
+    tags,
+    taxonomy,
+    tree_registry,
+)
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import routing_pass, trees
@@ -147,11 +183,34 @@ def library_truth(
     library is the natural input here and a caller that walks an exhausted one
     twice sees an empty library the second time, which is the shape that reported
     a run clean over a library it never read.
+
+    AN ABSENT MUSIC DIRECTORY REFUSES RATHER THAN YIELDING NOTHING, which is the
+    same sentence as everything else in this unit and was the one place it was
+    not being said. Returning early meant "the volume is not mounted" and "the
+    library is empty" arrived at the derivation as one answer, and the derivation
+    then handed the check zero placements, which the check read as zero
+    destinations, which it read as zero differences, which it read as CONVERGED.
+    An empty read is not evidence that a tree is right; it is evidence that
+    nothing could be read.
     """
     wanted = {suffix.lower() for suffix in suffixes}
     base = Path(root)
     if not base.is_dir():
-        return
+        raise refuse(
+            "rebuild-derivation-empty",
+            f"this library's music directory {str(base)!r} is not there, so "
+            f"nothing on disk could be read and no membership could be derived; "
+            f"a derivation that read nothing is not evidence that a tree matches "
+            f"what this library declares, it is evidence that the question could "
+            f"not be asked",
+            remedy=Remedy.MOUNT_LIBRARY_VOLUME,
+            steps=(
+                "mount the volume the library lives on and run this again",
+            ),
+            scope=Scope.RUN,
+            origin=("tree_rebuild",),
+            detail={"music_dir": str(base)},
+        )
     for path in sorted(base.rglob("*")):
         if path.is_file() and path.suffix.lower() in wanted:
             yield reader(path)
@@ -254,6 +313,23 @@ def declared_membership(
     the derivation is the same function either way. That is the seam a test uses
     and it cannot weaken the guard, because nothing about which destinations
     exist or how a reading routes travels through it.
+
+    A DERIVATION THAT PLACED NOTHING IS A REFUSAL, NOT AN ANSWER, and this is the
+    single most expensive thing in the unit. Every question downstream is scoped
+    to the destinations this derivation produced: the check compares the
+    destinations it names, the write plans on them, and a node under the governed
+    root that no destination names is reported as somebody's own playlist rather
+    than as damage. So zero placements collapses the whole comparison to nothing
+    and every branch reads it the permissive way. Zero destinations gives zero
+    differences, zero differences reads as CONVERGED, and a rebuild that derived
+    nothing at all then clears the safety flag on a tree it never looked at, with
+    the plan empty so the acknowledgment, the volume assertion, the session lock,
+    the verified capture and the analysis watch are all skipped on the way past.
+
+    An empty music directory, an unmounted volume, a library whose files were all
+    moved, and a taxonomy that places nothing all arrive here as the same value,
+    and none of them is evidence about the tree. The honest answer is that the
+    question could not be asked.
     """
     derive = None if source is None else DERIVATIONS.get(source)
     if derive is None:
@@ -268,12 +344,31 @@ def declared_membership(
             origin=("tree_rebuild",),
             detail={"source": str(source)},
         )
-    readings = (
-        library_truth(Path(cfg.library.root) / cfg.library.music_dir)
-        if truth is None
-        else truth
-    )
-    return derive(declared, readings, vocal_threshold=vocal_threshold)
+    music = Path(cfg.library.root) / cfg.library.music_dir
+    readings = library_truth(music) if truth is None else truth
+    placements, gaps = derive(declared, readings, vocal_threshold=vocal_threshold)
+    if not placements:
+        raise refuse(
+            "rebuild-derivation-empty",
+            f"deriving this tree's declared membership from "
+            f"{str(source)!r} placed no track at all, so there is nothing to "
+            f"compare the database against and nothing to write; an empty "
+            f"derivation is not evidence that the tree matches what this library "
+            f"declares, it is evidence that the derivation could not be made, and "
+            f"treating the two as one is what would let a run that read nothing "
+            f"clear the flag that says this tree is short",
+            remedy=Remedy.MOUNT_LIBRARY_VOLUME,
+            steps=(
+                "confirm the library volume is mounted and its music directory "
+                "holds the files this library declares",
+                "run the convergence check, which reports what was and was not "
+                "compared without writing anything",
+            ),
+            scope=Scope.RUN,
+            origin=("tree_rebuild",),
+            detail={"source": str(source), "music_dir": str(music), "not_compared": list(gaps)},
+        )
+    return placements, gaps
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +393,17 @@ class TreeNode:
     playlist_id: str
     playlist_display: str
     content_ids: frozenset[str] = frozenset()
+    #: Every content identifier this playlist holds MORE THAN ONE row for.
+    #:
+    #: Carried beside the set rather than being lost inside it. A frozenset over
+    #: the rows answers "is this track in this playlist", which is the question
+    #: the comparison asks, and silently answers "yes" for a track sitting there
+    #: twice. Two ``djmdSongPlaylist`` rows for one pair is a doubled tree inside
+    #: one playlist: rekordbox shows the track twice, removing it once leaves the
+    #: other, and the additive write cannot take either away. The check that
+    #: exists to catch a doubled tree could not see doubling at this depth at all,
+    #: and reported such a tree converged.
+    doubled: frozenset[str] = frozenset()
 
 
 def read_tree(db: Any, root_id: str) -> tuple[TreeNode, ...]:
@@ -323,14 +429,25 @@ def read_tree(db: Any, root_id: str) -> tuple[TreeNode, ...]:
     for folder in folders:
         playlists = list(db.get_playlist(ParentID=str(folder.ID)))
         for playlist in playlists:
-            members = db.get_playlist_songs(PlaylistID=str(playlist.ID))
+            members = [str(row.ContentID) for row in db.get_playlist_songs(
+                PlaylistID=str(playlist.ID)
+            )]
+            # COUNTED BEFORE IT IS COLLAPSED. The set is what the comparison
+            # needs; the multiplicity is a fact that only exists before the set
+            # is taken, and it is the one this walk used to throw away.
+            seen: dict[str, int] = {}
+            for content_id in members:
+                seen[content_id] = seen.get(content_id, 0) + 1
             out.append(
                 TreeNode(
                     folder_id=str(folder.ID),
                     folder_display=str(folder.Name),
                     playlist_id=str(playlist.ID),
                     playlist_display=str(playlist.Name),
-                    content_ids=frozenset(str(row.ContentID) for row in members),
+                    content_ids=frozenset(seen),
+                    doubled=frozenset(
+                        content_id for content_id, count in seen.items() if count > 1
+                    ),
                 )
             )
     return tuple(out)
@@ -385,19 +502,44 @@ def resolve_destinations(
     the declared name is the best remaining answer and creating it is the repair.
     Refusing there would turn the one operation that fixes a damaged tree into
     another thing the damage breaks.
+
+    THE DESTINATION SET IS THE UNION OF WHAT THIS RUN DERIVED AND WHAT A PREVIOUS
+    WRITE RECORDED, and taking only the first half is what let a shrinking
+    library go unnoticed. Iterating the placements alone means a destination that
+    loses ALL of its declared tracks simply stops being a destination: nothing
+    resolves to its node, so the node falls into ``foreign``, which is the set
+    reserved for playlists a person curated and which is deliberately not a
+    difference. Its whole contents leave the comparison in silence and the tree
+    reports converged with a playlist full of tracks nothing declares. Carrying
+    the recorded destinations forward means that playlist is still compared, its
+    contents are reported as unexpected, and a person decides.
     """
     by_ids = {(node.folder_id, node.playlist_id): node for node in nodes}
-    by_display = {(node.folder_display, node.playlist_display): node for node in nodes}
+    by_display: dict[tuple[str, str], list[TreeNode]] = {}
+    for node in nodes:
+        by_display.setdefault(
+            (node.folder_display, node.playlist_display), []
+        ).append(node)
+
+    wanted = {(entry.bucket, entry.sub) for entry in placements}
+    if record is not None:
+        wanted |= {(entry.bucket, entry.sub) for entry in record.nodes}
 
     out: list[Destination] = []
-    for bucket, sub in sorted({(entry.bucket, entry.sub) for entry in placements}):
-        folder_display, sub_display = routing_pass.destination(declared, bucket, sub)
+    for bucket, sub in sorted(wanted):
+        folder_display, sub_display = _declared_display(declared, bucket, sub)
         recorded = None if record is None else record.node(bucket, sub)
         node = None
         if recorded is not None:
             node = by_ids.get((recorded.folder_id, recorded.playlist_id))
         if node is None:
-            node = by_display.get((folder_display, sub_display))
+            # AMBIGUITY IS NOT RESOLVED BY POSITION. Two nodes under the governed
+            # root carrying one display pair leave nothing to choose between, and
+            # picking either one sends the write into a playlist that may not be
+            # the one holding the tracks. Left unresolved here, it is refused by
+            # ``assert_addressable`` with both candidates named.
+            candidates = by_display.get((folder_display, sub_display), ())
+            node = candidates[0] if len(candidates) == 1 else None
         if node is None:
             out.append(Destination(bucket=bucket, sub=sub, folder=folder_display, playlist=sub_display))
             continue
@@ -413,6 +555,169 @@ def resolve_destinations(
             )
         )
     return tuple(out)
+
+
+def _declared_display(
+    declared: taxonomy.Taxonomy, bucket: str, sub: str
+) -> tuple[str, str]:
+    """The two display names a declared destination means, or a structured refusal.
+
+    ``routing_pass.destination`` raises a bare ``KeyError`` for an identifier the
+    active taxonomy no longer declares, which is a real and ordinary shape: a
+    recorded destination survives a template edit that removes the sub it named.
+    A bare ``KeyError`` reaches the command-line boundary as an internal defect
+    with "report a defect" attached (S4), which is the wrong sentence to hand
+    somebody whose taxonomy and whose recorded tree have simply come apart.
+    """
+    try:
+        return routing_pass.destination(declared, bucket, sub)
+    except KeyError as exc:
+        raise refuse(
+            "routing-destination-renamed",
+            f"this library's taxonomy declares no destination {bucket}/{sub}, "
+            f"and a previous write or this derivation named one; the tree the "
+            f"library holds and the tree the taxonomy declares have come apart, "
+            f"and inventing a name for it would create a folder nobody chose",
+            remedy=Remedy.FIX_CONFIG_VALUES,
+            steps=(
+                "restore the declared destination in this library's taxonomy, or "
+                "dispose of the difference for this tree by name",
+            ),
+            scope=Scope.RUN,
+            origin=("tree_rebuild",),
+            detail={"bucket": bucket, "sub": sub},
+        ) from exc
+
+
+def assert_addressable(
+    tree_id: str, destinations: Sequence[Destination], nodes: Sequence[TreeNode]
+) -> None:
+    """Refuse a destination set a name-targeted write cannot tell apart.
+
+    THE XML HALF OF THIS REPOSITORY ALREADY REFUSES THIS EXACT CONDITION and the
+    database half did not. ``cratekit.write.trees.DuplicateFolders`` says it
+    plainly: "a writer that targets a folder by name cannot tell them apart, so
+    it would write to the first one twice and to the second one never". Every
+    find-or-create in the guarded writer targets a playlist by the name rekordbox
+    shows, so the same sentence is true here and the consequence is worse,
+    because this write also records where each destination landed.
+
+    THE THREE WAYS IT GOES WRONG, and all three are refused before anything is
+    written.
+
+    **Two declared destinations on one display pair.** An ordinary bucket
+    consolidation produces it: somebody renames the Deep House folder to Techno
+    in rekordbox, and now two declared destinations both resolve to "Techno" and
+    "High". A plan keyed on the display pair merges them into one entry, both
+    sets of tracks are written into whichever node the name lookup reaches first,
+    and every track in one bucket ends up in two playlists at once.
+
+    **Two declared destinations on one node.** The same collision seen from the
+    record's side, and the reason it is permanent: the node map is then rewritten
+    so both destinations name one playlist, every later rebuild resolves both to
+    it, and the check reports the other one short forever. The rebuild is
+    additive, so it cannot undo what it did. A single wrong map entry produces
+    the same misfiling with no rename involved at all.
+
+    **One display pair carried by two nodes under the root.** The
+    ``DuplicateFolders`` shape itself: the write reaches one of them twice and
+    the other never, and which one is decided by row order.
+
+    REFUSED RATHER THAN HALF SERVED. A tree in this condition needs a person to
+    say which node is the real one, and doing half the job silently hides that
+    until the counts stop adding up.
+    """
+    by_pair: dict[tuple[str, str], Destination] = {}
+    by_node: dict[tuple[str, str], Destination] = {}
+    for entry in destinations:
+        pair = (entry.folder, entry.playlist)
+        clash = by_pair.get(pair)
+        if clash is not None:
+            raise refuse(
+                "tree-unconverged",
+                f"the tree {tree_id!r} resolves the declared destinations "
+                f"{clash.bucket}/{clash.sub} and {entry.bucket}/{entry.sub} to "
+                f"one folder and playlist named {entry.folder!r} and "
+                f"{entry.playlist!r}; every write here targets a playlist by the "
+                f"name rekordbox shows, so both sets of tracks would go into "
+                f"whichever node that name reaches first and each track would sit "
+                f"in two playlists at once, and the record written afterwards "
+                f"would name one node for both destinations, after which no "
+                f"rebuild could ever converge this tree again",
+                remedy=Remedy.FIX_CONFIG_VALUES,
+                steps=(
+                    "give the two folders distinct names in rekordbox, or make "
+                    "this library's taxonomy declare distinct names for them",
+                    "run the convergence check again, which writes nothing",
+                ),
+                scope=Scope.RUN,
+                origin=("tree_rebuild",),
+                detail={
+                    "tree_id": tree_id,
+                    "folder": entry.folder,
+                    "playlist": entry.playlist,
+                    "destinations": [
+                        f"{clash.bucket}/{clash.sub}",
+                        f"{entry.bucket}/{entry.sub}",
+                    ],
+                },
+            )
+        by_pair[pair] = entry
+        if entry.node is None:
+            continue
+        node = (entry.node.folder_id, entry.node.playlist_id)
+        collided = by_node.get(node)
+        if collided is not None:
+            raise refuse(
+                "tree-unconverged",
+                f"the tree {tree_id!r} resolves the declared destinations "
+                f"{collided.bucket}/{collided.sub} and "
+                f"{entry.bucket}/{entry.sub} to one playlist row; a rebuild would "
+                f"file both sets of tracks into it and report the other "
+                f"destination short forever, and an additive rebuild cannot take "
+                f"either set back out",
+                remedy=Remedy.FIX_CONFIG_VALUES,
+                steps=(
+                    "separate the two destinations in rekordbox, then run the "
+                    "rebuild, which rebuilds the node record from what it finds",
+                ),
+                scope=Scope.RUN,
+                origin=("tree_rebuild",),
+                detail={
+                    "tree_id": tree_id,
+                    "node": f"{entry.node.folder_id}/{entry.node.playlist_id}",
+                    "destinations": [
+                        f"{collided.bucket}/{collided.sub}",
+                        f"{entry.bucket}/{entry.sub}",
+                    ],
+                },
+            )
+        by_node[node] = entry
+
+    counted: dict[tuple[str, str], int] = {}
+    for node in nodes:
+        pair = (node.folder_display, node.playlist_display)
+        counted[pair] = counted.get(pair, 0) + 1
+    doubled = sorted(pair for pair in by_pair if counted.get(pair, 0) > 1)
+    if doubled:
+        raise refuse(
+            "tree-unconverged",
+            f"the tree {tree_id!r} holds more than one playlist named "
+            + ", ".join(f"{folder!r}/{playlist!r}" for folder, playlist in doubled)
+            + "; a writer that targets a playlist by name cannot tell them apart, "
+            "so it would write to the first one twice and to the second one never",
+            remedy=Remedy.FIX_CONFIG_VALUES,
+            steps=(
+                "rename or remove the duplicate folder or playlist in rekordbox",
+                "run the convergence check again, which writes nothing",
+            ),
+            scope=Scope.RUN,
+            origin=("tree_rebuild",),
+            detail={
+                "tree_id": tree_id,
+                "duplicated": [f"{folder}/{playlist}" for folder, playlist in doubled],
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -490,6 +795,17 @@ class ConvergenceReport:
     foreign: tuple[str, ...] = ()
     renamed: tuple[str, ...] = ()
     not_compared: tuple[str, ...] = ()
+    #: How many placements the derivation produced. ZERO IS NOT CONVERGED.
+    #:
+    #: Carried on the report rather than checked only at the derivation, so the
+    #: value is visible to anybody holding one of these and so ``converged``
+    #: cannot answer True for a comparison that had nothing on one side. The
+    #: derivation refuses before it gets here, and this is the same sentence said
+    #: where the answer is actually read.
+    derived: int = 0
+    #: Every declared destination holding a track more than once, as
+    #: ``bucket/sub:content_id``. A doubling an additive write cannot undo.
+    doubled: tuple[str, ...] = ()
 
     @property
     def differences(self) -> tuple[Difference, ...]:
@@ -498,10 +814,31 @@ class ConvergenceReport:
 
     @property
     def converged(self) -> bool:
-        return not self.differences
+        """Whether this tree matches what the library declares. THREE conditions.
+
+        No difference in either direction is the obvious one and it was the only
+        one. The other two are the ones that made "converged" mean less than it
+        said:
+
+        * a derivation that placed nothing produces no differences BECAUSE it
+          produced no destinations, so an empty answer read as a clean one;
+        * a playlist holding one track twice produces no difference either, since
+          both directions are asked as set membership, and the doubling is
+          exactly what an additive rebuild cannot repair.
+        """
+        return not self.differences and self.derived > 0 and not self.doubled
 
     def summaries(self) -> tuple[str, ...]:
-        return tuple(entry.summary() for entry in self.differences)
+        """Everything that stands between this tree and a cleared flag.
+
+        THE DOUBLED ROWS ARE IN HERE, not only in their own field, because this
+        is the list the clearing call is handed as its evidence. A fact that
+        blocks convergence and is absent from the evidence list would let the
+        flag be cleared over it.
+        """
+        return tuple(entry.summary() for entry in self.differences) + tuple(
+            f"doubled:{entry}" for entry in self.doubled
+        )
 
 
 def check(
@@ -530,6 +867,13 @@ def check(
     resolved by identifier would be two locates, and two locates that answer
     differently is how a check reports a tree short that the rebuild has just
     finished repairing.
+
+    IT REFUSES AN UNADDRESSABLE TREE FOR THE SAME REASON THE REBUILD DOES, and
+    running it here first is what lets somebody see that condition without
+    writing anything. Read-only does not mean permissive: a tree whose
+    destinations cannot be told apart has no answer to "does this match", and
+    reporting one anyway would be the check agreeing with a write that is about
+    to go wrong.
     """
     root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
     rules = (
@@ -560,6 +904,7 @@ def check(
     nodes = read_tree(db, root_id)
     record = convergence.read(cfg).tree(tree_id)
     destinations = resolve_destinations(declared, placements, nodes, record)
+    assert_addressable(tree_id, destinations, nodes)
     by_key = {(entry.bucket, entry.sub): entry for entry in destinations}
 
     wanted: dict[tuple[str, str], set[str]] = {}
@@ -600,11 +945,18 @@ def check(
     active = {content_id for ids in index.values() for content_id in ids}
     unexpected: list[Difference] = []
     foreign: list[str] = []
+    doubled: list[str] = []
     for node in nodes:
         destination = governed.get((node.folder_id, node.playlist_id))
         if destination is None:
             foreign.append(f"{node.folder_display}/{node.playlist_display}")
             continue
+        # A DOUBLED ROW IS REPORTED WHETHER OR NOT THE DECLARATION PLACES IT
+        # THERE. It is damage in both cases: the declaration asks for the track
+        # to be in this playlist ONCE, and a second row is a second copy nobody
+        # asked for and nothing here can remove.
+        for content_id in sorted(node.doubled & active):
+            doubled.append(f"{destination.bucket}/{destination.sub}:{content_id}")
         declared_here = wanted.get((destination.bucket, destination.sub), set())
         for content_id in sorted((node.content_ids & active) - declared_here):
             unexpected.append(
@@ -629,6 +981,8 @@ def check(
             sorted(f"{entry.bucket}/{entry.sub}" for entry in destinations if entry.renamed)
         ),
         not_compared=tuple(not_compared),
+        derived=len(placements),
+        doubled=tuple(sorted(doubled)),
     )
 
 
@@ -652,10 +1006,88 @@ class RebuildReport:
     after: ConvergenceReport
     membership: trees.MembershipReport | None = None
     cleared: bool = False
+    #: Whether the restore-reconciliation marker for this tree was also closed.
+    #:
+    #: THREE ANSWERS, and the third one is the honest one this repository needs.
+    #: True means a marker was open and this rebuild closed it on the evidence of
+    #: the check. False means there was nothing open to close. None means the
+    #: module that holds those markers is not present in this build at all, so
+    #: the question could not be asked, which is a fact a caller must be able to
+    #: SEE rather than infer from a False. See :func:`close_restore_marker`.
+    restore_marker_closed: bool | None = None
 
     @property
     def repaired(self) -> int:
         return 0 if self.membership is None else self.membership.added
+
+
+#: The actor a rebuild records when it closes a restore-reconciliation marker.
+#: A name for an operation, not a person and not a verb: the closure is not
+#: somebody's judgement, it is a check reporting no difference.
+REBUILD_ACTOR = "tree-rebuild"
+
+
+def close_restore_marker(cfg: config.Config, tree_id: str) -> bool | None:
+    """Close U32's UNCONVERGED_TREE marker for this tree, on evidence. Three answers.
+
+    TWO RECORDS EXIST FOR ONE FACT AND THIS IS THE JOINT BETWEEN THEM, stated
+    plainly rather than hidden. ``cratekit.core.convergence`` holds a per-tree
+    unconverged flag, set by the out-of-band restore detection and read by every
+    governed write to that tree. ``cratekit.core.reconcile`` holds an
+    ``UNCONVERGED_TREE`` marker, set by a Cratekit restore that landed on the far
+    side of a cutover and read by the session gate that every destructive session
+    passes through. They describe the same condition from two sides, and until
+    they are collapsed into one, a rebuild that cleared only one of them leaves
+    the library refusing every destructive session with no exit except the bare
+    disposition call, which is precisely the softening path U32's own register
+    entry warns against. So the rebuild closes both.
+
+    IT CLOSES ONLY ON THE EVIDENCE OF A REAL CHECK. The caller reaches this after
+    the second convergence check reported no difference at all, which is the one
+    thing that makes a closure honest. A marker closed with a verdict and no
+    check would satisfy every test in this repository and leave the tree exactly
+    as short as it was.
+
+    IT RETURNS None WHEN THE MODULE IS NOT PRESENT, and the import is guarded for
+    exactly one reason: ``cratekit.core.reconcile`` lands in U32, on a branch that
+    has not met this one yet. That absence is REPORTED rather than swallowed, up
+    the return value and into the log, because "the other record was not reached"
+    and "the other record had nothing open" are different facts and reading one
+    as the other is the defect shape this whole wave is about. Once the two
+    branches meet, the guard has nothing left to catch and comes out.
+
+    THE DUPLICATION SURVIVES THIS FIX AND NEEDS A FOLLOW-UP. Two records for one
+    fact is two things that can disagree, and this function is a bridge rather
+    than a resolution.
+    """
+    try:
+        from cratekit.core import reconcile
+    except ImportError:
+        logger.warning(
+            "the restore reconciliation record is not part of this build, so the "
+            "tree %s may still carry an open marker there; the convergence flag "
+            "was cleared and the other record was NOT reached",
+            tree_id,
+        )
+        return None
+    open_ids = [
+        record.marker.marker_id
+        for record in reconcile.outstanding(cfg)
+        if record.marker.kind is reconcile.Kind.UNCONVERGED_TREE
+        and record.marker.identity == tree_id
+    ]
+    for marker_id in open_ids:
+        reconcile.close_marker(
+            cfg,
+            marker_id,
+            disposition=reconcile.Disposition.REPAIRED,
+            actor=REBUILD_ACTOR,
+            note=(
+                "a full-scope rebuild derived this tree's membership again and "
+                "the convergence check that followed it reported no difference"
+            ),
+        )
+    return bool(open_ids)
 
 
 def report_convergence(
@@ -754,9 +1186,20 @@ def rebuild_tree(
     :func:`cratekit.write.trees.write_tree_membership`, which owns its own gates
     for the reason R29 gives, and which is handed the rebuild purpose so the
     convergence latches whose remedy is this function do not refuse it.
+
+    THE TWO LATCHES THIS RUN IS AND IS NOT HELD BY, spelled out because they look
+    alike and are not. The membership write is made with ``Intent.RECOVERY``, so
+    the restore-reconciliation latch does not refuse it: that latch's outstanding
+    markers include "this tree needs rebuilding", and a latch that condemns its
+    own remedy leaves a library with no exit but a hand-edited file. The
+    unresolved-session latch is a different fact with a different remedy, a
+    restore rather than a rebuild, and ``RECOVERY`` lifts it too, so this asserts
+    it HERE and by name. A rebuild over a library whose last commit could not be
+    read back would be adding to something nobody can vouch for.
     """
     source = registry.derivation_source(tree_id)
     tree_registry.assert_rebuildable(tree_id, source)
+    session.assert_no_unresolved_session(cfg)
     collection = tuple(rows)
     root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
     placements, not_compared = declared_membership(
@@ -781,48 +1224,102 @@ def rebuild_tree(
     )
 
     record = convergence.read(cfg).tree(tree_id)
-    destinations = resolve_destinations(
-        declared, placements, read_tree(db, root_id), record
-    )
+    standing = read_tree(db, root_id)
+    destinations = resolve_destinations(declared, placements, standing, record)
+    assert_addressable(tree_id, destinations, standing)
     by_key = {(entry.bucket, entry.sub): entry for entry in destinations}
 
+    # THE PLAN IS KEYED ON THE DISPLAY PAIR BECAUSE THE WRITER TARGETS BY NAME,
+    # and that is safe only because ``assert_addressable`` has just refused every
+    # way two destinations could share one pair. Without it two destinations
+    # merged into one entry here and every track in one bucket was written into
+    # the other bucket's playlist as well.
     plan: dict[tuple[str, str], list[str]] = {}
     for entry in placements:
         destination = by_key[(entry.bucket, entry.sub)]
         plan.setdefault((destination.folder, destination.playlist), []).append(entry.location)
 
-    membership = (
-        trees.write_tree_membership(
-            cfg,
-            db,
-            tree_id=tree_id,
-            registry=registry,
-            plan=plan,
-            rows=collection,
-            root_exists=root_exists,
-            prefix_map=prefix_map,
-            analysis_roots=analysis_roots,
-            workflow=workflow,
-            purpose=convergence.Purpose.REBUILD,
+    if not plan:
+        # UNREACHABLE BY CONSTRUCTION AND REFUSED ANYWAY. ``declared_membership``
+        # already refuses an empty derivation and a non-empty one always produces
+        # a plan, so this cannot fire today. It is here because of what the old
+        # ``if plan else None`` did when it could: an empty plan skipped
+        # ``write_tree_membership`` entirely, and with it the acknowledgment, the
+        # volume identity assertion, the session lock, the verified capture and
+        # the analysis watch, on the exact path that then went on to clear the
+        # safety flag. A guard whose absence costs every gate at once is worth
+        # keeping after the reason it fired is gone.
+        raise refuse(
+            "rebuild-derivation-empty",
+            f"the rebuild for {tree_id!r} produced no plan, so no gate would be "
+            f"taken and nothing would be written, and the run would still be in "
+            f"a position to clear this tree's unconverged flag",
+            remedy=Remedy.REPORT_DEFECT,
+            scope=Scope.RUN,
+            origin=("tree_rebuild",),
+            detail={"tree_id": tree_id, "derived": len(placements)},
         )
-        if plan
-        else None
+
+    membership = trees.write_tree_membership(
+        cfg,
+        db,
+        tree_id=tree_id,
+        registry=registry,
+        plan=plan,
+        rows=collection,
+        root_exists=root_exists,
+        prefix_map=prefix_map,
+        analysis_roots=analysis_roots,
+        workflow=workflow,
+        purpose=convergence.Purpose.REBUILD,
+        intent=session.Intent.RECOVERY,
     )
 
+    # THE NODE RECORD COMES FROM THE DESTINATION'S OWN NODE FIRST, and from the
+    # freshly read tree only for the destinations that had none. Rebuilding the
+    # whole record from a display-name lookup discarded the resolved identifier
+    # this unit exists to preserve: the lookup was a dict comprehension, so where
+    # two nodes carried one display pair the last one won and BOTH destinations
+    # were recorded against it. ``assert_addressable`` now refuses that shape, and
+    # taking the identifier from ``entry.node`` means the resolved answer is never
+    # thrown away and re-derived by the weaker method in the first place.
     landed = read_tree(db, root_id)
-    by_display = {(node.folder_display, node.playlist_display): node for node in landed}
-    recorded = [
-        convergence.DestinationNode(
-            bucket=entry.bucket,
-            sub=entry.sub,
-            folder_id=by_display[(entry.folder, entry.playlist)].folder_id,
-            playlist_id=by_display[(entry.folder, entry.playlist)].playlist_id,
+    by_display: dict[tuple[str, str], list[TreeNode]] = {}
+    for node in landed:
+        by_display.setdefault(
+            (node.folder_display, node.playlist_display), []
+        ).append(node)
+    recorded: list[convergence.DestinationNode] = []
+    for entry in destinations:
+        node = entry.node
+        if node is None:
+            fresh = by_display.get((entry.folder, entry.playlist), ())
+            # Exactly one, or nothing is recorded for this destination. Two
+            # candidates would be the ambiguity refused above arriving after the
+            # write, and recording either is recording a guess.
+            node = fresh[0] if len(fresh) == 1 else None
+        if node is None:
+            continue
+        recorded.append(
+            convergence.DestinationNode(
+                bucket=entry.bucket,
+                sub=entry.sub,
+                folder_id=node.folder_id,
+                playlist_id=node.playlist_id,
+            )
         )
-        for entry in destinations
-        if (entry.folder, entry.playlist) in by_display
-    ]
     if recorded:
-        convergence.record_nodes(cfg, tree_id, recorded)
+        # The map is validated as a bijection on construction, so a record that
+        # would name one node for two destinations is refused HERE, before it can
+        # be persisted and read back by every later rebuild.
+        convergence.assert_injective(tree_id, recorded)
+        # REPLACED, NOT MERGED, because this run resolved the union of every
+        # destination it derived and every destination the record already held,
+        # so a recorded destination missing from this list is one whose node no
+        # longer exists. Merging keeps that dangling entry, and a dangling entry
+        # holding an identifier some other destination now resolves to is exactly
+        # the two-destinations-one-node record the injectivity check refuses.
+        convergence.record_nodes(cfg, tree_id, recorded, replace_all=True)
 
     after = check(
         cfg,
@@ -838,6 +1335,7 @@ def rebuild_tree(
     )
 
     cleared = False
+    marker_closed: bool | None = None
     if after.converged:
         # THE CHECK'S OWN LIST, not a literal empty tuple. It is empty here by
         # construction and passing it that way is the point: the clearing call
@@ -848,12 +1346,15 @@ def rebuild_tree(
             cfg, tree_id, differences=after.summaries(), now=now
         )
         cleared = True
+        # BOTH RECORDS, on one piece of evidence. See ``close_restore_marker``
+        # for why there are two and what still owes a collapse.
+        marker_closed = close_restore_marker(cfg, tree_id)
     else:
         logger.warning(
             "the tree %s still differs from what this library declares in %d "
             "place(s) after a rebuild, so it stays unconverged",
             tree_id,
-            len(after.differences),
+            len(after.summaries()),
         )
 
     return RebuildReport(
@@ -863,11 +1364,13 @@ def rebuild_tree(
         after=after,
         membership=membership,
         cleared=cleared,
+        restore_marker_closed=marker_closed,
     )
 
 
 __all__ = [
     "DERIVATIONS",
+    "REBUILD_ACTOR",
     "REBUILD_WORKFLOW",
     "VOCAL_DIMENSION",
     "ConvergenceReport",
@@ -878,7 +1381,9 @@ __all__ = [
     "RebuildReport",
     "TreeNode",
     "Truth",
+    "assert_addressable",
     "check",
+    "close_restore_marker",
     "declared_membership",
     "derive_from_taxonomy",
     "library_truth",

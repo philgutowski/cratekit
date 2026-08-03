@@ -321,25 +321,31 @@ DEFERRED_MODULES: frozenset[str] = frozenset({"web", "desktop"})
 #: obligation itself is registered there, against U20 (P5).
 ROUTING_CLI_UNIT = "U20"
 
-#: The unit that lands ``cratekit.write.converge_cli``, named ONCE so both
-#: entries that carry it move together.
+#: The unit that lands ``cratekit.cli.rebuild``, named ONCE so anything that
+#: carries it moves with it.
 #:
-#: IT WAS U36 AND IT IS NOW U20, by the same reasoning and for the same reason
-#: the constant above records. U36 built the convergence ENGINE:
-#: ``cratekit.core.convergence`` holds the record and the two assertions, and
-#: ``cratekit.write.tree_rebuild`` holds the derivation, the check and the
-#: rebuild. It could not land the command-line surface. Conformance 3 requires a
-#: landed gated verb to exit OK once its gate is answered, and ``rebuild``
-#: writes ``db_tree`` and is destructive, which cannot exit OK on a machine with
-#: no rekordbox database at all. U20 flips trees to database-native, so it is the
-#: first unit that must ship a destructive database surface anyway, and these two
-#: ride with it exactly as the four route verbs already do.
+#: ONE VERB IS BEHIND THIS WALL AND ONE IS NOT, and the correction is worth
+#: recording because U36 first parked both. The two verbs were declared against
+#: ONE module, so the countdown, which keys on the module, held the read-only
+#: verb behind the destructive one. ``converge`` declares no gates, writes
+#: nothing and is destructive of nothing: conformance 3's loop body never
+#: executes for it, conformance 5 and 6 filter it out, and 1 and 8 assert over
+#: every entry landed or not. Nothing about the wall applied to it, and both of
+#: this unit's refusals name it as remediation step one, so parking it parked
+#: the remedy. It landed with U36 as ``cratekit.cli.converge``.
+#:
+#: ``rebuild`` genuinely is behind the wall: it writes ``db_tree``, it is
+#: destructive, and conformance 3 requires a landed gated verb to exit OK once
+#: its gate is answered, which it cannot do on a machine with no rekordbox
+#: database at all. U20 flips trees to database-native, so it is the first unit
+#: that must ship a destructive database surface anyway, and this rides with it
+#: exactly as the four route verbs already do.
 #:
 #: THE MARKER IS NOT THE RECORD. ``scripts/board.py`` reads ``tests/_pending.py``
 #: and nothing else, so this constant is a convenience for the reader and the
 #: obligation itself is registered there, against U20 (P5). Leaving the marker
 #: pointing at a unit that has closed would leave the obligation owned by nobody.
-CONVERGE_CLI_UNIT = "U20"
+REBUILD_CLI_UNIT = "U20"
 
 
 # ---------------------------------------------------------------------------
@@ -547,20 +553,19 @@ ENTRIES: tuple[Entry, ...] = (
     Entry(
         name="converge",
         summary="report, per governed tree, whether declared membership matches the database",
-        module="cratekit.write.converge_cli",
+        module="cratekit.cli.converge",
         builder="build",
         handler_key="converge",
         feature_rows=(12,),
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
         doctor_checks=("library.mounted",),
-        planned_in=CONVERGE_CLI_UNIT,
     ),
     Entry(
         name="rebuild",
         summary="rebuild a governed tree's membership from declared sources and library truth",
-        module="cratekit.write.converge_cli",
-        builder="build_rebuild",
+        module="cratekit.cli.rebuild",
+        builder="build",
         handler_key="rebuild",
         feature_rows=(12,),
         argv_builder="rebuild_argv",
@@ -571,7 +576,7 @@ ENTRIES: tuple[Entry, ...] = (
         destructive=True,
         doctor_checks=("library.mounted", "library.identity", "rekordbox.closed"),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
-        planned_in=CONVERGE_CLI_UNIT,
+        planned_in=REBUILD_CLI_UNIT,
     ),
     # ── Jobs ────────────────────────────────────────────────────────────────
     # U10 landed these against ``cratekit.cli.jobs`` rather than the

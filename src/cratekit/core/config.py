@@ -1160,6 +1160,25 @@ STATE_FILES: tuple[StateFile, ...] = (
             "one would keep believing it had exclusive access."
         ),
     ),
+    # ON MERGE WITH U32, THIS ENTRY TAKES ONE MORE LINE:
+    #
+    #     rollback_effects=(RollbackEffect.NONE,),
+    #
+    # and the answer is NONE deliberately rather than by omission. Every record
+    # this entry holds describes rows inside the database a restore replaces: a
+    # fingerprint of that database, a flag about a tree inside it, and the
+    # identifiers of playlist rows in it. None of the three caused anything
+    # outside the coupled set, so nothing survives a rollback for a person to
+    # reconcile, and saying so out loud is the whole point of U32's field.
+    #
+    # IT IS NOT WRITTEN HERE YET BECAUSE IT CANNOT BE. ``RollbackEffect`` and the
+    # ``rollback_effects`` field are U32's and do not exist on this branch, so
+    # naming either would fail to import. Duplicating the enum to get the line in
+    # early would be worse than the gap: two enum classes with one name compare
+    # unequal member by member, and the merge would resolve to whichever
+    # definition landed last. U32's guard parses this file and fails loudly with
+    # the entry named, so the omission cannot survive the merge silently, which
+    # is what that guard is for.
     StateFile(
         key="tree_convergence",
         snapshot=SnapshotRole.COUPLED,

@@ -308,6 +308,30 @@ class TreeRecord:
                 f"{self.source!r}, which is not one of "
                 f"{[str(s) for s in DerivationSource]}"
             )
+        if self.mode == Mode.XML:
+            # THE CONTRADICTION IN THE OTHER DIRECTION, which nothing refused. A
+            # record saying "on the bridge" while carrying a cutover date, an
+            # adopted root and a derivation source describes a tree that flipped
+            # and a mode that says it did not, and every consumer believes the
+            # mode: the bridge writer splices an export for a tree the database
+            # owns, and ``database_native_trees`` leaves it out of the set the
+            # restore detector reads. That shape arrives from a hand-edited file
+            # or from a record that lost one key, and reading it either way is a
+            # guess about which half is true.
+            carried = [
+                name
+                for name in ("cutover_on", "root_id", "source")
+                if getattr(self, name) is not None
+            ]
+            if carried:
+                raise ValueError(
+                    f"tree {self.tree_id!r} is recorded as still on the XML "
+                    f"bridge while carrying {', '.join(carried)}, which only a "
+                    f"tree that has cut over can have; the record contradicts "
+                    f"itself, and every consumer believes the mode, so the bridge "
+                    f"would write an export for a tree the database may already "
+                    f"own and the restore detector would not see it at all"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -508,11 +532,34 @@ def read(cfg: config.Config) -> Registry:
                 ) from exc
         root_id = entry.get("root")
         raw_source = entry.get("source")
+        raw_mode = entry.get("mode")
+        if raw_mode is None:
+            # NO DEFAULT, and the value it would have defaulted to is why. A
+            # record that lost its ``mode`` key while keeping ``cutover_on``,
+            # ``root`` and ``source`` read as ``Mode.XML``, which is a
+            # self-contradictory shape nothing refused: the record says the tree
+            # cut over on a date, adopted a root and named a rebuild source,
+            # while its mode says it is still on the bridge. The consequences
+            # compound. ``is_on_the_bridge`` answers True, so the bridge writer
+            # splices an export for a tree the database owns and under U9's A2
+            # verdict the next import replaces it. ``database_native_trees``
+            # answers empty, and that set is the restore detector's whole input,
+            # so one missing key switches the out-of-band detection off for the
+            # entire library.
+            raise TreeRegistryUnreadable(
+                f"{path} holds a record for {tree_id!r} with no mode; the medium "
+                f"that owns a tree is the one thing this file exists to say, and "
+                f"the value it would default to sends the bridge writer at a tree "
+                f"the database may already own and switches the restore detector "
+                f"off for every tree in this library",
+                path=path,
+                remedy=Remedy.RUN_DOCTOR,
+            )
         try:
             records.append(
                 TreeRecord(
                     tree_id=tree_id,
-                    mode=Mode(str(entry.get("mode", DEFAULT_MODE))),
+                    mode=Mode(str(raw_mode)),
                     cutover_on=cutover,
                     root_id=None if root_id is None else str(root_id),
                     source=None if raw_source is None else DerivationSource(str(raw_source)),
@@ -591,6 +638,26 @@ def record_cutover(
     be rebuilt" therefore has to be answered before the flip rather than after
     the damage, and answering it after is how a library ends up with a native
     tree, a gap, and no path from one to the other.
+
+    ``source`` IS REQUIRED AND CARRIES NO DEFAULT, AND THE DEFAULT THAT IS NOT
+    OFFERED IS THE DANGEROUS ONE. The only value this function could pick is
+    ``TAXONOMY``, because it is the only rebuildable member, and picking it says
+    "yes, this tree can be rebuilt" about a tree nobody checked. That sentence is
+    only ever discovered to be false at the one moment it matters, which is after
+    a restore has already left the tree short and the one-way door has shut.
+    :class:`TreeRecord` refuses a native record with no source for the same
+    reason, so a default here would be this module handing out through a
+    parameter exactly what it refuses one class up.
+
+    THE COST OF THAT DECISION IS A CALL SITE IN ANOTHER UNIT, stated here rather
+    than discovered at merge. U32 added a fixture call to this function after
+    this parameter existed but before the two branches met, so on the merged tree
+    ``tests/test_restore.py`` raises ``TypeError: record_cutover() missing 1
+    required keyword-only argument: 'source'`` in two tests. Whoever merges adds
+    ``source=DerivationSource.TAXONOMY`` to that fixture. A missing argument that
+    stops the suite is the outcome this signature is FOR; the alternative was a
+    silent default writing an unchecked claim about a real library into a
+    one-way record.
     """
     if not root_id:
         raise ValueError(

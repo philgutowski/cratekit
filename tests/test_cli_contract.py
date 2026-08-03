@@ -1221,6 +1221,13 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "review.clear": ["no-such-item"],
         "review.export": [str(library / "review-export.json")],
         "review.import": [str(library / "no-such-export.json")],
+        # U36. Driven with no argument at all, which is the whole point: this
+        # verb is read only and answers on a library where nothing has cut over,
+        # which is every library until the first cutover and which is also the
+        # only shape this fixture can build. It opens the rekordbox database
+        # only when a tree is actually database-native, so it exits OK here with
+        # no database on the machine.
+        "converge": [],
     }[entry.name]
 
 

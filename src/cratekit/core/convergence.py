@@ -60,7 +60,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from cratekit.cli import output
 from cratekit.core import config, rb_writer, tree_registry
@@ -86,6 +86,19 @@ SCHEMA_VERSION = 1
 #: below filters on it AT THE DATABASE rather than in Python, which is the whole
 #: reason the count cannot silently default: a column the schema no longer has
 #: makes the query raise instead of counting every tombstone as a live track.
+#:
+#: THIS IS A THIRD SPELLING OF ONE COLUMN AND IT IS NOT SHARED, which is a cost
+#: recorded rather than hidden. ``cratekit.write.routing_pass`` reads the same
+#: column off a row, ``cratekit.core.rb_writer`` names it in the additive
+#: whitelist, and U24 consolidates the row-reading half behind
+#: ``cratekit.write.trees.soft_delete_marker``. This module cannot import that
+#: one: KTD23 ranks ``cratekit.write.trees`` at the write layer and this module
+#: is imported BY it, so sharing the constant in that direction is the upward
+#: dependency the ladder exists to refuse. The spellings are held together by
+#: this comment and by the fact that all three fail loudly rather than silently:
+#: a filter on a column the schema moved raises, and a reader with no default
+#: refuses. If a fourth appears, hoist the constant into the foundation rather
+#: than adding another comment.
 SOFT_DELETE_COLUMN = "rb_local_deleted"
 
 
@@ -172,6 +185,19 @@ class ConvergenceStateUnreadable(CratekitError):
 # ---------------------------------------------------------------------------
 
 
+def _is_whole_number(value: Any) -> bool:
+    """True for a real integer, and FALSE FOR A BOOLEAN.
+
+    ``isinstance(True, int)`` is True in Python, so a document carrying
+    ``"local_usn": true`` passes a bare integer check and then reads as usn 1. A
+    fingerprint at usn 1 compares lower than every real database, so the next
+    routine assertion sees no regression, silently, on the one number that says
+    whether a library went backward. The bool exclusion is spelled here once and
+    used by every reader of these two counts.
+    """
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 @dataclass(frozen=True, slots=True)
 class Fingerprint:
     """Three readings that together say which database this is and when.
@@ -202,7 +228,7 @@ class Fingerprint:
         version = data.get("schema_version")
         rows = data.get("active_rows")
         usn = data.get("local_usn")
-        if not isinstance(rows, int) or not isinstance(usn, int):
+        if not _is_whole_number(rows) or not _is_whole_number(usn):
             raise ValueError(
                 "a fingerprint needs an integer active row count and an integer "
                 "local update count; without both there is no comparison to make "
@@ -240,29 +266,97 @@ def probe(db: Any) -> Fingerprint:
     anything that is not a structured cause into an internal defect with "report
     a defect" attached, which is not what a person whose schema has moved should
     be told to do.
+
+    THE THREE READINGS ARE TAKEN AND REFUSED SEPARATELY. One try block around all
+    three produced one slug for three different failures, so a schema that moved
+    the soft-delete column and a rekordbox version that stopped writing the
+    update-count row arrived at the reader as the same sentence. They are
+    different problems with different answers, and the reading that failed rides
+    on the detail where the answer can be worked out.
+
+    THE HANDLE MUST EXPOSE A SESSION, and an absent one refuses rather than
+    reading on. ``_no_autoflush`` degrades to a no-op when handed something with
+    no ``no_autoflush``, deliberately, so a stand-in can drive the probe. Handing
+    it ``getattr(db, "session", None)`` turned that documented degradation into a
+    silent one for a whole class of handle: the guard's own docstring calls this
+    the one place a read can defeat a guard, and a probe that quietly ran outside
+    it would flush the pending collections every downstream write guard reads.
     """
+    session = getattr(db, "session", _NO_SESSION)
+    if session is _NO_SESSION:
+        raise refuse(
+            "library-fingerprint-unreadable",
+            "this database handle exposes no session, so the autoflush guard "
+            "this probe has to run under cannot be armed; a query issued outside "
+            "it flushes the pending collections that every downstream write "
+            "guard reads to decide what a commit would do, and the guard then "
+            "passes a forbidden write it can no longer see",
+            remedy=Remedy.REPORT_DEFECT,
+            scope=Scope.RUN,
+            origin=("convergence",),
+            detail={"handle": type(db).__name__},
+        )
+    with rb_writer._no_autoflush(session):
+        version = _reading(
+            "schema version", lambda: rb_writer.db_schema_version(db)
+        )
+        active = _reading(
+            "active row count", lambda: db.get_content(**{SOFT_DELETE_COLUMN: 0}).count()
+        )
+        usn = _reading("local update count", lambda: db.get_local_usn())
+    return Fingerprint(
+        schema_version=version,
+        active_rows=_counted("active row count", active),
+        local_usn=_counted("local update count", usn),
+    )
+
+
+#: Distinguishes "this handle has no session attribute at all" from "its session
+#: is None", which are different mistakes and only one of them is a stand-in.
+_NO_SESSION = object()
+
+
+def _reading(what: str, read: Callable[[], Any]) -> Any:
+    """One reading off the database, or a refusal that NAMES which one failed."""
     try:
-        with rb_writer._no_autoflush(getattr(db, "session", None)):
-            active = db.get_content(**{SOFT_DELETE_COLUMN: 0}).count()
-            return Fingerprint(
-                schema_version=rb_writer.db_schema_version(db),
-                active_rows=int(active),
-                local_usn=int(db.get_local_usn()),
-            )
+        return read()
     except CratekitError:
         raise
     except Exception as exc:  # noqa: BLE001 - a database that cannot answer IS the answer
         raise refuse(
             "library-fingerprint-unreadable",
-            f"the database's own schema version, active row count and local "
-            f"update count could not all be read ({exc}), so whether this is the "
-            f"database Cratekit last wrote to cannot be decided in either "
+            f"the database's {what} could not be read ({exc}), so whether this "
+            f"is the database Cratekit last wrote to cannot be decided in either "
             f"direction",
             remedy=Remedy.RUN_DOCTOR,
             scope=Scope.RUN,
             origin=("convergence",),
-            detail={"column": SOFT_DELETE_COLUMN},
+            detail={"reading": what, "column": SOFT_DELETE_COLUMN},
         ) from exc
+
+
+def _counted(what: str, value: Any) -> int:
+    """A reading that must already BE a whole number, never one coerced into being.
+
+    ``int(value)`` here would accept the string ``"7"`` and the boolean ``True``
+    without comment, which is the defaulting-accessor shape this module's own
+    docstring argues against for the row count: a binding that started handing
+    back a formatted string would have its answer quietly converted, and the two
+    numbers that decide whether a library went backward would be built out of
+    whatever happened to parse.
+    """
+    if not _is_whole_number(value):
+        raise refuse(
+            "library-fingerprint-unreadable",
+            f"the database answered its {what} with {value!r}, which is not a "
+            f"whole number; coercing it would build the comparison that decides "
+            f"whether this library went backward out of a value nobody checked",
+            remedy=Remedy.REPORT_DEFECT,
+            scope=Scope.RUN,
+            origin=("convergence",),
+            detail={"reading": what, "found": type(value).__name__},
+        )
+    return value
 
 
 def regression(previous: Fingerprint | None, current: Fingerprint) -> Regression | None:
@@ -388,6 +482,57 @@ class DestinationNode:
         )
 
 
+def assert_injective(tree_id: str, nodes: Sequence[DestinationNode]) -> None:
+    """Refuse a node map that is not one-to-one, in either direction.
+
+    THE MAP IS A BIJECTION OR IT IS DAMAGE, and nothing was checking either half.
+
+    Two records for ONE declared destination cannot both be right, and resolving
+    that by position means the destination a rebuild writes into is decided by
+    line order in a JSON file.
+
+    Two declared destinations pointing at ONE node is the sharper half and it is
+    what a real defect produced: a rebuild whose plan was keyed on display names
+    merged two destinations into one write, then wrote the colliding node
+    identifier back for both. Every later rebuild then resolves both declared
+    destinations to one playlist, files both sets of tracks into it, and reports
+    the other one short forever. The rebuild is additive, so it cannot undo that,
+    and the flag can never be cleared by a rebuild again. Refusing the record is
+    what keeps a tree recoverable: the map is rebuilt from scratch by falling
+    back to display-name resolution, which is exactly what an absent record
+    already does.
+
+    A ``ValueError`` rather than a structured cause, because it is the
+    dataclass's own construction guard and :func:`read` turns every one of those
+    into ``ConvergenceStateUnreadable`` with the doctor remedy attached.
+    """
+    by_destination: dict[tuple[str, str], DestinationNode] = {}
+    by_node: dict[tuple[str, str], DestinationNode] = {}
+    for entry in nodes:
+        destination = (entry.bucket, entry.sub)
+        if destination in by_destination:
+            raise ValueError(
+                f"the tree {tree_id!r} records two nodes for the destination "
+                f"{entry.bucket}/{entry.sub}; a destination that resolves to two "
+                f"playlists is resolved by line order, which decides where a "
+                f"rebuild writes a library's worth of tracks"
+            )
+        node = (entry.folder_id, entry.playlist_id)
+        clash = by_node.get(node)
+        if clash is not None:
+            raise ValueError(
+                f"the tree {tree_id!r} records the destinations "
+                f"{clash.bucket}/{clash.sub} and {entry.bucket}/{entry.sub} "
+                f"against one playlist row ({entry.folder_id}/"
+                f"{entry.playlist_id}); two declared destinations sharing one "
+                f"node means every rebuild files both sets of tracks into it and "
+                f"reports the other destination short, and an additive rebuild "
+                f"cannot undo that, so the tree could never converge again"
+            )
+        by_destination[destination] = entry
+        by_node[node] = entry
+
+
 @dataclass(frozen=True, slots=True)
 class TreeConvergence:
     """One tree's convergence standing, and where its destinations landed.
@@ -412,6 +557,7 @@ class TreeConvergence:
                 "describes; a record that cannot say which tree it is about "
                 "still refuses writes and names nothing for anyone to repair"
             )
+        assert_injective(self.tree_id, self.nodes)
 
     @property
     def blocking(self) -> bool:
@@ -464,9 +610,23 @@ class TreeConvergence:
                 "field; the value it would otherwise default to is the one that "
                 "admits a write to a tree a restore may have left short"
             )
-        raw_nodes = data.get("nodes", [])
+        raw_nodes = data.get("nodes")
         if not isinstance(raw_nodes, list):
-            raise ValueError("a convergence record's nodes field is an array")
+            # NO DEFAULT, and the inconsistency this closes is the whole reason.
+            # ``data.get("nodes", [])`` refused a NULL and accepted an ABSENT
+            # key, so one shape of damaged record was caught and the other read
+            # as "no nodes were ever recorded". That reading is not harmless: it
+            # sends the next rebuild back to resolving destinations by display
+            # name, which is the exact resolution this record exists to replace,
+            # and after a rename it files the whole tree a second time. Every
+            # record this build writes carries the key, so an absent one is a
+            # file that was edited or truncated.
+            raise ValueError(
+                "a convergence record's nodes field is an array and is required; "
+                "an absent one would read as 'nothing was ever recorded' and "
+                "send the next rebuild back to resolving by display name, which "
+                "doubles the tree after a rename"
+            )
         raw_disposition = data.get("disposition")
         if raw_disposition is not None and not isinstance(raw_disposition, dict):
             raise ValueError("a convergence record's disposition is an object or null")
@@ -752,13 +912,32 @@ def mark_unconverged(
 
 
 def record_nodes(
-    cfg: config.Config, tree_id: str, nodes: Iterable[DestinationNode]
+    cfg: config.Config,
+    tree_id: str,
+    nodes: Iterable[DestinationNode],
+    *,
+    replace_all: bool = False,
 ) -> ConvergenceState:
-    """Write down which playlist rows a write put each declared destination in."""
+    """Write down which playlist rows a write put each declared destination in.
+
+    ``replace_all`` is for the caller that considered EVERY destination the
+    record knows about, which is the rebuild: it resolves the union of what it
+    derived and what was recorded, so a recorded destination it did not write
+    back is one whose node no longer resolves. Merging would keep that dangling
+    entry, and a dangling entry is not inert: it can hold the identifier a
+    destination resolved to this run, which makes the merged map name one node
+    for two destinations, which is the shape :func:`assert_injective` refuses.
+    Every other caller merges, because it has only looked at part of the tree.
+    """
     with config._exclusive_lock(lock_path(cfg)):
         state = read(cfg)
         current = state.tree(tree_id) or TreeConvergence(tree_id=tree_id)
-        state = state.with_tree(current.with_nodes(nodes))
+        updated = (
+            replace(current, nodes=tuple(sorted(nodes, key=lambda e: (e.bucket, e.sub))))
+            if replace_all
+            else current.with_nodes(nodes)
+        )
+        state = state.with_tree(updated)
         write(cfg, state)
     return state
 
@@ -812,6 +991,30 @@ def clear_unconverged(
         state = read(cfg)
         current = state.tree(tree_id) or TreeConvergence(tree_id=tree_id)
         if disposition is not None:
+            if not current.blocking:
+                # A DISPOSITION ANSWERS A REFUSAL AND THERE IS NONE HERE. Writing
+                # one anyway records a named person accepting a difference on a
+                # tree that is not refusing anything, which is a signed statement
+                # about a library nobody was shown. Worse, it sits in the record
+                # as a standing answer: the next restore that empties this tree
+                # would be waved through by a judgement made before it happened.
+                # ``mark_unconverged`` clears an old disposition for the same
+                # reason, and this is that rule applied from the other end.
+                raise refuse(
+                    "tree-unconverged",
+                    f"the tree {tree_id!r} is not refusing anything, so there is "
+                    f"no difference for anybody to dispose of; recording one now "
+                    f"would leave a named person's acceptance standing over a "
+                    f"library they were never shown",
+                    remedy=Remedy.COMPLETE_PENDING_ACTION,
+                    steps=(
+                        "run the convergence check for this tree and dispose of "
+                        "what it actually reports",
+                    ),
+                    scope=Scope.RUN,
+                    origin=("convergence",),
+                    detail={"tree_id": tree_id, "actor": disposition.actor},
+                )
             settled = replace(
                 current, disposition=replace(disposition, on=disposition.on or stamp)
             )
@@ -829,6 +1032,102 @@ def clear_unconverged(
 # ---------------------------------------------------------------------------
 
 
+def native_trees(cfg: config.Config, registry: tree_registry.Registry) -> tuple[str, ...]:
+    """Every database-native tree in this library, from the record AND from disk.
+
+    THE UNION, because the docstring below promises "every database-native tree
+    is marked" and a caller-supplied registry cannot make that promise true.
+    Nothing in ``src`` calls :func:`cratekit.core.tree_registry.read`; the
+    registry always arrives as an argument, so the guarantee held only as long as
+    every future caller happened to pass the whole registry rather than the one
+    record it cared about. A caller that passed a filtered registry would have
+    marked one tree and left every other native tree in the same damaged database
+    reporting itself fine, which is precisely the failure the promise names.
+
+    Read from disk rather than replacing the argument, so a caller that has
+    already loaded the registry keeps deciding which root it writes under, while
+    the SET this marks is derived from the file that actually says which trees
+    have cut over.
+    """
+    return tuple(
+        sorted(
+            set(registry.database_native_trees())
+            | set(tree_registry.read(cfg).database_native_trees())
+        )
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class RestoreCheck:
+    """What the detection found, and the two readings it decided from.
+
+    A value rather than a bare ``Regression | None`` so the refusal one layer up
+    can name both numbers without probing the database a second time. Probing
+    twice would read a database the first probe's own marking has since been
+    written beside, and the two readings in one refusal would then be from
+    different moments.
+    """
+
+    regression: Regression | None
+    previous: Fingerprint | None
+    current: Fingerprint | None
+    trees: tuple[str, ...] = ()
+
+    def __bool__(self) -> bool:
+        return self.regression is not None
+
+
+def detect_out_of_band_restore(
+    cfg: config.Config,
+    db: Any,
+    registry: tree_registry.Registry,
+    *,
+    now: datetime | None = None,
+) -> RestoreCheck:
+    """Compare the database against the fingerprint, MARK, and report. Never refuses.
+
+    THE DETECTION AND THE REFUSAL ARE SEPARATE CALLS, and separating them is what
+    closes the hole a rebuild drove through. ``assert_tree_writable`` returned
+    immediately for a rebuild purpose, so a rebuild never ran this at all, while
+    the fingerprint at the close of the membership write was recorded
+    unconditionally. The rebuild was therefore the one governed write that
+    UPDATED the evidence without ever checking it: an operator whose database had
+    been recovered out of band, doing exactly what the product's own refusal text
+    tells them to do, blessed the recovered fingerprint as canonical with their
+    first action, and every tree the same restore emptied went unmarked forever
+    because the routine assertion that would have caught it was now silent.
+
+    IT MARKS BEFORE IT RETURNS, and the write on this path is the point rather
+    than an oversight. The evidence is a number inside the database, and the very
+    next thing anybody does is open that database again; a detection that left
+    nothing behind would have to re-derive the same conclusion from a reading
+    that has since moved on, and after one more rekordbox session it no longer
+    can. So the conclusion is persisted once, and every later verb reads the flag
+    rather than re-deciding.
+
+    EVERY DATABASE-NATIVE TREE IS MARKED, not the one this caller was about to
+    write, and :func:`native_trees` is what makes that sentence true rather than
+    conditional on the caller. The evidence is about the whole database, so
+    scoping the mark to the tree that happened to be asked first would leave the
+    others reporting themselves fine until somebody wrote to each of them in turn.
+    """
+    native = native_trees(cfg, registry)
+    if not native:
+        # Nothing has cut over, so nothing here can be damaged by a restore and
+        # nothing needs a fingerprint yet. Returning before the probe also keeps
+        # the whole mechanism off the path of a library that has never flipped a
+        # tree, which is every library until the first cutover.
+        return RestoreCheck(regression=None, previous=None, current=None)
+    current = probe(db)
+    previous = read(cfg).fingerprint
+    found = regression(previous, current)
+    if found is not None:
+        mark_unconverged(cfg, native, reason=str(found), now=now)
+    return RestoreCheck(
+        regression=found, previous=previous, current=current, trees=native
+    )
+
+
 def assert_no_out_of_band_restore(
     cfg: config.Config,
     db: Any,
@@ -836,34 +1135,17 @@ def assert_no_out_of_band_restore(
     *,
     now: datetime | None = None,
 ) -> None:
-    """Compare the database against the fingerprint and refuse if it went backward.
+    """Detect, and then refuse if the database went backward.
 
-    IT MARKS BEFORE IT RAISES, and the write on the refusing path is the point
-    rather than an oversight. The evidence is a number inside the database, and
-    the very next thing anybody does is open that database again; a refusal that
-    left nothing behind would have to re-derive the same conclusion from a
-    reading that has since moved on, and after one more rekordbox session it no
-    longer can. So the conclusion is persisted once, and every later verb reads
-    the flag rather than re-deciding.
-
-    EVERY DATABASE-NATIVE TREE IS MARKED, not the one this caller was about to
-    write. The evidence is about the whole database, so scoping the mark to the
-    tree that happened to be asked first would leave the others reporting
-    themselves fine until somebody wrote to each of them in turn.
+    The refusing half. It adds nothing to :func:`detect_out_of_band_restore`
+    except the refusal, so a caller that must not be refused by this latch runs
+    the detection directly and is still held to its findings by the flag it
+    leaves behind.
     """
-    native = registry.database_native_trees()
-    if not native:
-        # Nothing has cut over, so nothing here can be damaged by a restore and
-        # nothing needs a fingerprint yet. Returning before the probe also keeps
-        # the whole mechanism off the path of a library that has never flipped a
-        # tree, which is every library until the first cutover.
-        return
-    current = probe(db)
-    previous = read(cfg).fingerprint
-    found = regression(previous, current)
+    checked = detect_out_of_band_restore(cfg, db, registry, now=now)
+    found = checked.regression
     if found is None:
         return
-    mark_unconverged(cfg, native, reason=str(found), now=now)
     raise refuse(
         "tree-unconverged",
         f"this library's database went backward since Cratekit last wrote to it "
@@ -882,9 +1164,11 @@ def assert_no_out_of_band_restore(
         origin=("convergence",),
         detail={
             "regression": str(found),
-            "trees": list(native),
-            "recorded_usn": None if previous is None else previous.local_usn,
-            "found_usn": current.local_usn,
+            "trees": list(checked.trees),
+            "recorded_usn": (
+                None if checked.previous is None else checked.previous.local_usn
+            ),
+            "found_usn": None if checked.current is None else checked.current.local_usn,
         },
     )
 
@@ -938,18 +1222,36 @@ def assert_tree_writable(
     with a documented ordering is a docstring asking to be obeyed; a caller that
     makes one call cannot make it in the wrong order.
 
-    A ``REBUILD`` purpose passes both, and only these two. See :class:`Purpose`
-    for why a latch may not condemn its own remedy, and note what a rebuild is
-    still held by: everything in the session spine, the medium check, the
-    anchored root, and the grid rules. The exemption is written as "only ROUTINE
-    is held" rather than as "REBUILD is exempt" for the same reason the settled
-    and outstanding sets are derived in the direction they are: a purpose added
-    later must inherit the checking behaviour, not the exemption.
+    A ``REBUILD`` purpose is exempt from the two REFUSALS and is NOT exempt from
+    the detection behind the first one, which is the distinction that was missing
+    and which cost a whole database's worth of evidence. See :class:`Purpose` for
+    why a latch may not condemn its own remedy, and note what a rebuild is still
+    held by: everything in the session spine, the medium check, the anchored
+    root, the grid rules, and now the restore detection.
+
+    WHY THE DETECTION RUNS FOR A REBUILD TOO. The membership write records a
+    fingerprint at its close, unconditionally, because that is what makes the
+    NEXT run's comparison possible. A rebuild that skipped the detection
+    therefore overwrote the evidence without ever reading it, and the concrete
+    sequence is the ordinary one: a database is recovered out of band, the
+    operator does what the product's own refusal text and the read-only check
+    both tell them to do, and their first act is a rebuild for the tree they were
+    told about. Skipping detection meant that rebuild silently blessed the
+    recovered fingerprint, after which the routine assertion had nothing to
+    compare against and every OTHER tree the same restore emptied reported itself
+    fine forever. Running the detection marks all of them first, and the rebuild
+    then clears its own tree on the evidence of a real check.
+
+    The exemption is written as "only ROUTINE is refused" rather than as "REBUILD
+    is exempt" for the same reason the settled and outstanding sets are derived
+    in the direction they are: a purpose added later must inherit the checking
+    behaviour, not the exemption.
     """
-    if purpose is not Purpose.ROUTINE:
+    if purpose is Purpose.ROUTINE:
+        assert_no_out_of_band_restore(cfg, db, registry, now=now)
+        assert_converged(cfg, tree_id)
         return
-    assert_no_out_of_band_restore(cfg, db, registry, now=now)
-    assert_converged(cfg, tree_id)
+    detect_out_of_band_restore(cfg, db, registry, now=now)
 
 
 __all__ = [
@@ -965,13 +1267,17 @@ __all__ = [
     "Fingerprint",
     "Purpose",
     "Regression",
+    "RestoreCheck",
     "TreeConvergence",
     "assert_converged",
+    "assert_injective",
     "assert_no_out_of_band_restore",
     "assert_tree_writable",
     "clear_unconverged",
+    "detect_out_of_band_restore",
     "lock_path",
     "mark_unconverged",
+    "native_trees",
     "path_for",
     "probe",
     "read",

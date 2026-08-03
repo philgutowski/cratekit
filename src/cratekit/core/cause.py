@@ -384,6 +384,16 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # one: the library declares a structure and the missing half is a fact
         # about the declaration rather than about anything the run did.
         "rebuild-derivation-incomplete": ExitCode.LIBRARY_PREREQUISITE,
+        # U36. The derivation ran and placed nothing at all, so there is no
+        # declared membership to compare the database against. A separate slug
+        # from the one above, because the two are different facts with different
+        # answers: that one says the taxonomy declares something this rebuild
+        # cannot derive, and this one says the derivation read an empty or absent
+        # library. LIBRARY_PREREQUISITE for the same reason: the missing half is
+        # a fact about what the library has, not about anything the run did. It
+        # is NOT collapsed into "converged", which is the reading that let a
+        # rebuild that derived nothing clear the flag saying a tree is short.
+        "rebuild-derivation-empty": ExitCode.LIBRARY_PREREQUISITE,
         # U36. The three numbers that say WHICH database this is could not be
         # read, so whether it is the one Cratekit last wrote to cannot be
         # answered either way. LIBRARY_UNREADABLE with the other "the database is

@@ -355,10 +355,16 @@ def db_schema_version(db: Any) -> str | None:
     ONE READER, because there are now two callers. The pin below refuses on drift
     from it and the convergence fingerprint records it, and two spellings of
     "read the property table" is two chances to reach for a different column when
-    the schema moves. It RAISES rather than returning None on a table it cannot
-    read, and the distinction is the whole reason it is not a defaulting
-    accessor: no property row at all is a database this build has never seen
-    written, while a table that will not answer is evidence of a migration.
+    the schema moves.
+
+    IT DOES NOT CATCH, AND THAT IS THE DECISION IT MAKES. The raise on a table
+    that cannot be read comes from the binding, not from here; what this function
+    decides is to LET IT THROUGH rather than absorbing it into None. The two
+    outcomes mean different things and only one of them is ordinary: no property
+    row at all is a database this build has never seen written, while a table
+    that will not answer is evidence of a migration. Both callers wrap it and
+    both attach their own remedy, so wrapping here would replace two accurate
+    answers with one generic one.
     """
     from pyrekordbox.db6 import tables
 
