@@ -20,12 +20,13 @@ which blocks which. Read BOARD.md for what to update when a merge lands.
 
 `main` carries U1 to U8, U10, U11, U13, U14, U15, U17, U18, U19, U21, U24, U31
 and U35, plus the W1 through W6 hardening, the A4 whitelist addition, and U9's
-verdicts. Pushed to the private remote. **3249 passed, 15 skipped**, ruff clean,
-`scan_repo` clean.
+verdicts. Pushed to the private remote. On `main` as this branch left it,
+**3252 passed, 15 skipped**, ruff clean, `scan_repo` clean. This branch's own
+battery is **3286 passed, 15 skipped**, ruff clean, `scan_repo` clean.
 
 ## What U24 changed
 
-**Track deletion and tombstones, engine only.** `src/cratekit/deletion/` is six
+**Track deletion and tombstones, plus one verb.** `src/cratekit/deletion/` is seven
 modules and the split is by what each one can be WRONG about: `library` reads the
 collection and writes nothing (KTD15); `candidates` decides from the filesystem
 rather than from a string comparison whether a removed row's file is genuinely
@@ -33,8 +34,9 @@ unreferenced (R37); `trash` performs the only destructive act R18 permits on a
 music file and refuses when the volume has no Trash rather than falling back to
 an unlink; `stores` records declines and tombstones on U11's revocable decision
 stores; `watermark` remembers how far this library has been read, bound to the
-database identity it was measured against; and `run` is the order those are used
-in, which is the unit.
+database identity it was measured against; `run` is the order those are used in,
+which is the unit; and `tombstone_cli` is `crate tombstone list`, the one verb of
+this feature a person can reach.
 
 **The proof is the point.** A candidate is deletable only when its device and
 inode match no active row's resolved file AND its size matches the size the
@@ -53,14 +55,41 @@ without it still has to be able to ask. The ISRC is deliberately NOT in the
 identity, because a row usually has one and a provider candidate usually does
 not, and an identity may only contain fields both sides always have.
 
-**The CLI did not land, and that is R-13's wall rather than a gap in this unit.**
-`delete.review` declares an explicit gate, which R34 says is answerable only by a
-separate recorded act, while conformance 3 drives an inline answer and requires
-exit `OK`; and it is destructive besides. Both verbs are re-pointed to U27
-through one `DELETION_CLI_UNIT` constant, and the obligation is registered in
-`tests/_pending.py`, which is the file the board audit reads. U24's own countdown
-is DISCHARGED: the guard that declines and tombstones go through the revocable
-stores is armed and now runs over the whole package.
+**HALF THE CLI LANDED, and the half that did not is one wall rather than two.**
+`tombstone.list` ships as `cratekit.deletion.tombstone_cli`. It declares no gate,
+writes no surface, is not destructive and opens no database, so nothing about the
+conformance wall was ever in front of it; it was withheld only because it shared
+a module with its sibling. R36 says a tombstone is listable AND revocable, both
+words are about a person, and until this verb existed the feature shipped with no
+surface for either.
+
+`delete.review` genuinely cannot land yet. It declares an EXPLICIT gate, R34
+makes that answerable only by a separate recorded act against the run, and
+conformance 3 drives the inline answer and then requires exit `OK`, so no
+explicitly gated verb in the registry can land as that assertion is written. It
+does NOT refuse on a missing database, and an earlier note here saying it did was
+wrong: it declares `files` and no database surface, takes no cloud-sync gate, and
+names no database doctor check. `cratekit.deletion.cli` is registered in
+`tests/_pending.py` against **U24**, which is where it belongs; an earlier
+re-point to U27 is reverted, because U27 ships no deletion domain, proved on the
+same evening that it could not carry an explicitly gated verb, and closes in this
+same wave, so the re-point moved a contradiction rather than resolving one. See
+R-13 and R-16 in `docs/residual-findings.md`, including the choice a human still
+has to make about closing #24 with that entry outstanding.
+
+U24's other countdown is DISCHARGED: the guard that declines and tombstones go
+through the revocable stores is armed and now runs over the whole package.
+
+**THE FIX ROUND CHANGED TWO THINGS THAT MOVE FILES.** A prefix rule whose target
+directory does not exist used to make every active row answer "the file is
+missing", which left the reference set empty, `complete` true, and every removed
+row proved unreferenced against nothing at all: omitting a rule refused loudly
+and adding a wrong one proceeded silently. The split is now at the ANCHOR, the
+library root or the rule's target, and a row under an anchor that is not there
+refuses and names the directory. Separately, a declined row used to report
+`handled`, so the watermark passed its sequence and R35's revocability clause was
+dead on arrival: `HANDLED` is `{GONE}` alone now, and revoking a decline also
+clears the review item that carried the rejection.
 
 **One rule that had two producers now has one implementation.**
 `trees.soft_delete_marker` is the single read of rekordbox's soft-delete marker,
@@ -68,7 +97,24 @@ beside the field whose missing default it defends. The routing pass and the
 deletion pass ask opposite questions of that column, and one of the two
 directions they could disagree in trashes a live file.
 
-**There are no unmerged branches and no worktrees.**
+**THIS WAVE HAS TEN OTHER WORKTREES OPEN, and the earlier claim here that there
+were none was wrong when it was written.** `git worktree list` shows branches for
+U12, U16, U23, U24, U27, U32, U34, U36, U38 and `fix/conformance-3-and-soft-delete-reader`,
+all landing together. Three of them matter to this unit:
+
+- `fix/conformance-3-and-soft-delete-reader` is correcting the conformance 3
+  assertion that makes an explicitly gated verb unlandable, and is shipping the
+  source guard for the third permissive `rb_local_deleted` reader in
+  `write/metadata.py`. Neither is touched here.
+- U16 is changing `acquire/match.py` to delegate to `core.tombstone`, which is
+  the settled resolution of the two incompatible `version_identity`
+  implementations. U24's placement wins because `core/tombstone.py` sits below
+  both deletion and acquisition, and both are toggleable modules, so an identity
+  inside either is absent exactly when the other needs it.
+- U27 lands doctor, which is where `deletion.trash.probe` is owed a check. That
+  obligation was appended inside the `cratekit.cli.doctor` register entry, which
+  the countdown forces this same wave to delete. It has been moved onto the
+  long-lived `cratekit.deletion.cli` key so it outlives tonight.
 
 ## What U11 and U19 changed
 

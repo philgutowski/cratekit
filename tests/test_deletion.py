@@ -28,7 +28,10 @@ THE FOUR LAYERS, and why the split is not arbitrary:
 from __future__ import annotations
 
 import ast
+import errno
 import hashlib
+import io
+import json
 import os
 import sqlite3
 import sys
@@ -38,8 +41,8 @@ from pathlib import Path
 import pytest
 
 from cratekit.core import config, locations, preflight, rb_writer, review, session, tombstone
-from cratekit.core.cause import CratekitError
-from cratekit.core.exit_codes import ExitCode
+from cratekit.core.cause import CratekitError, Scope, refuse
+from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.deletion import candidates, library, run, stores, trash, watermark
 from cratekit.write import trees
 from tests.test_config import valid_data
@@ -625,10 +628,208 @@ def test_an_active_row_whose_file_is_simply_missing_does_not_block_the_run(cfg):
     candidates.assert_complete(references)
 
 
+#: A prefix no machine has, so every row recorded under it needs a rule to reach
+#: a path at all. Synthesized rather than named after a real volume (D1, R1).
+RECORDED_ELSEWHERE = "/recorded/on/another/machine"
+
+
+def _elsewhere(count: int = 50):
+    """``count`` active rows recorded under a prefix only a rule can resolve."""
+    return [
+        trees.ContentRow(
+            content_id=f"e{index}",
+            recorded=f"{RECORDED_ELSEWHERE}/Music/Track {index}.flac",
+            deleted=False,
+        )
+        for index in range(count)
+    ]
+
+
+def _populate(volume: Path, rows) -> None:
+    for row in rows:
+        target = Path(str(volume) + row.recorded[len(RECORDED_ELSEWHERE) :])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"audio bytes")
+
+
+def test_a_prefix_rule_whose_target_is_not_there_refuses_rather_than_proving_nothing(
+    cfg, tmp_path
+):
+    """One wrong character in a prefix rule used to delete the completeness proof.
+
+    Measured over fifty rows of each shape. A correct rule indexed fifty. NO rule
+    at all left fifty unmapped and refused, correctly. A rule with one character
+    wrong produced fifty "the file is missing" answers, an EMPTY reference set,
+    ``complete`` true, ``assert_complete`` passing, and every removed row judged
+    deletable against a proof about nothing at all. Omitting a rule refused
+    loudly while adding a wrong one proceeded silently, which is backwards, and
+    the wrong one is the shape that moves files.
+    """
+    volume = tmp_path / "other-volume"
+    _populate(volume, _elsewhere())
+
+    correct = _references(
+        cfg, _elsewhere(), prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(volume))]
+    )
+    assert len(correct.by_identity) == 50 and correct.complete
+    assert correct.missing == () and correct.unanchored == ()
+
+    no_rule = _references(cfg, _elsewhere())
+    assert len(no_rule.unmapped) == 50 and not no_rule.complete
+
+    typo = tmp_path / "other-volumme"
+    wrong = _references(
+        cfg, _elsewhere(), prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(typo))]
+    )
+    assert wrong.by_identity == {}
+    assert wrong.missing == (), (
+        "a rule pointing at a directory that is not there is not fifty separate "
+        "statements about fifty separate files"
+    )
+    assert len(wrong.unanchored) == 50
+    assert wrong.dead_anchors == (str(typo),)
+    assert not wrong.complete
+
+    with pytest.raises(CratekitError) as excinfo:
+        candidates.assert_complete(wrong)
+    assert excinfo.value.cause.reason == "deletion-reference-set-incomplete"
+    assert excinfo.value.cause.detail["unanchored"] == 50
+    assert excinfo.value.cause.detail["dead_anchors"] == [str(typo)]
+    assert str(typo) in excinfo.value.cause.message
+
+
+def test_a_mapped_volume_that_is_not_plugged_in_refuses(cfg, tmp_path):
+    """The author's claim that this already refused was false, and it is reachable.
+
+    Nothing about it involves a typo: the rule is exactly right and the disk is
+    simply not mounted this afternoon. Every row through it answered
+    ``FileNotFoundError``, and every one of those used to read as a file the user
+    had moved by hand.
+    """
+    unmounted = tmp_path / "not-mounted-today"
+    references = _references(
+        cfg, _elsewhere(3), prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(unmounted))]
+    )
+    assert len(references.unanchored) == 3 and not references.complete
+
+
+def test_a_dangling_symlink_is_still_one_missing_file_and_still_does_not_refuse(cfg):
+    """The deliberate reading survives, because its own case is genuinely per row.
+
+    A link into the library that points at nothing is a fact about that one row,
+    exactly like a file the user moved by hand. The anchor is there, so the
+    answer is still "this row references no existing file", and the run proceeds.
+    """
+    link = Path(cfg.library.root) / "Music" / "Dangling.flac"
+    link.symlink_to(Path(cfg.library.root) / "Music" / "Never Existed.flac")
+    references = _references(cfg, [_row(cfg, "Dangling.flac", "9")])
+    assert references.missing == ("9",) and references.unanchored == ()
+    assert references.complete
+    candidates.assert_complete(references)
+
+
+def test_a_folder_the_user_deleted_under_the_root_is_still_served(cfg):
+    """The false positive the ANCHOR choice exists to avoid.
+
+    Splitting on the immediate parent directory instead would refuse the whole
+    feature for any library where somebody dragged one album folder to the Trash
+    in the Finder, which is a real library with a real hole in it and one that
+    must still be served. The anchor is the library root, the root is there, so
+    these are missing files and the run proceeds.
+    """
+    rows = [
+        trees.ContentRow(
+            content_id=str(index),
+            recorded=str(Path(cfg.library.root) / "Music" / "An Album" / f"{index}.flac"),
+            deleted=False,
+        )
+        for index in range(5)
+    ]
+    references = _references(cfg, rows)
+    assert len(references.missing) == 5 and references.unanchored == ()
+    assert references.complete
+    candidates.assert_complete(references)
+
+
+def test_a_removed_row_under_a_dead_rule_is_unresolved_rather_than_finished(cfg, tmp_path):
+    """``GONE`` is handled, so fusing this one is worse than fusing the other one.
+
+    A dead rule would mark a library's entire removal history as finished
+    business, the watermark would pass over all of it, and fixing the rule
+    afterwards would bring none of it back.
+    """
+    row = replace(
+        _removed(cfg, ONE, "1"), recorded=f"{RECORDED_ELSEWHERE}/Music/Track 0.flac"
+    )
+    answered = _categorize(
+        cfg,
+        [row],
+        _references(cfg, []),
+        prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(tmp_path / "gone"))],
+    )
+    assert answered[0].category is candidates.Category.UNRESOLVED
+    assert not answered[0].handled
+    assert str(tmp_path / "gone") in answered[0].problem
+
+
+def test_a_dead_prefix_rule_stops_the_whole_pass_before_anything_is_offered(
+    cfg, gates_pass, tmp_path
+):
+    """End to end. With the rule fused, this run reported one deletable candidate,
+    offered it, trashed the file, and advanced the watermark, while the active row
+    that would have collided with it was sitting under a directory nobody checked."""
+    _music(cfg, ONE)
+    run.plan(cfg, FakeDb([], usn=40), actor="cli")
+    elsewhere = FakeRow(
+        ID="9",
+        FolderPath=f"{RECORDED_ELSEWHERE}/Music/Track 0.flac",
+        FileSize=11,
+        rb_local_deleted=0,
+        rb_local_usn=45,
+        Title="Track 0",
+        ArtistName=ARTIST,
+        ISRC=None,
+    )
+    db = FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50), elsewhere], usn=50)
+
+    with pytest.raises(CratekitError) as excinfo:
+        run.plan(
+            cfg,
+            db,
+            actor="cli",
+            prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(tmp_path / "gone"))],
+        )
+    assert excinfo.value.cause.reason == "deletion-reference-set-incomplete"
+    assert (Path(cfg.library.root) / "Music" / ONE).exists()
+
+
+def test_a_nul_byte_in_a_recorded_path_refuses_rather_than_escaping_as_a_defect(cfg):
+    """``os.stat`` raises ValueError for this, not OSError, so both handlers missed
+    it and it reached the command line as an internal defect rather than as a
+    refusal carrying its remedy (S4)."""
+    poisoned = trees.ContentRow(
+        content_id="9",
+        recorded=str(Path(cfg.library.root) / "Music" / "Bad\x00Name.flac"),
+        deleted=False,
+    )
+    references = _references(cfg, [poisoned])
+    assert references.uninspectable == ("9",) and not references.complete
+
+    row = replace(_removed(cfg, ONE, "1"), recorded=poisoned.recorded)
+    answered = _categorize(cfg, [row], _references(cfg, []))
+    assert answered[0].category is candidates.Category.UNRESOLVED
+    assert not answered[0].handled
+
+
 def test_a_streamed_row_is_neither_indexed_nor_counted_against_the_proof(cfg):
     streamed = trees.ContentRow(content_id="9", recorded="tidal:track:123", deleted=False)
     references = _references(cfg, [streamed])
     assert references.complete and not references.by_identity and not references.unmapped
+    assert references.not_a_path == ("9",), (
+        "excused from the proof is not the same as invisible; a set of rows the "
+        "proof does not cover is a claim, and a claim nobody can size is one "
+        "nobody can check"
+    )
 
 
 def test_a_tombstoned_row_never_contributes_to_the_reference_set(cfg):
@@ -751,9 +952,81 @@ def test_a_rejected_item_becomes_a_decline_and_the_file_stays(cfg, gates_pass, t
     assert report.trashed == () and len(report.declined) == 1
     assert (Path(cfg.library.root) / "Music" / ONE).exists()
     assert len(stores.declines(cfg).suppressions()) == 1
-    # The decline is what makes the next run silent about it, and the watermark
-    # may pass over it precisely because it is finished business.
+    # THE WATERMARK MAY NOT PASS OVER IT, and the previous version of this test
+    # asserted 50 here with a comment blessing the advance. A decline is
+    # revocable by R35, so it is suspended business rather than finished, and the
+    # watermark is what decides whether the row is ever considered again: passing
+    # it would retire the row permanently and leave the revocation below with
+    # nothing to reach.
+    assert report.watermark.sequence == 40
+
+
+def test_revoking_a_decline_puts_the_file_back_in_front_of_a_person(
+    cfg, gates_pass, tmp_path
+):
+    """R35's revocability clause, driven through the path the product takes.
+
+    The guard that existed for this called ``_categorize`` directly and never
+    reached ``plan``, so it proved the PREDICATE flips and proved nothing about
+    whether a revoked file is ever offered again. Both halves of the door are
+    asserted here: the watermark that decides whether the row is considered, and
+    the review item that decides whether anybody is asked.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    db = _prepared(cfg)
+    found = run.plan(cfg, db, actor="cli")
+    offered = run.present(cfg, found)
+    _confirm(cfg, offered[0].item_id, review.Verdict.REJECTED)
+    run.apply(cfg, db, actor="cli", home=home)
+
+    held = stores.declines(cfg).suppressions()
+    assert len(held) == 1
+    run.revoke(cfg, held[0].suppression_id, actor="cli")
+    assert stores.declines(cfg).suppressions() == ()
+
+    again = run.plan(cfg, db, actor="cli")
+    assert [item.category for item in again.candidates] == [candidates.Category.DELETABLE]
+    reoffered = run.present(cfg, again)
+    assert len(reoffered) == 1
+    assert reoffered[0].verdict is None, (
+        "the review item still carried the rejection, so the next apply would "
+        "record the decline again and the revocation would change nothing"
+    )
+
+    # And the file moves once the person answers the re-offered question, which
+    # is the whole point of the clause.
+    _confirm(cfg, reoffered[0].item_id)
+    report = run.apply(cfg, db, actor="cli", home=home)
+    assert len(report.trashed) == 1
+    assert not (Path(cfg.library.root) / "Music" / ONE).exists()
     assert report.watermark.sequence == 50
+
+
+def test_a_declined_row_holds_the_watermark_and_lets_it_go_when_revoked(cfg, gates_pass):
+    """The cost of revocability, asserted rather than assumed.
+
+    A decline pins the watermark at its own sequence for as long as it stands.
+    That is deliberate and it is the reason revoking can work at all, so it is
+    written down as behaviour: the pin arrives with the decline and leaves with
+    the revocation.
+    """
+    _music(cfg, ONE)
+    row = _removed(cfg, ONE, "1", sequence=50)
+    record = stores.record_decline(cfg, row, actor="cli")
+
+    answered = _categorize(
+        cfg, [row], _references(cfg, []), declined=stores.decline_predicate(cfg)
+    )
+    assert answered[0].category is candidates.Category.DECLINED
+    assert not answered[0].handled, "a revocable decision is not finished business"
+    assert watermark.contiguous_sequence([(50, answered[0].handled)], floor=40) == 40
+
+    stores.revoke_decline(cfg, record.suppression_id, actor="cli")
+    lifted = _categorize(
+        cfg, [row], _references(cfg, []), declined=stores.decline_predicate(cfg)
+    )
+    assert lifted[0].category is candidates.Category.DELETABLE
 
 
 def test_an_item_nobody_has_answered_holds_the_watermark_where_it_is(cfg, gates_pass, tmp_path):
@@ -1193,3 +1466,246 @@ def test_the_module_and_the_state_inventory_agree_about_which_stores_exist():
     """One symbol, one meaning. The store keys are spelled once, below both."""
     assert tombstone.STORE_KEY in review.DECISION_STORE_KEYS
     assert tombstone.DECLINE_STORE_KEY in review.DECISION_STORE_KEYS
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 5: the one verb this unit could land
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# R36 says a tombstone is LISTABLE and revocable, and both words are about a
+# person. The engine could do both from the day it landed and nothing a user
+# could type reached it, which is a requirement met by nobody. The sibling verb
+# stays behind the explicit-gate wall; this one never touched it.
+
+
+def _drive(argv):
+    """Run the real dispatcher, the way the conformance suite drives every verb."""
+    from cratekit import cli
+
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(argv, stdout=out, stderr=err)
+    return code, out.getvalue(), err.getvalue()
+
+
+@pytest.fixture
+def deletion_enabled(cfg, library_root):
+    """The same library, saved to disk under a profile that switches deletion on.
+
+    The suite's own config is ``slim``, which is correct for the engine tests and
+    wrong for these: a verb gated on a feature module is not even in the parser
+    when its module is off, so an argparse error would be what these assert
+    against rather than the verb.
+    """
+    on_disk = config.from_dict(
+        valid_data(
+            library_root,
+            rekordbox={
+                "pinned_app_version": RECORDED_APP_VERSION,
+                "pin_validated_on": "2026-08-02",
+            },
+            profile={"name": "full"},
+        )
+    )
+    config.save(on_disk)
+    config.reset_cache()
+    return on_disk
+
+
+def test_tombstone_list_shows_what_the_deletion_pass_suppressed(
+    cfg, gates_pass, deletion_enabled, tmp_path
+):
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    db = _prepared(cfg)
+    found = run.plan(cfg, db, actor="cli")
+    _confirm(cfg, run.present(cfg, found)[0].item_id)
+    run.apply(cfg, db, actor="cli", home=home)
+
+    code, out, err = _drive(["--output", "json", "tombstone", "list"])
+    assert code == int(ExitCode.OK), err or out
+    payload = json.loads(out)["data"]
+    assert [item["title"] for item in payload["items"]] == [Path(ONE).stem]
+    assert payload["items"][0]["revoked"] is False
+    assert payload["unresolved"] == 0, (
+        "a settled suppression is not a backlog; unresolved is what the deletion "
+        "queue still has open"
+    )
+
+
+def test_tombstone_list_revokes_and_then_shows_the_lifted_record(
+    cfg, gates_pass, deletion_enabled, tmp_path
+):
+    """The revocable half, which no surface offered before this verb existed.
+
+    The lifted record stays in the listing without --all, because the record a
+    person just acted on is the one they need to see and a listing that dropped
+    it would answer "did that work" with silence.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    db = _prepared(cfg)
+    found = run.plan(cfg, db, actor="cli")
+    _confirm(cfg, run.present(cfg, found)[0].item_id)
+    report = run.apply(cfg, db, actor="cli", home=home)
+    held = report.trashed[0].suppression_id
+
+    assert stores.suppressed_version(cfg, artist=ARTIST, title=Path(ONE).stem)
+    code, out, err = _drive(["--output", "json", "tombstone", "list", "--revoke", held])
+    assert code == int(ExitCode.OK), err or out
+    payload = json.loads(out)["data"]
+    assert [item["revoked"] for item in payload["items"]] == [True]
+    assert not stores.suppressed_version(cfg, artist=ARTIST, title=Path(ONE).stem)
+
+    # And it is gone from the default listing afterwards, which is the other half
+    # of the same rule: the ordinary question is "what is suppressed".
+    _code, plain, _err = _drive(["--output", "json", "tombstone", "list"])
+    assert json.loads(plain)["data"]["items"] == []
+
+
+def test_tombstone_list_refuses_an_identifier_that_resolves_in_neither_store(
+    cfg, deletion_enabled
+):
+    code, out, _err = _drive(["--output", "json", "tombstone", "list", "--revoke", "dc_nope"])
+    assert code != int(ExitCode.OK)
+    assert json.loads(out)["cause"]["reason"] == "review-item-unknown"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 6: findings the review accepted, fixed and held
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_verdict_does_not_travel_to_whatever_the_row_resolves_to_later(
+    cfg, gates_pass, tmp_path
+):
+    """A person was shown one path, accepted, and a DIFFERENT file was moved.
+
+    The review item's identity deliberately excludes the resolved path, so a
+    remount does not throw away a decision somebody already made. The argued cost
+    of that exclusion was "asked again after a remount". The real cost was
+    larger: edit the volume prefix map between the review and the apply and the
+    verdict lands on whatever the row resolves to now, while the file the person
+    looked at is still sitting on disk.
+    """
+    first = tmp_path / "volume-one"
+    second = tmp_path / "volume-two"
+    for volume in (first, second):
+        (volume / "Music").mkdir(parents=True)
+        (volume / "Music" / ONE).write_bytes(b"audio bytes")
+    to_first = [locations.PrefixRule(RECORDED_ELSEWHERE, str(first))]
+    to_second = [locations.PrefixRule(RECORDED_ELSEWHERE, str(second))]
+
+    run.plan(cfg, FakeDb([], usn=40), actor="cli", prefix_map=to_first)
+    removed = FakeRow(
+        ID="1",
+        FolderPath=f"{RECORDED_ELSEWHERE}/Music/{ONE}",
+        FileSize=11,
+        rb_local_deleted=1,
+        rb_local_usn=50,
+        Title=Path(ONE).stem,
+        ArtistName=ARTIST,
+        ISRC=None,
+    )
+    db = FakeDb([removed], usn=50)
+
+    found = run.plan(cfg, db, actor="cli", prefix_map=to_first)
+    offered = run.present(cfg, found)
+    assert offered[0].payload["path"] == str(first / "Music" / ONE)
+    _confirm(cfg, offered[0].item_id)
+
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    report = run.apply(cfg, db, actor="cli", home=home, prefix_map=to_second)
+
+    assert report.trashed == ()
+    assert [item.row.content_id for item in report.refused] == ["1"]
+    assert (second / "Music" / ONE).exists(), "a file the person never saw was moved"
+    assert (first / "Music" / ONE).exists()
+    assert report.watermark.sequence == 40
+
+
+def test_a_name_the_filesystem_will_not_take_refuses_for_that_one_file(tmp_path):
+    """Errno 63 is a fact about one name, and it used to condemn the whole run.
+
+    A name already at the length limit has no numbered alternative, so the
+    exclusive create comes back with a length error rather than a collision. The
+    refusal is Scope.ITEM, like running out of numbers is, because the next
+    file's name is a different length.
+    """
+    directory = tmp_path / "trash"
+    directory.mkdir()
+    name = "n" * 250 + ".flac"
+    (directory / name).write_bytes(b"")
+    with pytest.raises(CratekitError) as excinfo:
+        trash._free_name(directory, name)
+    assert excinfo.value.cause.reason == "trash-unavailable"
+    assert excinfo.value.cause.scope is Scope.ITEM
+
+
+def test_a_disk_that_will_not_take_any_name_still_stops_the_run(tmp_path, monkeypatch):
+    """The other side of the same split, asserted so the narrowing did not go too far.
+
+    Out of space, read only, no permission: each of those is about the volume and
+    the next file meets it too, so it must leave this function as it arrived and
+    reach the caller's run-scoped handler.
+    """
+    directory = tmp_path / "trash"
+    directory.mkdir()
+
+    def full(*args, **kwargs):
+        raise OSError(errno.ENOSPC, "no space left on device")
+
+    monkeypatch.setattr(os, "open", full)
+    with pytest.raises(OSError) as excinfo:
+        trash._free_name(directory, ONE)
+    assert excinfo.value.errno == errno.ENOSPC
+
+
+def test_one_impossible_name_costs_one_file_rather_than_the_whole_pass(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """Correct on safety, wrong on granularity, and this is the granularity.
+
+    Aborting on the first unusable name leaves a person with a queue full of
+    confirmed items, no files moved, and one reason for all of them.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    db = _prepared(cfg, names=(ONE, TWO))
+    found = run.plan(cfg, db, actor="cli")
+    for item in run.present(cfg, found):
+        _confirm(cfg, item.item_id)
+
+    real = trash.move_to_trash
+
+    def refuse_one(path, *, layout):
+        if Path(path).name == ONE:
+            raise refuse(
+                "trash-unavailable",
+                "this one name has nowhere to land",
+                remedy=Remedy.RUN_DOCTOR,
+                scope=Scope.ITEM,
+                origin=("deletion.trash",),
+                detail={},
+            )
+        return real(path, layout=layout)
+
+    monkeypatch.setattr(trash, "move_to_trash", refuse_one)
+    report = run.apply(cfg, db, actor="cli", home=home)
+
+    assert [Path(item.candidate.resolved).name for item in report.trashed] == [TWO]
+    assert (Path(cfg.library.root) / "Music" / ONE).exists()
+    assert len(report.refused) == 1
+    assert report.watermark.sequence == 40, (
+        "the watermark passed a removal that was confirmed and never moved"
+    )
+
+
+def test_a_name_that_is_all_suffix_is_numbered_without_a_leading_space(tmp_path):
+    """``.flac`` used to collide onto " 2.flac", with a leading space and the
+    original name nowhere in it."""
+    directory = tmp_path / "trash"
+    directory.mkdir()
+    (directory / ".flac").write_bytes(b"")
+    claimed = trash._free_name(directory, ".flac")
+    assert claimed.name == ".flac 2"

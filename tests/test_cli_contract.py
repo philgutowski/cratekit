@@ -1221,6 +1221,12 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "review.clear": ["no-such-item"],
         "review.export": [str(library / "review-export.json")],
         "review.import": [str(library / "no-such-export.json")],
+        # U24. A plain listing with no arguments, which is the state a fresh
+        # install is genuinely in: no version has been deleted, so no version is
+        # suppressed, and the verb must still emit a well-formed review set and
+        # exit OK rather than treating an empty store as a failure. Revoking is
+        # driven from the deletion suite, where a real tombstone exists to lift.
+        "tombstone.list": [],
     }[entry.name]
 
 

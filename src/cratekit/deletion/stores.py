@@ -176,11 +176,20 @@ def list_tombstones(
 def suppressed_version(cfg: config.Config, *, artist: str, title: str) -> bool:
     """Whether this library has deliberately stopped holding that version.
 
-    THE CALL AN ACQUISITION PASS MAKES, and it is here so that the question and
-    the record are written by one module. R36 requires the caller to REPORT the
-    suppression rather than omitting the candidate silently, which is the
-    caller's half; what this owes is a truthful answer, including a refusal when
-    the store cannot be read.
+    THE DELETION SIDE'S OWN CONSULT, and the wording matters because it used to
+    claim to be the call an ACQUISITION pass makes. It cannot be: this module
+    lives in the deletion package, and ``core.tombstone``'s own docstring says an
+    acquisition module must never import from here, precisely because deletion
+    and acquisition are two toggleable entries in ``core.profiles`` and either
+    one can be switched off while the other runs. A consulter behind a toggle the
+    consulting side does not control is a consulter that is absent exactly when
+    it is needed. So an acquisition pass asks its own store through
+    ``core.tombstone``'s shared kind and identity, and this is what the deletion
+    pass and its tests ask when they want the same question answered from here.
+
+    R36's requirement to REPORT a suppression rather than omitting the candidate
+    silently belongs to whichever caller is filtering; what this owes is a
+    truthful answer, including a refusal when the store cannot be read.
     """
     store = tombstones(cfg)
     return store.suppresses(

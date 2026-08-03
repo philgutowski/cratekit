@@ -87,7 +87,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from cratekit.cli.output import timestamp
 from cratekit.core import config, locations, preflight, rb_writer, review, session, tombstone
-from cratekit.core.cause import Scope, refuse
+from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.deletion import candidates as candidate_rules
 from cratekit.deletion import library, stores, trash
@@ -260,6 +260,21 @@ def plan(
         seen.active, root=cfg.library.root, prefix_map=rules, stat=stat
     )
     candidate_rules.assert_complete(references)
+    # THE COUNTS ARE SAID OUT LOUD even on the run that proceeds. ``missing`` is
+    # the tally the proof deliberately does not block on, and a tally nothing
+    # ever reports is indistinguishable from a tally nobody computes: the whole
+    # reference set could have been empty for a configuration reason and the run
+    # would have read as clean. Reported at INFO because it is the ordinary
+    # state of a real library, and at WARNING when the number is the entire
+    # active collection, which is not.
+    logger.info("deletion reference set: %s", dict(references.counts))
+    if references.missing and not references.by_identity:
+        logger.warning(
+            "every active row that named a path (%d) points at a file that is "
+            "not there, so nothing was indexed and no candidate can collide with "
+            "anything; check the volume prefix map before acting on this run",
+            len(references.missing),
+        )
     referenced = library.playlist_referenced(db.get_playlist_songs())
 
     answered = candidate_rules.categorize(
@@ -452,9 +467,15 @@ def apply(
                 handled.append((item.row.sequence, item.handled))
                 continue
             if verdict.verdict is review.Verdict.REJECTED:
+                # NOT HANDLED, and this is the pair to the one-way door
+                # ``candidates.HANDLED`` argues against. A decline is revocable by
+                # R35, and the watermark is the thing that decides whether a row
+                # is ever looked at again. Passing over a declined sequence
+                # retires the row permanently, so the revocation the stores
+                # faithfully record would have nothing left to reach.
                 stores.record_decline(cfg, item.row, actor=actor, resolved=item.resolved)
                 declined.append(item)
-                handled.append((item.row.sequence, True))
+                handled.append((item.row.sequence, False))
                 continue
             if not item.deletable:
                 # CONFIRMED, AND NO LONGER DELETABLE. Reported rather than
@@ -496,9 +517,55 @@ def apply(
                 handled.append((item.row.sequence, fresh.handled))
                 continue
 
+            # THE PATH THE PERSON WAS SHOWN IS PART OF WHAT THEY ANSWERED, even
+            # though it is deliberately not part of the item's IDENTITY. Keeping
+            # it out of the identity is right: a remount changes the path and must
+            # not throw away a decision somebody already made about that row. But
+            # the argued cost of the exclusion was "asked again after a remount",
+            # and the real cost is larger, because the verdict otherwise travels
+            # to whatever the row resolves to at apply time. Edit the prefix map
+            # between the review and the apply and a DIFFERENT file is moved while
+            # the one they looked at is still on disk. Comparing here keeps the
+            # decision durable and keeps it bound to the file it was made about.
+            shown = str(verdict.payload.get("path") or "")
+            if shown and locations.norm_for_compare(shown) != locations.norm_for_compare(
+                fresh.resolved
+            ):
+                logger.warning(
+                    "confirmed removal %s was accepted for %s and now resolves to "
+                    "%s, so nothing was moved: the decision was made about a "
+                    "different file",
+                    item.row.content_id,
+                    shown,
+                    fresh.resolved,
+                )
+                refused.append(fresh)
+                handled.append((item.row.sequence, False))
+                continue
+
             layout = trash.assert_usable(fresh.resolved, home=home)
             try:
                 target = trash.move_to_trash(fresh.resolved, layout=layout)
+            except CratekitError as exc:
+                # ONE NAME IS NOT THE DISK. A refusal the Trash raises about this
+                # one destination, an over-long name whose numbered alternatives
+                # will not fit or a directory already holding a thousand files of
+                # that name, is declared Scope.ITEM by the module that raises it,
+                # and honouring that declaration is what keeps one unlucky
+                # filename from aborting a pass over a thousand good ones. Any
+                # wider scope is a fact about the volume and stops the run.
+                if exc.cause.scope is not Scope.ITEM:
+                    raise
+                logger.warning(
+                    "confirmed file %s could not be given a name in the Trash at "
+                    "%s and was not moved: %s",
+                    fresh.resolved,
+                    layout.files,
+                    exc.cause.message,
+                )
+                refused.append(fresh)
+                handled.append((item.row.sequence, False))
+                continue
             except OSError as exc:
                 # A STRUCTURED REFUSAL RATHER THAN A BARE OSError, because an
                 # unstructured exception reaches the command line as an internal
@@ -542,6 +609,33 @@ def apply(
     )
 
 
+def _reopen_review_item(cfg: config.Config, record: review.Suppression, *, actor: str) -> None:
+    """Clear the verdict that produced a decline, so the file is asked about again.
+
+    THE SECOND HALF OF REVOKING A DECLINE, and without it the first half does
+    nothing a person can see. Lifting the decline lets the row be categorised as
+    deletable again, and ``present`` then re-offers it, but ``review.offer`` is
+    idempotent by design and hands back the item that is already there WITH THE
+    REJECTION STILL ON IT. The next apply reads that verdict and records the
+    decline again, so a run that revoked would end exactly where it started, and
+    the only trace would be a revocation in a store nothing consults.
+
+    The item is addressed by derivation rather than by search: the decline and
+    the review item are built from the same kind and the same identity, so the
+    identifier is a function of the record. A record written before identities
+    were kept has nothing to derive from and is left alone, which costs that one
+    record a re-offer rather than costing the revocation its meaning.
+    """
+    if not record.identity:
+        return  # pragma: no cover - a record predating the identity field
+    with review.open_store(cfg) as store:
+        review.clear(
+            store,
+            review.item_id_for(review.Queue.DELETION, record.kind, record.identity),
+            actor=actor,
+        )
+
+
 def revoke(cfg: config.Config, suppression_id: str, *, actor: str) -> review.Suppression:
     """Lift one suppression, whichever store holds it (R35, R36).
 
@@ -550,11 +644,19 @@ def revoke(cfg: config.Config, suppression_id: str, *, actor: str) -> review.Sup
     identifier itself says: it is derived from the store key, so an identifier
     from the tombstones cannot resolve in the declines and the search below can
     never revoke the wrong record.
+
+    A DECLINE ALSO REOPENS ITS REVIEW ITEM and a tombstone does not, because the
+    two suppress different things. A decline answers a question this queue asked,
+    so lifting it puts that question back. A tombstone answers a question an
+    acquisition pass will ask later and no item in this queue is holding it.
     """
     for held in (stores.tombstones(cfg), stores.declines(cfg)):
         for record in held.suppressions(include_revoked=True):
             if record.suppression_id == suppression_id:
-                return held.revoke(suppression_id, actor=actor)
+                lifted = held.revoke(suppression_id, actor=actor)
+                if held.key == tombstone.DECLINE_STORE_KEY:
+                    _reopen_review_item(cfg, lifted, actor=actor)
+                return lifted
     # Neither store holds it. The refusal comes from the store rather than being
     # written here, so a person gets the same sentence whichever way they arrive
     # at an identifier that resolves nowhere.

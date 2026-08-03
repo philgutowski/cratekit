@@ -321,28 +321,6 @@ DEFERRED_MODULES: frozenset[str] = frozenset({"web", "desktop"})
 #: obligation itself is registered there, against U20 (P5).
 ROUTING_CLI_UNIT = "U20"
 
-#: The unit that lands ``cratekit.deletion.cli``, named ONCE so both entries that
-#: carry it move together.
-#:
-#: IT WAS U24 AND IT IS NOW U27, for the reason recorded against R-13 and for the
-#: same shape the routing constant above records. U24 landed the deletion engine:
-#: the reference-set proof, the trash move, the watermark, and the revocable
-#: declines and tombstones. It could not land these two verbs. ``delete.review``
-#: declares an EXPLICIT gate, which R34 says is answerable only by a separate
-#: recorded act and never inline in the invocation that discovered it, while
-#: conformance 3 drives exactly that inline answer and requires exit OK; and the
-#: verb is destructive besides, so it refuses on volume identity and on a missing
-#: database long before it could exit OK on a machine with neither.
-#: ``tombstone.list`` could stand on its own and rides with its sibling rather
-#: than being split into a second module, because the registry declares one module
-#: for both and splitting a surface to land half of it costs more than it buys.
-#:
-#: THE MARKER IS NOT THE RECORD. ``scripts/board.py`` reads ``tests/_pending.py``
-#: and nothing else, so this constant is a convenience for the reader and the
-#: obligation itself is registered there, against U27 (P5).
-DELETION_CLI_UNIT = "U27"
-
-
 # ---------------------------------------------------------------------------
 # The verbs
 # ---------------------------------------------------------------------------
@@ -1174,6 +1152,32 @@ ENTRIES: tuple[Entry, ...] = (
         ),
         planned_in="U23",
     ),
+    # ── Deletion: one surface, TWO MODULES, and the split is the decision ────
+    #
+    # The two verbs named one module and moved together, and the pair was
+    # re-pointed away from U24 on the argument that neither could land. Half of
+    # that argument was wrong. ``tombstone.list`` declares no gate, writes
+    # nothing, is not destructive, and emits a review set, so conformance 3's
+    # loop over its gates never executes a single iteration for it: nothing about
+    # R-13's wall touches it, and R36 asks for tombstones to be LISTABLE and
+    # revocable, which is a sentence the engine alone cannot satisfy because a
+    # person cannot reach the engine.
+    #
+    # ``delete.review`` genuinely cannot land yet, and the reason is one wall
+    # rather than two. It declares an EXPLICIT gate, R34 makes that answerable
+    # only by a separate recorded act against the run, and conformance 3 drives
+    # the inline answer and then requires exit OK, so as that assertion is
+    # written today no explicitly gated verb in this registry can land. What it
+    # does NOT do is refuse on a missing database: it declares ``files`` and no
+    # database surface, takes no cloud-sync gate, and names no database doctor
+    # check. Recording that correction here because the previous version of this
+    # note asserted the opposite and a wrong reason outlives the decision it was
+    # written for.
+    #
+    # Splitting the module is what lets the landable half land. It costs one file
+    # and it buys the only user-facing surface this feature has, which is the
+    # trade the earlier note weighed the other way when it believed neither half
+    # could ship.
     Entry(
         name="delete.review",
         summary="review tracks removed from the collection and trash the confirmed files",
@@ -1199,19 +1203,18 @@ ENTRIES: tuple[Entry, ...] = (
                 digest_source="plan",
             ),
         ),
-        planned_in=DELETION_CLI_UNIT,
+        planned_in="U24",
     ),
     Entry(
         name="tombstone.list",
         summary="list and revoke tombstones so a suppressed version is visible",
-        module="cratekit.deletion.cli",
+        module="cratekit.deletion.tombstone_cli",
         builder="build_tombstones",
         handler_key="tombstone.list",
         feature_rows=(37,),
         module_id="deletion",
         emits=frozenset({"review_set"}),
         output_schema="review_set/1",
-        planned_in=DELETION_CLI_UNIT,
     ),
     Entry(
         name="export.playlist",

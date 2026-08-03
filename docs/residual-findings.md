@@ -493,23 +493,119 @@ than skips, so the battery runs either way and a supplied fixture strengthens it
 The natural owner is U27, which lands doctor and is the unit that makes a machine
 ready.
 
-**2026-08-02: U24 hit the same wall, and it hit a second one beside it.** The
-deletion engine landed in full; `cratekit.deletion.cli` did not, and both
-`delete.review` and `tombstone.list` are re-pointed to **U27** through one
-`DELETION_CLI_UNIT` constant, with the obligation registered in
-`tests/_pending.py` where the board actually reads it. The second wall is worth
-recording because it is not about databases at all: `delete.review` declares an
-**explicit** gate, R34 says an explicit gate is answerable only by a separate
-recorded act and never inline in the invocation that discovered it, and
-conformance 3 drives exactly that inline answer and then requires exit `OK`. So
-no verb with an explicit gate can pass conformance 3 as it is written today,
-whatever fixture is supplied. Every explicit gate in the registry belongs to an
-unlanded verb, so this is a wall in front of `session.ack`, `session.release`,
-`restore.run`, `adopt.apply`, `doctor.repair-paths` and the four routing verbs
-as well. The fixture closes the database half; the explicit half needs
-conformance 3 to answer an explicit gate the way the product says it must be
-answered, which is through `run.decide` against a recorded run.
+**2026-08-02: U24 met the SECOND wall, which is not about databases at all.**
+`delete.review` declares an **explicit** gate. R34 says an explicit gate is
+answerable only by a separate recorded act and never inline in the invocation
+that discovered it, and conformance 3 drives exactly that inline answer and then
+requires exit `OK`. So no verb with an explicit gate can pass conformance 3 as
+it is written today, whatever database fixture is supplied. Every explicit gate
+in the registry belongs to an unlanded verb, so this is a wall in front of
+`session.ack`, `session.release`, `restore.run`, `adopt.apply`,
+`doctor.repair-paths` and the four routing verbs as well. The fixture closes the
+database half; the explicit half needs conformance 3 to answer an explicit gate
+the way the product says it must be answered, which is through `run.decide`
+against a recorded run. A branch is correcting that assertion.
 
-U24's OWN countdown is discharged rather than moved. The guard asserting that
-declines and tombstones go through U11's revocable decision stores is armed and
-runs unconditionally over `cratekit.deletion`; only the shell is outstanding.
+**2026-08-02, same evening, CORRECTED.** U24's first pass re-pointed both
+deletion verbs to U27 through a `DELETION_CLI_UNIT` constant. That is reverted,
+and the reasoning is recorded because the reversal is itself a judgement:
+
+- U27 is a wizard and a doctor. It ships no deletion domain and no destructive
+  verb, and on the same evening it proved it could not carry an explicitly gated
+  verb by moving `doctor.repair-paths` away for the identical reason.
+- U27 **closes in the same wave as U24**, so the re-point moved a contradiction
+  from one closing unit to another rather than resolving one. `board.py`'s own
+  `contradictions()` reports the same final register state in both merge orders;
+  only the moment it fires changes.
+- The recorded reason was wrong in one clause. `delete.review` does **not**
+  refuse on a missing database: it declares `writes={"files"}`, has no `db_tree`
+  or `db_metadata` surface, takes no cloud-sync gate, and names no database
+  doctor check. One wall, not two.
+- `tombstone.list` never needed to wait and was withheld only because it shared
+  a module with its sibling. It declares no gate, so conformance 3's loop over
+  its gates runs zero times; it is not destructive, writes no surface, and opens
+  no database. It has **landed**, as `cratekit.deletion.tombstone_cli`, which is
+  what makes R36's "listable and revocable" a sentence about a person rather
+  than about an internal function.
+
+`cratekit.deletion.cli` therefore stays registered against **U24**, holding
+`delete.review` alone. U24's other countdown is discharged rather than moved:
+the guard asserting that declines and tombstones go through U11's revocable
+decision stores is armed and runs unconditionally over `cratekit.deletion`.
+
+**Still open, and it is a decision rather than a defect:** U24 closes with
+`cratekit.deletion.cli` outstanding, so `board.py audit` will report the
+contradiction on the merge. That is honest, and it is the same shape U19 left
+behind. The two ways to settle it are to reopen #24 until `delete.review` lands,
+or to land `delete.review` in the first unit after the conformance branch merges
+and clear the register entry then. Nothing in the repository can pick between
+those.
+
+---
+
+## R-16. Five findings the U24 review accepted, and the reason each stands
+
+**Found:** during the U24 adversarial reviews, 2026-08-02. Every one was
+reproduced end to end. Three are fixed here and named so the fix is findable;
+two are recorded and open.
+
+**Fixed here, listed because a reader of the review needs to know they are gone:**
+
+1. A prefix rule whose target directory does not exist made every active row
+   answer "the file is missing", which left the reference set EMPTY, `complete`
+   true, and every removed row proved unreferenced against nothing. Split at the
+   ANCHOR: a resolved path whose library root or prefix-rule target is not there
+   is `unanchored` and refuses, naming the directory.
+2. A declined row reported `handled`, so the watermark passed its sequence and
+   revoking the decline could never re-offer the file. `HANDLED` is now `{GONE}`
+   alone, and revoking a decline also clears the review item that carried the
+   rejection.
+3. A verdict travelled to whatever the row resolved to at apply time, so editing
+   the volume prefix map between the review and the apply moved a different file
+   while the one the person saw stayed on disk. The path the item was offered
+   with is now compared before the move.
+
+**Open 1: R38 asserts one volume and the pass can act on N.**
+`session.assert_volume_identity` checks `cfg.library.root` against
+`cfg.library.volume_id` and nothing else. A prefix rule can send a removed row
+onto any other mounted volume, and its file is trashed there with no identity
+assertion at all. Verified against a real second volume: the file moved and
+landed in that volume's own `.Trashes/501`. The module's own decoy-clone
+argument applies verbatim to a backup drive mounted at a map target, which is
+exactly the disk whose copies the recovery story depends on.
+
+**Closes when:** configuration can carry a volume identity per prefix rule, and
+the pass asserts the identity of every volume it is about to write to rather
+than only the one the library root sits on. That is a config shape change, so it
+belongs with a unit that owns the config surface.
+
+**Open 2: a permanently non-deletable candidate pins the watermark forever.**
+`present` offers only `DELETABLE`, so `COLLIDES_WITH_ACTIVE_ROW`,
+`STILL_REFERENCED`, `SIZE_MISMATCH`, `UNRESOLVED` and `UNIDENTIFIABLE` can never
+receive a verdict and none of them is handled. Measured over three consecutive
+runs with one permanent collision: 2, 3 and 4 candidates while the watermark
+stayed where it started. R24 degrades monotonically from the first one onward
+and nothing inside the product clears it.
+
+`DECLINED` now joins that set deliberately, which makes this reachable by an
+ordinary act rather than only by a rare one. It is the price of R35's
+revocability and it is paid knowingly: a declined row short-circuits at the top
+of the categoriser, before any path is resolved and before any file is touched,
+so the cost is one dictionary lookup per run rather than a filesystem call.
+
+**Closes when:** a person can retire a candidate the software cannot act on,
+through the review queue rather than through the watermark, so "I have seen this
+and there is nothing to do" is a recorded decision instead of a permanent pin.
+
+**Open 3: a crash between the exclusive create and the rename leaves a
+zero-byte file carrying the track's exact name in the Trash.** Verified. The
+placeholder is removed on every failure the process survives, including
+`BaseException`, so this needs a hard kill or a power loss. Nothing reclaims the
+orphan afterwards, and each one consumes one of `MAX_NAME_ATTEMPTS` permanently.
+It is worse than it sounds for one reason: the orphan looks exactly like the
+file that was supposed to be there.
+
+**Closes when:** the claim carries a marker that says it is a claim rather than
+a file, so a later run can tell an interrupted reservation from a real trashed
+track and reclaim it. Every shape of that costs a second name or a sidecar, and
+choosing one is a decision rather than a repair.

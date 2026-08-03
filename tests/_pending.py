@@ -87,14 +87,7 @@ PENDING: dict[str, tuple[str, str]] = {
         "queue, while matched and missing stay a plain match result, and neither "
         "of those two ever reaches the queue. Registered here rather than "
         "asserted in a docstring because U11 settled the split and U16 is the "
-        "first unit that can violate it (P5). A SECOND OBLIGATION arrives with "
-        "U24 and is registered here because U16 owns the match that owes it: a "
-        "candidate the tombstone store suppresses is REPORTED as suppressed "
-        "rather than omitted (R36), and the question is asked through "
-        "cratekit.core.tombstone.version_identity rather than by comparing "
-        "artist and title some other way, because the recorder and the "
-        "consulter agreeing without coordinating is the only thing that makes a "
-        "tombstone match anything at all",
+        "first unit that can violate it (P5)",
     ),
     "cratekit.modules.reports": (
         "U34",
@@ -123,35 +116,48 @@ PENDING: dict[str, tuple[str, str]] = {
         "edited",
     ),
     "cratekit.deletion.cli": (
-        "U27",
-        "the command-line surface for delete.review and tombstone.list, which the "
-        "registry declares and no unit has landed. RE-POINTED FROM U24 TO U27 "
-        "when U24 landed the deletion ENGINE, and the reasoning is left legible "
-        "because it is a judgement a human may want to move again. U24's own "
-        "obligation, that a declined file and a tombstoned version are recorded "
-        "through the revocable decision stores U11 shipped, is DISCHARGED: the "
-        "package landed and the guard in tests/test_review_queue.py that asserts "
-        "it now runs unconditionally over cratekit.deletion. What could not land "
-        "with it is the shell, and the reason is R-13's wall rather than anything "
-        "about deletion: conformance 3 requires a landed gated verb to exit OK "
-        "once its gate is answered, delete.review declares an EXPLICIT gate that "
-        "R34 forbids answering inline in the invocation that hit it, and it is "
-        "destructive besides, so it cannot exit OK on a machine with no library "
-        "volume and no database. U27 lands doctor and is the unit R-13 already "
-        "names as the natural owner of the fixture that brings the wall down",
+        "U24",
+        "the command-line surface for delete.review, the one verb of this unit "
+        "that could not land with the engine. THE RE-POINT TO U27 IS REVERTED "
+        "and the reasoning is left legible because it is a judgement a human may "
+        "want to move again. U27 is a wizard and a doctor: it ships no deletion "
+        "domain, no destructive verb, and it proved on the same evening that it "
+        "could not carry an explicitly gated verb by moving doctor.repair-paths "
+        "away for this identical reason. Worse, it CLOSES in this wave, so the "
+        "re-point moved a contradiction from one closing unit to another rather "
+        "than resolving it. ONE WALL REMAINS AND IT IS NOT ABOUT DATABASES: "
+        "delete.review declares an EXPLICIT gate, R34 makes that answerable only "
+        "by a separate recorded act against the run, and conformance 3 drives "
+        "the inline answer and then requires exit OK, so no explicitly gated "
+        "verb in this registry can land as that assertion is written today. It "
+        "does NOT refuse on a missing database: it declares files and no "
+        "database surface, takes no cloud-sync gate, and names no database "
+        "doctor check, and the previously recorded reason asserting otherwise "
+        "was wrong. tombstone.list did NOT need to wait, declares no gate, and "
+        "landed as cratekit.deletion.tombstone_cli. U24's other obligation, that "
+        "a declined file and a tombstoned version are recorded through the "
+        "revocable decision stores U11 shipped, is DISCHARGED: the package "
+        "landed and the guard in tests/test_review_queue.py runs unconditionally "
+        "over cratekit.deletion. TWO OBLIGATIONS OWED BY OTHER UNITS RIDE HERE, "
+        "on this long-lived key, because both were first appended inside entries "
+        "that the countdown forces this same wave to delete, which would have "
+        "retired them the evening they were written (P5). One, owed by U27: "
+        "doctor reports whether the library volume has a usable Trash, through "
+        "cratekit.deletion.trash.probe with create=False so the check cannot "
+        "pass by having run, because R35 sends a confirmed file to the system "
+        "Trash and never to an unlink, and a person otherwise meets that refusal "
+        "in the middle of a deletion. Two, owed by U16: a candidate the "
+        "tombstone store suppresses is REPORTED as suppressed rather than "
+        "omitted (R36), asked through cratekit.core.tombstone.version_identity "
+        "rather than by comparing artist and title some other way, because a "
+        "recorder and a consulter agreeing without coordinating is the only "
+        "thing that makes a tombstone match anything at all",
     ),
     "cratekit.cli.doctor": (
         "U27",
         "that a database acknowledged outside the library root is REPORTED on "
         "every run, so the snapshot that is a copy rather than an atomic commit "
-        "stays visible long after the date somebody accepted it. A SECOND "
-        "OBLIGATION arrives with U24 and is registered here because U27 owns the "
-        "check that owes it: doctor reports whether the library volume has a "
-        "usable Trash, through cratekit.deletion.trash.probe, with create=False "
-        "so the check cannot pass by having run. R35 says a confirmed file moves "
-        "to the system Trash and never an unlink, so deletion refuses on a "
-        "volume with no Trash; a person meets that refusal in the middle of a "
-        "deletion unless something tells them first",
+        "stays visible long after the date somebody accepted it",
     ),
     "path:skills": (
         "U28",

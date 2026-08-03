@@ -40,6 +40,7 @@ same seam ``core.locations`` uses for the Windows path separator.
 
 from __future__ import annotations
 
+import errno
 import os
 import sys
 from dataclasses import dataclass
@@ -55,6 +56,22 @@ from cratekit.core.exit_codes import Remedy
 #: something upstream is looping, and refusing says so while continuing to search
 #: would spend an unbounded amount of time saying nothing.
 MAX_NAME_ATTEMPTS = 1000
+
+#: The errno values that mean "this NAME is unacceptable" rather than "this
+#: VOLUME is unusable". Listed rather than collapsed into a bare ``except
+#: OSError`` because the two need opposite blast radii: a name the filesystem
+#: will not take costs one file, and a disk that is full or read only costs the
+#: run. ``EILSEQ`` is looked up rather than named, since not every platform
+#: defines it and a missing attribute here would be an import-time crash.
+_NAME_REFUSED_BY_FILESYSTEM: frozenset[int] = frozenset(
+    value
+    for value in (
+        errno.ENAMETOOLONG,
+        errno.EINVAL,
+        getattr(errno, "EILSEQ", None),
+    )
+    if value is not None
+)
 
 #: The macOS per-volume Trash directory, and the XDG one. Named rather than
 #: written inline so the two platform branches read as one decision with two
@@ -277,12 +294,23 @@ def _free_name(directory: Path, name: str) -> Path:
     by a rename. The test-then-act version has a window in it, and what falls
     through that window is one trashed file silently replacing another, which is
     the deletion mechanism destroying the copy it exists to preserve.
+
+    A NAME THE FILESYSTEM WILL NOT ACCEPT IS A FACT ABOUT THAT NAME. Numbering a
+    collision makes the name longer, so a file already at the length limit has no
+    numbered alternative, and the exclusive create comes back with a length error
+    rather than a collision. That refuses at ``Scope.ITEM``, like running out of
+    numbers does, because the next file's name is a different length and the
+    caller is entitled to keep going.
     """
     stem, dot, suffix = name.rpartition(".")
     for attempt in range(1, MAX_NAME_ATTEMPTS + 1):
         if attempt == 1:
             candidate = directory / name
-        elif dot:
+        elif dot and stem:
+            # ``stem`` is empty for a dotfile-shaped name such as ``.flac``,
+            # where the whole name is the suffix. Numbering it through the
+            # extension branch produces " 2.flac", with a leading space and the
+            # original name nowhere in it.
             candidate = directory / f"{stem} {attempt}{dot}{suffix}"
         else:
             candidate = directory / f"{name} {attempt}"
@@ -290,6 +318,22 @@ def _free_name(directory: Path, name: str) -> Path:
             handle = os.open(candidate, os.O_CREAT | os.O_EXCL | os.O_WRONLY, config.PRIVATE_FILE_MODE)
         except FileExistsError:
             continue
+        except OSError as exc:
+            if exc.errno not in _NAME_REFUSED_BY_FILESYSTEM:
+                # Out of space, read only, no permission: every one of those is
+                # about the volume and the next file will meet it too, so it goes
+                # up as it came and the caller stops the run.
+                raise
+            raise refuse(
+                "trash-unavailable",
+                f"the Trash at {directory} cannot hold a file named "
+                f"{candidate.name!r} ({exc}), so this one file has nowhere to "
+                f"land; nothing was moved for it",
+                remedy=Remedy.RUN_DOCTOR,
+                scope=Scope.ITEM,
+                origin=("deletion.trash",),
+                detail={"directory": str(directory), "name": candidate.name},
+            ) from exc
         os.close(handle)
         return candidate
     raise refuse(
