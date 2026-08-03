@@ -44,16 +44,28 @@ reading as an empty store, and an empty store here means "nothing is
 outstanding", which is the permissive answer to the one question this module
 exists to answer conservatively.
 
+WHAT THIS MODULE DOES NOT OWN: WHETHER A TREE IS SHORT. It records that fact and
+reports it, and the GATE on it belongs to ``core.convergence``, which holds the
+same fact arriving from the other direction (a database recovered out of band),
+gates it per tree at the writer where a rebuild can declare its purpose, and
+clears it only on a convergence check that found no difference. Two modules each
+latching "is this tree short" would be two implementations of one rule, which is
+how they come to disagree; and the version of this module that did latch on it
+refused the rebuild it named as its own remedy. See :func:`assert_converged`.
+
 LAYER: infrastructure. It reads configuration, does input and output, names no
 verb, and carries remediation TOKENS and steps rather than any text a user types
-(D2). It deliberately does NOT import the tree registry: that module is ranked
-write, this one is imported by the session boundary below it, and a marker
-carries a tree's stable identifier rather than anything the registry has to
-resolve.
+(D2). It deliberately does NOT import the tree registry, and for the same reason
+it does not import ``core.convergence``: both are ranked write, this one is
+imported by the session boundary below them, and a marker carries a tree's stable
+identifier rather than anything either has to resolve. The handoff to the module
+that owns the gate is therefore made by ``core.restore``, which is ranked write
+and may name it.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -85,22 +97,41 @@ SCHEMA_VERSION = 1
 
 
 class Kind(StrEnum):
-    """The two things a restore leaves behind, which are not the same thing.
+    """The three things a restore leaves behind, which are not the same thing.
 
     An EFFECT is something that happened outside the coupled set and did not roll
     back with it. A person dispositions it: they either accept it as it stands or
     they go and repair it by hand, and either way the answer is a sentence about
     one fact.
 
+    An IN-FLIGHT RESTORE is the record that one started and has not been seen to
+    finish. It is written before the first destructive step and retracted by the
+    step that completes, so a process killed in the middle leaves it standing, and
+    a library whose database and coupled state are at different generations
+    refuses every ordinary destructive session instead of looking finished. Seven
+    of the twelve coupled entries declare ``RollbackEffect.NONE``, so a restore
+    whose window touched only those produces no effect markers at all, and without
+    this latch such a restore could be interrupted half way and leave no trace
+    anywhere that anything reads.
+
     An UNCONVERGED TREE is not a fact about the outside world at all. It is a
     tree whose membership the database can no longer be trusted to hold, because
     the restore landed on the far side of that tree's cutover. Nothing a person
-    says repairs it; only a full-scope rebuild does. Collapsing the two would let
-    somebody disposition a tree away with a sentence, which is exactly the escape
-    R39 refuses.
+    says repairs it; only a full-scope rebuild does. Collapsing it with an effect
+    would let somebody disposition a tree away with a sentence, which is exactly
+    the escape R39 refuses.
+
+    THE TREE KIND IS TRANSITIONAL AND ITS GATE LIVES ELSEWHERE. See
+    :func:`assert_converged`: tree shortness is owned by ``core.convergence``,
+    which holds the same fact for an out-of-band recovery, gates it at the writer
+    where a rebuild can declare itself, and clears it only on a convergence check.
+    This module records the fact when that module is not present and reports it;
+    it does not latch on it, because the latch's own named remedy is a rebuild and
+    a rebuild is an ordinary destructive session.
     """
 
     EFFECT = "effect"
+    IN_FLIGHT_RESTORE = "in-flight-restore"
     UNCONVERGED_TREE = "unconverged-tree"
 
 
@@ -136,9 +167,30 @@ class Marker:
     rename diverges after the rename instead of converging, and the divergence is
     invisible: the code simply finds no entry and reports convergence.
 
-    ``marker_id`` is composed from the kind, the identity and the effect rather
-    than minted randomly, so recording the same marker twice for one restore is
-    idempotent rather than a second row somebody has to close twice.
+    ``marker_id`` is composed from the kind, the identity, the effect AND THE
+    RESTORE THAT OBSERVED IT rather than minted randomly, so recording the same
+    marker twice for ONE restore is idempotent rather than a second row somebody
+    has to close twice, while two different restores that happen to produce the
+    same triple stay two rows.
+
+    THE RESTORE HAS TO BE PART OF THE IDENTIFIER, and leaving it out was a defect
+    with two shapes, both verified. Restore 1 marks ``label_watermarks`` and a
+    person accepts it; weeks later restore 2 discards an entirely different window
+    over an entirely different set of orphaned files and produces the same triple.
+    Without the session and the capture in the key, :func:`record_markers` sees a
+    row already there, leaves the CLOSED record alone, and reports nothing
+    outstanding: the audio restore 2 discarded is owned by nobody and nobody is
+    told. The second shape is worse, because it survives the correct remedy. A
+    pre-cutover restore marks a tree, somebody rebuilds it and closes it REPAIRED,
+    the tree cuts over again, and a second pre-cutover restore of the same tree is
+    swallowed by the closed record of the first. One rebuild would pay for every
+    later restore of that tree, and an incremental sync structurally cannot see
+    the gap it leaves.
+
+    A marker with no session and no capture, which is what a caller building one
+    by hand gets, keys on ``-`` in both positions and therefore still collapses.
+    That is the right default: an unattributed marker is a marker nobody can date,
+    and two of them are not distinguishable by anything this module can read.
     """
 
     kind: Kind
@@ -152,7 +204,9 @@ class Marker:
     @property
     def marker_id(self) -> str:
         effect = str(self.effect) if self.effect is not None else "-"
-        return f"{self.kind}:{self.identity}:{effect}"
+        session_id = self.session_id or "-"
+        stamp = self.capture_stamp or "-"
+        return f"{self.kind}:{self.identity}:{effect}:{session_id}:{stamp}"
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -358,9 +412,25 @@ def _optional_str(value: Any) -> str | None:
 
 
 def _read(cfg: config.Config) -> dict[str, Record]:
-    """Load the record, treating anything it cannot RECOGNIZE as a refusal."""
+    """Load the record, treating anything it cannot RECOGNIZE as a refusal.
+
+    A MISSING FILE ON A MISSING VOLUME IS NOT AN EMPTY STORE. Every reader here
+    resolves through the library-scoped state root, so with the library volume
+    unmounted the document's path simply does not exist, and reading that as
+    "nothing is outstanding" is the permissive answer arriving by the back door.
+    ``session.assert_gates`` asserts the volume before it asks, so the shape is
+    unreachable there; ``close_session``'s own gate does not, and that is the path
+    on which the latch used to pass silently against an absent library. Asked HERE
+    rather than at each of the four readers, so all four keep answering
+    identically.
+    """
     path = path_for(cfg)
     if not path.exists():
+        root = Path(cfg.library.root)
+        if not root.is_dir():
+            raise _unusable(
+                cfg, f"the library at {root} is not there, so its state cannot be read"
+            )
         return {}
     try:
         text = path.read_text()
@@ -408,21 +478,39 @@ def _directory_digest(root: Path) -> bytes:
 
     DERIVED BY WALKING (P3). Several coupled entries are directories, and a
     comparison that looked only at the top level would report a directory
-    unchanged while every file inside it had moved. Names and sizes are enough
-    for the question being asked, which is "did this entry change across the
-    window", not "what changed".
+    unchanged while every file inside it had moved.
+
+    IT HASHES THE CONTENTS, not the names and lengths. Names and lengths look
+    sufficient for "did this entry change across the window" and are not: a
+    document edited in place to the same length reads as unchanged, and
+    ``label_outcomes`` is a directory of small documents AND the one COUPLED
+    directory entry carrying a declared out-of-band effect. So the one entry where
+    a same-length edit is most likely is the one entry where missing it means an
+    effect goes unmarked. The failure direction of the cheaper comparison is
+    under-marking, which is the direction this module exists to avoid.
+
+    The cost is bounded by what is being compared: these are state documents, not
+    audio, and the walk already had to stat every one of them.
     """
-    parts: list[str] = []
+    digest = hashlib.sha256()
     for current, directories, files in os.walk(root):
         directories.sort()
         here = Path(current)
         for name in sorted(files):
+            path = here / name
+            digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+            digest.update(b"\0")
             try:
-                size = (here / name).stat().st_size
+                with path.open("rb") as handle:
+                    while chunk := handle.read(1 << 20):
+                        digest.update(chunk)
             except OSError:
-                size = -1
-            parts.append(f"{(here / name).relative_to(root).as_posix()}:{size}")
-    return "\n".join(parts).encode("utf-8")
+                # Unreadable is its own state and must not compare equal to
+                # readable-and-empty, so it contributes a token no file's bytes
+                # can produce.
+                digest.update(b"\0unreadable\0")
+            digest.update(b"\n")
+    return digest.digest()
 
 
 def effect_markers(
@@ -475,6 +563,50 @@ def effect_markers(
             )
         )
     return tuple(markers)
+
+
+def in_flight_marker(
+    *,
+    session_id: str,
+    capture_stamp: str | None = None,
+    now: datetime | None = None,
+) -> Marker:
+    """The latch a restore writes before its first destructive step.
+
+    IT IS WRITTEN EVEN WHEN THERE IS NOTHING ELSE TO WRITE, which is the whole
+    point. Seven of the twelve coupled entries declare ``RollbackEffect.NONE``, so
+    a restore whose window touched only those derives no effect markers, and a
+    restore of a capture taken after every cutover derives no tree markers either.
+    Such a restore used to write nothing anywhere before it began replacing files,
+    and a hard kill part way through left the database at one generation, the
+    coupled state at another, an empty reconciliation store, and the next ordinary
+    destructive session ALLOWED. The only trace was a non-terminal session record
+    that nothing consults except the prune-protection scan.
+
+    The concrete loss that shape produces: a ``label_watermarks`` at the later
+    generation against a database at the earlier one means the next label sweep
+    believes it consumed releases whose rows are gone, so those tracks are never
+    re-imported and nothing demands the rebuild that would find them.
+
+    ITS REMEDY IS A RECOVERY, WHICH IS EXEMPT, so this latch does not condemn its
+    own remedy: finishing the interrupted restore, or running another one, is an
+    ``Intent.RECOVERY`` session and passes. A person who would rather accept the
+    half-restored state closes it with a disposition like any other marker.
+    """
+    return Marker(
+        kind=Kind.IN_FLIGHT_RESTORE,
+        identity=session_id,
+        effect=None,
+        session_id=session_id,
+        capture_stamp=capture_stamp,
+        detail=(
+            "a restore of this library started and was not seen to finish, so the "
+            "database and the state coupled to it may be at different generations; "
+            "until one completes, anything written now is written against a "
+            "library whose halves do not agree"
+        ),
+        observed=timestamp(now),
+    )
 
 
 def tree_markers(
@@ -538,6 +670,41 @@ def record_markers(cfg: config.Config, markers: Sequence[Marker]) -> tuple[Recor
         return tuple(recorded[key] for key in sorted(recorded))
 
 
+def retract_marker(cfg: config.Config, marker_id: str) -> bool:
+    """Remove a marker whose fact has ceased to be true. Returns whether it was there.
+
+    DELETION RATHER THAN A DISPOSITION, and only for the in-flight latch, because
+    the two operations mean different things. A disposition is a person's answer
+    about something that happened and will always have happened, so it is kept
+    forever and never restamped. "A restore is in flight" is not that kind of
+    fact: it is true for the length of one restore and false afterwards, and
+    recording a decision about it would put a permanent row in the store for
+    something nobody decided.
+
+    Restricted to that one kind rather than offered generally. A general delete is
+    the softening path in its purest form: every refusal this module raises could
+    be answered by removing the marker that raised it, with no record that
+    anything was ever outstanding.
+    """
+    with _locked(cfg):
+        recorded = _read(cfg)
+        existing = recorded.get(marker_id)
+        if existing is None:
+            return False
+        if existing.marker.kind is not Kind.IN_FLIGHT_RESTORE:
+            raise refuse(
+                "internal-error",
+                f"the marker {marker_id!r} is a {existing.marker.kind} and only an "
+                f"{Kind.IN_FLIGHT_RESTORE} may be retracted; everything else is "
+                f"closed by a person's disposition, which is kept",
+                remedy=Remedy.REPORT_DEFECT,
+                detail={"marker_id": marker_id, "kind": str(existing.marker.kind)},
+            )
+        del recorded[marker_id]
+        _write(cfg, recorded)
+        return True
+
+
 def records(cfg: config.Config) -> tuple[Record, ...]:
     """Every recorded marker, closed and open alike, in identifier order."""
     recorded = _read(cfg)
@@ -550,11 +717,21 @@ def outstanding(cfg: config.Config) -> tuple[Record, ...]:
 
 
 def unconverged_trees(cfg: config.Config) -> tuple[str, ...]:
-    """The stable identifiers of trees whose rebuild is still owed."""
+    """The stable identifiers of trees whose rebuild is still owed, deduplicated.
+
+    Deduplicated because a tree can now carry several open markers: the identifier
+    includes the restore that observed it, on purpose, so two pre-cutover restores
+    of one tree are two rows rather than one swallowing the other. What a caller
+    wants from this is the SET of trees, and a tree named twice is one tree.
+    """
     return tuple(
-        record.marker.identity
-        for record in outstanding(cfg)
-        if record.marker.kind is Kind.UNCONVERGED_TREE
+        sorted(
+            {
+                record.marker.identity
+                for record in outstanding(cfg)
+                if record.marker.kind is Kind.UNCONVERGED_TREE
+            }
+        )
     )
 
 
@@ -607,9 +784,23 @@ def close_marker(
 # ---------------------------------------------------------------------------
 
 
+#: The kinds this module LATCHES on at the session boundary. Written as the set
+#: that is held rather than as the set that is exempt, for the reason
+#: ``convergence.Purpose`` gives for the same choice: a kind added later must
+#: inherit the checking behaviour, not the exemption, and the only way to make
+#: that true is to name what is held.
+LATCHING_KINDS: frozenset[Kind] = frozenset({Kind.EFFECT, Kind.IN_FLIGHT_RESTORE})
+
+
 def converged(cfg: config.Config) -> bool:
-    """True when nothing a restore left behind is still open."""
-    return not outstanding(cfg)
+    """True when nothing this module LATCHES on is still open.
+
+    Not "nothing is open". An unconverged tree can be open and this still answers
+    True, because a tree's gate is not here. See :func:`assert_converged`.
+    """
+    return not [
+        record for record in outstanding(cfg) if record.marker.kind in LATCHING_KINDS
+    ]
 
 
 def assert_converged(cfg: config.Config) -> None:
@@ -624,39 +815,73 @@ def assert_converged(cfg: config.Config) -> None:
     hand-edited file. That is the lesson U8 paid for and it applies unchanged
     here.
 
-    The two kinds are reported SEPARATELY inside one refusal, because their
-    remedies are not the same act: an effect is closed by a person saying what
-    they want done about it, and an unconverged tree is closed only by a rebuild.
-    Collapsing them would send somebody to disposition a tree, which is exactly
-    the escape a rebuild requirement exists to close.
+    AN UNCONVERGED TREE IS DELIBERATELY NOT LATCHED HERE, and the first version of
+    this function got that wrong in exactly the way the rule forbids. The refusal
+    it raised carried ``remedy=rebuild-tree`` and read "a tree is closed only by a
+    full rebuild, never by a decision". That rebuild is a database write through
+    ``write.trees.write_tree_membership``, which enters ``session.assert_gates``
+    with the default ``Intent.WRITE`` and has no ``intent`` parameter to declare
+    anything else. So this latch, sitting inside those gates, refused the one act
+    it named as its own remedy, and the only remaining exit was a bare disposition
+    of the tree marker, which is precisely the softening path this unit registered
+    against U36 to forbid. A latch may not condemn its own remedy; the rule has
+    been paid for twice in this repository now and it is cheap to apply.
+
+    WHERE THE TREE GATE LIVES INSTEAD. ``core.convergence`` holds the same fact
+    for a database recovered out of band, gates it per tree inside
+    ``write_tree_membership``, exempts a write that declares
+    ``convergence.Purpose.REBUILD``, and clears it only on a convergence check
+    reporting no difference. That is a strictly better mechanism than a second one
+    here would be, and the alternative is the shape its own layering comment
+    names: a check that lived with each writer would be several implementations of
+    one rule, which is how they come to disagree. So tree shortness is recorded
+    here, reported here, and gated there. See ``core.restore`` for the handoff.
+
+    The kinds are reported SEPARATELY inside one refusal, because their remedies
+    are not the same act: an effect is closed by a person saying what they want
+    done about it, and an interrupted restore is closed by a restore that
+    finishes, which is a recovery and therefore exempt from this.
     """
-    open_records = outstanding(cfg)
+    open_records = [
+        record for record in outstanding(cfg) if record.marker.kind in LATCHING_KINDS
+    ]
     if not open_records:
         return
-    trees = [r.marker.identity for r in open_records if r.marker.kind is Kind.UNCONVERGED_TREE]
     effects = [r for r in open_records if r.marker.kind is Kind.EFFECT]
+    in_flight = [r for r in open_records if r.marker.kind is Kind.IN_FLIGHT_RESTORE]
     lines = [f"  - {r.marker.marker_id}: {r.marker.detail}" for r in open_records]
     raise refuse(
         "restore-reconciliation-outstanding",
         "a restore of this library left "
-        + (f"{len(effects)} effect it could not undo" if len(effects) == 1 else f"{len(effects)} effects it could not undo")
-        + (f" and {len(trees)} tree that needs rebuilding" if len(trees) == 1 else f" and {len(trees)} trees that need rebuilding")
+        + (
+            f"{len(effects)} effect it could not undo"
+            if len(effects) == 1
+            else f"{len(effects)} effects it could not undo"
+        )
+        + (
+            f" and {len(in_flight)} restore that was never seen to finish"
+            if len(in_flight) == 1
+            else f" and {len(in_flight)} restores that were never seen to finish"
+        )
         + ", and every further write is refused until each one is closed. An "
-        "effect is closed by a person deciding what to do about it; a tree is "
-        "closed only by a full rebuild, never by a decision:\n"
+        "effect is closed by a person deciding what to do about it; an "
+        "unfinished restore is closed by finishing one, which declares itself a "
+        "recovery and is not held by this:\n"
         + "\n".join(lines),
-        remedy=Remedy.REBUILD_TREE if trees else Remedy.COMPLETE_PENDING_ACTION,
+        remedy=Remedy.RESTORE_FROM_SNAPSHOT if in_flight else Remedy.COMPLETE_PENDING_ACTION,
         scope=Scope.RUN,
         origin=("reconcile",),
         detail={
             "markers": [r.marker.marker_id for r in open_records],
             "effects": [r.marker.marker_id for r in effects],
-            "unconverged_trees": trees,
+            "in_flight_restores": [r.marker.marker_id for r in in_flight],
+            "unconverged_trees": list(unconverged_trees(cfg)),
         },
     )
 
 
 __all__ = [
+    "LATCHING_KINDS",
     "LOCK_KEY",
     "SCHEMA_VERSION",
     "STATE_KEY",
@@ -668,11 +893,13 @@ __all__ = [
     "close_marker",
     "converged",
     "effect_markers",
+    "in_flight_marker",
     "lock_path",
     "outstanding",
     "path_for",
     "record_markers",
     "records",
+    "retract_marker",
     "tree_markers",
     "unconverged_trees",
 ]

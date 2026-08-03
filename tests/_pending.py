@@ -178,21 +178,41 @@ PENDING: dict[str, tuple[str, str]] = {
         "composition; what is left is the one wiring call, and it is left here "
         "because core may not import the modules layer",
     ),
-    "cratekit.write.rebuild": (
+    # KEYED ON THE MODULE U36 ACTUALLY LANDS. This entry said
+    # ``cratekit.write.rebuild`` and no such module was ever going to exist: U36
+    # lands ``cratekit.write.tree_rebuild``, and both the `converge` and `rebuild`
+    # verbs are declared against ``cratekit.write.converge_cli`` in
+    # ``cli/registry.py`` against U20. So ``_is_absent`` was permanently True and
+    # ``scripts/board.py contradictions()`` would have returned exit 2 for the rest
+    # of the project's life the moment U36 closed, which ``sync`` deliberately will
+    # not repair. A key that can never resolve is not a countdown, it is a
+    # permanent red light that teaches people to ignore the audit.
+    "cratekit.write.tree_rebuild": (
         "U36",
-        "that an unconverged tree is cleared ONLY through a convergence check "
-        "reporting no difference, never by a bare disposition. "
-        "cratekit.core.reconcile records a tree marker and refuses every "
-        "ordinary destructive session while one is open, and it exposes one "
-        "`disposition` call because effects and trees share a store. That call "
-        "is the softening path: a rebuild unit that closed a tree marker with a "
-        "verdict and no convergence check would satisfy every test in this "
-        "repository while leaving the tree exactly as short as it was. "
+        "TWO OBLIGATIONS, both about the same fact recorded in two places. "
+        "FIRST, that an unconverged tree is cleared ONLY through a convergence "
+        "check reporting no difference, never by a bare disposition. "
+        "cratekit.core.reconcile records a tree marker and exposes one "
+        "`disposition` call because effects and trees share a store, and that "
+        "call is the softening path: a rebuild unit that closed a tree marker "
+        "with a verdict and no convergence check would satisfy every test in "
+        "this repository while leaving the tree exactly as short as it was. "
         "Registered here rather than asserted in a docstring because U32 built "
         "the store and U36 is the first unit that can violate it (P5). R39's own "
         "escape hatch is not this: an explicit, logged operator disposition that "
         "scopes the refusal to one tree is U36's to design, and it is a different "
-        "act from a rebuild reporting success",
+        "act from a rebuild reporting success. SECOND, and this is the one that "
+        "has to be discharged in the commit that removes this entry: U32 and U36 "
+        "both discovered that a database-native tree can be left short, from "
+        "opposite directions, and each wrote it into its own store with its own "
+        "gate, exemption, clearing call and refusal slug. U32 settled the "
+        "ownership on core.convergence and hands the fact over through "
+        "core.restore._hand_tree_shortness_over, which resolves that module at "
+        "call time because it does not exist in U32's build. When it does, the "
+        "fallback branch in that function and the whole "
+        "reconcile.Kind.UNCONVERGED_TREE path behind it are dead weight recording "
+        "a fact a rebuild does not clear, and leaving them is how the two answers "
+        "come apart again",
     ),
 }
 

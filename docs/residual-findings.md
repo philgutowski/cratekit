@@ -525,3 +525,70 @@ fixture, on the `CRATEKIT_TEST_DB` convention that already SUBSTITUTES rather
 than skips, so the battery runs either way and a supplied fixture strengthens it.
 The natural owner is U27, which lands doctor and is the unit that makes a machine
 ready.
+
+---
+
+## R-19. R30's second sentence is computed and never reported
+
+**Found:** during the U32 adversarial review, 2026-08-02. Confirmed against
+`src/` before it was recorded.
+
+**Numbered R-19 rather than R-14.** `main` already defines R-14 and R-15, U27's
+branch is renumbering its own to R-16, and U16's fix round is adding R-17. R-19
+is above every number in flight, so this entry cannot collide with one landing
+beside it. This file is one another branch appends to, and two entries sharing a
+number is the shape where one of them silently becomes unreadable.
+
+**The unmet sentence, verbatim from R30:** *"the capture store does not sit on
+the same filesystem as the database, so that one volume failure cannot take both
+the library and every undo for it."*
+
+**Current state, with file and line.**
+`core/restore.py:shares_the_database_volume` computes the answer, comparing on
+the filesystem identifier rather than on path prefixes, and
+`core/restore.py:RetentionPlan.shares_the_database_volume` carries it on every
+retention plan. Nothing in `src/` renders it. There is no command-line surface
+for retention, no doctor check that reads it, and no session-time warning. The
+honest status is **computed, not reported**, and the unit's own prose said
+"REPORTED", which overstates what landed.
+
+**Why it is not enforced, and why that decision stands.** The reviewer upheld the
+call to report rather than refuse, and the argument is worth keeping because it
+is the reason this cannot simply be closed with a guard. The containment rule
+pulls `db_path` inside `library.root`, because an atomic commit cannot span
+filesystems. So "put captures on another volume" and "keep the database inside
+the library root" cannot both be refusals: the preferred install satisfies the
+second and therefore violates the first, and a guard that fires on the product's
+own default install is a guard people route around. The honest fix is a second
+capture location the user chooses, which is configuration U32 did not add.
+
+**The exposure, in one sentence.** On the default install one volume failure
+takes the library, the database and every capture together, so the KTD21b undo
+does not survive the single failure it is most likely to meet.
+
+**What closes it.** A rendered report, in all three of the places a person would
+meet it: `doctor` names it as a check with the two paths and the shared
+filesystem identifier; the retention verb prints it beside the plan it is already
+carrying it on; and a first destructive session in a new install says it once.
+Not a fourth mechanism: `RetentionPlan` already carries the value, so every one
+of those is a read.
+
+**Owner: U27.** It lands doctor, it already owns the operator-facing surface, and
+it already carries this unit's `cratekit.session.restore_cli` obligation, which
+is the surface the retention verb would live on. Recorded here with a number
+rather than left in a `core/restore.py` docstring for the reason this unit argues
+twice in `tests/_pending.py` about somebody else's markers: an obligation carried
+by a marker on a closing unit is owned by nobody the moment that unit closes, and
+`scripts/board.py` reads the register and this file, not docstrings.
+
+**What must NOT close it.**
+
+1. **Turning it into a refusal.** That is the version this unit already
+   considered and rejected, on the containment argument above. A refusal on the
+   default install is worse than the gap, because it is switched off once and
+   then never seen again.
+2. **Asking once at setup.** A setup-time prompt is answered by somebody who has
+   not yet lost a drive, and it is answered once, on a machine whose layout then
+   changes. The value is cheap to recompute on every run precisely because it is
+   derived from the filesystem rather than from a recorded answer, and a recorded
+   answer would go stale the first time somebody moves their library.

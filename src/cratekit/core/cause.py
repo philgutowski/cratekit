@@ -400,6 +400,15 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # ``tree-unconverged`` and keeps its own slug because the two name
         # different things to repair, and the detail shapes differ accordingly.
         "restore-reconciliation-outstanding": ExitCode.UNCONVERGED,
+        # One step of a restore could not be performed: the volume filled, the
+        # directory is not writable by this account, or the drive returned an
+        # error. PRECONDITION because every one of those is a condition of the
+        # machine that a person puts right and then repeats the restore, and it
+        # carries STEPS rather than a remedy token for the reason
+        # ``snapshot-store-full`` does. It exists at all because the alternative
+        # was a raw OSError escaping mid restore: no reason, no remedy, no
+        # reserved exit code, at the moment somebody is already recovering.
+        "restore-step-failed": ExitCode.PRECONDITION,
     }
 )
 

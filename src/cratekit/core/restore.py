@@ -32,10 +32,27 @@ that takes it again, leaves a window in which a second process passes the same
 gates and commits, after which the run copies a snapshot over a commit its plan
 was built before.
 
-**A DRY RUN AND A REAL RUN WALK ONE LIST.** :func:`plan` produces an ordered
-tuple of :class:`Step` values and :func:`run` iterates it, performing each step or
-not. There is no second code path for the preview, because a preview built by a
-second code path is a report about a different program.
+**A DRY RUN AND A REAL RUN WALK ONE LIST, AND BOTH EVALUATE THE SAME
+PREDICATES.** :func:`plan` produces an ordered tuple of :class:`Step` values,
+:func:`run` checks every one of them against the disk, and only then does it
+perform each step or not. There is no second code path for the preview, because a
+preview built by a second code path is a report about a different program; and
+there is no third mode in which the checks are skipped, because a rehearsal that
+evaluated nothing its steps depend on was reporting on the loop rather than on the
+restore.
+
+**NOTHING IS DELETED THAT NOTHING ELSE HOLDS A COPY OF.** The live write-ahead log
+holds transactions committed since the last checkpoint, which are in no capture
+because every capture predates them, so it is moved aside rather than unlinked. A
+directory being replaced is not removed until its replacement has landed, and the
+copy a previous attempt left behind is adopted rather than deleted when it is the
+only one left.
+
+**A RESTORE THAT DID NOT FINISH SAYS SO.** A latch is written before the first
+destructive step and retracted by the last one, so a process killed anywhere
+between them leaves a library that refuses ordinary writes rather than one that
+looks finished. It is written on every restore, including the ones whose window
+produced nothing else to record, which is most of them.
 
 WHAT A RESTORE CANNOT DO is undo anything that left the coupled set: audio on the
 music volume, a playlist renamed at the provider, a file already in the Trash.
@@ -43,11 +60,20 @@ Those are enumerated, recorded, and refused over by ``core.reconcile``, and the
 enumeration happens BEFORE anything is replaced, because afterwards the live
 state IS the captured state and every comparison reports that nothing happened.
 
+WHAT IT LEAVES SHORT, as opposed to what it cannot undo, is a database-native
+tree whose cutover the capture predates, and that fact belongs to
+``core.convergence`` rather than here. See :func:`_hand_tree_shortness_over` for
+the argument. This module decides which trees, and hands them to the module that
+gates them and that a rebuild clears.
+
 LAYER: write, and the same exception the tree registry already takes. It lives
 under ``core/`` because the pending register and the state inventory name it
 there, and it is ranked with the write layer because it reads the tree registry
 to decide which trees a pre-cutover restore leaves unconverged. Nothing below it
-imports it.
+imports it. THE RANK IS BROADER THAN THE EXCEPTION IT IMPLEMENTS: it also grants
+permission to import every ``cratekit.write.*`` module, and this one imports none
+of them, which ``tests/test_layering.py`` asserts rather than leaves to good
+intentions.
 """
 
 from __future__ import annotations
@@ -98,6 +124,12 @@ BARE_METAL_WORKFLOW = "bare-metal-recovery"
 #: The installation-scoped lock a bare-metal recovery takes in place of the
 #: library one. Named once, so this module and the inventory cannot disagree.
 RECOVERY_LOCK_KEY = "recovery_lock"
+
+#: Where the live storage-engine companion files go when a restore takes them out
+#: of the way. Beside the database, dotted, and declared by nothing in the state
+#: inventory on purpose: these bytes are the ones no capture holds, so a directory
+#: any capture or restore could reach is the wrong place for them.
+PRE_RESTORE_DIR = ".cratekit-pre-restore"
 
 
 # ---------------------------------------------------------------------------
@@ -192,25 +224,81 @@ def list_sessions(cfg: config.Config) -> tuple[Restorable, ...]:
 # ---------------------------------------------------------------------------
 
 
+class Guard(StrEnum):
+    """WHICH gate produced a :class:`Held`. Two guards, two different gate sets.
+
+    The two are not interchangeable and a value carrying no answer to "which one
+    made me" is a value nothing can tell apart. :func:`recovery_session` passes
+    all three library-scoped gates against the configured library.
+    :func:`bare_metal_session` passes SUBSTITUTES for those gates against a
+    replacement drive, and its lock is installation-scoped. Both declare
+    ``Intent.RECOVERY`` and both hold a lock this process really holds, so intent
+    and lock membership cannot separate them.
+    """
+
+    #: All three library gates, against the configured library.
+    LIBRARY_SESSION = "library-session"
+
+    #: The substitutes, against a named replacement target. See
+    #: :func:`bare_metal_session` for what each substitute is worth.
+    BARE_METAL = "bare-metal-recovery"
+
+
+#: Every ``Held`` this module's own guards have issued and not yet withdrawn.
+#:
+#: A ``Held`` is a plain frozen dataclass, so anything can build one, and until
+#: this existed anything that built one with the right three fields was accepted.
+#: The token is an object identity rather than a value: it cannot be spelled in a
+#: literal, it cannot be reconstructed from a serialized form, and the guard
+#: withdraws it on the way out of its own block. Membership therefore answers two
+#: questions at once that neither the lock nor the intent could answer: this value
+#: came from a guard in this module, and that guard has not exited.
+_ISSUED: set[int] = set()
+
+
 @dataclass(frozen=True, slots=True)
 class Held:
     """An OPEN destructive session, handed to everything the verb then does.
 
-    ``guard`` is the whole reason this type exists. The off-machine backup
-    restore takes a zero-argument callable returning a context manager as its
-    ``gates`` seam, and handing it this method rather than letting it default is
-    what makes both halves of that restore run inside ONE acquisition. The
-    context manager it returns does nothing, deliberately: the gates are already
-    held by the block this value was yielded into, and taking them again in this
-    process would be reported as a foreign holder, which is to say the caller
-    would be told to wait for itself.
+    ``guard`` (the METHOD) is one of the two reasons this type exists. The
+    off-machine backup restore takes a zero-argument callable returning a context
+    manager as its ``gates`` seam, and handing it that method rather than letting
+    it default is what makes both halves of that restore run inside ONE
+    acquisition. The context manager it returns does nothing, deliberately: the
+    gates are already held by the block this value was yielded into, and taking
+    them again in this process would be reported as a foreign holder, which is to
+    say the caller would be told to wait for itself.
+
+    ``issued_by`` and ``authorises`` are the other reason, and they were missing.
+    A ``Held`` used to say only "some lock is held and the intent is recovery",
+    which three separate compositions satisfied without any of the gates a person
+    would assume. Measured end to end: with a configured library present and
+    readable and an identity provider reporting a foreign volume,
+    :func:`recovery_session` correctly refuses with ``library-volume-mismatch``;
+    but :func:`bare_metal_session` against a replacement drive yields a ``Held``
+    whose installation-scoped ``recovery.lock`` satisfies the same check, and
+    :func:`plan` and :func:`run` then performed every step against
+    ``cfg.library.root``, rewriting the database and the whole coupled tree on the
+    volume the identity gate had just refused, with no acknowledgment, with the
+    library lock held by a second process, while the target that
+    :func:`assert_recovery_target` had validated received nothing. A ``Held``
+    naming any unrelated lock this process happened to hold passed too.
+
+    So a ``Held`` now says which guard issued it and WHAT IT AUTHORISES, and
+    :func:`plan` and :func:`run` refuse one that does not authorise the path they
+    are about to write. ``authorises`` is a directory: a bare-metal recovery
+    authorises its validated target and nothing else, and a library session
+    authorises the configured library root and nothing else.
     """
 
     workflow: str
     lock: Path
     intent: session.Intent
+    issued_by: Guard
+    authorises: Path
     gates: session.Gates | None = None
     record: session.SessionRecord | None = None
+    token: object | None = None
 
     def guard(self) -> AbstractContextManager[Held]:
         return nullcontext(self)
@@ -223,11 +311,33 @@ class Held:
         field. A ``Held`` is an ordinary value: it outlives the block that
         yielded it, and a caller who kept one and used it afterwards would be
         writing with no lock at all while every signature said otherwise.
-        Asking the session module's own record of what this process holds is the
-        only answer that cannot be stale, because it is the same set the lock
-        acquisition maintains.
+
+        BOTH QUESTIONS, because either alone is answerable by an accident. The
+        session module's own record of what this process holds is the only
+        non-stale answer about the LOCK, and it is the same set the lock
+        acquisition maintains; but it is a set of paths, so any lock this process
+        happens to hold satisfies it, including one taken for something else
+        entirely. The token answers the other half: this exact value was issued by
+        one of this module's guards and that guard has not yet returned.
         """
+        if self.token is None or id(self.token) not in _ISSUED:
+            return False
         return str(self.lock.absolute()) in session._HELD
+
+    def authorises_path(self, path: Path | str) -> bool:
+        """Whether this session authorises writing at ``path``.
+
+        Compared on RESOLVED paths, because the hazard is a target that looks
+        different and is the same directory, or looks the same and is not: a
+        symlink, a relative spelling, or the empty folder an unmounted volume
+        leaves behind at its own mount point.
+        """
+        try:
+            where = Path(path).resolve()
+            root = self.authorises.resolve()
+        except OSError:  # pragma: no cover - resolve does not touch the disk
+            return False
+        return where == root or root in where.parents
 
 
 @contextmanager
@@ -269,27 +379,64 @@ def recovery_session(
         analysis_roots=analysis_roots,
     ) as gates:
         record = session.open_session(cfg, workflow=workflow, now=now)
-        held = Held(
+        with _issued(
             workflow=workflow,
             lock=gates.lock,
-            intent=session.Intent.RECOVERY,
+            issued_by=Guard.LIBRARY_SESSION,
+            authorises=Path(cfg.library.root),
             gates=gates,
             record=record,
-        )
-        try:
-            yield held
-        except BaseException:
+        ) as held:
+            try:
+                yield held
+            except BaseException:
+                session.close_session(
+                    record, cfg, state=session.SessionState.ABANDONED, now=now
+                )
+                raise
             session.close_session(
-                record, cfg, state=session.SessionState.ABANDONED, now=now
+                record,
+                cfg,
+                state=session.SessionState.CLOSED,
+                intent=session.Intent.RECOVERY,
+                now=now,
             )
-            raise
-        session.close_session(
-            record,
-            cfg,
-            state=session.SessionState.CLOSED,
-            intent=session.Intent.RECOVERY,
-            now=now,
-        )
+
+
+@contextmanager
+def _issued(
+    *,
+    workflow: str,
+    lock: Path,
+    issued_by: Guard,
+    authorises: Path,
+    gates: session.Gates | None = None,
+    record: session.SessionRecord | None = None,
+) -> Iterator[Held]:
+    """Mint one :class:`Held`, register its token, and withdraw it on the way out.
+
+    ONE PLACE MINTS THEM, so there is no second construction site that could
+    forget the registration and hand back a value every assertion then treats as
+    forged. The withdrawal is in a ``finally`` because the failure path is the one
+    that matters: a guard that raised on its way out and left the token standing
+    would leave a value that reports the gates open for the rest of the process.
+    """
+    token = object()
+    held = Held(
+        workflow=workflow,
+        lock=lock,
+        intent=session.Intent.RECOVERY,
+        issued_by=issued_by,
+        authorises=authorises,
+        gates=gates,
+        record=record,
+        token=token,
+    )
+    _ISSUED.add(id(token))
+    try:
+        yield held
+    finally:
+        _ISSUED.discard(id(token))
 
 
 # ---------------------------------------------------------------------------
@@ -301,11 +448,17 @@ class Act(StrEnum):
     """One kind of thing a restore does. The set is closed and the ORDER matters.
 
     ``RECORD`` first, because what a restore cannot undo has to be written down
-    before the evidence for it is overwritten. ``CLEAR`` before ``REPLACE``,
-    because a companion log left beside a database that has started to change is
-    a log the engine will replay onto the wrong file. ``RESOLVE`` last, because
-    it is the claim that the condemning record has been answered, and a claim
-    made before the work is a claim that can be wrong.
+    before the evidence for it is overwritten, and because the latch saying a
+    restore is in flight is worth nothing if it is written after the first file is
+    replaced. ``CLEAR`` before ``REPLACE``, because a companion log left beside a
+    database that has started to change is a log the engine will replay onto the
+    wrong file. ``MARK_TREES`` after the replacement rather than with the other
+    recording, because the record that holds tree shortness is itself a COUPLED
+    entry and is therefore one of the things being replaced: marking first would
+    write the mark and then overwrite it. ``RESOLVE`` after that, because it is the
+    claim that the condemning record has been answered, and a claim made before
+    the work is a claim that can be wrong. ``RELEASE`` last of all, because it is
+    the claim that the restore finished, and nothing else may outrank it.
     """
 
     RECORD = "record-reconciliation"
@@ -313,7 +466,9 @@ class Act(StrEnum):
     REPLACE = "replace-file"
     REPLACE_TREE = "replace-directory"
     REMOVE = "remove-absent"
+    MARK_TREES = "mark-trees-unconverged"
     RESOLVE = "resolve-session"
+    RELEASE = "release-restore-latch"
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,14 +487,25 @@ class Step:
 
 @dataclass(frozen=True, slots=True)
 class Plan:
-    """A whole restore, decided and not yet performed."""
+    """A whole restore, decided and not yet performed.
+
+    ``latch`` is the marker written before the first destructive step and
+    retracted by the last one, so an interruption anywhere between them leaves a
+    library that refuses ordinary writes instead of one that looks finished.
+
+    ``pre_restore_root`` is where the live storage-engine companions are moved to
+    rather than deleted. See :func:`_perform`.
+    """
 
     session_id: str
     capture_root: Path
     steps: tuple[Step, ...]
+    latch: reconcile.Marker
+    pre_restore_root: Path
     discarded_sessions: tuple[str, ...] = ()
     discarded_change: session.ChangeSummary = field(default_factory=session.ChangeSummary)
     markers: tuple[reconcile.Marker, ...] = ()
+    tree_markers: tuple[reconcile.Marker, ...] = ()
     unconverged: tuple[str, ...] = ()
     unverified_sessions: tuple[str, ...] = ()
 
@@ -358,10 +524,18 @@ class RestoreOutcome:
     dry_run: bool
     resolved: tuple[str, ...] = ()
     outstanding: tuple[str, ...] = ()
+    outstanding_unreadable: str = ""
 
     @property
     def converged(self) -> bool:
-        return not self.outstanding
+        """Whether nothing is left open, which an UNKNOWN answer is not.
+
+        A reconciliation record that could not be read after the restore landed
+        reports False here, because "nobody could tell" and "nothing is
+        outstanding" are the same value only if the permissive reading wins, and
+        this is the one question this unit answers conservatively everywhere else.
+        """
+        return not self.outstanding and not self.outstanding_unreadable
 
 
 def restorable_targets(cfg: config.Config) -> frozenset[Path]:
@@ -437,6 +611,7 @@ def plan(
     *,
     held: Held,
     discarding: Sequence[str] = (),
+    process_lister: Callable[[], Sequence[str]] | None = None,
     now: datetime | None = None,
 ) -> Plan:
     """Decide a restore, or refuse. Nothing here writes.
@@ -452,8 +627,19 @@ def plan(
     the trees and the counts, the caller repeats the identifiers back, and the two
     have to agree exactly; a set that does not match is refused again rather than
     interpreted generously.
+
+    IT NAMES THE PATH IT IS PLANNING AGAINST. Every target below resolves from
+    ``cfg.library.root``, so that is what the open session has to authorise; a
+    session opened against a different library is refused here rather than
+    discovered at the copy.
+
+    REKORDBOX IS ASSERTED CLOSED HERE TOO, and the docstring on :func:`run` used
+    to claim it while this function did not do it. Planning reads the live coupled
+    state to decide what a restore cannot undo, so a library changing underneath
+    the read produces a marker set about a library that no longer exists.
     """
-    assert_gates_are_open(held)
+    assert_gates_are_open(held, writing=cfg.library.root)
+    _assert_rekordbox_closed(process_lister)
     record = session.read_record(session_id, cfg)
     if not record.snapshot_path:
         raise refuse(
@@ -467,8 +653,12 @@ def plan(
     captured = snapshot.read_manifest(root)
     # A capture that did not pass its integrity check is not a smaller recovery
     # point, it is the absence of one, and restoring FROM one would put a live
-    # library behind a file nobody has established can be opened.
+    # library behind a file nobody has established can be opened. Both halves are
+    # asked: the recorded verdict AND whether the bytes it was about are still
+    # there, because a store that lost a file after the verdict was written plans
+    # and rehearses perfectly clean without the second question.
     snapshot.assert_verified(captured)
+    snapshot.assert_sources_present(captured)
 
     later = _later_committed(cfg, record)
     _assert_override_names_them(record, later, discarding)
@@ -477,35 +667,63 @@ def plan(
     steps: list[Step] = []
 
     by_key = _captured_by_key(cfg, captured)
-    markers = list(
-        reconcile.effect_markers(
-            cfg,
-            captured=by_key,
-            session_id=session_id,
-            capture_stamp=captured.stamp,
-            now=now,
-        )
+    effects = reconcile.effect_markers(
+        cfg,
+        captured=by_key,
+        session_id=session_id,
+        capture_stamp=captured.stamp,
+        now=now,
     )
     unconverged = _trees_the_capture_predates(cfg, captured, by_key)
-    markers.extend(
-        reconcile.tree_markers(
-            unconverged, session_id=session_id, capture_stamp=captured.stamp, now=now
+    trees = reconcile.tree_markers(
+        unconverged, session_id=session_id, capture_stamp=captured.stamp, now=now
+    )
+    latch = reconcile.in_flight_marker(
+        session_id=_restoring_session_id(held, session_id),
+        capture_stamp=captured.stamp,
+        now=now,
+    )
+
+    # ALWAYS, never `if markers:`. Seven of the twelve coupled entries declare
+    # RollbackEffect.NONE, so a restore whose window touched only those derives no
+    # effect markers at all, and a capture taken after every cutover derives no
+    # tree markers either. Emitting this step conditionally meant precisely those
+    # restores wrote nothing anywhere before they began replacing files, so a hard
+    # kill part way through left the database at one generation, the coupled state
+    # at another, and the next ordinary destructive session allowed.
+    steps.append(
+        Step(
+            act=Act.RECORD,
+            detail=(
+                "latch this restore as in flight and record "
+                + (
+                    "nothing else, because its window touched nothing that leaves "
+                    "the coupled set"
+                    if not effects
+                    else f"{len(effects)} "
+                    + ("thing" if len(effects) == 1 else "things")
+                    + " it cannot undo"
+                )
+                + ", before the evidence for any of it is replaced"
+            ),
         )
     )
-    if markers:
+
+    steps.extend(_file_steps(cfg, captured, allowed))
+
+    if unconverged:
         steps.append(
             Step(
-                act=Act.RECORD,
+                act=Act.MARK_TREES,
                 detail=(
-                    f"record {len(markers)} "
-                    + ("thing" if len(markers) == 1 else "things")
-                    + " this restore cannot undo, before the evidence for them is "
-                    "replaced"
+                    "record that "
+                    + ", ".join(unconverged)
+                    + (" needs" if len(unconverged) == 1 else " need")
+                    + " a full rebuild, AFTER the replacement, because the record "
+                    "that holds it is itself part of the coupled set"
                 ),
             )
         )
-
-    steps.extend(_file_steps(cfg, captured, allowed))
 
     unverified = tuple(
         entry.session_id
@@ -528,15 +746,57 @@ def plan(
             )
         )
 
+    steps.append(
+        Step(
+            act=Act.RELEASE,
+            detail=(
+                "retract the in-flight latch, which is the only claim in this plan "
+                "that the restore finished, and is therefore last"
+            ),
+        )
+    )
+
     return Plan(
         session_id=session_id,
         capture_root=root,
         steps=tuple(steps),
+        latch=latch,
+        pre_restore_root=_pre_restore_root(cfg, latch.identity),
         discarded_sessions=tuple(entry.session_id for entry in later),
         discarded_change=_merged_change(later),
-        markers=tuple(markers),
+        markers=tuple((*effects, *trees)),
+        tree_markers=trees,
         unconverged=unconverged,
         unverified_sessions=unverified,
+    )
+
+
+def _restoring_session_id(held: Held, restoring_to: str) -> str:
+    """Who to name on the in-flight latch.
+
+    The restore's OWN open session when there is one, because that is the run
+    whose interruption the latch is about. A bare-metal recovery opens no session
+    record, since the log it would be written to is on the volume that died, so it
+    falls back to naming the capture's session with a prefix: the latch still has
+    to be unique per restore, and the alternative is two bare-metal attempts
+    colliding on one identifier and the second being swallowed.
+    """
+    if held.record is not None:
+        return held.record.session_id
+    return f"{held.issued_by}:{restoring_to}"
+
+
+def _pre_restore_root(cfg: config.Config, session_id: str) -> Path:
+    """Where a restore puts the live companion files it takes out of the way.
+
+    Beside the database, so the move is a rename on one filesystem rather than a
+    copy that can itself run out of room. Under a dotted directory that nothing in
+    the state inventory declares, so no capture takes it and no restore replaces
+    it: these bytes exist precisely because they are outside every capture.
+    """
+    safe = "".join(character if character.isalnum() else "-" for character in session_id)
+    return (
+        config.state_path(snapshot.DATABASE_KEY, cfg).parent / PRE_RESTORE_DIR / safe
     )
 
 
@@ -792,9 +1052,21 @@ def run(
     file it holds open, which leaves the application and the disk describing two
     different libraries; and a rehearsal run while the application is writing
     describes a library that is changing underneath it.
+
+    THE WHOLE PLAN IS CHECKED BEFORE ANY OF IT IS PERFORMED, and that is what
+    makes the rehearsal mean something. The previous shape evaluated three
+    expressions and skipped everything a step depends on, because every dependency
+    lived inside :func:`_perform`, which a rehearsal skips wholesale: a replacement
+    whose source had been deleted rehearsed as every step performed with no
+    refusal, and so did a target directory nobody could write to. The two modes now
+    differ only in whether the loop that follows the checks does anything, so a
+    rehearsal that passes is evidence the real run reaches its work. On the real
+    run the same checks are the reason the first destructive step is not taken
+    until the last one is known to be possible.
     """
-    assert_gates_are_open(held)
+    assert_gates_are_open(held, writing=cfg.library.root)
     _assert_rekordbox_closed(process_lister)
+    _preflight(decided, cfg, held=held)
     performed: list[Step] = []
     resolved: list[str] = []
     for step in decided.steps:
@@ -805,18 +1077,138 @@ def run(
     # Read on BOTH paths. What is outstanding is a fact about the library rather
     # than about this call, and a rehearsal that reported convergence because it
     # recorded nothing itself would be the preview lying about the world.
-    outstanding = tuple(record.marker.marker_id for record in reconcile.outstanding(cfg))
+    #
+    # AND READ DEFENSIVELY, because this runs AFTER everything has been performed.
+    # A reconciliation document that is unreadable at this moment is a real problem
+    # and it is not this restore's failure: raising here would report a completed
+    # restore as failed and close its record ABANDONED, which is the opposite of
+    # what happened and is the state a person then tries to recover from.
+    unreadable = ""
+    try:
+        outstanding = tuple(
+            record.marker.marker_id for record in reconcile.outstanding(cfg)
+        )
+    except CratekitError as exc:
+        outstanding = ()
+        unreadable = exc.cause.message
+        logger.warning(
+            "the restore landed and the reconciliation record could not then be "
+            "read, so what is outstanding is unknown: %s",
+            unreadable,
+        )
     return RestoreOutcome(
         plan=decided,
         performed=tuple(performed),
         dry_run=dry_run,
         resolved=tuple(resolved),
         outstanding=outstanding,
+        outstanding_unreadable=unreadable,
     )
 
 
-def assert_gates_are_open(held: Held) -> None:
-    """Refuse unless the gates are held by this process AT THIS MOMENT.
+def _preflight(decided: Plan, cfg: config.Config, *, held: Held) -> None:
+    """Evaluate every predicate the plan's steps depend on. Writes nothing.
+
+    Five questions, and each one is a failure the old rehearsal could not see:
+
+    * does this session AUTHORISE every path the plan writes at, which is the
+      per-step half of the check :func:`assert_gates_are_open` makes once;
+    * is the capture still whole, asked again rather than trusted from plan time,
+      because a plan is a value that can be held across a store being pruned;
+    * does every source a replacement reads still exist, and is it still the kind
+      of thing the step expects;
+    * can this account write at every destination, so a read-only directory
+      refuses before the first companion is moved rather than after;
+    * is there room on the library volume for the whole copy, which nothing asked
+      at all: the capacity refusal had exactly one call site, inside ``capture``.
+
+    IT ALSO RE-DERIVES WHAT THE RESTORE DISCARDS. A plan is a value and a session
+    can commit between building one and running it, so a plan built before that
+    commit used to execute unchanged and destroy it, while a freshly built plan
+    refused. The check that decides is the same one :func:`plan` made, asked again
+    against the log as it stands now.
+    """
+    for step in decided.steps:
+        if step.target is not None:
+            assert_gates_are_open(held, writing=step.target)
+
+    record = session.read_record(decided.session_id, cfg)
+    later = _later_committed(cfg, record)
+    _assert_override_names_them(record, later, decided.discarded_sessions)
+
+    captured = snapshot.read_manifest(decided.capture_root)
+    snapshot.assert_verified(captured)
+    snapshot.assert_sources_present(captured)
+
+    for step in decided.steps:
+        if step.act in (Act.REPLACE, Act.REPLACE_TREE):
+            _assert_source_usable(step)
+        if step.target is not None:
+            _assert_writable(step)
+
+    snapshot.assert_room_for(
+        snapshot.restore_cost(captured),
+        config.state_path(snapshot.DATABASE_KEY, cfg).parent,
+        what="putting this capture back",
+    )
+
+
+def _assert_source_usable(step: Step) -> None:
+    """Refuse a replacement whose source is gone or is the wrong kind of thing."""
+    source = step.source
+    if source is None:  # pragma: no cover - a replacement always has a source
+        raise refuse(
+            "internal-error",
+            f"the step {step.act} on {step.target} carries no source",
+            remedy=Remedy.REPORT_DEFECT,
+            detail={"act": str(step.act), "target": str(step.target)},
+        )
+    wanted_directory = step.act is Act.REPLACE_TREE
+    if source.is_dir() if wanted_directory else source.is_file():
+        return
+    raise refuse(
+        "snapshot-integrity-failed",
+        f"the restore would put {source} at {step.target} and that source is "
+        + ("not a directory" if wanted_directory else "not a file that exists")
+        + "; refusing before anything is replaced rather than part way through",
+        remedy=Remedy.REPORT_DEFECT,
+        scope=Scope.RUN,
+        origin=("restore",),
+        detail={"act": str(step.act), "source": str(source), "target": str(step.target)},
+    )
+
+
+def _assert_writable(step: Step) -> None:
+    """Refuse when this account cannot write where the step has to write.
+
+    Asked of the nearest EXISTING ancestor, because a restore legitimately creates
+    directories that are not there yet, and asking about a path that does not exist
+    answers about nothing.
+    """
+    target = step.target
+    assert target is not None
+    probe = target if target.exists() else target.parent
+    while not probe.exists() and probe.parent != probe:
+        probe = probe.parent
+    writable = probe if probe.is_dir() else probe.parent
+    if os.access(writable, os.W_OK):
+        return
+    raise refuse(
+        "restore-step-failed",
+        f"{writable} is not writable by this account, so the restore would stop "
+        f"at {target} after having already replaced everything before it",
+        steps=(
+            "make the library's directories writable by this account, then run "
+            "this again",
+        ),
+        scope=Scope.RUN,
+        origin=("restore",),
+        detail={"act": str(step.act), "target": str(target), "unwritable": str(writable)},
+    )
+
+
+def assert_gates_are_open(held: Held, *, writing: Path | str | None = None) -> None:
+    """Refuse unless the gates are held by this process AT THIS MOMENT, for THIS path.
 
     A ``Held`` parameter on :func:`plan` and :func:`run` makes it impossible to
     reach either without having entered the guard once. That is not the same as
@@ -831,6 +1223,15 @@ def assert_gates_are_open(held: Held) -> None:
     refused by the very latches its own success is the remedy for, so a ``Held``
     that is not a recovery is a defect in the caller rather than a shape to
     accommodate.
+
+    AND SO IS WHAT THE SESSION AUTHORISES, which is the assertion that was
+    missing. The three checks above are satisfied by every guard in this module,
+    so they cannot tell a session that passed all three library gates against the
+    configured library from one that passed weaker substitutes against a
+    replacement drive. Composing the second and then planning against the first
+    was a working bypass of all three library gates, verified end to end. Every
+    call that is about to write therefore names the path, and a session that does
+    not authorise that path refuses even though it is genuinely open.
     """
     if held.intent is not session.Intent.RECOVERY:
         raise refuse(
@@ -841,15 +1242,32 @@ def assert_gates_are_open(held: Held) -> None:
             remedy=Remedy.REPORT_DEFECT,
             detail={"workflow": held.workflow, "intent": str(held.intent)},
         )
-    if held.still_open:
+    if not held.still_open:
+        raise refuse(
+            "internal-error",
+            f"the destructive-session gates for {held.workflow} are not held by "
+            f"this process, so this call would plan or write with the library lock "
+            f"released and every other process free to commit underneath it; a "
+            f"session value that was never issued by one of this module's own "
+            f"guards reports the same thing, and for the same reason",
+            remedy=Remedy.REPORT_DEFECT,
+            detail={"workflow": held.workflow, "lock": str(held.lock)},
+        )
+    if writing is None or held.authorises_path(writing):
         return
     raise refuse(
         "internal-error",
-        f"the destructive-session gates for {held.workflow} are no longer held by "
-        f"this process, so this call would plan or write with the library lock "
-        f"released and every other process free to commit underneath it",
+        f"the {held.issued_by} session open here authorises {held.authorises} and "
+        f"this call would write at {writing}; the gates a session passed are gates "
+        f"about a particular library, so spending one against a different one "
+        f"would replace a database behind checks that were never asked of it",
         remedy=Remedy.REPORT_DEFECT,
-        detail={"workflow": held.workflow, "lock": str(held.lock)},
+        detail={
+            "workflow": held.workflow,
+            "issued_by": str(held.issued_by),
+            "authorises": str(held.authorises),
+            "writing": str(writing),
+        },
     )
 
 
@@ -889,10 +1307,28 @@ def _perform(
     and gets the parameter with nothing raised.
     """
     if step.act is Act.RECORD:
-        reconcile.record_markers(cfg, decided.markers)
+        # The latch FIRST and in the same call as everything else it records, so
+        # a process killed between the two would still have written the latch.
+        reconcile.record_markers(
+            cfg,
+            (
+                decided.latch,
+                *(
+                    marker
+                    for marker in decided.markers
+                    if marker.kind is not reconcile.Kind.UNCONVERGED_TREE
+                ),
+            ),
+        )
+        return ()
+    if step.act is Act.MARK_TREES:
+        _hand_tree_shortness_over(cfg, decided, now=now)
         return ()
     if step.act is Act.RESOLVE:
         return _resolve_unverified(decided, cfg, now=now)
+    if step.act is Act.RELEASE:
+        reconcile.retract_marker(cfg, decided.latch.marker_id)
+        return ()
     if step.target is None:  # pragma: no cover - every other act carries a target
         raise refuse(
             "internal-error",
@@ -900,24 +1336,167 @@ def _perform(
             remedy=Remedy.REPORT_DEFECT,
             detail={"act": str(step.act)},
         )
-    if step.act is Act.CLEAR:
-        step.target.unlink(missing_ok=True)
-        return ()
-    if step.act is Act.REMOVE:
-        _remove(step.target)
-        return ()
-    if step.source is None:  # pragma: no cover - a replacement always has a source
+    try:
+        if step.act is Act.CLEAR:
+            _stage_companion_aside(step.target, decided.pre_restore_root)
+            return ()
+        if step.act is Act.REMOVE:
+            _remove(step.target)
+            return ()
+        if step.source is None:  # pragma: no cover - a replacement always has a source
+            raise refuse(
+                "internal-error",
+                f"the step {step.act} on {step.target} carries no source",
+                remedy=Remedy.REPORT_DEFECT,
+                detail={"act": str(step.act), "target": str(step.target)},
+            )
+        if step.act is Act.REPLACE_TREE:
+            _replace_directory(step.source, step.target)
+        else:
+            _replace_file(step.source, step.target)
+    except OSError as exc:
+        # A RAW OSError CARRIES NOTHING. No reason, no remedy, no reserved exit
+        # code, so a full volume, a permission error or a failing drive all arrive
+        # at the process boundary as a bare traceback, at exactly the moment
+        # somebody is already recovering from something. The in-flight latch is
+        # still standing at this point and stays standing, which is the whole
+        # point of writing it first.
         raise refuse(
-            "internal-error",
-            f"the step {step.act} on {step.target} carries no source",
-            remedy=Remedy.REPORT_DEFECT,
-            detail={"act": str(step.act), "target": str(step.target)},
-        )
-    if step.act is Act.REPLACE_TREE:
-        _replace_directory(step.source, step.target)
-    else:
-        _replace_file(step.source, step.target)
+            "restore-step-failed",
+            f"the restore could not {step.act} at {step.target}: {exc}. The "
+            f"in-flight latch stays recorded, so this library refuses ordinary "
+            f"writes until a restore completes",
+            steps=(
+                "read the error above, put right what it names, and run the "
+                "restore again; it is safe to repeat",
+                f"the live storage-engine companion files this restore moved out "
+                f"of the way are under {decided.pre_restore_root}",
+            ),
+            scope=Scope.RUN,
+            origin=("restore",),
+            detail={
+                "act": str(step.act),
+                "target": str(step.target),
+                "source": str(step.source) if step.source is not None else None,
+                "staged": str(decided.pre_restore_root),
+            },
+        ) from exc
     return ()
+
+
+def _stage_companion_aside(target: Path, staging: Path) -> None:
+    """Move a live companion out of the way instead of deleting it.
+
+    THE BYTES IN A WRITE-AHEAD LOG POSTDATE EVERY CAPTURE, WHICH IS WHY THEY ARE
+    KEPT. The plan is: clear the log, clear the shared-memory index, replace the
+    database. The clearing used to be ``unlink``, with no staging and no copy, and
+    the log at that moment holds every transaction committed since the last
+    checkpoint, none of which is in the main file and none of which is in ANY
+    capture, because all of them predate it. Measured: with the capture's database
+    missing, the plan built, the rehearsal reported all five steps performed and
+    touched nothing, and the real run then unlinked the log and raised on the copy,
+    leaving the database at its original generation with its log gone. Every
+    transaction in it was unrecoverable from anywhere. The same window opens on a
+    full volume, a permission error and an I/O error, which is the exact set of
+    conditions under which people restore.
+
+    A RENAME RATHER THAN A COPY, so it costs nothing and cannot itself run out of
+    room, and it satisfies the ordering property just as well: what matters is that
+    no log sits beside the database under the name the engine looks for while that
+    database is changing, and a renamed file is not under that name.
+
+    THE STAGED COPY IS NOT DELETED BY THE RESTORE THAT MADE IT. It is the only
+    surviving record of work nobody can otherwise recover, so the restore that
+    supersedes it is not entitled to decide it is worthless.
+    """
+    if not target.exists():
+        return
+    config._mkdir_private(staging)
+    os.replace(target, staging / target.name)
+
+
+#: Why a tree this restore left short is short, in the vocabulary the module that
+#: OWNS tree shortness records reasons in. Named once here so the handoff and the
+#: transitional fallback cannot describe the same fact two ways.
+PRE_CUTOVER_RESTORE = "restore-predates-cutover"
+
+
+def _hand_tree_shortness_over(
+    cfg: config.Config, decided: Plan, *, now: datetime | None = None
+) -> None:
+    """Record that these trees need a rebuild, in the record that GATES that fact.
+
+    ``core.convergence`` OWNS TREE SHORTNESS AND THIS MODULE DOES NOT. Both this
+    unit and U36 discovered the same fact from opposite directions: a restore that
+    lands on the far side of a tree's cutover leaves that tree short, and so does a
+    database recovered out of band. Both wrote it down, in different stores, with
+    different gates, different exemptions, different clearing calls and different
+    refusal slugs, and neither module referenced the other. A rebuild cleared one
+    flag and left the other standing, so every destructive session kept refusing
+    after the remedy had been carried out correctly.
+
+    WHY THE OTHER MODULE CANNOT SIMPLY DETECT THIS ITSELF, which its own docstring
+    is right to say it does not. Its detection compares a fingerprint of the
+    database's update count against one recorded at the last governed write, and
+    that record is a COUPLED entry, so a Cratekit restore puts the database and
+    the fingerprint back together and they agree by construction. That is exactly
+    why it scopes itself to a database recovered out of band. The pre-cutover case
+    is invisible from that side and visible from this one, because only this
+    module holds both the live registry and the registry inside the capture. So
+    the two halves are: this module DECIDES which trees, and that module HOLDS and
+    GATES the answer. Neither can do the other's half.
+
+    THE ARGUMENT FOR WHICH ONE OWNS IT. Not seniority and not who found it first.
+    ``convergence`` has the better machinery for this specific fact on all four
+    counts that matter. Its gate is PER TREE and sits inside the writer, so a short
+    ``routing`` tree does not refuse a write to an unrelated one. Its exemption is
+    ``Purpose.REBUILD``, declared at the call the remedy actually makes, so the
+    latch cannot condemn its own remedy. Its clearing takes the convergence
+    check's own list of differences and refuses a clear that is not backed by one,
+    so a rebuild reporting success is the only thing that closes it, which is
+    exactly the property this unit registered against U36 to protect. And its
+    record is the one a rebuild already updates. Reproducing any of that here would
+    be the second implementation of one rule that its own layering comment warns
+    about, and the disagreement between two such implementations is a library that
+    reports itself repaired while a tree is still missing membership.
+
+    THE IMPORT IS RESOLVED AT CALL TIME AND THAT IS DELIBERATE, not laziness about
+    a cycle. ``core.convergence`` lands with U36 and is not in this build. A
+    module-level import would make this module unimportable until it lands, and a
+    hard requirement on a module that does not exist is not a handoff, it is a
+    breakage. Until then the fact is recorded in this unit's own store and
+    REPORTED, never latched, so nothing is lost and nothing deadlocks; the obligation
+    to delete that fallback is registered in ``tests/_pending.py`` against U36, so
+    it is a countdown rather than a comment.
+    """
+    if not decided.tree_markers:
+        return
+    tree_ids = tuple(sorted({marker.identity for marker in decided.tree_markers}))
+    owner = _convergence_module()
+    if owner is not None:
+        owner.mark_unconverged(cfg, tree_ids, reason=PRE_CUTOVER_RESTORE, now=now)
+        logger.info(
+            "handed %d unconverged tree(s) to the convergence record, which is "
+            "what a rebuild clears",
+            len(tree_ids),
+        )
+        return
+    logger.warning(
+        "core.convergence is not in this build, so %d unconverged tree(s) are "
+        "recorded here and reported rather than gated; the rebuild that clears "
+        "them lands with it",
+        len(tree_ids),
+    )
+    reconcile.record_markers(cfg, decided.tree_markers)
+
+
+def _convergence_module():  # type: ignore[no-untyped-def]
+    """``core.convergence`` if this build has it, else None. Never raises."""
+    try:
+        from cratekit.core import convergence  # noqa: PLC0415
+    except ImportError:
+        return None
+    return convergence
 
 
 def _resolve_unverified(
@@ -992,14 +1571,42 @@ def _replace_directory(source: Path, target: Path) -> None:
     and then renaming reduces the window to two renames, and the failure between
     them leaves the old directory under a name a person can find rather than
     nowhere.
+
+    THE SECOND ATTEMPT IS WHERE THIS USED TO LOSE EVERYTHING. The single failure
+    is handled correctly by the shape above; what was not handled is running it
+    again afterwards. This function began by removing both working names
+    unconditionally, and after a crash between the two renames ``.replaced``
+    holds the ONLY surviving copy of the live pre-restore state. A second run
+    deleted it before copying anything, so a capture that then turned out to be
+    unreadable, which is the shape a failing drive or an interrupted sync
+    produces, left the live directory absent, the only copy of the old state
+    gone, and a partial new one under ``.restoring``. The work the abandoned
+    restore did, which is the only reason a person abandons one, existed nowhere.
+
+    So ``.replaced`` IS ADOPTED RATHER THAN DELETED when it is the only copy left,
+    and it is not deleted at all until the new directory has landed. ``.restoring``
+    is still removed up front, because a partial copy from a dead attempt is
+    worth nothing and its only alternative use is being mistaken for a whole one.
     """
     config._mkdir_private(target.parent)
     staged = target.with_name(f"{target.name}.restoring")
     previous = target.with_name(f"{target.name}.replaced")
+    if previous.exists() and not target.exists():
+        logger.warning(
+            "%s is missing and %s holds the only copy of the state a previous "
+            "restore took out of the way; adopting it back rather than deleting it",
+            target,
+            previous,
+        )
+        os.replace(previous, target)
     _remove(staged)
-    _remove(previous)
-    shutil.copytree(source, staged)
+    try:
+        shutil.copytree(source, staged)
+    except BaseException:
+        _remove(staged)
+        raise
     if target.exists():
+        _remove(previous)
         os.replace(target, previous)
     os.replace(staged, target)
     _remove(previous)
@@ -1101,6 +1708,16 @@ def shares_the_database_volume(cfg: config.Config, *, root: Path | None = None) 
     configuration this unit does not add. It is compared on the filesystem
     identifier rather than on path prefixes, because a bind mount, a symlink or a
     nested mount point all make a prefix comparison confidently wrong.
+
+    "REPORTED" IS AN OVERSTATEMENT OF WHAT LANDED, AND THE GAP HAS A NUMBER.
+    This function computes the answer and ``RetentionPlan`` carries it, and
+    nothing in ``src/`` renders it: there is no command-line surface, no doctor
+    check, and no session-time warning, so a user is never told. The honest status
+    is COMPUTED, NOT REPORTED, and it is recorded as **R-19** in
+    ``docs/residual-findings.md`` with a named owner, because an obligation
+    carried only by a docstring on a closing unit is owned by nobody the moment
+    that unit closes, which is the argument this unit makes twice in
+    ``tests/_pending.py`` about somebody else's markers.
     """
     store = root if root is not None else snapshot.store_root(cfg)
     database = config.state_path(snapshot.DATABASE_KEY, cfg)
@@ -1249,6 +1866,14 @@ def prune(
     caller places afterwards, and this is the assertion that stops the separate
     step being placed in the same wrong position by hand.
 
+    ``owning=None`` DOES NOT SKIP THE CHECK, it widens it. The guard used to be
+    opt-in, and the default was to opt out, so the one call shape that took no
+    argument at all, which is the easy one to write, was the one that checked
+    nothing. With nothing named, the log itself is asked, and any session that has
+    not reached a terminal state refuses: pruning is never urgent, and a capture
+    kept one run too long costs disk while a capture deleted one run too early
+    costs the only undo an unfinished run has.
+
     The plan is built and then performed, so what is deleted is exactly what a
     caller could have been shown.
     """
@@ -1261,6 +1886,24 @@ def prune(
             remedy=Remedy.REPORT_DEFECT,
             detail={"session_id": owning.session_id, "state": str(owning.state)},
         )
+    if owning is None:
+        open_runs = [entry for entry in session.records(cfg) if not entry.terminal]
+        if open_runs:
+            raise refuse(
+                "internal-error",
+                "pruning was asked for with no session named, and "
+                + (
+                    f"{len(open_runs)} session has not reached a terminal state"
+                    if len(open_runs) == 1
+                    else f"{len(open_runs)} sessions have not reached a terminal state"
+                )
+                + ": "
+                + ", ".join(entry.session_id for entry in open_runs[:20])
+                + ". Pruning now would delete recovery points a run still behind "
+                "them may need",
+                remedy=Remedy.REPORT_DEFECT,
+                detail={"open_sessions": [entry.session_id for entry in open_runs[:20]]},
+            )
     decided = retention_plan(
         cfg, policy=policy, root=root, protected_provider=protected_provider, now=now
     )
@@ -1360,6 +2003,17 @@ def assert_library_volume_is_gone(
     )
 
 
+#: Answers "is this directory the root of its own filesystem". A SEAM, for the
+#: same reason ``preflight.IdentityProvider`` and ``session.has_controlling_terminal``
+#: are: the real answer depends on a mounted volume, and a battery that needed one
+#: could not drive this refusal at all. It is not a safety escape. The default is
+#: the real probe, the substitute is supplied per call rather than globally, and a
+#: substitute that answers "yes" makes the refusals below STRICTER on every other
+#: axis rather than weaker, because the mount-point answer is the only thing that
+#: excuses a target from the stub checks.
+MountProbe = Callable[[Path], bool]
+
+
 def _is_mount_point(path: Path) -> bool:
     """Whether a directory is the root of its own filesystem.
 
@@ -1377,9 +2031,24 @@ def _is_mount_point(path: Path) -> bool:
 
 
 def assert_recovery_target(
-    cfg: config.Config, target: Path | str, *, replacing_existing: bool = False
+    cfg: config.Config,
+    target: Path | str,
+    *,
+    replacing_existing: bool = False,
+    mount_probe: MountProbe | None = None,
 ) -> Path:
-    """Refuse a bare-metal target that is not one. Reads only; creates nothing."""
+    """Refuse a bare-metal target that is not one. Reads only; creates nothing.
+
+    THE STUB CHECK COVERS TWO SHAPES, NOT ONE. It used to fire only when the target
+    resolved EXACTLY to ``cfg.library.root``, and both of the near misses are the
+    internal disk. A SUBDIRECTORY of the configured root passes an equality test
+    and is the same empty folder one level down. And an operating system that finds
+    a volume's mount point occupied mounts it beside the original under a
+    suffixed name, so the stale stub and the live volume sit next to each other
+    with names one character apart; naming the stub passes an equality test too.
+    Both are answered on the filesystem identifier rather than on the path, because
+    the whole hazard is a path that looks right.
+    """
     where = Path(target)
     if not where.is_dir():
         raise _refuse_target(
@@ -1387,27 +2056,43 @@ def assert_recovery_target(
             steps=("mount or create the volume to recover onto, then run this again",),
             target=str(where),
         )
-    if where.resolve() == Path(cfg.library.root).resolve() and not _is_mount_point(where):
+    probe = mount_probe or _is_mount_point
+    configured = Path(cfg.library.root).resolve()
+    resolved = where.resolve()
+    inside_configured = resolved == configured or configured in resolved.parents
+    beside_configured = resolved.parent == configured.parent
+    if (inside_configured or beside_configured) and not probe(where):
         raise _refuse_target(
-            f"{where} is the path this installation's library was mounted at and "
-            f"is not a mount point now, so it is the empty folder an unmounted "
-            f"volume leaves behind; recovering into it would write the library "
-            f"onto the internal disk, where the volume will hide it the moment it "
-            f"is plugged back in",
+            (
+                f"{where} is at or inside the path this installation's library was "
+                f"mounted at"
+                if inside_configured
+                else f"{where} sits in the directory this installation's library "
+                f"mounts into, under a name one this system chose"
+            )
+            + ", and is not a mount point now, so it is the empty folder an "
+            "unmounted volume leaves behind; recovering into it would write the "
+            "library onto the internal disk, where the volume will hide it the "
+            "moment it is plugged back in",
             steps=(
                 "mount the replacement volume at this path first, or name a "
                 "different target",
             ),
             target=str(where),
+            configured_root=str(configured),
         )
-    existing = sorted(where.glob("*.db"))
+    # RECURSIVE. The non-recursive form missed a target holding a library whose
+    # database is in a subdirectory, which is the layout the containment rule
+    # produces and the layout this unit's own fixtures use, so the check passed on
+    # precisely the arrangement it exists to catch.
+    existing = sorted(entry for entry in where.rglob("*.db") if entry.is_file())
     if existing and not replacing_existing:
         raise _refuse_target(
             f"{where} already holds {existing[0].name}; a recovery that replaced "
             f"it would destroy a library nobody named for replacement",
             steps=("name this target for replacement explicitly, or choose another",),
             target=str(where),
-            holds=[str(entry) for entry in existing],
+            holds=[str(entry) for entry in existing[:20]],
         )
     return where
 
@@ -1422,6 +2107,7 @@ def bare_metal_session(
     terminal: Callable[[], bool] | None = None,
     identity_provider: preflight.IdentityProvider | None = None,
     mount_enumerator: preflight.MountEnumerator | None = None,
+    mount_probe: MountProbe | None = None,
 ) -> Iterator[Held]:
     """Hold the substitute gates for the case where the library volume is gone.
 
@@ -1460,7 +2146,9 @@ def bare_metal_session(
     assert_library_volume_is_gone(
         cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator
     )
-    where = assert_recovery_target(cfg, target, replacing_existing=replacing_existing)
+    where = assert_recovery_target(
+        cfg, target, replacing_existing=replacing_existing, mount_probe=mount_probe
+    )
     probe = terminal or session.has_controlling_terminal
     if not probe():
         raise _refuse_target(
@@ -1486,11 +2174,18 @@ def bare_metal_session(
         where,
     )
     with session.session_lock(path=recovery_lock_path()) as lock:
-        yield Held(
+        # THE TARGET RIDES ON THE VALUE. It used to be validated here and then
+        # dropped, so the ``Held`` this yielded authorised nothing in particular
+        # and ``plan`` and ``run`` resolved every path from ``cfg.library.root``
+        # instead: the drive this function had just refused. Carrying it is what
+        # makes the validation mean something downstream.
+        with _issued(
             workflow=BARE_METAL_WORKFLOW,
             lock=lock,
-            intent=session.Intent.RECOVERY,
-        )
+            issued_by=Guard.BARE_METAL,
+            authorises=where,
+        ) as held:
+            yield held
 
 
 __all__ = [
@@ -1498,8 +2193,11 @@ __all__ = [
     "CAPTURE_RESTORE_WORKFLOW",
     "DEFAULT_KEEP",
     "DEFAULT_MAX_AGE",
+    "PRE_RESTORE_DIR",
+    "PRE_CUTOVER_RESTORE",
     "RECOVERY_LOCK_KEY",
     "Act",
+    "Guard",
     "Held",
     "Plan",
     "RetentionPlan",

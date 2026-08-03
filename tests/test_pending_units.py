@@ -47,7 +47,7 @@ EXPECTED_PENDING = frozenset(
         "cratekit.cli.exit_codes",  # U38, the reserved exit-code vocabulary
         "cratekit.write.routing_cli",  # U20, the route.* verbs and the gated close
         "cratekit.session.restore_cli",  # U27, the restore verbs and the one held session
-        "cratekit.write.rebuild",  # U36, an unconverged tree clears only on convergence
+        "cratekit.write.tree_rebuild",  # U36, an unconverged tree clears only on convergence
     }
 )
 

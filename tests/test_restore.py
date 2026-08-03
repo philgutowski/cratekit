@@ -62,6 +62,8 @@ from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.tools import backup
 
+from ._pending import requires
+
 UTC = timezone.utc
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -401,12 +403,26 @@ def test_a_restore_lists_every_effect_it_cannot_undo_and_blocks_convergence(cfg,
     assert reconcile.converged(cfg)
 
 
+def _one_effect_marker(cfg, *, session_id="s", capture_stamp="c"):
+    """One EFFECT marker, which is the kind this module latches on."""
+    return reconcile.record_markers(
+        cfg,
+        [
+            reconcile.Marker(
+                kind=reconcile.Kind.EFFECT,
+                identity="label_watermarks",
+                effect=config.RollbackEffect.DOWNLOADED_FILE,
+                session_id=session_id,
+                capture_stamp=capture_stamp,
+                detail="audio landed and did not roll back",
+            )
+        ],
+    )
+
+
 def test_an_unreconciled_restore_refuses_the_next_ordinary_session(cfg):
     acknowledge(cfg)
-    reconcile.record_markers(
-        cfg,
-        reconcile.tree_markers(["routing"], session_id="s", capture_stamp="c"),
-    )
+    _one_effect_marker(cfg)
 
     with pytest.raises(CratekitError) as excinfo:
         with session.assert_gates(cfg, workflow="library-sweep", **gate_seams(cfg)):
@@ -424,9 +440,7 @@ def test_a_recovery_is_not_refused_by_the_latch_whose_remedy_it_is(cfg):
     no exit but a hand-edited file.
     """
     acknowledge(cfg)
-    reconcile.record_markers(
-        cfg, reconcile.tree_markers(["routing"], session_id="s", capture_stamp="c")
-    )
+    _one_effect_marker(cfg)
 
     with restore.recovery_session(cfg, **gate_seams(cfg)) as open_session:
         assert open_session.intent is session.Intent.RECOVERY
@@ -519,23 +533,50 @@ def test_a_restore_taken_after_the_cutover_marks_nothing(cfg, held):
     assert decided.unconverged == ()
 
 
-def test_an_unconverged_tree_refuses_the_next_sync_and_the_next_close(cfg):
+def test_an_unconverged_tree_never_refuses_the_session_that_rebuilds_it(cfg):
+    """BLOCKING 7: the latch must not condemn the remedy it names.
+
+    The refusal this used to raise carried ``remedy=rebuild-tree`` and sat inside
+    ``session.assert_gates``. The rebuild it names writes through
+    ``write.trees.write_tree_membership``, which enters the same gates with the
+    default ``Intent.WRITE`` and has no ``intent`` parameter, so the latch refused
+    its own remedy and the only exit left was a bare disposition of the tree
+    marker, which is precisely the softening path this unit registered against U36
+    to forbid.
+
+    Both halves are asserted: the tree marker is still RECORDED and reported, and
+    an ordinary destructive session is no longer refused by it.
+    """
     acknowledge(cfg)
-    reconcile.record_markers(
+    recorded = reconcile.record_markers(
         cfg, reconcile.tree_markers(["routing"], session_id="s", capture_stamp="c")
     )
 
-    with pytest.raises(CratekitError) as sync_refusal:
-        with session.assert_gates(cfg, workflow="library-sweep", **gate_seams(cfg)):
-            raise AssertionError("unreachable")
+    assert reconcile.unconverged_trees(cfg) == ("routing",)
+    assert [r.marker.marker_id for r in reconcile.outstanding(cfg)] == [
+        recorded[0].marker.marker_id
+    ]
+
+    with session.assert_gates(cfg, workflow="library-sweep", **gate_seams(cfg)) as gates:
+        assert gates.workflow == "library-sweep"
 
     stranded = session.open_session(cfg, workflow="library-sweep")
-    with pytest.raises(CratekitError) as close_refusal:
-        session.close_session(stranded, cfg)
+    assert session.close_session(stranded, cfg).state is session.SessionState.CLOSED
 
-    for refusal in (sync_refusal, close_refusal):
-        assert refusal.value.cause.reason == "restore-reconciliation-outstanding"
-    assert "never by a decision" in close_refusal.value.cause.message
+
+def test_the_rebuild_verb_has_no_way_to_declare_a_recovery_intent(cfg):
+    """Why the fix could not be "let the rebuild declare RECOVERY".
+
+    ``write_tree_membership`` is the call every rebuild makes and it takes no
+    ``intent``, so there is no shape in which a rebuild reaches the session gate
+    as anything but an ordinary write. Asserted rather than argued, because if
+    that ever changes this reasoning should be revisited rather than inherited.
+    """
+    import inspect  # noqa: PLC0415
+
+    from cratekit.write import trees  # noqa: PLC0415
+
+    assert "intent" not in inspect.signature(trees.write_tree_membership).parameters
 
 
 def test_abandoning_a_run_is_never_gated_on_convergence(cfg):
@@ -545,9 +586,7 @@ def test_abandoning_a_run_is_never_gated_on_convergence(cfg):
     up on, and a refusal with no way past it is how people learn to edit state
     files by hand.
     """
-    reconcile.record_markers(
-        cfg, reconcile.tree_markers(["routing"], session_id="s", capture_stamp="c")
-    )
+    _one_effect_marker(cfg)
     stranded = session.open_session(cfg, workflow="library-sweep")
 
     ended = session.close_session(stranded, cfg, state=session.SessionState.ABANDONED)
@@ -555,17 +594,35 @@ def test_abandoning_a_run_is_never_gated_on_convergence(cfg):
     assert ended.state is session.SessionState.ABANDONED
 
 
-def test_clearing_the_tree_marker_lets_the_next_session_through(cfg):
+def test_closing_the_effect_marker_lets_the_next_session_through(cfg):
     acknowledge(cfg)
-    recorded = reconcile.record_markers(
-        cfg, reconcile.tree_markers(["routing"], session_id="s", capture_stamp="c")
-    )
+    recorded = _one_effect_marker(cfg)
     reconcile.close_marker(
-        cfg, recorded[0].marker.marker_id, disposition=reconcile.Disposition.REPAIRED, actor="rebuild"
+        cfg,
+        recorded[0].marker.marker_id,
+        disposition=reconcile.Disposition.ACCEPTED,
+        actor="phillip",
     )
 
     with session.assert_gates(cfg, workflow="library-sweep", **gate_seams(cfg)) as gates:
         assert gates.workflow == "library-sweep"
+
+
+def test_a_tree_marker_cannot_be_retracted_the_way_the_latch_can(cfg):
+    """The retraction is for the transient fact only, never for a judgement.
+
+    A general delete would answer every refusal this module raises by removing the
+    marker that raised it, with no record that anything was outstanding.
+    """
+    recorded = reconcile.record_markers(
+        cfg, reconcile.tree_markers(["routing"], session_id="s", capture_stamp="c")
+    )
+
+    with pytest.raises(CratekitError) as excinfo:
+        reconcile.retract_marker(cfg, recorded[0].marker.marker_id)
+
+    assert "may be retracted" in excinfo.value.cause.message
+    assert reconcile.unconverged_trees(cfg) == ("routing",)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -760,13 +817,49 @@ def test_the_capacity_estimate_is_derived_from_the_same_set_the_copy_uses(cfg):
     assert needed >= 5000
 
 
-def test_a_platform_that_cannot_report_free_space_does_not_refuse(cfg, monkeypatch):
-    """None is not zero, and reading silence as a full disk breaks a working machine."""
+def test_free_space_that_cannot_be_read_refuses_rather_than_passing(cfg, monkeypatch):
+    """ACCEPTED 4, reversed on the argument that the reviewer made and this accepts.
+
+    The branch used to fail OPEN on the reasoning that a platform which will not
+    report free space has not reported a full disk. But every supported platform
+    answers ``statvfs``, so the branch is unreachable except on ``OSError``, which
+    means on a path that is disappearing or unreadable underneath the question.
+    Reading the one signal that something is wrong as the all-clear is what a
+    capacity check exists to not do.
+    """
     monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: None)
 
-    captured = snapshot.capture(cfg, verifier=always_verified)
+    with pytest.raises(CratekitError) as excinfo:
+        snapshot.capture(cfg, verifier=always_verified)
 
-    assert captured.root.is_dir()
+    assert excinfo.value.cause.reason == "snapshot-store-full"
+    assert "could not be read" in excinfo.value.cause.message
+
+
+def test_the_capacity_estimate_counts_allocation_rather_than_apparent_size(cfg):
+    """BLOCKING 3: a queue directory of small documents under-reported by up to 68x.
+
+    ``review_queue`` and ``label_outcomes`` are both directories of small
+    documents, and a filesystem allocates whole blocks. The apparent size of two
+    thousand 120-byte documents is a quarter of a megabyte and the copy needs
+    nearer ten. The estimate must be above what the copy costs, and the test asks
+    the FILESYSTEM what that is rather than restating the arithmetic.
+    """
+    queue = config.state_path("review_queue", cfg)
+    queue.mkdir(parents=True, exist_ok=True)
+    for index in range(500):
+        (queue / f"item-{index:05d}.json").write_bytes(b"x" * 120)
+
+    estimate = snapshot.assert_room_for_capture(cfg, free_bytes=10**12)
+    allocated = sum(
+        entry.stat().st_blocks * 512 for entry in queue.iterdir() if entry.is_file()
+    )
+
+    assert estimate >= allocated, (
+        "the estimate is below what the queue directory alone already occupies"
+    )
+    apparent = sum(entry.stat().st_size for entry in queue.iterdir() if entry.is_file())
+    assert allocated > apparent * 4, "the fixture is not the shape this test is about"
 
 
 def _fingerprint(root: Path) -> dict[str, int]:
@@ -1059,11 +1152,20 @@ class _holding:
 
 
 def _volume_is_gone(cfg) -> dict:
-    """Make the configured library genuinely unreachable, the way a dead disk is."""
+    """Make the configured library genuinely unreachable, the way a dead disk is.
+
+    ``mount_probe`` answers yes, which is what a genuine replacement drive is: a
+    real mount point of its own. A temporary directory is not one on any platform,
+    so without the seam every bare-metal test would refuse for a reason no real
+    recovery meets, and the refusals this file actually drives would be
+    unreachable. The seam makes the target STRICTER on nothing and looser on
+    exactly one axis, which each stub test then drives directly by answering no.
+    """
     shutil.rmtree(cfg.library.root, ignore_errors=True)
     return {
         "identity_provider": lambda _path: _ELSEWHERE,
         "mount_enumerator": lambda: (),
+        "mount_probe": lambda _path: True,
     }
 
 
@@ -1130,6 +1232,7 @@ def test_bare_metal_recovery_refuses_the_stub_an_unmounted_volume_leaves_behind(
     identifier rather than on the path, because the path looks exactly right.
     """
     seams = _volume_is_gone(cfg)
+    seams["mount_probe"] = lambda _path: False
     stub = Path(cfg.library.root)
     stub.mkdir(parents=True)
 
@@ -1140,6 +1243,64 @@ def test_bare_metal_recovery_refuses_the_stub_an_unmounted_volume_leaves_behind(
             raise AssertionError("unreachable")
 
     assert "empty folder an unmounted volume leaves behind" in excinfo.value.cause.message
+
+
+@pytest.mark.parametrize(
+    "name, why",
+    [
+        (
+            "library/Music",
+            "a subdirectory of the configured root is the same empty folder one "
+            "level down, and an equality test passes it",
+        ),
+        (
+            "library 1",
+            "an operating system that finds a mount point occupied mounts the "
+            "volume beside it under a suffixed name, so the stale stub and the "
+            "live volume sit next to each other with names one character apart",
+        ),
+    ],
+)
+def test_bare_metal_recovery_refuses_the_stubs_beside_and_beneath_the_mount_point(
+    cfg, tmp_path, name, why
+):
+    """ACCEPTED 1: the equality test caught one shape of the internal disk, not three."""
+    seams = _volume_is_gone(cfg)
+    seams["mount_probe"] = lambda _path: False
+    target = tmp_path / name
+    target.mkdir(parents=True)
+
+    with pytest.raises(CratekitError) as excinfo:
+        with restore.bare_metal_session(
+            cfg, target=target, acknowledged=True, terminal=lambda: True, **seams
+        ):
+            raise AssertionError("unreachable")
+
+    assert "unmounted volume leaves behind" in excinfo.value.cause.message, why
+
+
+def test_bare_metal_recovery_refuses_a_target_holding_a_library_in_a_subdirectory(
+    cfg, tmp_path
+):
+    """ACCEPTED 2: the glob was not recursive, so it missed the product's own layout.
+
+    The containment rule pulls the database inside the library root and the
+    default install puts it in a subdirectory, which is the layout this file's own
+    fixture uses, so the non-recursive check passed on precisely the arrangement it
+    exists to catch.
+    """
+    seams = _volume_is_gone(cfg)
+    target = tmp_path / "recovered"
+    (target / "db").mkdir(parents=True)
+    (target / "db" / "master.db").write_bytes(b"somebody else's library")
+
+    with pytest.raises(CratekitError) as excinfo:
+        with restore.bare_metal_session(
+            cfg, target=target, acknowledged=True, terminal=lambda: True, **seams
+        ):
+            raise AssertionError("unreachable")
+
+    assert "named for replacement" in excinfo.value.cause.message
 
 
 def test_bare_metal_recovery_refuses_a_target_that_already_holds_a_library(cfg, tmp_path):
@@ -1455,7 +1616,7 @@ def test_a_held_session_used_after_its_block_is_refused(cfg):
     with pytest.raises(CratekitError) as excinfo:
         restore.run(decided, cfg, held=open_session)
 
-    assert "no longer held by this process" in excinfo.value.cause.message
+    assert "not held by this process" in excinfo.value.cause.message
     assert config.state_path("rekordbox_db", cfg).exists()
 
 
@@ -1465,8 +1626,11 @@ def test_a_restore_handed_an_ordinary_write_session_is_refused(cfg, held):
         workflow=held.workflow,
         lock=held.lock,
         intent=session.Intent.WRITE,
+        issued_by=held.issued_by,
+        authorises=held.authorises,
         gates=held.gates,
         record=held.record,
+        token=held.token,
     )
 
     with pytest.raises(CratekitError) as excinfo:
@@ -1477,9 +1641,7 @@ def test_a_restore_handed_an_ordinary_write_session_is_refused(cfg, held):
 
 def test_a_rehearsal_reports_what_is_outstanding_rather_than_what_it_recorded(cfg, held):
     """A preview that reported convergence because it wrote nothing would lie."""
-    reconcile.record_markers(
-        cfg, reconcile.tree_markers(["routing"], session_id="s", capture_stamp="c")
-    )
+    _one_effect_marker(cfg)
     record, _captured = completed_session(cfg)
 
     decided = restore.plan(cfg, record.session_id, held=held)
@@ -1498,3 +1660,635 @@ def test_the_restore_module_names_no_verb(cfg):
         assert f'"{name}"' not in source
     assert restore.CAPTURE_RESTORE_WORKFLOW not in registry.VERB_NAMES
     assert restore.BARE_METAL_WORKFLOW not in registry.VERB_NAMES
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The nine blocking defects two adversarial reviews found, each driven by the
+# reviewer's own reproduction. A fix with no test is a fix until somebody edits
+# the file next to it.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _foreign_volume(cfg) -> dict:
+    """The library is present and readable and is NOT the volume we were set up against.
+
+    A reformatted, cloned or re-UUID'd disk. ``preflight`` calls this
+    FOREIGN_VOLUME and ``restore._VOLUME_IS_GONE`` counts it as gone, which is
+    what makes it the exact shape the bypass was composed from.
+    """
+    return {
+        "identity_provider": lambda _path: _ELSEWHERE,
+        "mount_enumerator": lambda: (),
+        "mount_probe": lambda _path: True,
+    }
+
+
+def test_blocking_1_a_bare_metal_session_cannot_be_spent_on_the_library_it_refused(
+    cfg, tmp_path
+):
+    """The whole bypass, composed exactly as the review composed it.
+
+    With the library present and readable and its identity foreign,
+    ``recovery_session`` refuses with ``library-volume-mismatch``, which is
+    correct. ``bare_metal_session`` against a replacement drive then yields a
+    ``Held`` whose installation-scoped lock satisfied every check ``plan`` and
+    ``run`` made, and both performed every step against ``cfg.library.root``:
+    the database and the whole coupled tree rewritten on the volume the identity
+    gate had just refused, with no acknowledgment, with the library lock free for
+    a second process, while the validated target received nothing.
+    """
+    record, _captured = completed_session(cfg)
+    seams = _foreign_volume(cfg)
+    library_seams = {
+        key: value for key, value in seams.items() if key != "mount_probe"
+    }
+
+    with pytest.raises(CratekitError) as ordinary:
+        with restore.recovery_session(cfg, **library_seams):
+            raise AssertionError("the ordinary restore admitted a foreign volume")
+    assert ordinary.value.cause.reason == "library-volume-mismatch"
+
+    replacement = tmp_path / "replacement"
+    replacement.mkdir()
+
+    with restore.bare_metal_session(
+        cfg,
+        target=replacement,
+        acknowledged=True,
+        terminal=lambda: True,
+        **seams,
+    ) as bare_metal:
+        assert bare_metal.issued_by is restore.Guard.BARE_METAL
+        assert bare_metal.authorises == replacement
+        assert not bare_metal.authorises_path(cfg.library.root)
+
+        with pytest.raises(CratekitError) as refused:
+            restore.plan(cfg, record.session_id, held=bare_metal)
+
+    cause = refused.value.cause
+    assert "authorises" in cause.message
+    assert cause.detail["issued_by"] == str(restore.Guard.BARE_METAL)
+    assert cause.detail["authorises"] == str(replacement)
+    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
+        b"database, generation one"
+    )
+
+
+def test_blocking_1_a_held_naming_an_unrelated_lock_this_process_holds_is_refused(
+    cfg, tmp_path
+):
+    """ACCEPTED 3: lock membership is a set of paths, so any lock at all satisfied it.
+
+    The token answers the question the lock cannot: was this value issued by one
+    of this module's own guards, and is that guard still inside its block.
+    """
+    record, _captured = completed_session(cfg)
+    unrelated = tmp_path / "something-else.lock"
+
+    with session.session_lock(path=unrelated) as lock:
+        forged = restore.Held(
+            workflow=restore.CAPTURE_RESTORE_WORKFLOW,
+            lock=lock,
+            intent=session.Intent.RECOVERY,
+            issued_by=restore.Guard.LIBRARY_SESSION,
+            authorises=Path(cfg.library.root),
+        )
+        assert str(lock.absolute()) in session._HELD
+        assert not forged.still_open
+
+        with pytest.raises(CratekitError) as excinfo:
+            restore.plan(cfg, record.session_id, held=forged)
+
+    assert "not held by this process" in excinfo.value.cause.message
+
+
+def test_blocking_1_a_token_is_withdrawn_when_its_guard_returns(cfg):
+    acknowledge(cfg)
+    with restore.recovery_session(cfg, **gate_seams(cfg)) as open_session:
+        assert open_session.token is not None
+        assert id(open_session.token) in restore._ISSUED
+    assert id(open_session.token) not in restore._ISSUED
+
+
+def _wal_path(cfg) -> Path:
+    """The live write-ahead log, resolved through the inventory rather than spelled."""
+    database = config.state_path("rekordbox_db", cfg)
+    companions = config.sidecar_paths("rekordbox_db", cfg)
+    return next(path for path in companions if path.name.startswith(database.name))
+
+
+def test_blocking_2_a_capture_whose_database_is_gone_refuses_before_the_log_is_touched(
+    cfg, held
+):
+    """The reviewer's exact sequence, and the bytes that used to be unrecoverable.
+
+    The live log holds transactions committed since the last checkpoint. None of
+    them is in the main file and none of them is in ANY capture, because every
+    capture predates them. The plan was CLEAR log, CLEAR index, REPLACE database;
+    the CLEAR was ``unlink`` with no staging and no backup, and
+    ``assert_verified`` read a verdict out of the manifest without asking whether
+    the bytes it was about were still there. So a capture whose database had gone
+    planned and rehearsed clean, and the real run unlinked the log and raised.
+    """
+    record, captured = completed_session(cfg)
+    config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation two")
+    log = _wal_path(cfg)
+    log.write_bytes(b"committed transactions the main file does not hold")
+    captured.database.unlink()
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore.plan(cfg, record.session_id, held=held)
+
+    assert excinfo.value.cause.reason == "snapshot-integrity-failed"
+    assert "no longer on disk" in excinfo.value.cause.message
+    assert log.read_bytes() == b"committed transactions the main file does not hold"
+
+
+def test_blocking_2_the_live_log_is_moved_aside_rather_than_deleted(cfg, held):
+    """Even on the SUCCESS path, because the bytes postdate every capture.
+
+    A restore that succeeds is still discarding the only copy of every
+    transaction committed since the last checkpoint. Deleting them is a decision
+    the restore is not entitled to make on the user's behalf.
+    """
+    record, _captured = completed_session(cfg)
+    log = _wal_path(cfg)
+    log.write_bytes(b"committed transactions the main file does not hold")
+
+    decided = restore.plan(cfg, record.session_id, held=held)
+    restore.run(decided, cfg, held=held)
+
+    assert not log.exists(), "the engine must not find a log beside a replaced database"
+    kept = decided.pre_restore_root / log.name
+    assert kept.read_bytes() == b"committed transactions the main file does not hold"
+
+
+def test_blocking_2_a_failure_mid_restore_is_a_structured_refusal(cfg, held, monkeypatch):
+    """A raw OSError carries no reason, no remedy, and no reserved exit code.
+
+    The window opens on a full volume, a permission error or an I/O error, which
+    is exactly the set of conditions under which people restore.
+    """
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    def _explode(_source, _target):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(restore, "_replace_file", _explode)
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore.run(decided, cfg, held=held)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "restore-step-failed"
+    assert cause.code is ExitCode.PRECONDITION
+    assert cause.remediation.steps
+    # The latch written first is still standing, which is the whole point of
+    # writing it first.
+    assert decided.latch.marker_id in [
+        r.marker.marker_id for r in reconcile.outstanding(cfg)
+    ]
+
+
+def test_blocking_2_a_restore_checks_the_library_volume_has_room_for_the_copy(cfg, held):
+    """One call site, inside ``capture``, so a restore checked nothing at all."""
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    calls: list[tuple[int, str]] = []
+    original = snapshot.assert_room_for
+
+    def _watch(needed, destination, **kwargs):
+        calls.append((needed, str(destination)))
+        return original(needed, destination, **kwargs)
+
+    snapshot.assert_room_for = _watch
+    try:
+        restore.run(decided, cfg, held=held, dry_run=True)
+    finally:
+        snapshot.assert_room_for = original
+
+    assert calls, "the restore never asked whether the library volume has room"
+    assert calls[0][0] > 0
+
+
+def test_blocking_4_two_restores_producing_the_same_triple_are_two_markers(cfg):
+    """Scenario A: the second restore's markers used to be dropped by ``setdefault``.
+
+    A different window, over an entirely different set of orphaned files,
+    producing the same kind, identity and effect. The store could not represent
+    two, so ``outstanding()`` returned empty, ``assert_converged`` passed, and the
+    audio the second restore discarded was owned by nobody with no one told.
+    """
+    first = reconcile.Marker(
+        kind=reconcile.Kind.EFFECT,
+        identity="label_watermarks",
+        effect=config.RollbackEffect.DOWNLOADED_FILE,
+        session_id="run-1",
+        capture_stamp="capture-1",
+    )
+    reconcile.record_markers(cfg, [first])
+    reconcile.close_marker(
+        cfg, first.marker_id, disposition=reconcile.Disposition.ACCEPTED, actor="phillip"
+    )
+    assert reconcile.converged(cfg)
+
+    second = reconcile.Marker(
+        kind=reconcile.Kind.EFFECT,
+        identity="label_watermarks",
+        effect=config.RollbackEffect.DOWNLOADED_FILE,
+        session_id="run-2",
+        capture_stamp="capture-2",
+    )
+    reconcile.record_markers(cfg, [second])
+
+    assert first.marker_id != second.marker_id
+    assert [r.marker.marker_id for r in reconcile.outstanding(cfg)] == [second.marker_id]
+    assert not reconcile.converged(cfg)
+
+
+def test_blocking_4_a_rebuilt_tree_does_not_pay_for_every_later_restore(cfg):
+    """Scenario B, which survives the correct remedy being carried out.
+
+    One rebuild used to close the tree forever: a later pre-cutover restore of the
+    same tree derived the marker correctly and had it swallowed by the closed
+    record of the first, so ``unconverged_trees()`` returned empty and an
+    incremental sync structurally could not see the gap.
+    """
+    first = reconcile.tree_markers(["routing"], session_id="run-1", capture_stamp="c-1")
+    recorded = reconcile.record_markers(cfg, first)
+    reconcile.close_marker(
+        cfg,
+        recorded[0].marker.marker_id,
+        disposition=reconcile.Disposition.REPAIRED,
+        actor="phillip",
+    )
+    assert reconcile.unconverged_trees(cfg) == ()
+
+    second = reconcile.tree_markers(["routing"], session_id="run-2", capture_stamp="c-2")
+    reconcile.record_markers(cfg, second)
+
+    assert reconcile.unconverged_trees(cfg) == ("routing",)
+
+
+def test_blocking_4_recording_one_restore_twice_is_still_idempotent(cfg):
+    """The property the original identifier was built for, kept.
+
+    The old test passed the SAME session and stamp on both calls, which is why it
+    could only ever prove this half.
+    """
+    markers = reconcile.tree_markers(["routing"], session_id="run-1", capture_stamp="c")
+    reconcile.record_markers(cfg, markers)
+    recorded = reconcile.record_markers(cfg, markers)
+
+    assert len(recorded) == 1
+
+
+def test_blocking_5_an_interrupted_restore_in_a_none_effect_window_latches(cfg, held):
+    """Seven of the twelve coupled entries declare ``RollbackEffect.NONE``.
+
+    A restore whose window touched only those wrote nothing anywhere before it
+    started replacing files, so a hard kill after ``replace-file`` left the
+    database rolled back, the coupled state at the later generation, an empty
+    reconciliation store, and ``assert_gates(intent=WRITE)`` ALLOWED. The only
+    trace was a non-terminal session record nothing consults.
+    """
+    acknowledge(cfg)
+    record, _captured = completed_session(cfg)
+
+    decided = restore.plan(cfg, record.session_id, held=held)
+    assert decided.markers == (), "this fixture must have no effect markers at all"
+    assert decided.steps[0].act is restore.Act.RECORD
+    assert decided.steps[-1].act is restore.Act.RELEASE
+
+    # Perform everything except the last step, which is the interruption.
+    for step in decided.steps[:-1]:
+        restore._perform(step, decided, cfg)
+
+    with pytest.raises(CratekitError) as excinfo:
+        with session.assert_gates(cfg, workflow="library-sweep", **gate_seams(cfg)):
+            raise AssertionError("the gates admitted a session after a half restore")
+
+    assert excinfo.value.cause.reason == "restore-reconciliation-outstanding"
+    assert "never seen to finish" in excinfo.value.cause.message
+
+
+def test_blocking_5_a_restore_that_completes_retracts_its_own_latch(cfg):
+    acknowledge(cfg)
+    record, _captured = completed_session(cfg)
+
+    with restore.recovery_session(cfg, **gate_seams(cfg)) as open_session:
+        decided = restore.plan(cfg, record.session_id, held=open_session)
+        outcome = restore.run(decided, cfg, held=open_session)
+
+    assert outcome.outstanding == ()
+    assert outcome.converged
+    # Asked OUTSIDE the recovery session, because the library lock does not nest
+    # and the question is whether the NEXT ordinary session is admitted.
+    with session.assert_gates(cfg, workflow="library-sweep", **gate_seams(cfg)) as gates:
+        assert gates.workflow == "library-sweep"
+
+
+def test_blocking_5_a_rehearsal_does_not_latch_anything(cfg, held):
+    """A rehearsal performs nothing at all, including the latch."""
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    restore.run(decided, cfg, held=held, dry_run=True)
+
+    assert reconcile.records(cfg) == ()
+
+
+def test_blocking_6_a_second_attempt_never_deletes_the_only_surviving_copy(
+    cfg, tmp_path
+):
+    """The crash state, then a capture that cannot be read, then the second run.
+
+    ``_replace_directory`` began by removing both working names unconditionally.
+    After a crash between the two renames ``coupled`` is absent and
+    ``coupled.replaced`` holds the ONLY copy of the live pre-restore state, so a
+    second run destroyed it before ``copytree`` and then failed, leaving the live
+    directory absent, the old state gone, and a partial new one under
+    ``.restoring``. The work the abandoned restore did existed nowhere.
+    """
+    target = tmp_path / "coupled"
+    previous = tmp_path / "coupled.replaced"
+    previous.mkdir()
+    (previous / "watermarks.json").write_bytes(b"the only copy of the live state")
+    assert not target.exists()
+
+    source = tmp_path / "capture" / "coupled"
+    (source / "unreadable").mkdir(parents=True)
+    (source / "unreadable" / "item.json").write_bytes(b"{}")
+    (source / "unreadable").chmod(0o000)
+    try:
+        with pytest.raises(OSError):
+            restore._replace_directory(source, target)
+    finally:
+        (source / "unreadable").chmod(0o755)
+
+    assert (target / "watermarks.json").read_bytes() == (
+        b"the only copy of the live state"
+    ), "the only surviving copy of the pre-restore state was destroyed"
+    assert not (tmp_path / "coupled.restoring").exists()
+
+
+def test_blocking_6_the_single_failure_shape_is_unchanged(cfg, tmp_path):
+    """The shape that was already right, kept: the old directory is findable."""
+    target = tmp_path / "coupled"
+    target.mkdir()
+    (target / "live.json").write_bytes(b"live")
+    source = tmp_path / "capture" / "coupled"
+    source.mkdir(parents=True)
+    (source / "captured.json").write_bytes(b"captured")
+
+    restore._replace_directory(source, target)
+
+    assert (target / "captured.json").read_bytes() == b"captured"
+    assert not (tmp_path / "coupled.replaced").exists()
+    assert not (tmp_path / "coupled.restoring").exists()
+
+
+def test_the_rehearsal_refuses_a_replacement_whose_source_is_gone(cfg, held):
+    """The dry run used to compare the loop's output to the loop's input.
+
+    ``rehearsed.performed == plan.steps == real.performed`` can never fail,
+    whatever ``_perform`` would have done, because everything a step depends on
+    lives inside ``_perform``, which a rehearsal skips wholesale. Measured: a
+    REPLACE whose source had been deleted rehearsed as six steps performed with
+    no refusal.
+    """
+    record, captured = completed_session(cfg)
+    write_state(cfg, "label_watermarks", {"source": "x"})
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    replacement = next(
+        step for step in decided.steps if step.act is restore.Act.REPLACE
+    )
+    replacement.source.unlink()
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore.run(decided, cfg, held=held, dry_run=True)
+
+    assert excinfo.value.cause.reason == "snapshot-integrity-failed"
+    assert str(captured.root) in str(excinfo.value.cause.detail)
+
+
+def test_the_rehearsal_refuses_a_target_directory_nobody_can_write_to(cfg, held):
+    """The other case the empty rehearsal reported clean."""
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+    database_dir = config.state_path("rekordbox_db", cfg).parent
+    database_dir.chmod(0o500)
+
+    try:
+        with pytest.raises(CratekitError) as excinfo:
+            restore.run(decided, cfg, held=held, dry_run=True)
+    finally:
+        database_dir.chmod(0o700)
+
+    assert excinfo.value.cause.reason == "restore-step-failed"
+    assert "not writable" in excinfo.value.cause.message
+
+
+def test_a_plan_built_before_a_later_commit_is_refused_at_run(cfg, held):
+    """ACCEPTED 5: ``run`` re-validated nothing about the plan it was handed.
+
+    So a plan built before a later session committed executed unchanged and
+    discarded it, while a freshly built plan refused with
+    ``restore-discards-committed-work``. A plan is a value and the log is not.
+    """
+    record, _captured = completed_session(cfg, started="2026-08-01T00:00:00+00:00")
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    completed_session(cfg, started="2026-08-03T00:00:00+00:00", stamp="later-capture")
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore.run(decided, cfg, held=held)
+
+    assert excinfo.value.cause.reason == "restore-discards-committed-work"
+    assert config.state_path("rekordbox_db", cfg).exists()
+
+
+def test_a_reconciliation_store_on_an_unmounted_volume_is_not_an_empty_one(cfg):
+    """ACCEPTED: ``close_session``'s gate takes no volume assertion.
+
+    So with the library volume unmounted the document's path simply did not
+    exist, ``_read`` returned an empty store, and the latch passed silently. All
+    four readers are asked through one function, so all four still answer alike.
+    """
+    stranded = session.open_session(cfg, workflow="library-sweep")
+    shutil.rmtree(cfg.library.root)
+
+    for reader in (reconcile.records, reconcile.outstanding, reconcile.converged):
+        with pytest.raises(CratekitError) as excinfo:
+            reader(cfg)
+        assert excinfo.value.cause.reason == "restore-record-unusable"
+
+    with pytest.raises(CratekitError):
+        session.close_session(stranded, cfg)
+
+
+def test_a_same_length_edit_inside_a_coupled_directory_still_marks(cfg, held):
+    """ACCEPTED: the digest compared names and sizes, so the failure was under-marking.
+
+    ``label_outcomes`` is a directory of small documents AND the one COUPLED
+    directory entry carrying a declared out-of-band effect, so the one place a
+    same-length edit is most likely is the one place missing it costs a marker.
+    """
+    outcomes = config.state_path("label_outcomes", cfg)
+    outcomes.mkdir(parents=True, exist_ok=True)
+    (outcomes / "label-a.json").write_bytes(b'{"taken": "aaaa"}')
+    record, _captured = completed_session(cfg)
+    (outcomes / "label-a.json").write_bytes(b'{"taken": "bbbb"}')
+
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    assert "label_outcomes" in [marker.identity for marker in decided.markers]
+
+
+def test_pruning_with_no_session_named_asks_the_log_instead_of_skipping(cfg):
+    """ACCEPTED: the guard was opt-in and the default was to opt out.
+
+    ``owning=None`` is the easy call shape to write and was the one that checked
+    nothing.
+    """
+    session.open_session(cfg, workflow="library-sweep")
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore.prune(cfg)
+
+    assert "not reached a terminal state" in excinfo.value.cause.message
+
+
+def test_the_tree_shortness_handoff_calls_the_module_that_owns_the_gate(
+    cfg, held, monkeypatch
+):
+    """BLOCKING 8: two modules recorded one fact and neither referenced the other.
+
+    A successful rebuild cleared ``core.convergence``'s flag and left this unit's
+    marker standing, so every destructive session kept refusing after the remedy
+    had been carried out correctly. ``core.convergence`` owns the fact now; this
+    asserts the handoff is made with the arguments U36's own signature declares,
+    against that module when it is present.
+    """
+    calls: list[tuple] = []
+
+    class _Owner:
+        @staticmethod
+        def mark_unconverged(configuration, tree_ids, *, reason, now=None):
+            calls.append((configuration, tuple(tree_ids), reason))
+
+    monkeypatch.setattr(restore, "_convergence_module", lambda: _Owner)
+
+    record, _captured = completed_session(cfg)
+    _cut_over(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+    restore.run(decided, cfg, held=held)
+
+    assert calls == [(cfg, ("routing",), restore.PRE_CUTOVER_RESTORE)]
+    assert reconcile.unconverged_trees(cfg) == (), (
+        "the fact was recorded twice, which is the duplication this fixes"
+    )
+
+
+def test_the_tree_mark_happens_after_the_coupled_state_is_replaced(cfg, held):
+    """The record that holds tree shortness is itself a COUPLED entry.
+
+    Marking before the replacement would write the mark and then overwrite it.
+    """
+    record, _captured = completed_session(cfg)
+    _cut_over(cfg)
+
+    decided = restore.plan(cfg, record.session_id, held=held)
+    acts = [step.act for step in decided.steps]
+
+    assert acts.index(restore.Act.MARK_TREES) > acts.index(restore.Act.REPLACE)
+    assert acts.index(restore.Act.MARK_TREES) < acts.index(restore.Act.RELEASE)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The two register entries this unit owns, each gating a real guard.
+#
+# An entry in tests/_pending.py that no @requires cites gates NO test: it is an
+# unenforced countdown wearing the costume of an enforced one, and this unit
+# shipped two of them. Both are cited below with their full assertion bodies, so
+# the moment the unit named in the register lands, these run and have to pass.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@requires("cratekit.write.tree_rebuild")
+def test_the_rebuild_clears_tree_shortness_on_evidence_and_in_one_place(cfg, held):
+    """U36's two obligations to this unit, asserted rather than described.
+
+    FIRST, that a rebuild never closes a tree with a bare disposition. This
+    unit's store exposes one ``close_marker`` call because effects and trees
+    shared it, and a rebuild that used it would satisfy every test in this
+    repository while leaving the tree exactly as short as it was.
+
+    SECOND, that tree shortness lives in ONE record. Both units discovered the
+    same fact from opposite directions and each wrote it into its own store, so a
+    successful rebuild cleared one flag and left the other standing. This drives a
+    real pre-cutover restore and asserts the fact landed in the record the rebuild
+    clears and nowhere else.
+    """
+    from cratekit.core import convergence  # noqa: PLC0415
+    from cratekit.write import tree_rebuild  # noqa: PLC0415
+
+    rebuild_source = Path(tree_rebuild.__file__).read_text()
+    assert "close_marker" not in rebuild_source, (
+        "the rebuild closes a reconciliation marker with a disposition, which is "
+        "the softening path: a verdict is not a convergence check"
+    )
+    assert re.search(r"clear_unconverged\([^)]*differences=", rebuild_source, re.S), (
+        "the rebuild does not hand the check's own difference list to the clearing "
+        "call, so the refusal on the other side of it can be satisfied by a caller "
+        "fabricating the evidence for it"
+    )
+
+    record, _captured = completed_session(cfg)
+    _cut_over(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+    restore.run(decided, cfg, held=held)
+
+    assert convergence.read(cfg).blocking_trees() == ("routing",), (
+        "a pre-cutover restore did not reach the record that gates tree writes"
+    )
+    assert reconcile.unconverged_trees(cfg) == (), (
+        "the fact is recorded in two stores again; a rebuild clears one of them"
+    )
+
+    restore_source = Path(restore.__file__).read_text()
+    assert "_convergence_module" not in restore_source, (
+        "the call-time resolution existed only because core.convergence was not in "
+        "this build; it is now, so the handoff is an ordinary import"
+    )
+
+
+@requires("cratekit.session.restore_cli")
+def test_the_restore_verbs_hold_one_session_across_both_halves():
+    """The wiring this unit proved at the seam and could not call.
+
+    The shape being prevented is specific and was found by review: a plan that
+    takes the lock and gives it back, followed by a run that takes it again,
+    leaves a window in which a second process passes the same gates and commits,
+    after which the run copies a snapshot over a commit its plan was built
+    before. ``backup.plan_restore`` and ``backup.run_restore`` each default to
+    acquiring their own, so the verb must pass the already-open guard in as
+    ``gates``.
+    """
+    import cratekit.session.restore_cli as restore_cli  # noqa: PLC0415
+
+    source = Path(restore_cli.__file__).read_text()
+    assert "recovery_session" in source, (
+        "the restore verbs do not enter the one session that spans the whole verb"
+    )
+    assert re.search(r"gates\s*=\s*\w+\.guard", source), (
+        "the off-machine restore is not handed the already-open guard, so it takes "
+        "the library lock a second time and leaves a window a commit fits in"
+    )
+    assert "assert_gates" not in source, (
+        "the verb enters the destructive-session gates itself rather than through "
+        "recovery_session, which is how the two acquisitions come back"
+    )
