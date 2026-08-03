@@ -458,6 +458,15 @@ CLOSING_SPELLINGS_GITHUB_ACTS_ON = (
     "Closes #36, #33",
     "This closes #36.",
     "feat: a thing\n\nCloses #36\n",
+    # GitHub's other three documented reference forms. The keywords were widened
+    # first and these were left, which made the coverage nine times ONE form
+    # while the commit message claimed eleven ways.
+    "Closes GH-36",
+    "Closes owner/repo#36",
+    "Closes https://github.com/owner/repo/issues/36",
+    # A revert. It really does close the issue, and the refusal is the point: a
+    # revert un-lands the module, so the register re-owes the unit exactly then.
+    'Revert "feat(write): converge (closes #36)"',
 )
 
 #: Messages that close nothing this repository tracks, and must stay exit 0. A
@@ -470,6 +479,13 @@ MESSAGES_THAT_CLOSE_NOTHING = (
     "look at #36 for why U36 is still open",
     "feat: x\n\nbody\n# Please enter the commit message\n# Closes #36\n",
     "feat: x\n\nCloses #21\n# ------------------------ >8 ------------------------\n+Closes #36\n",
+    # THE SENTENCE THIS CHECK ASKS PEOPLE TO WRITE. A trailer, a blank line, then
+    # an explanation of what stays open. `\s*` in the continuation crossed the
+    # newline and refused both issues, so the code contradicted the contract its
+    # own docstring states.
+    "feat(write): converge\n\nCloses #21\n\nand #36 stays open until the export CLI lands.\n",
+    # A link with a fragment is not a closing reference.
+    "see https://example.com/notes/fixes#36 for the reasoning",
 )
 
 
@@ -538,3 +554,49 @@ def test_the_closing_check_is_wired_where_it_cannot_be_forgotten():
         "machine with no token, which is every machine the first time"
     )
     assert callable(board.cmd_closing)
+
+
+def test_the_two_message_paths_are_cleaned_differently_because_they_have_to_be():
+    """`raw` says which side of git's cleanup this text is on, and it is not symmetric.
+
+    A message file handed to the commit-msg hook is PRE-cleanup and carries git's
+    comments and, under `commit --verbose`, the whole diff. Those come out.
+
+    `git log --format=%B` is POST-cleanup and final. It has no comments and no
+    scissors block, so stripping there prevents no false refusal and can only
+    delete a REAL trailer. Both shapes below were verified through the CLI: a
+    body line beginning with `#` survives git's `whitespace` cleanup, which is
+    what `-m` and `-F` use, and a scissors-shaped line typed by a person is
+    removed as a comment while everything below it stays. Stripping was applied
+    to the CI path, which this repository calls its load-bearing wiring, so it
+    was doing its only possible harm exactly where it mattered most.
+    """
+    board = _board()
+    owed = {36: ["m"], 33: ["n"]}
+
+    on_a_hash_line = "docs: note\n\n#36 fixes #33 in passing"
+    assert board.unresolved_closes(on_a_hash_line, owed, raw=False), (
+        "git keeps a #-leading body line under whitespace cleanup, so this "
+        "closes 33 and the CI path must see it"
+    )
+
+    typed_scissors = "docs: note\n#-- >8 --\nCloses #36\n"
+    assert board.unresolved_closes(typed_scissors, owed, raw=False)
+    assert board.unresolved_closes(typed_scissors, owed, raw=True), (
+        "only git's OWN scissors line cuts a message; a shape that resembles one "
+        "is removed as a comment and what follows reaches history"
+    )
+
+    real_scissors = (
+        "docs: note\n"
+        "# ------------------------ >8 ------------------------\n"
+        "Closes #36\n"
+    )
+    assert not board.unresolved_closes(real_scissors, owed, raw=True), (
+        "git cuts everything below its own scissors line, so nothing there can "
+        "close anything"
+    )
+
+    assert board.unresolved_closes("docs: x\r\n\r\nCloses #36\r\n", owed, raw=True), (
+        "CRLF was already handled and must not regress"
+    )

@@ -277,45 +277,100 @@ def owed_by_unit() -> dict[int, list[str]]:
 #: Every keyword GitHub closes an issue on, not the one this repository's
 #: contract happens to use.
 #:
-#: The distinction cost a whole check. The first version of this matched
-#: `^Closes #n$` and nothing else, on the reasoning that the contract says to
-#: write that exact trailer. GitHub does not read the contract. `Fixes #36`,
-#: `Resolve #36`, `Closes: #36`, `Closes #36.` and `This closes #36.` all close
-#: issue 36 and cascade every unit waiting on it, and every one of them returned
-#: exit 0. A check that recognizes one spelling of many is a check that reports
-#: clean on the eleven ways somebody actually types it.
+#: The distinction cost a whole check. The first version matched `^Closes #n$`
+#: and nothing else, on the reasoning that the contract says to write that exact
+#: trailer. GitHub does not read the contract, and nine keywords times four
+#: reference forms all close the issue and cascade every unit waiting on it.
 CLOSING_KEYWORDS = ("close", "closes", "closed", "fix", "fixes", "fixed",
                     "resolve", "resolves", "resolved")
 
-#: Keyword, optional colon, then the issue. Anywhere in the line rather than
-#: anchored, because GitHub scans the whole message body and so must this.
+#: GitHub's THREE documented reference forms, plus the bare one. An earlier
+#: version of this file widened the keywords and left the reference form alone,
+#: then claimed in a commit message to recognize "the eleven ways somebody
+#: actually types it". It recognized nine keywords times ONE form. Widening the
+#: rest is a few characters, so it is cheaper to be right than to write down the
+#: limitation.
+#:
+#: Ordered longest-first. At a given position the alternation tries branches left
+#: to right, so the bare `#n` must come last or `owner/repo#36` would never be
+#: reached.
+REFERENCE_FORMS = (
+    r"https?://github\.com/[\w.-]+/[\w.-]+/issues/(\d+)",
+    r"[\w.-]+/[\w.-]+#(\d+)",
+    r"GH-(\d+)",
+    r"#(\d+)",
+)
+
+#: Keyword, optional colon, then a reference.
+#:
+#: The lookbehind rejects a keyword that is a URL PATH SEGMENT, so
+#: `https://example.com/notes/fixes#36` is a link with a fragment rather than a
+#: closing reference. That was a verified false refusal, and the whole cost of a
+#: false refusal is somebody deleting the check.
 CLOSES_RE = re.compile(
-    r"\b(?:" + "|".join(CLOSING_KEYWORDS) + r")\b\s*:?\s*#(\d+)",
+    r"(?<![/\w])\b(?:" + "|".join(CLOSING_KEYWORDS) + r")\b\s*:?\s*"
+    r"(?:" + "|".join(REFERENCE_FORMS) + r")",
     re.IGNORECASE,
 )
 
 #: A comma list continuing from a keyword-anchored issue: `Closes #36, #33`.
-#: Applied with `match` at the END of a keyword hit and walked forward, so a bare
-#: `#33` anywhere else in the message is untouched.
-CONTINUED_RE = re.compile(r"\s*(?:,|and)\s*#(\d+)", re.IGNORECASE)
+#:
+#: `[^\S\n]` IS HORIZONTAL WHITESPACE ONLY, and the distinction is the whole
+#: correctness of this pattern. With `\s*` the continuation crossed newlines, so
+#: a trailer followed by a blank line and a sentence beginning "and #33 stays
+#: open" was read as a two-issue list and BOTH were refused. GitHub closes only
+#: the first. The docstring below promises that explaining in a commit body why a
+#: unit is still open must stay possible, and that is the exact sentence it
+#: refused, so the code contradicted its own stated contract.
+CONTINUED_RE = re.compile(
+    r"[^\S\n]*(?:,|and)[^\S\n]*(?:" + "|".join(REFERENCE_FORMS) + r")",
+    re.IGNORECASE,
+)
 
 #: Lines git itself strips from a commit message. The commit-msg hook is handed
 #: the RAW file, comments and the verbose diff included, so a template line
 #: reading `# Closes #NN` would otherwise refuse every commit that never touched
-#: it.
+#: it. Applied ONLY to that path; see `message_body`.
 COMMENT_LINE_RE = re.compile(r"^\s*#")
-SCISSORS_RE = re.compile(r"^\s*#\s*-+\s*>8\s*-+")
+#: GIT'S OWN scissors line, not a shape that resembles one. Git emits
+#: `# ------------------------ >8 ------------------------` and cuts everything
+#: below it. The previous pattern allowed leading whitespace and as few as one
+#: dash, so a line a person typed in a body truncated the message and took any
+#: real trailer below it with it. Under the editor default git removes that line
+#: as a comment and KEEPS what follows, so the trailer reached history and closed
+#: the issue while this check reported clean. Eight dashes a side makes an
+#: accidental match essentially impossible and still matches git's twenty-four.
+SCISSORS_RE = re.compile(r"^#\s?-{8,}\s?>8\s?-{8,}\s*$")
 
 
-def message_body(text: str) -> str:
+def message_body(text: str, *, raw: bool) -> str:
     """The part of a commit message git will keep, comments and diff removed.
 
-    The commit-msg hook is handed the RAW file. That file carries git's own
-    instructional comments, and on `commit --verbose` it carries the entire diff
-    below a scissors line. Matching over all of it would let a template line or a
-    diff hunk that happens to contain a closing keyword refuse a commit that
-    closes nothing, which is a check that gets uninstalled the first afternoon.
+    ``raw`` SAYS WHICH SIDE OF GIT'S CLEANUP THIS TEXT IS ON, and getting that
+    wrong is not symmetric.
+
+    A message file handed to the commit-msg hook is PRE-cleanup: it carries git's
+    instructional comments, and on `commit --verbose` the entire diff below a
+    scissors line. Matching over all of it would let a template line refuse a
+    commit that closes nothing, so those are removed.
+
+    `git log --format=%B` is POST-cleanup. Those messages are final. They contain
+    no git comments and no scissors block, so stripping cannot prevent a single
+    false refusal there and can only DELETE A REAL TRAILER: a body line beginning
+    with `#`, which git keeps under the `whitespace` cleanup that `-m` and `-F`
+    use, was being discarded. That is the CI path, the one this repository calls
+    the load-bearing wiring, so the strip was doing its only possible harm in the
+    place it mattered most.
+
+    RESIDUAL, stated rather than hidden. On the hook path a commit made with
+    `-m` or `-F` also gets `whitespace` cleanup, so a real trailer on a
+    `#`-leading line is dropped here too. Detecting the cleanup mode from inside
+    the hook is not possible without reading the same config git is about to
+    apply, so the hook is best-effort against that one shape and CI is
+    authoritative. Recorded in R-18.
     """
+    if raw is False:
+        return text
     kept = []
     for line in text.splitlines():
         if SCISSORS_RE.match(line):
@@ -326,7 +381,7 @@ def message_body(text: str) -> str:
     return "\n".join(kept)
 
 
-def closing_references(text: str) -> list[int]:
+def closing_references(text: str, *, raw: bool = True) -> list[int]:
     """Every issue number this message would close, by any spelling GitHub reads.
 
     THE SPELLING IS NOT OURS TO CHOOSE. This repository's contract says to write
@@ -335,28 +390,59 @@ def closing_references(text: str) -> list[int]:
     which closes the issue and cascades every unit waiting on it. What matters is
     what GitHub acts on, not what the contract asks for.
 
-    The comma continuation is caught DELIBERATELY OVER-INCLUSIVELY. Whether
-    GitHub closes the second issue in `Closes #36, #33` has changed with its
-    parser, but somebody writing that line means to close both, and the two costs
-    are not comparable: a false refusal is answered by rewording one line, while
-    a miss is a close that has already cascaded and that `sync` will not repair.
+    Nine keywords times FOUR reference forms: the bare `#n`, `GH-n`,
+    `owner/repo#n`, and the full issue URL. An earlier version widened the
+    keywords, left the reference form alone, and claimed to cover "the eleven
+    ways somebody actually types it".
+
+    The comma continuation is caught DELIBERATELY OVER-INCLUSIVELY, and confined
+    to ONE LINE. Whether GitHub closes the second issue in `Closes #36, #33` has
+    moved with its parser, but somebody writing that line means to close both,
+    and the costs are not comparable: a false refusal is one reworded line, a
+    miss is a close that has already cascaded. Crossing a newline is a different
+    thing entirely and was a defect: a trailer, a blank line, then a sentence
+    beginning "and #33 stays open" is not a list.
 
     A bare `#36` with no keyword is left alone. Refusing a reference would make
     it impossible to explain in a commit body why a unit is still open, which is
     exactly the sentence this check is asking people to write.
+
+    WHAT STAYS REFUSED ON PURPOSE, because in each case GitHub really would close
+    the issue and this check has no way to be righter than GitHub:
+
+    * A REVERT. `Revert "feat: converge (closes #36)"` closes 36, and the refusal
+      is not merely correct, it is the point: a revert un-lands the module, so
+      the register genuinely re-owes that unit at the moment it fires.
+    * PROSE QUOTING A REAL TRAILER, and a fixture or diff inside a fenced block
+      in a body. Both close the issue when pushed. Nothing distinguishes quoting
+      from asserting, to this check or to GitHub. The remedy is a non-numeric
+      placeholder, which is what this branch's own history rewrite used after
+      this check refused it.
     """
     found: list[int] = []
-    body = message_body(text)
+    body = message_body(text, raw=raw)
     for match in CLOSES_RE.finditer(body):
-        found.append(int(match.group(1)))
+        found.append(_referenced(match))
         position = match.end()
         while (carried := CONTINUED_RE.match(body, position)) is not None:
-            found.append(int(carried.group(1)))
+            found.append(_referenced(carried))
             position = carried.end()
     return found
 
 
-def unresolved_closes(text: str, owed: dict[int, list[str]] | None = None) -> list[str]:
+def _referenced(match: re.Match) -> int:
+    """The issue number out of whichever reference form matched.
+
+    One capturing group per form and exactly one of them is ever set, so the
+    first non-empty group is the answer. Reading `group(1)` would silently be
+    wrong for every form but the last.
+    """
+    return int(next(value for value in match.groups() if value is not None))
+
+
+def unresolved_closes(
+    text: str, owed: dict[int, list[str]] | None = None, *, raw: bool = True
+) -> list[str]:
     """Every issue this message closes whose unit a register still owes a module.
 
     PURE, and network-free, which is what lets this run where it is useful. The
@@ -373,7 +459,7 @@ def unresolved_closes(text: str, owed: dict[int, list[str]] | None = None) -> li
     """
     owed = owed_by_unit() if owed is None else owed
     found = []
-    for uid in dict.fromkeys(closing_references(text)):
+    for uid in dict.fromkeys(closing_references(text, raw=raw)):
         modules = owed.get(uid)
         if modules:
             found.append(
@@ -409,7 +495,13 @@ def cmd_closing(args) -> int:
             print("board: no commit range to read; nothing checked")
             return 0
         text = result.stdout
-    problems = unresolved_closes(text)
+        # POST-cleanup messages. Nothing to strip, and stripping could only lose
+        # a real trailer.
+        return _report(unresolved_closes(text, raw=False))
+    return _report(unresolved_closes(text, raw=True))
+
+
+def _report(problems: list[str]) -> int:
     if not problems:
         return 0
     print("CONTRADICTION: a unit cannot close while a register still owes it work.")

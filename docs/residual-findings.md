@@ -701,6 +701,34 @@ the trees are byte-identical before and after. A check written that afternoon
 caught a defect its own author shipped the same afternoon, in the one shape
 nobody thinks to look at: prose about the rule is subject to the rule.
 
+**Residual in the hook path, stated rather than hidden.** The commit-msg hook is
+handed the message BEFORE git's cleanup, so it removes git's comment lines, which
+is right for the editor path where a template comment would otherwise refuse a
+commit that closes nothing. It is wrong for `-m` and `-F`, whose cleanup mode is
+`whitespace`, defined as "same as strip except #commentary is not removed": a
+real trailer on a `#`-leading line survives into the commit and the hook will
+have dropped it. Detecting the cleanup mode from inside the hook means reading
+the same configuration git is about to apply, which is not worth it, so **the
+hook is best-effort against that one shape and CI is authoritative**. The CI path
+reads post-cleanup messages and now strips nothing at all.
+
+**Merge-order gap, and a cheap assertion that would close it.** Rule B catches
+the U36 and U32 key disagreement only if U32 merges first. If U36 closes first it
+is owed nothing, every rule is green, and U32 then lands a key that can never
+resolve. Rule A, the similarity heuristic and the three-state probe all miss it,
+because `cratekit.write` exists so the state is `absent`, an armed countdown.
+
+Measured, an order-independent rule exists and is about fifteen lines: for a
+register key whose parent package EXISTS and whose module does not, fire when an
+existing sibling module's name CONTAINS the key's last segment.
+`cratekit.write.rebuild` beside a landed `tree_rebuild.py` fires whichever branch
+merges second. Run over the whole register with that merge simulated it fires
+exactly once, on that case. **Not shipped**, because it is a substring heuristic
+introduced in a round reserved for specified fixes, and a future key like
+`cratekit.core.restore` beside a `restore_helpers.py` would be a false positive
+against a unit that did nothing wrong. Recorded so the choice is available rather
+than rediscovered.
+
 **Left open, and this is what needs the issue.** Nothing decides WHICH record is
 right when they disagree, and this branch deliberately did not pick for U23. The
 seven markers on closed units are not repaired here either, because re-pointing
