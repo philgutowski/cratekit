@@ -1401,6 +1401,179 @@ def test_the_soft_delete_guard_stays_quiet_on_correct_code():
     )
 
 
+def test_the_lookup_table_exclusion_recognizes_this_repository_s_own_style():
+    """A guard that misses the house style fires on the house.
+
+    `MappingProxyType({...})` is how this package freezes a per-column table, and
+    all nineteen uses of it here are the BARE IMPORTED NAME, six of them in
+    `write/metadata.py`, which is a declared soft-delete reader. The exclusion
+    matched only the dotted `types.MappingProxyType(...)` form, which this
+    repository never writes, so it named the house style in its own comment and
+    then did not recognize it.
+
+    Driven against the REAL reader rather than a fixture, because that is where
+    it fired.
+    """
+    guard = _source_guard()
+    table = (
+        "\n\nSOFT_DELETE_LABEL: Mapping[str, str] = MappingProxyType(\n"
+        '    {rb_writer.SOFT_DELETE_COLUMN: "tombstoned"}\n)\n\n'
+        "def _label_for_soft_delete() -> str:\n"
+        '    return SOFT_DELETE_LABEL.get(rb_writer.SOFT_DELETE_COLUMN, "")\n'
+    )
+    for path, source in _package_sources():
+        if path != "src/cratekit/write/metadata.py":
+            continue
+        assert not guard.permissive_soft_delete_reads(source + table), (
+            "a frozen per-column table written the way this repository writes "
+            "every one of them arms the guard against a declared reader"
+        )
+        break
+    else:  # pragma: no cover - the corpus must contain the reader
+        raise AssertionError("write/metadata.py is not in the corpus")
+
+
+def test_the_lookup_table_exclusion_is_scope_aware_not_just_name_keyed():
+    """Shadowing, driven. The previous test claimed this and did not exercise it.
+
+    It used `row = None` at module level, which is excluded for a DIFFERENT
+    reason, that it is not a container, so it passed without a shadowing case
+    anywhere in it. A module-level `row = {}` IS a container, and the exclusion
+    was keyed on the name alone, so it silenced `row.get(SOFT_DELETE_COLUMN, 0)`
+    inside every function whose PARAMETER is named `row`. Round 3 narrowed the
+    evasion from any binding to any container-shaped binding; it did not close
+    it.
+
+    A name a scope binds itself is not the module-level name it happens to spell
+    the same way, and Python agrees.
+    """
+    guard = _source_guard()
+    fires = guard.permissive_soft_delete_reads
+    assert fires(
+        'COLUMN = "rb_local_deleted"\n'
+        "row = {}\n"
+        "def read(row):\n"
+        "    return row.get(COLUMN, 0)\n"
+    ), "a parameter shadows the module-level table of the same name"
+    assert fires(
+        'COLUMN = "rb_local_deleted"\n'
+        "row = dict(fetch_one())\n"
+        "def read(row):\n"
+        "    return row.get(COLUMN, 0)\n"
+    ), "a dict() call over a row is still a row to every caller of it"
+    assert fires(
+        'COLUMN = "rb_local_deleted"\n'
+        "row = {}\n"
+        "def read(rows):\n"
+        "    row = rows[0]\n"
+        "    return row.get(COLUMN, 0)\n"
+    ), "an assignment shadows it as surely as a parameter does"
+    assert not fires(
+        'COLUMN = "rb_local_deleted"\n'
+        "LABELS = {}\n"
+        "def label():\n"
+        '    return LABELS.get(COLUMN, "")\n'
+    ), "a table nothing shadows is still a table"
+
+
+def test_the_launder_rules_reach_a_class_body_and_a_nonlocal_rebinding():
+    """Two blind spots the scope fix opened, both of which fired before it.
+
+    `_own_nodes` stops at every scope boundary, which is what made scoping
+    correct, but `_scopes` yielded only functions and the module. So no scope
+    ever walked a CLASS BODY and the launder rules could not see a statement
+    written directly in a class. Adding `ClassDef` restores it without
+    reintroducing the false positive, because a class body is genuinely its own
+    scope.
+
+    And a nested function declaring `nonlocal marker` rebinds the OUTER
+    variable. `_own_nodes` stops at that function, so the overwrite was invisible
+    from the enclosing scope while the nested scope held no marker of its own,
+    and the launder was unseen in both. Python's semantics say it is one
+    variable, so the walk follows the declaration rather than the indentation.
+    """
+    guard = _source_guard()
+    fires = guard.permissive_soft_delete_reads
+
+    assert fires(
+        "_ABSENT = object()\n"
+        "class Reader:\n"
+        '    marker = getattr(_row, "rb_local_deleted", _ABSENT)\n'
+        "    marker = 0\n"
+    ), "a class body is a scope, and nothing was walking it"
+
+    assert fires(
+        "_ABSENT = object()\n"
+        "def outer(row):\n"
+        '    marker = getattr(row, "rb_local_deleted", _ABSENT)\n'
+        "    def clean():\n"
+        "        nonlocal marker\n"
+        "        marker = 0\n"
+        "    clean()\n"
+        "    return marker\n"
+    ), "nonlocal rebinds the outer variable; the indentation says otherwise"
+
+    assert not fires(
+        "_ABSENT = object()\n"
+        "def outer(row):\n"
+        '    marker = getattr(row, "rb_local_deleted", _ABSENT)\n'
+        "    def unrelated():\n"
+        "        marker = 0\n"
+        "        return marker\n"
+        "    return marker\n"
+    ), (
+        "without a nonlocal declaration the inner name is a new variable, and "
+        "firing on it is the whole false positive the scope fix removed"
+    )
+
+
+def test_a_conditional_defaulting_the_marker_fires_and_a_summary_string_does_not():
+    """The kept branch must BE the read, which is not the same as containing it.
+
+    Gating on the TEST killed one false positive and gave up five real shapes
+    with it. `deleted = row.rb_local_deleted if row else False` is the defect
+    class exactly, a missing row read as active, and the test names no column so
+    it went silent. Requiring the branch to be the read itself keeps the summary
+    string silent, because there the branch is a formatted string that merely
+    quotes the value.
+    """
+    guard = _source_guard()
+    fires = guard.permissive_soft_delete_reads
+    assert fires("deleted = row.rb_local_deleted if row else False")
+    assert fires('marker = row.rb_local_deleted if hasattr(row, "rb_local_deleted") else 0')
+    assert fires('marker = 0 if not row else row.rb_local_deleted')
+    assert not fires('line = f"deleted={row.rb_local_deleted}" if row else ""'), (
+        "an ordinary summary string quoting the value is not a defaulted read"
+    )
+
+
+def test_a_presence_flag_is_not_a_marker_holder():
+    """`hasattr` binds a boolean about the column, not the column's value.
+
+    It became a recognized read so the conditional rule could see the shape it
+    is the condition of, and that made `present = hasattr(row, COL)` followed by
+    `present = False` look like a laundered marker. It is somebody tracking
+    their own flag.
+
+    The widening it DID cause is intended and is not walked back: a module doing
+    only a presence test now counts as a reader against the exact-membership pin,
+    because asking whether the column is there is being in this conversation.
+    """
+    guard = _source_guard()
+    assert not guard.permissive_soft_delete_reads(
+        'COLUMN = "rb_local_deleted"\n'
+        "def read(row):\n"
+        "    present = hasattr(row, COLUMN)\n"
+        "    present = False\n"
+        "    return present\n"
+    )
+    assert guard.reads_soft_delete_marker(
+        'COLUMN = "rb_local_deleted"\n'
+        "def read(row):\n"
+        "    return hasattr(row, COLUMN)\n"
+    ), "a presence test is a read for the purposes of the reader pin"
+
+
 def test_the_lookup_table_exclusion_is_not_an_evasion_route():
     """A row is not a dict literal, and the earlier test could not tell.
 

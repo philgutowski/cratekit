@@ -422,6 +422,31 @@ class SoftDeleteNames:
                 if name is not None:
                     self.lookup_tables.add(name)
 
+        #: ``.get`` calls whose receiver is SHADOWED by a local of the same name,
+        #: so the module-level table is not what is being asked.
+        #:
+        #: The exclusion was keyed on the name alone, which is why round 3's fix
+        #: narrowed the evasion rather than closing it: a module-level
+        #: ``row = {}`` is a container literal, so it silenced
+        #: ``row.get(SOFT_DELETE_COLUMN, 0)`` inside every function whose
+        #: PARAMETER is named ``row``. A parameter is not the module-level name
+        #: it happens to spell the same way, and Python agrees.
+        self.shadowed_gets: set[ast.AST] = set()
+        for scope in _scopes(tree):
+            if scope is tree:
+                continue
+            local = _local_names(scope)
+            if not local:
+                continue
+            for node in _own_nodes(scope):
+                if not isinstance(node, ast.Call):
+                    continue
+                if not isinstance(node.func, ast.Attribute) or node.func.attr != "get":
+                    continue
+                receiver = _dotted(node.func.value)
+                if receiver is not None and receiver.split(".")[0] in local:
+                    self.shadowed_gets.add(node)
+
     def _is_column(self, node: ast.AST) -> bool:
         if isinstance(node, ast.Constant) and node.value == SOFT_DELETE_COLUMN_LITERAL:
             return True
@@ -548,13 +573,43 @@ def _soft_delete_reads(
                 continue
             receiver = _dotted(func.value)
             if receiver is not None and receiver in names.lookup_tables:
-                continue
+                if node not in names.shadowed_gets:
+                    continue
             # A one-argument ``.get`` defaults to None ALL BY ITSELF, which is
             # the permissive answer arrived at by omission rather than by
             # decision. It is reported as a read whose default is a synthetic
             # None so it lands on the same side of the line.
             default = node.args[1] if len(node.args) > 1 else ast.Constant(value=None)
             found.append((node, default))
+    return found
+
+
+def _local_names(scope: ast.AST) -> set[str]:
+    """Names this scope binds itself: parameters, assignments, and walrus targets.
+
+    A name bound here is not the module-level name it happens to spell the same
+    way, which is the whole content of shadowing and the reason a name-keyed
+    exclusion cannot be right.
+    """
+    found: set[str] = set()
+    arguments = getattr(scope, "args", None)
+    if arguments is not None:
+        for group in ("posonlyargs", "args", "kwonlyargs"):
+            found.update(item.arg for item in getattr(arguments, group, []) or [])
+        for single in (getattr(arguments, "vararg", None), getattr(arguments, "kwarg", None)):
+            if single is not None:
+                found.add(single.arg)
+    for node in _own_nodes(scope):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    found.add(target.id)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            found.add(node.target.id)
+        elif isinstance(node, ast.NamedExpr) and isinstance(node.target, ast.Name):
+            found.add(node.target.id)
+        elif isinstance(node, (ast.For, ast.AsyncFor)) and isinstance(node.target, ast.Name):
+            found.add(node.target.id)
     return found
 
 
@@ -568,9 +623,13 @@ def _is_container(node: ast.AST) -> bool:
     if isinstance(node, (ast.Dict, ast.Set, ast.DictComp, ast.SetComp)):
         return True
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-        return node.func.id in {"dict", "set", "frozenset"}
+        # `MappingProxyType({...})` is how this package freezes a table, and all
+        # nineteen uses of it here are THE BARE IMPORTED NAME. An earlier version
+        # matched only the dotted `types.MappingProxyType(...)` form, which this
+        # repository never writes, so the exclusion missed its own house style
+        # and fired on a real table in `write/metadata.py`, a declared reader.
+        return node.func.id in {"dict", "set", "frozenset", "MappingProxyType"}
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-        # `MappingProxyType({...})`, which is how this package freezes a table.
         return node.func.attr in {"MappingProxyType"}
     return False
 
@@ -624,7 +683,12 @@ def _scopes(tree: ast.AST):
     """
     yield tree
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        # ClassDef is here because `_own_nodes` stops AT one, so without it no
+        # scope ever walks a class body and the launder rules were blind to
+        # every statement written directly in a class. The direct permissive rule
+        # still saw them, since it walks the whole tree; only the laundering
+        # routes were unreachable.
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             yield node
 
 
@@ -663,7 +727,13 @@ def _laundered_reads(tree: ast.AST, names: SoftDeleteNames) -> list[ast.AST]:
                 targets, value = [statement.target], statement.value
             if value is None:
                 continue
-            if not _soft_delete_reads(value, names):
+            reads = _soft_delete_reads(value, names)
+            # A PRESENCE TEST IS NOT A HOLDER. `present = hasattr(row, COL)`
+            # binds a boolean about the column, not the marker, so a later
+            # `present = False` is somebody tracking their own flag rather than
+            # defaulting a tombstone to active. `hasattr` is recognized as a read
+            # for the conditional rule and for the reader pin, not for this one.
+            if all(_is_presence_test(node) for node, _ in reads):
                 continue
             for target in targets:
                 name = _dotted(target)
@@ -672,9 +742,7 @@ def _laundered_reads(tree: ast.AST, names: SoftDeleteNames) -> list[ast.AST]:
 
         if not holders:
             continue
-        for statement in _own_nodes(scope):
-            if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
-                continue
+        for statement in _rebinding_statements(scope, holders):
             name = _dotted(statement.targets[0])
             if name in holders and names.is_permissive(statement.value):
                 found.append(statement)
@@ -682,18 +750,60 @@ def _laundered_reads(tree: ast.AST, names: SoftDeleteNames) -> list[ast.AST]:
     for node in ast.walk(tree):
         if not isinstance(node, ast.IfExp):
             continue
-        # THE TEST MUST NAME THE COLUMN. Without that, any conditional with the
-        # marker on one side and a falsey literal on the other fired, and
-        # `line = f"deleted={row.rb_local_deleted}" if row else ""` is an
-        # ordinary summary string, not a defaulted read. What makes the real
-        # shape a defect is that the CONDITION is about the column's presence.
-        if not _soft_delete_reads(node.test, names):
-            continue
         for kept, other in ((node.body, node.orelse), (node.orelse, node.body)):
-            if _soft_delete_reads(kept, names) and names.is_permissive(other):
+            # THE KEPT BRANCH MUST BE THE READ, not merely contain it. Gating on
+            # the TEST instead was silent on `deleted = row.rb_local_deleted if
+            # row else False`, which is the defect class exactly: a missing row
+            # read as active. Requiring identity keeps
+            # `f"deleted={row.rb_local_deleted}" if row else ""` silent, because
+            # there the branch is a formatted string that merely quotes the
+            # value, and gives back the five real shapes the test gate lost.
+            if not any(read is kept for read, _ in _soft_delete_reads(kept, names)):
+                continue
+            if names.is_permissive(other):
                 found.append(node)
                 break
     return found
+
+
+def _is_presence_test(node: ast.AST) -> bool:
+    """Whether this read asks IF the column is there rather than what it says."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "hasattr"
+    )
+
+
+def _rebinding_statements(scope: ast.AST, holders: dict[str, ast.AST]):
+    """Assignments that rebind a holder, including through ``nonlocal``.
+
+    A nested function declaring ``nonlocal marker`` and assigning to it rebinds
+    the OUTER variable. ``_own_nodes`` stops at that function, so the overwrite
+    was invisible from the enclosing scope while the nested scope held no
+    marker of its own, and the launder went unseen in both. Python's own
+    semantics say it is one variable, so the walk follows the declaration rather
+    than the indentation.
+
+    ``global`` is treated the same way for a module-level holder, because it is
+    the same statement with a different target scope.
+    """
+    for statement in _own_nodes(scope):
+        if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+            yield statement
+    for node in ast.walk(scope):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        declared: set[str] = set()
+        for inner in ast.walk(node):
+            if isinstance(inner, (ast.Nonlocal, ast.Global)):
+                declared.update(inner.names)
+        if not declared & set(holders):
+            continue
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.Assign) and len(inner.targets) == 1:
+                if _dotted(inner.targets[0]) in declared:
+                    yield inner
 
 
 def permissive_soft_delete_reads(source: str) -> list[str]:

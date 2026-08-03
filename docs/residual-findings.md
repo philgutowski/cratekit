@@ -702,32 +702,47 @@ caught a defect its own author shipped the same afternoon, in the one shape
 nobody thinks to look at: prose about the rule is subject to the rule.
 
 **Residual in the hook path, stated rather than hidden.** The commit-msg hook is
-handed the message BEFORE git's cleanup, so it removes git's comment lines, which
-is right for the editor path where a template comment would otherwise refuse a
-commit that closes nothing. It is wrong for `-m` and `-F`, whose cleanup mode is
-`whitespace`, defined as "same as strip except #commentary is not removed": a
-real trailer on a `#`-leading line survives into the commit and the hook will
-have dropped it. Detecting the cleanup mode from inside the hook means reading
-the same configuration git is about to apply, which is not worth it, so **the
-hook is best-effort against that one shape and CI is authoritative**. The CI path
-reads post-cleanup messages and now strips nothing at all.
+handed the message BEFORE git's cleanup, so it removes git's comment lines and
+cuts at git's scissors line. That is right for the editor path, where a template
+comment would otherwise refuse a commit that closes nothing. It is wrong for `-m`
+and `-F`, whose cleanup mode is `whitespace`, defined as "same as strip except
+#commentary is not removed", and **two** shapes are lost there rather than one: a
+real trailer on a `#`-leading line, and a real trailer below a genuine
+git-shaped scissors line, because under `whitespace` git does not cut at a
+scissors line at all. Both reach history and close the issue while the hook
+reported clean.
 
-**Merge-order gap, and a cheap assertion that would close it.** Rule B catches
-the U36 and U32 key disagreement only if U32 merges first. If U36 closes first it
-is owed nothing, every rule is green, and U32 then lands a key that can never
-resolve. Rule A, the similarity heuristic and the three-state probe all miss it,
-because `cratekit.write` exists so the state is `absent`, an armed countdown.
+Detecting the cleanup mode from inside the hook means reading the same
+configuration git is about to apply, which is not worth it, so **the hook is
+best-effort against those two shapes and CI is authoritative**. The CI path reads
+post-cleanup messages and now strips nothing at all, so it catches both.
 
-Measured, an order-independent rule exists and is about fifteen lines: for a
-register key whose parent package EXISTS and whose module does not, fire when an
-existing sibling module's name CONTAINS the key's last segment.
-`cratekit.write.rebuild` beside a landed `tree_rebuild.py` fires whichever branch
-merges second. Run over the whole register with that merge simulated it fires
-exactly once, on that case. **Not shipped**, because it is a substring heuristic
-introduced in a round reserved for specified fixes, and a future key like
-`cratekit.core.restore` beside a `restore_helpers.py` would be a false positive
-against a unit that did nothing wrong. Recorded so the choice is available rather
-than rediscovered.
+Two more, pre-existing and recorded rather than fixed. `re-fixes #NN` fires,
+because the lookbehind rejects a keyword preceded by `/` or a word character but
+not by `-`; GitHub's own behaviour there is ambiguous, so the refusal is not
+clearly wrong. And with `core.commentChar` set to anything but `#`, both the
+comment pattern and the scissors pattern miss, so the hook scans the entire
+verbose diff. Neither is new.
+
+**Merge order: the gap was never a silent miss, and the fix is a better message.**
+An earlier draft of this entry said Rule B catches the U36 and U32 key
+disagreement only if U32 merges first. That was wrong, and wrong in the
+reassuring direction. `pending_units()` keeps a unit owed for as long as its
+entry sits in the register, so if U36 merges first and lands a differently named
+module, U32 is **still owed** and Rule B refuses U32's close in either order. The
+failure was always loud.
+
+What order changes is only WHEN the diagnosis arrives, and a substring rule that
+asserted the mismatch was measured and rejected: `cratekit.core.restore` is U32's
+LIVE key today, so such a rule would eventually go red against a unit that did
+nothing wrong, which is a bad trade for moving a diagnosis earlier.
+
+Taken instead, with no heuristic surface: when Rule B refuses, the message names
+the sibling modules present in the key's parent package. A person reading a
+permanent exit 2 is told "cratekit.write.rebuild is absent and write already
+contains tree_rebuild" rather than guessing. Verified to produce that note for
+the simulated case and **no** note for `cratekit.core.restore`, which has no near
+miss in its package.
 
 **Left open, and this is what needs the issue.** Nothing decides WHICH record is
 right when they disagree, and this branch deliberately did not pick for U23. The
