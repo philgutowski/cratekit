@@ -723,6 +723,44 @@ six other agents were running full pytest suites on the same machine. Neither
 figure means what it says. A timing verdict has to record the machine load it
 was taken under, or say it could not.
 
+### A correction to the composite technique: the coefficient is a constant too
+
+U12 round 4's other good idea was replacing bare constants with DECLARATIVE
+RELATIONSHIPS, asserting `_PROBE_REAP_SECONDS >= 2 * _RELEASE_SECONDS` rather
+than pinning a number. Its verification found all three new relationships have
+FREE COEFFICIENTS. Measured, all zero deaths:
+
+    margin multiplier      2 *   to 1 *     0
+    deadline multiplier    1.5 * to 1.0 *   0
+    _A_COLD_MODEL_LOAD_SECONDS 60.0 to 1.0  0
+    deadline upper edge  600.0 to 6000.0    0
+
+The third takes the deadline's whole lower bound to 1.5 seconds with a green
+suite. The verifier's sentence is the one to keep: **a bound whose own
+coefficient can be halved with the suite green is the shape this unit exists to
+catch, restated one level up.**
+
+A relationship whose multiplier is free is not more pinned than the number it
+replaced, only less legible. **Mutate every coefficient, not just every
+constant.**
+
+Second correction, from the same report, and it is a subtler version of the
+fourth pattern. Round 3 pinned the controller field guard by mutating it toward
+a WHOLE FIELD match, which kills 1. Mutating it the other way, toward a
+SUBSTRING match, kills 0, and the substring direction is precisely the defect
+round 3's commit claims to have fixed. A line reading `7:memoryfoo:/x` is
+accepted as the memory controller. **The row was true as measured and it tested
+the direction that cannot happen.** Mutate toward the failure that is possible,
+not only toward the one that is obviously wrong.
+
+Third, and it is worth carrying past this repository. The reap fixture is
+faithful in COST and not in KIND: `_RELEASE_SECONDS` is a `time.sleep(0.4)`,
+which does not dilate under contention, whereas a real probe child releasing a
+300 MB model does allocator and kernel work that would. 45 runs at load average
+up to 39 gave zero failures, so the test is stable, **but it is stable for a
+different reason than its docstring gives.** A test can be correct, green, and
+still model the wrong thing.
+
 ### What these findings have in common
 
 All three are the wave's two named patterns, again. U23 and U34 are IDENTITY
