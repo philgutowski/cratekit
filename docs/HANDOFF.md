@@ -354,7 +354,10 @@ entries remain, and the growth is the mechanism working rather than debt piling
 up: U11 and U19 between them added five, each one an obligation that used to live
 in a docstring. U34 then cleared its own and added one, because clearing the
 entry is the required act of landing and the four verbs it left behind had to
-land somewhere that a mechanism reads (R-16).
+land somewhere that a mechanism reads. See the residual titled "Four report verbs
+were owed by a unit that was about to close, and named a module nobody could
+build", cited by title because `main` carries a different finding under that
+number.
 
 | Unit | Target | Owes |
 |---|---|---|
@@ -363,7 +366,7 @@ land somewhere that a mechanism reads (R-16).
 | U23 | `cratekit.adopt` | the adoption review surface |
 | U24 | `cratekit.deletion.cli` | declines and tombstones go through the revocable decision store |
 | U27 | `cratekit.cli.doctor` | a database acknowledged outside the library root is reported every run |
-| U27 | `cratekit.cli.reports` | the four report verbs, and the two report engines two of them still have none of. See R-16: U27 is a judgement, not a decision |
+| U27 | `cratekit.cli.reports` | the four report verbs, and the two report engines two of them still have none of. See the residual titled "Four report verbs were owed by a unit that was about to close, and named a module nobody could build": U27 is a judgement, not a decision |
 | U28 | `path:skills` | the shipped skills tree |
 | U32 | `cratekit.core.restore` | the restore verb, and the three obligations U8 registered against it |
 | U37 | `cratekit.intake`, `cratekit.intake.collection_xml` | record routing intents at the decision, close through `close_run`, and never emit a `<TEMPO>` element |

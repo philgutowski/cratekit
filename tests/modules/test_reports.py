@@ -35,6 +35,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -1997,6 +1998,52 @@ def _nested_scopes(node: ast.AST):
             yield from _nested_scopes(child)
 
 
+#: The statement fields a single run can SKIP ENTIRELY, by the node that holds
+#: them. ``finalbody`` is deliberately absent: a ``finally`` block runs on every
+#: path there is, so a binding written in one is not optional at all.
+_BRANCHED_FIELDS = ("body", "orelse", "handlers", "cases")
+
+_BRANCHING = (
+    ast.If,
+    ast.Try,
+    ast.For,
+    ast.AsyncFor,
+    ast.While,
+    ast.Match,
+    ast.match_case,
+)
+
+
+def _branched(scope: ast.AST) -> frozenset[int]:
+    """Every statement in one scope a single run can skip, by node identity.
+
+    A FAILED ATTEMPT VETOES A BINDING, which is the rule that keeps ``config =
+    dict(raw)`` from leaving an import's answer live underneath it, and a veto
+    written inside a branch is a veto that may never happen. ``class Keeper`` at
+    module level followed by ``if True: Keeper = dataclass(Keeper)`` has a path on
+    which the name is still the class, so ``Keeper.mod.save(cfg)`` writes the
+    configuration file on that path and the veto is not the whole story.
+
+    This changes only the VETO. A conditional statement that resolves still binds
+    what it resolved to, and a name that NOTHING unconditional binds is still
+    taken by ``_names_taken`` and still comes back unresolved, so the ten ordinary
+    shadow shapes are untouched: their names are taken by a loop target, a ``with``
+    target or an ``except`` target and nothing puts them back.
+
+    Read as node identity rather than as a line range because ``_scope_nodes``
+    hands out nodes, and comparing what two functions each computed off the same
+    nodes is what stops them drifting.
+    """
+    found: set[int] = set()
+    for holder in _scope_nodes(scope):
+        if not isinstance(holder, _BRANCHING):
+            continue
+        for field in _BRANCHED_FIELDS:
+            for one in getattr(holder, field, None) or []:
+                found.update(id(inner) for inner in ast.walk(one))
+    return frozenset(found)
+
+
 def _target_names(targets) -> set[str]:
     """Every BARE NAME an assignment target list binds, unpacking as it goes."""
     found: set[str] = set()
@@ -2063,6 +2110,49 @@ def _defined_here(node: ast.AST) -> frozenset[str]:
     )
 
 
+def _rebound_to_itself(node: ast.AST, instance: _Instance = _Instance()) -> frozenset[str]:
+    """The receiver keys one assignment binds to the value they already hold.
+
+    ``Keeper = Keeper`` is the whole of it, and it is not a curiosity: it is what
+    a re-export, a ``global`` handoff and a conditional wrapper collapse to once
+    the wrapper is edited out. Read as an ordinary assignment it is a name bound
+    TWICE, once by the ``class`` statement and once here, and the second binding
+    resolves to nothing on the first pass because the name is not in the table
+    yet. A name is kept only when every binding of it agrees, so the class was
+    thrown away and ``Keeper.mod.save(cfg)`` wrote the configuration file quietly.
+
+    Nothing is undecidable about this one. A statement whose right hand side is
+    the SPELLING of its own target cannot change what that target is bound to,
+    whatever the target was bound to and whether or not this guard can read it.
+    That is what separates it from ``Keeper = dataclass(Keeper)``, where the
+    answer depends on what the callee hands back, which is what the residual
+    "A class rebound after its own definition is no longer reachable by name"
+    files as undecidable.
+
+    Recorded as a set of KEYS rather than of names so ``self.mod = self.mod`` is
+    the same fact under the same rule, and so the two callers, the scope table and
+    the shadow, cannot disagree about which statements are idle.
+
+    IDLE IS NOT SILENT. The caller records what the key ALREADY HELD, which is the
+    only reading that gets both directions: it is why ``class Keeper: config =
+    config`` still binds the module as a class attribute, the ordinary way a module
+    is pinned for injection, and why it does so without needing to know what the
+    right hand side would have resolved to. When the held value cannot be read the
+    statement contributes nothing at all rather than a failed attempt, because a
+    statement that provably changed nothing cannot be evidence that something
+    changed.
+    """
+    if not isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+        return frozenset()
+    source = _receiver_key(node.value, instance) if node.value is not None else ""
+    if not source:
+        return frozenset()
+    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+    return frozenset(
+        key for key in (_receiver_key(one, instance) for one in targets) if key == source
+    )
+
+
 def _names_taken(node: ast.AST) -> frozenset[str]:
     """Every bare name one scope binds to something of its OWN.
 
@@ -2081,7 +2171,7 @@ def _names_taken(node: ast.AST) -> frozenset[str]:
     """
     taken = set(_defined_here(node))
     for child in _scope_nodes(node):
-        taken |= _bound_here(child)
+        taken |= _bound_here(child) - _rebound_to_itself(child)
     return frozenset(taken)
 
 
@@ -2175,6 +2265,62 @@ def _class_key(node: ast.ClassDef) -> str:
     has no walk above it at all. Derived rather than passed, so they cannot drift.
     """
     return f"{node.name}{_DEFINED}{node.lineno}"
+
+
+def _sequences(scope: ast.AST):
+    """Every STATEMENT LIST one scope holds, stopping where a nested scope begins.
+
+    Two statements in one list run one after the other. Two statements in two
+    lists of one ``if`` or one ``try`` do not, and that is the only distinction
+    ``_alternate_classes`` needs.
+    """
+    for holder in (scope, *_scope_nodes(scope)):
+        for _, value in ast.iter_fields(holder):
+            if isinstance(value, list) and any(isinstance(one, ast.stmt) for one in value):
+                yield value
+
+
+def _alternate_classes(scope: ast.AST) -> dict[str, tuple[str, ...]]:
+    """Same-named class definitions in one scope that NO SINGLE RUN reaches twice.
+
+    A scope that writes ``class Keeper`` twice in one statement list has one
+    reachable ``Keeper``, the last, and the first one's attributes are gone: the
+    name has been taken and ``Keeper.mod`` is an ``AttributeError``. Reporting
+    nothing there is correct, and the residual "A class rebound after its own
+    definition is no longer reachable by name" records it.
+
+    That judgement is FALSE the moment the two definitions sit in two arms of one
+    conditional, because only one arm runs and no name was taken from anything.
+    ``Keeper.mod`` is then whatever the arm that ran bound, so a module bound in
+    EITHER arm can write, on the same reading ``_bound_value`` already gives
+    ``alias = config if flag else other``.
+
+    What comes back is keyed by the definition the NAME settles to, which is the
+    last one, and lists the definitions that no run can have replaced it. It is
+    kept apart from ``families`` on purpose. Two arms are not two classes in an
+    inheritance relation: an alternate is reachable through the CLASS spelling and
+    through nothing else, because ``self`` inside one arm's method is an instance
+    of that arm's class and never of the other's.
+    """
+    blocks: dict[int, int] = {}
+    for block in _sequences(scope):
+        for one in block:
+            blocks[id(one)] = id(block)
+    order: dict[str, list[ast.ClassDef]] = {}
+    for nested in _nested_scopes(scope):
+        if isinstance(nested, ast.ClassDef):
+            order.setdefault(nested.name, []).append(nested)
+    found: dict[str, tuple[str, ...]] = {}
+    for entries in order.values():
+        settled = entries[-1]
+        others = tuple(
+            _class_key(one)
+            for one in entries[:-1]
+            if blocks.get(id(one)) != blocks.get(id(settled))
+        )
+        if others:
+            found[_class_key(settled)] = others
+    return found
 
 
 def _mapping_operands(node: ast.AST | None):
@@ -2549,6 +2695,15 @@ def _scope_own_bindings(
     one that does not, so the name is nobody's module and ``config.load`` under
     it is an ordinary attribute read.
 
+    A name that did not settle comes back with an EMPTY answer rather than not
+    coming back at all, which is the same distinction the object half draws below
+    and is needed for the same reason. ``class Row(Base): mod = None`` over
+    ``class Base: mod = config`` binds nothing this table can read, and while that
+    was recorded as silence the caller had no attribute to write for ``Row`` and
+    ``Base``'s was carried into the gap. Every reader of this table tests the
+    answer for truth, so an empty one is inert everywhere except where a key being
+    PRESENT is itself the fact.
+
     EVERY binding means every one, including the ones ``_binds`` cannot read at
     all. A ``with`` target, an ``except`` target, an augmented assignment and an
     import of something that is not an admitted module each take a name and hand
@@ -2557,6 +2712,13 @@ def _scope_own_bindings(
     and under it a file that imported ``config`` and then rebound the name kept
     the import's answer for the whole scope: the import resolved, the other
     statement said nothing, and nothing beats something.
+
+    A veto written INSIDE A BRANCH is not counted, because a run that skipped that
+    branch never cast it. ``class Keeper`` followed by ``if flag: Keeper =
+    dataclass(Keeper)`` still has a path on which the name is the class, and a
+    write reachable on one path is a write. What that does NOT do is put a name
+    back: ``_names_taken`` is unchanged, so a name whose only binding is inside a
+    branch is still taken and still comes back unresolved.
 
     A NESTED DEFINITION is read for what it BINDS rather than only as a name this
     cannot resolve. A ``def`` still binds something with no value in this table,
@@ -2577,6 +2739,17 @@ def _scope_own_bindings(
     ``self.mod``, so the fact stays a fact about one class DEFINITION rather than
     about every class anybody spelled that way.
 
+    AN OBJECT KEY RECORDS A FAILED ATTEMPT TOO, on the same rule as a name and for
+    the same reason. Binding nothing and taking the key back are two different
+    facts, and while an unreadable right hand side recorded NOTHING, the second
+    was invisible: ``self.mod = dict(raw)`` in ``Row.__init__`` left no key under
+    ``Row``, and the key ``Base`` declared was carried down into that hole. Six
+    ordinary shapes wrote the configuration file with both structural guards and
+    the audit green on that reading, every one of them a subclass overriding an
+    attribute its base binds, which is the most ordinary thing inheritance does.
+    A key that resolves still wins over one that did not, because two assignments
+    to one attribute of one class mean the attribute IS the module on one path.
+
     The loop is a FIXED POINT for the same reason the outer one is. ``alias =
     config`` followed by ``beta = alias`` needs two passes, and a pass count
     written as a number is a constant nothing can drive. It terminates because
@@ -2590,15 +2763,32 @@ def _scope_own_bindings(
         before = dict(objects), dict(settled)
         table = {**modules, **objects, **settled}
         attempts: dict[str, list[_Bound]] = {}
+        skippable = _branched(scope)
         for child in _scope_nodes(scope):
             found, names = _binds(child, table, instance)
             direct |= names
+            idle = _rebound_to_itself(child, instance)
+            optional = id(child) in skippable
             for key, owner in found.items():
+                if key in idle or (optional and not owner):
+                    continue
                 if key.isidentifier():
                     attempts.setdefault(key, []).append(owner)
                 elif owner:
                     objects[key] = owner
-            for name in _bound_here(child) - set(found):
+                else:
+                    objects.setdefault(key, "")
+            for key in idle:
+                held = table.get(key, "")
+                if not held:
+                    continue
+                if key.isidentifier():
+                    attempts.setdefault(key, []).append(held)
+                else:
+                    objects[key] = held
+            if optional:
+                continue
+            for name in _bound_here(child) - set(found) - idle:
                 attempts.setdefault(name, []).append("")
         made = {
             nested.name: _class_of(nested, table, instance)
@@ -2608,9 +2798,8 @@ def _scope_own_bindings(
         for name in _defined_here(scope):
             attempts.setdefault(name, []).append(made.get(name, ""))
         settled = {
-            key: owners[0]
+            key: owners[0] if all(owners) and len(set(owners)) == 1 else ""
             for key, owners in attempts.items()
-            if all(owners) and len(set(owners)) == 1
         }
         if (objects, settled) == before:
             return {**objects, **settled}, frozenset(direct)
@@ -2779,6 +2968,7 @@ def _walk_bindings(
     reachable: frozenset[str],
     objects: dict[str, _Bound],
     families: dict[str, tuple[str, ...]],
+    alternates: dict[str, tuple[str, ...]],
     owner: str = "",
     instance: _Instance = _Instance(),
 ) -> tuple[dict[str, _Bound], frozenset[str]]:
@@ -2808,27 +2998,43 @@ def _walk_bindings(
     any method, so both keys are written; and its methods are handed the table
     the class INHERITED rather than the one the class built, because a class
     body's names are not visible inside its methods.
+
+    A BINDING THAT DID NOT RESOLVE IS STILL WRITTEN, under both spellings, and
+    that is the class body's half of the failed attempt rule. ``class Row(Base):
+    mod = None`` takes the attribute back from ``Base`` at runtime whatever
+    ``None`` is, and while a falsy value was skipped here the key stayed empty for
+    ``Row`` and inheritance filled it from ``Base``. A key that resolves still
+    overwrites one that did not, and one that did not never overwrites one that
+    did, so the answer does not depend on which scope this walk reached first.
     """
     visible, visible_direct, own = _visible_bindings(
         scope, {**inherited, **objects}, reachable, instance
     )
-    objects.update(
-        {key: value for key, value in own.items() if not key.isidentifier()}
-    )
+    for key, value in own.items():
+        if not key.isidentifier():
+            _record(objects, key, value)
     if isinstance(scope, ast.ClassDef) and owner:
         for key, value in own.items():
-            if key.isidentifier() and value:
-                objects[f"{owner}.{key}"] = value
-                objects[f"{owner}{_INSTANCE}.{key}"] = value
+            if key.isidentifier():
+                _record(objects, f"{owner}.{key}", value)
+                _record(objects, f"{owner}{_INSTANCE}.{key}", value)
     handed, handed_direct = _handed_to_members(
         scope, (visible, visible_direct), (dict(inherited), reachable)
     )
+    alternates.update(_alternate_classes(scope))
     for nested in _nested_scopes(scope):
         member, member_instance = _member_scope(scope, owner, instance, nested)
         if isinstance(nested, ast.ClassDef):
             families[member] = _class_of(nested, visible, instance).bases
         nested_visible, _ = _walk_bindings(
-            nested, handed, handed_direct, objects, families, member, member_instance
+            nested,
+            handed,
+            handed_direct,
+            objects,
+            families,
+            alternates,
+            member,
+            member_instance,
         )
         if isinstance(nested, (ast.FunctionDef, ast.AsyncFunctionDef)):
             returned = _returned_value(nested, nested_visible, member_instance)
@@ -2836,6 +3042,22 @@ def _walk_bindings(
                 root = f"{owner}{_INSTANCE}." if isinstance(scope, ast.ClassDef) else ""
                 objects[f"{root}{nested.name}()"] = returned
     return visible, visible_direct
+
+
+def _record(objects: dict[str, _Bound], key: str, value: _Bound) -> None:
+    """Write one declared attribute key: resolved wins, unresolved only fills.
+
+    Both directions of one rule, in the one place both halves of the walk use it,
+    because they must not disagree. A key that RESOLVED is the strongest fact
+    available and overwrites anything, so a class that binds its attribute to the
+    module in one method and to an argument in another is still a class that can
+    write. A key that did NOT resolve is weaker than that and stronger than
+    silence: it says the class took the attribute for itself, which is what stops
+    a base's binding being carried into it, and it never overwrites a resolved
+    answer, so the result does not depend on the order the walk visited scopes in.
+    """
+    if value or key not in objects:
+        objects[key] = value
 
 
 def _related(
@@ -2875,7 +3097,9 @@ def _related(
 
 
 def _inherited_attributes(
-    declared: dict[str, _Bound], families: dict[str, tuple[str, ...]]
+    declared: dict[str, _Bound],
+    families: dict[str, tuple[str, ...]],
+    alternates: dict[str, tuple[str, ...]],
 ) -> dict[str, _Bound]:
     """Every attribute key a class REACHES, from the keys its family DECLARED.
 
@@ -2894,6 +3118,17 @@ def _inherited_attributes(
     exactly what a mixin relies on. The two are separated here rather than merged
     because merging them is what would let one subclass see a sibling's binding.
 
+    AN OVERRIDE BLOCKS UPWARD AND NEVER DOWNWARD, which is the same asymmetry the
+    two directions already have and is the half a failed attempt makes visible. A
+    nearer ancestor that took the attribute for itself really does stand between
+    the reader and the farther one, so its unresolved key is carried and stops the
+    carry there: that is what makes ``Base`` bind the module, ``Middle`` rebind it
+    to an argument and ``Row`` read it come out quiet. A SUBCLASS that takes the
+    attribute for itself stands between nobody and nothing, because ``self`` in a
+    mixin's method is an instance of some OTHER subclass just as easily, so an
+    unresolved key is skipped on the way down and a sibling that binds the real
+    module is still reached.
+
     Kept apart from the declared table rather than folded into it, so that a
     derived key is never re-derived from. The caller merges with declared on top.
     """
@@ -2901,10 +3136,15 @@ def _inherited_attributes(
     for one in families:
         upward = _related(one, families, upward=True)
         for other in upward:
-            _carry(found, declared, other, one, f"{other}.")
-        downward = [key for key in _related(one, families, upward=False)]
-        for other in upward + [key for key in downward if key not in upward]:
-            _carry(found, declared, other, one, f"{other}{_INSTANCE}.")
+            _carry(found, declared, other, one, f"{other}.", overriding=True)
+        for other in upward:
+            _carry(found, declared, other, one, f"{other}{_INSTANCE}.", overriding=True)
+        for other in _related(one, families, upward=False):
+            if other not in upward:
+                _carry(found, declared, other, one, f"{other}{_INSTANCE}.", overriding=False)
+    for one, others in alternates.items():
+        for other in others:
+            _carry(found, declared, other, one, f"{other}.", overriding=False)
     return found
 
 
@@ -2914,11 +3154,21 @@ def _carry(
     source: str,
     target: str,
     prefix: str,
+    *,
+    overriding: bool,
 ) -> None:
-    """Copy one class's declared keys onto another class's root, nearest wins."""
+    """Copy one class's declared keys onto another class's root, nearest wins.
+
+    ``overriding`` says whether a key the source declared but could not resolve is
+    worth carrying. Up the inheritance chain it is, because a nearer class that
+    took the attribute is between the reader and everything above it. Across a
+    mixin or an alternate definition it is not, because neither of those is
+    between anything and anything.
+    """
     for key, value in declared.items():
-        if key.startswith(prefix):
-            found.setdefault(f"{target}{key[len(source):]}", value)
+        if not key.startswith(prefix) or (not value and not overriding):
+            continue
+        found.setdefault(f"{target}{key[len(source):]}", value)
 
 
 def _global_aliases(
@@ -2987,11 +3237,14 @@ def _writer_bindings(
     """
     declared: dict[str, _Bound] = {}
     families: dict[str, tuple[str, ...]] = {}
+    alternates: dict[str, tuple[str, ...]] = {}
     reached: dict[str, _Bound] = {}
     while True:
         before = dict(declared), dict(families)
-        names, direct = _walk_bindings(tree, reached, frozenset(), declared, families)
-        reached = _inherited_attributes(declared, families)
+        names, direct = _walk_bindings(
+            tree, reached, frozenset(), declared, families, alternates
+        )
+        reached = _inherited_attributes(declared, families, alternates)
         if (declared, families) == before:
             return {
                 **reached,
@@ -3642,6 +3895,130 @@ def test_the_guard_literals_have_no_element_written_twice(name):
 
     repeated = _elements_written_twice(inspect.getsource(sys.modules[__name__]), name)
     assert not repeated, f"written twice and collapsed at parse time: {repeated}"
+
+
+#: Where a residual finding is DEFINED, and the only file allowed to spell one of
+#: this unit's numbers.
+RESIDUAL_FINDINGS = REPO_ROOT / "docs" / "residual-findings.md"
+
+#: The files this unit writes, and therefore the files it can keep true. A
+#: residual citation in any of them has to be a TITLE.
+#:
+#: `docs/` IS IN THE LIST, and leaving it out was the hole. The claim that every
+#: citation is a title was checked by reading the source, the docstrings and the
+#: tests, all three of which were clean, while the handoff document the same
+#: commit wrote cited a number twice. A claim checked over a smaller set than it
+#: covers is this repository's fourth recurring defect, and the answer to it is a
+#: check rather than a more careful reading.
+CITING_FILES = (
+    "tests/modules/test_reports.py",
+    "src/cratekit/modules/reports/__init__.py",
+    "src/cratekit/modules/reports/aging.py",
+    "src/cratekit/modules/reports/duplicates.py",
+    "src/cratekit/modules/reports/export.py",
+    "docs/mutation-u34.md",
+    "docs/mutation/u34-round-7-reverts.py",
+    "docs/mutation/u34-round-8-reverts.py",
+    "docs/HANDOFF.md",
+)
+
+#: The residual numbers THIS BRANCH introduced. Every one of them names a
+#: different finding on `main`, or will as soon as `main` reaches it, because both
+#: sides append to one file from the same counter. That is what makes a number an
+#: unstable address and a title a stable one.
+UNIT_RESIDUALS = tuple(f"R-{number}" for number in range(16, 27))
+
+_CITATION = re.compile(r"\bR-(\d+)\b")
+
+#: The ONE passage whose subject is the numbers themselves, delimited rather than
+#: guessed at. A statement that says which numbers collide has to spell them, and
+#: an exemption that is a pair of markers can be grepped, cannot widen by accident,
+#: and shows up in a diff when somebody moves it.
+_COLLISION_OPEN = "[[collision-set]]"
+_COLLISION_CLOSE = "[[/collision-set]]"
+
+
+def _is_delimiter(line: str, marker: str) -> bool:
+    """Whether one line IS a marker rather than merely containing one.
+
+    A marker is a line of its own, optionally commented. That distinction is
+    load-bearing rather than tidiness: the mutation row that reverts a citation
+    back to a number carries the closing marker as DATA, inside a string, and a
+    substring test would read that as a second delimiter and lose count.
+    """
+    return line.strip().lstrip("# ").strip() == marker
+
+
+def _citing_lines(text: str):
+    """Every line of one file that is not inside the collision-set passage."""
+    exempt = False
+    for number, line in enumerate(text.splitlines(), start=1):
+        if _is_delimiter(line, _COLLISION_OPEN):
+            exempt = True
+        elif _is_delimiter(line, _COLLISION_CLOSE):
+            exempt = False
+        elif not exempt:
+            yield number, line
+
+
+def test_this_units_residuals_are_cited_by_title_and_never_by_number():
+    """The citation rule, measured over `docs/` too rather than asserted about it.
+
+    Only THIS UNIT'S numbers are banned, and only in the files this unit writes.
+    A citation of ``R-13`` written by another unit before this branch existed is
+    somebody else's address to keep stable, and a guard that failed on it would be
+    a guard somebody deletes.
+
+    The floor of the range is checked against the residual file itself, so the
+    constant cannot quietly stop describing what this branch added.
+    """
+    defined = set(_CITATION.findall(RESIDUAL_FINDINGS.read_text()))
+    assert {"16", "25"} <= defined, "the residual file no longer defines this unit's range"
+    # THE COVERAGE IS ASSERTED, not left to be inferred from the list. The claim
+    # this replaces was true of source, docstrings and tests and false of `docs/`,
+    # so what has to be checkable is the WIDTH as much as the result: a guard that
+    # quietly stopped reading a document would go green on the defect it exists
+    # for. Every named file has to exist too, so a rename cannot drop coverage.
+    assert {"docs/mutation-u34.md", "docs/HANDOFF.md"} <= set(CITING_FILES)
+    missing = [name for name in CITING_FILES if not (REPO_ROOT / name).exists()]
+    assert missing == [], missing
+    offenders: list[str] = []
+    for name in CITING_FILES:
+        path = REPO_ROOT / name
+        for number, line in _citing_lines(path.read_text()):
+            hits = {f"R-{one}" for one in _CITATION.findall(line)}
+            if hits & set(UNIT_RESIDUALS):
+                offenders.append(f"{name}:{number}: {line.strip()}")
+    assert offenders == [], offenders
+
+
+def test_the_collision_passage_is_the_only_exemption_and_it_is_delimited():
+    """The exemption's own guard, because an unmeasured exemption is the same hole.
+
+    Exactly two passages, in two named files, are allowed to spell this unit's
+    numbers: the statement that says WHICH numbers collide, and the one mutation
+    row that reverts a citation back to a number and therefore has to record it.
+    Both are subjects rather than uses. A marker left open would exempt everything
+    after it to the end of the file, so both markers are required, in order, once
+    each, and no other covered file may carry either.
+
+    This module is not checked for the markers because it DEFINES them and
+    therefore spells them by necessity. It is named rather than pattern matched.
+    """
+    exempted = ("docs/mutation-u34.md", "docs/mutation/u34-round-8-reverts.py")
+    for name in exempted:
+        lines = (REPO_ROOT / name).read_text().splitlines()
+        opens = [one for one, line in enumerate(lines) if _is_delimiter(line, _COLLISION_OPEN)]
+        closes = [one for one, line in enumerate(lines) if _is_delimiter(line, _COLLISION_CLOSE)]
+        assert len(opens) == 1, f"{name}: passage moved or multiplied"
+        assert len(closes) == 1, f"{name}: passage is not closed"
+        assert opens[0] < closes[0], name
+    allowed = (*exempted, "tests/modules/test_reports.py")
+    for name in CITING_FILES:
+        if name in allowed:
+            continue
+        lines = (REPO_ROOT / name).read_text().splitlines()
+        assert not any(_is_delimiter(one, _COLLISION_OPEN) for one in lines), name
 
 
 def test_the_walk_finds_every_module_in_the_package():
@@ -5010,6 +5387,275 @@ def test_a_class_key_names_one_class_and_never_two(shape, snippet):
     its NAME does the same to two factories that each return a ``Keeper`` and to
     a module that defines the name twice, and it leaves a parameter of that name
     unable to take it back, because a name is only shadowed while it is a name.
+    """
+    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
+
+
+#: SIX ORDINARY SHAPES, every one of them a subclass overriding an attribute its
+#: base binds, and every one of them reported as a write to the library by the
+#: round that added inheritance. Not one is evasion. Overriding an inherited
+#: attribute in a constructor is the most ordinary thing inheritance does.
+#:
+#: The hole is one line wide and the fix already existed thirty lines away.
+#: ``_scope_own_bindings`` records a FAILED ATTEMPT for a NAME an assignment took
+#: and could not resolve, because binding nothing and taking the name back are two
+#: different facts and silence cannot tell them apart. The OBJECT half of the same
+#: table recorded silence, so ``self.mod = dict(raw)`` in ``Row.__init__`` left no
+#: key under ``Row`` at all and ``_carry`` filled the gap from ``Base``.
+#:
+#: The direction matters and is measured both ways below: an override blocks
+#: UPWARD, where a nearer class really does stand between the reader and the
+#: farther one, and never DOWNWARD, where a mixin's ``self`` is as likely to be
+#: some other subclass.
+AN_OVERRIDE_TAKES_THE_ATTRIBUTE_BACK = [
+    (
+        "a subclass overrides in its own constructor with a plain dict",
+        "\n\nclass Base:\n    def __init__(self):\n        self.mod = config\n\n\n"
+        "class Row(Base):\n    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        "a subclass sets it to None and then to a parameter",
+        "\n\nclass Base:\n    def __init__(self):\n        self.mod = config\n\n\n"
+        "class Row(Base):\n    def __init__(self, mod):\n        self.mod = None\n"
+        "        self.mod = mod\n\n    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        "three classes deep, with the middle one rebinding to a parameter",
+        "\n\nclass Base:\n    def __init__(self):\n        self.mod = config\n\n\n"
+        "class Middle(Base):\n    def __init__(self, mod):\n        self.mod = mod\n\n\n"
+        "class Row(Middle):\n    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        "multiple inheritance, with two bases binding the name differently",
+        "\n\nclass Alpha:\n    def __init__(self):\n        self.mod = config\n\n\n"
+        "class Beta:\n    def __init__(self, mod):\n        self.mod = mod\n\n\n"
+        "class Row(Beta, Alpha):\n    def __init__(self, mod):\n        self.mod = dict(mod)\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        "a subclass whose constructor never calls its base's",
+        "\n\nclass Base:\n    def __init__(self):\n        self.mod = config\n\n\n"
+        "class Row(Base):\n    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n\n\n"
+        "class Other(Base):\n    pass\n",
+    ),
+    (
+        "a class body attribute set to None over a base that binds the module",
+        "\n\nclass Base:\n    mod = config\n\n\n"
+        "class Row(Base):\n    mod = None\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+]
+
+
+#: The writes the failed attempt rule must not cost, and they are the ones a rule
+#: written one degree too wide would take. An override is a fact about the class
+#: that wrote it, so it blocks what is ABOVE it and nothing else: not a sibling,
+#: not a mixin reading the same attribute through a different subclass, and not
+#: another method of the same class that binds the real module.
+AN_OVERRIDE_BLOCKS_NOTHING_ELSE = [
+    (
+        "a sibling subclass that binds the real module is still reached",
+        "\n\nclass WriterMixin:\n    def go(self, cfg):\n        self.mod.save(cfg)\n\n\n"
+        "class Injected(WriterMixin):\n    def __init__(self, mod):\n        self.mod = mod\n\n\n"
+        "class Holder(WriterMixin):\n    def __init__(self):\n        self.mod = config\n",
+    ),
+    (
+        "one class binding the attribute twice, the module last",
+        "\n\nclass Row:\n    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def load(self):\n        self.mod = config\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        "one class binding the attribute twice, the module first",
+        "\n\nclass Row:\n    def load(self):\n        self.mod = config\n\n"
+        "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        "a base that binds the module below a subclass that overrides it",
+        "\n\nclass Base:\n    def __init__(self):\n        self.mod = config\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n\n\n"
+        "class Row(Base):\n    def __init__(self, raw):\n        self.mod = dict(raw)\n",
+    ),
+    (
+        "a class body attribute the subclass leaves alone",
+        "\n\nclass Base:\n    mod = config\n\n\n"
+        "class Row(Base):\n    other = None\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "shape,snippet",
+    AN_OVERRIDE_TAKES_THE_ATTRIBUTE_BACK,
+    ids=[one[0] for one in AN_OVERRIDE_TAKES_THE_ATTRIBUTE_BACK],
+)
+def test_an_attribute_a_subclass_takes_for_itself_is_not_its_bases(shape, snippet):
+    """The false positive direction of the table the round before rebuilt.
+
+    Six shapes, each two or three lines appended to the real ``aging``, each one
+    reported as ``config.save`` on code that binds a dict, a ``None`` or a
+    constructor argument. Reverting the failed attempt rule out of the object half
+    of ``_scope_own_bindings`` makes every one of them fire again.
+    """
+    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
+    assert _unnamed_writers(REPORTS_PACKAGE + ".aging", AGING_SOURCE + snippet) == [], shape
+
+
+@pytest.mark.parametrize(
+    "shape,snippet",
+    AN_OVERRIDE_BLOCKS_NOTHING_ELSE,
+    ids=[one[0] for one in AN_OVERRIDE_BLOCKS_NOTHING_ELSE],
+)
+def test_an_override_blocks_upward_and_never_sideways_or_down(shape, snippet):
+    """The miss direction of the same rule, asserted rather than reasoned about.
+
+    A rule that let an unresolved key travel DOWN would take the mixin with it:
+    ``Injected`` and ``Holder`` are two subclasses of one writer mixin, and the
+    one that binds the real module still has to be reached through it. A rule that
+    let the FIRST binding a walk happened to see decide would make the answer
+    depend on the order two methods are written in, which is why the same class
+    binding the attribute twice is driven in both orders.
+    """
+    assert filesystem_mutations(AGING_SOURCE + snippet), shape
+
+
+#: TWO CLASS DEFINITIONS OF ONE NAME, and the distinction the residual "A class
+#: rebound after its own definition is no longer reachable by name" was missing. Read
+#: at module level, ``class Keeper`` twice in one statement list leaves one
+#: reachable ``Keeper`` and the first one's attributes are an ``AttributeError``,
+#: so reporting nothing is right. In two ARMS of one conditional only one arm runs
+#: and nothing was taken from anything, so a module bound in either arm can write.
+#: That residual transferred the first judgement onto the second and called it
+#: correct.
+#:
+#: ``Keeper = Keeper`` is the other one, and it needs no judgement at all about
+#: what a callee hands back, which is the undecidability that residual rests on for
+#: ``Keeper = dataclass(Keeper)``. A statement whose right hand side is the
+#: spelling of its own target cannot change what the target is bound to.
+#:
+#: The third is the same wrapper that residual files, one indent in. ``if flag: Keeper =
+#: dataclass(Keeper)`` leaves a path on which the name is still the class, and a
+#: veto cast inside a branch a run can skip is not a veto that run cast. The
+#: undecidable part is untouched: the unconditional spelling is still quiet.
+A_NAME_THAT_STILL_MEANS_ITS_CLASS = [
+    (
+        "two class definitions in the arms of one conditional",
+        "\n\n_ARM = True\n\nif _ARM:\n\n    class Keeper:\n        mod = config\n\nelse:\n\n"
+        "    class Keeper:\n        pass\n\n\ndef go(cfg):\n    Keeper.mod.save(cfg)\n",
+    ),
+    (
+        "a class name rebound to itself",
+        "\n\nclass Keeper:\n    mod = config\n\n\nKeeper = Keeper\n\n\n"
+        "def go(cfg):\n    Keeper.mod.save(cfg)\n",
+    ),
+    (
+        "a module name rebound to itself",
+        "\n\nconfig = config\n\n\ndef go(cfg):\n    config.save(cfg)\n",
+    ),
+    (
+        "a class body pinning a module under its own name, read through the instance",
+        "\n\nclass Keeper:\n    config = config\n\n"
+        "    def go(self, cfg):\n        return self.config.save(cfg)\n",
+    ),
+    (
+        "a class body pinning a module under its own name, read through the class",
+        "\n\nclass Keeper:\n    config = config\n\n\n"
+        "def go(cfg):\n    return Keeper.config.save(cfg)\n",
+    ),
+    (
+        "a wrapper applied to the class inside a conditional",
+        "\n\nfrom dataclasses import dataclass\n\n\nclass Keeper:\n    mod = config\n\n\n"
+        "if True:\n    Keeper = dataclass(Keeper)\n\n\ndef go(cfg):\n    Keeper.mod.save(cfg)\n",
+    ),
+    (
+        "a module rebound in an except arm the import path never reaches",
+        "\n\ntry:\n    alias = config\nexcept ImportError:\n    alias = None\n\n\n"
+        "def go(cfg):\n    alias.save(cfg)\n",
+    ),
+    (
+        "a module bound before a branch that rebinds it",
+        "\n\ndef go(spec, cfg):\n    view = config\n    if spec:\n        view = spec.view\n"
+        "    return view.save(cfg)\n",
+    ),
+]
+
+
+#: What the two fixes above must not cost. The first is that residual's own shape, which
+#: stays quiet because it stays correct. The second and third are the shadows a
+#: self rebinding must not weaken: a parameter of that name still takes it, and an
+#: assignment that is not a self rebinding still does.
+A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS = [
+    (
+        "two class definitions in ONE statement list",
+        "\n\nclass Keeper:\n    mod = config\n\n\nclass Keeper:\n"
+        "    def __init__(self, config):\n        self.mod = config\n\n\n"
+        "def go(cfg):\n    Keeper.mod.save(cfg)\n",
+    ),
+    (
+        "a parameter of that name, after a self rebinding",
+        "\n\ndef go(config, cfg):\n    config = config\n    return config.save(cfg)\n",
+    ),
+    (
+        "an ordinary rebinding beside a self rebinding of another name",
+        "\n\ndef go(raw, cfg):\n    naming = naming\n    config = dict(raw)\n"
+        "    return config.save(cfg)\n",
+    ),
+    (
+        "a name whose ONLY binding is inside a branch is still taken",
+        "\n\ndef go(rows, cfg):\n    if rows:\n        config = dict(rows)\n"
+        "    return config.save(cfg)\n",
+    ),
+    (
+        "a loop that rebinds the name, with the rebinding inside the body",
+        "\n\ndef go(rows, cfg):\n    for row in rows:\n        config = row\n"
+        "    return config.save(cfg)\n",
+    ),
+    (
+        "an unconditional rebinding is still a veto, branch or no branch",
+        "\n\ndef go(raw, cfg):\n    config = dict(raw)\n    if raw:\n        config = raw\n"
+        "    return config.save(cfg)\n",
+    ),
+    (
+        "a rebinding in a finally block, which every path runs",
+        "\n\ndef go(fn, cfg):\n    alias = config\n    try:\n        fn()\n    finally:\n"
+        "        alias = None\n    return alias.save(cfg)\n",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "shape,snippet",
+    A_NAME_THAT_STILL_MEANS_ITS_CLASS,
+    ids=[one[0] for one in A_NAME_THAT_STILL_MEANS_ITS_CLASS],
+)
+def test_a_binding_that_replaced_nothing_leaves_the_name_alone(shape, snippet):
+    """Two real writes filed as undecidable by the residual "A class rebound after
+    its own definition is no longer reachable by name", one of which it called
+    correct.
+
+    Both execute. ``Keeper.mod is config`` is true at runtime in the conditional,
+    because only the arm that binds it runs, and true after ``Keeper = Keeper``
+    because both bindings are the same class. Neither needs a decision about what
+    a callee hands back.
+    """
+    assert filesystem_mutations(AGING_SOURCE + snippet), shape
+
+
+@pytest.mark.parametrize(
+    "shape,snippet",
+    A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS,
+    ids=[one[0] for one in A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS],
+)
+def test_a_binding_that_really_replaced_something_still_takes_the_name(shape, snippet):
+    """The quiet direction of the same two fixes, which is where they could go wrong.
+
+    That residual's own shape is here rather than only in the residual list,
+    because a rule about conditional arms that also fired on two definitions in
+    one statement list would be the same over-reach one statement wider.
     """
     assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
 

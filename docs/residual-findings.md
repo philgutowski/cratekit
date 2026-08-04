@@ -900,19 +900,71 @@ class back, so the write is real and is missed. Round six kept it only because i
 keyed the attribute as flat TEXT and a rebinding of the name was invisible to
 that reading, which is the same reading that reported `def go(Keeper)` as a write.
 
-Three neighbouring shapes were measured at the same time and go quiet CORRECTLY
-rather than being lost: reading `Keeper.mod` where a later `class Keeper` has
-taken the name (an `AttributeError` at runtime), reading a factory's local class
-from outside the factory (a `NameError`), and reading `Outer.Keeper.mod` where
-`Outer` is a parameter.
+### What is still open, named one spelling at a time
 
-**Not fixed here**, deliberately. Closing it means deciding whether an arbitrary
-callee hands its argument back, which is the same undecidable question the
-residual titled "One reflective call shape stays out of reach, and it is named"
-declines to answer for `map(getattr(p, n), items)`. The decorated spelling that
-an author actually writes, `@dataclass` above the class, is covered and has a
-fixture.
+The wording above said "a class rebound after its own definition", which is a
+sentence three more spellings fall inside without being measured or named. Round
+eight drove all three against the real `aging`, executed each one to confirm
+`Keeper.mod is config` at runtime, and they are quiet:
+
+```python
+Keeper = type("Keeper", (Keeper,), {})   # a subclass built by hand
+Keeper = _wrap(True)(Keeper)             # a decorator factory applied by hand
+Keeper = dataclass(Keeper)               # the original, above
+```
+
+All three are the same undecidable question and all three are still open. Naming
+them is the point: a residual whose wording covers a shape nobody measured is a
+residual that cannot be checked.
+
+### What round eight closed, and why those two were never undecidable
+
+Two shapes were inside this finding's wording, or next to it, and neither needed
+a decision about what a callee hands back. Both are fixed and both have fixtures.
+
+```python
+if flag:                    # only ONE arm runs, so nothing took the name
+    class Keeper:
+        mod = config
+else:
+    class Keeper:
+        pass
+
+
+Keeper = Keeper             # both bindings ARE the same class
+```
+
+The conditional one was worse than a miss: **this finding said it went quiet
+correctly, and that judgement was transferred rather than measured.** The
+`AttributeError` reasoning below is true of two `class Keeper` statements in ONE
+statement list, where the first is genuinely unreachable. In two arms of a
+conditional only one arm runs, there is no `AttributeError`, and the write is
+real. The sentence naming that shape as correct is withdrawn.
+
+`Keeper = Keeper` needs no reading of a callee at all: a statement whose right
+hand side is the spelling of its own target cannot change what the target is
+bound to, whatever it was bound to.
+
+`if flag: Keeper = dataclass(Keeper)` is closed as well, and for a third reason
+again: a veto cast inside an arm a run can skip is not a veto that run cast, so
+the name is still the class on the path that skipped it. The UNCONDITIONAL
+spelling, the one at the top of this finding, is untouched.
+
+### What still goes quiet CORRECTLY
+
+Three neighbouring shapes were measured and are right to be silent: reading
+`Keeper.mod` where a later `class Keeper` in the SAME STATEMENT LIST has taken
+the name (an `AttributeError` at runtime), reading a factory's local class from
+outside the factory (a `NameError`), and reading `Outer.Keeper.mod` where `Outer`
+is a parameter.
+
+**Not fixed here**, deliberately, for the three wrapper spellings only. Closing
+them means deciding whether an arbitrary callee hands its argument back, which is
+the same undecidable question the residual titled "One reflective call shape stays
+out of reach, and it is named" declines to answer for `map(getattr(p, n), items)`.
+The decorated spelling that an author actually writes, `@dataclass` above the
+class, is covered and has a fixture.
 
 **Closes when:** either a bounded reading of "this call returns its argument"
-exists, or the shape is accepted permanently. The natural owner is whichever unit
-next widens the binding table.
+exists, or the three wrapper spellings are accepted permanently. The natural owner
+is whichever unit next widens the binding table.

@@ -31,6 +31,200 @@ a re-measured count differs from the recorded one it says whether the difference
 is the round's new tests, a change in what the row means, or a spelling nobody
 can recover.
 
+## Round 8
+
+Thirty six rows: twenty this round adds, two of round seven's RE-SPELLED because
+this round edited the lines they anchored on, and fourteen more of the earlier
+rounds' re-run unchanged. **No row killed zero.** Two measured zero on the first
+pass and each was FIXED rather than argued, one by making the claim it stood for
+checkable and one by finding the shape the guard was written for and had never
+reached.
+
+Every revert is written out verbatim in `docs/mutation/u34-round-8-reverts.py`.
+Counts are scoped to `tests/modules/test_reports.py`, which nothing else in the
+suite imports.
+
+Baseline before the round: 3458 passed, 15 skipped. The file collects 285.
+Baseline after: 3486 passed, 15 skipped. The file collects 313.
+
+Twenty eight tests are added and none removed, verified by collecting node ids
+with a plugin and diffing them against `HEAD`. **Every one of the 28 is killed by
+at least one revert**, checked by taking the union of failing ids across all 36
+rows and subtracting: 0 uncovered.
+
+### F1: an assignment that could not be read still has to take the key back
+
+**Six ordinary shapes were reported as writes to the library**, every one of them
+a subclass overriding an attribute its base binds. Each is two or three lines
+appended to the real `aging`, each was quiet at round six and FIRED at round
+seven on both `filesystem_mutations` and `_unnamed_writers`, and not one of them
+is a write:
+
+```python
+class Base:
+    def __init__(self):
+        self.mod = config
+
+
+class Row(Base):
+    def __init__(self, raw):
+        self.mod = dict(raw)      # Base.__init__ is never called
+
+    def go(self, cfg):
+        return self.mod.save(cfg)  # reported: line 355: config.save
+```
+
+`Row.__init__` assigns `self.mod` to something `_binds` cannot read, so nothing
+was written into `declared` for `Row#350::self.mod`. `_carry` then copied
+`Base#345::self.mod` down with `setdefault`, and there was nothing for `declared`
+to win over in the `{**reached, **declared}` merge.
+
+**The fix already existed thirty lines away.** `_scope_own_bindings` records a
+FAILED ATTEMPT for a NAME an assignment took and could not resolve, which is row
+S21. The object half of the same table recorded silence. Binding nothing and
+taking the key back are two different facts, and silence cannot tell them apart.
+The object half records a failed attempt now, on the same rule, and the class
+body records one too, so `class Row(Base): mod = None` shadows `class Base: mod =
+config` the way it does at runtime.
+
+**BOTH DIRECTIONS ARE MEASURED, which is what round seven did not do.** Round
+seven measured only what it lost. Round eight drove the false positive direction
+and the miss direction on every change:
+
+| direction | driven | result |
+|-|-|-|
+| false positive, the six above | 6 shapes against the real `aging`, both guards | all 6 FIRE at `HEAD`, all 6 quiet after |
+| miss, this file's own writes | `INHERITED_ATTRIBUTE_REACHES_A_WRITER` 6, `MISSED_WRITES_IN_A_REPORT` 3, `CLASS_ATTRIBUTE_REACHES_A_WRITER`, `NAMESPACE_REACHES_A_WRITER`, `WRITES_A_WIDER_SHADOW_WOULD_LOSE` | every one still FIRES |
+| false positive, this file's own controls | `ORDINARY_SHAPES_IN_A_REPORT` 10, `INHERITANCE_STAYS_IN_THE_FAMILY` 5, `SHADOWS_IN_A_SCOPE`, `ORDINARY_MAPPING_LOOKUPS`, `CLASS_BODY_STAYS_IN_THE_CLASS`, `ORDINARY_LOOKUPS_THROUGH_A_BINDING` | every one still quiet |
+| miss, new controls this round adds | 5 shapes an override must NOT block: a sibling through a mixin, one class binding twice in each order, a base below an override, a body attribute left alone | every one FIRES |
+
+**The direction of a block is the whole of it.** An override blocks UPWARD, where
+a nearer class really does stand between the reader and the farther one, and never
+DOWNWARD, where a mixin's `self` is as easily some other subclass. Rows V04 and
+V05 are those two directions, and each kills a test the other does not.
+
+### F2: two losses that were never undecidable, and three that are
+
+The residual on a class rebound after its own definition covered six spellings and
+had measured one. All six execute with `Keeper.mod is config` confirmed at
+runtime, so all six are real writes.
+
+| spelling | at `HEAD` | now | why |
+|-|-|-|-|
+| `Keeper = dataclass(Keeper)` | quiet | quiet | undecidable, named in the residual |
+| `Keeper = type("Keeper", (Keeper,), {})` | quiet | quiet | undecidable, now NAMED rather than implied |
+| `Keeper = _wrap(True)(Keeper)` | quiet | quiet | undecidable, now NAMED rather than implied |
+| `if True: Keeper = dataclass(Keeper)` | quiet | **FIRES** | a veto inside an arm a run can skip |
+| two `class Keeper` in the arms of a conditional | quiet | **FIRES** | only one arm runs, so nothing took the name |
+| `Keeper = Keeper` | quiet | **FIRES** | both bindings are the same class |
+
+**The residual called the conditional case correct and it is not.** Its reasoning,
+that `Keeper.mod` is an `AttributeError` once a later `class Keeper` takes the
+name, is true of two definitions in ONE statement list and false of two arms of a
+conditional, where only one runs. That is a judgement transferred from a
+measurement to a shape whose premise is false, and the sentence is withdrawn in
+the residual.
+
+`if True: Keeper = dataclass(Keeper)` was expected to be undecidable too and is
+not, which is a measurement rather than a reading: the rule is applied to the
+VETO only, never to the shadow, so a name whose only binding is inside a branch is
+still taken and still comes back unresolved. The ten ordinary shadow shapes and
+the branch-only controls are all driven and all still quiet.
+
+### The rows
+
+| id | what was reverted | deaths |
+|-|-|-|
+| V01 | `_scope_own_bindings` object half stops recording a FAILED attempt | 5 |
+| V02 | `_walk_bindings` writes a class body attribute only when it RESOLVED | 1 |
+| V03 | `_record` lets an unresolved key OVERWRITE a resolved one | 1 |
+| V04 | `_carry` carries an unresolved key DOWNWARD too | 1 |
+| V05 | `_carry` never carries an unresolved key, upward included | 1 |
+| V06 | `_scope_own_bindings` drops a name that did not settle instead of answering it empty | 1 |
+| V07 | `_rebound_to_itself` answers nothing | 4 |
+| V08 | `_names_taken` stops exempting a self rebinding | 2 |
+| V19 | `_scope_own_bindings` stops recording what an IDLE rebinding already held | 2 |
+| V20 | an idle rebinding records a FAILED attempt when what it held cannot be read | 2 |
+| V09 | `_alternate_classes` records nothing | 1 |
+| V10 | `_alternate_classes` calls two definitions in ONE statement list alternates too | 1 |
+| V11 | `_sequences` reads the scope's own body only | 1 |
+| V12 | `_inherited_attributes` stops carrying an ALTERNATE definition's attributes | 1 |
+| V13 | `_branched` answers nothing | 3 |
+| V14 | `_branched` counts a `finally` block as skippable | 1 |
+| V15 | the citation guard stops exempting the delimited collision passage | 1 |
+| V16 | the citation guard stops reading `docs/` | 1 |
+| V17 | the handoff's report-verbs citation restored to the NUMBER spelling | 1 |
+| V18 | the collision passage's CLOSING marker removed | 1 |
+
+**V01 kills five of the six false positives and V02 kills the sixth.** The class
+body attribute is written by a different line from the instance attribute, so the
+class-body shape is held by the class-body row. Saying that is the point of
+writing the number down.
+
+**Two rows measured zero on the first pass.**
+
+- **V16 measured 0 and was FIXED by making the claim checkable.** Dropping `docs/`
+  from the guard's file list killed nothing, because `docs/` was clean by then: the
+  guard's WIDTH was not asserted anywhere, only its result. The width is asserted
+  now, so a guard that quietly stopped reading a document fails. That is the same
+  defect the round is correcting, one level up.
+- **V08 measured 0 and was FIXED by finding the shape it was written for.** The
+  self-rebinding exemption in `_names_taken` changed no answer, because at module
+  scope there is nothing inherited to keep. The shape that needs it is
+  `class Keeper: config = config`, the ordinary way a module is pinned as a class
+  attribute for injection: it executes with `Keeper.config is config` and it was
+  QUIET, a real write missed. An idle rebinding now records what the key already
+  held rather than nothing, which closes it and makes the exemption load-bearing.
+
+### The earlier rounds' rows, re-run against round eight's code
+
+Every one of the sixteen still dies. Two had to be RE-SPELLED because round eight
+edited the lines they anchored on, and their round seven text now occurs zero
+times, which is exactly the failure the reverts file exists to prevent.
+
+| id | round 7 | round 8 | note |
+|-|-|-|-|
+| N21 | 105 | 118 | |
+| S16 | 47 | 60 | |
+| N05 | 42 | 54 | |
+| R06 | 36 | 49 | |
+| N12 | 36 | 46 | |
+| M35 | 29 | 29 | |
+| N22 | 27 | 32 | |
+| Q06 | 20 | 31 | |
+| R02 | 16 | 16 | |
+| S09 | 14 | 15 | |
+| R06b | 13 | 13 | |
+| Q01 | 12 | 19 | |
+| Q11 | 11 | 17 | |
+| S01 | 11 | **3** | RE-SPELLED, and the drop is real. See below |
+| S18 | 10 | 14 | RE-SPELLED |
+| P14 | 10 | 16 | |
+
+**S01 fell from 11 to 3, and that is a finding rather than a rounding.** Reverting
+`_names_taken` to parameters only used to leave a stale import binding live under
+every rebound name. It no longer does, because this round makes `_scope_own_bindings`
+answer an unsettled name with an EMPTY value instead of with nothing, and
+`_visible_bindings` writes that empty answer over the inherited table. The shadow
+is now held in two places, and the three tests only `_names_taken` still holds are
+exactly the shapes where the scope's own table has nothing to write:
+
+- a loop that rebinds the name, with the rebinding inside the body
+- a name whose ONLY binding is inside a branch
+- an `except` target
+
+Two mechanisms that overlap on most fixtures and come apart on three is the same
+shape round seven found in R14 and R16. They are kept apart rather than collapsed
+because the three shapes above are real and only one of the two answers them.
+
+### Coverage of the 28 new tests
+
+All 28 are killed by at least one of the 36 rows. **Twenty are killed by a round
+eight row and eight only by an earlier round's row**, and that split is not
+accidental: all twenty of round eight's own rows NARROW the guard, while the eight
+are controls whose failure mode is a guard that got WIDER. They are held by N22,
+R06, N05, N12, N21, S16, S18, S09, P14, Q01, Q06, Q11 and the re-spelled S01.
+
 ## Round 7
 
 Sixty eight rows, every one a guard, constant, condition or assertion this round
@@ -180,11 +374,18 @@ nothing else. Both are measured here rather than argued.
 | id | what was reverted | round 6 recorded | round 7, round 6's tests only | round 7, all tests |
 |-|-|-|-|-|
 | R06 | rule 5 drops the namespace requirement, comparing every constant subscript key against the mutation set through `_namespace_reads` | 28 | 28 | 36 |
-| R06b | ROUND FOUR'S LITERAL RULE 5, lifted verbatim from `HEAD~2` lines 2185 to 2188: a constant key in `FILESYSTEM_MUTATIONS`, no receiver and no owner read | not measured | 10 | 13 |
+| R06b | ROUND FOUR'S LITERAL RULE 5, lifted verbatim from `HEAD~3` lines 2185 to 2187: a constant key in `FILESYSTEM_MUTATIONS`, no receiver and no owner read | not measured | 10 | 13 |
 
 The author's own spelling reproduces its recorded 28 exactly. The attribution did
 not: under round four's literal spelling the number is 10, and three of round
 seven's 24 new tests survive it.
+
+**The revision this text was lifted from is corrected.** Round seven wrote
+`HEAD~2`, which was right when it was written and stopped being right the moment
+the round committed: `HEAD~2` now resolves to round five. The text is verbatim
+`HEAD~3:2185-2187`. A citation written as an offset from a moving head is the
+same instability as a residual number, one file over, and this is the second one
+this unit produced.
 
 ### The earlier rounds' rows, re-run against round seven's code
 
@@ -220,15 +421,25 @@ from a row that changed meaning.
 | R08 | `_namespace_reads` reports an unreadable key with the switch OFF too | 1 | 1 | 2 |
 | Q16 | the audit stops naming a `ClassDef` as its own owner | 1 | 1 | 2 |
 | R03 | `_mapping_operands` stops yielding a CALL's arguments (was: `_namespace_of` stops reading a `dict()` copy) | 1 | 1 | 2 |
-| Q02 Q03 Q04 Q09 Q13 Q14 Q15 R04 R10 R11 R12 T01 T02 S20 S21 S22 | unchanged, one death each | 1 | 1 | 1 |
+| Q02 Q03 Q04 Q09 Q13 Q14 Q15 R04 R10 R11 R12 T01 T02 S20 S22 | unchanged, one death each | 1 | 1 | 1 |
+| S21 | `_scope_own_bindings` stops recording a FAILED attempt for a binding `_binds` cannot read | 1 | **0** | 1 |
 | S19 | `_walk_bindings` stops recording a function's RETURNED module | 2 | 4 | 4 |
 | S18 | `_walk_bindings` stops carrying OBJECT bindings out of the scope that made them | 3 | 6 | 10 |
 | Q11 | `_defined_here` stops reading a `ClassDef` | 1 | 4 | 11 |
 | N05 | the rebinding sweep removed, imports only | 31 | 32 | 42 |
 | N22 | `_receiver_module` answers an UNRESOLVED name with itself | 20 | 25 | 27 |
 
-The last five need saying out loud rather than leaving in a column.
+The last six need saying out loud rather than leaving in a column.
 
+- **S21 is the one row in this file held ONLY by this round's new test.** Its
+  middle column is 0, not the 1 it was grouped under: the single test it kills,
+  `test_a_name_bound_twice_in_ONE_scope_settles_to_neither`, is one of round
+  seven's own 24 new ids, so deselecting them leaves S21 killing nothing. Applying
+  the same spelling to `HEAD~1` also kills 0. That is exactly what the middle
+  column exists to separate, and grouping S21 into "unchanged, one death each"
+  hid it. **Round eight is the reason this matters:** S21's rule is the one
+  extended to the object half of the table, and the row that held it had no
+  coverage older than the round that wrote it.
 - **Q11 means more than it did.** `_defined_here`'s reading of a `ClassDef` now
   does two jobs: it takes the class's own name back, which is what round six's
   row named, and it is the loop through which a class's `_Class` binding is
@@ -313,12 +524,34 @@ is well past U32. **Five content conflicts, not none:**
 All five are the registries `CLAUDE.md` says are meant to conflict, so the merge
 is resolvable, but "no conflict surface" was false and is corrected here.
 
-**RESIDUAL NUMBERS COLLIDE ACROSS THE MERGE.** This branch adds `R-16` through
-`R-21` to `docs/residual-findings.md`; `main` independently added `R-14` through
-`R-23`. Five of this branch's numbers, `R-16`, `R-17`, `R-19`, `R-20` and `R-21`,
-name entirely different findings on `main`. Every residual citation in this
-unit's source, docstrings and tests is therefore written as a TITLE and never as
-a number.
+[[collision-set]]
+**RESIDUAL NUMBERS COLLIDE ACROSS THE MERGE, AND THE SET IS SEVEN.** Measured
+against `git merge-base main HEAD`, `af1d7d2`: this branch adds `R-16` through
+`R-25` to `docs/residual-findings.md`, and `main` independently added `R-14`
+through `R-17` and `R-19` through `R-23`. **Seven** of this branch's numbers name
+entirely different findings on `main`: `R-16`, `R-17`, `R-19`, `R-20`, `R-21`,
+`R-22` and `R-23`. `R-18`, `R-24` and `R-25` do not collide today.
+
+**Two of the seven were created by the round that wrote the warning.** Round
+seven added `R-22`, `R-23`, `R-24` and `R-25`, and `main` already carried `R-22`
+and `R-23` when it did. The statement it shipped said five and named `R-16`
+through `R-21`, which was the set before round seven's own additions.
+
+**ADDING A RESIDUAL ON A BRANCH IS ITSELF A COLLISION RISK.** Both sides append to
+one file from one counter, so a number is only unique until the other side reaches
+it: `R-18`, `R-24` and `R-25` are clear only because `main` has not got there yet,
+and nothing stops it. A number is not an address on a branch. A title is.
+[[/collision-set]]
+
+Every residual citation in this unit's source, docstrings, tests **and docs** is
+therefore written as a TITLE and never as a number, and
+`test_this_units_residuals_are_cited_by_title_and_never_by_number` checks it
+rather than asserting it. The earlier claim covered source, docstrings and tests,
+was true of all three, and was false of the handoff document the same commit
+wrote, which cited the report-verbs residual twice by number, at
+`docs/HANDOFF.md:357` and `:366`. A claim checked over a smaller set than
+it covers is the fourth recurring defect, so the check now reads `docs/` and the
+passage above is the one delimited exemption.
 
 ## Round 6
 
