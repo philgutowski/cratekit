@@ -652,6 +652,47 @@ enshrined, and it got that way because those tests raise a synthetic
 `PermissionError` instead of hitting a real permission. That is the fourth
 pattern, found one round after it was named.
 
+### The sharpest form of the fourth pattern: an explanation written instead of measured
+
+U34's round 4 declared a counting discrepancy against the previous verifier and
+explained it: "this table counts failing tests from the suite summary while the
+earlier verifier counted parametrized cases individually."
+
+**That mechanism does not exist.** Two independent refutations: pytest's
+summary already counts parametrized cases individually, so the two descriptions
+are the same number; and measured against round 3's own file at `HEAD~1`, the
+six rows give exactly the counts round 4 reported.
+
+The conclusion was correct. Every row did still bite. The REASON was invented.
+
+This is the fourth pattern in its most dangerous form, because it arrives
+attached to a true conclusion and therefore survives review. A fixture based
+justification at least describes something that was run. A written explanation
+describes nothing at all, and the only tell is that it is plausible.
+
+**Standing rule: for every number in a report, either it was measured or the
+report says it was not.** No mechanism may be offered for a discrepancy without
+a measurement showing that mechanism operating.
+
+### U34's other lesson: a guard that fires on ordinary code
+
+Round 3 was found firing on correct code. Round 4 replaced the receiver's
+RESOLUTION and left the binding table's SCOPE untouched, so the false positive
+came back respelled. Ten ordinary shapes fail today against the real
+`aging.py`, including `for config in rows:`, a comprehension target, a `with`
+target, an `except` target, and, worst, `self.config = config` where `config`
+is the constructor's own parameter, which binds `self.config` to the module for
+the entire file. Constructor injection is the commonest spelling there is.
+
+The tree measures 0 offenders across the governed modules. **That zero is not
+safety.** It holds only because no governed module has yet been written in any
+of the ten shapes.
+
+A line worth keeping from that report, on the reflective writer hole: **round 2
+lost the four token wrapper, round 3 lost it one token longer, round 4 loses it
+one LINE longer.** Three rounds, each closing the previous spelling and none
+closing the shape.
+
 ### What these findings have in common
 
 All three are the wave's two named patterns, again. U23 and U34 are IDENTITY
