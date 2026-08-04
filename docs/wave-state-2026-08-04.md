@@ -378,9 +378,16 @@ worth going straight to rather than rediscovering:
 
 ## Open decisions for Phillip
 
-1. **Board drift on #52 and #53.** Exit 1, repairable with `board.py sync`, and
-   it predates this session. Left alone because those issues sit outside the
-   wave and board state is on the do not touch list.
+1. ~~**Board drift on #52 and #53.**~~ **RESOLVED 2026-08-04, no decision
+   needed.** The U36 merge added a third drift item, #36 still showing In
+   Progress after its issue had closed, which made this routine rather than
+   optional: a merged unit reading as unmerged is the state the board exists to
+   prevent. Ran `board.py sync`. It corrected five items, the #36 status plus
+   adding #52 and #53 to the board as Ready. **`board.py audit` now exits 0 and
+   reports "The board matches the repository."** Note for the next session:
+   audit on `main` was exit 1 the whole time, never exit 2. The exit 2
+   contradiction over `cratekit.write.rebuild` is real but lives only on the
+   U32 branch, which re-adds a register key for a module U36 already shipped.
 2. **The merge exit criterion.** The standing order is merge nothing until a
    branch verifies clean. Sixteen verifications, sixteen blocking. The severity
    has fallen sharply, from live data destroying defects to tests that cannot
