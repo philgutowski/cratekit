@@ -580,71 +580,169 @@ def test_the_one_spelling_a_provider_row_cannot_reach_is_named_rather_than_assum
     assert credited in spelled.suppression_spellings
 
 
-#: LISTINGS WHOSE CREDIT IS NOT WHERE ``_head_of`` LOOKS FOR IT, and the exact
-#: set of addresses each one may produce. A literal on both sides: deriving the
-#: expectation from ``Wanted.addresses`` would assert that the code agrees with
-#: itself, which is the shape that let this defect through three rounds.
-CREDIT_OUTSIDE_THE_SUFFIX: tuple[tuple[str, tuple[str, ...]], ...] = (
+#: LISTINGS WHOSE CREDIT IS NOT WHERE ``_head_of`` LOOKS FOR IT, ACROSS ALL
+#: THREE READERS, and the exact set of addresses each one may produce. A literal
+#: everywhere: deriving the expectation from ``Wanted.addresses`` would assert
+#: that the code agrees with itself, which is the shape that let this defect
+#: through three rounds.
+#:
+#: THE THIRD COLUMN IS WHY THIS TABLE GREW. The first three rounds of this fix
+#: were verified on ``read_text_lines`` alone, and the provider reader is the one
+#: shape where the credit is DISCARDED BEFORE the precondition can look at it: a
+#: row that carries its version in its own field had its ``spelled`` string
+#: composed from the MATCHING title, which has had its credits taken off, so
+#: ``_credits_in(head) == _credits_in(spelled)`` was vacuously true on both sides
+#: and every address composed was the plain record's. A fix verified on one
+#: reader out of three is how this came back after being fixed once already.
+#: Fields: the title a list spells, the provider's own two fields, the addresses
+#: the two spelled-title readers produce, the addresses the provider produces.
+CREDIT_OUTSIDE_THE_SUFFIX: tuple[
+    tuple[str, tuple[str, str], tuple[str, ...], tuple[str, ...]], ...
+] = (
     # The credit is printed AFTER the version group.
-    ("Sun Path (Live) (feat. Mira)", ("Sun Path (Live) (feat. Mira)",)),
+    (
+        "Sun Path (Live) (feat. Mira)",
+        ("Sun Path (feat. Mira)", "Live"),
+        ("Sun Path (Live) (feat. Mira)",),
+        ("Sun Path (feat. Mira) (Live)", "Sun Path (feat. Mira) [Live]"),
+    ),
     # And the same shape with square brackets, which is a different branch.
-    ("Sun Path [Live] (feat. Mira)", ("Sun Path [Live] (feat. Mira)",)),
+    (
+        "Sun Path [Live] (feat. Mira)",
+        ("Sun Path (feat. Mira)", "Live"),
+        ("Sun Path [Live] (feat. Mira)",),
+        ("Sun Path (feat. Mira) (Live)", "Sun Path (feat. Mira) [Live]"),
+    ),
     # The version arrives in more than one group, so there is no single suffix
-    # to take off. This is the one the third round made WORSE: it composed four
-    # credit-free addresses where the round before it composed one.
+    # to take off. This is the one the third round made WORSE for the spelled
+    # readers and the fourth left live for the provider: it composed FOUR
+    # credit-free addresses, one of them ``Sun Path (Extended) (Remastered)``, a
+    # literal row in this file's own REKORDBOX_ROWS.
     (
         "Sun Path (feat. Mira) (Extended) (Remastered)",
+        ("Sun Path (feat. Mira)", "Extended Remastered"),
         ("Sun Path (feat. Mira) (Extended) (Remastered)",),
+        (
+            "Sun Path (feat. Mira) (Extended Remastered)",
+            "Sun Path (feat. Mira) [Extended Remastered]",
+            "Sun Path (feat. Mira) (Extended) (Remastered)",
+            "Sun Path (feat. Mira) - Extended Remastered",
+        ),
     ),
 )
 
 
-@pytest.mark.parametrize("listed,addresses", CREDIT_OUTSIDE_THE_SUFFIX)
-def test_a_listing_whose_head_cannot_be_located_is_addressed_by_what_it_said(
-    listed, addresses
+@pytest.mark.parametrize(
+    "listed,provider,spelled_addresses,provider_addresses", CREDIT_OUTSIDE_THE_SUFFIX
+)
+@pytest.mark.parametrize("origin", [match.TEXT, match.SPOTIFY, match.TIDAL])
+def test_a_credited_listing_is_never_addressed_as_the_plain_record(
+    origin, listed, provider, spelled_addresses, provider_addresses
 ):
     """THE OVER-EAGER DIRECTION, WHICH THE DESIGN REJECTS AND THE CODE WAS DOING.
 
     ``_head_of`` takes the version off the END of the spelling, and a featured
     credit is not always last. Where it could not be located the composition fell
     back to the MATCHING title, which has had its credits taken off, so every
-    address composed was the PLAIN record's: ``Sun Path (Extended) (Remastered)``,
-    a literal row in this file's own ``REKORDBOX_ROWS``, became an address of a
-    CREDITED recording. Deleting the plain row then resolved a list line naming
-    the credited one to SUPPRESSED, in none of the three arrays, at exit zero,
-    with acquisition skipping a track nobody had deleted.
+    address composed was the PLAIN record's, and deleting the plain row resolved
+    a list line naming the credited recording to SUPPRESSED: in none of the three
+    arrays, at exit zero, with acquisition skipping a track nobody had deleted.
+
+    DRIVEN THROUGH ALL THREE READERS, because closing it on one is what happened
+    twice. The provider row is the shape that stayed open: its credit was thrown
+    away while the two fields were being put back together, before the credit
+    precondition could compare anything, so the comparison was empty against
+    empty and passed.
 
     THE SET IS ASSERTED WHOLE rather than by absence, because "the plain address
     is gone" is also true of a composition that produces some other wrong string.
-    A listing whose head cannot be located is addressed by exactly what it said.
     """
-    wanted = match.read_text_lines(f"Aurora Bloom - {listed}\n")[0]
-    assert wanted.addresses == addresses
+    title, version = provider
+    if origin == match.TIDAL:
+        wanted = match.read_tidal_tracks(
+            [{"title": title, "version": version, "artist": {"name": "Aurora Bloom"}}]
+        )[0]
+        expected = provider_addresses
+    elif origin == match.SPOTIFY:
+        wanted = match.read_spotify_items(
+            [{"name": listed, "artists": [{"name": "Aurora Bloom"}]}]
+        )[0]
+        expected = spelled_addresses
+    else:
+        wanted = match.read_text_lines(f"Aurora Bloom - {listed}\n")[0]
+        expected = spelled_addresses
+    assert wanted.addresses == expected
+    plain = {match.tombstone_fold(one) for one in ("Sun Path", "Sun Path (Live)",
+                                                   "Sun Path (Extended) (Remastered)",
+                                                   "Sun Path (Extended Remastered)")}
+    assert not plain & {found["title"] for found in wanted.suppression_spellings}
 
 
+@pytest.mark.parametrize(
+    "listed,provider,spelled_addresses,provider_addresses", CREDIT_OUTSIDE_THE_SUFFIX
+)
+@pytest.mark.parametrize("origin", [match.TEXT, match.SPOTIFY, match.TIDAL])
 def test_a_deletion_of_the_plain_record_never_withholds_a_credit_spelled_late(
-    cfg, music, tmp_path
+    cfg, music, tmp_path, origin, listed, provider, spelled_addresses, provider_addresses
 ):
     """The same thing DRIVEN, because the cost is a track that never arrives.
 
     ``test_a_deletion_of_the_plain_record_never_withholds_the_credited_one`` pins
-    the shape where the credit is the whole trailing group. This is the shape
-    where the version is spread over several groups, which the same round left
-    open while its docstring said it was closed.
+    the shape where the credit is the whole trailing group. These are the shapes
+    where ``_head_of`` cannot find the version at the end, one of which composed
+    the literal ``Sun Path (Extended) (Remastered)`` row this deletes.
+
+    ONE LIST LINE PER READER, in the shape that reader really ships, so the
+    tombstone this deletes is either reached by all three or by none, and a fix
+    that lands on one of them is visible here rather than three rounds later.
     """
     review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
         kind=match.TOMBSTONE_KIND,
         identity=u24_records("Aurora Bloom", "Sun Path (Extended) (Remastered)"),
         actor="deletion",
     )
-    credited = write_list(
-        tmp_path, "Aurora Bloom - Sun Path (feat. Mira) (Extended) (Remastered)\n", "c.txt"
-    )
-    _code, envelope = drive(["match", "run", credited])
+    path = list_document(tmp_path, origin, listed, provider, "credited")
+    _code, envelope = drive(["match", "run", path])
     assert len(envelope["data"]["missing"]) == 1, (
         "a deletion of the plain record silently withheld the credited one"
     )
+    assert envelope["warnings"] == []
 
+
+def list_document(
+    tmp_path: Path, origin: str, listed: str, provider: tuple[str, str], name: str
+) -> str:
+    """One listing, written as the file the named reader actually reads."""
+    if origin == match.TEXT:
+        return write_list(tmp_path, f"Aurora Bloom - {listed}\n", f"{name}.txt")
+    if origin == match.SPOTIFY:
+        rows: list[dict] = [{"id": "sp1", "name": listed,
+                             "artists": [{"name": "Aurora Bloom"}]}]
+    else:
+        rows = [{"id": "1", "title": provider[0], "version": provider[1],
+                 "artist": {"name": "Aurora Bloom"}}]
+    return write_list(
+        tmp_path,
+        json.dumps({"list": 1, "origin": origin, "tracks": rows}),
+        f"{name}-{origin}.json",
+    )
+
+
+def test_the_plain_record_is_still_suppressed_for_the_list_that_names_it(
+    cfg, music, tmp_path
+):
+    """THE OTHER HALF, because "nothing is suppressed" is also a way to pass.
+
+    Every assertion above is a negative one, and a composition that produced no
+    address at all would satisfy all of them while quietly switching the
+    tombstone consult off. The list that names the record the deletion actually
+    took still reaches it.
+    """
+    review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
+        kind=match.TOMBSTONE_KIND,
+        identity=u24_records("Aurora Bloom", "Sun Path (Extended) (Remastered)"),
+        actor="deletion",
+    )
     plain = write_list(tmp_path, "Aurora Bloom - Sun Path (Extended) (Remastered)\n", "p.txt")
     _code, still = drive(["match", "run", plain])
     assert still["data"]["missing"] == []
@@ -867,30 +965,78 @@ def test_a_dash_spelling_is_composed_only_when_this_module_reads_it_back(
     assert (composed in spellings) is reachable
 
 
-def test_a_tombstone_survives_the_deletion_that_took_the_file_off_the_disk(
-    cfg, music, tmp_path
+@pytest.mark.parametrize(
+    "line,suppressed",
+    [
+        # The listing spells the version the way the tombstone was recorded, so
+        # it addresses it and the deletion stands.
+        ("Aurora Bloom - Sun Path (Live)", True),
+        ("Aurora Bloom - Sun Path [Live]", True),
+        # And the one this round REFUSED to address, on purpose. See below.
+        ("Aurora Bloom - Sun Path - Live", False),
+    ],
+    ids=["round", "square", "ambiguous-dash"],
+)
+def test_a_tombstone_is_addressed_by_every_reading_except_the_undecidable_one(
+    cfg, music, tmp_path, line, suppressed
 ):
-    """THE CASE BOTH HALVES OF THIS ROUND HAVE TO HOLD AT ONCE.
+    """ONE AMBIGUITY, ONE POLICY, AND IT USED TO HAVE TWO, driven at resolution.
 
-    A deletion removes the file AND records the tombstone, so the run that comes
-    afterwards has no library evidence at all: the ambiguous reading cannot be
-    confirmed, the conservative one stands, and the only thing that can still
-    address the tombstone is the readings union in ``Wanted.addresses``. Consult
-    the first reading alone and the version is re-acquired at exit zero, which is
-    precisely the deletion undone.
+    ``_spellings_of`` refuses to compose ``Sun Path - Live`` from a head and a
+    version, and says why: a deletion of a composition genuinely called "Sun Path
+    - Live" would then silently withhold the live cut of "Sun Path". The mirror
+    of that was wide open in ``Wanted.addresses``, which walked BOTH readings, so
+    the list line ``Aurora Bloom - Sun Path - Live`` composed ``Sun Path (Live)``
+    and a deletion of the live cut silently withheld a listing that may well mean
+    the composition. Same cost, opposite direction, defended in one docstring
+    while being rejected by name two functions away.
+
+    THE POLICY THAT WON IS THE CONSERVATIVE ONE, because ``tombstone_fold``
+    settles it and has for three rounds: a missed suppression re-acquires
+    something and REPORTS it, an over-eager one withholds music somebody wants
+    and says nothing. So the dash-spelled listing is reported MISSING with
+    something to go and get, which is the cost, and it is the cost that shows up
+    in a run rather than the one that never does.
     """
     recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
         kind=match.TOMBSTONE_KIND,
         identity=u24_records("Aurora Bloom", "Sun Path (Live)"),
         actor="deletion",
     )
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path - Live\n", "gone.txt")
+    path = write_list(tmp_path, f"{line}\n", "gone.txt")
     code, envelope = drive(["match", "run", path])
 
     assert code == int(ExitCode.OK)
-    assert envelope["data"]["missing"] == []
     warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
-    assert [w["suppression"] for w in warnings] == [recorded.suppression_id]
+    if suppressed:
+        assert envelope["data"]["missing"] == []
+        assert [w["suppression"] for w in warnings] == [recorded.suppression_id]
+    else:
+        assert warnings == []
+        assert [row["why"] for row in envelope["data"]["missing"]] == [
+            str(match.Why.NOT_IN_LIBRARY)
+        ]
+        assert envelope["data"]["missing"][0]["acquisition"], (
+            "a missed suppression is the cheap side only because the run says "
+            "what it is about to go and get"
+        )
+
+
+def test_neither_reading_of_an_ambiguous_title_composes_the_other_ones_address():
+    """THE SAME RULE ON THE OBJECT, in both directions, as literals.
+
+    The driven test above proves one direction costs a re-acquisition. This
+    proves the rule is symmetric: the dash-spelled listing composes no bracketed
+    address, and the bracket-spelled listing composes no dash address. An
+    asymmetry here is the shape the last three rounds kept producing, where one
+    of the two functions was fixed and the other went on doing the opposite.
+    """
+    dashed = spellings_of("Sun Path - Live")
+    bracketed = spellings_of("Sun Path (Live)")
+    assert (("artist", "aurora bloom"), ("title", "sun path (live)")) not in dashed
+    assert (("artist", "aurora bloom"), ("title", "sun path [live]")) not in dashed
+    assert (("artist", "aurora bloom"), ("title", "sun path - live")) not in bracketed
+    assert not dashed & bracketed
 
 
 def frozen(identities):
@@ -979,18 +1125,15 @@ def test_the_review_item_identity_is_not_the_tombstone_identity():
     """
     asked = one(version="Extended Mix", key="08A")
     assert set(asked.identity) == {"artist", "title"}
-    assert set(asked.question(about_the_key=True)) == {"recording", "version", "key"}
-    assert asked.question(about_the_key=True)["key"] == "08A"
-    # The KEY SET never varies, only the value, so a version question asked with
-    # a key and one asked without are still one item.
-    assert set(asked.question()) == set(asked.question(about_the_key=True))
-    assert asked.question()["key"] == ""
-    assert one(version="Extended Mix", key="8A").question(about_the_key=True) == asked.question(
-        about_the_key=True
-    )
-    assert one(version="Extended Mix", key="03B").question(
-        about_the_key=True
-    ) != asked.question(about_the_key=True)
+    assert set(asked.question()) == {"recording", "version", "key"}
+    assert asked.question()["key"] == "08A"
+    # THE KEY SET NEVER VARIES AND NEITHER DOES THE VALUE. ``question`` takes no
+    # argument, because the one it used to take said whether the question was
+    # about the key and the LIBRARY decided that. A list line naming no key
+    # carries the empty token, which is what an unreadable code folds to too.
+    assert one(version="Extended Mix").question()["key"] == ""
+    assert one(version="Extended Mix", key="8A").question() == asked.question()
+    assert one(version="Extended Mix", key="03B").question() != asked.question()
 
 
 def test_a_key_folds_to_the_padded_form_and_an_unreadable_one_folds_to_nothing():
@@ -2434,19 +2577,66 @@ def test_the_dashed_one_word_spelling_is_asked_about_rather_than_acquired(
     approximate floor, so nothing rescued it: the run reported the track missing,
     carried an acquisition option, warned about nothing and exited zero. The row
     is a QUESTION now rather than a match, and the assertions that matter are the
-    negative ones: nothing is missing, nothing is offered to acquire, and the run
-    does not exit zero pretending it settled something.
+    negative ones: nothing is missing and nothing is offered to acquire.
+
+    THE RUN EXITS ZERO AND SAYS SO, which is a decision rather than the old
+    silence. Gating on this class costs a measured 14 of 68 cells in the
+    library-state table, all in the same direction, and ``- Edit``, ``- Mix`` and
+    ``- Live`` are three of the commonest spellings a public playlist ships, so a
+    real library run against real playlists would exit 12 on almost every run and
+    fill a queue faster than a person empties it. What R11 forbids is a question
+    nobody is TOLD about, so the price of not gating is paid on the warning
+    channel and in the needs-review array, and both are asserted here.
     """
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Instrumental)")
     path = write_list(tmp_path, "Aurora Bloom - Sun Path - Instrumental\n", "oneword.txt")
     code, envelope = drive(["match", "run", path])
-    assert code == int(ExitCode.PENDING_HUMAN)
+    assert code == int(ExitCode.OK)
+    assert envelope["pending_human_action"] is None
     assert envelope["data"]["missing"] == []
     assert envelope["data"]["matched"] == []
     row = envelope["data"]["needs_review"][0]
     assert row["why"] == str(match.Why.READING_AMBIGUOUS)
     assert row["acquisition"] == []
     assert [candidate["version"] for candidate in row["candidates"]] == ["Instrumental"]
+    # NOT SILENT. The question is named on the warning channel, carries the item
+    # a person answers it under, and names the verb that shows it to them.
+    warned = [w for w in envelope["warnings"] if w["code"] == match_cli.READING_UNSETTLED]
+    assert [(w["item"], w["remedy"]) for w in warned] == [
+        (row["review_item"], match_cli.REVIEW_VERB)
+    ]
+    assert queue_items(cfg)[0].item_id == row["review_item"]
+
+
+def test_an_ungated_question_still_gates_once_its_verdict_cannot_be_applied(
+    cfg, music, tmp_path
+):
+    """THE ESCAPE FROM THE UNGATED CLASS, which is the half that could go wrong.
+
+    A reading question does not stop the run. A reading question somebody
+    ANSWERED, whose candidate the library has since stopped offering, is a
+    different fact: the item is RESOLVED, so ``review list`` does not show it and
+    ``review resolve`` refuses it, and the only way forward is an act nobody
+    performs unless told. ``apply_verdict`` rewrites the why into one of
+    ``STALLED``, which is not in ``UNGATED``, so the run blocks and names the verb
+    that can act. Without that, not gating this class would have hidden the one
+    state that genuinely needs a person.
+    """
+    held = hold(music, "08A - 124 - Aurora Bloom - Sun Path (Live)")
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path - Live\n", "oneword.txt")
+    code, asked = drive(["match", "run", path])
+    assert code == int(ExitCode.OK)
+    row = asked["data"]["needs_review"][0]
+    drive(
+        ["review", "resolve", row["review_item"], "--verdict", "accepted",
+         "--option", row["candidates"][0]["id"]]
+    )
+    held.rename(music / "11B - 124 - Aurora Bloom - Sun Path (Live).flac")
+
+    code, after = drive(["match", "run", path])
+    assert code == int(ExitCode.PENDING_HUMAN)
+    assert after["data"]["needs_review"][0]["why"] == str(match.Why.CANDIDATE_GONE)
+    assert after["pending_human_action"]["verify_verb"] == match_cli.CLEAR_VERB
 
 
 def test_an_undecidable_parse_is_never_promoted_to_a_match(cfg, music):
@@ -2741,30 +2931,122 @@ def test_one_answered_key_question_never_settles_another_one(cfg, music, tmp_pat
     assert plain["data"]["matched"][0]["why"] == str(match.Why.EXACT)
 
 
-def test_a_version_question_asked_with_a_key_and_without_one_is_still_one_item(
+def test_a_list_line_that_names_a_key_is_a_different_question_from_one_that_does_not(
     cfg, music, tmp_path
 ):
-    """The key set never varies, only the value, so the split is not over-eager.
+    """THE COST OF THE RULE, RECORDED RATHER THAN DISCOVERED, and it is the cheap side.
 
-    A version question is not about the key, so a list that carries one and a
-    list that does not ask the same thing and share the answer.
+    The identity of a question is a function of the LIST LINE. The key is in it,
+    for the reason ``question_identity`` gives, so a line that names a key and a
+    line that does not are two lines and two items. That is a real loss: this
+    used to be one item, because the key was put in only when the question turned
+    out to be about the key.
+
+    IT WAS BOUGHT WITH SOMETHING WORSE. Which question gets asked is decided by
+    what is on that machine's disk, so the old rule let the LIBRARY decide the
+    identity: one line opened two different items on two machines under one
+    ``match_id``, and an exported answer imported cleanly into an identifier the
+    receiving machine never looks up. What R13 actually promises is that the same
+    line through the three readers is one question, and that is asserted here
+    beside the cost.
     """
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Someone Remix)")
     plain = write_list(tmp_path, "Aurora Bloom - Sun Path (Extended Mix)\n", "plain.txt")
-    keyed = write_list(
-        tmp_path,
-        json.dumps(
-            {"list": 1, "origin": match.TIDAL,
-             "tracks": [{"id": "1", "title": "Sun Path", "version": "Extended Mix",
-                         "key": "08A", "artist": {"name": "Aurora Bloom"}}]}
-        ),
-        "keyed.json",
-    )
+
+    def keyed(code: str | None, name: str) -> str:
+        row = {"id": "1", "title": "Sun Path", "version": "Extended Mix",
+               "artist": {"name": "Aurora Bloom"}}
+        if code is not None:
+            row["key"] = code
+        return write_list(
+            tmp_path,
+            json.dumps({"list": 1, "origin": match.TIDAL, "tracks": [row]}),
+            name,
+        )
+
     _code, first = drive(["match", "run", plain])
     item_id = first["data"]["needs_review"][0]["review_item"]
-    _code, second = drive(["match", "run", keyed])
-    assert second["data"]["needs_review"][0]["review_item"] == item_id
-    assert len(queue_items(cfg)) == 1
+    _code, with_key = drive(["match", "run", keyed("08A", "keyed.json")])
+    assert with_key["data"]["needs_review"][0]["review_item"] != item_id
+    assert len(queue_items(cfg)) == 2
+
+    # THE PROMISE THAT SURVIVES: the same line, through a different reader, is
+    # the same question. Nothing here carries a key, so nothing here splits.
+    _code, unkeyed = drive(["match", "run", keyed(None, "unkeyed.json")])
+    assert unkeyed["data"]["needs_review"][0]["review_item"] == item_id
+    assert len(queue_items(cfg)) == 2
+
+
+def test_a_verdict_travels_between_two_machines_that_hold_different_versions(
+    cfg, music, tmp_path
+):
+    """THE PAIR OF VERBS THIS IDENTITY EXISTS FOR, driven across two libraries.
+
+    ``review export`` and ``review import`` move a decision between machines. One
+    list line carrying a key resolves to a KEY question on a machine holding that
+    exact version at another key, and to a VERSION question on a machine holding
+    only another version. The identity used to be gated on which of those two the
+    library chose, so the two machines opened two items under one ``match_id``:
+    the import reported the row inserted with no conflict, the receiving machine
+    looked its own question up under the other identifier, found nothing, and
+    asked again. The answer was imported and ignored, and nothing anywhere said
+    so.
+
+    Driven at the seam rather than asserted on the object, because the object
+    agreeing is what the last round already proved about ``match_id`` while this
+    went on failing underneath it.
+    """
+    line = match.read_tidal_tracks(
+        [{"id": "1", "title": "Sun Path", "version": "Nightwave Remix",
+          "key": "08A", "artist": {"name": "Aurora Bloom"}}]
+    )
+
+    def library(*names: str) -> match.LibraryIndex:
+        room = tmp_path / f"lib{len(names)}{names[0][:3]}"
+        room.mkdir(parents=True, exist_ok=True)
+        for name in names:
+            hold(room, name)
+        return index_of(room)
+
+    def settled(index, store) -> match.TrackMatch:
+        return match_cli.adjudicate(
+            store,
+            resolve(line, index),
+            handler_key="acquire.match.run",
+            suppresses=nothing_suppressed,
+            suppression_id=no_identifier,
+        ).matches[0]
+
+    # MACHINE A holds the exact version, at the wrong key.
+    machine_a = library("03A - 124 - Aurora Bloom - Sun Path (Nightwave Remix)")
+    # MACHINE B holds another version entirely.
+    machine_b = library("08A - 124 - Aurora Bloom - Sun Path (Extended)")
+
+    with review.open_store(cfg, path=tmp_path / "a.sqlite3") as store_a:
+        asked = settled(machine_a, store_a)
+        assert asked.why is match.Why.KEY_DIFFERS
+        review.resolve(
+            store_a, asked.item_id, review.Verdict.REJECTED, actor="phillip"
+        )
+        document = review.export_document(store_a)
+
+    with review.open_store(cfg, path=tmp_path / "b.sqlite3") as store_b:
+        fresh = settled(machine_b, store_b)
+        assert fresh.why is match.Why.VERSION_DIFFERS
+        assert fresh.item_id == asked.item_id, (
+            "the two machines opened two items for one list line, so the export "
+            "lands under an identifier this one never looks up"
+        )
+        taken = review.import_document(store_b, document, actor="importer")
+        assert taken.conflicts == ()
+        answered = settled(machine_b, store_b)
+
+    assert (answered.state, answered.why) == (
+        match.MatchState.MISSING,
+        match.Why.VERDICT_REJECTED,
+    )
+    assert answered.item_id == asked.item_id
+    assert asked.match_id == answered.match_id
 
 
 def test_a_run_blocked_by_an_unapplicable_verdict_names_the_verb_that_can_act(

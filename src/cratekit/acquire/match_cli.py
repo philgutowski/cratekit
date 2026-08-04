@@ -28,6 +28,15 @@ under ``acquisition``, where the next verb reads them. It used to carry an empty
 candidate list, an empty path list, and nothing else, while the docstring claimed
 otherwise.
 
+**ONE CLASS OF QUESTION IS QUEUED WITHOUT GATING THE RUN**, which is a product
+decision and is argued at ``UNGATED``. A list line whose dash tail is a bare
+one-word qualifier reads two ways and no rule over the string decides it, so it
+becomes a question; but ``- Edit``, ``- Mix`` and ``- Live`` are three of the
+commonest spellings a public playlist ships, and gating on them exits 12 on
+almost every run of almost every list. The row stays in ``needs_review``, the
+item stays answerable, the warning channel says so, and the caller's pipeline is
+not stopped by an ambiguity in somebody else's spelling.
+
 **WHY THE QUEUE IS READ BEFORE IT IS WRITTEN.** An item that already carries a
 verdict is not offered again. ``offer`` is idempotent and would leave a resolved
 item alone anyway, so this is not about correctness of the store; it is about
@@ -101,6 +110,37 @@ VERDICT_UNAPPLICABLE = "verdict-unapplicable"
 #: acquires a track the library already holds, which is what the approximate pass
 #: exists to prevent.
 CANDIDATES_WITHHELD = "candidates-withheld"
+
+#: A list line this module could not read one way, queued as a question and NOT
+#: gating the run. See :data:`UNGATED` for the whole argument.
+READING_UNSETTLED = "reading-unsettled"
+
+#: The whys that are queued as questions but do not by themselves make a run
+#: PENDING_HUMAN. Exactly one, and the reason it is not simply "every question"
+#: is the point.
+#:
+#: A key question and a version question are about the LIBRARY: the person holds
+#: a different record from the one the list names, and until somebody says
+#: whether it is the same record, this run genuinely cannot say what is owned. A
+#: READING question is about the LIST'S OWN SPELLING. ``Sun Path - Live`` is
+#: either a live cut of "Sun Path" or a record called "Sun Path - Live", no rule
+#: over the string decides it, and ``- Edit``, ``- Mix`` and ``- Live`` are three
+#: of the commonest spellings a public playlist ships. Gating on them costs a
+#: measured 14 of 68 cells in the library-state table, all in one direction, so a
+#: 40,000 track library run against public playlists exits 12 on almost every
+#: run: a gate that fires every time is a gate nobody reads, and a queue nobody
+#: empties is worse than the wrong guess this class exists to avoid making.
+#:
+#: WHAT IS NOT GIVEN UP. The row is still NEEDS_REVIEW, so nothing counts it
+#: owned and nothing acquires it; the item is still offered, so the question is
+#: still answerable and the answer still persists; and the run still says so out
+#: loud on :data:`READING_UNSETTLED`. R11's silence is a question nobody is told
+#: about, not a question that did not stop the pipeline. A row of this class that
+#: later carries a verdict this build cannot apply leaves this set on its own,
+#: because ``apply_verdict`` rewrites the why into one of :data:`match.STALLED`,
+#: and those gate: a stalled item is invisible to the open listing and needs an
+#: act nobody will perform unless told.
+UNGATED: frozenset[match.Why] = frozenset({match.Why.READING_AMBIGUOUS})
 
 #: The verb that shows a person the questions this run left open.
 REVIEW_VERB = "review.list"
@@ -546,6 +586,35 @@ def _warnings(
                 "remedy": CLEAR_VERB,
             }
         )
+    # THE QUESTIONS THAT DO NOT GATE, SAID OUT LOUD, and this is the whole price
+    # of not gating. A row of this class leaves the run at exit zero, so the only
+    # thing standing between it and R11's silence is this warning and the
+    # needs-review array. One per ITEM, for the reason the stalled loop above
+    # gives: two rows of one list can resolve to one question, and two warnings
+    # about one question is one thing to answer wearing two hats.
+    asked: set[str] = set()
+    for track in result.of(match.MatchState.NEEDS_REVIEW):
+        if track.why not in UNGATED:
+            continue
+        marker = track.item_id or track.match_id
+        if marker in asked:
+            continue
+        asked.add(marker)
+        found.append(
+            {
+                "code": READING_UNSETTLED,
+                "message": (
+                    f"{track.wanted.artist} / {track.wanted.title} reads two ways "
+                    f"and this library holds the other one; it is queued as a "
+                    f"question rather than counted owned, and the run was not "
+                    f"blocked on it"
+                ),
+                "suppression": "",
+                "match": track.match_id,
+                "item": track.item_id or "",
+                "remedy": REVIEW_VERB,
+            }
+        )
     # EVERY STATE, not only the one where nothing is acquired. This warning's own
     # reason for existing is that "the run then acquires a track the library
     # already holds", and the run that acquires is the one AFTER the rejection:
@@ -599,8 +668,18 @@ def _pending(result: match.MatchResult, *, run_id: str) -> PendingHumanAction | 
     one line pasted twice produced "1 tracks ... need a person; 2 of them carry a
     verdict that could not be applied", which is arithmetic nobody can follow, and
     then printed one identifier for the two.
+
+    ONE CLASS OF QUESTION DOES NOT GATE, and it is a decision rather than an
+    oversight: see :data:`UNGATED`, which also says what is not given up. It is
+    filtered here rather than left out of the queue, so the question is still
+    asked and still answerable; what changes is only whether one common public
+    playlist spelling stops the caller's pipeline.
     """
-    open_questions = result.of(match.MatchState.NEEDS_REVIEW)
+    open_questions = [
+        found
+        for found in result.of(match.MatchState.NEEDS_REVIEW)
+        if found.why not in UNGATED
+    ]
     if not open_questions:
         return None
     stalled = sorted(
@@ -716,10 +795,12 @@ __all__ = [
     "LIST_KEYS",
     "LIST_VERSION",
     "QUEUE",
+    "READING_UNSETTLED",
     "REVIEW_VERB",
     "SUPPRESSED_WARNING",
     "TOMBSTONE_OVER_OWNED",
     "TOMBSTONE_STORE",
+    "UNGATED",
     "VERDICT_UNAPPLICABLE",
     "adjudicate",
     "build",

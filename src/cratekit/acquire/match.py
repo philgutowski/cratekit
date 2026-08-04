@@ -54,6 +54,18 @@ FOUR PROPERTIES, and each one answers a specific way that failed.
    the reading the STRING yields and from nothing else, so they are the same on
    every machine.
 
+   THAT SENTENCE WAS TRUE OF THE IDENTIFIER AND FALSE OF THE ITEM for one round,
+   and the item is the thing the two verbs actually move. ``question`` took an
+   argument saying whether the question was about the key, resolution passed it
+   whichever branch the LIBRARY chose, so one list line opened two different
+   review items on two machines under one ``match_id``: an answer exported from
+   the first imported into the second with no conflict, was filed under an
+   identifier the second never looks up, and the same question was asked again
+   beside it. A fix that lands on the identifier and leaves the item is a fix on
+   the wrong object. The key in the item identity is now the LIST'S key, on every
+   question, and the library chooses only what is offered and how the question
+   reads.
+
    THE ONE CLASS WHERE THE THREE READERS CANNOT CONVERGE ON THE STATE, stated
    rather than papered over. A source that carries its version in its own field
    has told us where the boundary is; a source that spells "Sun Path - Live"
@@ -102,8 +114,13 @@ those are toggleable modules, so an identity spelled inside either one is absent
 exactly when the other needs it. It belongs below both, in the domain layer, and
 that is where U24 puts it as ``cratekit.core.tombstone``. ``TOMBSTONE_KIND`` and
 ``version_identity`` here are that module's algorithm replicated byte for byte
-until U24 merges, at which point they collapse into imports. The REVIEW ITEM
-identity is a different thing and stays here: see ``question_identity``.
+until U24 merges, at which point they collapse into imports OF THAT MODULE'S OWN
+NAMES, which are ``KIND_VERSION`` and ``version_identity``: the local constant is
+called ``TOMBSTONE_KIND`` and nothing upstream is, so a merge instruction that
+names this side's spelling sends whoever follows it literally to a symbol that
+does not exist. The exact two import lines are written out at ``TOMBSTONE_KIND``
+below. The REVIEW ITEM identity is a different thing and stays here: see
+``question_identity``.
 """
 
 from __future__ import annotations
@@ -619,6 +636,12 @@ def _spellings_of(head: str, version: str) -> tuple[str, ...]:
     could see it either way, because the listing that spells the dash form
     already addresses itself through :attr:`Wanted.listed`.
 
+    THE MIRROR OF THAT RULE LIVES IN :attr:`Wanted.addresses`, which walked both
+    readings of the same ambiguity and so composed the bracketed spellings from
+    the dash-spelled listing this refuses to compose the dash spelling for. One
+    ambiguity, two functions, opposite policies, and the docstring here defended
+    the direction the other one was breaking. They now agree.
+
     The two-group forms are here for the spelling that puts one version in
     several brackets, ``Sun Path (Extended) (Remastered)``. A source carrying its
     version in one field cannot know where the groups were, so every cut is
@@ -715,9 +738,27 @@ def question_identity(
     about that recording came back matched, including 03B, the relative minor
     this module exists to catch.
 
-    The key set never varies. The field is present and empty for the questions
-    that are not about a key, so the version question a list asks with a key and
-    the one it asks without are still one item and one answer.
+    THE KEY THAT GOES IN IS THE LIST'S, ALWAYS, AND THE LIBRARY DOES NOT GET A
+    VOTE, which is the second time this unit had to learn that an identity is a
+    function of the thing it identifies. The caller used to pass the key only
+    when the question turned out to be ABOUT the key, and which question gets
+    asked is decided by what happens to be on that machine's disk. So one list
+    line carrying a key opened item ``rv_5b77...`` on a machine holding that
+    exact version at another key and ``rv_0efa...`` on a machine holding only
+    another version, with one ``match_id`` across both: ``review export`` wrote
+    the answer under the first, ``review import`` inserted it with no conflict,
+    and the next run on the second machine asked the identical question again
+    under the other identifier and ignored the answer. On ONE machine, deleting
+    the copy that made it a key question stranded the verdict under an identity
+    nothing looks up, which bypasses ``CANDIDATE_GONE`` because reaching that
+    state needs the item to be FOUND first.
+
+    THE KEY SET NEVER VARIES AND NEITHER DOES THE VALUE. A list line that names
+    no key carries the empty token, which is what an unreadable code folds to as
+    well, so a list that carries a key and one that does not are two lines and
+    two items. That is the cost of the rule and it is the cheap side: the same
+    line through all three readers is still one item, which is the promise R13
+    actually makes, and no answer is ever applied to a question nobody was asked.
     """
     return {
         "recording": recording_token(artist, title),
@@ -757,12 +798,14 @@ class Wanted:
     isrc: str | None = None
     origin: str = TEXT
     ref: str = ""
-    #: THE TITLE EXACTLY AS THE SOURCE SPELLED IT, before the version came out of
-    #: it. Carried rather than recomputed because the tombstone identity is a
-    #: hash of a title, the other side of that hash reads a library row's Title
-    #: column verbatim, and a title this module took apart and put back together
-    #: is a different string. Empty for a source that never had one, which is a
-    #: provider row carrying its version in a separate field.
+    #: THE TITLE AS THE SOURCE SPELLED IT, VERSION AND ALL. Carried rather than
+    #: recomputed because the tombstone identity is a hash of a title, the other
+    #: side of that hash reads a library row's Title column verbatim, and a title
+    #: this module took apart and put back together is a different string. A
+    #: source that split the title from the version has the two put back together
+    #: by the reader, from the row's OWN title, so a featured credit the row
+    #: spelled survives into every address composed from it. Empty only for a
+    #: ``Wanted`` built by hand, where :attr:`listed` composes the fallback.
     spelled: str = ""
     #: THE OTHER WAY THIS LISTING'S TITLE READS, as (title, version), when its
     #: dash tail is a bare one-word qualifier and the string alone cannot say
@@ -796,9 +839,12 @@ class Wanted:
         learned to parse, and a miss is silent on both sides: nothing knows a
         tombstone exists, so nothing reports one.
 
-        Composition is the fallback and not the rule. It is reached only by a
-        source that hands over a version in its own field, where there is no
-        original string to preserve and something has to be built.
+        Composition is the fallback and not the rule, and where it happens moved.
+        A reader that is handed a version in its own field composes at the point
+        it still has the row's own title, credits included; this fallback is what
+        is left for a ``Wanted`` somebody built by hand, and it composes from
+        :attr:`title`, which has had its credits taken off. See :func:`_from_row`
+        for what that costs when it is the only composition there is.
         """
         return self.spelled or listed_title(self.title, self.version)
 
@@ -816,6 +862,12 @@ class Wanted:
         :func:`split_ambiguous`. The second entry carries the SAME spelled
         string, because the address a deletion recorded is what the row said and
         does not change with how this module reads it.
+
+        ONE CONSUMER, :func:`_other_reading_the_library_holds`, and it uses the
+        second entry to decide what to OFFER with a question. Nothing identifying
+        is derived from it: not the match identifier, not the review item, and
+        since this round not an address either. See :attr:`addresses` for why the
+        last of those had to go.
         """
         if self.other_reading is None:
             return (self,)
@@ -830,10 +882,23 @@ class Wanted:
         """Every TITLE STRING a library row could carry for this exact version.
 
         Built from the spelling's own head rather than from the matching title,
-        for the reason :func:`_head_of` gives, and covering both readings when
-        the title has two, because a tombstone recorded from ``Sun Path (Live)``
-        must be reachable from a list line spelling it ``Sun Path - Live``
-        whether or not the library still holds the file.
+        for the reason :func:`_head_of` gives.
+
+        THE READING THE LIST SPELLED, AND NOT THE OTHER ONE, which is the same
+        policy :func:`_spellings_of` applies to the same ambiguity and the two
+        were pointing in opposite directions. That function refuses to compose
+        ``Sun Path - Live`` from a head and a version, argued out loud, because a
+        deletion of a composition genuinely called "Sun Path - Live" would then
+        silently withhold the live cut. This walked both readings, so a list line
+        spelling ``Aurora Bloom - Sun Path - Live`` composed ``Sun Path (Live)``
+        and ``Sun Path [Live]`` and a deletion of the live cut silently withheld
+        a listing that may well mean the composition. Same cost, opposite
+        direction, one ambiguity. :func:`tombstone_fold` settles which way both go:
+        a missed suppression re-acquires something and REPORTS it, an over-eager
+        one withholds music somebody wants and says nothing, and those two costs
+        are not comparable. So an undecidable reading never crosses into an
+        address, in either direction, and the residual is a dash-spelled listing
+        re-acquiring a version deleted under its bracketed spelling.
 
         THE CREDIT IS A PRECONDITION OF COMPOSING AT ALL, and until this round it
         was a sentence in a docstring while the code did the opposite for three
@@ -853,19 +918,18 @@ class Wanted:
         else, which costs a missed suppression that gets reported.
         """
         found: list[str] = []
-        for reading in self.readings:
-            spelled = reading.listed
-            head = _head_of(spelled, reading.version) or reading.title
-            composed: tuple[str, ...] = ()
-            if _credits_in(head) == _credits_in(spelled):
-                composed = tuple(
-                    built
-                    for text in _equivalent_versions(reading.version)
-                    for built in _spellings_of(head, text)
-                )
-            for spelling in (spelled, *composed):
-                if spelling not in found:
-                    found.append(spelling)
+        spelled = self.listed
+        head = _head_of(spelled, self.version) or self.title
+        composed: tuple[str, ...] = ()
+        if _credits_in(head) == _credits_in(spelled):
+            composed = tuple(
+                built
+                for text in _equivalent_versions(self.version)
+                for built in _spellings_of(head, text)
+            )
+        for spelling in (spelled, *composed):
+            if spelling not in found:
+                found.append(spelling)
         return tuple(found)
 
     @property
@@ -902,16 +966,20 @@ class Wanted:
                 seen.append(built)
         return tuple(seen)
 
-    def question(self, *, about_the_key: bool = False) -> dict[str, str]:
+    def question(self) -> dict[str, str]:
         """THE REVIEW ITEM identity, which is this module's.
 
         Separate from :attr:`identity` because they address different things: a
         tombstone outlives every list and a question is one thing somebody was
         asked. See :func:`question_identity` for why the key is in it.
+
+        NO ARGUMENT, and the one it used to take is the defect. It was told
+        whether the question was about the key, that answer came from whichever
+        branch the LIBRARY chose, and an identity a machine's disk gets a vote in
+        is not an identity. Every field here is read off ``self``, which is the
+        list line and nothing else.
         """
-        return question_identity(
-            self.artist, self.title, self.version, self.key if about_the_key else None
-        )
+        return question_identity(self.artist, self.title, self.version, self.key)
 
 
 def _field(row: object, name: str, default: Any = None) -> Any:
@@ -1141,11 +1209,21 @@ def _from_row(row: object, *, origin: str, position: int) -> Wanted:
         isrc=(str(isrc).strip() or None) if isrc else None,
         origin=origin,
         ref=str(_field(row, "id", "")).strip(),
-        # KEPT ONLY WHEN THE VERSION CAME OUT OF IT. A row that declared its
-        # version in its own field never spelled the two together, so there is no
-        # original to preserve and the composed form is the honest answer. A row
-        # that spelled them together is addressed by exactly what it said.
-        spelled="" if declared else raw_title,
+        # THE ROW'S OWN TITLE, WITH ITS VERSION IN IT. A row that spelled the two
+        # together is addressed by exactly what it said. A row that declared its
+        # version in a separate field never spelled them together, so the two are
+        # composed HERE, FROM THE ROW'S TITLE rather than from the matching one,
+        # and that word is the whole of the correction. The matching title has
+        # had its featured credits taken off, because a guest vocalist names a
+        # performer rather than an edit, so composing the address from it turned
+        # a provider row for ``Sun Path (feat. Mira)`` into every address of the
+        # PLAIN record: a tombstone over the literal library row ``Sun Path
+        # (Extended) (Remastered)`` then suppressed a listing for the credited
+        # recording, in none of the three arrays, at exit zero, with acquisition
+        # skipping a track nobody had deleted. ``Wanted.addresses`` cannot catch
+        # that, because by the time it compares the credits the composition has
+        # already dropped it and the comparison is vacuous on both sides.
+        spelled=listed_title(raw_title, declared) if declared else raw_title,
         # ONLY WHEN THE ROW SPELLED THE TWO TOGETHER. A declared version leaves
         # nothing ambiguous, because the source already said which part is the
         # version.
@@ -1480,7 +1558,6 @@ class TrackMatch:
     item_id: str | None = None
     suppression_id: str | None = None
     acquisitions: tuple[Acquisition, ...] = ()
-    asks_about_key: bool = False
     #: Candidates the offer limit kept back. Reported rather than dropped, so a
     #: rejection is a rejection of what was shown and everybody knows it.
     withheld: int = 0
@@ -1498,14 +1575,17 @@ class TrackMatch:
 
     @property
     def question_identity(self) -> dict[str, str]:
-        """THE REVIEW ITEM identity. Frozen at resolution, never re-derived.
+        """THE REVIEW ITEM identity, DERIVED FROM THE LIST LINE AND NOTHING ELSE.
 
-        ``asks_about_key`` is carried as a field rather than recomputed from
-        ``why`` because ``apply_verdict`` rewrites ``why`` to say what happened
-        to the answer, and an identity that changed when the answer arrived would
-        write a verdict onto one item and read it back off another.
+        It carries no state of its own for the same reason ``match_id`` does not.
+        This used to be gated on a ``asks_about_key`` field that resolution set
+        from whichever branch the library took, so the identity a verdict was
+        written under was a function of that machine's disk: the pair of verbs
+        ``review export`` and ``review import`` exist to move an answer between
+        two machines and the answer landed under an identifier the receiving one
+        never looks up. See :func:`question_identity`.
         """
-        return self.wanted.question(about_the_key=self.asks_about_key)
+        return self.wanted.question()
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -1769,7 +1849,6 @@ def resolve_one(
             # it is the one that looks like agreement to everything downstream.
             why=Why.KEY_RELATIVE if Why.KEY_RELATIVE in disagreements else Why.KEY_DIFFERS,
             candidates=_candidates_for(wanted, exact),
-            asks_about_key=True,
         )
 
     if owned:
@@ -1910,7 +1989,6 @@ def apply_verdict(
             candidates=found.candidates,
             paths=found.paths,
             item_id=item_id,
-            asks_about_key=found.asks_about_key,
             withheld=found.withheld,
         )
     if not accepted:
@@ -1925,7 +2003,6 @@ def apply_verdict(
                 candidates=found.candidates,
                 item_id=item_id,
                 suppression_id=standing,
-                asks_about_key=found.asks_about_key,
                 withheld=found.withheld,
             )
         return TrackMatch(
@@ -1939,7 +2016,6 @@ def apply_verdict(
             # sentence that hands the track to acquisition, so the row that says
             # it has to say what to go and get.
             acquisitions=acquisition_options(found.wanted),
-            asks_about_key=found.asks_about_key,
             withheld=found.withheld,
         )
     if option is None:
@@ -1955,7 +2031,6 @@ def apply_verdict(
             why=unresolved,
             candidates=found.candidates,
             item_id=item_id,
-            asks_about_key=found.asks_about_key,
             withheld=found.withheld,
         )
     return TrackMatch(
@@ -1965,7 +2040,6 @@ def apply_verdict(
         candidates=tuple(chosen),
         paths=tuple(path for candidate in chosen for path in candidate.paths),
         item_id=item_id,
-        asks_about_key=found.asks_about_key,
         withheld=found.withheld,
     )
 

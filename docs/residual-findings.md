@@ -713,28 +713,54 @@ promise is a checked precondition rather than a sentence in a docstring. Where t
 head cannot be located the listing is addressed by exactly what it said and by
 nothing else.
 
-**What that costs, which is the other half of this gap.** A listing whose credit
-sits after its version can no longer address the SAME version spelled the other
-way round: a list line `Sun Path (Live) (feat. Mira)` does not reach a tombstone
-recorded from the row `Sun Path (feat. Mira) (Live)`. That is a missed suppression,
-which re-acquires the version and reports it, and it is the cheaper of the two
-costs by the argument above. It is the same class this entry already names, from
-the other side: the provider row cannot put a credit back, and a credited listing
-cannot move one.
+**AND IT WAS FIXED ON TWO READERS OUT OF THREE, which the fifth review found by
+driving the third.** `_from_row` set `spelled` to the empty string for any row
+that declared its version in its own field, and `Wanted.listed` then composed the
+address from the MATCHING title, which has had its credits taken off. So the
+credit was gone before the new precondition could look at it, `_credits_in(head)`
+and `_credits_in(spelled)` were both empty, the comparison passed on nothing, and
+the provider row `{"title": "Sun Path (feat. Mira)", "version": "Extended
+Remastered"}` addressed `Sun Path (Extended Remastered)`, `Sun Path [Extended
+Remastered]`, `Sun Path (Extended) (Remastered)` and `Sun Path - Extended
+Remastered`, the third of which is a literal row in this repository's own
+`REKORDBOX_ROWS`. Deleting that plain row resolved the credited listing to
+SUPPRESSED at exit zero. The identical listing through `read_text_lines` or
+`read_spotify_items` correctly reported MISSING, and every test pinning this drove
+the text reader only.
+
+**Closed by carrying the row's own title, which is the first half of this entry's
+own closing condition.** A reader handed a split title and version now composes
+`spelled` from the row's TITLE, credits and all, at the point it still has it. The
+provider row above is addressed by the four spellings of the CREDITED recording
+and by none of the plain one.
+
+**WHAT THIS ENTRY USED TO RECORD AS THE COST WAS THE CHEAP HALF.** The paragraph
+here named a missed suppression, a listing whose credit sits after its version no
+longer reaching the same version spelled the other way round: `Sun Path (Live)
+(feat. Mira)` does not reach a tombstone recorded from `Sun Path (feat. Mira)
+(Live)`. That is real and it is still the residual, but it was not the live cost.
+The live cost was the over-eager WITHHOLD above, the direction `tombstone_fold`
+rejects by name, and an entry that records only the direction it chose is an entry
+that cannot be used to check whether the code went the other way.
 
 **Pinned, not assumed.** `UNRECONCILED` in `tests/test_match_states.py` is the
 literal list of unreconciled derivations, checked over all seven row spellings and
 all three readers on every run. It going empty or growing fails a test rather than
 changing behaviour quietly. `CREDIT_OUTSIDE_THE_SUFFIX` in the same file pins the
-WHOLE address set for each of the three shapes above, as literals on both sides,
-because "the plain address is gone" is also true of a composition that produces
-some other wrong string.
+WHOLE address set for each of the three shapes above, ACROSS ALL THREE READERS, as
+literals on every side, because "the plain address is gone" is also true of a
+composition that produces some other wrong string, and because a fix verified on
+one reader out of three is exactly how this reappeared.
 
-**Closes when:** either the provider readers carry the row's full title alongside
-its split fields, so the credit survives into `spelled`, or the deletion pass
-records a second identity with credits stripped and this side consults it, which
-is a decision belonging to whoever owns the tombstone identity rather than to this
-unit.
+**What is left open.** A provider row that never spelled the credit at all,
+`{"title": "Sun Path", "version": "Nightwave Remix"}` against a library row
+`Sun Path (feat. Mira) (Nightwave Remix)`, still cannot reach it: there is nothing
+to put back. That is the one entry in `UNRECONCILED`.
+
+**Closes when:** the provider readers are handed a row that carries the credit,
+which is now enough on this side, or the deletion pass records a second identity
+with credits stripped and this side consults it, which is a decision belonging to
+whoever owns the tombstone identity rather than to this unit.
 
 ---
 
@@ -859,6 +885,24 @@ silently withhold the live cut of "Sun Path". It is the over-eager direction wit
 extra steps, it was reachable by nothing, and it is gone.
 `test_the_dash_spelling_of_a_bare_one_word_version_is_not_composed` keeps it gone.
 
+**THE MIRROR OF THAT GATE WAS WIDE OPEN UNTIL THE FIFTH REVIEW, and it was the
+reachable half.** `_spellings_of` refused the composition and `Wanted.addresses`
+walked BOTH readings unconditionally, so the list line `Aurora Bloom - Sun Path -
+Live` composed `Sun Path (Live)` and `Sun Path [Live]` anyway and a tombstone over
+the live cut suppressed it. Same ambiguity, same cost, opposite direction,
+defended in one docstring while being rejected by name two functions away. The
+policy is now one policy: an undecidable reading never crosses into an address,
+either way. `test_a_tombstone_is_addressed_by_every_reading_except_the_undecidable_one`
+drives it at resolution and
+`test_neither_reading_of_an_ambiguous_title_composes_the_other_ones_address`
+asserts the symmetry on the object.
+
+**What that costs.** A deliberate deletion of `Sun Path (Live)` is undone when a
+later list spells the record `Sun Path - Live`: the version reports MISSING and
+acquisition fetches it back. That is the direction `tombstone_fold` says to take,
+because the run says what it is about to get, and the alternative withholds music
+somebody wants and says nothing.
+
 **Not fixed by widening.** Adding shapes is cheap and adding the wrong one is not:
 every extra composed spelling is another string a deletion of somebody else's
 record could match, and `tombstone_fold`'s docstring settles that direction, an
@@ -907,6 +951,33 @@ and from nothing else, so it is the same on every machine, and the library's
 answer is used for the one thing it is evidence for: which file to OFFER with the
 question. `Why.READING_AMBIGUOUS` is that question.
 
+**THAT FIX LANDED ON `match_id` AND LEFT THE REVIEW ITEM, which the fifth review
+found by driving the two verbs the property is about.** This entry and the module
+docstring both asserted that `Wanted.question` was now the same on every machine.
+It was not. `TrackMatch.question_identity` passed `about_the_key=self.asks_about_key`,
+and `asks_about_key` was set by whichever branch the LIBRARY took, so one list line
+carrying a key opened a KEY question on a machine holding that exact version at
+another key and a VERSION question on a machine holding only another version, with
+one `match_id` across both. The first machine answered and exported; the second
+imported the row with no conflict, then asked the identical question again under
+its own identifier, so the answer was imported and ignored with nothing reported.
+On one machine, deleting the copy that made it a key question stranded the verdict
+under an identity nothing looks up, which bypasses `CANDIDATE_GONE` for exactly
+the reason this entry already gives: reaching that state needs the item to be
+FOUND first. The key in the item identity is now the LIST's key on every question,
+the `about_the_key` argument and the `asks_about_key` field are gone, and
+`test_a_verdict_travels_between_two_machines_that_hold_different_versions` drives
+the export and the import across the two library states.
+
+**What that costs, recorded rather than found later.** A list line that names a
+key and a list line that does not are now two questions and two items, where a
+VERSION question used to be one. That is a real loss of convergence between a
+provider list carrying keys and the same list pasted as text without them. It is
+the cheap side: the alternative is an identity a machine's disk gets a vote in.
+The promise R13 actually makes, that the same LINE through the three readers is
+one question, is unaffected, and it is asserted beside the cost in
+`test_a_list_line_that_names_a_key_is_a_different_question_from_one_that_does_not`.
+
 **The trilemma, stated because it is not going away.** For this class, three
 things cannot all hold. (1) One identifier per record across the three readers.
 (2) An identifier that does not move with the library. (3) An identifier that
@@ -950,3 +1021,64 @@ library, or a person decides the ambiguous class should carry a mark in the
 payload saying this module re-read their line. The first is the smaller change and
 belongs with whoever owns `review export`; the second is a surface decision and
 belongs on an issue.
+
+---
+
+## R-25. The ambiguous reading class is queued as a question and does not gate the run
+
+**Found:** by the fifth U16 review, 2026-08-03, as a cost the fourth round left
+uncosted. Numbered after R-24, which the same unit added. If a concurrent unit
+claims R-25 first, renumber this entry at merge; the content is what matters.
+
+**What was measured.** Across the 17 words in `_DASH_VERSIONS` times four library
+states, 68 cells, 14 change and all in one direction and one library state:
+`MATCHED/EXACT` became `NEEDS_REVIEW/READING_AMBIGUOUS` when the library holds the
+confirming file. The words are `acoustic, bootleg, demo, dub, edit, extended,
+instrumental, live, mix, remix, reprise, rework, version, vip`. The empty library,
+the library holding another version and the library holding the whole title are
+all unchanged, and no row reports MISSING or carries an acquisition option, so the
+second round's regression stayed closed.
+
+**The consequence nobody had priced.** Any list carrying such a line moved the run
+from exit 0 to exit 12 `PENDING_HUMAN`, and `- Edit`, `- Mix` and `- Live` are
+three of the commonest spellings a public playlist ships. For a large library run
+against public playlists that is a review queue filling faster than a person
+empties it, and a gate that fires on almost every run is a gate nobody reads.
+
+**The decision, and why this one.** The class is still a question, because the
+defect the fourth round fixed was real: an undecidable parse reported as MATCHED
+is ownership of a record nobody checked. What changed is that it does not by
+itself make the run `PENDING_HUMAN`. `match_cli.UNGATED` names the one why this
+applies to, `_pending` filters it, and `READING_UNSETTLED` reports each such row
+on the warning channel with its item identifier and `review.list` as the remedy.
+
+The alternative offered was to narrow the question to cases where the two readings
+lead to genuinely different acquisitions. It was rejected because it is vacuous:
+the question is asked exactly when the library holds the confirming file, and at
+that point accepting means the library already holds the record and rejecting
+means going and getting it, so the two readings ALWAYS differ in acquisition.
+Narrowing on that condition removes no question at all.
+
+**What is not given up.** The row stays in `needs_review`, so nothing counts it
+owned and nothing acquires it. The item is still offered, so the question is
+answerable and the answer persists across runs. The run still says so out loud:
+R11 forbids a question nobody is TOLD about, not a question that did not stop the
+pipeline. And the escape hatch still gates: a row of this class carrying a verdict
+this build cannot apply is rewritten by `apply_verdict` into one of `STALLED`,
+which is not in `UNGATED`, so it blocks and names `review clear`. That last part
+is asserted by
+`test_an_ungated_question_still_gates_once_its_verdict_cannot_be_applied`, because
+a class that never gates would have hidden the one state that genuinely needs a
+person.
+
+**The residual this leaves.** A person who never reads warnings and never opens
+the queue never converges these rows. They are visible in three places and acted
+on in none, and the run exits 0 while a fraction of the list is unresolved. That
+is a real gap and it is the one being accepted, against a gate that fires so often
+it stops carrying information.
+
+**Closes when:** the queue can answer a CLASS of question once rather than one row
+at a time, so "a bare `- Live` tail in my lists means a live version" is a single
+decision that settles every row it applies to, or a person decides this class
+should be resolved by a policy setting rather than by a question. Both are surface
+decisions and belong on an issue rather than in this unit.
