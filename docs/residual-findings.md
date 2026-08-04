@@ -828,6 +828,14 @@ retry delay of 5, an attempt budget of 3 and a mapping of sentences. Every one o
 those is answered by the RANGE before the key set is consulted, so the test passed
 with an empty key set and measured nothing at all.
 
+**The replacement was vacuous in a narrower way, and this round's own mutation
+table caught it.** Its anti-vacuity half asserted only that SOMETHING in the
+fixture fires under a single wide key set, so reverting any one construct to
+out-of-range values killed zero tests while its neighbours kept the assertion
+true. It compares against eighteen exact entries now, so a construct that drifts
+out of the band is a failure rather than a quieter test. Verified by pairing the
+two mutations: with the exact list weakened, the drift goes undetected.
+
 **The fix is two tiers rather than more keys.**
 
 - `declared_causes()`, twenty two slugs plus what the package walk derived plus
