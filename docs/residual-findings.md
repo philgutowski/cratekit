@@ -996,10 +996,45 @@ write. The new behaviour is better in substance and different in report text, an
 a person who reads "cannot be identified on this machine" about a track they
 deleted themselves has to work out that that is what it means.
 
+**THE COST OF RE-ADOPTING AFTER AN ORDINARY TAGGING SESSION, measured in U23's
+eighth round on 20 real files per shape, because that is the number this trade is
+actually made on.** A tagging session moves the bytes of every file it touches,
+and there are two ways to save.
+
+| after a tagging session | in-place mutagen save | `os.replace` save |
+| --- | --- | --- |
+| second adoption, 20 files | applied=20 failed=0 | applied=0 failed=20 |
+| revert after it | restored=20 failed=0 | restored=0 failed=20 |
+| the session's own edits surviving | 20 of 20 | 20 of 20 |
+
+**The in-place save is the common one and it costs nothing**, which is deliberate
+rather than incidental: a byte change is not evidence of a replacement, so
+`_settled_or_refused` accepts when the adopted field still holds a value the ledger
+accounts for, and the whole library re-adopts and reverts exactly.
+
+**The `os.replace` save still refuses every file, and that is this entry's
+residual.** The inode moves for a file nobody replaced, so only the path and the
+bytes are left, and the bytes were rewritten by the save. `_settled_or_refused`'s
+question is deliberately NOT extended to this shape, and the reason is that the
+evidence is weaker in a way that matters: in the shapes where it IS asked, the
+inode proves this is the same file object and only its content moved. Here the
+inode has moved, so a completely different track could be at that path, and the
+most likely such track is another file from the SAME library already adopted into
+the SAME bucket. Accepting on "the path plus the field value" would take a
+coincidence that is rare in one shape and make it ordinary in the other.
+
+**Refusing preserves the session; only `force` destroys it.** Nothing is written
+by a refused entry, so all 20 title edits survive both columns above. What costs
+the session is taking the escape: `revert_tags(force=[...])` writes each recorded
+original back over the file the tagging session produced. That is the trade being
+made, and it is one override per record on a run somebody asked for.
+
 **Closes when:** the apply re-probes readability for an entry immediately before
 writing and reports a deleted track as deleted, which is `scan.probe_readability`
 being called from `apply` and is a small piece of work that belongs with the
-adopt verb's command line rather than with the ledger.
+adopt verb's command line rather than with the ledger. The `os.replace` half
+closes with whatever gives a record something about its CONTENT that a save
+preserves and a replacement cannot reproduce, which is the same thing R-33 names.
 
 ---
 
