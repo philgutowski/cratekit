@@ -761,6 +761,67 @@ up to 39 gave zero failures, so the test is stable, **but it is stable for a
 different reason than its docstring gives.** A test can be correct, green, and
 still model the wrong thing.
 
+### U32 MERGED, the first of the wave
+
+`184fc81` on `main`, pushed, `Closes #32` fired and #32 is closed. #27 and #24
+remain open, as Phillip's decision requires. Battery verified on `main` by hand
+afterwards: ruff clean, **3422 passed, 17 skipped, 3439 collected**,
+`scan_repo` exit 0, and `board.py audit` exit 0 after one `sync`.
+
+The merge agent did the thing that catches a silent disaster here: it
+reconciled the collected count **by identifier, not by total.** 15 branch
+identifiers vanished, and all 15 were accounted for, 14 a test renamed on main
+and 1 a parametrization that moved because U36 landed the module. A total only
+check would have shown a healthy rise and hidden a collapse.
+
+**Sequencing mistake worth not repeating.** The agent correctly left the merge
+unpushed for verification. A docs commit then landed on top and the push
+carried the merge with it, so `Closes #32` fired BEFORE the battery had been
+run on main. The result was correct and was verified after the fact, but the
+check belongs before the push: run `git log origin/main..main` before any push,
+not only before a push you believe is a merge.
+
+### A measuring instrument that was wrong
+
+U16's round 5 driver identified dying tests by splitting pytest's
+`FAILED <id> - <message>` line on `" - "`. **That separator appears INSIDE
+parametrized ids in this repository**, for example
+`David Bowie - Ziggy Stardust - Reprise`. Two ids collapsed into one and a row
+read 3 deaths instead of 4. It found this itself and switched to reading node
+ids from a plugin's report objects.
+
+A count from a broken instrument is worse than no count, because it looks like
+evidence. **Take node ids from report objects, never by string splitting.**
+
+### The prediction landing, and a new form of the fourth pattern
+
+U34's verifier was told to assume the reflective writer hole had moved one step
+further out and to go looking. It found it, exactly one binding out:
+
+    table = vars(Path)
+    table["write_text"](path, data)     # returns [] , writes the file
+
+Round 4's cruder receiver free rule caught this. Round 5's narrowing lost it.
+The verifier's sentence is the whole diagnosis: **"the round built a binding
+table that follows `alias = config` and then did not ask it about
+`table = vars(Path)`."** Three rounds have each closed the previous spelling
+and left the shape open one step out.
+
+Alongside it, two false positives on ordinary code, which matter as much
+because a guard that fires on correct code gets deleted by the next author.
+`self.config` is keyed on the literal spelling with no owning class, so ONE
+class binding `self.config` to the module makes EVERY other class's
+`self.config` a finding. And the test that was supposed to cover this uses a
+single class, so it structurally cannot see it.
+
+**A new form of the fourth pattern: a deletion inside a single round is
+invisible to review.** Two of round 5's three deletions cannot be checked
+against history at all, because both the addition and the removal happened
+inside the working tree. "It was a duplicate" and "it measured zero" are
+written explanations with no artifact behind them. If something is added and
+removed within one round, either do not add it, or record the revert and its
+measurement in the table.
+
 ### What these findings have in common
 
 All three are the wave's two named patterns, again. U23 and U34 are IDENTITY
