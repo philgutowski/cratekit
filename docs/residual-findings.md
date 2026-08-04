@@ -1067,7 +1067,7 @@ own scheme was blind to `{"tree-registry-unusable": 33}` for sixty of the eighty
 two keys. `test_the_alternative_is_not_rejected_for_a_flaw_this_scheme_shares`
 drives that input, and the mutation table has the narrowing as a row.
 
-### Sixteen shapes were silent, not three, and the largest was not an import spelling
+### Seventeen shapes were silent, not three, and the largest was not an import spelling
 
 The fifth round recorded three still-silent import spellings. **Measured, the
 number is fourteen and the two largest are not import spellings at all: the guard
@@ -1109,9 +1109,11 @@ Every construct that finds its keys in a subtree asks `cause_keys_within` now, s
 the claim is a structure rather than a sentence: widening what a key can be
 widens all of them together or none of them.
 
-Sixteen shapes measured, **nine closed and seven recorded**. The enumeration grew
-by two the round after it was written down as complete, which is the argument for
-writing it down:
+Seventeen shapes measured, **nine closed and eight recorded**. The enumeration
+was written down as fourteen with six closed and eight recorded; this round found
+two more shapes and split one recorded row in half, closing the vocabulary side of
+it. It grew by three the round after it was called complete, which is the argument
+for writing it down:
 
 | Shape | Now |
 | --- | --- |
@@ -1198,60 +1200,126 @@ out below the table. Rows are ONE substitution in ONE file unless stated. Revert
 from a snapshot taken before the row was applied, not with `git checkout`, or a
 round's uncommitted edits go with the mutation.
 
-**Numbers moved since the fifth round's table and the moves are explained rather
-than quietly replaced.** Eight of the sixth round's new tests key on
-`config-unusable`, which is a registry-only slug, and four use arithmetic or a
-class attribute, so every row that switches off a piece of the key set or the
-resolver now kills more than it did. Where a row's number moved, the previous
-value is in the last column with the reason.
+**EVERY NUMBER IN THIS TABLE WAS RE-MEASURED IN THIS WORKTREE**, on the shipped
+tree at the seventh round's first commit, not carried forward. The `previous`
+column is the sixth round's value, kept so a move is visible rather than silent.
+
+**HOW THE MOVES ARE ACCOUNTED FOR, and the sixth round's account of its own moves
+was wrong in three ways.** It wrote that "eight of this round's new tests key on
+`config-unusable`" and that four use arithmetic or a class attribute, and offered
+`25 - 8 = 17` as the decomposition of `round-four-tiers-restored`. Measured by
+the verifier: that is NINE node ids from SEVEN functions, so the subtraction does
+not reproduce and the measured value is `25 - 9 = 16`. Eight of its twelve moved
+rows decomposed exactly, three were off by one consistent with one of the two
+tests that round DELETED having died at round five, and
+`narrowed-to-the-eighteen-live-integers` was off by four with four of its five
+extra deaths being PRE-EXISTING node ids rather than that round's.
+
+So the account here is a SUBTRACTION anybody can reproduce rather than a
+sentence. This round adds 15 node ids, from 8 functions, all in
+`tests/test_reserved_causes.py`:
+
+    test_a_branch_table_reads_its_key_the_same_way_whichever_branch_it_is   4 ids
+    test_a_comprehension_reads_named_slugs_and_inlined_slugs_alike          2 ids
+    test_a_constructor_on_the_vocabulary_is_a_code_at_any_value             2 ids
+    test_a_constructor_wrapping_a_runtime_value_reserves_nothing            1 id
+    test_an_integer_outside_the_reserved_range_is_silent_however_it_is_spelled  3 ids
+    test_a_residual_heading_names_exactly_one_finding                       1 id
+    test_the_covered_file_set_is_derived_and_reaches_what_the_unit_touched  1 id
+    test_ordinary_data_keyed_on_a_NAME_is_the_same_residual_in_the_tree_s_own_idiom  1 id
+
+Every row whose number moved was re-run with those 15 ids DESELECTED, and the
+`previous` value reproduced exactly on all nine of the rows the sixth round's
+table names as its largest. That is the check, and it is a measurement rather
+than an explanation: `key-set-drops-the-registry` 38 becomes 29,
+`key-set-drops-the-derivation` 38 becomes 29, `round-four-tiers-restored` 34
+becomes 25, `no-module-level-literals` 19 becomes 16,
+`narrowed-to-the-eighteen-live-integers` 10 becomes 9, `no-class-level-literals`
+8 becomes 5, `no-arithmetic` 5 stays 5, `review-walk-suffix-match` 5 stays 5,
+`no-resolution-through-names` 7 becomes 4.
 
 | id | what it reverts | deaths | previous |
 | --- | --- | --- | --- |
-| `escape-hatch-restored` | the fifth round's `# not-a-reservation: <reason>` escape put back verbatim: `NOT_A_RESERVATION`, `_annotated_lines`, `_silenced_lines`, the `io` and `tokenize` imports, and the `if key.lineno in silenced: continue` filter | 2 | new |
-| `escape-hatch-restored-with-ast-return` | the same restore, plus `ast.Return` added to the statement expansion tuple, so one comment on `return {` silences a whole multi line returned table | 2 | new. **ZERO on top of the restore**, which is the point |
-| `escape-hatch-restored-covering-a-function` | the same restore, plus `ast.FunctionDef` added to the expansion tuple, so one comment on a `def` silences its whole body | 2 | new. **ZERO on top of the restore** |
-| `key-not-resolved-through-names` | `cause_key` reverts to requiring an `ast.Constant`, so a key held in a module constant or on a class attribute resolves to nothing | 2 | new |
-| `key-not-resolved-through-a-class-attribute` | `_resolved` drops its `ast.Attribute` branch alone, which isolates `{Slug.CONFIG_UNUSABLE: 30}` from the module-constant spelling | 1 | new |
-| `no-record-dict-crossing` | `pairs` stops crossing a `ast.Dict`'s VALUES, so a record written `{"cause": ..., "code": ...}` is not a record | 1 | new |
-| `no-getattr-conversion` | `status` drops its `getattr` branch, so `getattr(ExitCode, "PRECONDITION")` is not a code | 1 | new |
-| `no-floor-division-or-remainder` | `resolve_int` drops its `FloorDiv` and `Mod` branch, so `BASE // 2` and `BASE % 100` resolve to nothing | 2 | new |
-| `seen-dedupe-dropped` | the `seen` set and its membership test deleted from `reserved_code_tables`, so a duplicate key in a second table is reported twice | 1 | was ZERO and unrecorded. Driven now |
-| `round-four-tiers-restored` | round four's two-tier rule put back: a key only the registry declares needs an `ExitCode` member or a conversion round one, and a bare integer proves nothing | 25 | claimed 38, measured 17 by the round five verifier against a tree without this round's tests. 14 of the 25 are the parametrized shapes the tiers silence |
-| `key-set-drops-the-registry` | `declared_causes()` drops `\| frozenset(REASONS)`, taking the registry's sixty slugs out of the key set | 29 | 21 |
-| `key-set-drops-the-derivation` | `declared_causes()` collapsed to `return CAUSES`, dropping the derivation and the registry both | 29 | 21 |
+| `escape-hatch-restored` | the fifth round's `# not-a-reservation: <reason>` escape put back verbatim: `NOT_A_RESERVATION`, `_annotated_lines`, `_silenced_lines`, the `io` and `tokenize` imports, and the `if key.lineno in silenced: continue` filter. The sixth round's replacement comment block above `ReservedCodeTable` is NOT removed by this row and the row does not need it removed, because the block is prose and silences nothing | 2 | 2 |
+| `escape-hatch-restored-with-ast-return` | the same restore, plus `ast.Return` added to the statement expansion tuple, so one comment on `return {` silences a whole multi line returned table | 2 | 2. **ZERO on top of the restore**, which is the point |
+| `escape-hatch-restored-covering-a-function` | the same restore, plus `ast.FunctionDef` added to the expansion tuple, so one comment on a `def` silences its whole body | 2 | 2. **ZERO on top of the restore** |
+| `key-not-resolved-through-names` | `cause_key` reverts to requiring an `ast.Constant`, so a key held in a module constant or on a class attribute resolves to nothing | 7 | 2 |
+| `key-not-resolved-through-a-class-attribute` | `_resolved` drops its `ast.Attribute` branch alone, which isolates `{Slug.CONFIG_UNUSABLE: 30}` and the `StrEnum` idiom from the module-constant spelling | 4 | 1 |
+| `branch-if-arm-refiltered-to-constants` | the `ast.If` arm of `_branches` goes back to filtering its test to `ast.Constant` instead of asking `cause_keys_within`, so `if cause == Slug.X` is silent while `case Slug.X` is reported | 3 | new |
+| `comprehension-iterable-refiltered-to-constants` | the `ast.DictComp` arm of `pairs` goes back to filtering `generator.iter` to `ast.Constant`, so a comprehension over named slugs is silent while the inlined one is reported | 2 | new |
+| `constructor-conversion-regated-to-the-range` | the vocabulary-constructor branch of `status` goes back to requiring the inner expression to be a STATUS rather than an integer, so `ExitCode(0)` and `ExitCode(126)` are silent while `ExitCode.SUCCESS` is reported | 2 | new |
+| `bare-integer-range-gate-dropped` | `status` drops `not self.low <= value < self.high`, so every integer counts and the reserved range gates nothing. This is the row that says what the range BUYS, which the recorded shape asserts and nothing drove | 8 | new |
+| `named-key-residual-fixture-rewritten-as-literals` | every construct in `RESIDUAL_ORDINARY_DATA_KEYED_ON_A_NAME` rewritten with inline string keys, same slugs, same values, same lines. The hit list is unchanged and the fixture stops covering the spelling it exists for | 1 | new |
+| `no-record-dict-crossing` | `pairs` stops crossing a `ast.Dict`'s VALUES, so a record written `{"cause": ..., "code": ...}` is not a record | 1 | 1 |
+| `no-getattr-conversion` | `status` drops its `getattr` branch, so `getattr(ExitCode, "PRECONDITION")` is not a code | 1 | 1 |
+| `no-floor-division-or-remainder` | `resolve_int` drops its `FloorDiv` and `Mod` branch, so `BASE // 2` and `BASE % 100` resolve to nothing | 2 | 2 |
+| `seen-dedupe-dropped` | the `seen` set and its membership test deleted from `reserved_code_tables`, so a duplicate key in a second table is reported twice | 1 | 1 |
+| `round-four-tiers-restored` | round four's two-tier rule put back: a key only the registry declares needs an `ExitCode` member or a conversion round one, and a bare integer proves nothing | 34 | 25 |
+| `key-set-drops-the-registry` | `declared_causes()` drops `\| frozenset(REASONS)`, taking the registry's sixty slugs out of the key set | 38 | 29 |
+| `key-set-drops-the-derivation` | `declared_causes()` collapsed to `return CAUSES`, dropping the derivation and the registry both | 38 | 29 |
 | `key-set-drops-only-the-derivation` | `declared_causes()` drops the package-wide derivation ALONE and keeps the registry, which isolates the term that is empty in this tree | 1 | 1 |
 | `package-of-collapsed` | `package_of` collapsed to `return "cratekit"`, so every relative import in the tree resolves against the wrong package | 1 | 1 |
-| `max-hops-at-2` | `MAX_HOPS` lowered from 3 to 2 | 2 | 1 |
-| `max-hops-at-4` | `MAX_HOPS` raised from 3 to 4 | 2 | not recorded |
-| `max-hops-at-6` | `MAX_HOPS` raised from 3 to 6, which is round four's value | 2 | not recorded |
-| `no-resolution-through-names` | `_through_names` returns its node unchanged | 4 | 3 |
-| `no-resolution-through-module-constants` | `_through_names` reads only a branch's own locals, isolating `CODE = ExitCode.PRECONDITION` beside `{"rclone-missing": CODE}` | 3 | 2 |
+| `max-hops-at-2` | `MAX_HOPS` lowered from 3 to 2 | 2 | 2 |
+| `max-hops-at-4` | `MAX_HOPS` raised from 3 to 4 | 2 | 2 |
+| `max-hops-at-6` | `MAX_HOPS` raised from 3 to 6, which is round four's value | 2 | 2 |
+| `no-resolution-through-names` | `_through_names` returns its node unchanged | 7 | 4 |
+| `no-resolution-through-module-constants` | `_through_names` reads only a branch's own locals, isolating `CODE = ExitCode.PRECONDITION` beside `{"rclone-missing": CODE}` | 6 | 3 |
 | `no-resolution-through-branch-locals` | `_through_names` reads only module constants, isolating `code = ExitCode.PRECONDITION` then `return code` | 1 | 1 |
-| `narrowed-to-the-eighteen-live-integers` | the value rule narrowed to the eighteen integers `ExitCode` actually uses, which is the alternative `ReservedCodeTable` rejects | 9 | 4 |
+| `narrowed-to-the-eighteen-live-integers` | the value rule narrowed to the eighteen integers `ExitCode` actually uses, which is the alternative `ReservedCodeTable` rejects | 10 | 9 |
 | `no-module-qualified-exitcode` | `names_the_class` drops its module-qualified branch, so `exit_codes.ExitCode(30)` is not a conversion | 2 | 2 |
-| `no-constructor-conversion` | `status` drops `names_the_class` from its conversion test, so `ExitCode(30)` reads as somebody's call | 3 | 3 |
-| `no-class-level-literals` | `_class_level_literals` returns empty | 5 | 4 |
-| `no-module-level-literals` | `_module_level_literals` returns empty | 16 | 12 |
-| `no-arithmetic` | `resolve_int` drops its `BinOp` branch entirely | 5 | 3 |
-| `table-owners-widened` | `core/session.py` added to `TABLE_OWNERS`, which switches the guard off for a whole file | 1 | claimed driven, never tabled |
-| `package-sources-narrowed` | `package_sources` from `rglob` to `glob`, so the scan stops at the top level | 3 | claimed driven, never tabled |
+| `no-constructor-conversion` | `status` drops the vocabulary-constructor branch entirely, so `ExitCode(30)` reads as somebody's call. **The revert is a different edit from the sixth round's**, because the branch was rewritten this round: it is now a deletion rather than a term dropped from a conjunction | 5 | 3, against the old shape of the branch |
+| `no-class-level-literals` | `_class_level_literals` returns empty | 8 | 5 |
+| `no-module-level-literals` | `_module_level_literals` returns empty | 19 | 16 |
+| `no-arithmetic` | `resolve_int` drops its `BinOp` branch entirely | 5 | 5 |
+| `table-owners-widened` | `core/session.py` added to `TABLE_OWNERS`, which switches the guard off for a whole file | 1 | 1 |
+| `package-sources-narrowed` | `package_sources` from `rglob` to `glob`, so the scan stops at the top level | 3 | 3 |
 | `review-walk-suffix-match` | `ReviewImports` reverted to the pre-unification two-element suffix match on `node.module` | 5 | 5 |
-| `import-targets-fallback-sibling-dropped` | `_import_targets` drops the bare sibling `tail == [leaf]` clause from its fallback | 3 | claimed driven, never tabled |
-| `walk-off-the-top-clause-dropped` | `_relative_module` drops the clause that refuses a level exceeding the package depth | 1 | claimed driven, never tabled |
+| `import-targets-fallback-sibling-dropped` | `_import_targets` drops the bare sibling `tail == [leaf]` clause from its fallback | 3 | 3 |
+| `walk-off-the-top-clause-dropped` | `_relative_module` drops the clause that refuses a level exceeding the package depth | 1 | 1 |
 | `review-leaf-hardcoded` | `ReviewImports` hard codes `leaf = "review"` instead of deriving it | 1 | 1 |
 | `exit-code-leaf-hardcoded` | `ExitCodeImports` hard codes `leaf = "exit_codes"` instead of deriving it | 1 | 1 |
-| `exit-code-class-spelled-again` | every `EXIT_CODE_CLASS` use replaced by the literal `"ExitCode"`, three sites | 1 | 1 |
+| `exit-code-class-spelled-again` | every `EXIT_CODE_CLASS` use replaced by the literal `"ExitCode"`. **FOUR uses on four lines at three call sites**, not three sites, which is what the sixth round's row said | 1 | 1 |
+| `a-byte-identical-duplicate-heading` | a second `## R-` heading appended to this document whose text is byte identical to a cited title | 2 | new |
+| `residual-headings-read-into-a-set-of-titles` | `residual_headings` deduplicates by title, which is what reading them into a `set` did | 0 | new, **paired** |
+| `duplicate-heading-with-the-headings-read-into-a-set` | both of the two above at once | 0 | new, **paired** |
+| `an-invented-title-in-a-covered-file` | one letter changed in a cited title inside `tests/_source_guards.py`, so the citation names no heading | 1 | new |
+| `citation-reverse-direction-dropped` | the two reverse-direction assertions deleted from `test_every_residual_this_unit_cites_is_cited_by_title` | 0 | new, **paired** |
+| `invented-title-with-the-reverse-direction-dropped` | both of the two above at once | 0 | new, **paired** |
+| `owned-sources-hand-listed` | `owned_sources()` replaced by the sixth round's four-entry hand written tuple | 2 | new |
 | `shape-swap-column-widths` | `COLUMN_WIDTHS` from a tuple of pairs to a dict literal, same slugs, values and line | 1 | 1 |
 | `shape-swap-weights` | `WEIGHTS` from a tuple of pairs to a dict literal, same slugs, values and line | 1 | 1 |
 | `shape-swap-comprehension` | `SLOW_DELAYS` from a dict comprehension to a dict literal, same slugs, values and line | 1 | 1 |
 | `shape-swap-setdefault` | `DELAYS.setdefault` to a subscript assignment, same slug, value and line | 1 | 1 |
+
+### The four zero rows, and why they are pairs rather than findings
+
+A zero row is normally a finding: a guard nothing watches. These four are not,
+and the reason is structural rather than an excuse. Two of the things this round
+fixed only bite IN THE PRESENCE of the defect they catch, so reverting the fix on
+a clean tree correctly kills nothing. What has to be measured is the PAIR.
+
+* `a-byte-identical-duplicate-heading` kills 2 on the shipped tree. The same
+  injection with `residual_headings` deduplicating by title kills **0**. So the
+  list is exactly what catches a duplicate heading and the set was exactly what
+  hid it, measured in both directions rather than argued.
+* `an-invented-title-in-a-covered-file` kills 1 on the shipped tree. The same
+  injection with the reverse-direction assertions deleted kills **0**. So the
+  reverse direction is the only thing in the suite that catches a citation
+  naming a heading that does not exist.
+
+This is the shape the escape hatch rows used: a bare revert whose number means
+nothing on its own gets a companion row that isolates what it is responsible for.
 
 ### The row definitions
 
 `G` is `tests/_source_guards.py` and `T` is `tests/test_reserved_causes.py`. Each
 row is the exact text to find and the exact text to put in its place.
 
-**`escape-hatch-restored`.** Four substitutions in `G`. Restore the imports:
+**`escape-hatch-restored`.** Four substitutions in `G`, and it does NOT remove
+the sixth round's replacement comment block above `ReservedCodeTable`. That block
+is prose explaining why there is no per-line escape; leaving it in place while the
+mechanism is restored is the honest revert, because the row measures the
+MECHANISM and a comment silences nothing. Restore the imports:
 
     -import ast
     -import re
@@ -1379,10 +1447,95 @@ body with `return node`.
 **`no-module-qualified-exitcode`.** In `G`, `names_the_class`, insert `False and`
 as the first term of the returned conjunction.
 
-**`no-constructor-conversion`.** In `G`, `status`:
+**`no-constructor-conversion`.** In `G`, `status`, delete the whole
+vocabulary-constructor branch:
 
-    -            wraps_a_code = _dotted(held.func) == "int" or self.codes.names_the_class(held.func)
-    +            wraps_a_code = _dotted(held.func) == "int"
+    -            if self.codes.names_the_class(held.func):
+    -                if self._as_int(held.args[0], extra) is not None:
+    -                    return as_written
+
+**`constructor-conversion-regated-to-the-range`.** In `G`, `status`, the same
+branch with its inner test put back the way it was:
+
+    -                if self._as_int(held.args[0], extra) is not None:
+    +                if self.status(held.args[0], extra) is not None:
+
+**`bare-integer-range-gate-dropped`.** In `G`, `status`:
+
+    -        if value is None or not self.low <= value < self.high:
+    +        if value is None:
+
+**`branch-if-arm-refiltered-to-constants`.** In `G`, `_branches`, the `ast.If`
+arm:
+
+    -                found.extend(
+    -                    self._returned(self.cause_keys_within(node.test), node.body)
+    -                )
+    +                keys = [
+    +                    element
+    +                    for element in ast.walk(node.test)
+    +                    if isinstance(element, ast.Constant)
+    +                ]
+    +                found.extend(self._returned(keys, node.body))
+
+**`comprehension-iterable-refiltered-to-constants`.** In `G`, `pairs`, the
+`ast.DictComp` arm:
+
+    -                    for element in self.cause_keys_within(generator.iter):
+    -                        found.append((element, node.value, None))
+    +                    for element in ast.walk(generator.iter):
+    +                        if isinstance(element, ast.Constant):
+    +                            found.append((element, node.value, None))
+
+**`named-key-residual-fixture-rewritten-as-literals`.** In `T`, inside
+`RESIDUAL_ORDINARY_DATA_KEYED_ON_A_NAME`, replace every named key with the string
+it holds: `TrackOutcome.UNAVAILABLE_TRANSIENT` becomes `"unavailable-transient"`,
+`Reason.LOCK` and `Reason.STALE` become `"session-lock-held"` and
+`"decision-stale"`, and `CONFIG_UNUSABLE` becomes `"config-unusable"` in all four
+of its uses. Same slugs, same values, same lines.
+
+**`a-byte-identical-duplicate-heading`.** In `D`, which is this document, insert
+above this section's own heading a second `## R-` heading under an unused number
+whose text is byte identical to a cited title, followed by one line of body and a
+`---` rule.
+
+**`residual-headings-read-into-a-set-of-titles`.** In `T`, `residual_headings`,
+add a `seen` set of titles and `continue` on a title already in it, which is what
+reading the headings into a `set` did.
+
+**`duplicate-heading-with-the-headings-read-into-a-set`.** Both of the two above.
+
+**`an-invented-title-in-a-covered-file`.** In `G`, line 36, change the final
+letter of the last word of the cited title from `t` to `k`, so the citation names
+no heading. The mutated spelling is deliberately not written out here: this
+document is inside the covered set, so a broken title quoted after the word
+`residual` anywhere in it is a real citation to the scanner and fails the very
+check the row exists to drive. That is the rule biting its own record, which is
+the right direction.
+
+**`citation-reverse-direction-dropped`.** In `T`,
+`test_every_residual_this_unit_cites_is_cited_by_title`, replace the `undeclared`
+comprehension with `undeclared = {}` and delete the
+`assert set(CITED_RESIDUALS) == set(written)` block.
+
+**`invented-title-with-the-reverse-direction-dropped`.** Both of the two above.
+
+**`owned-sources-hand-listed`.** In `T`, `owned_sources`, replace the derivation
+with the sixth round's tuple:
+
+    -    found = {FINDINGS_DOCUMENT}
+    -    for relative, text in authored_sources():
+    -        if CITATION.search(text):
+    -            found.add(relative)
+    -    return sorted(found)
+    +    return sorted(
+    +        [
+    +            "tests/test_reserved_causes.py",
+    +            "tests/_source_guards.py",
+    +            "tests/test_review_queue.py",
+    +            "src/cratekit/cli/exit_codes.py",
+    +        ]
+    +    )
 
 **`no-class-level-literals`** and **`no-module-level-literals`.** In `G`, make each
 function return `{}` before its loop.
@@ -1420,12 +1573,18 @@ becomes `leaf = "review"`.
 **`exit-code-leaf-hardcoded`.** In `G`,
 `leaf = EXIT_CODE_MODULE.rpartition(".")[2]` becomes `leaf = "exit_codes"`.
 
-**`exit-code-class-spelled-again`.** In `G`, all three `EXIT_CODE_CLASS` uses
-become the literal `"ExitCode"`.
+**`exit-code-class-spelled-again`.** In `G`, all FOUR `EXIT_CODE_CLASS` uses
+become the literal `"ExitCode"`. They sit on four lines at three call sites: two
+on adjacent lines inside `ExitCodeImports.__init__`, one in `names_the_class` and
+one in `names_a_code`. The sixth round's row said three sites and was read as
+three uses.
 
 **The four `shape-swap-` rows.** In `T`, inside
-`RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS`, rewrite one construct as a
-different construct carrying the same slugs and values on the same line:
+`RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS` and NOT inside
+`COMMENTED_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS`, which carries the same
+constructs with a comment appended and so matches the same anchor text for two of
+these four, rewrite one construct as a different construct carrying the same
+slugs and values on the same line:
 `COLUMN_WIDTHS` and `WEIGHTS` from a tuple of pairs to a dict literal,
 `SLOW_DELAYS` from a comprehension to a dict literal, and `DELAYS.setdefault(...)`
 to `DELAYS["canary-read-failed"] = 15`.
@@ -1444,13 +1603,43 @@ comment, is not repaired by correcting the sentences around it.
 ### Two rows to read together
 
 `key-set-drops-the-derivation` and `key-set-drops-only-the-derivation` differ by
-twenty eight deaths, and the difference is the registry rather than the
-derivation: the derived set equals `CAUSES` exactly in this tree, so the derived
+thirty seven deaths, 38 against 1, measured in this worktree. The difference is
+the registry rather than the derivation: the derived set equals `CAUSES` exactly in this tree, so the derived
 term is EMPTY. The single death on the isolating row comes from
 `test_the_key_set_is_the_union_of_all_three_declarations`, which swaps in a
 derivation that finds a cause nobody has declared and asserts it reaches the key
 set. That is the only honest way to drive a term the tree leaves empty, and the
 fourth round's two assertions in its place were tautologies.
+
+### Corrections to this branch's own record
+
+Three claims this branch wrote about itself are wrong and are corrected here
+rather than quietly replaced. All three are the same defect: a claim justified by
+a written explanation rather than by a measurement.
+
+**The commit that "corrected" a line number corrected nothing.** `d6398e1`
+replaced a reference to `src/cratekit/acquire/adapter.py:137` with the class
+attribute name, on the stated ground that the line number had moved. Measured:
+`adapter.py:137` is exactly `UNAVAILABLE_PERMANENT = "unavailable-permanent"`,
+and `adapter.py` has ZERO commits on this branch, so nothing moved. The reference
+that was replaced was accurate. The replacement prose is still better, because a
+class attribute name survives an edit to a file this branch does not own and a
+line number does not, and that is the reason it should have given.
+
+**"38 was never constructible" is withdrawn.** The sixth round's table carried
+round four's claimed 38 deaths for `round-four-tiers-restored` beside a note that
+the number could not be reproduced. Whether round four's tree could produce 38 is
+not something this branch can measure, so it is not asserted in either direction.
+What IS measured, in this worktree: `round-four-tiers-restored` kills **34** on
+the shipped tree and **25** with this round's fifteen new node ids deselected.
+For scale rather than as an argument, the maximal weakening any tier shaped
+revert is a subset of, `reserved_code_tables` returning `[]`, was measured by the
+verifier to kill 72, so 38 sits inside the reachable interval and nothing about
+it is impossible.
+
+**The sixth round's account of its own moved numbers did not reproduce.** That is
+recorded above the table, with this round's decomposition written as a
+subtraction anybody can re-run instead.
 
 **Closes when:** nothing has to close it. It is the record the next round
 compares against, row by row.

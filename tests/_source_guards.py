@@ -904,12 +904,12 @@ class ReservedCodeTable:
     answer to it is a decision recorded in the suite, not a comment: see the note
     above ``ReservedCodeTable`` for why the per-line escape was deleted.
 
-    WHAT IS STILL SILENT IS WRITTEN DOWN RATHER THAN LEFT TO BE FOUND. Sixteen
+    WHAT IS STILL SILENT IS WRITTEN DOWN RATHER THAN LEFT TO BE FOUND. Seventeen
     realistic shapes have been measured against this guard and every one was
     silent when it was found; NINE are closed here and the residual
     "The tiers were bought with a number that does not exist" carries the other
-    seven with the reason each is recorded rather than closed. The enumeration
-    grew from fourteen to sixteen the round after it was written down as
+    eight with the reason each is recorded rather than closed. The enumeration
+    grew from fourteen to seventeen the round after it was written down as
     complete, which is the argument for writing it down: a gap nobody wrote down
     is a gap nobody reviews.
     """
