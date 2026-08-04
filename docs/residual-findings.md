@@ -1067,13 +1067,24 @@ needs.
 
 ---
 
-## R-20. The fifth round's mutation table, written into the repository
+## R-20. The mutation table for this unit's guards, written into the repository
 
 **Found:** the fourth round's verifier could not find the fourth round's mutation
 table anywhere: not in the worktree, the repository, or any file. Only the
 claimed counts existed, so a row by row comparison was impossible. A table that
 exists only in a chat message cannot be checked by the next person, so this one
 lives here.
+
+**CITE THIS SECTION BY ITS TITLE, never by its number.** Six residual numbers
+collide across the branches in flight in this wave, each meaning something
+different on each side, so a citation by number silently points at another
+subject after a merge. Every citation in this unit's source, tests and guards
+names the residual's TITLE, and
+`test_every_residual_this_unit_cites_is_cited_by_title` asserts that each cited
+title is a real heading in this file and that no file this unit owns has gone
+back to citing by number. At merge time this table belongs appended to
+`docs/mutation-rows.md`, which carries the convention that a count with no row
+definition beside it is not evidence.
 
 Every guard, assertion and constant this round added or changed, reverted ALONE,
 full suite, deaths counted. Baseline before the round: 3323 passed, 15 skipped.

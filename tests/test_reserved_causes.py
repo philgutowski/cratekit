@@ -90,7 +90,9 @@ and each one was a different way of not looking:
 * ``TABLE_OWNERS`` COULD BE WIDENED FOR FREE. Adding ``core/session.py`` switched
   the guard off for that whole file and the suite stayed green. Every assertion
   about that set was about what it forbids, and only exact membership catches a
-  widening, which is R-15 on ``main`` said in another module's terms.
+  widening, which is what the residual
+  "Two copies of one import walk still carry a relative-import defect" on ``main``
+  said in another module's terms.
 * ONE RELATIVE IMPORT SHAPE OUT OF THREE. ``from ..core.exit_codes import
   ExitCode`` was recognized and ``from .exit_codes import ExitCode`` was not,
   because the rule matched a two-element suffix a sibling import does not have.
@@ -119,11 +121,14 @@ wide rule against the 51 files the package scan reaches, 43 modules and 8
 package ``__init__.py``: ZERO offenders outside the two table owners. Measured
 against the sixteen fixtures the split silenced, by re-implementing round four's
 gate and running it over them: the tiers report TWO and are silent on FOURTEEN,
-and R-19's own description of its rule was wrong about five spellings. The trade
+and the residual "The tiers were bought with a number that does not exist"
+carried a description of its own rule that was wrong about five spellings. The
+trade
 runs on error costs rather than on preference. A miss is a module quietly
 disagreeing with the registry about what a refusal exits with, and nothing else
-in this suite would notice. R-19 carries the measurement, R-20 the mutation
-table.
+in this suite would notice. That residual carries the measurement, and
+"The mutation table for this unit's guards, written into the repository"
+carries the mutation table.
 
 ROUND SIX deleted the per-line escape the fifth round shipped with it. Every
 claim made for ``# not-a-reservation: <reason>`` was false when measured: it
@@ -136,7 +141,9 @@ also found the guard resolving the VALUE of a pair through names for three round
 while never resolving the KEY, which was the largest hole it had.
 
 ROUND FIVE also found the shape this file is named for pointed at ITSELF, twice.
-R-15's review-side import fix shipped with zero tests holding it: reverting it
+the review-side import fix from the residual
+"Two copies of one import walk still carry a relative-import defect" shipped with zero
+tests holding it: reverting it
 left the suite green, because no fixture anywhere in ``tests/`` contained
 ``from .review import`` or ``from . import review`` while the exit-code half of
 the same unification had three. And ``MAX_HOPS``'s docstring made a checkable
@@ -150,6 +157,7 @@ import dataclasses
 import enum
 import importlib
 import pkgutil
+import re
 import sys
 import typing
 from pathlib import Path
@@ -856,7 +864,8 @@ def structured_refusal_causes() -> dict[str, frozenset[str]]:
     # _walk_can_see_it``, which is why deleting this line kills nothing. It stays
     # because the standalone test proves the tree imports and this one refuses to
     # let any CALLER of the derivation read a short answer as a complete one. A
-    # reader should not mistake it for the only place the check lives. See R-16.
+    # reader should not mistake it for the only place the check lives. See the
+    # residual "One check in this unit is unreachable".
     assert not unimportable, (
         f"the walk could not import these, so whatever refusal causes they "
         f"declare are invisible to the completeness check: {unimportable}"
@@ -1010,10 +1019,13 @@ def _converted_exception_types() -> set[type]:
     used to be answered per module, which was the same hole one level up and is
     the half of this proof the class resolution left behind.
 
-    WHAT THIS STILL CANNOT PROVE, and R-18 records it. A conversion that EXISTS
+    WHAT THIS STILL CANNOT PROVE, and the residual
+    "The conversion proof shows that a conversion exists, not that it keeps anything"
+    records it. A conversion that EXISTS
     is not a conversion that is lossless. ``core/session.py`` catches
     ``BackupFactsUnreadable``, reads ``exc.path`` and hardcodes the remedy,
-    discarding the one the exception carried, which is R-14.2. That handler
+    discarding the one the exception carried, which is item 2 of the residual
+    "Five accepted findings from the U38 reviews". That handler
     satisfies this proof and should, because the alternative is a rule about
     which attributes a handler must read, and that is a rule a refactor breaks.
     """
@@ -2059,9 +2071,11 @@ from cratekit.core.exit_codes import ExitCode
 CODES = {"credential-missing": int(ExitCode.PRECONDITION)}
 """
 
-# R-19 said tier two accepted "a conversion wrapped round" the vocabulary. It did
+# The residual "The tiers were bought with a number that does not exist"
+# said tier two accepted "a conversion wrapped round" the vocabulary. It did
 # not. These two ARE that spelling and both were silent, and the second is the
-# fixture round four added for R-16's fourth entry, only ever run with a key the
+# fixture round four added for the fourth entry of the residual
+# "One check in this unit is unreachable", only ever run with a key the
 # narrow tier did not apply to.
 EVASION_A_CONSTRUCTOR_ON_A_REGISTRY_SLUG = """
 from cratekit.core.exit_codes import ExitCode
@@ -2365,7 +2379,7 @@ from .....exit_codes import ExitCode
 CODES = {"rclone-missing": ExitCode.PRECONDITION}
 """
 
-# ── The conversion spellings R-16 called unreachable ────────────────────────
+# ── The conversion spellings the unreachability residual called unreachable ──
 #
 # Both of these are ordinary Python that no fixture happened to write, which is
 # not the same thing as unreachable, and round three's comments said the second
@@ -2814,7 +2828,9 @@ def test_a_relative_import_that_walks_off_the_top_names_nothing():
 
 
 def test_a_boolean_is_not_an_integer_here():
-    """R-16's first entry, asserted rather than reasoned about.
+    """The first entry of the residual
+    "One check in this unit is unreachable", asserted rather than
+    reasoned about.
 
     ``isinstance(True, int)`` is True in this language, and the guards ask for
     integers. Round three's comment said nothing in the tree or the fixtures maps
@@ -2832,7 +2848,9 @@ def test_a_boolean_is_not_an_integer_here():
 
 
 def test_a_conversion_is_read_through_the_module_name_as_well_as_the_class_name():
-    """R-16's fourth entry, which was ordinary Python nobody had written down.
+    """The fourth entry of the residual
+    "One check in this unit is unreachable", which was ordinary
+    Python nobody had written down.
 
     ``exit_codes.ExitCode(30)`` is the module-qualified spelling of the same
     conversion as ``ExitCode(30)``, and a module that imported the vocabulary as
@@ -2847,7 +2865,9 @@ def test_a_conversion_is_read_through_the_module_name_as_well_as_the_class_name(
 
 
 def test_a_two_argument_call_is_not_a_conversion():
-    """R-16's third entry: the narrowing that keeps this off somebody's constructor.
+    """The third entry of the residual
+    "One check in this unit is unreachable": the narrowing that keeps
+    this off somebody's constructor.
 
     A conversion takes one argument. A call taking a code and a sentence is a
     constructor, and reading its first argument as a status would report a module
@@ -2863,7 +2883,9 @@ def test_a_two_argument_call_is_not_a_conversion():
 
 
 def test_a_status_with_a_conversion_round_it_still_reaches_the_shell():
-    """R-16's second entry, and the one that is a live bypass rather than a nicety.
+    """The second entry of the residual
+    "One check in this unit is unreachable", and the one that is a live
+    bypass rather than a nicety.
 
     ``sys.exit(int(PRECONDITION))`` ends the process with 30 exactly as
     ``sys.exit(30)`` does. ``process_status_literals`` resolves the argument of
@@ -2879,7 +2901,9 @@ def test_a_status_with_a_conversion_round_it_still_reaches_the_shell():
 
 
 def test_the_derivation_refuses_to_answer_from_an_incomplete_walk(monkeypatch):
-    """R-16's sixth entry, driven by making the walk incomplete.
+    """The sixth entry of the residual
+    "One check in this unit is unreachable", driven by making the walk
+    incomplete.
 
     The assertion inside ``structured_refusal_causes`` is duplicated by
     ``test_every_module_in_the_package_imports_so_the_walk_can_see_it``, so
@@ -2955,7 +2979,8 @@ def test_the_residual_is_pinned_rather_than_discovered():
 #: Every shape a module would plausibly use to give a registry-only slug a code
 #: of its own. Measured against round four's gate re-implemented verbatim: TWO
 #: are reported and FOURTEEN are silent, and the narrowing was bought with an
-#: over fire the tree does not have. R-19.
+#: over fire the tree does not have. See the residual
+#: "The tiers were bought with a number that does not exist".
 REGISTRY_SLUG_SECOND_TABLES = (
     EVASION_A_NAMED_CODE_FOR_A_REGISTRY_SLUG,
     EVASION_A_CONVERSION_ON_A_REGISTRY_SLUG,
@@ -2981,7 +3006,8 @@ def test_the_wide_key_set_reports_what_the_tiers_missed(source):
     """The sixteen shapes, and fourteen of them were silent for a whole round.
 
     Round four carried the registry's sixty slugs in a tier that accepted only an
-    ``ExitCode`` member or a conversion round one, and R-19 described that as
+    ``ExitCode`` member or a conversion round one, and the residual
+    "The tiers were bought with a number that does not exist" described that as
     "an ``ExitCode`` member in any import spelling or a conversion wrapped round
     one". Measured, the description was wrong about its own rule: ``ExitCode(30)``
     is a conversion wrapped round the vocabulary and was not reported, and
@@ -3224,7 +3250,8 @@ def test_the_arithmetic_the_resolver_reads_is_the_whole_set(source, spelled):
 
 
 def test_a_duplicate_key_in_a_second_table_is_reported_once():
-    """The dedupe, driven rather than assumed. R-16.
+    """The dedupe, driven rather than assumed. See the residual
+    "One check in this unit is unreachable".
 
     A duplicate key in a mapping literal is the first defect this file's own
     suite hunts, and it reaches the walk as two pairs carrying the identical
@@ -3361,7 +3388,9 @@ def declared_causes() -> frozenset[str]:
     spells its seven states with underscores rather than this repository's
     hyphens, and ``core/session.py`` converts every one of them into a slug
     ``REASONS`` reserves before anything refuses. Adding them would put ``"ok"``
-    in the key set. R-17 records the gap and the reason.
+    in the key set. The residual
+    "Two refusal vocabularies stay outside the second-table guard's key set"
+    records the gap and the reason.
     """
     derived = structured_refusal_causes()
     return CAUSES | frozenset().union(*derived.values()) | frozenset(REASONS)
@@ -3391,6 +3420,87 @@ def package_of(relative: str) -> str:
     relative-import half of the walk live over real files.
     """
     return ".".join(["cratekit"] + relative.split("/")[:-1])
+
+
+#: Every residual this unit cites, by TITLE rather than by number.
+#:
+#: THE NUMBERS COLLIDE ACROSS BRANCHES. Six residual numbers currently mean one
+#: thing on this branch and something else on another branch in flight, so a
+#: citation by number is a citation that silently changes subject at merge. It
+#: has already broken once in this wave. A title survives a renumbering; a number
+#: does not survive a merge.
+#:
+#: The files below are the ones this unit owns. Citations elsewhere in the tree
+#: belong to the units that wrote them.
+CITED_RESIDUALS = (
+    "Five accepted findings from the U38 reviews",
+    "Two copies of one import walk still carry a relative-import defect",
+    "One check in this unit is unreachable",
+    "Two refusal vocabularies stay outside the second-table guard's key set",
+    "The conversion proof shows that a conversion exists, not that it keeps anything",
+    "The tiers were bought with a number that does not exist",
+    "The mutation table for this unit's guards, written into the repository",
+)
+
+#: The files whose citations this unit is responsible for.
+OWNED_SOURCES = (
+    "tests/test_reserved_causes.py",
+    "tests/_source_guards.py",
+    "tests/test_review_queue.py",
+    "src/cratekit/cli/exit_codes.py",
+)
+
+
+def test_every_residual_this_unit_cites_is_cited_by_title():
+    """A citation by number cannot survive a merge, and this wave proved it.
+
+    Six residual numbers collide across the branches in flight, each meaning a
+    different thing on each side. Source that cites a residual by its number
+    alone, with no title beside it, is source that will
+    point at somebody else's finding the moment two branches meet, and nothing
+    fails when it does, which is this repository's own signature defect: a wrong
+    answer that reads as a right one.
+
+    So every citation names a TITLE, and this asserts both halves of that. Each
+    cited title has to be a real heading in ``docs/residual-findings.md``, so a
+    title that drifts fails here instead of dangling. And no file this unit owns
+    may carry a bare ``R-<number>`` citation, so going back to numbers fails
+    rather than passing quietly.
+    """
+    findings = (REPO_ROOT / "docs" / "residual-findings.md").read_text()
+    headings = {
+        line.split(". ", 1)[1].strip()
+        for line in findings.splitlines()
+        if line.startswith("## R-") and ". " in line
+    }
+    # MATCHED AS A PREFIX, and it has to resolve to EXACTLY ONE heading. Two of
+    # these headings carry a second clause that reads badly inline, so prose
+    # cites the leading phrase; requiring exactly one match is what stops that
+    # being a partial name that could later fit two findings.
+    resolved = {
+        title: [heading for heading in headings if heading.startswith(title)]
+        for title in CITED_RESIDUALS
+    }
+    unresolved = {
+        title: matches for title, matches in resolved.items() if len(matches) != 1
+    }
+    assert unresolved == {}, (
+        f"these cited titles do not name exactly one heading in "
+        f"docs/residual-findings.md: {unresolved}. A citation that names nothing "
+        f"is worse than a number, because it looks resolved"
+    )
+
+    numbered = {}
+    for relative in OWNED_SOURCES:
+        source = (REPO_ROOT / relative).read_text()
+        hits = re.findall(r"R-\d+(?:\.\d+)?", source)
+        if hits:
+            numbered[relative] = sorted(set(hits))
+    assert numbered == {}, (
+        f"these files cite a residual by NUMBER: {numbered}. Six numbers collide "
+        f"across the branches in flight, so a number silently changes subject at "
+        f"merge. Cite the title from CITED_RESIDUALS instead"
+    )
 
 
 def test_the_package_scan_reaches_the_modules_it_claims_to():
@@ -3459,17 +3569,21 @@ def test_no_module_in_the_package_keeps_a_second_reservation_table():
 
 
 def test_the_table_owner_escape_is_exactly_these_two_files():
-    """R-15's rule, applied to the one whitelist this unit ships.
+    """The whitelist rule from the residual
+    "Two copies of one import walk still carry a relative-import defect", applied to the one
+    whitelist this unit ships.
 
     ``TABLE_OWNERS`` switches the second-table guard off for a WHOLE FILE, so
     adding a name to it is the cheapest way there is to stop the guard looking.
     Verified when it was written: adding ``core/session.py`` left the whole
-    suite green. It kills exactly ONE test now, this one, and R-20 carries the
-    row. Round one's own commit named that failure mode and shipped nothing that
+    suite green. It kills exactly ONE test now, this one, and
+"The mutation table for this unit's guards, written into the repository"
+    carries the row. Round one's own commit named that failure mode and shipped nothing that
     would catch it, because every assertion about this set was about what it
     forbids.
 
-    R-15 on ``main`` settles the general form: a guard whitelist asserts what is
+    That residual on ``main`` settles the general form: a guard whitelist
+    asserts what is
     FORBIDDEN and never what is permitted, and only EXACT MEMBERSHIP catches a
     widening. So the membership is pinned here, and each entry has to be a file
     that genuinely holds a table, so a decorative exemption fails too.
@@ -3583,7 +3697,8 @@ def _construct_shapes(source: str) -> dict[str, int]:
 
 
 def test_ordinary_data_keyed_on_a_cause_slug_is_the_residual_the_wide_rule_pays():
-    """The false alarms, listed rather than narrowed away. R-19.
+    """The false alarms, listed rather than narrowed away. See the residual
+    "The tiers were bought with a number that does not exist".
 
     Every integer here is inside 10 to 59 and every key is a registry slug, so
     every one of these ordinary constructs is reported. That is the price of one
@@ -3727,7 +3842,8 @@ def test_the_guard_has_no_per_line_off_switch_at_all():
     """The absence, asserted over the real tree rather than over a fixture.
 
     ``test_the_annotation_is_unused_in_the_package_today`` used to assert exact
-    membership of the empty set, which is R-15's whitelist rule. With the hatch
+    membership of the empty set, which is the whitelist rule from the residual
+    "Two copies of one import walk still carry a relative-import defect". With the hatch
     deleted there is no membership to pin, so what is pinned instead is that the
     guard has no comment-shaped input at all: it is handed a source, and the only
     thing it reads out of that source is the syntax tree. A helper that reads the
@@ -3835,13 +3951,16 @@ def test_the_package_a_relative_import_resolves_against_is_derived():
 
 
 def test_the_module_and_the_class_are_named_once_each(monkeypatch):
-    """R-15's rule, applied to the spellings it left behind.
+    """The rule from the residual
+    "Two copies of one import walk still carry a relative-import defect", applied to the spellings
+    it left behind.
 
-    R-15 deleted a second constant holding the vocabulary's PACKAGE and left the
+    That residual deleted a second constant holding the vocabulary's PACKAGE
+    and left the
     module's leaf written out as ``"exit_codes"`` and the class as ``"ExitCode"``
     four separate times, one line from the constants they belong to. Moving
     ``EXIT_CODE_MODULE`` moved the resolver and left every binding behind, which
-    is the same one fact in two spellings R-15 says it deleted.
+    is the same one fact in two spellings that residual says it deleted.
 
     Both are derived at USE now, and the way to show a derivation is a derivation
     is to move the thing it derives from and watch the answer follow. Hard coding

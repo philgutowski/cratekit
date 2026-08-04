@@ -2042,7 +2042,8 @@ def run(store, needing_review):
 
 # ── The relative spellings, which a SIBLING of the review module would use ────
 #
-# R-15 unified the two copies of the import walk so that ``from .review import
+# The residual "Two copies of one import walk still carry a relative-import defect"
+# unified the two copies of the import walk so that ``from .review import
 # offer`` and ``from . import review`` resolve the same way their absolute
 # spellings do, and the review half of that fix shipped with NOTHING driving it:
 # reverting those four lines to the old suffix match left the suite at 3323
@@ -2193,7 +2194,9 @@ def test_the_countdown_stays_quiet_on_correct_code_in_either_import_shape(source
     ],
 )
 def test_the_countdown_reads_every_relative_import_shape(source):
-    """R-15's review-side fix, which shipped with nothing watching it.
+    """The review-side fix from the residual
+    "Two copies of one import walk still carry a relative-import defect", which shipped with
+    nothing watching it.
 
     The rule read ``node.level > 0`` beside a two-element suffix match on
     ``node.module``, and ``node.module`` holds only the TAIL: ``from .review
@@ -2241,9 +2244,12 @@ def test_a_relative_import_is_resolved_against_the_package_the_file_sits_in(sour
 
 
 def test_the_review_module_is_named_once(monkeypatch):
-    """R-15's rule, applied to the spelling it left behind.
+    """The rule from the residual
+    "Two copies of one import walk still carry a relative-import defect", applied to the spelling
+    it left behind.
 
-    R-15 deleted the second constant holding the review module's PACKAGE and
+    That residual deleted the second constant holding the review module's
+    PACKAGE and
     left its LEAF written out as ``"review"`` one line below the resolver, so
     moving ``REVIEW_MODULE`` moved the resolver and left the binding pointing at
     the old name. Derived at use now, and the way to show a derivation is a

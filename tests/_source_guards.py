@@ -32,7 +32,8 @@ import re
 
 #: The module every question here is asked about. The package it lives in, which
 #: is what ``from cratekit.core import review`` names, is DERIVED from this
-#: rather than written out a second time. It was a second constant until R-15,
+#: rather than written out a second time. It was a second constant until the
+#: residual "Two copies of one import walk still carry a relative-import defect",
 #: and two spellings of one fact is how a pair drifts.
 REVIEW_MODULE = "cratekit.core.review"
 
@@ -65,7 +66,8 @@ class ReviewImports:
         from cratekit.core import review       # review.offer(...)
         from cratekit.core.review import offer # offer(...)
 
-    A relative import is recognized too, and until R-15 was fixed only ONE of
+    A relative import is recognized too, and until the residual
+    "Two copies of one import walk still carry a relative-import defect" was fixed only ONE of
     the three relative spellings was. The rule read ``node.level > 0`` beside a
     two-element suffix match on ``node.module``, and ``node.module`` holds only
     the TAIL: ``from .review import offer`` records ``review`` and ``from .
@@ -97,10 +99,11 @@ class ReviewImports:
         #: Local name -> the module attribute it was imported as.
         self.symbols: dict[str, str] = {}
         # DERIVED HERE RATHER THAN SPELLED AGAIN, and derived at USE rather than
-        # at import. R-15 deleted the second spelling of the package and left the
+        # at import. That residual deleted the second spelling of the package
+        # and left the
         # LEAF written out as ``"review"`` one line below the resolver, so moving
         # ``REVIEW_MODULE`` moved the resolver and left the binding behind: the
-        # same one fact in two spellings, which is the drift R-15 says it closed.
+        # same one fact in two spellings, which is the drift it says it closed.
         # Reading it inside the walk is what lets a test move the constant and
         # watch BOTH halves follow.
         leaf = REVIEW_MODULE.rpartition(".")[2]
@@ -414,7 +417,8 @@ def _import_targets(
 ) -> tuple[bool, bool]:
     """Whether one ``from ... import`` names MODULE, or the package MODULE sits in.
 
-    ONE implementation for both walks in this file, and R-15 is why. The same
+    ONE implementation for both walks in this file, and the residual
+    "Two copies of one import walk still carry a relative-import defect" is why. The same
     question was answered twice here and the two answers disagreed about
     relative imports: one resolved the level and the other matched a two-element
     suffix that ``from .review import offer`` does not have and ``from . import
@@ -463,7 +467,8 @@ class ExitCodeImports:
     collapses the same way. THE COLLAPSE HAS TO TAKE ``_import_targets`` WITH IT.
     The two copies on the other branches still carry the suffix match this file
     has now replaced in both of its own, and a collapse onto either of them
-    would reinstate the defect in one place instead of two. R-15 records that.
+    would reinstate the defect in one place instead of two. The residual
+    "Two copies of one import walk still carry a relative-import defect" records that.
 
     Seven shapes are recognized, and they are every shape this repository's own
     modules use between them::
@@ -517,7 +522,8 @@ class ExitCodeImports:
         # The module-qualified spelling, ``exit_codes.ExitCode(30)``. Round three
         # called this unreachable; it is ordinary Python that no fixture happened
         # to write, which is a different thing and the difference is the whole
-        # point of R-16. ``EVASION_A_CONVERSION_THROUGH_THE_MODULE_NAME`` writes
+        # point of the residual "One check in this unit is unreachable".
+        # ``EVASION_A_CONVERSION_THROUGH_THE_MODULE_NAME`` writes
         # it now: without this branch the call is not a conversion, the guard
         # falls through to resolving a ``Call`` as an integer, gets nothing, and
         # says nothing about a module that reserved 30 for a reserved cause.
@@ -640,7 +646,8 @@ def _declared_enum_values(tree: ast.AST) -> set[str]:
 #: suite, a full sweep of every lower value: 0 kills nine, 1 kills two, and 2, 3,
 #: 4 and 5 each kill NOTHING. No lowering killed seven and the constant was over
 #: provisioned by four, so the claim was checkable and wrong at every value,
-#: which is the class of claim R-16 exists to delete.
+#: which is the class of claim the residual
+#: "One check in this unit is unreachable" exists to delete.
 #:
 #: LOAD BEARING IN BOTH DIRECTIONS, and now driven at the value rather than
 #: argued about. ``test_the_hop_bound_is_the_depth_of_the_deepest_spelling``
@@ -878,7 +885,8 @@ class ReservedCodeTable:
 
     WHAT IS STILL SILENT IS WRITTEN DOWN RATHER THAN LEFT TO BE FOUND. Fourteen
     realistic shapes were measured against this guard and every one was silent;
-    six are closed here and R-19 carries the other eight with the reason each is
+    six are closed here and the residual
+    "The tiers were bought with a number that does not exist" carries the other eight with the reason each is
     recorded rather than closed. A gap nobody wrote down is a gap nobody reviews.
     """
 
@@ -1105,7 +1113,8 @@ class ReservedCodeTable:
                     # call's arguments, which reaches ``setdefault`` too.
                     # Deleting it kills nothing. Kept because it binds the key to
                     # ITS value by position rather than crossing them, so a
-                    # three-argument call cannot pair the wrong two. See R-16.
+                    # three-argument call cannot pair the wrong two. See the
+                    # residual "One check in this unit is unreachable".
                     found.append((node.args[0], node.args[1], None))
                 elif _dotted(function) in {"dict", "OrderedDict"} and len(node.args) == 1:
                     found.extend(self._zipped(node.args[0]))

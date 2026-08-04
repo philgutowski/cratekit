@@ -481,7 +481,9 @@ def _index(reservations: tuple[Reservation, ...]) -> Mapping[str, Reservation]:
         # these two are about what the span means, so a band renumbered or a
         # meaning changed to non-producible fails by name here rather than
         # passing because the arithmetic still happens to hold. A reader should
-        # take them as defence in depth, not as live paths. See R-16.
+        # take them as defence in depth, not as live paths. See the residual
+        # "One check in this unit is unreachable" in
+        # ``docs/residual-findings.md``.
         band = band_of(reservation.code)
         if band.name not in RESERVED_BANDS:
             raise ValueError(
