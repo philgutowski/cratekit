@@ -4388,17 +4388,22 @@ def test_the_FETCH_happens_before_the_lock_and_the_DECIDING_read_happens_under_i
     assert tags.read_genre_from_file(path) == "Original Genre"
 
 
-def test_a_sighting_this_PASS_ITSELF_invalidated_is_not_spent(cfg, tmp_path):
-    """Moving the read outside the lock buys a way to accept on stale bytes.
+def test_bytes_THIS_PASS_ITSELF_replaced_are_never_accepted_on(cfg, tmp_path):
+    """The pass must not accept a record on bytes its own earlier restore destroyed.
 
     The pass reads every file before it takes the lock, so a record restored
-    EARLY in the pass changes bytes that a later record's sighting still
-    describes. Spending it then is an acceptance decided by a hash of what the
-    file held before this same pass rewrote it, which is the module's recurring
-    defect arriving through its own optimisation.
+    EARLY in the pass changes bytes an answer taken before the lock still
+    describes. Accepting on that answer is a decision made from a hash of what
+    the file held before this same pass rewrote it, which is the module's
+    recurring defect arriving through its own optimisation.
 
-    So a sighting is dated by a ``stat`` and spent only while a ``stat`` taken
-    under the lock still equals it. Driven with two fields on one file, the
+    THE FIX IS NOT A DATED ANSWER, AND THAT VERSION SHIPPED AND WAS WRONG. An
+    answer used to be stamped with ``(st_dev, st_ino, st_size, st_mtime_ns)`` and
+    spent while a ``stat`` under the lock still equalled it, and a same-length
+    in-place rewrite inside one modification-time tick defeats all four; see
+    ``test_a_REWRITE_INSIDE_ONE_TICK_that_moves_no_stat_field_is_still_caught``.
+    Nothing taken before the lock decides anything now, so this case is covered
+    by the read simply being taken again. Driven with two fields on one file, the
     second carrying the digest of the bytes the FIRST one's restore destroys.
     """
     path = _synth(tmp_path, ".flac")
