@@ -198,6 +198,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "job-driver-held": ExitCode.LIBRARY_BUSY,
         "rekordbox-running": ExitCode.REKORDBOX_OPEN,
         "library-volume-unmounted": ExitCode.LIBRARY_UNAVAILABLE,
+        # U27. Some directory on the way to the configured library root cannot be
+        # opened by this account, so which volume the library sits on was not
+        # established. Its own slug rather than one of the three below it,
+        # because every one of those is a positive claim this run did NOT make:
+        # nothing established that the volume is unmounted, that it is the wrong
+        # one, or that the directory is missing. The remedy is a different act
+        # too, which is why it carries its own token.
+        "library-root-unreachable": ExitCode.LIBRARY_UNAVAILABLE,
         "library-volume-mismatch": ExitCode.LIBRARY_UNAVAILABLE,
         "library-directory-missing": ExitCode.LIBRARY_UNAVAILABLE,
         "library-database-missing": ExitCode.LIBRARY_UNAVAILABLE,

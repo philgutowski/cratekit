@@ -66,6 +66,17 @@ _ADVICE: Mapping[Remedy, str] = {
     Remedy.WAIT_FOR_HOLDER: "wait for the holder named below to finish",
     Remedy.QUIT_REKORDBOX: "quit rekordbox and let its background agent settle",
     Remedy.MOUNT_LIBRARY_VOLUME: "mount the configured library volume",
+    # "REACH OR WRITE" rather than only reach, because the token serves both and
+    # the detail beside it is where the specific act is named. Written as only
+    # the first, it asserted "cannot open a directory on the way to" over a
+    # library volume mounted read only, which this account CAN open, and a
+    # one-line remedy that states the wrong fact is the collapse this vocabulary
+    # exists to prevent.
+    Remedy.GRANT_PATH_ACCESS: (
+        "this account cannot reach or write the path named below; grant this interpreter "
+        "access to it, on macOS through Full Disk Access, or choose a path it can already "
+        "use"
+    ),
     Remedy.DISABLE_CLOUD_SYNC: "turn off the streaming service's library sync",
     Remedy.PREPARE_LIBRARY_IN_REKORDBOX: (
         "create the missing structure in rekordbox once; it is mirrored, never fabricated"

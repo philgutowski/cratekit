@@ -761,16 +761,51 @@ with it detached is its parent's. Stated in `identity_source`'s own docstring.
 **Closes when:** the wizard offers to record the mount location it observed, or
 the table is read from configuration.
 
-**3. `deepest_existing` and `containing_mount` raise on an ancestor this account
-cannot traverse, and only DOCTOR survives it.** `Path.exists` re-raises a
-permission error rather than answering False. `doctor.answer` now turns that into
-a failed check, so the report survives; `cli/setup.py:_seed_taxonomy` and
-`_resolve_volume_id` call the same functions with no handler, so the WIZARD still
-exits with a traceback on a library root under a sealed directory. Refusing is
-the safe direction for a recorder, and a traceback is loud rather than wrong,
-which is why this is a service defect rather than a blocking one. **Closes when:**
-the wizard reports the unreachable ancestor as a refusal with a remedy, or
-`deepest_existing` returns a third answer for "cannot tell".
+**3. An ancestor this account cannot traverse. CLOSED 2026-08-03, by the fifth
+review.** ~~The wizard exits with a traceback, which is loud rather than wrong.~~
+
+The entry above is struck out because it was wrong about the fact and wrong about
+the severity, and the error was load bearing: it is the whole argument for having
+deferred the item. Driven end to end, `crate setup --library-root <sealed>/lib`
+produced no traceback at all. The dispatcher's blanket at `cli/__init__.py`
+caught the `PermissionError` and rendered
+
+    setup: failed (INTERNAL)
+    internal-error: PermissionError: [Errno 13] ...
+    fix: this is a defect; report it with the cause identifier below
+
+and exited 1. So the product CLASSIFIED THE USER'S OWN FILESYSTEM PERMISSION AS A
+CRATEKIT DEFECT and sent them to file a bug report, in the one verb whose entire
+job is getting a fresh clone to a first write. And the trigger is routine on the
+platform this ships for first: on macOS a library root under Documents, Desktop,
+Downloads or an external volume raises EPERM from `stat` for any interpreter
+without Full Disk Access, and `Path.exists` re-raises EPERM rather than answering
+False. That is a normal first-run state rather than a sealed-directory curiosity.
+
+**How it is closed.** `cause.REASONS` declares `library-root-unreachable`, on the
+reserved `LIBRARY_UNAVAILABLE` code, and `exit_codes.Remedy` declares
+`GRANT_PATH_ACCESS`, which is a different act from mounting a volume: nothing is
+missing and nothing needs plugging in. `cli/setup.py:_resolve_volume_id` raises
+that refusal, naming the path and both ways out, and `_seed_taxonomy` writes it
+as a finding rather than raising, because the configuration is already saved by
+the time it runs and the report is what the user reads. Doctor's behaviour was
+already right, exit 30 with every check answered, and is now pinned so the two
+cannot drift apart.
+
+**And the same collapse one screen lower, which the first pass moved rather than
+closed.** Handling the mount question at the top of `_seed_taxonomy` left two
+more filesystem calls unhandled at the bottom of the same function. `path.exists`
+over a `.cratekit` directory this account cannot traverse re-raises, and
+`config.atomic_write_bytes` raises for a state directory it may not write in and
+for a library volume mounted read only. Both escaped into the same blanket and
+were rendered as the same defect report, over a library root that is perfectly
+reachable, so nothing above them refused first. They are handled as two findings
+rather than one, because "could not look at the path" and "reached the path and
+was refused the write" are different acts, and the second is a routine state for
+anyone whose library sits on a volume mounted read only. The one-line advice on
+`GRANT_PATH_ACCESS` was widened to "cannot reach or write" for the same reason:
+as written it asserted a directory could not be opened, which is false of the
+whole write half, and each finding names its own act in its own detail.
 
 **4. `secrets.exists` answers False for a presence index it could not read.**
 `_index_read` catches `OSError` and `ValueError` alike and returns an empty set,
@@ -785,3 +820,75 @@ and doctor says which it saw.
 `keychain.reachable` states an observation when its probe is a heuristic about a
 backend class. Both were judged in round three and the judgement stands; they are
 repeated here so that a reader of the newest entry sees the whole set.
+
+---
+
+## R-19. A hand-mounted volume at `/mnt/<name>` is now accepted while detached
+
+**Found:** during the fifth review of U27, 2026-08-03, as the deliberate cost of
+closing the over-restriction the same review found.
+
+**NUMBERING.** `main` carries R-14 and R-15; this branch adds R-16 through R-20.
+A merge that finds another R-19 renumbers whichever arrives second.
+
+`preflight._VOLUME_MOUNT_LOCATIONS` no longer declares `("/mnt", 1)` for Linux.
+Every row in that table is a claim that an empty directory there is evidence of
+an absent volume, and the rule built on it refuses a slot with nothing mounted
+in it. The claim holds for a location a mounter creates and removes around a
+mount. It is false for `/mnt`, which the filesystem hierarchy standard reserves
+for mounting by hand, so the directory is made by hand and stays whether or not
+anything is mounted.
+
+What the row cost was total: Linux has no identity adapter, so every mount
+outcome there is `IDENTITY_UNAVAILABLE` and the write leg always goes through
+`root_can_be_created`, which the row made permanently False for a library at
+`/mnt/<name>/music` on an ordinary root filesystem. The wizard refused to write
+the active template, doctor read for it, found nothing, and answered
+`taxonomy.active` FAIL with run-setup, so the user re-ran setup forever with no
+way out, `--volume-id` included.
+
+What losing it costs is what R-18 item 2 already records for every hand-mounted
+location: a drive mounted at `/mnt/<name>` is accepted while it is detached, and
+the identity read with it detached is its parent's. On Linux that identity is
+never recorded automatically, because there is no adapter to read one, so what
+remains is a taxonomy copy landing on the root filesystem instead of on the drive.
+**Closes when:** the wizard offers to record the mount location it observed, or
+the table is read from configuration, which is the same close as R-18 item 2.
+
+---
+
+## R-20. Two rescues that are kept without being covered
+
+**Found:** during the fifth review of U27, 2026-08-03, while driving the twenty
+handlers a verifier's sweep found covered by nothing.
+
+Both are argued in the source beside the handler rather than only here, which is
+the standard the review set: a handler nobody exercises is a claim nobody has
+checked, so it either gets driven or it says out loud why it cannot be.
+
+**1. `doctor._run_findings` rescues an `OSError` from `Path.glob` that CPython
+does not raise.** Measured on this interpreter: `glob` swallows `PermissionError`
+inside its own scandir walk, and answers with an empty result for a run directory
+somebody replaced with a plain file. Neither shape reaches the handler through a
+real filesystem. It is kept because the swallowing is an implementation detail
+rather than a documented promise, and losing the whole `crate status` verb to a
+future change of mind would be worse than a handler that never fires.
+
+**Narrowed by the sixth review.** The unmeasurable thing is the TRIGGER, and that
+was being used to excuse leaving the CONTRACT unwritten, which is how it sat as a
+rescue no test exercised. The contract is assertable whatever CPython does: a
+walk that refuses costs the report its run records rather than the verb.
+`tests/test_doctor.py` now states it by handing `_run_findings` a run directory
+whose `glob` raises, and the `# pragma: no cover` came off. What is still
+residual is only that no arrangement of a real filesystem produces the raise.
+**Closes when:** the standard library documents the behaviour either way, or the
+walk is done with `scandir` here so the failure is this module's to catch.
+
+**2. `Finding.cause` is not carried into the diagnostic payload.** A check that
+refuses under a declared reason now keeps its reason, remedy, steps and reserved
+exit code, and all four travel in the envelope's `cause`. The per-check entries
+in `data.checks` are unchanged, so a consumer reading only that array sees the
+refusal's message and remedy but not its slug. The envelope is where a machine
+consumer reads a reason, and adding a key to every check entry for a field that
+is None on all of them is a schema change for one case. **Closes when:** a second
+check refuses structurally and a consumer needs to tell which one did.

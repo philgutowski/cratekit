@@ -328,12 +328,31 @@ def deepest_existing(path: Path) -> Path:
 #: The mount table describes the present and this describes where the future
 #: arrives. On macOS an external volume mounts at ``/Volumes/<name>``, one level
 #: down. On Linux the removable-media mounters use ``/media/<label>``,
-#: ``/media/<user>/<label>`` and ``/run/media/<user>/<label>``, and ``/mnt/<name>``
-#: is the conventional hand-mounted spot.
+#: ``/media/<user>/<label>`` and ``/run/media/<user>/<label>``.
+#:
+#: ``/mnt/<name>`` IS NOT A ROW, and it was one. The rule built on this table
+#: refuses a slot with nothing mounted in it, so every row is a claim that an
+#: empty directory THERE is evidence of an absent volume. That claim holds for a
+#: directory some mounter creates and removes around a mount, which is what
+#: ``/Volumes/<name>`` and the udisks locations are. It is false for ``/mnt``:
+#: the filesystem hierarchy standard calls that the spot a person mounts
+#: something on by hand, so the directory is made by hand and stays whether or
+#: not anything is mounted, and a library living permanently at
+#: ``/mnt/<name>/music`` on an ordinary root filesystem is an ordinary Linux
+#: layout. With the row present that arrangement had no way through at all:
+#: Linux has no identity adapter, so every mount outcome there is
+#: ``IDENTITY_UNAVAILABLE`` and the write leg goes through
+#: :func:`root_can_be_created`, which the row made permanently False. The wizard
+#: refused to write the active template forever, doctor read for it, found
+#: nothing and answered with "run setup", and the user re-ran setup forever.
+#: Losing the row costs what R-18 already records for every hand-mounted
+#: location: a drive mounted there is accepted while it is detached. That is a
+#: gap in a platform that records no identity anyway, and it is smaller than a
+#: guard that refuses a correct install with no way out (P7).
 _VOLUME_MOUNT_LOCATIONS: Mapping[str, tuple[tuple[str, int], ...]] = MappingProxyType(
     {
         "darwin": (("/Volumes", 1),),
-        "linux": (("/media", 1), ("/media", 2), ("/run/media", 2), ("/mnt", 1)),
+        "linux": (("/media", 1), ("/media", 2), ("/run/media", 2)),
     }
 )
 
@@ -368,21 +387,99 @@ def is_mount_point(path: Path) -> bool:
     It answers False for a path that does not exist and for one it cannot stat,
     and both of those are the safe direction here, because the caller's refusal
     is what stops an identity being read off the wrong disk.
+
+    A SEAM STILL HAS TO BE PINNED, and this one was not: every test that drives
+    the rule replaces it through the fixture, so the whole suite stayed green
+    with the body replaced by ``return True`` AND with it replaced by
+    ``return False``. ``return True`` accepts an ejected volume's leftover mount
+    point, which is verbatim the blocking defect the rule exists to close, so the
+    remedy the mount-location table already uses applies here too:
+    ``tests/test_doctor.py`` asserts what this delegates to and drives the real
+    function against a directory that IS a mount point on the running machine and
+    one that is not.
     """
     return os.path.ismount(path)
+
+
+def slot_holds_a_volume(slot: Path) -> bool:
+    """Whether a volume is mounted in ``slot``, under this name or another.
+
+    ``os.path.ismount`` answers False for a symlink by contract, which is right
+    for "is a filesystem mounted at exactly this path" and wrong for the question
+    the rule below is asking, which is whether the slot has a volume BEHIND it.
+    Both readings have a case that only they get right, so both are asked:
+
+    * a symlink standing in the mount directory and pointing at an ordinary
+      directory elsewhere on the boot disk is a slot with no volume in it, and it shadows the mount point
+      permanently, so a volume named SYMVOL attaches at ``SYMVOL 1`` instead.
+      Reading an identity through it records the boot disk as the library's,
+      which is the case-folding consequence reached by a second route;
+    * every current macOS also puts the BOOT volume's own entry in that same
+      mount directory, as a symlink to ``/``, and a library under it really is
+      on the mounted boot volume. Refusing that would be a guard firing on a
+      correct setup (P7).
+
+    The difference between them is what the symlink resolves TO, so that is what
+    is asked. ``is_mount_point`` stays the single seam underneath, so a test
+    describing a machine still describes both answers.
+    """
+    if is_mount_point(slot):
+        return True
+    behind = Path(slot).resolve()
+    return behind != Path(slot) and is_mount_point(behind)
+
+
+def _names_one_directory(left: Path, right: Path) -> bool:
+    """Whether two paths name the SAME directory, as the filesystem sees it.
+
+    THE STRING COMPARISON THIS REPLACES DISARMED THE WHOLE RULE FROM A SHELL.
+    ``Path.relative_to`` compares path parts, which is case SENSITIVE, and the
+    default macOS boot volume is case INSENSITIVE. So ``/volumes/NAME/Music`` and
+    ``/Volumes/NAME/Music`` name one directory to every filesystem call and two
+    different things to a guard built on parts: the canonical spelling refused
+    with the drive detached and the lower-case one recorded the boot disk's UUID
+    as the library's identity, for the life of that library.
+
+    ``samefile`` compares ``(st_dev, st_ino)``, which is the filesystem's own
+    answer, so it is right in BOTH directions without asking the platform
+    anything. On a case-insensitive volume the two spellings share an inode and
+    are one directory; on a case-sensitive one they are two directories with two
+    inodes, or one of them does not exist, and either way this is False. The same
+    comparison closes the symlinked-mount-directory case for free.
+
+    The equality test comes first so that a pair of paths naming a directory that
+    does not exist yet still answers, which ``samefile`` cannot: it stats both
+    sides. Two DIFFERENT spellings of an absent directory answer False, which is
+    the accepting direction, and that is the same answer the parts comparison
+    gave for the same input.
+    """
+    if left == right:
+        return True
+    try:
+        return left.samefile(right)
+    except (OSError, ValueError):
+        return False
 
 
 def _is_a_volume_mount_location(
     path: Path, locations: Sequence[tuple[Path, int]]
 ) -> bool:
-    """Whether ``path`` is exactly where this platform mounts a volume."""
+    """Whether ``path`` is exactly where this platform mounts a volume.
+
+    Asked by walking UP the declared number of levels and then asking the
+    filesystem whether what is standing there is the declared directory, rather
+    than by subtracting one string from another. See :func:`_names_one_directory`
+    for what that cost.
+    """
     for directory, depth in locations:
-        try:
-            below = path.relative_to(directory)
-        except ValueError:
-            continue
-        if len(below.parts) == depth:
-            return True
+        ancestor = path
+        for _ in range(depth):
+            if ancestor == ancestor.parent:
+                break
+            ancestor = ancestor.parent
+        else:
+            if _names_one_directory(ancestor, directory):
+                return True
     return False
 
 
@@ -393,14 +490,28 @@ def mount_location_ancestors(path: Path) -> tuple[Path, ...]:
     than one can match and they are all returned: the removable-media mounters on
     Linux use ``/media/<label>`` and ``/media/<user>/<label>``, so one real path
     answers at two declared depths and only one of them is the mount.
+
+    BOTH THE SPELLING GIVEN AND WHAT IT RESOLVES TO ARE WALKED, and the resolved
+    chain alone was a hole. Resolving first is what makes a library reached
+    through a symlinked parent match a declared row, and it also erases the row
+    when the symlink points OUT of the mount directory: a symlinked mount point
+    pointing at ``/elsewhere`` resolved to ``/elsewhere/library``, which crosses
+    no declared location, so the rule found no slot to ask about and handed back
+    the boot disk. A slot on either chain is a slot; :func:`slot_holds_a_volume`
+    then decides whether anything is in it, and a symlink to a real mount is
+    still a mount.
     """
+    given = Path(os.path.abspath(path))
     resolved = Path(path).resolve()
     known = volume_mount_locations()
-    return tuple(
-        candidate
-        for candidate in (resolved, *resolved.parents)
-        if _is_a_volume_mount_location(candidate, known)
-    )
+    found: list[Path] = []
+    for chain in (given, resolved):
+        for candidate in (chain, *chain.parents):
+            if candidate in found:
+                continue
+            if _is_a_volume_mount_location(candidate, known):
+                found.append(candidate)
+    return tuple(found)
 
 
 def identity_source(path: Path) -> Path | None:
@@ -453,8 +564,8 @@ def identity_source(path: Path) -> Path | None:
     so does adding the location to the table.
     """
     resolved = Path(path).resolve()
-    slots = mount_location_ancestors(resolved)
-    if slots and not any(is_mount_point(slot) for slot in slots):
+    slots = mount_location_ancestors(path)
+    if slots and not any(slot_holds_a_volume(slot) for slot in slots):
         return None
     return containing_mount(resolved)
 

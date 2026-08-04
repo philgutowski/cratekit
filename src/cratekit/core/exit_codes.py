@@ -147,6 +147,13 @@ class Remedy(StrEnum):
     RELEASE_STALE_LOCK = "release-stale-lock"
     QUIT_REKORDBOX = "quit-rekordbox"
     MOUNT_LIBRARY_VOLUME = "mount-library-volume"
+    # A path this account cannot reach, which is a DIFFERENT act from attaching a
+    # drive: nothing is missing and nothing needs plugging in. On macOS an
+    # interpreter without Full Disk Access is refused by the kernel for anything
+    # under Documents, Desktop, Downloads or an external volume, and telling that
+    # user to mount a volume that is already mounted is the collapse this
+    # vocabulary exists to prevent.
+    GRANT_PATH_ACCESS = "grant-path-access"
     REVALIDATE_PINS = "revalidate-pins"
     REBUILD_TREE = "rebuild-tree"
     RESTORE_FROM_SNAPSHOT = "restore-from-snapshot"

@@ -95,7 +95,7 @@ from cratekit.cli import doctor, output, prompt, registry
 from cratekit.cli.output import Envelope
 from cratekit.core import config, preflight, profiles, rb_writer, secrets, taxonomy
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope
-from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.core.exit_codes import Remedy
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
@@ -205,6 +205,36 @@ def _refuse(
     )
 
 
+def _unreachable_root(root: str, exc: OSError) -> str:
+    """The sentence for a library root behind a directory nobody can open.
+
+    ONE SENTENCE, TWO CALLERS, because the wizard meets this in two places and
+    they must not describe it two ways. ``Path.exists`` re-raises a permission
+    error rather than answering False, so an ancestor this account cannot
+    traverse comes back from ``core/preflight`` as an exception rather than as a
+    verdict, and both of the wizard's mount questions go through that module.
+
+    IT IS A ROUTINE FIRST-RUN STATE ON THE PLATFORM THIS SHIPS FOR FIRST, which
+    is why it earns a sentence rather than a traceback. On macOS a library root
+    under Documents, Desktop, Downloads or an external volume raises EPERM from
+    ``stat`` for any interpreter without Full Disk Access. Before this, the
+    dispatcher's blanket caught it and rendered "internal-error ... this is a
+    defect; report it", so the product classified the user's own filesystem
+    permission as a Cratekit bug and sent them to file a report, in the one verb
+    whose whole job is getting a fresh clone to a first write. Doctor already
+    answers it as a failed check; the wizard now refuses in the same words.
+    """
+    return (
+        f"{root} could not be examined: {exc}. A directory on the way to it "
+        f"cannot be opened by this account, so which volume the library would "
+        f"sit on was not established and nothing was recorded. This is not a "
+        f"defect and it is not a missing drive: on macOS an interpreter without "
+        f"Full Disk Access is refused exactly this way under Documents, Desktop, "
+        f"Downloads and external volumes. Grant this interpreter access to the "
+        f"path, or choose a library root it can already reach"
+    )
+
+
 def existing_document() -> tuple[dict[str, Any], str]:
     """The configuration this run is completing, and one word for where it came from.
 
@@ -233,11 +263,19 @@ def existing_document() -> tuple[dict[str, Any], str]:
     # Incomplete, so the file parsed and carried an integer schema version;
     # anything else would have raised ConfigCorrupt above. Read it for the
     # answers it does hold rather than discarding them.
+    #
+    # THIS IS THE SECOND READ OF ONE FILE, so the two can disagree, and the
+    # handler below is what happens when they do: a file removed, a permission
+    # taken away, or a truncation between the load above and this open. It used
+    # to carry a "see above" pragma arguing the load had already classified it,
+    # which is true of the file as it was and says nothing about the file as it
+    # is now. The one thing this may not do is read the document as empty and
+    # write over it, so it refuses.
     path = config.config_path()
     try:
         with path.open("rb") as handle:
             raw = tomllib.load(handle)
-    except (OSError, tomllib.TOMLDecodeError) as exc:  # pragma: no cover - see above
+    except (OSError, tomllib.TOMLDecodeError) as exc:
         raise _refuse(
             f"setup will not overwrite a configuration it cannot read: {exc}",
             remedy=Remedy.REPAIR_CONFIG_FILE,
@@ -492,8 +530,18 @@ def _resolve_volume_id(
         wizard.asked.append("library.volume_id (from the command line)")
         return flag
     provider = machine.identity_provider or preflight.default_identity_provider()
-    slots = preflight.mount_location_ancestors(Path(root))
-    source = preflight.identity_source(Path(root))
+    try:
+        slots = preflight.mount_location_ancestors(Path(root))
+        source = preflight.identity_source(Path(root))
+    except OSError as exc:
+        # See ``_unreachable_root``. A refusal naming the path, under a slug of
+        # its own, rather than a traceback the dispatcher files as a defect.
+        raise _refuse(
+            _unreachable_root(root, exc),
+            remedy=Remedy.GRANT_PATH_ACCESS,
+            detail={"key": "library.volume_id", "root": root},
+            reason="library-root-unreachable",
+        ) from exc
     if source is None:
         empty = ", ".join(str(slot) for slot in slots)
         raise _refuse(
@@ -563,12 +611,29 @@ def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) 
     see, so that rule would lock every such platform out of its own library
     state, permanently, which is a guard firing on a correct setup (P7).
     """
-    status = preflight.resolve_mount_state(
-        cfg.library.root,
-        cfg.library.volume_id,
-        identity_provider=machine.identity_provider,
-        mount_enumerator=machine.mount_enumerator,
-    )
+    try:
+        status = preflight.resolve_mount_state(
+            cfg.library.root,
+            cfg.library.volume_id,
+            identity_provider=machine.identity_provider,
+            mount_enumerator=machine.mount_enumerator,
+        )
+    except OSError as exc:
+        # A NOTE RATHER THAN A RAISE, because this function's contract is that it
+        # reports and never aborts the run: the configuration is already saved by
+        # the time it is called, and the report is what the user reads. The
+        # derive above raises for the same condition because it has no value to
+        # return, and it runs first unless ``--volume-id`` supplied one, which is
+        # the only way this branch is reached.
+        wizard.note(
+            "setup.taxonomy",
+            "active taxonomy template",
+            doctor.Status.FAIL,
+            f"nothing was written under {cfg.library.root}: "
+            + _unreachable_root(str(cfg.library.root), exc),
+            Remedy.GRANT_PATH_ACCESS,
+        )
+        return
     if not preflight.library_state_may_be_written(status):
         wizard.note(
             "setup.taxonomy",
@@ -588,18 +653,100 @@ def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) 
         return
     name = cfg.taxonomy.template
     path = config.state_path("taxonomy_active", cfg)
-    try:
-        text = template_text(name)
-    except (FileNotFoundError, OSError):
+    # "NOT PRESENT" AND "COULD NOT LOOK" ARE DIFFERENT ANSWERS, and one handler
+    # over both said the wrong one in the verb this unit is named for.
+    # ``except (FileNotFoundError, OSError)`` is one clause over both conditions,
+    # and the redundancy is the fingerprint: ``FileNotFoundError`` IS an
+    # ``OSError``, so the tuple is the trace of a split that was never made. With
+    # the packaged directory unreadable, ONE ``crate setup`` envelope carried
+    # "no shipped template is named 'default'; shipped: " from here and "the
+    # packaged template directory could not be listed ... a damaged or partial
+    # install rather than a configuration error" from doctor, in the same report.
+    # The first contradicted the second, sent the user to change a configuration
+    # value that was correct, and printed an empty shipped set as a fact.
+    #
+    # So the shipped set is asked for in BOTH halves, exactly as doctor asks, and
+    # the three conditions answer separately: the directory could not be listed,
+    # the name is not in a set that WAS listed, or the named template ships and
+    # its own text could not be read.
+    shipped, unlistable = taxonomy.shipped_templates()
+    if unlistable is not None:
         wizard.note(
             "setup.taxonomy",
             "active taxonomy template",
             doctor.Status.FAIL,
-            f"no shipped template is named {name!r}; shipped: {', '.join(template_names())}",
+            (
+                f"{unlistable}. Whether a template named {name!r} ships was "
+                f"therefore not established and nothing was copied beside the "
+                f"database. This is a damaged or partial install rather than a "
+                f"configuration error, so re-running setup would not repair it"
+            ),
+            Remedy.REPORT_DEFECT,
+        )
+        return
+    if name not in shipped:
+        wizard.note(
+            "setup.taxonomy",
+            "active taxonomy template",
+            doctor.Status.FAIL,
+            f"no shipped template is named {name!r}; shipped: {', '.join(shipped)}",
             Remedy.FIX_CONFIG_VALUES,
         )
         return
-    if path.exists():
+    try:
+        text = template_text(name)
+    except (OSError, UnicodeDecodeError) as exc:
+        # It IS in the listed set, so this is packaged data that lists and does
+        # not open. Same diagnosis as an unlistable directory and the same
+        # remedy; re-running setup cannot repair a wheel.
+        wizard.note(
+            "setup.taxonomy",
+            "active taxonomy template",
+            doctor.Status.FAIL,
+            (
+                f"the template {name!r} ships and its packaged text could not be "
+                f"read ({exc}), so nothing was copied beside the database. This "
+                f"is a damaged or partial install rather than a configuration "
+                f"error, so re-running setup would not repair it"
+            ),
+            Remedy.REPORT_DEFECT,
+        )
+        return
+    # THE SAME COLLAPSE, ONE SCREEN LOWER, and handling it at the top of this
+    # function while leaving it here would have MOVED the hole rather than closed
+    # it. Both of the two calls below reach the filesystem and both raise:
+    # ``Path.exists`` re-raises a permission error rather than answering False,
+    # and ``atomic_write_bytes`` raises for a state directory this account may
+    # not write and for a library volume mounted read only. Neither was handled,
+    # so both escaped into the dispatcher's blanket and were rendered
+    # "internal-error ... this is a defect; report it", which is verbatim the
+    # support failure R-18 item 3 records.
+    #
+    # TWO HANDLERS RATHER THAN ONE, because they are two different acts with two
+    # different remedies in the same sentence family: one is a path this account
+    # could not look at, the other is a path it reached and was refused a write
+    # on. One handler over both would be the collapse the whole round is about.
+    try:
+        already_there = path.exists()
+    except OSError as exc:
+        wizard.note(
+            "setup.taxonomy",
+            "active taxonomy template",
+            doctor.Status.FAIL,
+            (
+                f"nothing was copied beside the database: {path} could not be "
+                f"examined ({exc}). A directory on the way to it cannot be opened "
+                f"by this account, so whether the library already carries its own "
+                f"template was not established and nothing was written. This is "
+                f"not a defect: on macOS an interpreter without Full Disk Access "
+                f"is refused exactly this way under Documents, Desktop, Downloads "
+                f"and external volumes. Grant this interpreter access to the path, "
+                f"or choose a library root it can already reach"
+            ),
+            Remedy.GRANT_PATH_ACCESS,
+        )
+        return
+    if already_there:
         wizard.note(
             "setup.taxonomy",
             "active taxonomy template",
@@ -607,7 +754,26 @@ def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) 
             f"{path} already exists and was left alone; the library's own copy wins",
         )
         return
-    config.atomic_write_bytes(text.encode("utf-8"), path)
+    try:
+        config.atomic_write_bytes(text.encode("utf-8"), path)
+    except OSError as exc:
+        wizard.note(
+            "setup.taxonomy",
+            "active taxonomy template",
+            doctor.Status.FAIL,
+            (
+                f"the template {name!r} could not be written to {path} ({exc}), so "
+                f"nothing was copied beside the database and this library does not "
+                f"describe its own tree. The location WAS reached and the write "
+                f"was refused, which is a directory this account may not write in "
+                f"or a volume mounted read only rather than a defect, and it is "
+                f"not something a second run of setup repairs. Give this "
+                f"interpreter write access to that directory, or choose a library "
+                f"root it can already write"
+            ),
+            Remedy.GRANT_PATH_ACCESS,
+        )
+        return
     wizard.note(
         "setup.taxonomy",
         "active taxonomy template",
@@ -858,17 +1024,19 @@ def setup(ctx: "Context") -> Envelope:
     refused = tuple(f for f in findings if f.status is doctor.Status.FAIL)
     if not refused:
         return ctx.envelope(data=payload)
+    cause = doctor.failure_cause(doctor.Report(findings), origin="cli.setup")
     return output.build(
         verb=ctx.entry.name,
         run_id=ctx.run.run_id,
         schema=ctx.entry.output_schema or output.current_schema("diagnostic"),
         started=ctx.started,
         outcome=Outcome.FAILED,
-        code=ExitCode.PRECONDITION,
+        # From the cause, for the reason doctor's own envelope reads it there: a
+        # check that refused under a declared reason has reserved a code, and
+        # PRECONDITION written in here would overwrite it.
+        code=cause.code,
         data=payload,
-        cause=doctor.failure_cause(
-            doctor.Report(findings), origin="cli.setup"
-        ),
+        cause=cause,
     )
 
 

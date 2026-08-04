@@ -112,7 +112,7 @@ from cratekit.core import (
     tree_registry,
 )
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope
-from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.core.exit_codes import Remedy
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
@@ -148,6 +148,13 @@ class Finding:
     status: Status
     detail: str
     remedy: Remedy | None = None
+    #: The structured cause when the answer IS one, which is a check that refused
+    #: under a declared reason rather than a check that observed something. It
+    #: carries the reason slug and therefore the RESERVED EXIT CODE, neither of
+    #: which a finding has anywhere else to put. ``failure_cause`` reads it, so a
+    #: refusal that names its own code leaves the process under that code instead
+    #: of under the report's generic one.
+    cause: Cause | None = None
 
     @property
     def failed(self) -> bool:
@@ -208,12 +215,15 @@ def _declared_python_bound() -> str | None:
     nobody is looking at.
 
     None when the distribution is not installed, which happens when the package
-    is imported straight from a checkout. That is reported as its own answer
-    rather than as a pass, because a check that cannot fail is not a check.
+    is imported straight from a checkout, and None again when it is installed
+    with no declared bound. Both are reported as their own answer rather than as
+    a pass, because a check that cannot fail is not a check. Both legs are driven
+    in ``tests/test_doctor.py``; the handler used to carry a "needs no install"
+    pragma and nothing exercised either of them.
     """
     try:
         return metadata.metadata(registry.DISTRIBUTION)["Requires-Python"]
-    except (metadata.PackageNotFoundError, KeyError):  # pragma: no cover - needs no install
+    except (metadata.PackageNotFoundError, KeyError):
         return None
 
 
@@ -284,34 +294,50 @@ def _checkout_root() -> Path | None:
     return root if (root / ".git").exists() else None
 
 
-def _git_dir(root: Path) -> Path | None:
-    """The git directory that owns ``root``, following a worktree pointer.
+def _git_dir(root: Path) -> tuple[Path | None, str | None]:
+    """The git directory that owns ``root``, AND why it could not be found.
 
     A worktree's ``.git`` is a FILE naming its own git directory, and that
     directory names the COMMON one, which is where hooks actually live. Looking
     only for ``.git/hooks`` would therefore report every worktree as unhooked
     while the hook was installed and running, which is a guard that fires on
     correct setups, and those get worked around rather than fixed (P7).
+
+    TWO RETURNS RATHER THAN ONE, for the reason ``taxonomy.shipped_templates``
+    has two: a bare None was standing for three different things, and the caller
+    rendered all three as the mildest of them. A ``.git`` marker this account
+    cannot open came back as None and was reported as "carries a .git marker that
+    names no git directory", at INFO, with no remedy, so ``crate doctor`` exited
+    0 over a repository whose commit scan may or may not be running. That is the
+    same split the same check already makes one screen below for the hook FILE,
+    left unmade for the MARKER that leads to it.
+
+    None with no sentence is the one honest quiet answer: a marker that parsed
+    and named nothing. Anything this could not look at comes back as a sentence.
     """
     marker = root / ".git"
     if marker.is_dir():
-        return marker
+        return marker, None
     try:
         text = marker.read_text().strip()
-    except OSError:
-        return None
+    except OSError as exc:
+        return None, f"the .git marker at {marker} could not be read ({exc})"
+    except UnicodeDecodeError as exc:
+        # A ``ValueError`` rather than an ``OSError``, so a marker that is
+        # present and is not text would otherwise escape as an internal defect.
+        return None, f"the .git marker at {marker} is not readable text ({exc})"
     if not text.startswith("gitdir:"):
-        return None
+        return None, None
     pointed = Path(text.split(":", 1)[1].strip())
     if not pointed.is_absolute():
         pointed = (root / pointed).resolve()
     common = pointed / "commondir"
     if common.is_file():
         try:
-            return (pointed / common.read_text().strip()).resolve()
-        except OSError:  # pragma: no cover - a commondir that vanished mid-read
-            return None
-    return pointed
+            return (pointed / common.read_text().strip()).resolve(), None
+        except (OSError, UnicodeDecodeError) as exc:
+            return None, f"the commondir at {common} could not be read ({exc})"
+    return pointed, None
 
 
 @dataclass(frozen=True, slots=True)
@@ -885,15 +911,24 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
         # and cannot be read by this account, and then attached run-setup, which
         # takes the branch below that leaves an existing file alone. The user
         # re-runs setup forever.
+        #
+        # AND IT DOES NOT CLAIM THE FILE EXISTS. It said "exists and could not be
+        # read", and the exception that lands here does not establish existence:
+        # a permission error raised by an untraversable PARENT arrives on this
+        # branch, and nothing under such a parent has been observed at all.
+        # Asserting a file is at a path nobody could look at is the same defect,
+        # one line further on, as the one this handler was split out to fix.
         return Finding(
             key=key,
             title=title,
             status=Status.FAIL,
             detail=(
-                f"the active taxonomy template at {path} exists and could not be "
-                f"read ({exc}), so whether the library declares a usable tree was "
-                f"not established. Setup leaves an existing copy alone, so this is "
-                f"a permission or a corruption to repair rather than an answer to "
+                f"the active taxonomy template at {path} could not be read "
+                f"({exc}), so whether the library declares a usable tree was not "
+                f"established. Whether the file is even there is unknown too: a "
+                f"directory on the way to it that this account cannot open fails "
+                f"the same way. Setup leaves an existing copy alone, so this is a "
+                f"permission or a corruption to repair rather than an answer to "
                 f"give again"
             ),
             remedy=Remedy.REPORT_DEFECT,
@@ -1717,8 +1752,14 @@ def _hook_dispatch_problem(body: str, root: Path) -> str | None:
     resolved = configured if configured.is_absolute() else root / configured
     try:
         resolved = resolved.resolve()
-    except OSError:  # pragma: no cover - a path that cannot be resolved at all
-        return f"the configuration it names, {named}, cannot be resolved"
+    except (OSError, RuntimeError) as exc:
+        # ``RuntimeError`` IS THE ONE THAT HAPPENS. ``Path.resolve`` does not
+        # raise for an absent path, so an ``OSError`` alone was a handler for a
+        # shape a hook file cannot produce, while the shape it CAN produce, a
+        # symlink loop on the way to the named configuration, arrives as
+        # ``RuntimeError("Symlink loop from ...")`` and escaped this handler
+        # entirely to be reported as a check that did not complete.
+        return f"the configuration it names, {named}, cannot be resolved ({exc})"
     if root.resolve() not in resolved.parents and resolved != root.resolve():
         return f"the configuration it names, {named}, is outside {root}"
     if not resolved.is_file():
@@ -1749,7 +1790,29 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
             status=Status.INFO,
             detail="this is an installed package rather than a checkout; nothing to hook",
         )
-    git_dir = _git_dir(root)
+    git_dir, unreadable = _git_dir(root)
+    if unreadable is not None:
+        # AN UNREADABLE MARKER IS NOT A MARKER THAT NAMES NOTHING. Both arrived
+        # here as None and both read as the second, at INFO with no remedy, so
+        # the whole report stayed green and doctor exited 0 over a repository
+        # whose commit scan was never established to run. Git reads the marker
+        # with different privileges than this process may have, so whether the
+        # hook fires is genuinely unknown, and unknown is a FAIL here for the
+        # reason ``answer`` gives: INFO means "nothing to do now", and nothing
+        # established that.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"{unreadable}, so which git directory owns {root} was not "
+                f"established and neither was whether a pre-commit hook is "
+                f"installed in it. Git resolves the same marker on every commit "
+                f"regardless of what this check can open, so the answer is "
+                f"unknown rather than no"
+            ),
+            remedy=Remedy.REPORT_DEFECT,
+        )
     if git_dir is None:
         return Finding(
             key=key,
@@ -1777,15 +1840,21 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
         # at X, and sent the user to `pre-commit install`, which rewrites a file
         # it may not be able to open either. Git will still try to RUN it, so
         # whether the scan happens is genuinely unknown here, which is the answer.
+        #
+        # It no longer says the hook EXISTS, for the reason the taxonomy check
+        # gives one screen up: an untraversable hooks directory raises the same
+        # permission error, and nothing beneath it has been observed.
         return Finding(
             key=key,
             title=title,
             status=Status.FAIL,
             detail=(
-                f"a pre-commit hook exists at {hook} and could not be read ({exc}), "
-                f"so whether the repository scan runs before a commit was not "
-                f"established. Git runs the file regardless of whether this check "
-                f"can open it, so the answer is unknown rather than no"
+                f"the pre-commit hook at {hook} could not be read ({exc}), so "
+                f"whether the repository scan runs before a commit was not "
+                f"established, and neither was whether the file is there: a "
+                f"directory on the way to it that this account cannot open fails "
+                f"the same way. Git runs the file regardless of whether this "
+                f"check can open it, so the answer is unknown rather than no"
             ),
             remedy=Remedy.REPORT_DEFECT,
         )
@@ -1885,9 +1954,30 @@ def answer(check: Check, inputs: _Inputs) -> Finding:
     It is deliberately NOT per check. A handler inside each one is a handler that
     the next check written here will not have, and the property wanted is about
     every check rather than about the ones somebody remembered.
+
+    AND IT ONLY RESCUES THE UNSTRUCTURED ONES. A ``CratekitError`` is not a check
+    that broke, it is a check that REFUSED, and it already carries everything the
+    rescue below invents: a declared reason, the reserved exit code that reason
+    maps to, a remediation token and its steps. Flattening one produced a FAIL
+    whose remedy was report-defect and whose detail read "this check did not
+    complete", and the process left under PRECONDITION rather than under the
+    reserved code, so a user with an unmounted drive was told to file a defect
+    about it. Being not-per-check is exactly why that mattered: it is the shape
+    every check written here inherits.
     """
     try:
         return check.run(inputs)
+    except CratekitError as exc:
+        cause = exc.cause
+        steps = "; ".join(cause.remediation.steps)
+        return Finding(
+            key=check.key,
+            title=check.key,
+            status=Status.FAIL,
+            detail=cause.message + (f" ({steps})" if steps else ""),
+            remedy=cause.remediation.remedy,
+            cause=cause,
+        )
     except Exception as exc:  # noqa: BLE001 - see the docstring
         return Finding(
             key=check.key,
@@ -1945,11 +2035,34 @@ def failure_cause(report: Report, *, origin: str = "cli.doctor") -> Cause:
     setup that wrote a valid config onto a machine that still cannot reach a
     write has not achieved what it was run for, and reporting OK would be a lie
     with the evidence sitting in the same envelope.
+
+    A CHECK THAT REFUSED UNDER ITS OWN REASON KEEPS IT. ``doctor-check-failed``
+    maps to PRECONDITION, which is the right answer for "some things this machine
+    needs are not here" and the wrong one for a structured refusal that already
+    reserved a code of its own: rewriting an unmounted library volume as "N
+    checks are failing" drops the reserved 22 and the reason slug a caller
+    branches on. The whole report still travels, as steps and in the envelope's
+    data, so nothing is lost by leading with the refusal that named itself.
     """
     steps = []
     for finding in report.failures:
         fix = render.remedy_text(finding.remedy) if finding.remedy is not None else None
         steps.append(f"{finding.key}: {finding.detail}" + (f" -> {fix}" if fix else ""))
+    failing = [finding.key for finding in report.failures]
+    refusal = next((f.cause for f in report.failures if f.cause is not None), None)
+    if refusal is not None:
+        return Cause(
+            reason=refusal.reason,
+            message=refusal.message,
+            remediation=Remediation(
+                remedy=refusal.remediation.remedy,
+                steps=tuple(refusal.remediation.steps) + tuple(steps),
+            ),
+            scope=refusal.scope,
+            retryable=refusal.retryable,
+            origin=(origin,),
+            detail={**dict(refusal.detail), "failing": failing},
+        )
     return Cause(
         reason="doctor-check-failed",
         message=(
@@ -1959,7 +2072,7 @@ def failure_cause(report: Report, *, origin: str = "cli.doctor") -> Cause:
         scope=Scope.RUN,
         retryable=True,
         origin=(origin,),
-        detail={"failing": [finding.key for finding in report.failures]},
+        detail={"failing": failing},
     )
 
 
@@ -1968,15 +2081,20 @@ def doctor(ctx: "Context") -> Envelope:
     schema = ctx.entry.output_schema or output.current_schema("diagnostic")
     if report.ok:
         return ctx.envelope(data=report.payload())
+    cause = failure_cause(report)
     return output.build(
         verb=ctx.entry.name,
         run_id=ctx.run.run_id,
         schema=schema,
         started=ctx.started,
         outcome=Outcome.FAILED,
-        code=ExitCode.PRECONDITION,
+        # READ OFF THE CAUSE rather than written here. It is PRECONDITION for
+        # every ordinary failing report, because that is what
+        # ``doctor-check-failed`` maps to, and a check that refused under its own
+        # reason leaves under the code that reason reserves.
+        code=cause.code,
         data=report.payload(),
-        cause=failure_cause(report),
+        cause=cause,
     )
 
 
@@ -1999,7 +2117,22 @@ def _run_findings() -> list[Finding]:
     found: list[Finding] = []
     try:
         records = sorted(gates.run_dir().glob("*.json"))
-    except OSError:  # pragma: no cover - an unreadable state directory
+    except OSError:
+        # THE TRIGGER IS UNOBSERVABLE AND THE CONTRACT IS NOT. Measured on this
+        # interpreter, ``Path.glob`` swallows ``PermissionError`` inside its own
+        # scandir walk and answers with an empty result for a directory that is a
+        # plain file, so neither an unreadable state root nor a run directory
+        # somebody replaced with a file reaches here through a real filesystem.
+        # It is kept because the swallowing is an implementation detail of the
+        # standard library rather than a documented promise, and losing the whole
+        # status verb to a future change of mind would be worse than a handler
+        # that never fires.
+        #
+        # What that argument does NOT excuse is leaving the promise unwritten,
+        # which is how it sat as a rescue nothing exercised. The promise is that
+        # a walk which refuses costs the report its run records rather than the
+        # verb, and ``tests/test_doctor.py`` states it at the seam by handing
+        # this a run directory that raises.
         records = []
     for path in records:
         try:
