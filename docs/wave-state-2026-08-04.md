@@ -969,12 +969,39 @@ identity. Both fixes were correct in isolation and both left the hole open.
    audit on `main` was exit 1 the whole time, never exit 2. The exit 2
    contradiction over `cratekit.write.rebuild` is real but lives only on the
    U32 branch, which re-adds a register key for a module U36 already shipped.
-2. **The merge exit criterion.** The standing order is merge nothing until a
+2. **Residual numbering at merge, and it now blocks merges.** Measured against
+   current `main`: **six numbers collide with different content on each side**,
+   R-17, R-19, R-20, R-21, R-22 and R-23. Every branch merging after the first
+   hits this. The U32 merge set a precedent by keeping a GAP, leaving R-18
+   empty, on the reasoning that renumbering means moving every citation.
+
+   **That reasoning no longer applies.** Branches are converting every citation
+   from a number to a TITLE, U38 has added a test enforcing it
+   (`test_every_residual_this_unit_cites_is_cited_by_title`), and U12 reports
+   zero `R-NN` citations left in its source or tests. Once citations are by
+   title, renumbering is mechanical and safe.
+
+   Three options:
+
+   1. **Renumber sequentially at each merge.** Now safe. Keeps the document
+      readable and the numbers meaningful. Costs a mechanical pass per merge.
+      **Recommended.**
+   2. **Keep gaps.** No renumber work, but the numbering becomes non
+      contiguous and increasingly arbitrary, and the U32 gap at R-18 is
+      already unexplained to anyone who did not read this file.
+   3. **Drop numbers entirely and identify residuals by title.** Cleanest
+      long term and consistent with where the citations are already going, but
+      it is a larger edit and touches every entry at once.
+
+   Until this is settled, a branch can merge only if its residual section is
+   append only or its numbers happen not to collide.
+
+3. **The merge exit criterion.** The standing order is merge nothing until a
    branch verifies clean. Sixteen verifications, sixteen blocking. The severity
    has fallen sharply, from live data destroying defects to tests that cannot
    see what they claim, but it has not reached zero and each round legitimately
    finds something smaller. The alternative is merging on zero BLOCKING with
    the rest recorded as residuals, which is what U36 got and how R-1 through
    R-17 already exist.
-3. **Whether the parked conformance branch comes into scope** once the eight
+4. **Whether the parked conformance branch comes into scope** once the eight
    units clear. Its metadata defect is live on main today.
