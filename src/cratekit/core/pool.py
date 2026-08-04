@@ -268,15 +268,24 @@ DEFAULT_MAX_TASKS_PER_CHILD = 100
 #: every failure returns the floor, and a loader that never returns is a failure
 #: that was keeping that promise only by never being tested.
 #:
-#: TWO MINUTES IS A MULTIPLE OF THE THING IT WAITS FOR, not a round number. The
-#: model this module exists to size is the 300 megabyte one named in
+#: TWO MINUTES IS TWICE THE THING IT WAITS FOR, not a round number. The model
+#: this module exists to size is the 300 megabyte one named in
 #: :func:`_probe_entry`, and 300 megabytes off a cold disk at the few megabytes a
 #: second a fragmented spinning platter sustains is about a minute of pure
 #: reading, before the spawn, the interpreter, the framework import and the
 #: deserialization on top. A deadline set AT the expected cost is a coin flip
 #: that pays out as the floor, and the floor is a whole run sized wrong, whereas
-#: waiting too long costs one deadline once. The asymmetry is why this is
-#: generous rather than tight, and the band in the test says so out loud.
+#: waiting too long costs one deadline once.
+#:
+#: TWICE IS THE FLOOR AND FIVE TIMES IS THE CEILING, and the test states both
+#: against that same reference load rather than against a pair of literals. At
+#: twice it, a machine twice as slow as the reference still answers instead of
+#: reporting the floor, and a machine twice as slow as a cold fragmented platter
+#: is an ordinary bad machine. Past five times it the generosity has stopped
+#: buying anything: nothing is that slow, and a caller cannot tell a five minute
+#: wait from a hang, which is the promise :func:`measure_worker_bytes` makes
+#: about a loader that never returns. The shipped value sits ON the floor, so
+#: every downward step from it fails the suite.
 DEFAULT_PROBE_TIMEOUT_SECONDS = 120.0
 
 #: How long a probe child is given to die once it is no longer wanted, at each of
@@ -289,9 +298,18 @@ DEFAULT_PROBE_TIMEOUT_SECONDS = 120.0
 #: holds, and a child that has just finished loading a model does not release it
 #: instantly. Set this below what that release costs and the ask expires every
 #: time, the kill lands on every abandoned probe unconditionally, and the ladder
-#: is source order with no consequence. The suite drives a child whose handler
-#: takes a measurable time to let go and asserts it unwound rather than died, so
-#: this budget is pinned by what a release costs rather than by taste.
+#: is source order with no consequence.
+#:
+#: A BAND, AND BOTH EDGES ARE MEASURED RATHER THAN CHOSEN. The suite reaps a
+#: child that spends a measurable time letting go and TIMES the join that follows
+#: the terminate, so the number this budget is compared against is what the
+#: ladder really costs on the machine running it rather than a nominal sleep.
+#: Below twice that the budget is racing the release, which is not a failure, it
+#: is an intermittent one, and an intermittent rung gets blamed on the runner and
+#: retried. Above three times it the terminate rung has stopped being a chance to
+#: unwind and become a stall in front of a kill that was always going to land,
+#: paid on every abandoned probe. One second sits inside that band on this
+#: machine and the suite fails outright at either edge.
 _PROBE_REAP_SECONDS = 1.0
 
 #: The two things a probe child can send back down its pipe. Tagged rather than
@@ -525,6 +543,15 @@ def _cgroup_self_paths(text: str | None) -> tuple[str, str]:
     line with others. A machine with no such file at all, which is every darwin
     machine this product is built on, sits at the root of both, which is what
     the empty strings mean.
+
+    THE FIELD IS SPLIT AND MATCHED WHOLE, and both halves of that are load
+    bearing in opposite directions. Matching the whole field against ``memory``
+    misses ``cpu,memory``, which is most hosts, and the suite drives that. The
+    other direction is the one the first fix did not test: a plain ``"memory" in
+    controllers`` accepts ``memoryfoo`` as the memory controller and walks off
+    to whatever cgroup that line names, and it does it while every existing test
+    agrees, because no test wrote a controller name that merely contains the
+    word. Both are now driven.
     """
     unified = ""
     controller = ""
@@ -564,15 +591,69 @@ def _cgroup_directories(mount: Path, relative: str) -> list[Path]:
     binds. Discarding that as well would answer an unparsable path with "no cap"
     on a machine that publishes one at the top, which is looser than the code
     this replaced rather than safer.
+
+    CONTAINMENT IS DECIDED AFTER RESOLUTION, not by looking at the spelling. The
+    ``..`` refusal above is textual, and text is not where this walk can leave
+    the mount: ``Path.read_text`` follows symlinks, so a component under the
+    mount that points anywhere on the filesystem is read as though it were a
+    level of this process's cgroup. That was true of the first version of this
+    function while the test beside it was named for the invariant and the
+    docstring asserted it, which is a claim held up by spelling rather than by
+    code. A real cgroupfs permits no symlinks, so this is not reachable through
+    the kernel, but the mount point is an INJECTED ARGUMENT by this module's own
+    design, and the residual finding titled "The cgroup mount point is read at an
+    assumed location" already records that its location is assumed rather than
+    read. Every level is therefore resolved and kept only if it is still inside
+    the resolved mount.
+
+    CITED BY TITLE AND NOT BY NUMBER, deliberately. Residual numbers are assigned
+    per branch and collide on merge, so a comment naming one points at whatever
+    entry ends up in that slot afterwards. A title survives a renumber and a
+    number does not, and a citation that silently changes subject is a defect no
+    suite can see.
     """
     fields = relative.split("/")
     if ".." in fields:
-        return [mount]
-    parts = [part for part in fields if part]
-    return [mount.joinpath(*parts[:depth]) for depth in range(len(parts), -1, -1)]
+        candidates = [mount]
+    else:
+        parts = [part for part in fields if part]
+        candidates = [mount.joinpath(*parts[:depth]) for depth in range(len(parts), -1, -1)]
+    anchor = _resolved(mount)
+    if anchor is None:
+        return []
+    return [inside for inside in (_contained(anchor, c) for c in candidates) if inside is not None]
 
 
-def _headroom_in(directory: Path, *, limit_file: str, used_file: str) -> int | None:
+def _resolved(path: Path) -> Path | None:
+    """``path`` with every symlink followed, or None when it cannot be resolved.
+
+    A path that will not resolve is a path this walk declines to read. The
+    alternative is treating an unresolvable level as contained, which is the
+    permissive answer to the one question this function exists to make strict.
+    """
+    try:
+        return path.resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None
+
+
+def _contained(anchor: Path, path: Path) -> Path | None:
+    """``path`` as the filesystem really resolves it, or None when that lands outside.
+
+    RESOLVED AND RETURNED, rather than checked and then handed back unresolved,
+    so the path that is read is the same object the check was made about. A check
+    on one spelling followed by a read of another is the shape that let this walk
+    out of the mount in the first place.
+    """
+    resolved = _resolved(path)
+    if resolved is None or not resolved.is_relative_to(anchor):
+        return None
+    return resolved
+
+
+def _headroom_in(
+    directory: Path, *, anchor: Path, limit_file: str, used_file: str
+) -> int | None:
     """Room left in ONE cgroup directory, or None when it publishes no cap.
 
     A CAP WITH NO USAGE READING IS STILL A CAP. Version two publishes the limit
@@ -581,11 +662,18 @@ def _headroom_in(directory: Path, *, limit_file: str, used_file: str) -> int | N
     there is not optimism, because it is certainly not smaller than the truth,
     and the machine's own reading is still taken as the other half of the
     minimum in :func:`available_bytes`.
+
+    THE FILES ARE CONTAINED TOO, not only the directory they sit in. A walk that
+    checks every level and then reads ``<level>/memory.max`` has moved the escape
+    down one component rather than closed it, because that name can be a symlink
+    as readily as the directory can. Same anchor, same test, one component later.
     """
-    limit = _cgroup_number(directory / limit_file)
+    limit_path = _contained(anchor, directory / limit_file)
+    limit = None if limit_path is None else _cgroup_number(limit_path)
     if limit is None or limit >= _CGROUP_UNLIMITED_ABOVE:
         return None
-    used = _cgroup_number(directory / used_file)
+    used_path = _contained(anchor, directory / used_file)
+    used = None if used_path is None else _cgroup_number(used_path)
     if used is None:
         return limit
     return max(0, limit - used)
@@ -621,17 +709,18 @@ def cgroup_memory_headroom_bytes(
     """
     unified, controller = _cgroup_self_paths(_cgroup_text(self_cgroup))
     layouts = (
-        (_cgroup_directories(root, unified), "memory.max", "memory.current"),
-        (
-            _cgroup_directories(root / "memory", controller),
-            "memory.limit_in_bytes",
-            "memory.usage_in_bytes",
-        ),
+        (root, unified, "memory.max", "memory.current"),
+        (root / "memory", controller, "memory.limit_in_bytes", "memory.usage_in_bytes"),
     )
     found: list[int] = []
-    for directories, limit_file, used_file in layouts:
-        for directory in directories:
-            headroom = _headroom_in(directory, limit_file=limit_file, used_file=used_file)
+    for mount, relative, limit_file, used_file in layouts:
+        anchor = _resolved(mount)
+        if anchor is None:
+            continue
+        for directory in _cgroup_directories(mount, relative):
+            headroom = _headroom_in(
+                directory, anchor=anchor, limit_file=limit_file, used_file=used_file
+            )
             if headroom is not None:
                 found.append(headroom)
     return min(found) if found else None

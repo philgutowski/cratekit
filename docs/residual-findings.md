@@ -671,14 +671,24 @@ the same injection seam the two path constants already have.
 large is read as the kernel saying "no limit". Round 3's commit message put it in
 a list of constants "pinned by consequence". It is not, and the measurement is
 unambiguous: moved to `1 << 47`, one hundred and twenty eight tebibytes, the
-whole suite stays green, and moved to `1 << 62`, its shipped value, it stays
-green too. Both ends of that range kill nothing.
+whole suite stays green, and moved to `1 << 50`, one pebibyte, it stays green
+too.
+
+A previous version of this paragraph offered `1 << 62`, the shipped value
+itself, as the second of those two measurements. Moving a constant to the value
+it already has cannot kill anything, so that was a no-op restated as evidence,
+which is the exact defect this document exists to record rather than commit.
+The replacement above is a real move, and the bottom of the zero range is now
+bracketed as well.
 
 **Why it is not being fixed.** The constant cannot move far in either direction
 without dying, and the zero row sits in the middle of a range no machine can
-reach. Downward it is held tightly: `1 << 40` kills two tests and `1 << 35`
-kills five, because the suite drives real caps at thirty two gibibytes, a
-tebibyte and sixty four tebibytes and asserts every one of them is still a cap.
+reach. Downward it is held tightly, and the edge is exact: `1 << 47` and
+`1 << 44` kill nothing and one test respectively, so the floor of the zero range
+sits between sixteen and one hundred and twenty eight tebibytes; below that
+`1 << 40` kills two and `1 << 35` kills five, because the suite drives real caps
+at thirty two gibibytes, a tebibyte and sixty four tebibytes and asserts every
+one of them is still a cap.
 Upward it is held by the version one unlimited literal: `1 << 63` kills two,
 because the number the older kernels actually write must read as no limit rather
 than as an absurd cap. What is left unpinned is the span between one hundred and
@@ -694,5 +704,40 @@ round 3 commit was overstated.
 **Closes when:** it does not. This is recorded rather than fixed. It reopens as
 real work only if a kernel or a runtime starts publishing caps above one hundred
 and twenty eight tebibytes, at which point the sentinel needs a source rather
-than an estimate, and `/proc/self/mountinfo` in R-18 is the same kind of answer:
-read what the kernel says instead of assuming a bound.
+than an estimate, and `/proc/self/mountinfo` in the entry titled "The cgroup
+mount point is read at an assumed location" is the same kind of answer: read
+what the kernel says instead of assuming a bound.
+
+---
+
+## R-20. Containment in the cgroup walk is checked and then read, not read atomically
+
+**Found:** during U12 round 5, 2026-08-04, while closing the symlink escape.
+
+`_cgroup_directories` and `_headroom_in` now resolve every level and every limit
+file and keep only what lands inside the resolved mount, which is what closed a
+walk that returned a cap from a directory outside the mount entirely. The check
+and the read are still two operations. A component swapped from an inside target
+to an outside one between them is read, and nothing here holds a descriptor
+across the gap.
+
+**Not fixed here, deliberately.** Closing it properly means opening the mount
+once and walking down it with `openat` and `O_NOFOLLOW`, which is a different
+reader: `Path.read_text` cannot express it, so the whole file access layer that
+the pathological-input tests cover would be rewritten to close a window that
+requires an attacker who can already write inside the cgroup mount this process
+reads. A real cgroupfs permits no symlinks at all, so on every machine this ships
+to the window does not exist; it exists because the mount point is an injected
+argument, which is the same seam the entry titled "The cgroup mount point is read
+at an assumed location" records.
+
+**Closes when:** it does not, unless the mount point stops being injected and
+starts being read from `/proc/self/mountinfo` as that entry proposes, at which
+point the `openat` walk is the natural shape of that rewrite and this closes with
+it.
+
+**Cited by title, never by number.** Residual numbers are assigned per branch and
+six of them already collide across this wave with different subjects on each
+side, so a citation by number points at whatever entry ends up in that slot after
+a merge. Every reference this unit writes, in source, in tests and here, names
+the title instead.

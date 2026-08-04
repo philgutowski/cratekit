@@ -843,7 +843,27 @@ def test_the_recycle_budget_retires_a_child_occasionally_rather_than_constantly(
 #: framework import and the deserialization are paid on top. Written here rather
 #: than read out of the module, because a bound that reads its own subject out of
 #: the thing it is bounding is not a bound.
+#:
+#: USED IN BOTH DIRECTIONS BELOW, and that is the whole reason this number is not
+#: free. A reference cost that only ever sets a floor can be driven to nothing
+#: with the suite green: measured, this constant moved from 60 to 1 and killed
+#: nothing, which took the shipped deadline's entire lower bound to one and a
+#: half seconds. It now sets the ceiling as well, so shrinking it collapses the
+#: band under the deadline the module ships and growing it lifts the floor over
+#: the same number. There is exactly one narrow range of reference loads that
+#: admits a hundred and twenty seconds, and this sits in it.
 _A_COLD_MODEL_LOAD_SECONDS = 60.0
+
+#: The least generous a deadline may be, as a multiple of the load it waits for.
+#: At exactly the load it is a coin flip that pays out as the floor, and the
+#: floor sizes the whole run; at twice it a machine twice as slow as a cold
+#: fragmented platter still answers.
+_DEADLINE_FLOOR_IN_LOADS = 2.0
+
+#: The most generous it may be, in the same units. Past this the wait has stopped
+#: buying a slow machine anything, because nothing is that slow, and what it buys
+#: instead is a caller who cannot tell a deadline from the hang it exists to end.
+_DEADLINE_CEILING_IN_LOADS = 5.0
 
 
 def test_the_probe_deadline_the_module_ships_outlasts_the_load_it_waits_for():
@@ -855,17 +875,22 @@ def test_the_probe_deadline_the_module_ships_outlasts_the_load_it_waits_for():
     test that waits the deadline out, so what is pinned instead is the promise
     the docstring makes, that every failure returns the floor and a loader that
     never returns is a failure. That promise is only kept if the wait is finite
-    and short enough that a run survives it. Ten minutes is the outer edge of
-    "the run survived"; past it the number is a hang wearing a deadline.
+    and short enough that a run survives it.
 
     THE LOWER EDGE WAS HALF A MINUTE AND THAT WAS NOT A BOUND, it was a formality.
     Measured: the shipped 120 moved to 60 and killed nothing in the suite, so a
     deadline set at exactly what a cold load costs passed as readily as one set
     at twice it. That is the failure this constant has: a probe cut off mid load
     reports the floor, the floor sizes the whole run, and the run looks fine.
-    Waiting too long costs one deadline once and nothing else, so the asymmetry
-    says generous, and generous is a MULTIPLE of the load rather than a match for
-    it. Half again over the cold load is the least that is not a coin flip.
+
+    BOTH EDGES ARE MULTIPLES OF THE SAME REFERENCE LOAD, which is what the
+    version before this one got wrong in a subtler way. It bounded the deadline
+    below by a multiple and above by the literal 600, so the reference load
+    carried the floor alone and could be driven to one second with the suite
+    green, and the literal ceiling could be driven to six thousand with the same
+    result. Two edges in the same units leave no such move: shrink the reference
+    and the ceiling falls under the shipped deadline, grow it and the floor rises
+    over it, loosen the deadline in either direction and it leaves the band.
     """
     given: list[float] = []
 
@@ -880,15 +905,60 @@ def test_the_probe_deadline_the_module_ships_outlasts_the_load_it_waits_for():
     assert given[0] == pool.DEFAULT_PROBE_TIMEOUT_SECONDS, (
         "the deadline the probe was given is not the one the module ships"
     )
-    assert given[0] >= 1.5 * _A_COLD_MODEL_LOAD_SECONDS, (
+    assert given[0] >= _DEADLINE_FLOOR_IN_LOADS * _A_COLD_MODEL_LOAD_SECONDS, (
         f"the shipped probe deadline is {given[0]} seconds against a cold model load "
         f"that costs about {_A_COLD_MODEL_LOAD_SECONDS}; a deadline that close to the "
         f"thing it waits for reports the floor for every machine on the slow side of "
         f"ordinary, and the floor sizes the whole run"
     )
-    assert given[0] <= 600.0, (
-        f"the shipped probe deadline is {given[0]} seconds; over ten minutes is a "
-        f"hang that a caller cannot tell from one"
+    assert given[0] <= _DEADLINE_CEILING_IN_LOADS * _A_COLD_MODEL_LOAD_SECONDS, (
+        f"the shipped probe deadline is {given[0]} seconds against a cold model load "
+        f"that costs about {_A_COLD_MODEL_LOAD_SECONDS}; past five times what it waits "
+        f"for the wait has stopped buying a slow machine anything and become a hang a "
+        f"caller cannot tell from one"
+    )
+
+
+def test_every_probe_deadline_default_names_the_constant_rather_than_repeating_it():
+    """The identity assertion above, made able to fail, over the source that decides it.
+
+    ``given[0] == pool.DEFAULT_PROBE_TIMEOUT_SECONDS`` compares the deadline the
+    probe received against the constant it came from, and there is exactly one
+    number in play. It holds at any value, and it holds equally if a signature
+    stops naming the constant and writes today's value as a literal instead.
+    Measured: that assertion removed on its own killed nothing.
+
+    A DEFAULT ARGUMENT IS BOUND ONCE, AT IMPORT, which is why this is a guard over
+    the source and not a monkeypatch. Moving the module constant at runtime moves
+    nothing, in either spelling, so the runtime assertion cannot tell a signature
+    that reads the constant from one that froze its value. The syntax tree can:
+    the default is either the NAME or it is a number somebody typed, and a number
+    somebody typed is a second deadline that stops following the first the day it
+    changes, with the whole band above still green.
+
+    Both functions are checked, because ``_spawned_probe`` carries its own copy of
+    the same default and a caller reaching it directly is the path that would
+    quietly use the frozen one.
+    """
+    documented = "DEFAULT_PROBE_TIMEOUT_SECONDS"
+    checked = {"measure_worker_bytes", "_spawned_probe"}
+    seen: dict[str, str] = {}
+    for node in ast.walk(ast.parse(POOL_SOURCE)):
+        if not isinstance(node, ast.FunctionDef) or node.name not in checked:
+            continue
+        arguments = node.args
+        for name, default in zip(
+            [argument.arg for argument in arguments.kwonlyargs],
+            arguments.kw_defaults,
+            strict=True,
+        ):
+            if name == "timeout_seconds" and default is not None:
+                seen[node.name] = ast.unparse(default)
+    assert seen == {name: documented for name in checked}, (
+        f"a probe deadline default is {seen} rather than the module constant "
+        f"{documented} in both places; a signature that repeats the value instead of "
+        f"naming it is a second deadline, and a default argument is bound once at "
+        f"import, so nothing at runtime can tell the two apart"
     )
 
 
@@ -1363,6 +1433,25 @@ _TERMINATED_CLEANLY = 77
 #: enough that a budget a tidier would plausibly pick cannot cover it, and small
 #: enough against the shipped budget that the assertion has more slack than it
 #: needs on a loaded machine.
+#:
+#: FAITHFUL IN COST AND NOT IN KIND, and the difference is worth writing down
+#: rather than leaving for somebody to discover. A real release of a 300 megabyte
+#: model is allocator and kernel work, and work DILATES under contention. A sleep
+#: does not: it takes four tenths of a second on an idle machine and four tenths
+#: of a second under twenty two spinners. So this fixture reproduces the DURATION
+#: a release costs and not its sensitivity to load, and the reap tests are stable
+#: partly for that reason.
+#:
+#: THE SLEEP IS STILL THE RIGHT TRADE, chosen rather than settled for. A fixture
+#: that really allocated and freed three hundred megabytes would model the kind as
+#: well as the cost, and it would do it by making the one number these tests
+#: assert on a function of what every other process on the machine is doing. The
+#: bound would then fail on a busy runner while the shipped budget was fine, which
+#: is a flaky suite bought with realism, and this repository has no conditional
+#: skip to hide it behind. Measured, the timed leg this stands in for runs 0.401
+#: to 0.419 seconds across eighty reaps spanning load average 4.6 to 39 on eleven
+#: cores, an eighteen millisecond spread with no load sensitivity, against a floor
+#: and a ceiling that sit about seventy milliseconds away on either side.
 _RELEASE_SECONDS = 0.4
 
 
@@ -1424,12 +1513,36 @@ class _WatchedChild:
     def __init__(self, process) -> None:
         self.process = process
         self.rungs: list[str] = []
+        self.join_seconds: list[float] = []
         self.exitcode: int | None = None
         self.closed = False
 
     def join(self, timeout=None) -> None:
         self.rungs.append("join")
+        started = time.monotonic()
         self.process.join(timeout)
+        self.join_seconds.append(time.monotonic() - started)
+
+    @property
+    def release_seconds(self) -> float:
+        """How long the join AFTER the terminate really took, in seconds.
+
+        THE ONE NUMBER A BUDGET CAN HONESTLY BE COMPARED AGAINST. A bound written
+        against ``_RELEASE_SECONDS`` is a bound against a sleep this file chose,
+        and its own multiplier is then free: halve it and nothing fails, because
+        nothing on either side of the comparison is a measurement. This is the
+        wall clock cost of the leg the budget actually pays for, terminate to
+        exit, taken from the run that is asserting on it.
+
+        The second join is that leg for every child here: the first join is the
+        one that expires because the child is sleeping past every deadline, and
+        the terminate is delivered between them. The rung sequence is asserted
+        beside every use, so the index is checked rather than assumed.
+        """
+        assert self.rungs[:3] == ["join", "terminate", "join"], (
+            f"the ladder ran {self.rungs}, so there is no terminate-to-exit leg to read"
+        )
+        return self.join_seconds[1]
 
     def is_alive(self) -> bool:
         return self.process.is_alive()
@@ -2053,9 +2166,28 @@ def test_a_probe_that_gave_up_leaves_no_child_still_allocating():
 # and neither could tell the two budgets apart. The cooperative child now spends
 # ``_RELEASE_SECONDS`` letting go before it reports, so its exit code is a
 # reading of the budget as well as of the order.
+#
+# THE BUDGET IS COMPARED AGAINST A MEASUREMENT AND NOT AGAINST THAT SLEEP. A
+# bound of the form "the budget is at least twice ``_RELEASE_SECONDS``" replaces
+# a literal with a relationship whose own multiplier is free: measured, that
+# multiplier halved with the whole suite green, which is the defect this unit
+# exists to catch restated one level up. The reap below is TIMED instead, so both
+# edges are stated against what the ladder really cost in the run doing the
+# asserting.
 
 
-def test_a_probe_child_that_can_unwind_is_asked_to_before_it_is_killed():
+@pytest.fixture(scope="module")
+def a_cooperative_reap() -> _WatchedChild:
+    """One reap of the child that unwinds, run once and read by two tests.
+
+    Two things are being asked of the same event, the rung order and the budget,
+    and a second spawn to ask the second question would pay a second second and a
+    half of wall clock to observe the same ladder twice.
+    """
+    return _reap_a_child(_unwinds_on_a_terminate)
+
+
+def test_a_probe_child_that_can_unwind_is_asked_to_before_it_is_killed(a_cooperative_reap):
     """The first rung, the ORDER, and the BUDGET the first rung is worth nothing without.
 
     A child that handles a terminate exits with its own code. A child that was
@@ -2074,7 +2206,7 @@ def test_a_probe_child_that_can_unwind_is_asked_to_before_it_is_killed():
     pending register. The battery runs on darwin and continuous integration runs
     on linux, which are the two machines this has to be true on.
     """
-    watched = _reap_a_child(_unwinds_on_a_terminate)
+    watched = a_cooperative_reap
     assert watched.exitcode == _TERMINATED_CLEANLY, (
         f"the child reported {watched.exitcode} rather than unwinding on a terminate; "
         f"a negative number here is a SIGKILL, which means either the backstop ran "
@@ -2085,26 +2217,62 @@ def test_a_probe_child_that_can_unwind_is_asked_to_before_it_is_killed():
     assert watched.rungs == ["join", "terminate", "join", "close"]
 
 
-def test_the_reaping_budget_is_more_than_a_release_costs_rather_than_a_race_with_one():
+#: The least the budget may be, as a multiple of the terminate-to-exit leg that
+#: was just timed. At one times it the budget is racing the release rather than
+#: covering it, which does not fail, it fails sometimes, and a rung that works
+#: most of the time is how an intermittent red suite gets blamed on the runner.
+_BUDGET_FLOOR_IN_RELEASES = 2.0
+
+#: The most it may be, in the same units. Past this the first rung has stopped
+#: being a chance to unwind and become a stall in front of a kill that was always
+#: going to land, paid on every abandoned probe on a machine already too tight to
+#: run the pool it asked for.
+_BUDGET_CEILING_IN_RELEASES = 3.0
+
+
+def test_the_reaping_budget_is_a_band_around_what_a_release_was_measured_to_cost(
+    a_cooperative_reap,
+):
     """The margin, so a budget that would merely make the test above FLAKY fails outright.
 
     The test above dies at any budget under four tenths of a second, which is the
-    far half of this. The near half is worse and it is what a declarative bound
-    is for: at a budget of half a second that test still passes, with a tenth of
-    a second of slack, on a machine running one thing. Under a loaded machine it
-    passes most of the time, and a rung that works most of the time is how an
-    intermittent red suite gets blamed on the runner and retried.
+    far half of this. The near half is worse and it is what a bound is for: at a
+    budget of half a second that test still passes, with under a tenth of a second
+    of slack on a leg whose spread this machine measures in milliseconds. It
+    passes most of the time, and most of the time is not a rung.
 
-    Twice the release, so the expected case finishes comfortably inside the
-    budget rather than racing it. The relationship is what is asserted, not a
-    literal: a release that is measured to cost more later raises the floor under
-    this budget automatically, which is the direction that matters.
+    THE SUBJECT IS THE TIMED LEG AND NOT ``_RELEASE_SECONDS``, and that is what
+    makes the multipliers here mean anything. Written against the sleep, this
+    read ``budget >= 2 * _RELEASE_SECONDS``, and measured, that ``2`` moved to
+    ``1`` with the whole suite green: both sides of the comparison were numbers
+    typed into this file, so the coefficient between them was free and the bound
+    was no more pinned than the literal it replaced. Timing the reap puts a
+    measurement on one side. The floor then refuses 0.81 seconds, which the old
+    form admitted, and the ceiling refuses 2.0, which the old form had nothing to
+    say about at all.
+
+    A BAND RATHER THAN A FLOOR, because too long is a real failure and not merely
+    an inelegance. ``_reap`` spends this budget up to three times on a wedged
+    child, in the ``finally`` of a probe that has already failed, on a machine
+    this module has already decided cannot afford what it was asked for.
+
+    THE MULTIPLIERS ARE JUDGEMENTS AND THE MEASUREMENT IS NOT, which is the split
+    worth being explicit about. Two and three are chosen; what they multiply is
+    read off this run. That is why moving the shipped budget one realistic step
+    in either direction now fails here rather than passing quietly.
     """
-    assert pool._PROBE_REAP_SECONDS >= 2 * _RELEASE_SECONDS, (
+    release = a_cooperative_reap.release_seconds
+    assert pool._PROBE_REAP_SECONDS >= _BUDGET_FLOOR_IN_RELEASES * release, (
         f"the reaping budget is {pool._PROBE_REAP_SECONDS} seconds against a release "
-        f"that costs {_RELEASE_SECONDS}; a child that is asked to stop has to be given "
-        f"long enough to finish stopping, or the terminate rung is decoration and "
-        f"every abandoned probe meets the kill"
+        f"this run measured at {release:.3f}; a child that is asked to stop has to be "
+        f"given comfortably longer than stopping costs, or the terminate rung is a "
+        f"race and every abandoned probe meets the kill on the runs it loses"
+    )
+    assert pool._PROBE_REAP_SECONDS <= _BUDGET_CEILING_IN_RELEASES * release, (
+        f"the reaping budget is {pool._PROBE_REAP_SECONDS} seconds against a release "
+        f"this run measured at {release:.3f}; a budget that far above what letting go "
+        f"costs is not patience, it is a stall in front of a kill that was always "
+        f"going to land, and it is paid on every abandoned probe"
     )
 
 
@@ -2437,6 +2605,38 @@ def test_the_older_layout_is_walked_from_this_processs_own_path_too(tmp_path):
     assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 1536 * MIB
 
 
+@pytest.mark.parametrize(
+    "line",
+    ["7:memoryfoo:/sneaky\n", "9:blkio,memory_hotplug:/sneaky\n"],
+    ids=["a-name-that-starts-with-it", "a-name-that-contains-it"],
+)
+def test_a_controller_field_that_merely_contains_the_word_memory_is_not_it(tmp_path, line):
+    """The direction the first fix of this line did not test, and the only one that can happen.
+
+    The controller field is a comma separated LIST, so it is split and matched
+    whole. The commit that made it so drove the tight direction, a whole field
+    test against "memory" missing "cpu,memory", which is a real host and is
+    covered above. The loose direction was left armed: a plain ``"memory" in
+    controllers`` accepts any name with the word inside it, and every existing
+    test agreed, because none of them wrote such a name. Measured against that
+    suite, relaxing the split to a substring test killed nothing.
+
+    What it buys the loose reader is a path from an unrelated hierarchy walked as
+    though it were this process's memory cgroup, and because the tightest cap
+    binds, a stranger's tight number narrows every pool on the machine.
+    """
+    root = _hierarchy(tmp_path)
+    stranger = root / "memory" / "sneaky"
+    stranger.mkdir(parents=True)
+    (stranger / "memory.limit_in_bytes").write_text(str(64 * MIB))
+    (stranger / "memory.usage_in_bytes").write_text("0")
+    where = _self_cgroup(tmp_path, line)
+    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) is None, (
+        "a hierarchy whose controller name merely contains the word memory was read "
+        "as the memory controller, and the cgroup it named is not this process's"
+    )
+
+
 def test_a_machine_with_no_proc_file_at_all_reads_the_root_it_was_given(tmp_path):
     """Every darwin machine this product is built on, and every one with no cgroups."""
     root = _hierarchy(tmp_path)
@@ -2508,6 +2708,86 @@ def test_a_climb_still_leaves_the_mounts_own_cap_readable(tmp_path):
     sibling.mkdir()
     _version_two(sibling, limit=str(64 * MIB), current="0")
     where = _self_cgroup(tmp_path, "0::/../sibling\n")
+    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 448 * MIB
+
+
+# --- the walk really staying inside the mount, rather than spelling it --------
+#
+# THE TEST ABOVE IS NAMED FOR AN INVARIANT THE CODE DID NOT HOLD, which is the
+# recurring shape this unit keeps finding: a claim kept up by spelling. ``..`` is
+# refused textually, and text is not the way out. ``Path.read_text`` FOLLOWS
+# SYMLINKS, so a component under the mount pointing anywhere on the filesystem
+# was read as a level of this process's cgroup, and the docstring on
+# ``_cgroup_directories`` said no level outside the mount is read while the
+# concrete input below returned a four mebibyte cap from a directory that was
+# not under the mount at all.
+#
+# Not reachable through a real cgroupfs, which permits no symlinks. Reachable
+# through the mount point, which is an INJECTED ARGUMENT by this module's own
+# design and whose location the residual finding titled "The cgroup mount point
+# is read at an assumed location" already records as assumed rather than read.
+# Cited by title, because residual numbers are per branch and collide on merge.
+
+
+def test_a_component_that_symlinks_out_of_the_mount_is_not_read(tmp_path):
+    """The escape the ``..`` refusal cannot see, because it is not in the spelling.
+
+    Every level of this path is under the mount as written. One of them is a
+    symlink, and what is read is what it points at, which is a cap belonging to
+    nothing this process is in. The tightest cap binds, so four mebibytes here
+    would size every pool on the machine at zero workers.
+    """
+    root = _hierarchy(tmp_path)
+    _version_two(root, limit="max", current="0")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _version_two(outside, limit=str(4 * MIB), current="0")
+    (root / "sneaky").symlink_to(outside, target_is_directory=True)
+    where = _self_cgroup(tmp_path, "0::/sneaky\n")
+    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) is None, (
+        "a cap published outside the mount was read as this process's own, through a "
+        "path that never spells a climb; containment is decided by the spelling rather "
+        "than by where the filesystem actually goes"
+    )
+
+
+def test_a_limit_file_that_symlinks_out_of_the_mount_is_not_read(tmp_path):
+    """The same escape one component later, which is where a fix aimed at directories lands.
+
+    Checking every DIRECTORY and then reading ``<directory>/memory.max`` moves the
+    hole rather than closing it: that last name is a symlink as readily as the
+    ones above it. Same anchor, same test, one component later.
+    """
+    root = _hierarchy(tmp_path)
+    _version_two(root, limit="max", current="0")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "memory.max").write_text(str(4 * MIB))
+    unit = root / "cratekit.service"
+    unit.mkdir()
+    (unit / "memory.max").symlink_to(outside / "memory.max")
+    (unit / "memory.current").write_text("0")
+    where = _self_cgroup(tmp_path, "0::/cratekit.service\n")
+    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) is None, (
+        "a cap file outside the mount was read through a directory that was inside it"
+    )
+
+
+def test_a_symlink_that_stays_inside_the_mount_is_still_read(tmp_path):
+    """The other direction, so the containment is not a ban on symlinks.
+
+    What is refused is a level that LANDS outside the mount, not a level that
+    happens to be a link. Refusing links outright would answer a machine whose
+    cgroup path happens to run through one with "no cap at all", which is looser
+    than reading it and is the direction this module cannot afford.
+    """
+    root = _hierarchy(tmp_path)
+    _version_two(root, limit="max", current="0")
+    real = root / "real.service"
+    real.mkdir()
+    _version_two(real, limit=str(512 * MIB), current=str(64 * MIB))
+    (root / "link.service").symlink_to(real, target_is_directory=True)
+    where = _self_cgroup(tmp_path, "0::/link.service\n")
     assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 448 * MIB
 
 
