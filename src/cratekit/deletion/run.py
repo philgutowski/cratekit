@@ -775,6 +775,23 @@ def apply(
             # categoriser that produced the answer in the first place. A second,
             # smaller re-check written here would be a second opinion, and the
             # two would eventually disagree about what a collision is.
+            # TWO PREDICATES ARE DELIBERATELY NOT RE-SUPPLIED, AND BOTH USED TO
+            # BE. ``identifiable`` and ``ambiguous`` were passed here as well,
+            # and deleting either killed exactly ZERO tests, measured. Neither
+            # can ever measure otherwise, which is the point: both answers are
+            # functions of the plan this ``apply`` has just rebuilt, the loop
+            # skips every candidate that plan did not call deletable, and a row
+            # failing either one is UNIDENTIFIABLE or AMBIGUOUS_VERSION and
+            # therefore not deletable. So the re-check could never be handed a
+            # row for which either answer differed. That is one rule written
+            # twice with one copy unreachable, which is the shape the ``since``
+            # parameter was deleted for, and it is deleted for the same reason
+            # rather than left as a line that reads as a guard and is not.
+            #
+            # ``declined`` IS re-supplied, and the difference is the whole
+            # distinction: ``declined_now`` is a fresh read of a store taken
+            # after the plan, so it genuinely can differ, and a decline recorded
+            # in that window is a file that must not move.
             fresh = candidate_rules.recheck(
                 item,
                 found.references,
@@ -782,8 +799,6 @@ def apply(
                 prefix_map=rules,
                 referenced=referenced,
                 declined=declined_now,
-                identifiable=stores.identifiable,
-                ambiguous=lambda row: row.content_id in found.ambiguous,
                 stat=stat,
             )
             if not fresh.deletable or fresh.resolved is None:

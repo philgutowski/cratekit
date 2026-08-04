@@ -71,7 +71,9 @@ through it is missing, nothing is indexed under it, ``complete`` is true, and a
 candidate that would have collided with an active row is judged deletable and
 trashed. A drive somebody renamed only reaches the refusing branch while nothing
 else is mounted at the old name; mount anything there and it does not. This is
-recorded rather than fixed, and R-16 in ``docs/residual-findings.md`` carries the
+recorded rather than fixed, and the residual finding
+"Five findings the U24 review accepted, and the reason each stands"
+in ``docs/residual-findings.md`` carries the
 reproduction and the reasoning, which is short: every rule that catches it needs
 a threshold, and every threshold that catches the dangerous case also refuses the
 ordinary one, which is a rule matching a handful of rows whose files the user
@@ -198,7 +200,8 @@ class Category(StrEnum):
     #: the under-suppression direction this package calls the milder one. The
     #: durable repair is a write-ahead intent, the record written as pending
     #: BEFORE the rename and settled after, which is a change to the store
-    #: contract rather than to this category. It is recorded as R-20.
+    #: contract rather than to this category. It is recorded as the residual
+    #: finding "A SIGKILL between the move and the tombstone still loses the record, and no handler can catch it".
     GONE = "gone"
     #: A person was shown this file and said to keep it (R35). Never offered
     #: again until the decline is revoked, which means it is suspended rather
@@ -221,8 +224,10 @@ class Category(StrEnum):
     #: with a remixer column against ``Strobe (Michael Woods Remix)`` with none
     #: is one version filed under two conventions, and composition exists to give
     #: those two rows ONE identity. Both shapes are two rows on one identity and
-    #: nothing about the identity separates them, which is what R-21 recorded as
-    #: unresolvable. The ISRC separates them, and the rows already carry it.
+    #: nothing about the identity separates them, which is what the residual
+    #: finding "The Subtitle vocabulary's false negatives collide, and the ISRC tells a collision from a convergence"
+    #: recorded as unresolvable. The ISRC separates them, and the rows already
+    #: carry it.
     AMBIGUOUS_VERSION = "ambiguous-version"
 
 
@@ -979,11 +984,9 @@ def recheck(
     prefix_map: Sequence[locations.PrefixRule] = (),
     referenced: frozenset[str] = frozenset(),
     declined: Callable[[RemovedRow], bool] = lambda _row: False,
-    identifiable: Callable[[RemovedRow], bool] = lambda _row: True,
-    ambiguous: Callable[[RemovedRow], bool] = lambda _row: False,
     stat: Stat = os.stat,
 ) -> Candidate:
-    """Re-run every assertion for ONE candidate, immediately before its move.
+    """Re-run every assertion THAT CAN CHANGE for ONE candidate, before its move.
 
     R37's last sentence, and it is not a formality. A review item is durable: a
     person may confirm one days after it was raised, from another process, and in
@@ -997,6 +1000,21 @@ def recheck(
     two would eventually differ about what a collision is. This calls
     :func:`categorize` over one row, so the preview and the write are the same
     function by construction.
+
+    **TWO OF THE CATEGORISER'S PREDICATES ARE NOT ACCEPTED HERE, AND THE ABSENCE
+    IS A DECISION RATHER THAN A GAP.** ``identifiable`` and ``ambiguous`` were
+    both accepted and both forwarded, and deleting either one at the only call
+    site killed ZERO tests, measured. Neither could measure otherwise. Both
+    answers are functions of a row and of the whole collection walk the caller
+    has just redone, so neither changes between the plan and the move the way a
+    file's size or a decline does; and the caller only ever re-checks a candidate
+    the rebuilt plan called DELETABLE, which a row failing either predicate never
+    is. A parameter that cannot alter an answer is a guard that reads as
+    load-bearing and is not.
+
+    ``declined`` IS accepted, because a decline is a store read and the caller
+    takes a fresh one after the plan, so it is the one predicate here that can
+    genuinely have changed.
     """
     answered = categorize(
         [candidate.row],
@@ -1005,8 +1023,6 @@ def recheck(
         prefix_map=prefix_map,
         referenced=referenced,
         declined=declined,
-        identifiable=identifiable,
-        ambiguous=ambiguous,
         stat=stat,
     )
     return answered[0]

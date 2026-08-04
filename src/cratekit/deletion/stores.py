@@ -134,8 +134,10 @@ def spellings_earlier_builds_wrote(row: RemovedRow) -> tuple[dict[str, str], ...
 def ambiguous_versions(rows: Any) -> frozenset[str]:
     """The rows whose version identity is shared with a row that is a DIFFERENT recording.
 
-    **R-21 SAID THIS NEEDED "A SIGNAL NEITHER THE ROW NOR THE LIBRARY CARRIES
-    TODAY", AND THE ROW ALREADY CARRIES IT.** The claim was that two rows landing
+    **THE RESIDUAL FINDING
+    "The Subtitle vocabulary's false negatives collide, and the ISRC tells a collision from a convergence"
+    SAID THIS NEEDED "A SIGNAL NEITHER THE ROW NOR THE LIBRARY CARRIES TODAY",
+    AND THE ROW ALREADY CARRIES IT.** The claim was that two rows landing
     on one identity are indistinguishable: the LEGITIMATE convergence,
     ``Strobe`` with ``Michael Woods`` in the remixer column against ``Strobe
     (Michael Woods Remix)`` with it filled in as well, is the same shape as the
@@ -147,7 +149,8 @@ def ambiguous_versions(rows: Any) -> frozenset[str]:
     ``RemovedRow.isrc`` is read from the ``ISRC`` column and already rides in
     every tombstone's payload, and it settles it. The legitimate convergence is
     ONE recording filed twice, so it carries one code. The collision is TWO
-    recordings, so it carries two. R-21's stated reason for not building this,
+    recordings, so it carries two. That finding's stated reason for not building
+    this,
     that the same shape flags an ordinary duplicate import, is what the code
     resolves rather than a reason to skip it: a duplicate import is one recording
     imported twice and carries the SAME code.

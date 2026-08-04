@@ -885,6 +885,18 @@ music, so the version becomes re-acquirable, which is the under-suppression
 direction. `Category.GONE`'s docstring states this as the partial guarantee it is
 rather than claiming the state is unreachable, which is what it claimed before.
 
+**NARROWED IN ROUND SIX, and the narrowing is worth stating because it changes
+what the entry is about.** The sentence above, "on the next run the categoriser
+answers `GONE` and the watermark retires the row", is no longer true for the only
+path that can reach this state. A file only ever moves after a person CONFIRMS
+its removal, and a verdict is durable, so what the next run finds is a confirmed
+row whose file is absent with no tombstone. `run._settle_a_confirmed_absence`
+now writes the record that deletion owes rather than retiring the row in silence,
+so the interrupted deletion COMPLETES on the next run and R36 becomes true for it
+again. What is left is the window itself: between the SIGKILL and that next run,
+the suppression does not exist, and if the person clears the review item in
+between, nothing will ever write it. The durable repair below is unchanged.
+
 **Closes when:** the tombstone is written as a PENDING intent before the rename
 and settled after it, so an interrupted deletion is discoverable from the store
 rather than from the absence of a file. That is a change to the decision store's
@@ -892,10 +904,11 @@ contract, since `core.review` records settled decisions and has no pending state
 and it belongs with whoever owns that contract rather than inside a fix round for
 one consumer.
 
-## R-21. The Subtitle vocabulary's false negatives still collide, and the repair is a default flip nothing local can validate
+## R-21. The Subtitle vocabulary's false negatives collide, and the ISRC tells a collision from a convergence
 
-**Found:** during the U24 round 5 review, 2026-08-03, measured rather than
-argued.
+**Found:** during the U24 round 5 review, 2026-08-03. **Rewritten during round
+six, 2026-08-04, because two of its three claims were wrong and the third was a
+number nothing here can measure.**
 
 `tombstone.VERSION_WORDS` decides whether a rekordbox `Subtitle`, which is ID3
 `TIT3` and holds anything at all, names a version of the recording. Against 75
@@ -910,45 +923,153 @@ every non-English spelling including `Ao Vivo`, `En Vivo`, `Versão`, `Versión`
 Soundtrack`, `Extended Play`, the labels `Club Sweat` and `Toolroom Club`, and
 the artists `Radio Slave`, `Dub Pistols`, `Cut Chemist` and `Mix Master Mike`.
 
-**The two directions do not cost the same.** A false negative leaves the row with
-a bare title, so two versions of one recording collide onto one identity and
-deleting either suppresses the other: the user loses a track they did not delete.
-A false positive composes an extra parenthetical, so the tombstone is written and
-listable and matches no provider spelling: the deletion fails to stick and the
-version becomes re-acquirable. Under those costs "believe the column unless there
-is a reason not to" is the cheaper default and the whitelist has it backwards.
+**WHAT THOSE TWO NUMBERS ARE AND WHAT THEY ARE NOT.** The 75 and the 42 are
+hand-authored ENUMERATIONS OF EXAMPLES. An error rate over a named list is
+checkable by anyone holding the list, and both rates above are. A FREQUENCY
+claim over a real column is not, because chosen examples carry no information
+about how often each kind occurs, and nothing in this repository samples one:
+those spellings appear in exactly two files, both as prose, and there is no
+corpus and no sampler. An earlier version of this entry justified a decision
+with "roughly half of all subtitled rows, since `TIT3` holds a label or a credit
+about as often as it holds a mix name". **That number was asserted, never
+measured, and it is deleted rather than restated.** The decision it was offered
+in support of may still be right; it is argued below without it.
 
-**Why round 5 did not flip it.** Believing on sight regresses an accepted round 4
-finding, the label written into an identity as `atlas (anjunadeep)`, and would do
-it for roughly half of all subtitled rows, since `TIT3` holds a label or a credit
-about as often as it holds a mix name. It also introduces its own collision:
-`Title='Sun'` with `Sun Path` in a version column composes onto the identity of a
-row genuinely titled `Sun (Sun Path)`, and nothing local can tell that from the
-legitimate convergence the composition is required to produce, which is
-`Strobe (Michael Woods Remix)` with an empty column against `Strobe` with the
-remixer in one. Both are two rows landing on one identity, and the identity IS
-the claim that they are the same version, so the question a guard would have to
-answer is the question the identity already answers.
+**The two directions do not cost the same.** A false negative leaves the row
+with a bare title, so two versions of one recording collide onto one identity
+and deleting either suppresses the other: the user loses a track they did not
+delete. A false positive composes an extra parenthetical, so the tombstone is
+written and listable and matches no provider spelling: the deletion fails to
+stick and the version becomes re-acquirable.
 
-**What round 5 did instead, and why it is not the fix.** Adding the 56 spellings
-would move the rate and not the shape, so no words were added. The membership is
-now asserted exactly, in `test_the_version_vocabulary_is_exactly_this_set_and_no_other`,
-which catches a future narrowing as well as a widening: before this, 24 of the 27
-words could be deleted one at a time with the whole suite green, `mix` among them.
-An unbelieved value is also carried out of the reader on `RemovedRow.version_unbelieved`
-and into the tombstone payload, so a suppression that missed can be audited for
-this cause rather than presenting an empty version that reads like a row which
-never had one.
+**THE INDISTINGUISHABILITY CLAIM WAS FALSE AS STATED, AND THIS IS THE
+CORRECTION.** This entry used to say that telling the feared COLLISION from the
+legitimate CONVERGENCE "needs a signal neither the row nor the library carries
+today", and that the same shape flags an ordinary duplicate import so no local
+check could be built. `RemovedRow.isrc` is read from the `ISRC` column in
+`deletion.library.read_collection` and already rides in every tombstone's
+payload. It settles all three cases:
 
-**Closes when:** the belief default inverts AND something bounds the collision it
-introduces. The candidate is a check on the recorder's side rather than a bigger
-vocabulary: `run.plan` already holds the whole collection in one walk, so it can
-see when two rows with different raw version-column values compose onto one
-identity, and refuse THAT candidate rather than suppressing a version nobody
-asked about. It was not built here because the same shape flags an ordinary
-duplicate import, one row carrying a label subtitle and one not, and refusing
-those would take the verb away from a real library. Which of the two a
-convergence is needs a signal neither the row nor the library carries today.
+* the legitimate convergence, `Strobe` with `Michael Woods` in the remixer
+  column against `Strobe (Michael Woods Remix)` with it filled in as well, is
+  ONE recording filed twice and carries ONE code;
+* the feared collision, two recordings whose designations the vocabulary did not
+  believe, both keeping a bare title, is TWO recordings and carries TWO codes;
+* the ordinary duplicate import, one row with a label subtitle and one without,
+  is one recording imported twice and carries the SAME code, which is the case
+  the entry cited as the reason not to build the check and is the case the check
+  resolves rather than trips over.
+
+`deletion.stores.ambiguous_versions` runs over the one collection walk
+`run.plan` already holds, and `candidates.Category.AMBIGUOUS_VERSION` refuses a
+convergence whose rows carry two codes that are both present and different. It
+is INCONCLUSIVE where a code is absent, and silence is read as agreement: an
+absent code is not evidence against the identity's own claim, and refusing on
+silence would refuse most of a library with thin metadata.
+
+**THE EXAMPLE WAS ALSO WRONG AND IS CORRECTED.** This entry said `Title='Sun'`
+with `Sun Path` in a version column composes onto the identity of a row
+genuinely titled `Sun (Sun Path)`. Measured on the current build, a `Sun Path`
+in `RemixerName` composes `sun (sun path remix)`, which does not collide with
+`sun (sun path)` at all. The collision it describes arises only for a FLIPPED
+`Subtitle` default, where the value is believed and composed verbatim, and it
+should have been stated as a consequence of the flip rather than as a property
+of the code as it stands.
+
+**THE BELIEF DEFAULT IS STILL NOT FLIPPED, AND HERE IS THE ARGUMENT WITH THE
+DISCRIMINATOR IN HAND.** The reason is no longer "nothing local can tell the two
+apart", which is now false.
+
+1. **The discriminator attacks the worse direction directly, so keeping the
+   default costs less than it did.** What the false negatives cause is the
+   collision, which is over-suppression and the direction that costs the user
+   music. That is exactly what `AMBIGUOUS_VERSION` refuses. The remaining cost of
+   a false negative is a row reported rather than deleted, which is a refusal a
+   person can see and act on.
+2. **Flipping trades a measured rate for an unmeasured one.** The false-positive
+   rate over the named list is 15 of 42; how often a real `TIT3` holds a label
+   rather than a mix name is the number this entry used to assert and cannot
+   measure. Flipping is a bet on that number, and there is nothing here to
+   settle it with.
+3. **The discriminator does not cover the shape a flip would introduce.** Its
+   evidence is the removed half of the collection walk. The row a composed title
+   would collide with, `Sun (Sun Path)`, is very often an ACTIVE row, and the
+   active half is read as `trees.ContentRow`, which carries a content id, a
+   recorded path and a deleted flag and no artist, title or code at all. So a
+   flip would introduce a collision class the check cannot see, which is the
+   opposite of the position it improves.
+
+**Closes when:** either a real `TIT3` column is sampled, so the frequency the
+flip depends on is measured rather than asserted, or the active half of the walk
+carries enough identity for the discriminator to answer for an active row, at
+which point the flip and the check cover the same ground and the trade can be
+made on numbers.
+
+## R-24. A remixer whose name ends in a version word is still spelled unmatchably
+
+**Found:** during the U24 round 6 fix, 2026-08-04, as the honest half of the
+`remixer_title` repair.
+
+`RemixerName` always holds an artist name, so composing it needs the provider's
+spelling, `Strobe (Michael Woods Remix)` rather than `Strobe (Michael Woods)`.
+The append is skipped only when it would DUPLICATE a word the value already ends
+with, which is `tombstone.ends_as_a_designation`: a designation puts its version
+word last, and the vocabulary's measured false positives, `Radio Slave`, `Dub
+Pistols`, `Cut Chemist`, `Mix Master Mike`, `Club Sweat` and `Original Gee`, all
+put theirs first.
+
+**Two shapes are still spelled wrongly and both are named here rather than
+implied.** An artist whose name ENDS in a version word, `The Cut` or `Da Dub`,
+is left alone and composes `(Da Dub)` where a provider spells `(Da Dub Remix)`.
+A column genuinely holding a designation the vocabulary does not know, `Michael
+Woods Refix`, gets `Remix` appended and composes `(Michael Woods Refix Remix)`.
+
+**What bounds them.** Both are the UNDER-suppression direction, and that is a
+property of composition rather than a hope: composing only ever adds a bracket,
+which splits one identity into two, so neither error can make one deletion
+suppress a version the user still wants. The cost is a tombstone that matches no
+provider spelling, so the deletion fails to stick and the version is
+re-acquirable, which is the direction this package calls the milder one. That
+asymmetry is why a word list may decide the SPELLING question at all, and it is
+not true of the BELIEF question the same list answers for `Subtitle`, whose
+failure direction is over-suppression.
+
+**Closes when:** the recorder can ask what a provider actually spells for this
+version rather than deriving it, which needs a provider lookup at deletion time
+and is a dependency this pass deliberately does not have (R36: a deletion is a
+fact about this disk and nothing here touches a streaming service).
+
+## R-25. The active half of the collection walk carries no identity, so nothing can be proved about an active row's version
+
+**Found:** during the U24 round 6 fix, 2026-08-04, while building the ISRC
+discriminator.
+
+`library.read_collection` returns the active rows as `write.trees.ContentRow`,
+which carries a content id, a recorded path and a deleted flag. It carries no
+artist, no title, no version column and no ISRC. Every question this pass asks
+about an ACTIVE row is therefore a question about its file: is this the same
+inode, is it the same size, does a playlist point at it.
+
+That is enough for everything R37 asks for and it is not enough for one thing
+the tombstone side wants. `deletion.stores.ambiguous_versions` can see that two
+REMOVED rows compose onto one identity and carry two different ISRCs, so it can
+refuse that deletion. It cannot see that a removed row composes onto the identity
+of an ACTIVE row, which is the shape "The Subtitle vocabulary's false negatives
+collide, and the ISRC tells a collision from a convergence" names as the reason
+its belief default is not flipped: the user keeps one version and deletes the
+other, and it is the kept one whose identity the tombstone would collide with.
+
+**What bounds it today.** The vocabulary is a whitelist, so a `Subtitle` is
+believed only when it reads as a version, and the composed titles it produces are
+mix names rather than arbitrary text. The collision needs a composed title that
+another row holds bare, which is a coincidence rather than a routine shape while
+the default stands. Flipping the default is what would make it routine, and that
+is why the flip waits on this.
+
+**Closes when:** the active half carries enough of an identity for
+`ambiguous_versions` to answer for an active row. That is a widening of
+`ContentRow`, which the routing pass also reads, so it belongs with whoever owns
+that type rather than inside a deletion fix round.
 
 ## Note. Round 5's mutation evidence, and the shared scratch directory it was measured through
 

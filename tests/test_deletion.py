@@ -1894,7 +1894,9 @@ def test_a_prefix_target_that_exists_but_is_wrong_is_flagged_and_does_not_refuse
 
     The check asks whether the anchor IS THERE. It cannot ask whether it is
     RIGHT, so a rule aimed at an existing but wrong directory still produces an
-    empty index under it, ``complete`` still true. R-16 in the residual findings
+    empty index under it, ``complete`` still true. The residual finding
+    "Five findings the U24 review accepted, and the reason each stands"
+    in the residual findings
     carries the reasoning: every rule that refuses on this needs a threshold, and
     every threshold that catches it also refuses a rule that legitimately matches
     a handful of rows whose files the user moved by hand.
@@ -1914,7 +1916,11 @@ def test_a_prefix_target_that_exists_but_is_wrong_is_flagged_and_does_not_refuse
     assert references.missing == ("e0",)
     assert references.unanchored == ()
     assert references.suspect_anchors == (str(wrong),)
-    assert references.complete, "recorded as open in R-16, not asserted as safe"
+    assert references.complete, (
+        "recorded as open in the residual finding "
+        "Five findings the U24 review accepted, and the reason each stands",
+        "not asserted as safe"
+    )
 
 
 def test_an_anchor_with_one_missing_row_and_one_good_row_is_not_suspect(cfg):
@@ -2129,7 +2135,9 @@ def test_a_trash_directory_that_is_the_problem_is_not_blamed_on_one_name(
 
 
 def test_a_refusal_naming_a_dead_anchor_says_which_directory_to_mount(cfg, tmp_path):
-    """R-16 Open 5's remediation, which nothing asserted.
+    """Open 5's remediation in the residual finding
+    "Five findings the U24 review accepted, and the reason each stands",
+    which nothing asserted.
 
     The refusal carries STEPS naming the directory to mount or the rule to
     correct, and the whole point of them is that a two drive library with the
@@ -2870,7 +2878,8 @@ def test_a_square_bracketed_mix_name_keeps_its_brackets_which_is_R_19(cfg):
     a row whose title already carries its mix name in square brackets keeps them,
     and a provider spelling the same version with parentheses does not match it.
     That is under-suppression, the milder direction, and closing it means folding
-    punctuation for every identity in the product. Recorded as R-19.
+    punctuation for every identity in the product. Recorded as the residual
+    finding "A square-bracketed mix name never matches the provider spelling of the same version".
     """
     bracketed = _remixed(cfg, ONE, "1", title="Sun Path [Nightwave Remix]", version="Nightwave Remix")
     assert stores.version_of(bracketed)["title"] == "sun path [nightwave remix]"
@@ -3806,7 +3815,7 @@ def test_the_collection_walk_hands_back_every_removal_it_saw(cfg):
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Part 10: round six. The round's own fix, self refuted, and the discriminator
-# R-21 said did not exist.
+# the residual finding on the Subtitle vocabulary said did not exist.
 #
 # Every finding below was measured end to end by the round five verifier rather
 # than argued, and two of them are the previous round's fixes landing on the
@@ -3971,7 +3980,7 @@ def test_a_row_that_could_never_carry_a_tombstone_is_not_offered_as_deletable(
     assert (Path(cfg.library.root) / "Music" / ONE).exists()
 
 
-# ── F9: the discriminator R-21 said neither the row nor the library carried ───
+# ── F9: the discriminator the Subtitle vocabulary finding said nothing carried ─
 
 
 def _versioned(cfg, name, content_id, *, usn, title, isrc, subtitle="", remixer=""):
@@ -3985,12 +3994,16 @@ def _versioned(cfg, name, content_id, *, usn, title, isrc, subtitle="", remixer=
 def test_two_recordings_that_land_on_one_identity_are_refused_rather_than_suppressed(
     cfg, gates_pass
 ):
-    """R-21's indistinguishability claim is false as stated, and this is why.
+    """The indistinguishability claim is false as stated, and this is why.
+
+    The residual finding it belongs to is
+    "The Subtitle vocabulary's false negatives collide, and the ISRC tells a collision from a convergence".
 
     Two versions of one recording whose designations the closed vocabulary does
     not recognise both keep a bare title, so they land on ONE identity and
     deleting either suppresses the other. That is the vocabulary's measured worse
-    error direction and the user loses a track they never deleted. R-21 recorded
+    error direction and the user loses a track they never deleted. That finding
+    recorded
     that telling this from a legitimate convergence "needs a signal neither the
     row nor the library carries today". The row carries it: two recordings carry
     two ISRCs.

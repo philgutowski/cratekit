@@ -39,7 +39,8 @@ and resumes past the gate. Every act R34 asks for now works.
 What stops it is the wall the stale note DENIED. This verb reads the collection,
 so it cannot exit OK on a machine with no rekordbox database, and the conformance
 fixture is such a machine: the drive ends at exit 22,
-``library-directory-missing``. That is R-13's database wall, unchanged since it
+``library-directory-missing``. That is the database wall the residual finding
+"Four routing verbs name a CLI module no unit's file list declares" names, unchanged since it
 was written, and it closes on a disposable database fixture rather than on
 anything this package can do. The engine lands with its guards armed and the
 review shell follows the fixture, not the gate.
