@@ -1086,53 +1086,272 @@ back to citing by number. At merge time this table belongs appended to
 `docs/mutation-rows.md`, which carries the convention that a count with no row
 definition beside it is not evidence.
 
-Every guard, assertion and constant this round added or changed, reverted ALONE,
-full suite, deaths counted. Baseline before the round: 3323 passed, 15 skipped.
-Baseline after: 3354 passed, 15 skipped. Zero rows would be findings, and there
-are none.
+Every guard, assertion and constant this unit ships, reverted ALONE, full suite,
+deaths counted from a pytest plugin's report objects rather than from parsing the
+`FAILED` lines, which cannot be split on `" - "` here because that string appears
+inside parametrized ids. Baseline: **3364 passed, 15 skipped**, measured on
+`unit/u38-reserved-exit-code-registry-for-module-r` after the sixth round's two
+commits. Every number below was measured against THAT tree in that session. Zero
+rows would be findings and there are none.
 
-| Mutation | What it reverts | Deaths |
-| --- | --- | --- |
-| `review-walk-suffix-match` | `ReviewImports` reverted to the pre-R-15 two-element suffix match on `node.module`, which cannot see `from .review import` or `from . import review`. This row was ZERO before this round. | 5 |
-| `round-four-tiers-restored` | round four's two-tier rule put back: a key outside the twenty two reserved causes needs an `ExitCode` member or a conversion round one, and a bare integer proves nothing | 38 |
-| `key-set-drops-the-registry` | `declared_causes()` drops `| frozenset(REASONS)`, taking the closed registry's sixty slugs out of the key set entirely | 21 |
-| `key-set-drops-the-derivation` | `declared_causes()` collapsed to `return CAUSES`, dropping the package-wide derivation and the registry both. This row was ZERO before this round. | 21 |
-| `key-set-drops-only-the-derivation` | `declared_causes()` drops the package-wide derivation term ALONE and keeps the registry, which isolates the term that is empty in this tree | 1 |
-| `package-of-collapsed` | `package_of` collapsed to `return "cratekit"`, so every relative import in the tree resolves against the wrong package. This row was ZERO before this round. | 1 |
-| `max-hops-at-two` | `MAX_HOPS` lowered from 3 to 2, one below the depth of the deepest spelling the guard promises to read. Every value from 2 to 5 was a ZERO row before this round. | 1 |
-| `no-resolution-through-names` | `_through_names` returns its node unchanged, so an `ExitCode` member held in a constant, or assigned then returned, resolves to nothing | 3 |
-| `no-resolution-through-module-constants` | `_through_names` ignores this source's module-level constants and reads only a branch's own locals, which isolates `CODE = ExitCode.PRECONDITION` beside `{"rclone-missing": CODE}` | 2 |
-| `no-resolution-through-branch-locals` | `_through_names` ignores a branch's own locals and reads only module constants, which isolates `code = ExitCode.PRECONDITION` then `return code` | 1 |
-| `narrowed-to-the-eighteen-live-integers` | the value rule narrowed to the eighteen integers `ExitCode` actually uses, which is the alternative `ReservedCodeTable` rejects, so `{"tree-registry-unusable": 33}` stops being reported | 4 |
-| `no-module-qualified-exitcode` | `names_the_class` drops the module-qualified branch, so `exit_codes.ExitCode(30)` stops being a conversion | 2 |
-| `no-constructor-conversion` | `status()` drops `names_the_class` from its conversion test, so `ExitCode(30)` reads as somebody's call rather than as a code | 3 |
-| `no-class-level-literals` | `_class_level_literals` returns empty, so a module's own `IntEnum` member and a code held on a class resolve to nothing | 4 |
-| `no-module-level-literals` | `_module_level_literals` returns empty, so `PRECONDITION = 30` beside a cause resolves to nothing | 12 |
-| `no-arithmetic` | `resolve_int` drops its `BinOp` branch, so `BASE + 3` resolves to nothing | 3 |
-| `annotation-ignored` | `_silenced_lines` always returns empty, so the `not-a-reservation` comment silences nothing and the residual has no answer | 1 |
-| `annotation-needs-no-reason` | the `NOT_A_RESERVATION` pattern stops requiring a reason, so the bare marker silences a construct with no explanation attached | 1 |
-| `annotation-covers-a-function` | `_silenced_lines` expands a `def` to its whole body, so one comment silences every reservation inside a function | 1 |
-| `annotation-covers-one-line-only` | `_silenced_lines` drops the statement expansion, so an annotation beside `POLL_SECONDS = {` cannot reach the keys on the lines below | 1 |
-| `annotation-used-in-the-package` | a `not-a-reservation` comment added to a real package file, which is the guard switched off for a line with nobody reviewing it | 1 |
-| `review-leaf-hardcoded` | `ReviewImports` hard codes `leaf = "review"` instead of deriving it from `REVIEW_MODULE`. This row was ZERO before this round. | 1 |
-| `exit-code-leaf-hardcoded` | `ExitCodeImports` hard codes `leaf = "exit_codes"` instead of deriving it from `EXIT_CODE_MODULE`. This row was ZERO before this round. | 1 |
-| `exit-code-class-spelled-again` | every `EXIT_CODE_CLASS` use replaced by the literal `"ExitCode"`, which is the four spellings of one fact the constant deleted. This row was ZERO before this round. | 1 |
-| `shape-swap-column-widths` | `COLUMN_WIDTHS` swapped from a tuple of pairs to a dict literal, same slugs, same values, same line number. This row was ZERO before this round. | 1 |
-| `shape-swap-weights` | `WEIGHTS` swapped from a tuple of pairs to a dict literal, same slugs, same values, same line number. This row was ZERO before this round. | 1 |
-| `shape-swap-comprehension` | `SLOW_DELAYS` swapped from a dict comprehension to a dict literal, same slugs, same values, same line number. This row was ZERO before this round. | 1 |
-| `shape-swap-setdefault` | `DELAYS.setdefault` swapped for a subscript assignment, same slug, same value, same line number. This row was ZERO before this round. | 1 |
+A row NAME does not identify a mutation, so each row has its exact revert written
+out below the table. Rows are ONE substitution in ONE file unless stated. Revert
+from a snapshot taken before the row was applied, not with `git checkout`, or a
+round's uncommitted edits go with the mutation.
 
-Two rows deserve reading together. `key-set-drops-the-derivation` and
-`key-set-drops-only-the-derivation` differ by twenty deaths, and the difference is
-the registry rather than the derivation: the derived set equals `CAUSES` exactly
-in this tree, so the derivation term is EMPTY. The single death on the isolating
-row comes from
+**Numbers moved since the fifth round's table and the moves are explained rather
+than quietly replaced.** Eight of the sixth round's new tests key on
+`config-unusable`, which is a registry-only slug, and four use arithmetic or a
+class attribute, so every row that switches off a piece of the key set or the
+resolver now kills more than it did. Where a row's number moved, the previous
+value is in the last column with the reason.
+
+| id | what it reverts | deaths | previous |
+| --- | --- | --- | --- |
+| `escape-hatch-restored` | the fifth round's `# not-a-reservation: <reason>` escape put back verbatim: `NOT_A_RESERVATION`, `_annotated_lines`, `_silenced_lines`, the `io` and `tokenize` imports, and the `if key.lineno in silenced: continue` filter | 2 | new |
+| `escape-hatch-restored-with-ast-return` | the same restore, plus `ast.Return` added to the statement expansion tuple, so one comment on `return {` silences a whole multi line returned table | 2 | new. **ZERO on top of the restore**, which is the point |
+| `escape-hatch-restored-covering-a-function` | the same restore, plus `ast.FunctionDef` added to the expansion tuple, so one comment on a `def` silences its whole body | 2 | new. **ZERO on top of the restore** |
+| `key-not-resolved-through-names` | `cause_key` reverts to requiring an `ast.Constant`, so a key held in a module constant or on a class attribute resolves to nothing | 2 | new |
+| `key-not-resolved-through-a-class-attribute` | `_resolved` drops its `ast.Attribute` branch alone, which isolates `{Slug.CONFIG_UNUSABLE: 30}` from the module-constant spelling | 1 | new |
+| `no-record-dict-crossing` | `pairs` stops crossing a `ast.Dict`'s VALUES, so a record written `{"cause": ..., "code": ...}` is not a record | 1 | new |
+| `no-getattr-conversion` | `status` drops its `getattr` branch, so `getattr(ExitCode, "PRECONDITION")` is not a code | 1 | new |
+| `no-floor-division-or-remainder` | `resolve_int` drops its `FloorDiv` and `Mod` branch, so `BASE // 2` and `BASE % 100` resolve to nothing | 2 | new |
+| `seen-dedupe-dropped` | the `seen` set and its membership test deleted from `reserved_code_tables`, so a duplicate key in a second table is reported twice | 1 | was ZERO and unrecorded. Driven now |
+| `round-four-tiers-restored` | round four's two-tier rule put back: a key only the registry declares needs an `ExitCode` member or a conversion round one, and a bare integer proves nothing | 25 | claimed 38, measured 17 by the round five verifier against a tree without this round's tests. 14 of the 25 are the parametrized shapes the tiers silence |
+| `key-set-drops-the-registry` | `declared_causes()` drops `\| frozenset(REASONS)`, taking the registry's sixty slugs out of the key set | 29 | 21 |
+| `key-set-drops-the-derivation` | `declared_causes()` collapsed to `return CAUSES`, dropping the derivation and the registry both | 29 | 21 |
+| `key-set-drops-only-the-derivation` | `declared_causes()` drops the package-wide derivation ALONE and keeps the registry, which isolates the term that is empty in this tree | 1 | 1 |
+| `package-of-collapsed` | `package_of` collapsed to `return "cratekit"`, so every relative import in the tree resolves against the wrong package | 1 | 1 |
+| `max-hops-at-2` | `MAX_HOPS` lowered from 3 to 2 | 2 | 1 |
+| `max-hops-at-4` | `MAX_HOPS` raised from 3 to 4 | 2 | not recorded |
+| `max-hops-at-6` | `MAX_HOPS` raised from 3 to 6, which is round four's value | 2 | not recorded |
+| `no-resolution-through-names` | `_through_names` returns its node unchanged | 4 | 3 |
+| `no-resolution-through-module-constants` | `_through_names` reads only a branch's own locals, isolating `CODE = ExitCode.PRECONDITION` beside `{"rclone-missing": CODE}` | 3 | 2 |
+| `no-resolution-through-branch-locals` | `_through_names` reads only module constants, isolating `code = ExitCode.PRECONDITION` then `return code` | 1 | 1 |
+| `narrowed-to-the-eighteen-live-integers` | the value rule narrowed to the eighteen integers `ExitCode` actually uses, which is the alternative `ReservedCodeTable` rejects | 9 | 4 |
+| `no-module-qualified-exitcode` | `names_the_class` drops its module-qualified branch, so `exit_codes.ExitCode(30)` is not a conversion | 2 | 2 |
+| `no-constructor-conversion` | `status` drops `names_the_class` from its conversion test, so `ExitCode(30)` reads as somebody's call | 3 | 3 |
+| `no-class-level-literals` | `_class_level_literals` returns empty | 5 | 4 |
+| `no-module-level-literals` | `_module_level_literals` returns empty | 16 | 12 |
+| `no-arithmetic` | `resolve_int` drops its `BinOp` branch entirely | 5 | 3 |
+| `table-owners-widened` | `core/session.py` added to `TABLE_OWNERS`, which switches the guard off for a whole file | 1 | claimed driven, never tabled |
+| `package-sources-narrowed` | `package_sources` from `rglob` to `glob`, so the scan stops at the top level | 3 | claimed driven, never tabled |
+| `review-walk-suffix-match` | `ReviewImports` reverted to the pre-unification two-element suffix match on `node.module` | 5 | 5 |
+| `import-targets-fallback-sibling-dropped` | `_import_targets` drops the bare sibling `tail == [leaf]` clause from its fallback | 3 | claimed driven, never tabled |
+| `walk-off-the-top-clause-dropped` | `_relative_module` drops the clause that refuses a level exceeding the package depth | 1 | claimed driven, never tabled |
+| `review-leaf-hardcoded` | `ReviewImports` hard codes `leaf = "review"` instead of deriving it | 1 | 1 |
+| `exit-code-leaf-hardcoded` | `ExitCodeImports` hard codes `leaf = "exit_codes"` instead of deriving it | 1 | 1 |
+| `exit-code-class-spelled-again` | every `EXIT_CODE_CLASS` use replaced by the literal `"ExitCode"`, three sites | 1 | 1 |
+| `shape-swap-column-widths` | `COLUMN_WIDTHS` from a tuple of pairs to a dict literal, same slugs, values and line | 1 | 1 |
+| `shape-swap-weights` | `WEIGHTS` from a tuple of pairs to a dict literal, same slugs, values and line | 1 | 1 |
+| `shape-swap-comprehension` | `SLOW_DELAYS` from a dict comprehension to a dict literal, same slugs, values and line | 1 | 1 |
+| `shape-swap-setdefault` | `DELAYS.setdefault` to a subscript assignment, same slug, value and line | 1 | 1 |
+
+### The row definitions
+
+`G` is `tests/_source_guards.py` and `T` is `tests/test_reserved_causes.py`. Each
+row is the exact text to find and the exact text to put in its place.
+
+**`escape-hatch-restored`.** Four substitutions in `G`. Restore the imports:
+
+    -import ast
+    -import re
+    +import ast
+    +import io
+    +import re
+    +import tokenize
+
+Insert above `class ReservedCodeTable:` the fifth round's
+
+    NOT_A_RESERVATION = re.compile(r"#\s*not-a-reservation:\s*(?P<reason>\S.*?)\s*$")
+
+with `_annotated_lines`, which walks `tokenize.generate_tokens` for COMMENT
+tokens and maps `token.start[0]` to the matched reason, and `_silenced_lines`,
+which unions `range(node.lineno, node.end_lineno + 1)` for every walked
+`(ast.Assign, ast.AnnAssign, ast.Expr)` whose `lineno` carries a mark. Then in
+`reserved_code_tables`:
+
+    -    table = ReservedCodeTable(tree, causes, code_range, package)
+    -    found: list[str] = []
+    +    table = ReservedCodeTable(tree, causes, code_range, package)
+    +    silenced = _silenced_lines(tree, source)
+    +    found: list[str] = []
+
+and
+
+    -        entry = (key.lineno, slug, status)
+    +        if key.lineno in silenced:
+    +            continue
+    +        entry = (key.lineno, slug, status)
+
+**`escape-hatch-restored-with-ast-return`.** All four of the above, plus, inside
+the restored `_silenced_lines`:
+
+    -        if not isinstance(node, (ast.Assign, ast.AnnAssign, ast.Expr)):
+    +        if not isinstance(node, (ast.Assign, ast.AnnAssign, ast.Expr, ast.Return)):
+
+**`escape-hatch-restored-covering-a-function`.** All four, plus `ast.FunctionDef`
+added to the same tuple.
+
+**`key-not-resolved-through-names`.** In `G`, `ReservedCodeTable.cause_key`:
+
+    -        held = self._resolved(node)
+    -        if not (isinstance(held, ast.Constant) and isinstance(held.value, str)):
+    -            return None
+    -        return held.value if held.value in self.causes else None
+    +        if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+    +            return None
+    +        return node.value if node.value in self.causes else None
+
+**`key-not-resolved-through-a-class-attribute`.** In `G`, `_resolved`, delete the
+four lines from `if isinstance(node, ast.Attribute):` through
+`return node if member is None else self._through_names(member)`, leaving only
+`return self._through_names(node)`.
+
+**`no-record-dict-crossing`.** In `G`, `pairs`, replace
+`found.extend(self._crossed(list(node.values)))` with `pass`.
+
+**`no-getattr-conversion`.** In `G`, `status`, delete the whole `if (` block whose
+condition is `isinstance(held, ast.Call) and _dotted(held.func) == "getattr" ...`
+together with its `return as_written`.
+
+**`no-floor-division-or-remainder`.** In `G`, `resolve_int`, delete
+
+    -        if isinstance(node.op, (ast.FloorDiv, ast.Mod)) and right != 0:
+    -            return left // right if isinstance(node.op, ast.FloorDiv) else left % right
+
+**`seen-dedupe-dropped`.** In `G`, `reserved_code_tables`, delete
+`seen: set[tuple[int, str, str]] = set()` and the three lines
+`if entry in seen: continue` and `seen.add(entry)` around `entry = (...)`.
+
+**`round-four-tiers-restored`.** Three substitutions in `G`. In
+`ReservedCodeTable.__init__`, after `self.causes = ...`, add the narrow tier the
+fourth round carried:
+
+    +        from cratekit.cli.exit_codes import RESERVED_CAUSES as _RC
+    +        from cratekit.core.cause import REASONS as _RS
+    +        self.narrow = self.causes - (set(_RS) - set(_RC))
+
+Add back the fourth round's `names_a_status` method verbatim, which answers True
+for `self.codes.names_a_code(node)` and for a one-argument call whose function is
+`int` or `names_the_class` wrapping another status. Then in
+`reserved_code_tables`, above `entry = (key.lineno, slug, status)`:
+
+    +        if slug not in table.narrow and not table.names_a_status(value):
+    +            continue
+
+**`key-set-drops-the-registry`.** In `T`, `declared_causes`:
+
+    -    return CAUSES | frozenset().union(*derived.values()) | frozenset(REASONS)
+    +    return CAUSES | frozenset().union(*derived.values())
+
+**`key-set-drops-the-derivation`.** In `T`, `declared_causes`, replace the two
+lines `derived = structured_refusal_causes()` and the return with `return CAUSES`.
+
+**`key-set-drops-only-the-derivation`.** In `T`, `declared_causes`, replace the
+same two lines with `return CAUSES | frozenset(REASONS)`.
+
+**`package-of-collapsed`.** In `T`, `package_of`:
+
+    -    return ".".join(["cratekit"] + relative.split("/")[:-1])
+    +    return "cratekit"
+
+**`max-hops-at-2`, `max-hops-at-4`, `max-hops-at-6`.** In `G`, `MAX_HOPS = 3`
+becomes `MAX_HOPS = 2`, `4` or `6`.
+
+**`no-resolution-through-names`.** In `G`, `_through_names`, replace its whole
+body with `return node`.
+
+**`no-resolution-through-module-constants`.** In `G`, `_through_names`:
+
+    -        names = dict(self.constants)
+    -        names.update(extra or {})
+    +        names = dict(extra or {})
+
+**`no-resolution-through-branch-locals`.** In `G`, `_through_names`, delete
+`names.update(extra or {})` alone.
+
+**`narrowed-to-the-eighteen-live-integers`.** In `G`, `status`:
+
+    -        if value is None or not self.low <= value < self.high:
+    +        from cratekit.core.exit_codes import ExitCode as _EC
+    +        if value is None or value not in {int(code) for code in _EC}:
+
+**`no-module-qualified-exitcode`.** In `G`, `names_the_class`, insert `False and`
+as the first term of the returned conjunction.
+
+**`no-constructor-conversion`.** In `G`, `status`:
+
+    -            wraps_a_code = _dotted(held.func) == "int" or self.codes.names_the_class(held.func)
+    +            wraps_a_code = _dotted(held.func) == "int"
+
+**`no-class-level-literals`** and **`no-module-level-literals`.** In `G`, make each
+function return `{}` before its loop.
+
+**`no-arithmetic`.** In `G`, `resolve_int`,
+`if isinstance(node, ast.BinOp):` becomes `if False and isinstance(node, ast.BinOp):`.
+
+**`table-owners-widened`.** In `T`, add `"core/session.py"` to the `TABLE_OWNERS`
+frozenset literal.
+
+**`package-sources-narrowed`.** In `T`, `package_sources`, `PACKAGE_ROOT.rglob("*.py")`
+becomes `PACKAGE_ROOT.glob("*.py")`.
+
+**`review-walk-suffix-match`.** In `G`, `ReviewImports.__init__`, replace the
+`_import_targets(node, REVIEW_MODULE, package)` call with the pre-unification
+suffix match:
+
+    +                _tail = (node.module or "").split(".")
+    +                names_the_module = _tail[-2:] == REVIEW_MODULE.split(".")[-2:]
+    +                names_the_package = _tail[-2:] == REVIEW_MODULE.split(".")[:-1][-2:]
+
+**`import-targets-fallback-sibling-dropped`.** In `G`, `_import_targets`:
+
+    -    names_the_module = tail[-2:] == [parent, leaf] or tail == [leaf]
+    +    names_the_module = tail[-2:] == [parent, leaf]
+
+**`walk-off-the-top-clause-dropped`.** In `G`, `_relative_module`, delete
+
+    -    if node.level - 1 >= len(parts):
+    -        return None
+
+**`review-leaf-hardcoded`.** In `G`, `leaf = REVIEW_MODULE.rpartition(".")[2]`
+becomes `leaf = "review"`.
+
+**`exit-code-leaf-hardcoded`.** In `G`,
+`leaf = EXIT_CODE_MODULE.rpartition(".")[2]` becomes `leaf = "exit_codes"`.
+
+**`exit-code-class-spelled-again`.** In `G`, all three `EXIT_CODE_CLASS` uses
+become the literal `"ExitCode"`.
+
+**The four `shape-swap-` rows.** In `T`, inside
+`RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS`, rewrite one construct as a
+different construct carrying the same slugs and values on the same line:
+`COLUMN_WIDTHS` and `WEIGHTS` from a tuple of pairs to a dict literal,
+`SLOW_DELAYS` from a comprehension to a dict literal, and `DELAYS.setdefault(...)`
+to `DELAYS["canary-read-failed"] = 15`.
+
+### What the escape hatch rows say together
+
+`escape-hatch-restored` kills 2. Adding `ast.Return` to the expansion set kills 2.
+Adding `ast.FunctionDef` kills 2. **Both widenings kill ZERO on top of the
+restore**, which is the finding that decided the hatch's fate: only the
+`FunctionDef` direction was ever pinned, so the expansion set could have been
+widened in every other direction without a single test noticing. A mechanism
+whose blast radius can be enlarged silently, that already silenced a one line
+`def` body, two statements on one reason, and sixty one reservations from one
+comment, is not repaired by correcting the sentences around it.
+
+### Two rows to read together
+
+`key-set-drops-the-derivation` and `key-set-drops-only-the-derivation` differ by
+twenty eight deaths, and the difference is the registry rather than the
+derivation: the derived set equals `CAUSES` exactly in this tree, so the derived
+term is EMPTY. The single death on the isolating row comes from
 `test_the_key_set_is_the_union_of_all_three_declarations`, which swaps in a
 derivation that finds a cause nobody has declared and asserts it reaches the key
 set. That is the only honest way to drive a term the tree leaves empty, and the
-fourth round's two assertions in its place were tautologies: `derived <=
-declared_causes()` and `CAUSES <= declared_causes()` cannot fail when
-`declared_causes()` is a union containing both.
+fourth round's two assertions in its place were tautologies.
 
 **Closes when:** nothing has to close it. It is the record the next round
 compares against, row by row.
