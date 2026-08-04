@@ -115,14 +115,25 @@ assertions by name.
 ROUND FOUR answered the first of those by splitting the key set into two tiers,
 and ROUND FIVE removed the split, because the number that bought it was taken
 from a hand written fixture rather than from this repository. Measured under the
-wide rule against every real module in the package: ZERO offenders outside the
-two table owners. Measured against the shapes the split silenced: thirteen of
-sixteen realistic second tables keyed on a registry slug went unreported, and
-R-19's own description of its rule was wrong about five spellings. The trade runs
-on error costs rather than on preference. A false alarm costs one look and one
-annotated line with a reason in it; a miss is a module quietly disagreeing with
-the registry about what a refusal exits with, and nothing else in this suite
-would notice. R-19 carries the measurement, R-20 the mutation table.
+wide rule against the 51 files the package scan reaches, 43 modules and 8
+package ``__init__.py``: ZERO offenders outside the two table owners. Measured
+against the sixteen fixtures the split silenced, by re-implementing round four's
+gate and running it over them: the tiers report TWO and are silent on FOURTEEN,
+and R-19's own description of its rule was wrong about five spellings. The trade
+runs on error costs rather than on preference. A miss is a module quietly
+disagreeing with the registry about what a refusal exits with, and nothing else
+in this suite would notice. R-19 carries the measurement, R-20 the mutation
+table.
+
+ROUND SIX deleted the per-line escape the fifth round shipped with it. Every
+claim made for ``# not-a-reservation: <reason>`` was false when measured: it
+silenced a one line ``def`` body, it silenced two statements on one reason, and
+one comment on the opening line of ``core/cause.py``'s registry took that file
+from 61 reported reservations to 0. It had never been used, and it was never
+needed: adding every kebab shaped string literal in the package to the key set,
+189 distinct with 108 that are not keys, still measures zero offenders. Round six
+also found the guard resolving the VALUE of a pair through names for three rounds
+while never resolving the KEY, which was the largest hole it had.
 
 ROUND FIVE also found the shape this file is named for pointed at ITSELF, twice.
 R-15's review-side import fix shipped with zero tests holding it: reverting it
@@ -2028,12 +2039,13 @@ CODES = {"rclone-" "missing": 30}
 # table entirely. A module contradicting one of those is the same defect as a
 # module contradicting this table.
 #
-# THE FIFTEEN SHAPES BELOW ARE WHAT THE TIERS COST. Round four accepted only an
+# THE SIXTEEN SHAPES BELOW ARE WHAT THE TIERS COST. Round four accepted only an
 # ``ExitCode`` member or a conversion round one for these sixty keys, on the
 # strength of an over fire that does not occur in this repository. Every shape
-# here is ordinary Python a module would write, every one of them is a second
-# opinion about a live registry reservation, and NONE of the thirteen after the
-# first two was reported under the tiers. The wide rule reports all fifteen.
+# here is ordinary Python a module would write and every one of them is a second
+# opinion about a live registry reservation. Measured by re-implementing round
+# four's gate and running it over this exact tuple: it reports TWO of the sixteen
+# and is silent on FOURTEEN. The wide rule reports all sixteen.
 
 EVASION_A_NAMED_CODE_FOR_A_REGISTRY_SLUG = """
 from cratekit.core.exit_codes import ExitCode
@@ -2188,9 +2200,10 @@ CODES = {"tagger-art-rejected": OFFSET + 1}
 # THIS IS THE RESIDUAL, not a silence. Every construct here is ordinary and every
 # one of them is reported, because a poll interval of 30 keyed on a cause slug is
 # indistinguishable by shape from a reservation of 30. Round four made these
-# silent by narrowing the key set and paid fifteen real shapes for it. They are
-# loud instead, and the annotated copy below is the answer a developer reaches
-# for when one of them is genuinely not a reservation.
+# silent by narrowing the key set, and measured against the sixteen fixtures in
+# ``REGISTRY_SLUG_SECOND_TABLES`` that narrowing reported two and went silent on
+# fourteen. They are loud instead, and the answer to one that is genuinely not a
+# reservation is a decision recorded here, not a comment on the line.
 
 RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS = """
 POLL_SECONDS = {"session-lock-held": 30, "write-lock-held": 15}
@@ -2230,9 +2243,12 @@ def wait_for(cause):
     return 0
 """
 
-#: The same eleven constructs with the annotation on each. One comment silences
-#: ONE statement, and every one of them carries a reason.
-ANNOTATED_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS = """
+#: THE SAME CONSTRUCTS WITH THE ROUND-BEFORE'S ESCAPE COMMENT ON EACH, and every
+#: one of them is still reported. The comment is text now. It is kept as a
+#: fixture rather than deleted because deleting it would leave nothing watching
+#: the deletion: this source is what fails if any per-line off switch comes back,
+#: in this spelling or another.
+COMMENTED_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS = """
 POLL_SECONDS = {"session-lock-held": 30, "write-lock-held": 15}  # not-a-reservation: seconds
 
 DISPLAY_ORDER = {  # not-a-reservation: the order the causes are listed in
@@ -2271,19 +2287,26 @@ def wait_for(cause):
     return 0
 """
 
-#: The marker with nothing after it. A reason is part of the syntax, so this
-#: silences nothing and the construct is still reported.
-ANNOTATED_WITHOUT_A_REASON = """
-POLL_SECONDS = {"session-lock-held": 30}  # not-a-reservation:
+#: THE THREE SPELLINGS THAT MADE THE ESCAPE AN OFF SWITCH FOR THE WHOLE GUARD.
+#: Each was measured against the round before's implementation and each is here
+#: so the measurement is repeatable rather than a sentence in a commit message:
+#: the one line ``def`` silenced its own body, the semicolon silenced two
+#: statements on one reason, and one comment on the opening line of a sixty key
+#: mapping silenced every key in it. All three are reported now.
+COMMENT_ON_A_ONE_LINE_FUNCTION = """
+def build(): return {"config-unusable": 30}  # not-a-reservation: honest
 """
 
-#: An annotation on a ``def``. NOT expanded to the body, because a comment that
-#: covers a whole function is the whole-file exemption again at a smaller scale.
-ANNOTATED_ON_A_FUNCTION = """
-def status(cause):  # not-a-reservation: this is a lookup, honest
-    if cause == "config-unusable":
-        return 30
-    return 1
+COMMENT_ON_TWO_STATEMENTS_AT_ONCE = """
+A = {"config-unusable": 30}; B = {"credential-missing": 40}  # not-a-reservation: one reason
+"""
+
+COMMENT_ON_THE_OPENING_LINE_OF_A_TABLE = """
+CODES = {  # not-a-reservation: this is not a table, honest
+    "config-unusable": 30,
+    "credential-missing": 40,
+    "internal-error": 50,
+}
 """
 
 # ── The relative import shapes, which is how a SIBLING reaches the vocabulary ──
@@ -2930,9 +2953,9 @@ def test_the_residual_is_pinned_rather_than_discovered():
 
 
 #: Every shape a module would plausibly use to give a registry-only slug a code
-#: of its own. Two of them survived round four's narrowing; the other thirteen
-#: did not, and the narrowing was bought with an over fire the tree does not
-#: have. R-19.
+#: of its own. Measured against round four's gate re-implemented verbatim: TWO
+#: are reported and FOURTEEN are silent, and the narrowing was bought with an
+#: over fire the tree does not have. R-19.
 REGISTRY_SLUG_SECOND_TABLES = (
     EVASION_A_NAMED_CODE_FOR_A_REGISTRY_SLUG,
     EVASION_A_CONVERSION_ON_A_REGISTRY_SLUG,
@@ -2955,7 +2978,7 @@ REGISTRY_SLUG_SECOND_TABLES = (
 
 @pytest.mark.parametrize("source", REGISTRY_SLUG_SECOND_TABLES)
 def test_the_wide_key_set_reports_what_the_tiers_missed(source):
-    """The sixteen shapes, and thirteen of them were silent for a whole round.
+    """The sixteen shapes, and fourteen of them were silent for a whole round.
 
     Round four carried the registry's sixty slugs in a tier that accepted only an
     ``ExitCode`` member or a conversion round one, and R-19 described that as
@@ -2967,7 +2990,11 @@ def test_the_wide_key_set_reports_what_the_tiers_missed(source):
     named constant, so was arithmetic, so was every table shape this file already
     proves for the other twenty two keys.
 
-    All sixteen are second opinions about a live registry reservation and all
+    THE COUNT IS MEASURED, not counted by eye. Round five wrote three different
+    numbers for this one measurement in one commit, thirteen, fifteen and
+    "fifteen of fifteen with NONE reported", and none of them was right. Round
+    four's gate re-implemented and run over this exact tuple reports the named
+    code and the conversion, TWO, and is silent on the other FOURTEEN. All
     sixteen are reported now, which is what one key set and one value rule buys.
     """
     assert reserved_code_tables(source, declared_causes(), RANGE)
@@ -3015,6 +3042,227 @@ def test_the_reported_text_keeps_both_spellings_of_a_code_reached_by_name():
     assert reserved_code_tables(
         EVASION_A_VOCABULARY_MEMBER_HELD_IN_A_CONSTANT, CAUSES, RANGE
     ) == ["line 6: 'rclone-missing' -> ExitCode.PRECONDITION as CODE"]
+
+
+#: THE KEY SIDE OF THE SAME QUESTION. The value rule chases a code through a
+#: module constant and a class attribute because "a bare 30 in a mapping tells a
+#: reader nothing". The key rule required a literal, so the identical spelling on
+#: the other side of the colon was invisible. The package carries 37 class
+#: attributes whose value is a declared cause, so this is the tree's own idiom.
+EVASION_A_KEY_HELD_IN_A_MODULE_CONSTANT = """
+from cratekit.core.exit_codes import ExitCode
+
+CONFIG_UNUSABLE = "config-unusable"
+CODES = {CONFIG_UNUSABLE: 30}
+"""
+
+EVASION_A_KEY_HELD_ON_A_CLASS = """
+class Slug:
+    CONFIG_UNUSABLE = "config-unusable"
+
+
+CODES = {Slug.CONFIG_UNUSABLE: 30}
+"""
+
+#: A name that is NOT a cause stays not a cause. Resolving the key widens what
+#: the guard can read, never what counts as a declaration.
+CORRECT_A_KEY_HELD_IN_A_CONSTANT_THAT_IS_NOT_A_CAUSE = """
+COLUMN = "column-width"
+WIDTHS = {COLUMN: 40}
+"""
+
+#: The record written as a mapping, which is the house style with a dict instead
+#: of a dataclass. ``cli/exit_codes.py`` declares its own table as a tuple of
+#: three-field dataclasses and the guard reads that; the dict spelling of one
+#: record was the third way to write it and the one way to write it unseen.
+EVASION_A_LIST_OF_RECORD_DICTS = """
+RESERVATIONS = [
+    {"cause": "config-unusable", "code": 30},
+    {"cause": "credential-missing", "code": 40},
+]
+"""
+
+#: The vocabulary reached by a string. The bare-status guard has recognized
+#: ``getattr(sys, "exit")`` since round two and called it the shape that matters
+#: most; this half of the same file did not recognize the same shape.
+EVASION_A_CODE_FETCHED_BY_GETATTR = """
+from cratekit.core.exit_codes import ExitCode
+
+CODES = {"config-unusable": getattr(ExitCode, "PRECONDITION")}
+"""
+
+CORRECT_GETATTR_FOR_A_CODE_ON_SOMEBODY_ELSE = """
+import settings
+
+CODES = {"config-unusable": getattr(settings, "PRECONDITION")}
+"""
+
+#: ``//`` and ``%``. The guard read ``+``, ``-`` and ``*`` and went silent on the
+#: other two, which is one question answered two ways inside one function.
+EVASION_A_CODE_REACHED_BY_FLOOR_DIVISION = """
+BASE = 60
+CODES = {"config-unusable": BASE // 2}
+"""
+
+EVASION_A_CODE_REACHED_BY_A_REMAINDER = """
+BASE = 130
+CODES = {"config-unusable": BASE % 100}
+"""
+
+#: A duplicate key inside a SECOND table. Python resolves it silently and the
+#: walk sees two pairs carrying the same line, slug and status, so without the
+#: dedupe the guard reports the same reservation twice and the count in the
+#: failure message is wrong.
+EVASION_A_DUPLICATE_KEY_IN_A_SECOND_TABLE = """
+CODES = {"config-unusable": 30, "config-unusable": 30}
+"""
+
+#: What ``MAX_HOPS`` at three buys and what it gives up. Two aliases resolve and
+#: three do not, and the second is a COST of the number rather than a property of
+#: the guard, so both are pinned.
+A_CHAIN_THE_HOP_BOUND_READS = """
+A0 = 30
+A1 = A0
+CODES = {"config-unusable": A1}
+"""
+
+A_CHAIN_THE_HOP_BOUND_GIVES_UP = """
+A0 = 30
+A1 = A0
+A2 = A1
+A3 = A2
+CODES = {"config-unusable": A3}
+"""
+
+
+@pytest.mark.parametrize(
+    "source,line",
+    [
+        (EVASION_A_KEY_HELD_IN_A_MODULE_CONSTANT, 5),
+        (EVASION_A_KEY_HELD_ON_A_CLASS, 6),
+    ],
+)
+def test_a_key_held_in_a_name_is_still_a_cause(source, line):
+    """The largest hole this guard had, and it was on the side nobody looked at.
+
+    ``cause_key`` required an ``ast.Constant``, so the guard resolved the VALUE
+    through names, class attributes, a module's own enum and arithmetic, with
+    three mutation rows driving it, and never resolved the KEY at all. The
+    argument the round before made for reading the careful spelling of a code,
+    that a bare 30 in a mapping tells a reader nothing, is symmetric and was
+    applied to one side only. Both of these gave ZERO hits while their inlined
+    spelling gave one.
+    """
+    assert reserved_code_tables(source, declared_causes(), RANGE) == [
+        f"line {line}: 'config-unusable' -> status 30"
+    ]
+
+
+def test_resolving_the_key_widens_what_is_read_and_not_what_is_a_cause():
+    """The direction that keeps the widening honest.
+
+    A name resolving to a string nobody declared answers exactly as an undeclared
+    literal does. Without this the fix would be a shape rule again, which is what
+    round two deleted: any kebab string beside an in-range integer.
+    """
+    assert reserved_code_tables(
+        CORRECT_A_KEY_HELD_IN_A_CONSTANT_THAT_IS_NOT_A_CAUSE, declared_causes(), RANGE
+    ) == []
+    assert "column-width" not in declared_causes()
+
+
+def test_a_record_written_as_a_mapping_is_still_a_record():
+    """The house style with a dict instead of a dataclass.
+
+    ``_crossed`` reads a record as a tuple and as a constructor call because
+    ``cli/exit_codes.py`` declares its own table as a tuple of dataclasses. The
+    same record written ``{"cause": ..., "code": ...}`` was silent, so the guard
+    could see two of the three ways to write one row.
+    """
+    assert reserved_code_tables(
+        EVASION_A_LIST_OF_RECORD_DICTS, declared_causes(), RANGE
+    ) == [
+        "line 3: 'config-unusable' -> status 30",
+        "line 4: 'credential-missing' -> status 40",
+    ]
+
+
+def test_a_code_fetched_by_getattr_is_still_a_code():
+    """One question, two answers, inside one file. Both halves agree now.
+
+    ``ProcessExits`` has recognized ``getattr(sys, "exit")`` since round two and
+    its docstring calls it "the one that matters most, because it disarms the
+    guard on its own". ``ReservedCodeTable`` did not recognize the identical
+    shape aimed at the vocabulary. Narrowed to the class this source imported, so
+    a fetch from somebody else's module is not a code.
+    """
+    assert reserved_code_tables(
+        EVASION_A_CODE_FETCHED_BY_GETATTR, declared_causes(), RANGE
+    ) == ["line 4: 'config-unusable' -> getattr(ExitCode, 'PRECONDITION')"]
+    assert reserved_code_tables(
+        CORRECT_GETATTR_FOR_A_CODE_ON_SOMEBODY_ELSE, declared_causes(), RANGE
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "source,spelled",
+    [
+        (EVASION_A_CODE_REACHED_BY_FLOOR_DIVISION, "BASE // 2"),
+        (EVASION_A_CODE_REACHED_BY_A_REMAINDER, "BASE % 100"),
+    ],
+)
+def test_the_arithmetic_the_resolver_reads_is_the_whole_set(source, spelled):
+    """``+``, ``-`` and ``*`` resolved and ``//`` and ``%`` did not.
+
+    A guard that reads ``BASE + 3`` and goes silent on ``BASE // 2`` is answering
+    one question two ways, which is the defect this file reports in other
+    people's code. Both resolve to 30 and both are reported.
+    """
+    assert reserved_code_tables(source, declared_causes(), RANGE) == [
+        f"line 3: 'config-unusable' -> status 30 as {spelled}"
+    ]
+
+
+def test_a_duplicate_key_in_a_second_table_is_reported_once():
+    """The dedupe, driven rather than assumed. R-16.
+
+    A duplicate key in a mapping literal is the first defect this file's own
+    suite hunts, and it reaches the walk as two pairs carrying the identical
+    line, slug and status. Dropping the ``seen`` set left every test green
+    because nothing wrote one, so the dedupe was code with nothing watching it.
+    Reporting one reservation twice makes the count in the failure message wrong,
+    and the count is what a reader uses to size the problem.
+    """
+    assert reserved_code_tables(
+        EVASION_A_DUPLICATE_KEY_IN_A_SECOND_TABLE, declared_causes(), RANGE
+    ) == ["line 2: 'config-unusable' -> status 30"]
+
+
+def test_the_hop_bound_is_a_coverage_dial_and_this_is_what_it_gives_up():
+    """``MAX_HOPS`` is not a correctness constant, and the docstring said nothing.
+
+    The reduction from six to three was justified with "nothing in the suite
+    needed more than two hops", which is absence read as evidence of absence
+    applied to a coverage constant. Any finite value below the interpreter's
+    recursion limit stops the hang the bound exists to prevent; the value decides
+    how long a chain of aliases the guard can read.
+
+    At three it reads at most TWO aliases before the literal. The three alias
+    chain below is a real evasion and it is SILENT, which is the price of the
+    number, so it is pinned here rather than left to be discovered. Raising the
+    constant to reach further fails this test and demands the new boundary be
+    written down the same way.
+    """
+    assert _guards.MAX_HOPS == 3
+    assert reserved_code_tables(
+        A_CHAIN_THE_HOP_BOUND_READS, declared_causes(), RANGE
+    ) == ["line 4: 'config-unusable' -> status 30 as A1"]
+    assert reserved_code_tables(
+        A_CHAIN_THE_HOP_BOUND_GIVES_UP, declared_causes(), RANGE
+    ) == [], (
+        "the bound now reaches three aliases, which is more coverage and a "
+        "different boundary, so say where the new one is and pin it here"
+    )
 
 
 @pytest.mark.parametrize(
@@ -3085,7 +3333,8 @@ def declared_causes() -> frozenset[str]:
     Measured against the real tree under the wide rule, the number of offenders
     outside the two table owners is ZERO. What the split cost was not
     hypothetical, and ``test_the_wide_key_set_reports_what_the_tiers_missed``
-    drives fifteen of the shapes it silenced.
+    drives all sixteen shapes it was measured against, fourteen of which it
+    silenced.
 
     Three declarations feed it:
 
@@ -3156,6 +3405,14 @@ def test_the_package_scan_reaches_the_modules_it_claims_to():
     Named at three depths on purpose. One nested file would still be found by a
     scan narrowed to ``*/*.py``, so the deepest entry is what makes any narrowing
     at all go red.
+
+    THE SIZE IS A MEASUREMENT, not a rounding. This scan returns 51 files: 43
+    modules and 8 package ``__init__.py``, none of them empty. The round before
+    described the same set as "all sixty plus real modules in the package" in two
+    places, which overstates it by ten and counts package inits as modules. The
+    floor below is a floor rather than the number, because a unit landing a
+    module has to be able to add one without editing this line, and the composition
+    is asserted so a scan that starts returning package inits only goes red.
     """
     scanned = {relative for relative, _ in package_sources()}
     for reached in (
@@ -3168,7 +3425,13 @@ def test_the_package_scan_reaches_the_modules_it_claims_to():
             f"the scan no longer reaches {reached}, so every guard driven over "
             f"package_sources is silent about it and says so by finding nothing"
         )
-    assert len(scanned) > 50, f"the scan collapsed to {len(scanned)} files"
+    assert len(scanned) >= 51, f"the scan collapsed to {len(scanned)} files"
+    modules = {relative for relative in scanned if not relative.endswith("__init__.py")}
+    assert len(modules) >= 43, (
+        f"the scan reaches {len(scanned)} files but only {len(modules)} of them "
+        f"are modules, so it is counting package inits and looking at less code "
+        f"than the count suggests"
+    )
     assert all(relative.endswith(".py") for relative in scanned)
     assert not [relative for relative in scanned if relative.startswith("_vendor/")]
     assert TABLE_OWNERS <= scanned, (
@@ -3200,9 +3463,11 @@ def test_the_table_owner_escape_is_exactly_these_two_files():
 
     ``TABLE_OWNERS`` switches the second-table guard off for a WHOLE FILE, so
     adding a name to it is the cheapest way there is to stop the guard looking.
-    Verified: adding ``core/session.py`` leaves the suite at 3299 passed. Round
-    one's own commit named that failure mode and shipped nothing that would catch
-    it, because every assertion about this set was about what it forbids.
+    Verified when it was written: adding ``core/session.py`` left the whole
+    suite green. It kills exactly ONE test now, this one, and R-20 carries the
+    row. Round one's own commit named that failure mode and shipped nothing that
+    would catch it, because every assertion about this set was about what it
+    forbids.
 
     R-15 on ``main`` settles the general form: a guard whitelist asserts what is
     FORBIDDEN and never what is permitted, and only EXACT MEMBERSHIP catches a
@@ -3277,6 +3542,14 @@ def _construct_shapes(source: str) -> dict[str, int]:
     same slugs and values on the same lines left every assertion true, four
     swaps out of four. This is the missing half, read off the syntax tree rather
     than off the report, so a swap changes the counts and fails.
+
+    THREE DIFFERENT NUMBERS DESCRIBE ONE FIXTURE and the round before used one
+    word for all three. The residual is EIGHTEEN hits, produced by ELEVEN
+    constructs, and this tally counts THIRTEEN nodes: the two extra are the
+    ``SENTENCES`` mapping, whose values are sentences, and the empty ``DELAYS``
+    literal that the two statements below it fill. Both are dict literals and
+    neither produces a hit, which is exactly why the tally is taken off the tree
+    rather than off the report.
     """
     counted: dict[str, int] = {}
 
@@ -3315,14 +3588,17 @@ def test_ordinary_data_keyed_on_a_cause_slug_is_the_residual_the_wide_rule_pays(
     Every integer here is inside 10 to 59 and every key is a registry slug, so
     every one of these ordinary constructs is reported. That is the price of one
     key set and one value rule, and it is the CHEAP side of an asymmetric trade:
-    each of these costs one developer one look and either a fix or the annotation
-    driven below. The other side, which round four bought with these, is a module
-    shipping a second reservation table that nothing notices.
+    each of these costs one developer one look and a decision that gets recorded.
+    The other side, which round four bought with these, is a module shipping a
+    second reservation table that nothing notices.
 
-    NOT A COST THE TREE PAYS TODAY. Under this exact rule the real package has
-    zero offenders outside the two table owners, so nothing in ``src/`` is
-    currently annotated or exempted. The residual is what a FUTURE ordinary
-    mapping would meet, which is why the answer to it ships with it.
+    NOT A COST THE TREE PAYS TODAY, and that is measured rather than hoped for.
+    Under this exact rule the real package has zero offenders outside the two
+    table owners, and it still has zero when every kebab shaped string literal in
+    the package is added to the key set: 189 distinct literals, 108 of them not
+    keys today. The residual is what a FUTURE ordinary mapping would meet, and
+    the answer to it is a review rather than a comment, because the comment the
+    round before shipped could silence sixty one reservations at once.
     """
     hits = reserved_code_tables(
         RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS, declared_causes(), RANGE
@@ -3347,8 +3623,12 @@ def test_ordinary_data_keyed_on_a_cause_slug_is_the_residual_the_wide_rule_pays(
         "line 6: 'config-unusable' -> status 20",
         "line 7: 'internal-error' -> status 30",
     ], (
-        "eighteen ordinary constructs, every integer inside the reserved range "
-        "and every key a registry slug. If this list shrinks, the fixture has "
+        "eighteen HITS from ELEVEN ordinary constructs, every integer inside "
+        "the reserved range and every key a registry slug. The three counts "
+        "here are different numbers and the round before wrote one of them for "
+        "all three: eighteen hits, eleven constructs that produce a hit, and "
+        "thirteen nodes in the shape tally below, which counts two dict "
+        "literals that produce none. If this list shrinks, the fixture has "
         "drifted and the residual is smaller than it is written down as"
     )
 
@@ -3370,57 +3650,105 @@ def test_ordinary_data_keyed_on_a_cause_slug_is_the_residual_the_wide_rule_pays(
     )
 
 
-def test_the_annotation_silences_one_statement_and_costs_a_reason():
-    """The answer to the residual, and the only alternative to a whole-file escape.
+def test_a_comment_cannot_silence_a_reservation():
+    """THE ESCAPE HATCH IS DELETED, and this is what fails if it comes back.
 
-    Every construct in the fixture above, annotated. All eighteen hits go, one
-    statement at a time, each with a reason written on the line. That is what
-    makes "a false alarm is cheap" true rather than asserted: the developer who
-    meets one has a local, visible, reviewable way to say so, instead of adding
-    the file to ``TABLE_OWNERS`` and blinding the guard to everything in it.
+    The round before answered the residual with ``# not-a-reservation: <reason>``
+    on a line, and claimed three things about it: one statement, never a ``def``
+    body, blast radius visible from where it is written. All three were false
+    when measured, and the third was false by two orders of magnitude.
 
-    Driven in three directions, because an escape hatch that is easier to reach
-    than the fix is how a guard dies: the annotated copy is silent, the marker
-    WITHOUT a reason silences nothing, and an annotation on a ``def`` does not
-    reach the branch inside it.
+    * ``def build(): return {"config-unusable": 30}  # not-a-reservation: honest``
+      silenced the body. The mark and the body are the same physical line, and
+      ``pyproject.toml`` selects ``E9``, ``F`` and ``I`` only, so ``E704`` is off
+      and a one line ``def`` passes the battery.
+    * ``A = {...}; B = {...}  # not-a-reservation: one reason`` silenced BOTH
+      statements on one reason.
+    * One comment appended to ``src/cratekit/core/cause.py`` line 158, the line
+      ``REASONS: Mapping[str, ExitCode] = MappingProxyType(``, took that file
+      from 61 reported reservations to 0. The furthest silenced line was 214
+      below the mark, and the failure message that names a use reported the line
+      and the reason and never how many reservations went quiet.
+
+    WHY DELETION RATHER THAN REPAIR. The hatch existed to make the wide rule's
+    false alarms cheap, and the wide rule has no false alarms here to make cheap.
+    Measured over the 51 files the scan reaches: zero offenders outside the two
+    table owners, and still zero when every kebab shaped string literal in the
+    package is added to the key set, 189 distinct with 108 that are not keys
+    today. It was never used once. Dropping ``TABLE_OWNERS`` instead is not the
+    alternative: each owner's reservations sit inside ONE statement, so two
+    comments would have covered both files, which is the third bullet again.
+
+    So the residual is reported and the answer to it is a decision recorded in
+    this file, which is the review a silenced guard never gets otherwise.
     """
-    assert (
+    def without_lines(hits: list[str]) -> set[str]:
+        """The slug and the status, because the two copies wrap differently."""
+        return {hit.split(": ", 1)[1] for hit in hits}
+
+    hits = reserved_code_tables(
+        COMMENTED_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS, declared_causes(), RANGE
+    )
+    assert without_lines(hits) == without_lines(
         reserved_code_tables(
-            ANNOTATED_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS, declared_causes(), RANGE
+            RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS, declared_causes(), RANGE
         )
-        == []
+    ), (
+        "a comment changed what the guard reports, so a per-line off switch is "
+        "back and the residual can be silenced one line at a time again"
+    )
+    assert len(hits) == 18
+
+    assert reserved_code_tables(
+        COMMENT_ON_A_ONE_LINE_FUNCTION, declared_causes(), RANGE
+    ) == ["line 2: 'config-unusable' -> status 30"], (
+        "a one line def with the comment on it is silent, which is the escape "
+        "covering a whole function body while claiming it never covers one"
     )
     assert reserved_code_tables(
-        ANNOTATED_WITHOUT_A_REASON, declared_causes(), RANGE
-    ) == ["line 2: 'session-lock-held' -> status 30"], (
-        "the marker on its own silences a construct with no explanation "
-        "attached, which is the whole-file exemption's problem in miniature"
-    )
-    assert reserved_code_tables(ANNOTATED_ON_A_FUNCTION, declared_causes(), RANGE) == [
-        "line 3: 'config-unusable' -> status 30"
+        COMMENT_ON_TWO_STATEMENTS_AT_ONCE, declared_causes(), RANGE
+    ) == [
+        "line 2: 'config-unusable' -> status 30",
+        "line 2: 'credential-missing' -> status 40",
+    ], "one reason silenced two statements"
+    assert reserved_code_tables(
+        COMMENT_ON_THE_OPENING_LINE_OF_A_TABLE, declared_causes(), RANGE
+    ) == [
+        "line 3: 'config-unusable' -> status 30",
+        "line 4: 'credential-missing' -> status 40",
+        "line 5: 'internal-error' -> status 50",
     ], (
-        "a comment on a def covers the whole body, so one annotation would "
-        "silence every reservation inside a function"
+        "a comment on the opening line of a mapping silenced every key below it, "
+        "which is how one comment took the sixty one entry registry to zero"
     )
 
 
-def test_the_annotation_is_unused_in_the_package_today():
-    """Exact membership, which is the only shape that catches a widening. R-15.
+def test_the_guard_has_no_per_line_off_switch_at_all():
+    """The absence, asserted over the real tree rather than over a fixture.
 
-    The annotation is deliberately cheap to write, so the thing that keeps it
-    deliberate is that using it fails this test until somebody records the use
-    here with the reason. Empty today, and empty is the honest answer: under this
-    rule the tree has no false alarm to silence.
+    ``test_the_annotation_is_unused_in_the_package_today`` used to assert exact
+    membership of the empty set, which is R-15's whitelist rule. With the hatch
+    deleted there is no membership to pin, so what is pinned instead is that the
+    guard has no comment-shaped input at all: it is handed a source, and the only
+    thing it reads out of that source is the syntax tree. A helper that reads the
+    token stream is how the comment reached it, so a helper that reads the token
+    stream is what has to stay gone.
     """
-    annotated = {
-        relative: _guards._annotated_lines(source)
+    assert not hasattr(_guards, "_annotated_lines")
+    assert not hasattr(_guards, "_silenced_lines")
+    assert not hasattr(_guards, "NOT_A_RESERVATION")
+    assert "tokenize" not in dir(_guards), (
+        "the guard tokenizes again, which is how a comment reaches a rule that "
+        "should only be able to see the syntax tree"
+    )
+    marked = [
+        relative
         for relative, source in package_sources()
-        if _guards._annotated_lines(source)
-    }
-    assert annotated == {}, (
-        f"the second-table guard is switched off for these lines: {annotated}. "
-        f"Each one needs a reason on the line AND an entry here, which is the "
-        f"review a silenced guard never gets otherwise"
+        if "not-a-reservation" in source
+    ]
+    assert marked == [], (
+        f"a deleted escape is written in {marked}, so somebody is expecting it "
+        f"to work and the guard is silently ignoring them"
     )
 
 

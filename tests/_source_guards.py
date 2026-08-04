@@ -28,9 +28,7 @@ that was skipped.
 from __future__ import annotations
 
 import ast
-import io
 import re
-import tokenize
 
 #: The module every question here is asked about. The package it lives in, which
 #: is what ``from cratekit.core import review`` names, is DERIVED from this
@@ -653,6 +651,31 @@ def _declared_enum_values(tree: ast.AST) -> set[str]:
 #: constant exists to prevent, so
 #: ``test_a_mutually_recursive_pair_of_constants_resolves_to_nothing`` drives
 #: that pair.
+#:
+#: WHAT THREE GIVES UP, said rather than implied, because the reduction from six
+#: was justified with "nothing in the suite needed more than two hops" and that
+#: is absence read as evidence of absence applied to a COVERAGE DIAL. This is not
+#: a correctness constant. Any finite value below the recursion limit stops the
+#: hang; the value decides how long a chain of aliases the guard can read. At
+#: three it reads at most TWO aliases before the literal, so this is reported::
+#:
+#:     A0 = 30
+#:     A1 = A0
+#:     CODES = {"config-unusable": A1}
+#:
+#: and this is SILENT, which is the cost of the number and not a property of the
+#: guard::
+#:
+#:     A0 = 30
+#:     A1 = A0
+#:     A2 = A1
+#:     A3 = A2
+#:     CODES = {"config-unusable": A3}
+#:
+#: ``test_the_hop_bound_is_a_coverage_dial_and_this_is_what_it_gives_up`` pins
+#: both, so the silence is a fixture somebody has to look at rather than a hole
+#: nobody has met, and raising the constant to reach further fails that test and
+#: demands the new boundary be written down the same way.
 MAX_HOPS = 3
 
 
@@ -705,6 +728,14 @@ def resolve_int(
             return left - right
         if isinstance(node.op, ast.Mult):
             return left * right
+        # ``//`` and ``%`` complete the set rather than extending it. A guard
+        # that reads ``BASE + 3`` and ``BASE * 2`` and goes silent on
+        # ``BASE // 2`` is answering the same question two ways, which is the
+        # defect this whole file reports in other people's code. Division by zero
+        # is a source that does not run, so it resolves to nothing rather than
+        # raising inside a test.
+        if isinstance(node.op, (ast.FloorDiv, ast.Mod)) and right != 0:
+            return left // right if isinstance(node.op, ast.FloorDiv) else left % right
         return None
     # ``int(30)`` around a plain integer, and this is a LIVE path that round
     # three called unreachable. ``process_status_literals`` resolves the
@@ -736,71 +767,37 @@ def _within_scope(body: list[ast.stmt]):
         yield from _walk_scope(statement)
 
 
-#: The one way to say "this pair is not a reservation" without switching the
-#: guard off for a whole file. A REASON is part of the syntax: the marker on its
-#: own matches nothing, so silencing the guard costs a sentence.
+#: THERE IS NO PER-LINE OFF SWITCH, and its absence is a decision this round
+#: measured rather than a gap. The round before shipped
+#: ``# not-a-reservation: <reason>`` and claimed three things about it: that it
+#: silenced one statement, that it was never a ``def`` body, and that its blast
+#: radius was visible from where it was written. Measured, all three were false.
+#: ``def build(): return {"config-unusable": 30}  # not-a-reservation: honest``
+#: silenced the body, because the mark and the body are one physical line and
+#: ``pyproject.toml`` selects ``E9``, ``F`` and ``I`` only, so ``ruff`` never
+#: fails a one line ``def``. ``A = {...}; B = {...}`` on one line silenced BOTH
+#: statements on one reason. And one comment appended to the opening line of
+#: ``core/cause.py``'s registry silenced all SIXTY ONE of its reservations, with
+#: the furthest silenced line 214 below the mark, while the failure message
+#: reported only the line and the reason and never how many went quiet.
 #:
-#: THIS IS WHAT MAKES A FALSE ALARM CHEAP, and the argument for the wide key set
-#: rests on it. The two error costs are not symmetric. A false alarm costs one
-#: developer one look and either a fix or this comment; it is loud, immediate and
-#: local. A MISS is a module shipping a second reservation table that silently
-#: diverges from the registry, which is the entire thing this guard exists to
-#: prevent and which nothing else in the suite would notice. Round four traded
-#: the second away to buy off the first and the first was never measured.
+#: WHAT REPLACES IT IS THE MEASUREMENT THAT MADE IT UNNECESSARY. The hatch was
+#: sold as the thing that makes a false alarm cheap, and it was never used once.
+#: The package has ZERO offenders outside the two table owners, and it still has
+#: zero when every kebab shaped string literal in the package is added to the key
+#: set: 189 distinct literals, 108 of them not keys today. The wide rule has no
+#: headroom problem in this tree, so the hatch bought nothing and could switch the
+#: guard off for a whole registry with one comment.
 #:
-#: WHOLE FILE EXEMPTION IS THE THING THIS REPLACES. ``TABLE_OWNERS`` switches the
-#: guard off for every line of a file, which R-15 calls the cheapest way there is
-#: to stop a guard looking. This silences one statement, with a reason, in the
-#: diff, and ``test_the_annotation_is_unused_in_the_package_today`` names every
-#: use so a new one is a review rather than a quiet edit.
-NOT_A_RESERVATION = re.compile(r"#\s*not-a-reservation:\s*(?P<reason>\S.*?)\s*$")
-
-
-def _annotated_lines(source: str) -> dict[int, str]:
-    """Every line carrying the annotation, mapped to the reason written on it.
-
-    Comments are not in the syntax tree, so they are read from the token stream.
-    A source that does not tokenize contributes nothing rather than raising,
-    because the caller already parsed it and a tokenizer disagreeing with the
-    parser must not be how this guard fails.
-    """
-    found: dict[int, str] = {}
-    try:
-        tokens = tokenize.generate_tokens(io.StringIO(source).readline)
-        for token in tokens:
-            if token.type != tokenize.COMMENT:
-                continue
-            match = NOT_A_RESERVATION.search(token.string)
-            if match is not None:
-                found[token.start[0]] = match.group("reason")
-    except (tokenize.TokenError, IndentationError, SyntaxError):
-        return {}
-    return found
-
-
-def _silenced_lines(tree: ast.AST, source: str) -> frozenset[int]:
-    """The lines an annotation covers, which is ONE data statement at most.
-
-    An annotation on the first line of an assignment covers that assignment to
-    its end, because the natural place to put it is beside ``POLL_SECONDS = {``
-    and the keys are on the lines below. An annotation anywhere else covers only
-    its own line.
-
-    A ``def`` or a ``class`` is NOT expanded, deliberately. Letting one comment
-    cover a whole function is the whole-file exemption again at a smaller scale,
-    and the point of this hatch is that its blast radius is visible from where it
-    is written.
-    """
-    marks = _annotated_lines(source)
-    if not marks:
-        return frozenset()
-    covered = set(marks)
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.Assign, ast.AnnAssign, ast.Expr)):
-            continue
-        if node.lineno in marks:
-            covered.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
-    return frozenset(covered)
+#: The residual is still real and still REPORTED: ordinary data keyed on a cause
+#: slug with an in-range integer reads as a reservation by shape alone. The answer
+#: to it is a REVIEW rather than a comment anybody can write. If a module ever
+#: meets it, either the value is a reservation and belongs in the table, or the
+#: file joins ``TABLE_OWNERS`` with a reason beside it and the exact-membership
+#: assertion updated, which is the review a silenced guard never gets otherwise.
+#: ``test_a_comment_cannot_silence_a_reservation`` drives the ABSENCE against the
+#: whole residual fixture, so reinstating any per-line escape fails rather than
+#: passing quietly.
 
 
 class ReservedCodeTable:
@@ -816,34 +813,53 @@ class ReservedCodeTable:
     THE ROUND BEFORE THIS SPLIT THE KEYS INTO TWO TIERS AND THE SPLIT WAS BOUGHT
     WITH A NUMBER THAT DOES NOT EXIST. The justification was that the wide rule
     reported "twenty seven of twenty eight ordinary constructs". That count came
-    from a hand written fixture, not from this repository. Measured against all
-    sixty plus real modules in the package under the wide rule: ZERO offenders
-    outside the two files that own a table. The over fire the tiers were built to
-    stop does not occur here. What the tiers cost is not hypothetical: across
-    fifteen realistic second-reservation shapes keyed on registry-only slugs,
-    fifteen of fifteen were reported by the wide rule and NONE by the tiers, and
-    the tiered rule was blind to a module declaring its own ``IntEnum`` of
-    statuses, to ``ExitCode(30)`` written through the module name, and to a code
-    reached by arithmetic, for sixty of the eighty two keys.
+    from a hand written fixture, not from this repository. Measured over the 51
+    files ``package_sources`` returns, 43 modules and 8 package ``__init__.py``,
+    under the wide rule: ZERO offenders outside the two files that own a table.
+    The over fire the tiers were built to stop does not occur here, and it does
+    not appear when the key set is widened either: adding every kebab shaped
+    string literal in the package, 189 distinct with 108 that are not keys today,
+    still measures ZERO offenders outside the two owners.
+
+    WHAT THE TIERS COST, MEASURED AGAINST THE FIXTURE TUPLE THIS FILE SHIPS. Of
+    the sixteen realistic second-reservation shapes keyed on registry-only slugs
+    in ``REGISTRY_SLUG_SECOND_TABLES``, round four's tiers report TWO and are
+    silent on FOURTEEN. The two they report are a named code and a conversion.
+    They are blind to a module declaring its own ``IntEnum`` of statuses, to
+    ``ExitCode(30)`` and its module-qualified spelling, to a named constant, to
+    arithmetic, and to every table shape this file already proves for the other
+    twenty two keys, for sixty of the eighty two keys.
 
     SO THE TRADE RUNS THE OTHER WAY, and it runs on the error costs rather than
-    on a preference. A false alarm costs one look and either a fix or a
-    ``not-a-reservation`` comment with a reason in it, which is loud, immediate,
-    local and reviewable. A miss is a module quietly disagreeing with the
-    registry about what a refusal exits with, which is the defect this guard is
-    the only thing watching for. For a guard of this shape the loud direction is
-    the correct one, and the annotation above is what keeps the loud direction
-    cheap.
+    on a preference. A false alarm costs one developer one look and a decision
+    that is recorded: either the value is a reservation and belongs in the table,
+    or the file joins ``TABLE_OWNERS`` with a reason and an updated membership
+    assertion. A miss is a module quietly disagreeing with the registry about
+    what a refusal exits with, which is the defect this guard is the only thing
+    watching for. For a guard of this shape the loud direction is the correct
+    one. The round before bought the loud direction with a per-line comment that
+    could switch off sixty one reservations at once; the comment is gone and the
+    measurement above is why nothing had to replace it.
 
     WHAT COUNTS AS A CODE, and this is where a guard that fires on correct code
     gets itself switched off (P7). An ``ExitCode`` member is unambiguous, in any
-    spelling and through any number of names: ``CODE = ExitCode.PRECONDITION``
-    beside ``{"rclone-missing": CODE}`` is what a careful author writes, and both
-    tiers of the round before were blind to it while this class's own docstring
-    claimed it resolved. A bare integer is ambiguous, so only the ones inside the
-    RESERVED RANGE count, and the range comes from the live table rather than
-    being repeated here. ``True`` and ``False`` are integers to ``isinstance``
-    and are never a status.
+    spelling, through a bounded chain of names, and through ``getattr`` on the
+    class: ``CODE = ExitCode.PRECONDITION`` beside ``{"rclone-missing": CODE}``
+    is what a careful author writes, and both tiers of the round before were
+    blind to it while this class's own docstring claimed it resolved. A bare
+    integer is ambiguous, so only the ones inside the RESERVED RANGE count, and
+    the range comes from the live table rather than being repeated here. ``True``
+    and ``False`` are integers to ``isinstance`` and are never a status.
+
+    THE KEY IS RESOLVED THROUGH NAMES TOO, and for one round it was not. The
+    value side chased a code through module constants and class attributes on the
+    argument that "a bare 30 in a mapping tells a reader nothing", which is a
+    reason to read the careful spelling. The identical argument holds for the
+    key: ``CONFIG_UNUSABLE = "config-unusable"`` beside ``{CONFIG_UNUSABLE: 30}``
+    is the same table, and ``{Slug.CONFIG_UNUSABLE: 30}`` is the same table with a
+    namespace round it. The package already carries 37 class attributes whose
+    value is a declared cause, so this is the spelling in the tree rather than an
+    invented one, and both were SILENT. One machinery answers both sides now.
 
     NOT NARROWED TO THE EIGHTEEN INTEGERS THE ENUM ACTUALLY USES, which was the
     other candidate. The case this table exists for is a new module deciding its
@@ -857,7 +873,13 @@ class ReservedCodeTable:
     indistinguishable from a reservation by shape alone, and this reports it.
     That direction was chosen deliberately, because the alternative is matching
     on the variable's name, and a guard a rename defeats is not a guard. The
-    annotation is the answer to it, one statement at a time, with a reason.
+    answer to it is a decision recorded in the suite, not a comment: see the note
+    above ``ReservedCodeTable`` for why the per-line escape was deleted.
+
+    WHAT IS STILL SILENT IS WRITTEN DOWN RATHER THAN LEFT TO BE FOUND. Fourteen
+    realistic shapes were measured against this guard and every one was silent;
+    six are closed here and R-19 carries the other eight with the reason each is
+    recorded rather than closed. A gap nobody wrote down is a gap nobody reviews.
     """
 
     def __init__(
@@ -877,10 +899,46 @@ class ReservedCodeTable:
         self.causes = set(causes) | _declared_enum_values(tree)
 
     def cause_key(self, node: ast.AST | None) -> str | None:
-        """The cause slug a key names, or None when nobody declared it a cause."""
-        if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+        """The cause slug a key names, or None when nobody declared it a cause.
+
+        THROUGH NAMES, the same way the VALUE side reads a code. Requiring an
+        ``ast.Constant`` here was the largest hole this guard had: the value rule
+        chases a code through module constants, class attributes and a module's
+        own enum on the argument that a bare integer "tells a reader nothing",
+        and the identical argument holds for the key. Measured, both of these
+        gave zero hits while their inlined spelling gave one::
+
+            CONFIG_UNUSABLE = "config-unusable"
+            CODES = {CONFIG_UNUSABLE: 30}
+
+            class Slug:
+                CONFIG_UNUSABLE = "config-unusable"
+            CODES = {Slug.CONFIG_UNUSABLE: 30}
+
+        A name that does not resolve to a declared cause answers None exactly as
+        an undeclared literal does, so this widens what the guard can READ and
+        not what it treats as a cause.
+        """
+        held = self._resolved(node)
+        if not (isinstance(held, ast.Constant) and isinstance(held.value, str)):
             return None
-        return node.value if node.value in self.causes else None
+        return held.value if held.value in self.causes else None
+
+    def _resolved(self, node: ast.AST | None) -> ast.AST | None:
+        """A key expression reduced to what it holds: a name or a class attribute.
+
+        Shares ``_through_names``'s bound rather than carrying a second one, so
+        "how far does this guard chase a name" has one answer for both halves of
+        a pair. ``Slug.CONFIG_UNUSABLE`` reads ``_class_level_literals``, which is
+        the same table the value side reads for a module's own ``IntEnum``.
+        """
+        if node is None:
+            return None
+        if isinstance(node, ast.Attribute):
+            owner = _dotted(node.value) or ""
+            member = self.members.get(owner, {}).get(node.attr)
+            return node if member is None else self._through_names(member)
+        return self._through_names(node)
 
     def _through_names(
         self, node: ast.AST, extra: dict[str, ast.AST] | None = None
@@ -945,6 +1003,23 @@ class ReservedCodeTable:
             wraps_a_code = _dotted(held.func) == "int" or self.codes.names_the_class(held.func)
             if wraps_a_code and self.status(held.args[0], extra) is not None:
                 return as_written
+        # ``getattr(ExitCode, "PRECONDITION")``, which is the vocabulary reached
+        # by a string rather than by an attribute. The bare-status guard below
+        # has recognized ``getattr(sys, "exit")`` since round two and called it
+        # "the one that matters most, because it disarms the guard on its own";
+        # this half of the same file did not recognize the same shape, which is
+        # the two-answers-to-one-question defect inside one module. Narrowed to a
+        # constant attribute name on the class this source imported, so
+        # ``getattr(somebody_else, "PRECONDITION")`` is not a code.
+        if (
+            isinstance(held, ast.Call)
+            and _dotted(held.func) == "getattr"
+            and len(held.args) == 2
+            and self.codes.names_the_class(held.args[0])
+            and isinstance(held.args[1], ast.Constant)
+            and isinstance(held.args[1].value, str)
+        ):
+            return as_written
         value = self._as_int(node, extra)
         if value is None or not self.low <= value < self.high:
             return None
@@ -992,6 +1067,18 @@ class ReservedCodeTable:
                 for key, value in zip(node.keys, node.values):
                     if key is not None:
                         found.append((key, value, None))
+                # A RECORD written as a mapping, which is the house style with a
+                # dict instead of a dataclass::
+                #
+                #     [{"cause": "config-unusable", "code": 30}, ...]
+                #
+                # ``_crossed`` already reads the tuple and the dataclass forms of
+                # exactly this, and this file's own reservation table is the
+                # dataclass one. The dict spelling was silent, so the third way
+                # to write one record was the one way to write it unseen. The
+                # slug and the code sit in the VALUES here, never in the keys,
+                # which are field names.
+                found.extend(self._crossed(list(node.values)))
             elif isinstance(node, (ast.Tuple, ast.List)):
                 found.extend(self._crossed(list(node.elts)))
             elif isinstance(node, ast.DictComp):
@@ -1145,8 +1232,14 @@ def reserved_code_tables(
     """
     tree = ast.parse(source)
     table = ReservedCodeTable(tree, causes, code_range, package)
-    silenced = _silenced_lines(tree, source)
     found: list[str] = []
+    # ONE HIT PER (LINE, SLUG, STATUS), and this is not decoration. A duplicate
+    # key in a mapping literal, which is the very first defect this unit's suite
+    # hunts, reaches the walk as two pairs carrying the identical line, slug and
+    # status, and so does a record whose code column repeats. Reporting the same
+    # reservation twice makes the count in a failure message wrong, which is the
+    # number the reader uses to decide how big the problem is.
+    # ``test_a_duplicate_key_in_a_second_table_is_reported_once`` drives it.
     seen: set[tuple[int, str, str]] = set()
     for key, value, label in table.pairs():
         slug = table.cause_key(key)
@@ -1156,8 +1249,6 @@ def reserved_code_tables(
         # that branch's own locals and they are out of scope here.
         status = label if label is not None else table.status(value)
         if status is None:
-            continue
-        if key.lineno in silenced:
             continue
         entry = (key.lineno, slug, status)
         if entry in seen:

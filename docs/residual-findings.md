@@ -731,6 +731,17 @@ catch-all that crosses every call's arguments reaches `setdefault` too. It stays
 because it binds the key to ITS value by position instead of crossing them.
 Instrumenting counted 5 arrivals, which agrees with the comment.
 
+The `seen` dedupe in `reserved_code_tables` was the eighth and nobody recorded
+it. Deleting the set and the membership test killed ZERO tests, because no
+fixture anywhere wrote a construct that produces the same line, slug and status
+twice. It is code with nothing watching it, which is the exact shape this section
+exists to list, and it was not on the list. It is DRIVEN now rather than
+recorded: a duplicate key in a second table, which is the first defect this
+unit's own suite hunts, reaches the walk as two identical pairs, and
+`test_a_duplicate_key_in_a_second_table_is_reported_once` fails without the
+dedupe. Reporting one reservation twice makes the count in the failure message
+wrong, and the count is what a reader uses to size the problem.
+
 `MAX_HOPS` was on this list and is NOT any more. Its ceiling, that a mutually
 recursive pair cannot hang the suite, is driven by
 `test_a_mutually_recursive_pair_of_constants_resolves_to_nothing`.
@@ -740,11 +751,19 @@ The fourth round's docstring said "Lowering it stops the guard resolving the
 careful spellings and kills seven tests". Swept across every lower value: 0 kills
 nine, 1 kills two, and 2, 3, 4 and 5 each kill NOTHING. No lowering killed seven,
 and the constant was over provisioned by four because nothing in the suite needed
-more than two hops. It is 3 now, which is the depth of the deepest spelling the
-guard promises to read, and
-`test_the_hop_bound_is_the_depth_of_the_deepest_spelling` asserts that spelling
-resolves AT the bound and goes silent one below it, so moving the number without
-moving the promise fails in one direction or the other.
+more than two hops. It is 3 now, and
+`test_the_hop_bound_is_the_depth_of_the_deepest_spelling` asserts the deepest
+spelling resolves AT the bound and goes silent one below it.
+
+**And "nothing in the suite needed more than two hops" is defect one again**, in
+the sentence that set the value. A coverage constant justified by what no fixture
+happened to write is a constant nobody measured the cost of. `MAX_HOPS` is a
+COVERAGE DIAL: at 3 the guard reads at most two aliases before the literal, and a
+three alias chain is a real evasion that is silent. The sixth round did not raise
+it, because the give-up is the same KIND at any finite value and raising only
+moves it; it wrote the give-up down instead, pinned in both directions by
+`test_the_hop_bound_is_a_coverage_dial_and_this_is_what_it_gives_up`. R-19 has
+the shapes.
 
 **Closes when:** nothing has to close it. It is a record of ONE deliberate
 retention, plus the correction of a claim that was made about five others, so a
@@ -785,6 +804,13 @@ Both widenings were driven over the real tree and both find zero offenders today
 so neither is being avoided because it would fail. They are avoided because the
 first false positive either one produces is the one that gets the whole guard
 suppressed, which is how the armed review guards were switched off once already.
+
+The sixth round measured the ceiling on that argument. Adding EVERY kebab shaped
+string literal in the package to the key set, 189 distinct with 108 that are not
+keys today, which is far wider than either widening above, still finds ZERO
+offenders outside the two table owners. So the exclusions here are a judgement
+about future false positives rather than a defence against present ones, and the
+guard's headroom is measured rather than assumed.
 
 **Closes when:** nothing has to close it, unless a module lands that genuinely
 maps one of those strings to an exit code, in which case the answer is to give
@@ -827,22 +853,46 @@ it.
 **Found:** during U38's third review round's verification, 2026-08-03. Answered
 with two tiers in the fourth round. **The tiers were removed in the fifth round,
 2026-08-03**, because the measurement they rested on was taken against a hand
-written fixture rather than against this repository.
+written fixture rather than against this repository. **The fifth round's own
+counts were wrong in four places and its escape hatch was an off switch for the
+whole guard; the sixth round, 2026-08-04, measured every number in this section
+and deleted the hatch.**
 
 ### What was claimed, and what the tree says
 
 The fourth round's argument was that the wide key set over fired: "twenty seven
 of twenty eight ordinary constructs keyed on a registry slug were reported". That
 twenty eight construct set is not in this repository. It was never in this
-repository. Measured under the wide single key set rule against all sixty plus
-real modules in `src/cratekit/`:
+repository. Measured under the wide single key set rule against every file
+`package_sources()` returns, **51 of them, 43 modules and 8 package
+`__init__.py`, none empty**:
 
 **ZERO offenders outside the two files that own a table.**
 
-The over fire the tiers were built to stop does not occur here. What the tiers
-cost is not hypothetical. Across sixteen realistic shapes a module would use to
-give a registry-only slug a code of its own, **thirteen were silent under the
-tiers and all sixteen are reported under one key set.**
+The fifth round wrote that same set as "all sixty plus real modules in the
+package" in two places. It is 51 files and 43 modules, so the sentence overstated
+the scope by ten and counted package inits as modules.
+
+**THERE IS NO HEADROOM PROBLEM EITHER**, which is the measurement that settles
+what to do about the escape hatch below. Adding every kebab shaped string literal
+in the package to the key set, 189 distinct literals of which 108 are not keys
+today, still measures **ZERO** offenders outside the two table owners. The wide
+rule is not close to over firing here; it has 108 keys of slack.
+
+The over fire the tiers were built to stop does not occur. What the tiers cost is
+not hypothetical, and this is the count the fifth round got wrong three different
+ways inside one commit. Round four's gate, re-implemented verbatim and run over
+`REGISTRY_SLUG_SECOND_TABLES`, the sixteen entry fixture tuple this suite ships:
+
+**the tiers REPORT TWO and are SILENT ON FOURTEEN.**
+
+The two they report are `EVASION_A_NAMED_CODE_FOR_A_REGISTRY_SLUG` and
+`EVASION_A_CONVERSION_ON_A_REGISTRY_SLUG`. The fifth round wrote "fifteen of
+fifteen reported by the wide rule and NONE by the tiers" in the guard, "sixteen,
+thirteen silent" here and in its commit body, "sixteen, thirteen silent" in one
+test docstring and "drives fifteen" in another. Four spellings of one
+measurement, no two agreeing, and none matching it. Every copy says two and
+fourteen now.
 
 ### R-19 was also wrong about the rule it documented
 
@@ -880,29 +930,56 @@ an ABSENCE, so dropping the tier made it quieter and greener. A defaulted
 parameter that weakens a guard when omitted is the wrong shape, so there is
 nothing to omit.
 
-### What makes the false alarm cheap
+### The escape hatch was an off switch for the whole guard, and it is deleted
 
-`# not-a-reservation: <reason>` on a line, or on the first line of the assignment
-that holds a table. It silences that one statement and nothing else. A REASON is
-part of the syntax: the marker on its own matches nothing. A `def` is not
-expanded to its body, because a comment covering a whole function is the
-whole-file exemption again at a smaller scale.
+The fifth round answered the residual with `# not-a-reservation: <reason>` on a
+line, and made three claims for it: it silences one statement, it is never a
+`def` body, and its blast radius is visible from where it is written. **All three
+are false, measured against the shipped implementation.**
 
-`test_the_annotation_is_unused_in_the_package_today` asserts EXACT membership of
-the empty set over the real tree, which is R-15's whitelist rule applied to the
-hatch: using it fails until somebody records the use with its reason, which is
-the review a silenced guard never gets otherwise. It is empty today, and empty is
-the honest answer, because under this rule the tree has no false alarm to
-silence.
+| The claim | What it measures |
+| --- | --- |
+| "silences that one statement" | `A = {...}; B = {...}  # not-a-reservation: one reason` reports 2 hits without the comment and 0 with it. One reason, two statements. |
+| "never a `def` body" | `def build(): return {"config-unusable": 30}  # not-a-reservation: honest` reports 0. The mark and the body are one physical line, so the line rule covers the body. `pyproject.toml` selects `["E9","F","I"]`, so `E704` is off and a one line `def` passes the battery. The fixture that drove this used the multi line spelling only. |
+| "blast radius visible from where it is written" | One comment appended to `src/cratekit/core/cause.py` line 158, `REASONS: Mapping[str, ExitCode] = MappingProxyType(`, takes that file from **61** reported reservations to **0**. The silenced span runs from line 158 to line 372, so the furthest silenced line is 214 below the mark. The exact-membership failure message reported the line and the reason and never how many reservations went quiet. |
+
+**Deleted rather than repaired.** The hatch existed to make the wide rule's false
+alarms cheap, and the measurement above says the wide rule has no false alarms
+here to make cheap: zero offenders, and still zero with 108 extra keys. It was
+never used once. Repairing it means making three claims true at once, one
+statement in every spelling, never a function body in any spelling, and a blast
+radius reported as a count of silenced reservations, for a mechanism nothing in
+the tree needs.
+
+Dropping `TABLE_OWNERS` instead is not the alternative. Each owner's reservations
+sit inside a SINGLE statement, so two comments would have covered both files
+entirely. That is the third row of the table again, not an escape from it.
+
+What replaces it is nothing, deliberately. The residual is REPORTED and the
+answer to a real one is a decision recorded in the suite: either the value is a
+reservation and belongs in the table, or the file joins `TABLE_OWNERS` with a
+reason beside it and `test_the_table_owner_escape_is_exactly_these_two_files`
+updated. That is the review a silenced guard never gets otherwise.
+`test_a_comment_cannot_silence_a_reservation` keeps the whole residual fixture
+carrying the old comments and asserts every hit still fires, and
+`test_the_guard_has_no_per_line_off_switch_at_all` asserts the token-stream
+helpers stay gone, so any per-line escape coming back fails rather than passing
+quietly.
 
 ### The residual, written down rather than narrowed away
 
-`RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS` is eighteen ordinary constructs
-keyed on cause slugs with in-range integers: a poll interval of 30, a display
-order of 10 20 30, a column width of 40, a schema version of 11, a retention of
-30 days, a share of 50 percent. Every one of them is REPORTED, and the list is
-pinned exactly. `ANNOTATED_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS` is the same
-eleven constructs annotated, and every hit goes.
+`RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS` produces **eighteen HITS from
+eleven CONSTRUCTS**, keyed on cause slugs with in-range integers: a poll interval
+of 30, a display order of 10 20 30, a column width of 40, a schema version of 11,
+a retention of 30 days, a share of 50 percent. Every one is REPORTED and the list
+is pinned exactly.
+
+Three different numbers describe that one fixture and the fifth round used one
+word for all three. Eighteen is the HITS. Eleven is the constructs that produce a
+hit, which is what the fixture's own comment says. Thirteen is the node count in
+`_construct_shapes`, which also counts the `SENTENCES` mapping and the empty
+`DELAYS` literal, both dict literals that produce no hit. The assertion messages
+now say which number is which.
 
 The fourth round's version of that fixture said its value was covering eleven
 distinct construct SHAPES and asserted only the slugs, the values and the line
@@ -919,24 +996,74 @@ own scheme was blind to `{"tree-registry-unusable": 33}` for sixty of the eighty
 two keys. `test_the_alternative_is_not_rejected_for_a_flaw_this_scheme_shares`
 drives that input, and the mutation table has the narrowing as a row.
 
-### Three import spellings the walk is still silent about
+### Fourteen shapes were silent, not three, and the largest was not an import spelling
 
-Recorded rather than fixed, because they are pre-existing rather than anything
-this round or the round before introduced, and because the last of the three is
-already caught by the battery's first leg:
+The fifth round recorded three still-silent import spellings. **Measured, the
+number is fourteen and the two largest are not import spellings at all: the guard
+resolved the VALUE of a pair through names and never resolved the KEY.**
+`cause_key` required an `ast.Constant`, so this was silent while its inlined
+spelling was reported:
 
-- `import cratekit.core` then `cratekit.core.exit_codes.ExitCode.X`. The walk
-  binds a name to the exit-code module or to the class, and a partial package
-  import reaches the class through neither.
-- `from cratekit import core` then `core.exit_codes.ExitCode.X`. Same shape, one
-  spelling further out.
-- `from .exit_codes import *`. Silent here, and `ruff` fails it on F403 and F405,
-  so a module that wrote it never reaches the suite.
+```python
+CONFIG_UNUSABLE = "config-unusable"
+CODES = {CONFIG_UNUSABLE: 30}          # SILENT
+```
+
+and so was `{Slug.CONFIG_UNUSABLE: 30}`. The package already carries **37 class
+attributes whose value is a declared cause**, for example
+`src/cratekit/acquire/adapter.py:137`, so that is the tree's own idiom rather
+than an invented one. The fifth round's argument for resolving values, that "a
+bare 30 in a mapping tells a reader nothing", is symmetric and was applied to one
+side only. One machinery answers both sides now.
+
+Fourteen shapes measured, **six closed in this round and eight recorded**:
+
+| Shape | Now |
+| --- | --- |
+| a key held in a module constant | CLOSED |
+| a key held on a class attribute | CLOSED |
+| a list of record dicts, `[{"cause": ..., "code": ...}]` | CLOSED. `_crossed` already read the tuple and the constructor spellings of one record and not the dict one. |
+| `getattr(ExitCode, "PRECONDITION")` | CLOSED. `ProcessExits` has recognized `getattr(sys, "exit")` since round two and called it the shape that matters most; this half of the same file did not recognize it. |
+| a code reached by `//` | CLOSED. `resolve_int` read `+`, `-` and `*` and not these two. |
+| a code reached by `%` | CLOSED. |
+| `{"config-unusable": {"code": 30, "remedy": ...}}`, the record dict as the VALUE | recorded. Closing it means reading a status out of a container held as a value, which pairs a cause with any in-range integer anywhere inside a nested structure. That is a wider residual than the one this guard already accepts, and it has no instance in the tree. |
+| dataclass field defaults, `cause: str = "config-unusable"` beside `code: int = 30` | recorded. The two defaults are separate statements in a class body with nothing binding them, so pairing them is a proximity rule rather than a structural one. |
+| parallel indexed lists, `{SLUGS[0]: CODES[0]}` | recorded. Resolving a subscript into a named sequence is a second evaluator, and `dict(zip(...))` is the spelling anybody actually writes and is already read. |
+| a code outside `[10, 60)` | recorded, and it is the range decision rather than a hole. Widening the bare-integer rule past the reserved range reports every count, width and percent in the package. An `ExitCode` member, a conversion, a constant or arithmetic reaching an out of range value is still reported. |
+| a chain of three or more name aliases | recorded, and it is `MAX_HOPS` at 3. See below. |
+| `import cratekit.core` then `cratekit.core.exit_codes.ExitCode.X` | recorded, pre-existing. The walk binds a name to the module or to the class and a partial package import reaches neither. |
+| `from cratekit import core` then `core.exit_codes.ExitCode.X` | recorded, pre-existing. Same shape one spelling further out. |
+| `from .exit_codes import *` | recorded. `ruff` fails it on F403 and F405, so a module that wrote it never reaches the suite. |
+
+### `MAX_HOPS` is a coverage dial and the docstring did not say what it gives up
+
+The constant is correct at 3 and load bearing in both directions: 2 kills a test,
+4 kills a test, 6 kills a test. What was missing is what 3 BUYS and what it
+COSTS. The reduction from 6 was justified with "nothing in the suite needed more
+than two hops", which is this repository's recurring defect one, absence read as
+evidence of absence, applied to a coverage constant.
+
+It is not a correctness constant. Any finite value below the interpreter's
+recursion limit stops the hang the bound exists to prevent. The value decides how
+long a chain of aliases the guard can read: at 3 it reads at most TWO aliases
+before the literal, at round four's 6 it read five, and
+
+```python
+A0 = 30; A1 = A0; A2 = A1; A3 = A2
+CODES = {"config-unusable": A3}
+```
+
+is reported at 6 and SILENT at 3. That silence is the price of the number and is
+pinned in both directions by
+`test_the_hop_bound_is_a_coverage_dial_and_this_is_what_it_gives_up`, so raising
+the constant fails a test and demands the new boundary be written down the same
+way.
 
 **Closes when:** nothing has to close it. If a real module ever meets the
-residual, the answer is one annotated line with a reason, or a reservation in the
-table. If one of the three spellings above ever appears in the package, the walk
-needs a partial-package binding rather than a wider key set.
+residual, the answer is a reservation in the table or an entry in `TABLE_OWNERS`
+with the membership assertion updated. If one of the recorded shapes above ever
+appears in the package, the row that describes it is what says what the walk
+needs.
 
 ---
 
