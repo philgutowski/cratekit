@@ -60,6 +60,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Callable, Iterable, Mapping, Sequence
 
+from cratekit.core import cause
+
 # How many on-volume paths the readability sampler will stat before giving up.
 # Bounded because the alternative is stat-ing thousands of files just to fail.
 SAMPLE_SIZE = 5
@@ -384,9 +386,23 @@ def is_mount_point(path: Path) -> bool:
     A named seam rather than a bare ``os.path.ismount`` call for the reason
     ``default_identity_provider`` is one: it is the single fact about the running
     machine that the rule below turns on, and a suite cannot mount a real volume.
-    It answers False for a path that does not exist and for one it cannot stat,
-    and both of those are the safe direction here, because the caller's refusal
-    is what stops an identity being read off the wrong disk.
+    It answers False for a path that does not exist, which is a real answer:
+    nothing is there, so nothing is mounted there.
+
+    A PATH THIS ACCOUNT CANNOT STAT IS NOT AN EMPTY MOUNT SLOT, and calling it
+    one was not a safe direction, it was a claim. ``os.path.ismount`` swallows
+    every ``OSError`` and answers False, so with the volume ATTACHED and mounted
+    under a directory this account cannot traverse, the caller was told "no
+    volume is mounted there right now" and sent to plug in a drive that was
+    already plugged in. Nothing had established that. A non answer converted into
+    a positive assertion about the user's hardware is this branch's first
+    recurring defect, and this was its seventh instance.
+
+    So a False answer is CONFIRMED before it is returned, by asking the two
+    questions ``ismount`` asks and letting them raise. The confirmation is the
+    only thing added: the answer itself still comes from the standard library, so
+    a platform that grows a new mount shape is answered by CPython rather than by
+    a copy of its rules here.
 
     A SEAM STILL HAS TO BE PINNED, and this one was not: every test that drives
     the rule replaces it through the fixture, so the whole suite stayed green
@@ -398,7 +414,22 @@ def is_mount_point(path: Path) -> bool:
     function against a directory that IS a mount point on the running machine and
     one that is not.
     """
-    return os.path.ismount(path)
+    if os.path.ismount(path):
+        return True
+    try:
+        os.lstat(path)
+        # The parent, through the slot itself, which is what ``ismount`` compares
+        # against and what an unreadable slot refuses: resolving ".." needs
+        # execute permission ON the directory, so a mount point with mode 0o000
+        # raises here and answered False before.
+        os.lstat(os.path.join(path, os.pardir))
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError as exc:
+        if cause.permission_denied(exc) is not None:
+            raise
+        return False
+    return False
 
 
 def slot_holds_a_volume(slot: Path) -> bool:
@@ -429,8 +460,16 @@ def slot_holds_a_volume(slot: Path) -> bool:
     return behind != Path(slot) and is_mount_point(behind)
 
 
-def _names_one_directory(left: Path, right: Path) -> bool:
-    """Whether two paths name the SAME directory, as the filesystem sees it.
+def _names_one_path(left: Path, right: Path) -> bool:
+    """Whether two paths name ONE thing on this filesystem, as the filesystem sees it.
+
+    IT IS NAMED FOR WHAT IT ANSWERS. It was ``_names_one_directory`` and it never
+    asked whether either side was a directory: two spellings of one regular file,
+    and a FIFO compared with itself, both answered True under a name that
+    promised otherwise. The caller compares an ancestor against a declared mount
+    DIRECTORY, so the directory-ness it wants is a property of the declared row
+    rather than something this comparison establishes, and a name that claimed
+    otherwise is the kind of overclaim a reader trusts.
 
     THE STRING COMPARISON THIS REPLACES DISARMED THE WHOLE RULE FROM A SHELL.
     ``Path.relative_to`` compares path parts, which is case SENSITIVE, and the
@@ -452,12 +491,27 @@ def _names_one_directory(left: Path, right: Path) -> bool:
     sides. Two DIFFERENT spellings of an absent directory answer False, which is
     the accepting direction, and that is the same answer the parts comparison
     gave for the same input.
+
+    A COMPARISON THIS ACCOUNT COULD NOT MAKE IS NOT A COMPARISON THAT CAME BACK
+    DIFFERENT. One handler over every ``OSError`` gave two case spellings of one
+    directory on a case insensitive volume two different answers, True when both
+    sides could be stat-ed and False when they could not, so PERMISSION rather
+    than identity decided whether the mount rule saw a declared location at all.
+    Absent and not-a-directory are real answers and stay False; a refusal from
+    the operating system raises, and the callers that record an identity refuse
+    over it by name.
     """
     if left == right:
         return True
     try:
         return left.samefile(right)
-    except (OSError, ValueError):
+    except OSError as exc:
+        if cause.permission_denied(exc) is not None:
+            raise
+        return False
+    except ValueError:
+        # An unrepresentable path, an embedded null among them. The comparison
+        # was made and the answer is no; nothing was refused.
         return False
 
 
@@ -468,7 +522,7 @@ def _is_a_volume_mount_location(
 
     Asked by walking UP the declared number of levels and then asking the
     filesystem whether what is standing there is the declared directory, rather
-    than by subtracting one string from another. See :func:`_names_one_directory`
+    than by subtracting one string from another. See :func:`_names_one_path`
     for what that cost.
     """
     for directory, depth in locations:
@@ -478,7 +532,7 @@ def _is_a_volume_mount_location(
                 break
             ancestor = ancestor.parent
         else:
-            if _names_one_directory(ancestor, directory):
+            if _names_one_path(ancestor, directory):
                 return True
     return False
 

@@ -49,7 +49,7 @@ from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
 
-from cratekit.core import config
+from cratekit.core import cause, config
 
 #: The state entry this module owns. Named once, so the resolver and every
 #: caller cannot disagree about which file is meant.
@@ -94,10 +94,19 @@ class AgeState(StrEnum):
 
 
 class Remedy(StrEnum):
-    """What to do about an unreadable fact file, as a TOKEN not a command (D2)."""
+    """What to do about an unreadable fact file, as a TOKEN not a command (D2).
+
+    THE THIRD MEMBER IS NOT A CORRUPTION. A file this account may not open and a
+    file whose contents are damaged are two conditions with opposite fixes, and
+    one token over both told a user to repair or reset the record of when their
+    music was last protected in order to fix a permission. The file may be
+    perfectly intact, and resetting library state is a destructive answer to a
+    question that was never asked.
+    """
 
     REPAIR_BACKUP_FACTS = "repair-backup-facts"
     UPGRADE_CRATEKIT = "upgrade-cratekit"
+    GRANT_PATH_ACCESS = "grant-path-access"
 
 
 class BackupFactsUnreadable(Exception):
@@ -175,6 +184,20 @@ def read_facts(cfg: config.Config) -> dict[Portion, BackupFact]:
     except FileNotFoundError:
         return {}
     except OSError as exc:
+        # TWO CONDITIONS, TWO SENTENCES, TWO ACTS. A permission is not a
+        # corruption, and it does not establish that the file is there either: an
+        # untraversable PARENT raises exactly this, and nothing under such a
+        # parent has been observed at all. "Exists but could not be read" with
+        # "repair or reset them" beside it sent a user to reset library state
+        # over a directory their operating system would not open.
+        if cause.permission_denied(exc) is not None:
+            raise BackupFactsUnreadable(
+                f"{path} could not be read: {exc}. Whether the file is even "
+                f"there was not established, because a directory on the way to "
+                f"it that this account cannot open fails the same way",
+                path=path,
+                remedy=Remedy.GRANT_PATH_ACCESS,
+            ) from exc
         raise BackupFactsUnreadable(
             f"{path} exists but could not be read: {exc}",
             path=path,

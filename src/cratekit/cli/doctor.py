@@ -111,7 +111,14 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope
+from cratekit.core.cause import (
+    Cause,
+    CratekitError,
+    Outcome,
+    Remediation,
+    Scope,
+    access_remedy,
+)
 from cratekit.core.exit_codes import Remedy
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
@@ -294,8 +301,8 @@ def _checkout_root() -> Path | None:
     return root if (root / ".git").exists() else None
 
 
-def _git_dir(root: Path) -> tuple[Path | None, str | None]:
-    """The git directory that owns ``root``, AND why it could not be found.
+def _git_dir(root: Path) -> tuple[Path | None, str | None, Remedy | None]:
+    """The git directory that owns ``root``, why it could not be found, and the act that fixes it.
 
     A worktree's ``.git`` is a FILE naming its own git directory, and that
     directory names the COMMON one, which is where hooks actually live. Looking
@@ -314,30 +321,58 @@ def _git_dir(root: Path) -> tuple[Path | None, str | None]:
 
     None with no sentence is the one honest quiet answer: a marker that parsed
     and named nothing. Anything this could not look at comes back as a sentence.
+
+    THREE RETURNS RATHER THAN TWO, and the third is the ACT. Every sentence here
+    is produced by an exception, and only the exception knows whether the file
+    was refused by the operating system or was unreadable for some other reason;
+    the caller sees a string and cannot tell. It returned report-defect for both,
+    so a ``.git`` directory belonging to another account was reported to its
+    owner as a Cratekit bug. ``cause.access_remedy`` makes that one decision, the
+    same one the dispatcher and the check runner make.
     """
     marker = root / ".git"
     if marker.is_dir():
-        return marker, None
+        return marker, None, None
     try:
         text = marker.read_text().strip()
     except OSError as exc:
-        return None, f"the .git marker at {marker} could not be read ({exc})"
+        return (
+            None,
+            f"the .git marker at {marker} could not be read ({exc})",
+            access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
+        )
     except UnicodeDecodeError as exc:
         # A ``ValueError`` rather than an ``OSError``, so a marker that is
         # present and is not text would otherwise escape as an internal defect.
-        return None, f"the .git marker at {marker} is not readable text ({exc})"
+        # It is never a permission: the bytes were read and then would not
+        # decode, so this leg keeps report-defect outright rather than asking.
+        return (
+            None,
+            f"the .git marker at {marker} is not readable text ({exc})",
+            Remedy.REPORT_DEFECT,
+        )
     if not text.startswith("gitdir:"):
-        return None, None
+        return None, None, None
     pointed = Path(text.split(":", 1)[1].strip())
     if not pointed.is_absolute():
         pointed = (root / pointed).resolve()
     common = pointed / "commondir"
     if common.is_file():
         try:
-            return (pointed / common.read_text().strip()).resolve(), None
+            return (pointed / common.read_text().strip()).resolve(), None, None
         except (OSError, UnicodeDecodeError) as exc:
-            return None, f"the commondir at {common} could not be read ({exc})"
-    return pointed, None
+            # BOTH MEMBERS OF THE TUPLE ARE REACHABLE and only one was driven: a
+            # commondir that is present and is not text is a ``ValueError``, so
+            # dropping that member from this clause killed no test while leaving
+            # the whole check open to escaping as an internal defect. The
+            # decoding half can only be a damaged checkout, and the permission
+            # half is a permission, which is exactly what the chooser decides.
+            return (
+                None,
+                f"the commondir at {common} could not be read ({exc})",
+                access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
+            )
+    return pointed, None, None
 
 
 @dataclass(frozen=True, slots=True)
@@ -931,7 +966,11 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
                 f"permission or a corruption to repair rather than an answer to "
                 f"give again"
             ),
-            remedy=Remedy.REPORT_DEFECT,
+            # The sentence already names a permission as one of the two shapes,
+            # and the remedy has to name the same two. A corruption is a defect
+            # to report and a permission is one to grant, so the token follows
+            # the classification rather than assuming the worse of the user.
+            remedy=access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
         )
     try:
         declared = taxonomy.load_taxonomy(text)
@@ -1790,7 +1829,7 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
             status=Status.INFO,
             detail="this is an installed package rather than a checkout; nothing to hook",
         )
-    git_dir, unreadable = _git_dir(root)
+    git_dir, unreadable, unreadable_remedy = _git_dir(root)
     if unreadable is not None:
         # AN UNREADABLE MARKER IS NOT A MARKER THAT NAMES NOTHING. Both arrived
         # here as None and both read as the second, at INFO with no remedy, so
@@ -1811,7 +1850,7 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
                 f"regardless of what this check can open, so the answer is "
                 f"unknown rather than no"
             ),
-            remedy=Remedy.REPORT_DEFECT,
+            remedy=unreadable_remedy,
         )
     if git_dir is None:
         return Finding(
@@ -1856,7 +1895,7 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
                 f"the same way. Git runs the file regardless of whether this "
                 f"check can open it, so the answer is unknown rather than no"
             ),
-            remedy=Remedy.REPORT_DEFECT,
+            remedy=access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
         )
     problem = _hook_dispatch_problem(body, root)
     if problem is not None:
@@ -1964,6 +2003,16 @@ def answer(check: Check, inputs: _Inputs) -> Finding:
     reserved code, so a user with an unmounted drive was told to file a defect
     about it. Being not-per-check is exactly why that mattered: it is the shape
     every check written here inherits.
+
+    AND THE UNSTRUCTURED LEG CLASSIFIES BEFORE IT BLAMES. This is the CHECKING
+    path, and rescuing the structured refusals out of it left the remaining leg
+    attaching report-defect to the exact condition the paragraph above names: a
+    library root under a directory this account cannot traverse. One ``crate
+    setup`` report then said "this is not a defect, grant this interpreter
+    access" from the wizard's own note and "this is a defect; report it" three
+    lines below from four checks at once, over one path and one permission.
+    ``cause.access_remedy`` is the single decision, shared with the dispatcher,
+    so a check nobody has guarded comes out right without a handler of its own.
     """
     try:
         return check.run(inputs)
@@ -1979,6 +2028,7 @@ def answer(check: Check, inputs: _Inputs) -> Finding:
             cause=cause,
         )
     except Exception as exc:  # noqa: BLE001 - see the docstring
+        note = render.access_note(exc)
         return Finding(
             key=check.key,
             title=check.key,
@@ -1987,8 +2037,9 @@ def answer(check: Check, inputs: _Inputs) -> Finding:
                 f"this check did not complete: {type(exc).__name__}: {exc}. The "
                 f"answer is unknown rather than good, and the rest of the report "
                 f"is below rather than discarded with it"
+                + (f". {note}" if note else "")
             ),
-            remedy=Remedy.REPORT_DEFECT,
+            remedy=access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
         )
 
 

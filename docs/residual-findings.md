@@ -761,8 +761,13 @@ with it detached is its parent's. Stated in `identity_source`'s own docstring.
 **Closes when:** the wizard offers to record the mount location it observed, or
 the table is read from configuration.
 
-**3. An ancestor this account cannot traverse. CLOSED 2026-08-03, by the fifth
-review.** ~~The wizard exits with a traceback, which is loud rather than wrong.~~
+**3. An ancestor this account cannot traverse. CLOSED 2026-08-04, by the SIXTH
+review, having been reported closed by the fourth and the fifth.** ~~The wizard
+exits with a traceback, which is loud rather than wrong.~~
+
+**READ THE LAST PARAGRAPH OF THIS ITEM FIRST.** It was closed three times at six
+call sites and found again three times, and the reason is recorded there: a fix
+per call site is a fix the next call site does not have.
 
 The entry above is struck out because it was wrong about the fact and wrong about
 the severity, and the error was load bearing: it is the whole argument for having
@@ -806,6 +811,32 @@ anyone whose library sits on a volume mounted read only. The one-line advice on
 `GRANT_PATH_ACCESS` was widened to "cannot reach or write" for the same reason:
 as written it asserted a directory could not be opened, which is false of the
 whole write half, and each finding names its own act in its own detail.
+
+**AND SITE BY SITE GUARDING FAILED THREE ROUNDS RUNNING, WHICH IS WHAT ACTUALLY
+CLOSED IT.** The paragraphs above describe six call sites, closed across two
+rounds, and the sixth review found three more: doctor's own check runner attached
+`REPORT_DEFECT` to the permission for four checks at once, `_probe_db_path`
+stat-ed a path nobody had guarded and took the whole verb down with it, and
+`os.path.ismount` swallowed the permission and reported an attached volume as an
+absent one. One `crate setup` report said "this is not a defect, grant this
+interpreter access" from the wizard's note and "this is a defect; report it"
+three lines below from four checks, over one path and one permission.
+
+The rule is now a CLASSIFICATION rather than a handler. `cause.permission_denied`
+answers "is this an `OSError` whose errno is EACCES or EPERM, here or on its
+declared `__cause__` chain", `cause.access_remedy` turns that into a token, and
+the two blankets that exist for what nobody guarded both ask: the dispatcher in
+`cli/__init__.py` and the check runner in `cli/doctor.py`. So a site nobody has
+converted still comes out as a permission the user can grant, and what is left
+for a call site is a better SENTENCE, never the difference between a defect and a
+permission. `cause.REASONS` declares `path-permission-denied` on the reserved
+`PRECONDITION` code for the generic case; `library-root-unreachable` stays for the
+refusal that knows the path was the library's.
+
+The trigger for the whole class is one standard-library behaviour worth naming
+once: `Path.exists` and `Path.is_dir` RE RAISE under EPERM rather than answering
+False, so every line in the package that reads like a question is a line that can
+throw.
 
 **4. `secrets.exists` answers False for a presence index it could not read.**
 `_index_read` catches `OSError` and `ValueError` alike and returns an empty set,
@@ -892,3 +923,53 @@ refusal's message and remedy but not its slug. The envelope is where a machine
 consumer reads a reason, and adding a key to every check entry for a field that
 is None on all of them is a schema change for one case. **Closes when:** a second
 check refuses structurally and a consumer needs to tell which one did.
+
+---
+
+## R-21. Three edges of the permission classification, stated rather than closed
+
+**Found:** during the sixth review of U27, 2026-08-04, while making "a permission
+the user can grant is not a defect in this program" one decision instead of six
+handlers.
+
+**NUMBERING.** `main` carries R-14 and R-15; this branch adds R-16 through R-21.
+A merge that finds another R-21 renumbers whichever arrives second.
+
+**1. The classification reads `__cause__` and deliberately does not read
+`__context__`.** An explicit `raise X from exc` is a statement that this failure
+IS that failure, so a wrapper cannot hide a permission underneath it. An implicit
+context is only "this happened while handling that", which is exactly what a
+handler that catches a permission and then raises a real defect produces, and
+reading it would file that defect under a permission the user is told to grant.
+The cost is the mirror case: a wrapper that re-raises without `from` hides the
+permission, and its failure is reported as an internal defect. Chosen because the
+two errors are not symmetric. Reporting a defect as a permission sends a user to
+change filesystem permissions that were never the problem and leaves the defect
+unreported; reporting a permission as a defect is the state this whole item
+records, and it is caught by the two blankets for anything that reaches them
+unwrapped. **Closes when:** a real wrapper in this package is found re-raising an
+`OSError` without `from`, at which point the fix is the `from`, not the reader.
+
+**2. `config._read_raw` still calls a permission a corruption.** A configuration
+file that is present and that this account may not open raises `ConfigCorrupt`,
+whose remedy token is `repair-config-file`. It is the same shape as the
+`backup.age` finding this round closed, one module over, and it is NOT reached in
+the arrangement that matters most: `config.load` stats the file first, so a
+SEALED ANCESTOR raises before this line and is classified correctly. What reaches
+it is a config file whose own mode is unreadable under a readable parent. It is
+recorded rather than fixed because `core/config.py` belongs to U2 and its five
+error types are a declared vocabulary with their own suite; changing which one a
+permission maps to is that unit's decision rather than a fix smuggled in under
+this one. **Closes when:** U2 splits "could not be read" from "could not be
+understood", which is the same split this unit made in four other modules.
+
+**3. `_names_one_path` compares paths, not directories, and is named for it.** It
+was `_names_one_directory` and never asked whether either side was a directory:
+two spellings of one regular file, and a FIFO compared with itself, both answered
+True under a name that promised otherwise. The name is now honest and the
+behaviour is unchanged, because the caller compares an ancestor against a
+DECLARED mount directory, so the directory-ness belongs to the declared row. A
+version that stat-ed for `is_dir` would refuse a first run into a mount slot that
+does not exist yet, which is the over-restriction rounds three and four both
+produced. **Closes when:** the declared rows are validated where they are
+declared, so the comparison never has to.

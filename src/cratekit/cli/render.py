@@ -20,7 +20,7 @@ from collections.abc import Mapping
 
 from cratekit.cli import registry
 from cratekit.cli.output import Envelope
-from cratekit.core.cause import Cause
+from cratekit.core.cause import Cause, permission_denied
 from cratekit.core.exit_codes import ExitCode, Remedy, meaning_of
 
 #: One command line per remediation token, or None when the fix is not a command
@@ -144,6 +144,34 @@ def remedy_text(remedy: Remedy) -> str | None:
     completeness test already fails on rather than a state a caller must handle.
     """
     return _COMMANDS.get(remedy) or _ADVICE.get(remedy)
+
+
+def access_note(exc: BaseException | None) -> str | None:
+    """One sentence for a failure the operating system refused, or None.
+
+    The words for ``cause.permission_denied``, kept here because this is the
+    layer allowed to have words (D2) and because three callers need the SAME
+    ones: the dispatcher's blanket, doctor's check runner, and the wizard. Three
+    wordings for one condition is how one report ends up telling a user their
+    permission is a defect on one line and not a defect three lines below, which
+    is the state this round was sent back for.
+
+    It names the path when the error carries one. ``OSError.filename`` is set by
+    every filesystem call in the standard library, and the path is the entire
+    actionable content: "permission denied" with nothing to grant access TO is a
+    sentence a user can do nothing with.
+    """
+    denied = permission_denied(exc)
+    if denied is None:
+        return None
+    named = f" The path is {denied.filename}." if denied.filename else ""
+    return (
+        f"The operating system refused this account, which is a permission to "
+        f"grant rather than a defect in this program.{named} On macOS an "
+        f"interpreter without Full Disk Access is refused exactly this way under "
+        f"Documents, Desktop, Downloads and external volumes. Grant this "
+        f"interpreter access to the path, or choose one it can already reach"
+    )
 
 
 def remediation_line(cause: Cause) -> str:
@@ -308,6 +336,7 @@ def render_gate(cause: Cause) -> str:
 
 
 __all__ = [
+    "access_note",
     "install_command",
     "remediation_line",
     "remedy_text",

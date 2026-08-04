@@ -46,7 +46,14 @@ from cratekit.cli import gates, output, registry, render
 from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.cli.registry import Entry
 from cratekit.core import config, profiles
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope
+from cratekit.core.cause import (
+    Cause,
+    CratekitError,
+    Outcome,
+    Remediation,
+    Scope,
+    permission_denied,
+)
 from cratekit.core.exit_codes import ExitCode, Remedy
 
 
@@ -106,10 +113,20 @@ def _membership() -> profiles.Membership:
     verb that a later profile turns off is a smaller failure than a help screen
     that crashes on a fresh install, which is the one moment a new user has no
     way to diagnose anything.
+
+    AND "UNREADABLE" WAS A CLAIM THIS FUNCTION DID NOT KEEP. ``config.load``
+    stats the file before it reads it, and a stat under a directory this account
+    cannot traverse raises ``PermissionError`` rather than any ``ConfigError``,
+    so the paragraph above was true of a corrupt file and false of an unreadable
+    one. This call sits OUTSIDE the dispatcher's try, in the parser construction
+    every invocation runs first, so the result was a traceback out of ``crate
+    --help`` on a machine whose configuration directory the operating system will
+    not open. The verbs that actually need the configuration still meet the same
+    refusal and report it; what may not happen is the help screen dying of it.
     """
     try:
         loaded = config.load()
-    except config.ConfigError:
+    except (config.ConfigError, OSError):
         return profiles.resolve("full")
     try:
         return profiles.resolve(loaded.profile.name, dict(loaded.modules.explicit))
@@ -265,6 +282,43 @@ def _run_state_for(entry: Entry, args: argparse.Namespace) -> gates.RunState:
     return gates.new_run(entry)
 
 
+def _unhandled_cause(exc: BaseException) -> Cause:
+    """The cause for anything that reached the boundary unconverted.
+
+    THE CLASSIFICATION LIVES HERE RATHER THAN AT THE CALL SITES, and that is the
+    whole point of this function. "A permission the user can grant is not a
+    defect in this program" was fixed three times, at six sites, and found again
+    three times, because a guard written per site is a guard the next site does
+    not have. ``Path.exists`` re raises under EPERM instead of answering False,
+    so every ordinary looking filesystem question in the package is a potential
+    seventh site.
+
+    So the blanket asks the question instead. An ``OSError`` whose errno is
+    EACCES or EPERM, raised anywhere under any verb, leaves under its own reason
+    with ``grant-path-access``, and a site nobody has guarded yet comes out
+    right. What is left for the sites is a BETTER sentence naming what they were
+    doing, never the difference between a defect and a permission.
+
+    Everything else keeps ``internal-error``, which is the honest answer for a
+    failure this program did not anticipate, and keeps ``report-defect`` with it.
+    """
+    denied = permission_denied(exc)
+    if denied is not None:
+        return Cause(
+            reason="path-permission-denied",
+            message=f"{type(exc).__name__}: {exc}. {render.access_note(exc)}",
+            remediation=Remediation(remedy=Remedy.GRANT_PATH_ACCESS),
+            origin=("cli",),
+            detail={"path": str(denied.filename) if denied.filename else None},
+        )
+    return Cause(
+        reason="internal-error",
+        message=f"{type(exc).__name__}: {exc}",
+        remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
+        origin=("cli",),
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse, dispatch, and return the process status.
 
@@ -365,12 +419,7 @@ def run(argv: list[str], *, stdout, stderr) -> int:
             verb=entry.name,
             run_id=state.run_id if state is not None else output.new_run_id(),
             started=started,
-            cause=Cause(
-                reason="internal-error",
-                message=f"{type(exc).__name__}: {exc}",
-                remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
-                origin=("cli",),
-            ),
+            cause=_unhandled_cause(exc),
         )
 
     _emit(envelope, as_json=as_json, stdout=stdout, stderr=stderr)

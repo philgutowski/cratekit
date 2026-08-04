@@ -828,7 +828,7 @@ def test_the_repositorys_own_installed_hook_passes_the_check(library):
     root = doctor._checkout_root()
     if root is None:  # pragma: no cover - an installed wheel has no checkout
         return
-    git_dir, unreadable = doctor._git_dir(root)
+    git_dir, unreadable, _remedy = doctor._git_dir(root)
     assert unreadable is None, unreadable
     hook = git_dir / "hooks" / "pre-commit" if git_dir else None
     if hook is None or not hook.is_file():  # pragma: no cover - a clone with no hook
@@ -853,8 +853,8 @@ def test_a_worktree_finds_the_hook_in_the_common_git_directory(tmp_path):
     worktree.mkdir()
     (worktree / ".git").write_text(f"gitdir: {per_tree}\n")
 
-    assert doctor._git_dir(worktree) == (common.resolve(), None)
-    assert doctor._git_dir(tmp_path / "main") == (common, None)
+    assert doctor._git_dir(worktree) == (common.resolve(), None, None)
+    assert doctor._git_dir(tmp_path / "main") == (common, None, None)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -3028,6 +3028,14 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(con
     ordinary broken machine rather than returning a value, and one raising took
     the ENTIRE report down: every other answer, on the machine the module's own
     opening argument says the report exists for.
+
+    THE REMEDY THIS ASSERTS CHANGED IN ROUND SIX, and the test's purpose did not.
+    What it exists for is that an unstructured break becomes a FAILED CHECK
+    rather than a lost report, and both legs below still assert exactly that. What
+    it used to assert beside it was that a permission the operating system refused
+    carries report-defect, which pinned the defect this unit was sent back for
+    three rounds running: doctor told the user their own filesystem permission was
+    a Cratekit bug, on the same page where the wizard told them it was not.
     """
 
     def blind():
@@ -3041,10 +3049,24 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(con
     assert broken.status is doctor.Status.FAIL, "unknown was reported as healthy"
     assert "did not complete" in broken.detail
     assert "PermissionError" in broken.detail
-    assert broken.remedy is Remedy.REPORT_DEFECT
+    assert broken.remedy is Remedy.GRANT_PATH_ACCESS
+    assert "rather than a defect in this program" in broken.detail
     # And the answers either side of it are the real ones rather than casualties.
     assert find(report, "interpreter.version").status is doctor.Status.OK
     assert find(report, "library.identity").status is doctor.Status.OK
+
+    # THE DEFECT LEG IS STILL A DEFECT. Classifying the permission out of the
+    # blanket must not classify everything out of it: a probe that simply fell
+    # over is an unanticipated failure and report-defect is the honest answer.
+    def fell_over():
+        raise RuntimeError("psutil returned a shape this reader has never seen")
+
+    ordinary = find(
+        doctor.run(configured, probes=probes(process_lister=fell_over)),
+        "rekordbox.closed",
+    )
+    assert ordinary.status is doctor.Status.FAIL
+    assert ordinary.remedy is Remedy.REPORT_DEFECT
 
 
 def test_the_rescue_reports_a_broken_check_as_FAIL_rather_than_as_a_note(configured):
@@ -3093,6 +3115,17 @@ def test_a_library_root_this_account_cannot_traverse_is_reported_not_raised(
     mounted = find(report, "library.mounted")
     assert mounted.status is doctor.Status.FAIL
     assert "did not complete" in mounted.detail
+
+    # AND NOT ONE FAILING CHECK IN THE WHOLE REPORT CALLS IT A DEFECT. This is
+    # the measurement that matters, taken on a REAL directory with mode 0o000
+    # rather than on a fixture raising a synthetic error: four checks at once
+    # came out of this arrangement saying "this is a defect; report it" over one
+    # permission, and the wizard's own note in the same envelope said the
+    # opposite. One report may not answer one condition two ways.
+    for finding in report.failures:
+        assert finding.remedy is not Remedy.REPORT_DEFECT, finding.key
+    assert find(report, "library.identity").remedy is Remedy.GRANT_PATH_ACCESS
+    assert find(report, "taxonomy.active").remedy is Remedy.GRANT_PATH_ACCESS
 
 
 def test_a_session_log_this_account_cannot_traverse_is_not_an_empty_one(
@@ -3167,6 +3200,10 @@ def test_a_commit_hook_that_exists_and_cannot_be_read_is_not_a_missing_hook(
     assert unreadable.detail != absent.detail, "one sentence for two conditions"
     assert "could not be read" in unreadable.detail
     assert "unknown rather than no" in unreadable.detail
+    # The hook was refused by the operating system, so the act is to grant access
+    # rather than to file a defect about somebody else's file permissions.
+    assert unreadable.remedy is Remedy.GRANT_PATH_ACCESS
+    assert "did not complete" not in unreadable.detail, "the blanket rescue answered"
     # The same claim the taxonomy check had to drop: an untraversable hooks
     # directory raises this too, and nothing beneath it was observed.
     assert "exists at" not in unreadable.detail
@@ -3196,6 +3233,12 @@ def test_an_active_template_that_exists_and_cannot_be_read_is_not_a_missing_one(
     assert unreadable.status is absent.status is doctor.Status.FAIL
     assert "could not be read" in unreadable.detail
     assert unreadable.remedy is not Remedy.RUN_SETUP
+    # AND THE ACT IS THE ONE THE USER CAN PERFORM. The sentence names a
+    # permission as one of the two shapes this handler catches, and the token
+    # beside it said "report a defect" for both. This file was refused by the
+    # operating system, so the answer is to grant access to it.
+    assert unreadable.remedy is Remedy.GRANT_PATH_ACCESS
+    assert "did not complete" not in unreadable.detail, "the blanket rescue answered"
     # AND IT DOES NOT CLAIM THE FILE IS THERE. The same handler catches the
     # permission error an untraversable PARENT raises, and nothing under such a
     # parent was observed at all, so "exists and could not be read" was a second
@@ -3416,23 +3459,23 @@ def test_two_spellings_of_one_directory_are_one_directory_however_they_differ(tm
     link = tmp_path / "linked-volumes"
     link.symlink_to(real, target_is_directory=True)
 
-    assert preflight._names_one_directory(real, real) is True
-    assert preflight._names_one_directory(link, real) is True
+    assert preflight._names_one_path(real, real) is True
+    assert preflight._names_one_path(link, real) is True
     assert preflight._is_a_volume_mount_location(link / "EP", ((real, 1),)) is True
 
     apart = tmp_path / "other"
     apart.mkdir()
-    assert preflight._names_one_directory(apart, real) is False
+    assert preflight._names_one_path(apart, real) is False
     # Neither side exists, so nothing can be compared. False is the ACCEPTING
     # direction here and it is what the parts comparison answered too.
-    assert preflight._names_one_directory(tmp_path / "a", tmp_path / "b") is False
+    assert preflight._names_one_path(tmp_path / "a", tmp_path / "b") is False
 
     # AND IT IS THE FILESYSTEM'S ANSWER RATHER THAN A NAME COMPARISON, which is
     # what makes it right on a case-SENSITIVE volume as well as on a folding one.
     # Two directories the filesystem calls different stay different here whatever
     # their names spell, which no amount of lower-casing could promise.
     for left, right in ((real, real), (link, real), (apart, real), (real, apart)):
-        assert preflight._names_one_directory(left, right) is os.path.samefile(left, right)
+        assert preflight._names_one_path(left, right) is os.path.samefile(left, right)
 
 
 def test_a_symlinked_mount_point_pointing_out_of_the_mount_directory_still_refuses(
@@ -3493,7 +3536,7 @@ def test_a_symlinked_mount_point_that_names_a_real_mount_is_still_a_mounted_volu
 def test_a_declared_mount_directory_absent_from_this_machine_still_names_itself(
     tmp_path, monkeypatch
 ):
-    """ZERO DEATH. The equality shortcut in ``_names_one_directory`` killed nothing.
+    """ZERO DEATH. The equality shortcut in ``_names_one_path`` killed nothing.
 
     ``samefile`` compares two inodes, so it has to stat both sides, and a
     declared mount directory that is not on this machine has no inode. Without
@@ -3512,7 +3555,7 @@ def test_a_declared_mount_directory_absent_from_this_machine_still_names_itself(
 
     absent = tmp_path.resolve() / "run" / "media"
     assert not absent.exists()
-    assert preflight._names_one_directory(absent, absent) is True
+    assert preflight._names_one_path(absent, absent) is True
 
     root = absent / "phil" / "EP_LIBRARY" / "Music"
     monkeypatch.setattr(preflight, "volume_mount_locations", lambda: ((absent, 2),))
@@ -3785,7 +3828,7 @@ def test_a_git_marker_that_cannot_be_read_is_not_a_marker_that_names_nothing(
 
     marker.chmod(0o000)
     try:
-        pointed, unreadable = doctor._git_dir(root)
+        pointed, unreadable, remedy = doctor._git_dir(root)
         report = doctor.run(configured, probes=probes(checkout_root=lambda: root))
     finally:
         marker.chmod(0o644)
@@ -3794,7 +3837,12 @@ def test_a_git_marker_that_cannot_be_read_is_not_a_marker_that_names_nothing(
     assert unreadable is not None and str(marker) in unreadable
     finding = find(report, "repo.commit_hook")
     assert finding.status is doctor.Status.FAIL, finding.detail
-    assert finding.remedy is Remedy.REPORT_DEFECT
+    # AND THE ACT IS THE ONE THE USER CAN PERFORM. The marker was refused by the
+    # operating system, which is a permission to grant and not a defect in this
+    # program; report-defect over it is the same misclassification this whole
+    # round is about, wearing a different check's name.
+    assert remedy is Remedy.GRANT_PATH_ACCESS
+    assert finding.remedy is Remedy.GRANT_PATH_ACCESS
     assert "unknown rather than no" in finding.detail
     assert "names no git directory" not in finding.detail
     assert report.ok is False, "doctor exited 0 over an unanswered commit scan"
@@ -3807,16 +3855,20 @@ def test_a_git_marker_that_cannot_be_read_is_not_a_marker_that_names_nothing(
         doctor.run(configured, probes=probes(checkout_root=lambda: root)),
         "repo.commit_hook",
     )
-    assert doctor._git_dir(root) == (None, None)
+    assert doctor._git_dir(root) == (None, None, None)
 
     # AND A MARKER THAT IS PRESENT AND IS NOT TEXT. ``UnicodeDecodeError`` is a
     # ``ValueError`` rather than an ``OSError``, so it escaped the handler beside
     # it and left the whole check as one that did not complete. Its own leg
     # killed no test until this line, which is the same shape as the split above.
     marker.write_bytes(b"gitdir: \xff\xfe/somewhere\n")
-    pointed, not_text = doctor._git_dir(root)
+    pointed, not_text, not_text_remedy = doctor._git_dir(root)
     assert pointed is None
     assert not_text is not None and "not readable text" in not_text
+    # The bytes were READ and then would not decode, so nothing was refused and
+    # this leg keeps report-defect. The two legs of one handler answer two
+    # different questions and must not borrow each other's act.
+    assert not_text_remedy is Remedy.REPORT_DEFECT
     assert named_nothing.status is doctor.Status.INFO
     assert "names no git directory" in named_nothing.detail
 
@@ -3842,7 +3894,7 @@ def test_a_commondir_that_cannot_be_read_is_reported_rather_than_swallowed(
 
     commondir.chmod(0o000)
     try:
-        pointed, unreadable = doctor._git_dir(worktree)
+        pointed, unreadable, remedy = doctor._git_dir(worktree)
         finding = find(
             doctor.run(configured, probes=probes(checkout_root=lambda: worktree)),
             "repo.commit_hook",
@@ -3853,7 +3905,45 @@ def test_a_commondir_that_cannot_be_read_is_reported_rather_than_swallowed(
     assert pointed is None
     assert unreadable is not None and "commondir" in unreadable
     assert finding.status is doctor.Status.FAIL
+    assert remedy is Remedy.GRANT_PATH_ACCESS
+    assert finding.remedy is Remedy.GRANT_PATH_ACCESS
+
+
+def test_a_commondir_that_is_present_and_is_not_text_is_reported_too(
+    configured, tmp_path
+):
+    """THE OTHER MEMBER OF THE SAME TUPLE, and it was pinned by nothing.
+
+    ``except (OSError, UnicodeDecodeError)`` has two members precisely because a
+    ``UnicodeDecodeError`` is a ``ValueError`` and would otherwise escape the
+    check entirely. Only the permission leg was ever driven, so dropping the
+    second member killed no test and the claim that both were covered was false
+    for this one. A ``commondir`` written by a damaged checkout, or by a tool
+    that wrote a different encoding, is present and does not decode.
+    """
+    common = tmp_path / "main" / ".git"
+    (common / "hooks").mkdir(parents=True)
+    per_tree = common / "worktrees" / "w1"
+    per_tree.mkdir(parents=True)
+    (per_tree / "commondir").write_bytes(b"..\xff\xfe/..\n")
+    worktree = tmp_path / "w1"
+    worktree.mkdir()
+    (worktree / ".git").write_text(f"gitdir: {per_tree}\n")
+
+    pointed, unreadable, remedy = doctor._git_dir(worktree)
+    finding = find(
+        doctor.run(configured, probes=probes(checkout_root=lambda: worktree)),
+        "repo.commit_hook",
+    )
+
+    assert pointed is None
+    assert unreadable is not None and "commondir" in unreadable
+    assert finding.status is doctor.Status.FAIL
+    # Nothing was refused, so this half is a damaged checkout and keeps
+    # report-defect. It is the leg the permission test above cannot reach.
+    assert remedy is Remedy.REPORT_DEFECT
     assert finding.remedy is Remedy.REPORT_DEFECT
+    assert "did not complete" not in finding.detail, "the blanket rescue answered"
 
 
 # ── the wizard reports a damaged install as a damaged install ────────────────
@@ -4264,6 +4354,416 @@ def test_doctor_still_answers_every_check_over_an_unreachable_root(
     mounted = find(report, "library.mounted")
     assert mounted.status is doctor.Status.FAIL
     assert "did not complete" in mounted.detail
+
+
+# ── one classification, made once, for a permission the user can grant ───────
+#
+# Round six. The same defect was fixed three times, at six sites, and found again
+# three times, so it is no longer fixed per site: ``cause.permission_denied``
+# answers it, ``cause.access_remedy`` chooses the act, and the two blankets that
+# exist for what nobody guarded, the dispatcher and doctor's check runner, both
+# ask. The tests below drive REAL directories with mode 0o000 rather than
+# fixtures raising a synthetic error, because a fixture raising ``PermissionError``
+# is what pinned the wrong answer for three rounds.
+
+
+def test_both_verbs_answer_a_real_permission_with_an_act_the_user_can_perform(
+    tmp_path, monkeypatch
+):
+    """THE WHOLE VERB, through the real dispatcher, against a real 0o000 directory.
+
+    Two arrangements, because the defect had two homes. A library root behind a
+    sealed ancestor is answered by the verbs themselves; a configuration
+    directory behind one is answered by NOBODY, because ``config.load`` stats the
+    file before it reads it and a stat is not a ``ConfigError``. That second one
+    is what the dispatcher's classification is for: a site nobody has guarded
+    still comes out as a permission rather than as a defect report.
+
+    What is asserted is the thing a user reads. Not a slug, not an exception
+    type: whether the product told them to file a bug about their own filesystem.
+    """
+    sealed = tmp_path / "sealed"
+    (sealed / "cfg").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(sealed / "cfg"))
+    config.reset_cache()
+    monkeypatch.setattr(doctor, "Probes", lambda: probes())
+
+    sealed.chmod(0o000)
+    try:
+        doctor_code, doctor_out, doctor_err = drive(["--output", "json", "doctor"])
+        setup_code, setup_out, setup_err = drive(
+            [
+                "--output", "json", "setup",
+                "--library-root", str(tmp_path / "library"),
+                "--db-path", str(tmp_path / "library" / "db" / "master.db"),
+                "--volume-id", VOLUME,
+                "--staging", str(tmp_path / "staging"),
+                "--profile", "slim",
+                "--taxonomy", "default",
+            ]
+        )
+    finally:
+        sealed.chmod(0o755)
+        config.reset_cache()
+
+    for code, out, err in (
+        (doctor_code, doctor_out, doctor_err),
+        (setup_code, setup_out, setup_err),
+    ):
+        envelope = json.loads(out)
+        cause = envelope["cause"]
+        assert code == int(ExitCode.PRECONDITION), err
+        assert cause["reason"] == "path-permission-denied"
+        assert cause["remediation"]["remedy"] == "grant-path-access"
+        assert "report it" not in err
+        assert "report-defect" not in out
+        # The path is the entire actionable content: "permission denied" with
+        # nothing to grant access TO is a sentence nobody can act on.
+        assert str(sealed) in cause["message"]
+        assert cause["detail"]["path"] is not None
+
+
+def test_the_help_screen_survives_a_configuration_directory_it_cannot_open(
+    tmp_path, monkeypatch, capsys
+):
+    """A CLAIM THE CODE DID NOT KEEP, in the first thing every invocation runs.
+
+    ``_membership`` says a "missing or unreadable config resolves to the full
+    preset rather than raising", and it caught ``ConfigError`` only. A stat under
+    a directory the operating system will not open raises ``PermissionError``,
+    which is neither, and the call sits OUTSIDE the dispatcher's try, in the
+    parser construction. So ``crate --help`` exited with a traceback on a machine
+    whose configuration directory is sealed, which is the one moment a new user
+    has nothing to diagnose with.
+    """
+    sealed = tmp_path / "sealed"
+    (sealed / "cfg").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(sealed / "cfg"))
+    config.reset_cache()
+
+    sealed.chmod(0o000)
+    try:
+        code, _out, _err = drive(["--help"])
+    finally:
+        sealed.chmod(0o755)
+        config.reset_cache()
+
+    # The parser prints its own help to the real stream and exits, which the
+    # dispatcher converts to a status; what is asserted is that it got there at
+    # all rather than dying on the way in.
+    assert code == int(ExitCode.OK)
+    assert "usage: crate" in capsys.readouterr().out
+
+
+def test_a_mount_slot_this_account_cannot_stat_is_not_an_empty_mount_slot(tmp_path):
+    """BLOCKING, and instance seven of absence read as evidence of absence.
+
+    ``os.path.ismount`` swallows every ``OSError`` and answers False, so with the
+    volume ATTACHED under a directory this account cannot traverse the caller was
+    told "no volume is mounted there right now" and sent to plug in a drive that
+    was already plugged in. Nothing established that. A refusal may not assert a
+    physical fact it could not observe.
+
+    Both shapes are driven, because the two stats ``ismount`` makes fail in
+    different arrangements: a slot behind a sealed parent cannot be stat-ed at
+    all, and a slot that is itself unreadable cannot have its own parent resolved
+    through it.
+    """
+    from cratekit.core import preflight
+
+    behind_a_seal = tmp_path / "sealed"
+    (behind_a_seal / "EXT").mkdir(parents=True)
+    itself = tmp_path / "EXT2"
+    itself.mkdir()
+
+    behind_a_seal.chmod(0o000)
+    itself.chmod(0o000)
+    try:
+        with pytest.raises(PermissionError):
+            preflight.is_mount_point(behind_a_seal / "EXT")
+        with pytest.raises(PermissionError):
+            preflight.is_mount_point(itself)
+    finally:
+        behind_a_seal.chmod(0o755)
+        itself.chmod(0o755)
+
+    # AND THE REAL ANSWERS ARE UNCHANGED. Absent is still False, because nothing
+    # is there and nothing is mounted there, and the answer still comes from the
+    # standard library rather than from a reimplementation of its rules.
+    assert preflight.is_mount_point(tmp_path / "never-existed") is False
+    assert preflight.is_mount_point(itself) is False
+    assert preflight.is_mount_point(Path(tmp_path.anchor)) is True
+
+
+def test_the_wizard_does_not_claim_an_unmounted_volume_it_could_not_observe(
+    tmp_path, monkeypatch
+):
+    """The refusal that named a cause it had not established, end to end.
+
+    Measured before the fix, with the volume attached and mounted: ``ismount``
+    under EPERM answered False, ``identity_source`` answered None, and the wizard
+    printed "no volume is mounted there right now. Attach the library volume and
+    run setup again". It now refuses under the reason that IS established, which
+    is that a directory on the way could not be opened, and the two sentences are
+    different sentences on purpose.
+    """
+    from cratekit.core import preflight
+
+    volumes = (tmp_path / "Volumes").resolve()
+    volumes.mkdir()
+    slot = volumes / "EXT"
+    root = slot / "Music"
+    root.mkdir(parents=True)
+    monkeypatch.setattr(preflight, "volume_mount_locations", lambda: ((volumes, 1),))
+    wizard = setup_verb._Wizard({}, silent())
+
+    slot.chmod(0o000)
+    try:
+        with pytest.raises(CratekitError) as excinfo:
+            setup_verb._resolve_volume_id(
+                wizard, str(root), None, probes(identity_provider=lambda _p: "X")
+            )
+    finally:
+        slot.chmod(0o755)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "library-root-unreachable"
+    assert cause.reason != "library-volume-unmounted"
+    assert cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
+    assert "no volume is mounted there right now" not in cause.message
+    assert "Attach the library volume" not in cause.message
+    assert str(root) in cause.message
+
+
+def test_one_pair_of_paths_does_not_get_two_answers_decided_by_permission(
+    tmp_path, monkeypatch
+):
+    """The comparison underneath the mount rule, and permission was deciding it.
+
+    ``samefile`` stats both sides, and one handler over every ``OSError`` turned
+    "this account may not look" into "compared, and different". So two case
+    spellings of ONE directory on a case insensitive volume answered True when
+    stat-able and False when not: the same pair, two answers, decided by a
+    permission rather than by identity, and the False is the accepting direction
+    that lets an identity be read off the wrong disk.
+    """
+    from cratekit.core import preflight
+
+    sealed = tmp_path / "sealed"
+    (sealed / "Volumes").mkdir(parents=True)
+    declared = sealed / "Volumes"
+    ordinary = tmp_path / "elsewhere"
+    ordinary.mkdir()
+    monkeypatch.setattr(preflight, "volume_mount_locations", lambda: ((declared, 1),))
+
+    # Stat-able: a real comparison, and a real answer.
+    assert preflight._names_one_path(declared, declared) is True
+    assert preflight._names_one_path(ordinary, declared) is False
+
+    sealed.chmod(0o000)
+    try:
+        # The identical pair, and the answer may not silently become "different".
+        with pytest.raises(PermissionError):
+            preflight._names_one_path(ordinary, declared)
+        # And the rule built on it refuses rather than finding no slot at all,
+        # which is what fell through to the boot disk.
+        with pytest.raises(PermissionError):
+            preflight.mount_location_ancestors(ordinary / "EP" / "Music")
+    finally:
+        sealed.chmod(0o755)
+
+    # Absent on both sides is still a real answer and still False: nothing was
+    # refused, the two spellings simply are not one path.
+    assert preflight._names_one_path(tmp_path / "a", tmp_path / "b") is False
+
+
+def test_the_database_probe_survives_a_recorded_path_it_cannot_stat(
+    tmp_path, monkeypatch
+):
+    """BLOCKING, and it killed the whole verb before it asked anything.
+
+    ``try/except`` covered the settings READER and stopped there, so the stat
+    below it ran unguarded, and ``Path.exists`` re raises under EPERM rather than
+    answering False. On an ordinary first run where rekordbox's OWN settings name
+    a database on an external drive or under Documents, ``crate setup`` exited
+    INTERNAL with "this is a defect; report it" before the first question. The
+    path is not one the user supplied, so there was nothing to route around.
+
+    AND IT IS STILL PROPOSED. Dropping the proposal would apply "could not look
+    means it is not there" to the one machine where the proposal is most likely
+    to be right: rekordbox is using that database and only this interpreter is
+    refused. It is a default to a question, never a value written unasked.
+    """
+    root = tmp_path / "library"
+    locked = root / "db"
+    locked.mkdir(parents=True)
+    (root / "Music").mkdir()
+    (locked / "master.db").write_bytes(b"")
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "cfg"))
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    config.reset_cache()
+    monkeypatch.setattr(
+        setup_verb.rb_writer,
+        "read_rekordbox_settings",
+        lambda: {"db_path": str(locked / "master.db")},
+    )
+    monkeypatch.setattr(doctor, "Probes", lambda: probes())
+
+    locked.chmod(0o000)
+    try:
+        assert setup_verb._probe_db_path() == str(locked / "master.db")
+        code, out, err = drive(
+            [
+                "--output", "json", "setup",
+                "--library-root", str(root),
+                "--volume-id", VOLUME,
+                "--staging", str(tmp_path / "staging"),
+                "--profile", "slim",
+                "--taxonomy", "default",
+            ]
+        )
+    finally:
+        locked.chmod(0o755)
+        config.reset_cache()
+
+    envelope = json.loads(out)
+    assert code != int(ExitCode.INTERNAL), err
+    assert envelope.get("cause", {}).get("reason") != "internal-error"
+    assert "report-defect" not in out
+    # THE VERB COMPLETED: a configuration was written and the proposal was taken
+    # as the default, which is the whole thing that could not happen before.
+    assert config.load().library.db_path == locked / "master.db"
+
+
+def test_an_unreadable_backup_fact_file_is_a_permission_not_a_corruption(configured):
+    """It told the user to repair or reset the record of their last backup.
+
+    Over a file that may be perfectly intact. "Exists but could not be read" also
+    claims the file is there, and an untraversable parent raises exactly this
+    without anything under it having been observed. Two conditions, two acts:
+    a corruption is repaired, a permission is granted.
+    """
+    path = backup_facts.path_for(configured)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"schema_version": 1, "portions": {}}')
+
+    path.chmod(0o000)
+    try:
+        report = doctor.run(configured, probes=probes())
+    finally:
+        path.chmod(0o644)
+
+    for portion in backup_facts.PORTIONS:
+        finding = find(report, f"backup.age.{portion}")
+        assert finding.status is doctor.Status.FAIL
+        assert finding.remedy is Remedy.GRANT_PATH_ACCESS
+        assert "repair or reset" not in (render.remedy_text(finding.remedy) or "")
+        assert "exists but could not be read" not in finding.detail
+
+    # AND A REAL CORRUPTION STILL ASKS FOR A REPAIR. Classifying the permission
+    # out of this handler must not classify everything out of it.
+    path.write_text("this is not JSON at all")
+    damaged = find(doctor.run(configured, probes=probes()), "backup.age.files")
+    assert damaged.status is doctor.Status.FAIL
+    assert damaged.remedy is Remedy.REPAIR_BACKUP_FACTS
+
+
+def test_an_active_template_that_is_present_and_is_not_text_is_reported(configured):
+    """The second undriven ``UnicodeDecodeError`` leg, at ``taxonomy.active``.
+
+    A ``UnicodeDecodeError`` is a ``ValueError`` rather than an ``OSError``, so
+    the member exists precisely to stop a template that is present and does not
+    decode escaping the check. Dropping it killed no test: only the permission
+    half of the clause was ever driven.
+    """
+    path = config.state_path("taxonomy_active", configured)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"trees:\n  - name: \xff\xfe\n")
+
+    finding = find(doctor.run(configured, probes=probes()), "taxonomy.active")
+
+    assert finding.status is doctor.Status.FAIL
+    assert "could not be read" in finding.detail
+    assert "did not complete" not in finding.detail, "the blanket rescue answered"
+    # Nothing was refused by the operating system, so this one IS a repair.
+    assert finding.remedy is Remedy.REPORT_DEFECT
+
+
+def test_a_commit_hook_that_is_present_and_is_not_text_is_reported(configured, tmp_path):
+    """The third undriven leg, at ``repo.commit_hook``, and the same shape.
+
+    The equivalent member in the wizard's own template read kills a test, so the
+    setup half was covered and the doctor half was not, in a pair of handlers
+    written to be the same handler.
+    """
+    root = tmp_path / "checkout"
+    (root / ".git" / "hooks").mkdir(parents=True)
+    (root / ".pre-commit-config.yaml").write_text("repos: []\n")
+    (root / ".git" / "hooks" / "pre-commit").write_bytes(b"#!/bin/sh\n\xff\xfe\n")
+
+    finding = find(
+        doctor.run(configured, probes=probes(checkout_root=lambda: root)),
+        "repo.commit_hook",
+    )
+
+    assert finding.status is doctor.Status.FAIL
+    assert "could not be read" in finding.detail
+    assert "did not complete" not in finding.detail, "the blanket rescue answered"
+    assert finding.remedy is Remedy.REPORT_DEFECT
+
+
+def test_the_classification_reads_the_declared_cause_and_not_the_context(tmp_path):
+    """One decision, and the boundary of it is the point.
+
+    A wrapper that says ``raise X from exc`` is stating that its failure IS that
+    failure, so a permission underneath may not be hidden by it. An IMPLICIT
+    context is merely "this happened while handling that", which is exactly what
+    a handler that catches a permission and then raises a real defect produces,
+    and reading it would classify that defect as a permission the user can grant.
+    """
+    from cratekit.core import cause as cause_module
+
+    denied = PermissionError(13, "refused")
+    assert cause_module.permission_denied(denied) is denied
+    assert cause_module.permission_denied(RuntimeError("fell over")) is None
+    assert cause_module.permission_denied(None) is None
+    # AND THE ERRNO IS READ AS WELL AS THE CLASS. CPython picks the subclass from
+    # the errno only when the constructor is given one, so a base ``OSError``
+    # built with a message and stamped with its number afterwards, which is how a
+    # third-party reader re-raises one, is EACCES and is not a
+    # ``PermissionError``. Reading the class alone would call it a defect.
+    import errno as errno_module
+
+    rebuilt = OSError("the operating system refused this account")
+    rebuilt.errno = errno_module.EACCES
+    assert type(rebuilt) is OSError
+    assert cause_module.permission_denied(rebuilt) is rebuilt
+
+    other = OSError("no such file")
+    other.errno = errno_module.ENOENT
+    assert cause_module.permission_denied(other) is None
+
+    declared = RuntimeError("wrapped")
+    declared.__cause__ = denied
+    assert cause_module.permission_denied(declared) is denied
+
+    try:
+        try:
+            raise denied
+        except PermissionError:
+            raise ValueError("a defect discovered while handling it")
+    except ValueError as exc:
+        assert exc.__context__ is denied
+        assert cause_module.permission_denied(exc) is None
+
+    assert (
+        cause_module.access_remedy(denied, otherwise=Remedy.REPORT_DEFECT)
+        is Remedy.GRANT_PATH_ACCESS
+    )
+    assert (
+        cause_module.access_remedy(RuntimeError("x"), otherwise=Remedy.REPORT_DEFECT)
+        is Remedy.REPORT_DEFECT
+    )
 
 
 # ── the handler sweep: every rescue answers something, or says why it cannot ──

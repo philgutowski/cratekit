@@ -31,6 +31,7 @@ Layer note: FOUNDATION. It carries remediation TOKENS, never command text (D2).
 
 from __future__ import annotations
 
+import errno
 import json
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -38,6 +39,62 @@ from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
 from cratekit.core.exit_codes import ExitCode, Remedy, meaning_of
+
+#: The two errno values that mean "this account does not hold that permission".
+#: ``PermissionError`` is exactly the ``OSError`` subclass CPython raises for
+#: these two, so the class test below is the same rule; the numbers are named as
+#: well because an ``OSError`` reconstructed across a boundary can arrive as the
+#: base class carrying only its number.
+PERMISSION_ERRNOS: frozenset[int] = frozenset({errno.EACCES, errno.EPERM})
+
+
+def permission_denied(exc: BaseException | None) -> OSError | None:
+    """The permission this account does not hold, inside ``exc``, or None.
+
+    ONE DECISION, MADE ONCE, because making it per call site failed three
+    consecutive review rounds. A directory the operating system will not let this
+    interpreter open is not a defect in this program: it is a permission its user
+    can grant, and every layer that meets one has to say so. Rendering it as an
+    internal error sends a person to file a bug report about their own
+    filesystem, and on macOS that is the ROUTINE first run rather than an
+    exotic state: anything under Documents, Desktop, Downloads or an external
+    volume is refused this way for an interpreter without Full Disk Access.
+
+    The reason it kept reappearing at ordinary looking call sites is that
+    ``Path.exists`` and ``Path.is_dir`` RE RAISE under EPERM rather than
+    answering False, so a line that reads like a question is a line that throws.
+    A guard per line is a guard the next line will not have, which is why this is
+    a classification rather than a handler.
+
+    THE ``__cause__`` CHAIN IS FOLLOWED AND ``__context__`` IS NOT. An explicit
+    ``raise X from exc`` is a statement that this failure IS that failure, so a
+    wrapper may not hide the permission underneath it. An implicit context is
+    merely "this happened while handling that", which is exactly what a handler
+    that catches a permission and then raises a real defect produces, and reading
+    it would classify that defect as a permission.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, PermissionError):
+            return current
+        if isinstance(current, OSError) and current.errno in PERMISSION_ERRNOS:
+            return current
+        current = current.__cause__
+    return None
+
+
+def access_remedy(exc: BaseException | None, *, otherwise: Remedy) -> Remedy:
+    """The remediation for a failure that MIGHT be a permission this account lacks.
+
+    The one chooser every site calls instead of writing ``Remedy.REPORT_DEFECT``
+    beside a caught ``OSError``. A site that has not been converted still comes
+    out right, because the two blankets that exist to catch what nobody guarded,
+    the dispatcher in ``cli`` and the check runner in ``cli.doctor``, ask this
+    same question of anything that reaches them.
+    """
+    return Remedy.GRANT_PATH_ACCESS if permission_denied(exc) is not None else otherwise
 
 
 class Scope(StrEnum):
@@ -159,6 +216,15 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
     {
         # ── Process ─────────────────────────────────────────────────────────
         "internal-error": ExitCode.INTERNAL,
+        # U27. The operating system refused this account, anywhere under a verb,
+        # at a call nobody guarded. It is deliberately NOT ``internal-error``:
+        # that slug carries ``report-defect``, and a permission the user can
+        # grant is not a defect in this program. It sits on the installation band
+        # rather than on the library's, because the dispatcher meets it without
+        # knowing whether the path was the library, the configuration directory
+        # or a packaged file. A refusal that DOES know says so under its own
+        # slug, which is why ``library-root-unreachable`` still exists.
+        "path-permission-denied": ExitCode.PRECONDITION,
         "no-evidence": ExitCode.INTERNAL,
         "snapshot-integrity-failed": ExitCode.INTERNAL,
         "smoke-test-failed": ExitCode.INTERNAL,
@@ -532,6 +598,7 @@ def refuse(
 
 
 __all__ = [
+    "PERMISSION_ERRNOS",
     "REASONS",
     "Cause",
     "CratekitError",
@@ -539,6 +606,8 @@ __all__ = [
     "Remediation",
     "Scope",
     "UnknownReason",
+    "access_remedy",
+    "permission_denied",
     "refuse",
     "widest_scope",
 ]

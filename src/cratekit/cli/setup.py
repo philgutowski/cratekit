@@ -475,15 +475,35 @@ def _probe_db_path() -> str | None:
     set this module gets to enumerate, and a wizard that died because a settings
     file was in an unexpected shape would be refusing over a value it was only
     ever going to offer.
+
+    THE STAT WAS OUTSIDE THAT HANDLER AND IT KILLED THE WHOLE VERB. The clause
+    above covers the reader and nothing else, and ``Path.exists`` re raises under
+    EPERM rather than answering False, so a machine where rekordbox's OWN
+    settings name a database this interpreter cannot stat, which is a library on
+    an external drive or under Documents, took ``crate setup`` down before it
+    asked its first question. Worse than every other instance of that defect on
+    this branch: the path is not one the user supplied, so there was nothing for
+    them to route around, and setup could not complete on that machine at all.
+
+    AND AN UNSTATTABLE PATH IS STILL PROPOSED. "Could not look" is not "is not
+    there", which is this branch's first recurring defect, and dropping the
+    proposal would apply it to the one machine where the proposal is most likely
+    to be exactly right: rekordbox is using that database, and only this
+    interpreter is refused. It remains a default to a question, so a user who
+    disagrees answers differently and nothing is written unasked.
     """
     try:
         settings = rb_writer.read_rekordbox_settings()
     except Exception:  # noqa: BLE001 - see the docstring
         return None
     recorded = settings.get("db_path") if isinstance(settings, Mapping) else None
-    if isinstance(recorded, str) and recorded.strip() and Path(recorded).exists():
+    if not (isinstance(recorded, str) and recorded.strip()):
+        return None
+    try:
+        present = Path(recorded).exists()
+    except OSError:
         return recorded
-    return None
+    return recorded if present else None
 
 
 def _resolve_volume_id(
