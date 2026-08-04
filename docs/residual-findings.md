@@ -568,15 +568,23 @@ about itself. The tree holds 66 kebab-keyed pairs across `cli/registry.py`,
 `core/binaries.py`, `core/cause.py` and `core/naming.py` and not one of them is a
 declared cause, so none of them can trip it.
 
-Amended in the fourth round: the third round widened that key set to eighty two
-by adding the closed reason registry while leaving the bare-integer rule alone,
-which turned this small residual into a general one. Measured over twenty eight
-ordinary constructs keyed on the added slugs, twenty seven were reported. R-19
-records the narrowing that put it back.
+Amended in the fifth round: the key set is eighty two slugs, the closed reason
+registry included, and a bare integer in range reserves any of them. The fourth
+round narrowed sixty of those keys on the strength of an over fire measured
+against a hand written fixture; measured against the real tree the wide rule
+reports ZERO offenders outside the two table owners, and the narrowing cost
+thirteen of sixteen realistic second-table shapes. R-19 carries the measurement
+and the reasoning.
+
+So this residual is general rather than small, and it is written down as such:
+`RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS` pins eighteen ordinary
+constructs that ARE reported.
 
 **Closes when:** nothing has to close it. It is a stated limit with a fixture, and
-the escape for a module that genuinely needs it is `TABLE_OWNERS`, which is a
-decision written into the suite rather than a comment.
+the escape for a module that genuinely needs it is one `# not-a-reservation:
+<reason>` comment on the statement, which silences that statement and nothing
+else. `TABLE_OWNERS` remains the whole-file escape and remains pinned to exactly
+two entries.
 
 **5. `NOT_A_CAUSE` is a classification a person has to keep making.** Every
 package enum reaching an exception's constructor is treated as a refusal cause
@@ -723,10 +731,20 @@ catch-all that crosses every call's arguments reaches `setdefault` too. It stays
 because it binds the key to ITS value by position instead of crossing them.
 Instrumenting counted 5 arrivals, which agrees with the comment.
 
-`MAX_HOPS` was on this list and is NOT any more. It was load bearing downward
-only, and the ceiling its own docstring claims, that a mutually recursive pair
-cannot hang the suite, is now driven by
+`MAX_HOPS` was on this list and is NOT any more. Its ceiling, that a mutually
+recursive pair cannot hang the suite, is driven by
 `test_a_mutually_recursive_pair_of_constants_resolves_to_nothing`.
+
+Its FLOOR was still a claim of exactly this kind, and the fifth round deleted it.
+The fourth round's docstring said "Lowering it stops the guard resolving the
+careful spellings and kills seven tests". Swept across every lower value: 0 kills
+nine, 1 kills two, and 2, 3, 4 and 5 each kill NOTHING. No lowering killed seven,
+and the constant was over provisioned by four because nothing in the suite needed
+more than two hops. It is 3 now, which is the depth of the deepest spelling the
+guard promises to read, and
+`test_the_hop_bound_is_the_depth_of_the_deepest_spelling` asserts that spelling
+resolves AT the bound and goes silent one below it, so moving the number without
+moving the promise fails in one direction or the other.
 
 **Closes when:** nothing has to close it. It is a record of ONE deliberate
 retention, plus the correction of a claim that was made about five others, so a
@@ -737,15 +755,15 @@ at and knows what "looked at" was worth the first time.
 
 ## R-17. Two refusal vocabularies stay outside the second-table guard's key set
 
-**Found:** during U38's third review round, 2026-08-03. Amended in the fourth,
-2026-08-03, for the two tiers R-19 describes.
+**Found:** during U38's third review round, 2026-08-03. Amended in the fifth,
+2026-08-03, when the fourth round's two tiers were removed.
 
 The guard reports a second reservation only for a key somebody DECLARED to be a
-refusal cause. That set is four declarations wide: the reservation table, the
-package-wide derivation and a source's own enums, all of which a bare integer can
-reserve, plus the closed reason registry `core.cause.REASONS`, whose sixty other
-slugs need the code spelled as a code. See R-19 for why the registry is carried
-on the narrower rule.
+refusal cause. That set is four declarations wide and one rule wide: the
+reservation table, the package-wide derivation, a source's own enums, and the
+closed reason registry `core.cause.REASONS`, with a bare integer in the reserved
+range reserving any of them. See R-19 for why the registry is carried on the same
+rule as the rest.
 
 Two vocabularies are still outside it, both deliberately:
 
@@ -804,67 +822,179 @@ it.
 
 ---
 
-## R-19. A bare integer cannot carry a wide key set, so sixty keys need the code spelled as a code
+## R-19. The tiers were bought with a number that does not exist, so there is one key set again
 
-**Found:** during U38's third review round's verification, 2026-08-03. Fixed in
-the fourth round. Measured rather than argued.
+**Found:** during U38's third review round's verification, 2026-08-03. Answered
+with two tiers in the fourth round. **The tiers were removed in the fifth round,
+2026-08-03**, because the measurement they rested on was taken against a hand
+written fixture rather than against this repository.
 
-The third round widened the second-table guard's key set from the twenty two
-reserved causes to eighty two, by adding the sixty other slugs in the closed
-reason registry `core.cause.REASONS`, and left the value rule as it was: any
-expression resolving to an integer inside the reserved range, 10 to 59.
+### What was claimed, and what the tree says
 
-**It over fired, and structurally rather than by a tuning miss.** Twenty seven of
-twenty eight ordinary constructs keyed on one of the added slugs were reported: a
-poll interval of 30 seconds keyed by `session-lock-held`, a display order of 10,
-20 and 30, a column width of 40, a schema version of 11, a retention of 30 days,
-a share of 50 percent. The reserved range IS the band ordinary small integers
-live in, which is not a coincidence and is not fixable by choosing better keys.
-Widening the key set widened the false positives one for one.
+The fourth round's argument was that the wide key set over fired: "twenty seven
+of twenty eight ordinary constructs keyed on a registry slug were reported". That
+twenty eight construct set is not in this repository. It was never in this
+repository. Measured under the wide single key set rule against all sixty plus
+real modules in `src/cratekit/`:
 
-**The test certifying the widening safe was vacuous.**
-`test_widening_the_key_set_to_the_registry_does_not_fire_on_ordinary_code` used a
-retry delay of 5, an attempt budget of 3 and a mapping of sentences. Every one of
-those is answered by the RANGE before the key set is consulted, so the test passed
-with an empty key set and measured nothing at all.
+**ZERO offenders outside the two files that own a table.**
 
-**The replacement was vacuous in a narrower way, and this round's own mutation
-table caught it.** Its anti-vacuity half asserted only that SOMETHING in the
-fixture fires under a single wide key set, so reverting any one construct to
-out-of-range values killed zero tests while its neighbours kept the assertion
-true. It compares against eighteen exact entries now, so a construct that drifts
-out of the band is a failure rather than a quieter test. Verified by pairing the
-two mutations: with the exact list weakened, the drift goes undetected.
+The over fire the tiers were built to stop does not occur here. What the tiers
+cost is not hypothetical. Across sixteen realistic shapes a module would use to
+give a registry-only slug a code of its own, **thirteen were silent under the
+tiers and all sixteen are reported under one key set.**
 
-**The fix is two tiers rather than more keys.**
+### R-19 was also wrong about the rule it documented
 
-- `declared_causes()`, twenty two slugs plus what the package walk derived plus
-  what a source declares in its own enum: a bare integer in range reserves one of
-  these, exactly as before.
-- `registry_only_causes()`, the registry's other sixty: reserved only by a status
-  the source cannot have meant as anything else, an `ExitCode` member in any
-  import spelling or a conversion wrapped round one. Nobody writes
-  `RETRY_AFTER = {"session-lock-held": ExitCode.PRECONDITION}` and means seconds.
+The old text said the second tier accepted "an `ExitCode` member in any import
+spelling or a conversion wrapped round one". Measured, for all sixty registry
+keys, every one of these was NOT reported:
 
-`reserved_code_tables` takes the second tier as a parameter defaulting to EMPTY,
-so a caller that forgets it loses coverage loudly rather than gaining false
-positives quietly. Re-measured on the same twenty eight constructs: zero reported.
+- `{"config-unusable": ExitCode(30)}`, which IS a conversion wrapped round the
+  vocabulary.
+- `{"config-unusable": exit_codes.ExitCode(30)}`, which is the fixture the fourth
+  round itself added to drive R-16's fourth entry, only ever run with a key the
+  narrow tier did not apply to.
+- `class Code(IntEnum): PRECONDITION = 30` then
+  `{"doctor-check-failed": Code.PRECONDITION}`, a module declaring its own status
+  enum, which is the most flagrant second table there is.
+- `PRECONDITION = 30` then `{"module-extras-missing": PRECONDITION}`.
+- `BASE = 30` then `{"anlz-modified": BASE + 3}`.
 
-**Not narrowed to the eighteen integers the enum actually uses**, which was the
-other candidate. The case the table exists for is a new module deciding its own
-codes, and a module inventing 33 for a cause nobody reserved is that case
-exactly; a guard that only knew today's values would be blind to it while still
-firing on every logging level of 10, 20 and 30.
+### Why the wide rule is the right trade
 
-**The cost, stated rather than left to be met in a failing build.**
-`{"config-unusable": 22}` is a bare integer contradicting a live registry entry
-and is NOT reported any more. The fixture
-`RESIDUAL_A_BARE_CODE_FOR_A_REGISTRY_SLUG` and the test named after this cost pin
-it in both directions: the bare spelling silent, the same contradiction spelled
-as a code reported. That is the price of not reporting
-twenty seven of twenty eight ordinary constructs, and it is a price rather than
-an oversight.
+The two error costs are not symmetric, and the fourth round had them backwards.
 
-**Closes when:** nothing has to close it, unless a module lands that genuinely
-maps a registry slug to a bare integer, in which case the answer is a reservation
-in the table rather than a wider guard.
+- A FALSE ALARM costs one developer one look and either a fix or one annotated
+  line. It is loud, immediate, local and reviewable.
+- A MISS is a module shipping a second reservation table that silently diverges
+  from the registry, which is the entire thing this guard exists to prevent and
+  which nothing else in the suite would notice.
+
+For a guard of this shape the loud direction is correct. So `declared_causes()`
+is one set of eighty two keys again, with one value rule for all of them, and
+`reserved_code_tables` has no second key set parameter at all. The fourth round's
+`named_only_causes` defaulted to empty with a docstring claiming a caller that
+forgot it "loses coverage loudly"; it did not, because the tree-wide scan asserts
+an ABSENCE, so dropping the tier made it quieter and greener. A defaulted
+parameter that weakens a guard when omitted is the wrong shape, so there is
+nothing to omit.
+
+### What makes the false alarm cheap
+
+`# not-a-reservation: <reason>` on a line, or on the first line of the assignment
+that holds a table. It silences that one statement and nothing else. A REASON is
+part of the syntax: the marker on its own matches nothing. A `def` is not
+expanded to its body, because a comment covering a whole function is the
+whole-file exemption again at a smaller scale.
+
+`test_the_annotation_is_unused_in_the_package_today` asserts EXACT membership of
+the empty set over the real tree, which is R-15's whitelist rule applied to the
+hatch: using it fails until somebody records the use with its reason, which is
+the review a silenced guard never gets otherwise. It is empty today, and empty is
+the honest answer, because under this rule the tree has no false alarm to
+silence.
+
+### The residual, written down rather than narrowed away
+
+`RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS` is eighteen ordinary constructs
+keyed on cause slugs with in-range integers: a poll interval of 30, a display
+order of 10 20 30, a column width of 40, a schema version of 11, a retention of
+30 days, a share of 50 percent. Every one of them is REPORTED, and the list is
+pinned exactly. `ANNOTATED_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS` is the same
+eleven constructs annotated, and every hit goes.
+
+The fourth round's version of that fixture said its value was covering eleven
+distinct construct SHAPES and asserted only the slugs, the values and the line
+numbers, so swapping a construct for a different shape carrying the same data on
+the same line left every assertion true: four swaps out of four went undetected.
+The shapes are asserted structurally now, off the syntax tree rather than off the
+report.
+
+### Not narrowed to the eighteen integers the enum actually uses
+
+Still the rejected alternative, and the rejection is honest now. The fourth round
+rejected it because it "blinds the guard to a new module inventing 33", while its
+own scheme was blind to `{"tree-registry-unusable": 33}` for sixty of the eighty
+two keys. `test_the_alternative_is_not_rejected_for_a_flaw_this_scheme_shares`
+drives that input, and the mutation table has the narrowing as a row.
+
+### Three import spellings the walk is still silent about
+
+Recorded rather than fixed, because they are pre-existing rather than anything
+this round or the round before introduced, and because the last of the three is
+already caught by the battery's first leg:
+
+- `import cratekit.core` then `cratekit.core.exit_codes.ExitCode.X`. The walk
+  binds a name to the exit-code module or to the class, and a partial package
+  import reaches the class through neither.
+- `from cratekit import core` then `core.exit_codes.ExitCode.X`. Same shape, one
+  spelling further out.
+- `from .exit_codes import *`. Silent here, and `ruff` fails it on F403 and F405,
+  so a module that wrote it never reaches the suite.
+
+**Closes when:** nothing has to close it. If a real module ever meets the
+residual, the answer is one annotated line with a reason, or a reservation in the
+table. If one of the three spellings above ever appears in the package, the walk
+needs a partial-package binding rather than a wider key set.
+
+---
+
+## R-20. The fifth round's mutation table, written into the repository
+
+**Found:** the fourth round's verifier could not find the fourth round's mutation
+table anywhere: not in the worktree, the repository, or any file. Only the
+claimed counts existed, so a row by row comparison was impossible. A table that
+exists only in a chat message cannot be checked by the next person, so this one
+lives here.
+
+Every guard, assertion and constant this round added or changed, reverted ALONE,
+full suite, deaths counted. Baseline before the round: 3323 passed, 15 skipped.
+Baseline after: 3354 passed, 15 skipped. Zero rows would be findings, and there
+are none.
+
+| Mutation | What it reverts | Deaths |
+| --- | --- | --- |
+| `review-walk-suffix-match` | `ReviewImports` reverted to the pre-R-15 two-element suffix match on `node.module`, which cannot see `from .review import` or `from . import review`. This row was ZERO before this round. | 5 |
+| `round-four-tiers-restored` | round four's two-tier rule put back: a key outside the twenty two reserved causes needs an `ExitCode` member or a conversion round one, and a bare integer proves nothing | 38 |
+| `key-set-drops-the-registry` | `declared_causes()` drops `| frozenset(REASONS)`, taking the closed registry's sixty slugs out of the key set entirely | 21 |
+| `key-set-drops-the-derivation` | `declared_causes()` collapsed to `return CAUSES`, dropping the package-wide derivation and the registry both. This row was ZERO before this round. | 21 |
+| `key-set-drops-only-the-derivation` | `declared_causes()` drops the package-wide derivation term ALONE and keeps the registry, which isolates the term that is empty in this tree | 1 |
+| `package-of-collapsed` | `package_of` collapsed to `return "cratekit"`, so every relative import in the tree resolves against the wrong package. This row was ZERO before this round. | 1 |
+| `max-hops-at-two` | `MAX_HOPS` lowered from 3 to 2, one below the depth of the deepest spelling the guard promises to read. Every value from 2 to 5 was a ZERO row before this round. | 1 |
+| `no-resolution-through-names` | `_through_names` returns its node unchanged, so an `ExitCode` member held in a constant, or assigned then returned, resolves to nothing | 3 |
+| `no-resolution-through-module-constants` | `_through_names` ignores this source's module-level constants and reads only a branch's own locals, which isolates `CODE = ExitCode.PRECONDITION` beside `{"rclone-missing": CODE}` | 2 |
+| `no-resolution-through-branch-locals` | `_through_names` ignores a branch's own locals and reads only module constants, which isolates `code = ExitCode.PRECONDITION` then `return code` | 1 |
+| `narrowed-to-the-eighteen-live-integers` | the value rule narrowed to the eighteen integers `ExitCode` actually uses, which is the alternative `ReservedCodeTable` rejects, so `{"tree-registry-unusable": 33}` stops being reported | 4 |
+| `no-module-qualified-exitcode` | `names_the_class` drops the module-qualified branch, so `exit_codes.ExitCode(30)` stops being a conversion | 2 |
+| `no-constructor-conversion` | `status()` drops `names_the_class` from its conversion test, so `ExitCode(30)` reads as somebody's call rather than as a code | 3 |
+| `no-class-level-literals` | `_class_level_literals` returns empty, so a module's own `IntEnum` member and a code held on a class resolve to nothing | 4 |
+| `no-module-level-literals` | `_module_level_literals` returns empty, so `PRECONDITION = 30` beside a cause resolves to nothing | 12 |
+| `no-arithmetic` | `resolve_int` drops its `BinOp` branch, so `BASE + 3` resolves to nothing | 3 |
+| `annotation-ignored` | `_silenced_lines` always returns empty, so the `not-a-reservation` comment silences nothing and the residual has no answer | 1 |
+| `annotation-needs-no-reason` | the `NOT_A_RESERVATION` pattern stops requiring a reason, so the bare marker silences a construct with no explanation attached | 1 |
+| `annotation-covers-a-function` | `_silenced_lines` expands a `def` to its whole body, so one comment silences every reservation inside a function | 1 |
+| `annotation-covers-one-line-only` | `_silenced_lines` drops the statement expansion, so an annotation beside `POLL_SECONDS = {` cannot reach the keys on the lines below | 1 |
+| `annotation-used-in-the-package` | a `not-a-reservation` comment added to a real package file, which is the guard switched off for a line with nobody reviewing it | 1 |
+| `review-leaf-hardcoded` | `ReviewImports` hard codes `leaf = "review"` instead of deriving it from `REVIEW_MODULE`. This row was ZERO before this round. | 1 |
+| `exit-code-leaf-hardcoded` | `ExitCodeImports` hard codes `leaf = "exit_codes"` instead of deriving it from `EXIT_CODE_MODULE`. This row was ZERO before this round. | 1 |
+| `exit-code-class-spelled-again` | every `EXIT_CODE_CLASS` use replaced by the literal `"ExitCode"`, which is the four spellings of one fact the constant deleted. This row was ZERO before this round. | 1 |
+| `shape-swap-column-widths` | `COLUMN_WIDTHS` swapped from a tuple of pairs to a dict literal, same slugs, same values, same line number. This row was ZERO before this round. | 1 |
+| `shape-swap-weights` | `WEIGHTS` swapped from a tuple of pairs to a dict literal, same slugs, same values, same line number. This row was ZERO before this round. | 1 |
+| `shape-swap-comprehension` | `SLOW_DELAYS` swapped from a dict comprehension to a dict literal, same slugs, same values, same line number. This row was ZERO before this round. | 1 |
+| `shape-swap-setdefault` | `DELAYS.setdefault` swapped for a subscript assignment, same slug, same value, same line number. This row was ZERO before this round. | 1 |
+
+Two rows deserve reading together. `key-set-drops-the-derivation` and
+`key-set-drops-only-the-derivation` differ by twenty deaths, and the difference is
+the registry rather than the derivation: the derived set equals `CAUSES` exactly
+in this tree, so the derivation term is EMPTY. The single death on the isolating
+row comes from
+`test_the_key_set_is_the_union_of_all_three_declarations`, which swaps in a
+derivation that finds a cause nobody has declared and asserts it reaches the key
+set. That is the only honest way to drive a term the tree leaves empty, and the
+fourth round's two assertions in its place were tautologies: `derived <=
+declared_causes()` and `CAUSES <= declared_causes()` cannot fail when
+`declared_causes()` is a union containing both.
+
+**Closes when:** nothing has to close it. It is the record the next round
+compares against, row by row.

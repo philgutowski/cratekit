@@ -38,6 +38,7 @@ from cratekit.core import config, review
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from tests import _pending
+from tests import _source_guards as _guards
 from tests._pending import requires
 from tests._source_guards import (
     calls_review,
@@ -2039,6 +2040,66 @@ def run(store, needing_review):
         )
 '''
 
+# ── The relative spellings, which a SIBLING of the review module would use ────
+#
+# R-15 unified the two copies of the import walk so that ``from .review import
+# offer`` and ``from . import review`` resolve the same way their absolute
+# spellings do, and the review half of that fix shipped with NOTHING driving it:
+# reverting those four lines to the old suffix match left the suite at 3323
+# passed and zero deaths, and a grep across the whole tests tree for
+# ``from .review import`` or ``from . import review`` returned nothing at all.
+# The exit-code half of the same unification had three fixtures. This is the
+# other half, in the file whose thesis is that a guard answering "no" instead of
+# "wrong" is the defect.
+
+#: A sibling importing the symbol. ``node.module`` holds only ``review`` here,
+#: which the two-element suffix match could not see.
+CORRECT_OFFER_SIBLING_RELATIVE_IMPORT = '''
+from .review import Queue, offer
+
+
+def run(store, needing_review):
+    for candidate in needing_review:
+        offer(store, queue=Queue.VERSION_MATCH, identity=candidate.identity)
+'''
+
+#: A sibling importing the module. ``node.module`` is None here, and reading
+#: that None as an empty string is how the shape went missing entirely.
+CORRECT_OFFER_SIBLING_BOUND_AS_A_MODULE = '''
+from . import review
+
+
+def run(store, needing_review):
+    for candidate in needing_review:
+        review.offer(
+            store, queue=review.Queue.VERSION_MATCH, identity=candidate.identity
+        )
+'''
+
+#: Two levels up, which is the ONE relative spelling the old rule recognized.
+CORRECT_OFFER_RELATIVE_IMPORT_TWO_LEVELS_UP = '''
+from ..core.review import Queue, offer
+
+
+def run(store, needing_review):
+    for candidate in needing_review:
+        offer(store, queue=Queue.VERSION_MATCH, identity=candidate.identity)
+'''
+
+#: A module in ANOTHER package with a sibling of its own called ``review``. The
+#: resolution has to answer no here, and a suffix match cannot: the text is
+#: identical to the fixture above it.
+EVASION_A_DIFFERENT_SIBLING_CALLED_REVIEW = '''
+from . import review
+
+
+def run(store, needing_review):
+    for candidate in needing_review:
+        review.offer(
+            store, queue=review.Queue.VERSION_MATCH, identity=candidate.identity
+        )
+'''
+
 #: Correct code holding a decision store on a field, which is the ordinary shape.
 CORRECT_DECISION_STORE = '''
 from cratekit.core import review
@@ -2121,6 +2182,113 @@ def test_the_countdown_stays_quiet_on_correct_code_in_either_import_shape(source
     assert calls_review(source, "offer")
     assert offers_into(source, "Queue.VERSION_MATCH")
     assert not constructs_a_csv_writer(source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        CORRECT_OFFER_SIBLING_RELATIVE_IMPORT,
+        CORRECT_OFFER_SIBLING_BOUND_AS_A_MODULE,
+        CORRECT_OFFER_RELATIVE_IMPORT_TWO_LEVELS_UP,
+    ],
+)
+def test_the_countdown_reads_every_relative_import_shape(source):
+    """R-15's review-side fix, which shipped with nothing watching it.
+
+    The rule read ``node.level > 0`` beside a two-element suffix match on
+    ``node.module``, and ``node.module`` holds only the TAIL: ``from .review
+    import offer`` records ``review`` and ``from . import review`` records
+    nothing at all. So the two spellings a module sitting BESIDE the review
+    module would use were the two that matched nothing, while the two-level
+    spelling from further away worked. Each of these offers into the queue U11
+    declared, and the fallback path has to read all three.
+    """
+    assert calls_review(source, "offer")
+    assert offers_into(source, "Queue.VERSION_MATCH")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        CORRECT_OFFER_SIBLING_RELATIVE_IMPORT,
+        CORRECT_OFFER_SIBLING_BOUND_AS_A_MODULE,
+    ],
+)
+def test_a_relative_import_is_resolved_against_the_package_the_file_sits_in(source):
+    """Resolving the level is what makes the relative answer match the absolute one.
+
+    ``from . import review`` means a different module in ``cratekit.core`` than
+    it does in ``cratekit.intake``, and a suffix match cannot tell those apart:
+    the two sources are textually identical.
+    ``EVASION_A_DIFFERENT_SIBLING_CALLED_REVIEW`` is that second module, and
+    every question in this file has to answer no about it while answering yes
+    about the same text one package over.
+    """
+    assert calls_review(source, "offer", "cratekit.core")
+    assert offers_into(source, "Queue.VERSION_MATCH", "cratekit.core")
+    assert not calls_review(source, "offer", "cratekit.intake"), (
+        "a module in another package with a sibling of its own called review "
+        "answers for cratekit.core.review, which is the resolution the level "
+        "exists to do"
+    )
+    assert not offers_into(source, "Queue.VERSION_MATCH", "cratekit.intake")
+    assert not calls_review(
+        EVASION_A_DIFFERENT_SIBLING_CALLED_REVIEW, "offer", "cratekit.intake"
+    )
+    assert calls_review(
+        EVASION_A_DIFFERENT_SIBLING_CALLED_REVIEW, "offer", "cratekit.core"
+    ), "the same text one package over IS the review module, so the text is not the question"
+
+
+def test_the_review_module_is_named_once(monkeypatch):
+    """R-15's rule, applied to the spelling it left behind.
+
+    R-15 deleted the second constant holding the review module's PACKAGE and
+    left its LEAF written out as ``"review"`` one line below the resolver, so
+    moving ``REVIEW_MODULE`` moved the resolver and left the binding pointing at
+    the old name. Derived at use now, and the way to show a derivation is a
+    derivation is to move the constant and watch the answer follow.
+    """
+    monkeypatch.setattr(_guards, "REVIEW_MODULE", "cratekit.core.adjudication")
+    moved = '''
+from cratekit.core import adjudication
+
+
+def run(store, needing_review):
+    for candidate in needing_review:
+        adjudication.offer(
+            store,
+            queue=adjudication.Queue.VERSION_MATCH,
+            identity=candidate.identity,
+        )
+'''
+    assert calls_review(moved, "offer")
+    assert offers_into(moved, "Queue.VERSION_MATCH")
+    assert not calls_review(CORRECT_OFFER_MODULE_IMPORT, "offer"), (
+        "the module moved and the binding did not follow it, so the old name "
+        "still answers for the review queue"
+    )
+
+
+def test_the_countdown_reads_a_decision_store_through_a_relative_import():
+    """``methods_on_review_construction`` shares the walk, so it shares the defect."""
+    source = '''
+from .review import DecisionStore
+
+
+def run(cfg, identity):
+    store = DecisionStore("declines", cfg)
+    store.record(kind="version", identity=identity, actor="cli")
+    store.revoke(identity, actor="cli")
+'''
+    assert methods_on_review_construction(source, "DecisionStore") >= {
+        "record",
+        "revoke",
+    }
+    assert (
+        methods_on_review_construction(source, "DecisionStore", "cratekit.intake")
+        == set()
+    )
 
 
 @pytest.mark.parametrize(

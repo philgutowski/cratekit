@@ -28,7 +28,9 @@ that was skipped.
 from __future__ import annotations
 
 import ast
+import io
 import re
+import tokenize
 
 #: The module every question here is asked about. The package it lives in, which
 #: is what ``from cratekit.core import review`` names, is DERIVED from this
@@ -81,6 +83,14 @@ class ReviewImports:
     of this class knows it today, so the fallback is the live path here and the
     resolved one is driven by U38's suite; the exit-code walk lower down passes
     a real package on every file it scans.
+
+    THE FIX SHIPPED WITH NOTHING WATCHING IT for one round. Reverting these four
+    lines to the suffix match killed no test at all, because no fixture anywhere
+    in ``tests/`` contained ``from .review import`` or ``from . import review``:
+    the whole exit-code half of the same unification was driven and the review
+    half was not, in the file whose thesis is that a guard answering "no"
+    instead of "wrong" is the defect. ``test_review_queue.py`` now drives every
+    relative spelling against both a resolving package and a non-resolving one.
     """
 
     def __init__(self, tree: ast.AST, package: str | None = None) -> None:
@@ -88,6 +98,14 @@ class ReviewImports:
         self.module_names: set[str] = set()
         #: Local name -> the module attribute it was imported as.
         self.symbols: dict[str, str] = {}
+        # DERIVED HERE RATHER THAN SPELLED AGAIN, and derived at USE rather than
+        # at import. R-15 deleted the second spelling of the package and left the
+        # LEAF written out as ``"review"`` one line below the resolver, so moving
+        # ``REVIEW_MODULE`` moved the resolver and left the binding behind: the
+        # same one fact in two spellings, which is the drift R-15 says it closed.
+        # Reading it inside the walk is what lets a test move the constant and
+        # watch BOTH halves follow.
+        leaf = REVIEW_MODULE.rpartition(".")[2]
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -102,8 +120,8 @@ class ReviewImports:
                         self.symbols[alias.asname or alias.name] = alias.name
                 elif names_the_package:
                     for alias in node.names:
-                        if alias.name == "review":
-                            self.module_names.add(alias.asname or "review")
+                        if alias.name == leaf:
+                            self.module_names.add(alias.asname or leaf)
 
     @property
     def reaches_review(self) -> bool:
@@ -332,8 +350,15 @@ def package_modules(package_root) -> list[tuple[str, str]]:
 # ---------------------------------------------------------------------------
 
 #: The module that owns the status vocabulary. As with ``REVIEW_MODULE``, the
-#: package it sits in is derived from this rather than spelled a second time.
+#: package it sits in AND its leaf are derived from this rather than spelled a
+#: second time, and both are derived at use so a test can move the constant and
+#: watch every question here follow it.
 EXIT_CODE_MODULE = "cratekit.core.exit_codes"
+
+#: The class inside that module that IS the vocabulary. A separate fact from the
+#: module, so it gets its own name rather than four string literals scattered
+#: through two methods and a constructor.
+EXIT_CODE_CLASS = "ExitCode"
 
 #: A cause slug as this repository spells one: lowercase words joined by single
 #: hyphens.
@@ -465,6 +490,7 @@ class ExitCodeImports:
         self.module_names: set[str] = set()
         #: Local names that ARE the ``ExitCode`` class itself.
         self.class_names: set[str] = set()
+        leaf = EXIT_CODE_MODULE.rpartition(".")[2]
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -476,12 +502,12 @@ class ExitCodeImports:
                 )
                 if names_the_module:
                     for alias in node.names:
-                        if alias.name == "ExitCode":
-                            self.class_names.add(alias.asname or "ExitCode")
+                        if alias.name == EXIT_CODE_CLASS:
+                            self.class_names.add(alias.asname or EXIT_CODE_CLASS)
                 elif names_the_package:
                     for alias in node.names:
-                        if alias.name == "exit_codes":
-                            self.module_names.add(alias.asname or "exit_codes")
+                        if alias.name == leaf:
+                            self.module_names.add(alias.asname or leaf)
 
     def names_the_class(self, node: ast.AST) -> bool:
         """Whether ``node`` names the ``ExitCode`` CLASS this source imported."""
@@ -498,7 +524,11 @@ class ExitCodeImports:
         # falls through to resolving a ``Call`` as an integer, gets nothing, and
         # says nothing about a module that reserved 30 for a reserved cause.
         parts = dotted.split(".")
-        return len(parts) >= 2 and ".".join(parts[:-1]) in self.module_names and parts[-1] == "ExitCode"
+        return (
+            len(parts) >= 2
+            and ".".join(parts[:-1]) in self.module_names
+            and parts[-1] == EXIT_CODE_CLASS
+        )
 
     def names_a_code(self, node: ast.AST) -> bool:
         """Whether ``node`` is a member of the ``ExitCode`` this source imported."""
@@ -508,7 +538,11 @@ class ExitCodeImports:
         parts = dotted.split(".")
         if len(parts) >= 2 and ".".join(parts[:-1]) in self.class_names:
             return True
-        return len(parts) >= 3 and ".".join(parts[:-2]) in self.module_names and parts[-2] == "ExitCode"
+        return (
+            len(parts) >= 3
+            and ".".join(parts[:-2]) in self.module_names
+            and parts[-2] == EXIT_CODE_CLASS
+        )
 
 
 # ``_bound_module_names`` and ``_bound_symbol_names`` stood here. They were round
@@ -601,14 +635,25 @@ def _declared_enum_values(tree: ast.AST) -> set[str]:
 #: How far a code is chased through names, members and arithmetic. Bounded so a
 #: mutually recursive pair of constants cannot hang the suite.
 #:
-#: LOAD BEARING IN BOTH DIRECTIONS, and only the downward half used to be
-#: covered. Lowering it stops the guard resolving the careful spellings and kills
-#: seven tests. Raising it past the interpreter's own recursion limit turns
-#: ``A = B`` beside ``B = A`` from a silent None into a ``RecursionError`` that
-#: takes the suite with it, which is the hang this constant exists to prevent, so
+#: THREE, and three is the depth of the deepest spelling this guard promises to
+#: read: ``BASE = 30`` then ``OFFSET = BASE`` then ``OFFSET + 1``, which costs a
+#: hop for each name and one for the arithmetic. It was six, with a docstring
+#: claiming that "lowering it kills seven tests". Measured across the whole
+#: suite, a full sweep of every lower value: 0 kills nine, 1 kills two, and 2, 3,
+#: 4 and 5 each kill NOTHING. No lowering killed seven and the constant was over
+#: provisioned by four, so the claim was checkable and wrong at every value,
+#: which is the class of claim R-16 exists to delete.
+#:
+#: LOAD BEARING IN BOTH DIRECTIONS, and now driven at the value rather than
+#: argued about. ``test_the_hop_bound_is_the_depth_of_the_deepest_spelling``
+#: asserts the deepest fixture resolves AT this number and goes silent one below
+#: it, so changing the constant alone fails. Raising it past the interpreter's
+#: own recursion limit turns ``A = B`` beside ``B = A`` from a silent None into a
+#: ``RecursionError`` that takes the suite with it, which is the hang this
+#: constant exists to prevent, so
 #: ``test_a_mutually_recursive_pair_of_constants_resolves_to_nothing`` drives
 #: that pair.
-MAX_HOPS = 6
+MAX_HOPS = 3
 
 
 def resolve_int(
@@ -691,66 +736,128 @@ def _within_scope(body: list[ast.stmt]):
         yield from _walk_scope(statement)
 
 
+#: The one way to say "this pair is not a reservation" without switching the
+#: guard off for a whole file. A REASON is part of the syntax: the marker on its
+#: own matches nothing, so silencing the guard costs a sentence.
+#:
+#: THIS IS WHAT MAKES A FALSE ALARM CHEAP, and the argument for the wide key set
+#: rests on it. The two error costs are not symmetric. A false alarm costs one
+#: developer one look and either a fix or this comment; it is loud, immediate and
+#: local. A MISS is a module shipping a second reservation table that silently
+#: diverges from the registry, which is the entire thing this guard exists to
+#: prevent and which nothing else in the suite would notice. Round four traded
+#: the second away to buy off the first and the first was never measured.
+#:
+#: WHOLE FILE EXEMPTION IS THE THING THIS REPLACES. ``TABLE_OWNERS`` switches the
+#: guard off for every line of a file, which R-15 calls the cheapest way there is
+#: to stop a guard looking. This silences one statement, with a reason, in the
+#: diff, and ``test_the_annotation_is_unused_in_the_package_today`` names every
+#: use so a new one is a review rather than a quiet edit.
+NOT_A_RESERVATION = re.compile(r"#\s*not-a-reservation:\s*(?P<reason>\S.*?)\s*$")
+
+
+def _annotated_lines(source: str) -> dict[int, str]:
+    """Every line carrying the annotation, mapped to the reason written on it.
+
+    Comments are not in the syntax tree, so they are read from the token stream.
+    A source that does not tokenize contributes nothing rather than raising,
+    because the caller already parsed it and a tokenizer disagreeing with the
+    parser must not be how this guard fails.
+    """
+    found: dict[int, str] = {}
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+        for token in tokens:
+            if token.type != tokenize.COMMENT:
+                continue
+            match = NOT_A_RESERVATION.search(token.string)
+            if match is not None:
+                found[token.start[0]] = match.group("reason")
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return {}
+    return found
+
+
+def _silenced_lines(tree: ast.AST, source: str) -> frozenset[int]:
+    """The lines an annotation covers, which is ONE data statement at most.
+
+    An annotation on the first line of an assignment covers that assignment to
+    its end, because the natural place to put it is beside ``POLL_SECONDS = {``
+    and the keys are on the lines below. An annotation anywhere else covers only
+    its own line.
+
+    A ``def`` or a ``class`` is NOT expanded, deliberately. Letting one comment
+    cover a whole function is the whole-file exemption again at a smaller scale,
+    and the point of this hatch is that its blast radius is visible from where it
+    is written.
+    """
+    marks = _annotated_lines(source)
+    if not marks:
+        return frozenset()
+    covered = set(marks)
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign, ast.Expr)):
+            continue
+        if node.lineno in marks:
+            covered.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+    return frozenset(covered)
+
+
 class ReservedCodeTable:
     """Reads one source for a second opinion about what a refusal cause exits with.
 
-    TWO SIDES HAVE TO BE RIGHT AT ONCE, and the first two versions of this guard
-    got each of them wrong in a different direction.
+    ONE KEY SET AND ONE VALUE RULE. Every string anybody in this repository has
+    declared to be a refusal cause is a key, all eighty two of them, and any of
+    them beside a status is a reservation: an ``ExitCode`` member in any import
+    spelling, a conversion round one, a code held in a name, a class attribute,
+    a module's own ``IntEnum`` member, a small piece of arithmetic, or a bare
+    integer inside the reserved range.
 
-    THE KEY AND THE VALUE ARE ONE RULE, not two, and the round before this one
-    treated them as two and over fired badly. It widened the key set from the
-    twenty two reserved causes to eighty two by adding the closed reason
-    registry, kept "a bare integer anywhere in the reserved range" as the value
-    rule, and certified the pair safe with fixtures whose every integer sat
-    OUTSIDE the range, so the certifying test passed with an empty key set.
-    Measured properly, twenty seven of twenty eight ordinary constructs keyed on
-    a registry slug were reported. The cause is structural rather than a tuning
-    miss: 10 to 59 is exactly the band ordinary timeouts, logging levels, column
-    widths, retry budgets, retention windows and schema versions live in, so no
-    number of extra keys can make a bare integer mean "status". Widening the
-    keys widened the false positives one for one.
+    THE ROUND BEFORE THIS SPLIT THE KEYS INTO TWO TIERS AND THE SPLIT WAS BOUGHT
+    WITH A NUMBER THAT DOES NOT EXIST. The justification was that the wide rule
+    reported "twenty seven of twenty eight ordinary constructs". That count came
+    from a hand written fixture, not from this repository. Measured against all
+    sixty plus real modules in the package under the wide rule: ZERO offenders
+    outside the two files that own a table. The over fire the tiers were built to
+    stop does not occur here. What the tiers cost is not hypothetical: across
+    fifteen realistic second-reservation shapes keyed on registry-only slugs,
+    fifteen of fifteen were reported by the wide rule and NONE by the tiers, and
+    the tiered rule was blind to a module declaring its own ``IntEnum`` of
+    statuses, to ``ExitCode(30)`` written through the module name, and to a code
+    reached by arithmetic, for sixty of the eighty two keys.
 
-    So there are TWO TIERS, and which tier a key sits in decides what may prove
-    it:
-
-    * ``causes`` may be reserved by ANY spelling, including a bare integer. That
-      is the reservation table's own causes, whatever the package-wide
-      derivation found, and any cause-shaped string THIS source declares as an
-      enum member value. All three are small, specific and hand maintained, and
-      a module writing one of them beside a number is writing about that
-      refusal.
-    * ``named_only_causes`` may be reserved only by a status this source cannot
-      have meant as anything else: an ``ExitCode`` member, in any import
-      spelling, or a conversion wrapped round one. That is where the closed
-      reason registry's sixty other slugs sit. ``{"config-unusable":
-      ExitCode.LIBRARY_UNAVAILABLE}`` is a second opinion and is reported;
-      ``{"config-unusable": 20}`` is a sort order, a percentage or a poll
-      interval as often as it is a code, and nothing in the source says which.
+    SO THE TRADE RUNS THE OTHER WAY, and it runs on the error costs rather than
+    on a preference. A false alarm costs one look and either a fix or a
+    ``not-a-reservation`` comment with a reason in it, which is loud, immediate,
+    local and reviewable. A miss is a module quietly disagreeing with the
+    registry about what a refusal exits with, which is the defect this guard is
+    the only thing watching for. For a guard of this shape the loud direction is
+    the correct one, and the annotation above is what keeps the loud direction
+    cheap.
 
     WHAT COUNTS AS A CODE, and this is where a guard that fires on correct code
-    gets itself switched off (P7). An ``ExitCode`` member is unambiguous. So is a
-    code reached through a NAME, a class attribute, a module's own ``IntEnum``
-    member, or a small piece of arithmetic, all of which resolve here, because
-    naming a constant is what a careful author does and the careless spelling was
-    the only one the guard could read. A bare integer is ambiguous, so only the
-    ones inside the RESERVED RANGE count, and the range comes from the live table
-    rather than being repeated here. ``True`` and ``False`` are integers to
-    ``isinstance`` and are never a status.
+    gets itself switched off (P7). An ``ExitCode`` member is unambiguous, in any
+    spelling and through any number of names: ``CODE = ExitCode.PRECONDITION``
+    beside ``{"rclone-missing": CODE}`` is what a careful author writes, and both
+    tiers of the round before were blind to it while this class's own docstring
+    claimed it resolved. A bare integer is ambiguous, so only the ones inside the
+    RESERVED RANGE count, and the range comes from the live table rather than
+    being repeated here. ``True`` and ``False`` are integers to ``isinstance``
+    and are never a status.
 
     NOT NARROWED TO THE EIGHTEEN INTEGERS THE ENUM ACTUALLY USES, which was the
-    other candidate and is worse. The case this table exists for is a new module
-    deciding its OWN codes, and a module inventing 33 for a cause nobody reserved
-    is precisely that case; a guard that only knew today's values would be blind
-    to it while still firing on every logging level of 10, 20 and 30.
+    other candidate. The case this table exists for is a new module deciding its
+    OWN codes, and a module inventing 33 for a cause nobody reserved is precisely
+    that case. That rejection is honest now: under the tiers,
+    ``{"tree-registry-unusable": 33}`` was NOT reported either, so the shipped
+    scheme was rejecting an alternative for a hole it had itself.
 
-    THE RESIDUAL LIMIT, pinned by a fixture rather than left to be discovered: a
-    backoff of 30 seconds keyed by a slug in the FIRST tier is indistinguishable
-    from a reservation of 30 by shape alone, and this reports it. That direction
-    was chosen deliberately, because the alternative is matching on the
-    variable's name, and a guard a rename defeats is not a guard. The two tiers
-    are what keep that residual small: it can only happen for one of the twenty
-    two, for a cause the package itself raises, or for a cause the source
-    declared in its own enum.
+    THE RESIDUAL LIMIT, pinned by fixtures rather than left to be discovered: a
+    poll interval, a column width or a schema version keyed by a cause slug is
+    indistinguishable from a reservation by shape alone, and this reports it.
+    That direction was chosen deliberately, because the alternative is matching
+    on the variable's name, and a guard a rename defeats is not a guard. The
+    annotation is the answer to it, one statement at a time, with a reason.
     """
 
     def __init__(
@@ -759,44 +866,46 @@ class ReservedCodeTable:
         causes: frozenset[str],
         code_range: tuple[int, int],
         package: str | None = None,
-        named_only_causes: frozenset[str] = frozenset(),
     ) -> None:
         self.tree = tree
         self.low, self.high = code_range
         self.codes = ExitCodeImports(tree, package)
         self.constants = _module_level_literals(tree)
         self.members = _class_level_literals(tree)
-        #: Keys a BARE integer may reserve.
+        #: Every string somebody declared a refusal cause, plus whatever THIS
+        #: source declares in an enum of its own.
         self.causes = set(causes) | _declared_enum_values(tree)
-        #: Every key, including the ones only a NAMED code may reserve.
-        self.every_cause = self.causes | set(named_only_causes)
 
     def cause_key(self, node: ast.AST | None) -> str | None:
         """The cause slug a key names, or None when nobody declared it a cause."""
         if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
             return None
-        return node.value if node.value in self.every_cause else None
+        return node.value if node.value in self.causes else None
 
-    def names_a_status(self, node: ast.AST | None) -> bool:
-        """Whether this expression could not have been meant as anything but a status.
+    def _through_names(
+        self, node: ast.AST, extra: dict[str, ast.AST] | None = None
+    ) -> ast.AST:
+        """The expression a NAME ultimately holds, bounded like ``resolve_int``.
 
-        The narrow half of the value rule, and the only proof a
-        ``named_only_causes`` key accepts. An ``ExitCode`` member is the
-        vocabulary itself, whatever name the source bound it under, and a
-        conversion wrapped round one is still one. Nobody spells a poll interval
-        ``ExitCode.PRECONDITION``, which is why this tier can carry sixty extra
-        keys without reporting a single ordinary construct.
+        ``resolve_int`` chases names to an INTEGER, which is why an imported
+        ``ExitCode`` member behind a constant fell through both halves of the
+        round before: its attribute branch reads ``_class_level_literals``, which
+        only records classes defined in THIS source, so a member of an imported
+        enum resolved to nothing and the pair went unreported. That is not an
+        evasion anybody has to intend. It is the spelling a careful author
+        reaches for, and the class docstring claimed it resolved.
+
+        Chasing to an EXPRESSION first, and asking the import walk about what
+        comes back, answers the named constant and the ``code = ExitCode.X`` then
+        ``return code`` shape with the same three lines.
         """
-        if node is None:
-            return False
-        if self.codes.names_a_code(node):
-            return True
-        if isinstance(node, ast.Call) and len(node.args) == 1:
-            wraps_a_code = _dotted(node.func) == "int" or self.codes.names_the_class(
-                node.func
-            )
-            return wraps_a_code and self.names_a_status(node.args[0])
-        return False
+        names = dict(self.constants)
+        names.update(extra or {})
+        seen = 0
+        while isinstance(node, ast.Name) and node.id in names and seen < MAX_HOPS:
+            node = names[node.id]
+            seen += 1
+        return node
 
     def _as_int(
         self, node: ast.AST | None, extra: dict[str, ast.AST] | None = None
@@ -810,8 +919,17 @@ class ReservedCodeTable:
         """What this expression reserves as a process status, or None."""
         if node is None:
             return None
-        if self.codes.names_a_code(node):
-            return ast.unparse(node)
+        spelled = ast.unparse(node)
+        # THROUGH NAMES FIRST. ``CODE = ExitCode.PRECONDITION`` beside
+        # ``{"rclone-missing": CODE}`` is the careful spelling of the
+        # unambiguous one, and it resolved to nothing for three rounds while the
+        # docstring above said it resolved. The reported text keeps BOTH
+        # spellings, because "which name held it" is the first thing a reader
+        # chasing the hit needs.
+        held = self._through_names(node, extra)
+        as_written = spelled if held is node else f"{ast.unparse(held)} as {spelled}"
+        if self.codes.names_a_code(held):
+            return as_written
         # THE ONE-ARGUMENT NARROWING IS WHAT KEEPS THIS OFF SOMEBODY ELSE'S
         # CONSTRUCTOR. A two-argument call is not a conversion, so its first
         # argument is not a status: ``ExitCode(30, "the note")`` is a
@@ -820,13 +938,13 @@ class ReservedCodeTable:
         # here claimed the narrowing was unreachable and that widening it killed
         # nothing; both halves were wrong in the useful direction, and
         # ``test_a_two_argument_call_is_not_a_conversion`` now drives it.
-        if isinstance(node, ast.Call) and len(node.args) == 1:
+        if isinstance(held, ast.Call) and len(held.args) == 1:
             # ``int(ExitCode.X)`` and ``ExitCode(30)``: a code with a conversion
             # wrapped round it is still a code, and both spellings read as
             # ordinary Python rather than as an evasion.
-            wraps_a_code = _dotted(node.func) == "int" or self.codes.names_the_class(node.func)
-            if wraps_a_code and self.status(node.args[0], extra) is not None:
-                return ast.unparse(node)
+            wraps_a_code = _dotted(held.func) == "int" or self.codes.names_the_class(held.func)
+            if wraps_a_code and self.status(held.args[0], extra) is not None:
+                return as_written
         value = self._as_int(node, extra)
         if value is None or not self.low <= value < self.high:
             return None
@@ -998,7 +1116,6 @@ def reserved_code_tables(
     causes: frozenset[str],
     code_range: tuple[int, int],
     package: str | None = None,
-    named_only_causes: frozenset[str] = frozenset(),
 ) -> list[str]:
     """Every place this source gives a refusal cause its own exit code.
 
@@ -1017,15 +1134,18 @@ def reserved_code_tables(
     real files knows it and passes it; a caller holding a source string does not,
     and ``ExitCodeImports`` says what it falls back to.
 
-    ``named_only_causes`` DEFAULTS TO EMPTY, and the default is the conservative
-    one on purpose: the second tier only ever adds keys, so a caller that forgets
-    it loses coverage loudly rather than gaining false positives quietly. Round
-    three's over firing came from the opposite arrangement, where the permissive
-    reading was what you got by saying nothing.
+    THERE IS NO SECOND KEY SET PARAMETER, and its absence is the fix rather than
+    an omission. The round before carried ``named_only_causes`` with a default of
+    empty and a docstring saying a caller that forgets it "loses coverage
+    loudly". It did not: deleting the argument from both live call sites killed
+    ZERO tests, because the tree-wide scan asserts that nothing is found, so
+    dropping a tier makes it quieter and greener. A defaulted parameter that
+    weakens a guard when omitted cannot be the shape of this, so there is nothing
+    to omit.
     """
-    table = ReservedCodeTable(
-        ast.parse(source), causes, code_range, package, named_only_causes
-    )
+    tree = ast.parse(source)
+    table = ReservedCodeTable(tree, causes, code_range, package)
+    silenced = _silenced_lines(tree, source)
     found: list[str] = []
     seen: set[tuple[int, str, str]] = set()
     for key, value, label in table.pairs():
@@ -1037,11 +1157,7 @@ def reserved_code_tables(
         status = label if label is not None else table.status(value)
         if status is None:
             continue
-        # THE SECOND TIER, applied where both halves of the pair are known. A
-        # key that only the wide declaration reaches needs a value nobody could
-        # have meant as a duration, a level or a width, and a bare integer in
-        # the reserved range is exactly a value somebody could have.
-        if slug not in table.causes and not table.names_a_status(value):
+        if key.lineno in silenced:
             continue
         entry = (key.lineno, slug, status)
         if entry in seen:
