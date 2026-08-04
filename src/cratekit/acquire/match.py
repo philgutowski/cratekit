@@ -315,6 +315,19 @@ def question_shape(why: Why) -> str:
     :func:`apply_verdict` onto a row whose item was already found, so asking this
     about one means asking which question a rewritten answer was, which is a
     question with no answer.
+
+    WHAT THIS DOES NOT DO, stated here because the round before this one wrote
+    down the opposite and a measurement caught it. FOUR shapes, not five: both key
+    whys map to :data:`ASKS_ABOUT_KEY`, so a key-differs question and a
+    key-relative question about one line are ONE item, deliberately. Splitting
+    them is not available, because which of the two fires is a function of what
+    that machine's disk holds and an identity that reads the disk is the defect
+    this function replaced. So an answer given while one of them was being asked
+    IS read back while the other is being asked, and the identity cannot stop it.
+    What stops it is :func:`apply_verdict`, which binds an unspecific acceptance
+    to the candidate the item was offered with. See the residual titled "A
+    question answered on one machine does not settle a different question about
+    the same line", which records the measurement and the correction.
     """
     if why in KEY_QUESTIONS:
         return ASKS_ABOUT_KEY
@@ -864,6 +877,23 @@ def _spellings_of(head: str, version: str) -> tuple[str, ...]:
     dashed = f"{head}{_DASH}{version}"
     if split_title(dashed) == (head, version):
         built.append(dashed)
+        # THE RECORDER'S OWN COMPOSITION ON TOP OF THE DASH FORM, and it is not a
+        # doubled address by accident. U24 asks whether a title ALREADY CARRIES
+        # its version by looking inside the title's BRACKETED groups and nowhere
+        # else, deliberately, so a rekordbox row whose Title column holds
+        # ``Sun Path - Nightwave Remix`` and whose version column repeats
+        # ``Nightwave Remix`` is composed into
+        # ``Sun Path - Nightwave Remix (Nightwave Remix)``. That string was
+        # measured against U24's real module, not assumed, and this side reached
+        # none of it from any of the three readers: the tombstone was invisible,
+        # the version reported missing, acquisition fetched it back, and the
+        # deletion was undone at exit zero with every suite green.
+        #
+        # It does not widen anything. The composition is gated on the SAME
+        # conservative read-back as the dash form it is built from, and it names
+        # the same recording at the same version, so it cannot cross a version
+        # boundary any more than ``dashed`` itself can.
+        built.append(f"{dashed} ({version})")
     return tuple(built)
 
 
@@ -1855,6 +1885,12 @@ class TrackMatch:
         is what happened for a round: a version acceptance came back matched
         against the relative minor at a key nobody was asked about.
 
+        FOUR SHAPES AND NOT FIVE, so this separates a key question from a version
+        question and never separates the two KEY whys from each other. That is on
+        purpose and :func:`question_shape` argues it. The protection against an
+        answer crossing between them lives on the ANSWER, in
+        :func:`apply_verdict`, and not here.
+
         REFUSES on a row that is not a question. A matched or missing row has no
         review item, and the identifier it would compute is one somebody could
         answer.
@@ -2220,6 +2256,7 @@ def apply_verdict(
     *,
     accepted: bool | None,
     option: str | None,
+    offered: Sequence[str],
     item_id: str,
     suppresses: Callable[[str, Mapping[str, Any]], bool],
     suppression_id: Callable[[str, Mapping[str, Any]], str],
@@ -2240,10 +2277,41 @@ def apply_verdict(
     somebody's verdict is their act and not this tool's.
 
     AN ACCEPTANCE THAT NAMES NO CANDIDATE is applied only when there is exactly
-    one to name. The queue allows a verdict with no option, so with several
-    candidates on offer "accepted" says the library has the record and does not
-    say which version, and taking all of them would report the library holding
-    three copies of one record on the strength of one unspecific yes.
+    one to name AND it is the one that was on offer when the answer was given.
+    The queue allows a verdict with no option, so with several candidates on
+    offer "accepted" says the library has the record and does not say which
+    version, and taking all of them would report the library holding three copies
+    of one record on the strength of one unspecific yes.
+
+    ``offered`` IS WHAT THE ANSWER WAS ABOUT, and passing it is what closes the
+    last hole in this unit's identity story. An unspecific yes is a claim about
+    THE CANDIDATE THAT WAS ON THE SCREEN, not a claim about the question in the
+    abstract, and the two come apart whenever the library changes under a settled
+    item. Measured end to end and not hypothetical: a list line asking for ``Sun
+    Path`` at 03A against a library holding it at 08A is a ``KEY_DIFFERS``
+    question; somebody accepts it without naming the copy; the 08A file is
+    replaced by an 03B copy, the RELATIVE MINOR that ``Why.KEY_RELATIVE`` exists
+    to catch; and because both key whys are one ``asks`` value by design, the run
+    finds the same item, reads the same yes, and reported MATCHED with the 03B
+    path in ``paths``, exit zero, no question and no warning. It works the same
+    way in reverse. Splitting the two whys would not fix it, because WHICH of
+    them fires is a function of what the disk happens to hold, so the identity
+    would move with the library again, which is the defect the round before this
+    one removed. The identity is right; what was missing is that the answer was
+    never bound to the thing it was an answer about.
+
+    So an unspecific yes recorded against one candidate and read back against a
+    different one is NOT APPLIED, and it stalls exactly the way a verdict naming
+    a gone candidate stalls, with the same why, the same warning and the same
+    ``review clear`` remedy. Naming the candidate with ``--option`` was always
+    safe, because ``candidate_id`` digests the owned key; this gives the answer
+    that names nothing the same protection by binding it to what it saw.
+
+    An item whose stored options are EMPTY, or that offered several while the
+    answer named none, has no single candidate to bind to, so the answer is
+    unspecific and stays unspecific. That is the conservative direction: the
+    remedy is to clear the item and answer the question that is actually being
+    asked now.
 
     A REJECTION CONSULTS THE TOMBSTONES, which is why this takes the store at
     all. Resolution asks the store only on the path that ends in "missing", and
@@ -2293,8 +2361,20 @@ def apply_verdict(
             withheld=found.withheld,
         )
     if option is None:
-        chosen = list(found.candidates) if len(found.candidates) == 1 else []
-        unresolved = Why.VERDICT_UNSPECIFIC
+        # THE CANDIDATE THE ANSWER WAS ABOUT, when there was exactly one of them
+        # to be about. An item that offered several and was answered without
+        # naming one is unspecific whatever the library holds now, and an item
+        # with no stored options is an answer about nothing nameable.
+        about = offered[0] if len(offered) == 1 else None
+        if about is None or len(found.candidates) != 1:
+            chosen = []
+            unresolved = Why.VERDICT_UNSPECIFIC
+        else:
+            # BOUND, so the yes is read back against the candidate it was given
+            # about. A different one on offer today is a candidate that is gone,
+            # which is the state that already stalls the run and names the way out.
+            chosen = [c for c in found.candidates if c.candidate_id == about]
+            unresolved = Why.CANDIDATE_GONE
     else:
         chosen = [c for c in found.candidates if c.candidate_id == option]
         unresolved = Why.CANDIDATE_GONE

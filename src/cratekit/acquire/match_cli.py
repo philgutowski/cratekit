@@ -471,6 +471,13 @@ def adjudicate(
                 found,
                 accepted=accepted,
                 option=held.option,
+                # WHAT THE ANSWER WAS ABOUT. The store keeps the options an item
+                # was offered with and ``offer`` leaves a RESOLVED item's row
+                # alone, so this is the candidate list that was on the screen
+                # when somebody answered, not the one this run just built. An
+                # unspecific yes is bound to it, which is the only thing that
+                # tells "yes, that copy" apart from "yes, whatever you hold now".
+                offered=tuple(one.option_id for one in held.options),
                 item_id=held.item_id,
                 suppresses=suppresses,
                 suppression_id=suppression_id,

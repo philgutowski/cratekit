@@ -378,6 +378,14 @@ def test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist():
         assert tombstone.version_title(row_title, row_version) == u24_version_title(
             row_title, row_version
         ), "the imitation of version_title in this file has drifted from the real one"
+    # THE SHAPES THE BRACKETED TEST DECIDES, which REKORDBOX_ROWS does not cover
+    # and which is where the imitation went stale. The literals are what the real
+    # module returned when they were recorded, so this fails whichever copy moved.
+    for title, version, expected in U24_COMPOSITIONS:
+        assert tombstone.version_title(title, version) == expected, (
+            f"U24's version_title moved on {title!r} with {version!r}; this "
+            f"file's imitation and its recorded literals both need re-measuring"
+        )
     # THE DERIVATION, end to end.
     missed = tuple(
         (row[0], wanted.origin)
@@ -486,23 +494,137 @@ UNRECONCILED: tuple[tuple[str, str], ...] = (
 )
 
 
+#: U24's ``core.tombstone`` bracket and credit vocabulary, written out
+#: INDEPENDENTLY at ``81d575c`` and unchanged at that branch's current tip.
+#: Second implementations on purpose, for the reason :func:`u24_fold` gives.
+U24_BRACKETED = re.compile(r"\(([^()]*)\)|\[([^\[\]]*)\]")
+U24_CREDIT_MARKERS = frozenset({"feat", "ft", "featuring", "with"})
+U24_WORD_SPLIT = re.compile(r"\W+", re.UNICODE)
+
+
+def u24_is_a_credit(group: str) -> bool:
+    """U24's ``core.tombstone._is_a_credit``, written out INDEPENDENTLY.
+
+    The FIRST WORD of the group and nothing else, because that is where the
+    convention puts the marker: ``(feat. Anna)``, ``(with Anna)``. A containment
+    test would read ``(Live with Strings)`` as a credit and stop composing for a
+    real mix name.
+    """
+    words = U24_WORD_SPLIT.split(u24_fold(group).strip())
+    return bool(words) and words[0] in U24_CREDIT_MARKERS
+
+
+def u24_already_carries(title: str, folded_version: str) -> bool:
+    """U24's ``core.tombstone._already_carries``, written out INDEPENDENTLY.
+
+    **A PLAIN SUBSTRING TEST IS WHAT THIS FILE USED TO IMITATE, AND IT WAS THREE
+    ROUNDS STALE.** U24 replaced ``folded_version in fold(title)`` with a
+    DELIMITED question and recorded why in its own docstring: a substring test
+    reads ``Live`` as already carried by ``Lively Up``, so two rows of one
+    recording collapse onto one identity and deleting either suppresses both.
+
+    So the test is bracketed. A title carries its own mix name inside ``(...)``
+    or ``[...]`` and nowhere else, which is the convention providers and
+    rekordbox libraries actually spell. The match INSIDE the group is delimited
+    on word boundaries too, because ``RemixerName`` holds an artist name and
+    requiring the group to equal the version would compose ``Strobe (Michael
+    Woods Remix) (Michael Woods)``. A group opening with a credit marker is
+    skipped entirely, because what is inside it is a performer either way.
+
+    WHAT THE STALE IMITATION COST, measured against U24's real module rather
+    than argued: for the row ``Sun Path - Nightwave Remix`` with ``Nightwave
+    Remix`` in the version column, U24 composes ``Sun Path - Nightwave Remix
+    (Nightwave Remix)`` and the substring imitation returned the title unchanged.
+    The armed derivation guard below therefore computed ONE unreconciled entry
+    and passed, while the same computation against U24's real module yields FOUR:
+    a tombstone U24 records that none of this side's three readers could address,
+    so the version reported missing, acquisition re-fetched it, the deletion was
+    undone, and the suite stayed green. The three that were hidden are closed in
+    ``_spellings_of`` rather than named as a gap.
+    """
+    delimited = re.compile(rf"(?<!\w){re.escape(folded_version)}(?!\w)")
+    return any(
+        delimited.search(group)
+        for found in U24_BRACKETED.finditer(u24_fold(title))
+        for group in found.groups()
+        if group is not None and not u24_is_a_credit(group)
+    )
+
+
 def u24_version_title(title: str, version: str) -> str:
     """U24's ``core.tombstone.version_title``, written out INDEPENDENTLY.
 
     THE COMPOSITION RULE, WHICH IS WHERE THE SEAM ACTUALLY IS. It composes with
     round parentheses, which is the shape this side composes with, so the plain
-    case now meets. What it also does is SHORT CIRCUIT: when the folded version
-    is already inside the folded title, the Title column is recorded exactly as
-    it stands. So whatever shape a rekordbox Title happens to use survives into
-    the identity, and a consulter cannot assume one shape, it has to enumerate
-    them. It is idempotent for the same reason, so a title already carrying its
-    version is never composed twice, and this side must not defeat that by
-    composing over an already composed title.
+    case meets. What it also does is SHORT CIRCUIT, on the bracketed question
+    :func:`u24_already_carries` asks: when a bracketed group of the title already
+    names the version, the Title column is recorded exactly as it stands. So
+    whatever shape a rekordbox Title happens to use survives into the identity,
+    and a consulter cannot assume one shape, it has to enumerate them.
+
+    THE EMPTY CHECK IS LOAD BEARING NOW and was decorative before. ``fold("")``
+    is ``""`` and ``"" in anything`` is true, so under a substring test the first
+    clause could be deleted with nothing noticing; under a bracketed test an
+    empty version answers no, and deleting the check would compose ``Sun Path ()``
+    for every ordinary library row.
     """
     folded = u24_fold(version)
-    if not folded or folded in u24_fold(title):
+    if not folded or u24_already_carries(title, folded):
         return title
     return f"{title} ({version})" if title else version
+
+
+#: WHAT U24'S REAL ``version_title`` RETURNS, RUN AND RECORDED, at ``81d575c``
+#: and unchanged at that branch's current tip. Literals rather than a comparison,
+#: because a comparison against the real module can only run once it merges and
+#: an imitation nothing pins today is how the last one went three rounds stale.
+#:
+#: EVERY ROW IS A SHAPE THE BRACKETED TEST DECIDES DIFFERENTLY FROM A SUBSTRING
+#: TEST, which is the whole point: a table of ordinary titles would agree under
+#: both and pin nothing. ``Lively Up`` and ``Extended Play Track`` are the two
+#: over-suppressions U24's own docstring names; ``Strobe (Michael Woods Remix)``
+#: is the word-boundary case, where the group CONTAINS the version rather than
+#: equalling it; ``Losing It (feat. Anna)`` is the credit group, which is skipped
+#: so a remix and its original stay apart; the dash and curly rows are the two
+#: shapes where the recorder composes and this file used to think it did not.
+#: Fields: Title column, version column, the identity title U24 writes.
+U24_COMPOSITIONS: tuple[tuple[str, str, str], ...] = (
+    ("Lively Up", "Live", "Lively Up (Live)"),
+    ("Extended Play Track", "Extended", "Extended Play Track (Extended)"),
+    ("Strobe (Michael Woods Remix)", "Michael Woods", "Strobe (Michael Woods Remix)"),
+    ("Losing It (feat. Anna)", "Anna", "Losing It (feat. Anna) (Anna)"),
+    ("Sun Path (Lively)", "Live", "Sun Path (Lively) (Live)"),
+    ("Sun Path (Live with Strings)", "Live with Strings", "Sun Path (Live with Strings)"),
+    ("Sun Path [Nightwave Remix]", "Nightwave Remix", "Sun Path [Nightwave Remix]"),
+    ("Sun Path - Nightwave Remix", "Nightwave Remix",
+     "Sun Path - Nightwave Remix (Nightwave Remix)"),
+    ("Sun Path {Nightwave Remix}", "Nightwave Remix",
+     "Sun Path {Nightwave Remix} (Nightwave Remix)"),
+    ("Sun Path", "", "Sun Path"),
+    ("", "Nightwave Remix", "Nightwave Remix"),
+)
+
+
+@pytest.mark.parametrize("title,version,expected", U24_COMPOSITIONS, ids=lambda v: str(v)[:32])
+def test_this_files_imitation_of_the_recorder_still_composes_what_u24_composes(
+    title, version, expected
+):
+    """THE GUARD THAT RUNS TODAY, and its absence is what let the imitation rot.
+
+    An imitation of another branch's code is a CLAIM ABOUT THAT BRANCH, and a
+    claim nothing checks is a claim that drifts. This file's copy of
+    ``version_title`` used a plain substring test for three rounds after U24
+    replaced it with a bracketed one, and the only comparison against the real
+    module was gated behind the merge. The armed derivation guard therefore
+    computed one unreconciled entry and passed while the real answer was four,
+    hiding a tombstone U24 records that none of this side's readers could reach.
+
+    So the expected strings are LITERALS taken by running U24's module, and this
+    fails the moment either copy moves. The gated guard below asserts the same
+    table against the real function once it can import it, which closes the loop
+    from the other end.
+    """
+    assert u24_version_title(title, version) == expected
 
 
 def u24_records(artist: str, row_title: str, row_version: str = "") -> dict[str, str]:
@@ -674,6 +796,14 @@ CREDIT_OUTSIDE_THE_SUFFIX: tuple[
             "Sun Path (feat. Mira) [Extended Remastered]",
             "Sun Path (feat. Mira) (Extended) (Remastered)",
             "Sun Path (feat. Mira) - Extended Remastered",
+            # THE RECORDER'S COMPOSITION ON TOP OF THE DASH FORM. U24 skips a
+            # credit group when it asks whether a title already carries its
+            # version, so a Title column holding the dash spelling with the
+            # version repeated in its own column is composed rather than kept,
+            # and this is the string it composes. Measured against U24's real
+            # module. It keeps the credit, which is what the assertion below is
+            # about.
+            "Sun Path (feat. Mira) - Extended Remastered (Extended Remastered)",
         ),
     ),
 )
@@ -899,15 +1029,26 @@ def test_the_recorder_and_the_consulter_compose_the_same_string():
     assert "Sun Path (Nightwave Remix)" in wanted.addresses
 
 
-def test_the_consulter_never_composes_over_an_already_composed_title():
-    """IDEMPOTENCE, which the recorder has and this side must not defeat.
+def test_the_only_doubled_address_is_the_one_the_recorder_actually_writes():
+    """IDEMPOTENCE WHERE THE RECORDER HAS IT, AND A DOUBLE WHERE IT DOES NOT.
 
-    ``version_title`` short circuits on containment, so it never appends a
-    version a title already carries. This side composes from the SPELLING'S OWN
-    HEAD, which is the spelling with its version taken off, so it cannot append a
-    second copy either. Composing from the listing's full title instead would
-    produce ``Sun Path (Nightwave Remix) (Nightwave Remix)``, an address nothing
-    will ever record, and would quietly halve the useful spellings consulted.
+    THE SENTENCE THIS TEST USED TO ASSERT WAS MEASURABLY FALSE. It forbade every
+    doubled address on the argument that ``Sun Path (Nightwave Remix) (Nightwave
+    Remix)`` is "an address nothing will ever record", and that argument was a
+    written explanation with no measurement behind it. ``version_title`` short
+    circuits on a BRACKETED question, not on containment, so a rekordbox Title
+    column holding ``Sun Path - Nightwave Remix`` beside a version column
+    repeating ``Nightwave Remix`` is composed into ``Sun Path - Nightwave Remix
+    (Nightwave Remix)``. U24's real module was run to get that string. The blanket
+    ban is what kept this side from ever consulting under it, and the cost was a
+    deletion undone in silence.
+
+    SO THE PROPERTY IS SHARPER, not weaker. A doubled address is allowed for
+    exactly the spelling whose double the recorder writes, the DASH form, and for
+    no other. The bracketed spellings still compose once, because a bracketed
+    group is what makes the recorder short circuit, and composing over one of
+    those would produce a string nothing records. That distinction is the whole
+    of ``_already_carries``, so it is the thing worth asserting.
     """
     for wanted in (
         match.read_tidal_tracks([PROVIDER_ROW])[0],
@@ -918,7 +1059,22 @@ def test_the_consulter_never_composes_over_an_already_composed_title():
             address for address in wanted.addresses
             if address.casefold().count("nightwave remix") > 1
         ]
-        assert doubled == [], f"the version was composed twice: {doubled}"
+        assert doubled in (
+            [],
+            ["Sun Path - Nightwave Remix (Nightwave Remix)"],
+        ), f"a version was composed twice under a spelling nothing records: {doubled}"
+        # AND NEVER ONTO A BRACKETED SPELLING, which is where the recorder short
+        # circuits and where a double would address nothing.
+        assert not [
+            address for address in doubled
+            if "(nightwave remix) (nightwave remix)" in address.casefold()
+            or "[nightwave remix] (nightwave remix)" in address.casefold()
+        ]
+    # THE DASH DOUBLE IS ACTUALLY REACHED, so this is not two negative clauses
+    # agreeing that nothing happens.
+    assert "Sun Path - Nightwave Remix (Nightwave Remix)" in (
+        match.read_tidal_tracks([PROVIDER_ROW])[0].addresses
+    )
 
 
 #: A TITLE SHAPE THIS SIDE DOES NOT ENUMERATE. The recorder keeps whatever shape
@@ -930,24 +1086,44 @@ UNENUMERATED_SHAPE = ("Sun Path {Nightwave Remix}", "Nightwave Remix")
 
 
 def test_a_title_shape_outside_the_enumerated_ones_is_a_recorded_gap():
-    """THE BOUNDARY OF THE ENUMERATION, asserted rather than assumed.
+    """THE BOUNDARY OF THE ENUMERATION, asserted rather than assumed, AND IT MOVED.
 
     A consulter that enumerates shapes has an edge, and an edge nobody wrote down
-    is discovered by a track coming back after somebody deleted it. This pins
-    where the edge is: a curly-brace Title short circuits ``version_title``, so
-    the identity keeps that shape, and no spelling this side composes reaches it
-    unless the list happened to spell it the same way. The residual titled "The
-    recorder keeps the Title column's own shape, so the consulter enumerates
-    shapes" records the class.
+    is discovered by a track coming back after somebody deleted it. The edge was
+    written down wrongly here for three rounds, because this file's imitation of
+    ``version_title`` used a plain substring test while the real one asks a
+    BRACKETED question. Under the substring test a curly-brace Title short
+    circuited and the identity kept that exact shape, so a list spelling it the
+    same way reached it. It does not: a curly brace is not a bracket U24 reads,
+    so the recorder COMPOSES, and what it writes is ``sun path {nightwave remix}
+    (nightwave remix)``.
+
+    WHAT REACHES IT NOW IS THE OTHER READER, which is the useful half of the
+    boundary. A source carrying its version in its OWN FIELD hands this side a
+    title and a version, and this side composes the parenthesised form onto the
+    title it was handed, curly braces and all, so it meets the recorder exactly.
+    A pasted line spelling the curly form carries no version this side can read,
+    so it composes the null-qualifier equivalents instead and misses. That is the
+    class the residual titled "The recorder keeps the Title column's own shape,
+    so the consulter enumerates shapes" records, and it is a limit of what this
+    side can PARSE rather than of what it composes.
     """
     title, version = UNENUMERATED_SHAPE
     recorded = u24_records("Aurora Bloom", title, version)
+    assert recorded["title"] == "sun path {nightwave remix} (nightwave remix)"
+    # The plain provider row names a different title and cannot reach it.
     listed = match.read_tidal_tracks([PROVIDER_ROW])[0]
     assert recorded not in listed.suppression_spellings
-    # The list that spelled it the same way still reaches it, which is what makes
-    # this a limit of the ENUMERATION rather than of the addressing rule.
+    # NOR DOES THE LIST THAT SPELLED IT THE SAME WAY, because the curly brace
+    # carries no version this side reads, so there is nothing to compose.
     same = match.read_text_lines(f"Aurora Bloom - {title}\n")[0]
-    assert recorded in same.suppression_spellings
+    assert recorded not in same.suppression_spellings
+    # A source that keeps its version in a field DOES reach it, which is what
+    # makes this a parsing edge rather than a composition edge.
+    fielded = match.read_tidal_tracks(
+        [{"title": title, "version": version, "artist": {"name": "Aurora Bloom"}}]
+    )[0]
+    assert recorded in fielded.suppression_spellings
 
 
 @pytest.mark.parametrize(
@@ -3968,6 +4144,88 @@ def test_two_versions_of_one_recording_are_two_questions_and_two_answers(
     assert [row["version"] for row in after["data"]["needs_review"]] == ["Radio Edit"]
 
 
+@pytest.mark.parametrize(
+    "answered_at,then_held,answered_why,later_why",
+    [
+        ("08A", "03B", match.Why.KEY_DIFFERS, match.Why.KEY_RELATIVE),
+        ("03B", "08A", match.Why.KEY_RELATIVE, match.Why.KEY_DIFFERS),
+    ],
+    ids=["differs-then-relative", "relative-then-differs"],
+)
+def test_an_unspecific_yes_about_one_copy_does_not_settle_a_question_about_another(
+    cfg, music, tmp_path, answered_at, then_held, answered_why, later_why
+):
+    """THE TWO KEY WHYS ARE ONE ITEM BY DESIGN, so the ANSWER carries the binding.
+
+    ``KEY_DIFFERS`` and ``KEY_RELATIVE`` both ask about the key, so
+    ``question_shape`` gives them one ``asks`` value and one item on purpose:
+    FOUR identities, not five. Splitting them is not the fix and would undo the
+    round before this one, because WHICH of the two fires is a function of what
+    that machine's disk holds, and an identity that moves with the disk is the
+    defect this unit removed.
+
+    WHAT WAS ACTUALLY BROKEN, measured through the real verbs in both
+    directions. A list line asking for ``Sun Path`` at 03A against a library
+    holding it at 08A is a ``KEY_DIFFERS`` question. Accept it WITHOUT naming the
+    copy. Replace the 08A file with an 03B one, the relative minor that
+    ``Why.KEY_RELATIVE`` exists to catch because 3A and 3B look like agreement to
+    anything comparing wheel positions. The next run found the same item, read
+    the same yes, and reported ``matched`` at exit zero with the 03B path in
+    ``paths``, no question and no warning. The reverse ran the same way.
+
+    An unspecific yes is a claim about THE CANDIDATE THAT WAS ON THE SCREEN, so
+    ``apply_verdict`` now binds it to the option the item was offered with. A yes
+    read back against a different candidate is a candidate that is gone, and it
+    stalls exactly the way a verdict naming a gone candidate stalls. Naming the
+    copy with ``--option`` was always safe, because ``candidate_id`` digests the
+    owned key; this gives the answer that names nothing the same protection.
+
+    THE POSITIVE LEG IS IN HERE ON PURPOSE. A binding that refused everything
+    would pass the negative half and break the feature, so the same unspecific
+    yes is first driven back against the UNCHANGED library and has to apply.
+    """
+    listed = keyed_list(tmp_path, "asked.json", key="03A")
+    held = hold(music, f"{answered_at} - 124 - Aurora Bloom - Sun Path")
+
+    _code, first = drive(["match", "run", listed])
+    asked = first["data"]["needs_review"][0]
+    assert asked["why"] == str(answered_why)
+    item_id = asked["review_item"]
+    drive(["review", "resolve", item_id, "--verdict", "accepted"])
+
+    # THE ANSWER APPLIES to the copy it was given about.
+    code, settled = drive(["match", "run", listed])
+    assert code == int(ExitCode.OK)
+    assert settled["data"]["matched"][0]["why"] == str(match.Why.VERDICT_ACCEPTED)
+    assert [Path(p).name for p in settled["data"]["matched"][0]["paths"]] == [held.name]
+
+    held.unlink()
+    swapped = hold(music, f"{then_held} - 124 - Aurora Bloom - Sun Path")
+
+    code, after = drive(["match", "run", listed])
+    assert code == int(ExitCode.PENDING_HUMAN), (
+        f"an unspecific yes about the {answered_at} copy was applied to the "
+        f"{then_held} copy"
+    )
+    assert after["data"]["matched"] == []
+    row = after["data"]["needs_review"][0]
+    assert row["review_item"] == item_id
+    assert row["why"] == str(match.Why.CANDIDATE_GONE)
+    assert swapped.name not in [
+        path for state in after["data"].values() for r in state for path in r["paths"]
+    ]
+    # AND THE RUN SAYS SO, on the channel that carries a verdict it cannot apply,
+    # with the remedy that actually works.
+    warned = [
+        w for w in after["warnings"] if w["code"] == match_cli.VERDICT_UNAPPLICABLE
+    ]
+    assert [(w["item"], w["remedy"]) for w in warned] == [(item_id, match_cli.CLEAR_VERB)]
+    # THE QUESTION UNDERNEATH IS STILL THE OTHER ONE, which is what makes this a
+    # binding on the answer rather than a split of the identity: the same item is
+    # asked again, and it is asked about a why the first answer never saw.
+    assert match.question_shape(later_why) == match.question_shape(answered_why)
+
+
 def test_the_set_that_names_the_key_questions_is_what_the_identity_reads():
     """IT WAS DEAD AND ITS DOCSTRING CLAIMED A PROPERTY THE CODE HAD LOST.
 
@@ -3987,10 +4245,105 @@ def test_the_set_that_names_the_key_questions_is_what_the_identity_reads():
         assert match.question_shape(why) != match.ASKS_ABOUT_KEY
 
 
+#: HOW MANY IDENTIFIERS THE WIDTH HAS TO SURVIVE before a collision is as likely
+#: as not. A billion, and it is a requirement rather than an observation: one run
+#: generates an identifier per track and one per candidate, and a library-scale
+#: user matches lists for years, so the number that matters is a lifetime total
+#: and not the size of any one list.
+REQUIRED_EVEN_ODDS_POPULATION = 1_000_000_000
+
+
+def even_odds_population(width: int) -> float:
+    """How many identifiers of this hex width before a collision is even money.
+
+    The birthday bound, ``sqrt(2 ln2 . 2^bits)``, computed rather than quoted.
+    Four bits per hex character.
+    """
+    import math
+
+    return math.sqrt(2 * math.log(2) * 2 ** (4 * width))
+
+
+def smallest_sufficient_width() -> int:
+    """The narrowest WHOLE-BYTE hex width that clears the requirement.
+
+    WHOLE BYTES, which is the half of this nobody had written down. An odd hex
+    width is half a byte, so the last character carries a nibble that no storage,
+    no wire format and no reader treats as a unit, and a width nobody can state
+    in bytes is a width nobody chose. So the search steps by two, and the answer
+    is the smallest even width whose birthday bound is past the requirement.
+    """
+    return next(
+        width
+        for width in range(2, 65, 2)
+        if even_odds_population(width) >= REQUIRED_EVEN_ODDS_POPULATION
+    )
+
+
+def test_the_digest_width_is_the_narrowest_one_that_meets_the_requirement():
+    """A TEST THAT DEFINES ITS EXPECTATION BY ASKING THE THING IT VERIFIES.
+
+    THIS IS THE SELF REFERENTIAL SHAPE, and it was here in both halves. The only
+    dying assertion was the literal ``DIGEST_WIDTH == 16``, and the behavioural
+    half asserted ``len(digest) == match.DIGEST_WIDTH``, which is derived from the
+    constant and therefore passes at EVERY width. Changing 16 to 15 or 17 killed
+    exactly one assertion, and it was the one that just restates the value.
+
+    SO THE EXPECTATION IS COMPUTED. The requirement is a population and a
+    birthday bound; the constraint is that a width is a whole number of bytes;
+    the answer is the narrowest width satisfying both, and the number 16 appears
+    nowhere in the derivation. Narrower fails the requirement, wider is not the
+    narrowest, and an odd width is not a byte count.
+
+    THE ARITHMETIC IS CHECKED AGAINST THE VALUES THE MODULE'S OWN COMMENT CLAIMS,
+    because a formula that agrees with itself proves nothing either: 32 bits gives
+    roughly 77,000 and 64 bits around five billion, which is what that comment
+    says out loud.
+    """
+    assert round(even_odds_population(8)) == 77163
+    assert 5.0e9 < even_odds_population(16) < 5.1e9
+    assert match.DIGEST_WIDTH == smallest_sufficient_width()
+    assert match.DIGEST_WIDTH % 2 == 0
+    assert even_odds_population(match.DIGEST_WIDTH) >= REQUIRED_EVEN_ODDS_POPULATION
+    assert even_odds_population(match.DIGEST_WIDTH - 2) < REQUIRED_EVEN_ODDS_POPULATION
+
+
+def test_the_declared_width_survives_a_population_a_narrower_one_does_not():
+    """THE BIRTHDAY ARGUMENT, DRIVEN, because an arithmetic pin is still arithmetic.
+
+    Identifiers are synthesized the way the module synthesizes them, from a
+    library-shaped population of artists, titles, versions and keys, and counted
+    for real collisions. At half the declared width the collisions are there to
+    see; at the declared width there are none. The inputs are fixed, so both
+    counts are deterministic rather than a sample somebody got lucky with.
+    """
+    import hashlib
+
+    def digest_at(width: int, parts: tuple[str, ...]) -> str:
+        return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()[:width]
+
+    population = [
+        (f"Artist {a:03d}", f"Title {t:03d}", f"Version {v:02d}", f"{k:02d}A")
+        for a in range(40)
+        for t in range(50)
+        for v in range(10)
+        for k in range(5)
+    ]
+    assert len(population) == 100_000
+    narrow = {digest_at(8, parts) for parts in population}
+    declared = {digest_at(match.DIGEST_WIDTH, parts) for parts in population}
+    assert len(population) - len(narrow) > 0, (
+        "the narrow width stopped colliding, so this no longer discriminates"
+    )
+    assert len(declared) == len(population), (
+        f"{len(population) - len(declared)} collisions at the declared width"
+    )
+
+
 def test_every_identifier_this_module_generates_is_the_declared_width(
     cfg, music, tmp_path
 ):
-    """SIXTY-FOUR BITS, ASSERTED, because narrowing it is invisible to behaviour.
+    """SIXTY-FOUR BITS, ASSERTED AGAINST A COMPUTED EXPECTATION, not against itself.
 
     ``match_id``, ``candidate_id`` and ``option_id`` all come out of one digest.
     Halving the width to 32 bits left the whole suite green, because a suite
@@ -3998,8 +4351,13 @@ def test_every_identifier_this_module_generates_is_the_declared_width(
     own residual about two identity generators, 16 bits and 64, records exactly
     this class of unargued width for a run identifier; this is a third generator
     nobody had counted.
+
+    THE WIDTH THE REAL VERB EMITS is compared against
+    :func:`smallest_sufficient_width`, which is derived from the requirement.
+    Comparing it against ``match.DIGEST_WIDTH`` is what this used to do, and that
+    is the constant verifying itself: every identifier the module builds is
+    exactly as wide as the constant says at any value the constant takes.
     """
-    assert match.DIGEST_WIDTH == 16
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Nightwave Remix)")
     path = write_list(
         tmp_path,
@@ -4014,10 +4372,11 @@ def test_every_identifier_this_module_generates_is_the_declared_width(
             seen.extend(candidate["id"] for candidate in row["candidates"])
             seen.extend(option["id"] for option in row["acquisition"])
     assert len(seen) >= 4
+    expected = smallest_sufficient_width()
     for identifier in seen:
         prefix, _, digest = identifier.partition("_")
         assert prefix in {"mt", "cd", "aq"}
-        assert len(digest) == match.DIGEST_WIDTH, identifier
+        assert len(digest) == expected, identifier
         assert set(digest) <= set("0123456789abcdef")
 
 
@@ -4055,6 +4414,65 @@ def test_a_resemblance_below_the_floor_is_missing_rather_than_a_question(
     assert code == int(ExitCode.OK)
     assert envelope["data"]["needs_review"] == []
     assert envelope["data"]["missing"][0]["why"] == str(match.Why.NOT_IN_LIBRARY)
+
+
+#: THE TWO LIBRARY TITLES THAT SIT EITHER SIDE OF THE FLOOR WITH NOTHING BETWEEN
+#: THEM, and the scores are measured rather than remembered. Against the folded
+#: recording token for ``Aurora Bloom / Sun Path``, ``Sun Pat Reprise`` scores
+#: 81.63 and ``Sun Path Meridian`` scores 82.35, so 82 is the only integer floor
+#: that puts one below and the other above.
+FLOOR_NEIGHBOURS = ("Sun Pat Reprise", "Sun Path Meridian")
+
+
+def test_the_floor_is_pinned_from_both_sides_by_the_nearest_score_either_way(
+    cfg, music, tmp_path
+):
+    """A CONSTANT PINNED ONLY FROM THE EXTREMES IS A CONSTANT WITH A FREE BAND.
+
+    The row above this one separates 41 from 82 and nothing separates 82 from its
+    neighbours: measured, moving the floor to 77, to 81 or to 83 killed NOT ONE
+    test in the suite, so at least [77, 83] was free and the value was pinned only
+    by the distant ends. A dial with a seven-wide free band is a dial nobody has
+    actually chosen, which is the same shape as the coefficient the round before
+    this one found multiplied by four with the suite green.
+
+    SO THE PIN IS THE NEAREST SCORE ON EACH SIDE. One library holds two
+    resembling recordings, one scoring just under the floor and one just over it,
+    and one list line asks about the record neither of them is. At 82 exactly one
+    of them becomes a candidate. Lower the floor by one and the other joins the
+    offer; raise it by one and there is no question at all and the track reports
+    missing. Every integer floor except this one changes what a person is shown.
+
+    The scores are COMPUTED here, not asserted from memory, so the pair stays a
+    discriminator if the scorer ever changes and says so loudly if it does not.
+    """
+    from rapidfuzz import fuzz
+
+    asked = match.recording_token("Aurora Bloom", "Sun Path")
+    below, above = (
+        fuzz.token_sort_ratio(asked, match.recording_token("Aurora Bloom", title))
+        for title in FLOOR_NEIGHBOURS
+    )
+    assert below < match.APPROXIMATE_FLOOR <= above, (
+        f"{FLOOR_NEIGHBOURS} no longer straddle the floor: {below} and {above}"
+    )
+    assert int(above) - int(below) <= 1, (
+        "the two neighbours drifted apart, so they no longer pin the floor to one value"
+    )
+
+    for title in FLOOR_NEIGHBOURS:
+        hold(music, f"08A - 124 - Aurora Bloom - {title}")
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path\n", "band.txt")
+    code, envelope = drive(["match", "run", path])
+
+    assert code == int(ExitCode.PENDING_HUMAN), (
+        "raising the floor past the nearer neighbour removed the question entirely"
+    )
+    row = envelope["data"]["needs_review"][0]
+    assert row["why"] == str(match.Why.TITLE_APPROXIMATE)
+    assert [candidate["title"] for candidate in row["candidates"]] == [
+        FLOOR_NEIGHBOURS[1]
+    ], "the offer no longer holds exactly the recordings the floor admits"
 
 
 def test_the_scorer_is_capped_at_the_same_number_the_offer_is(cfg, music, tmp_path):

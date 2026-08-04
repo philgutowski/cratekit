@@ -796,6 +796,17 @@ the three readers. So the COMPOSITION rule is checked against the real code the
 moment both are in one tree, and only the READER that fills the version column is
 imitated.
 
+**A GATED GUARD IS NOT A GUARD, and the seventh review measured the cost of
+treating it as one.** The imitation of `version_title` in this file went three
+rounds stale against U24's real one, using a substring test after the real one had
+moved to a bracketed one, and nothing could see it because the only comparison was
+behind the merge gate. So the imitation is now pinned TODAY against
+`U24_COMPOSITIONS`, eleven literals taken by running U24's module at `81d575c`,
+every row a shape the two rules decide differently, and the gated guard asserts
+the same literals against the real function once it can import it. An imitation of
+another branch's code is a claim about that branch: it is loaded or it is guarded,
+and a guard that only runs after the merge is neither.
+
 **The exact check that would close the rest.** Drive U24's own library reader over
 a collection row table whose rows put the version in `Title`, in `RemixerName` and
 in `Subtitle` in turn, hand each resulting row to U24's own `version_of`, and
@@ -858,23 +869,59 @@ remix)`, which is exactly what this side composes for a provider row naming the
 same record, and `test_the_recorder_and_the_consulter_compose_the_same_string`
 pins it.
 
-**The mechanism that leaves a class open.** `version_title` SHORT CIRCUITS: when
-the folded version is already contained in the folded title it returns the Title
-column untouched. So a Title of `Sun Path [Nightwave Remix]` with `RemixerName`
-of `Nightwave Remix` is recorded under `sun path [nightwave remix]`, keeping the
-square brackets, and a Title of `Sun Path - Nightwave Remix` keeps the dash. The
-shape a library row happens to use therefore survives into the identity, and a
-consulter cannot assume one shape. It has to ENUMERATE them.
+**The mechanism that leaves a class open, RESTATED IN THE SEVENTH REVIEW BECAUSE
+THE ENTRY DESCRIBED A U24 THAT NO LONGER EXISTS.** This paragraph used to say that
+`version_title` short circuits "when the folded version is already contained in
+the folded title", and drew from that the conclusion that a Title of `Sun Path -
+Nightwave Remix` keeps the dash. Both are false and were checked by loading U24's
+real module rather than by reading it. `_already_carries` replaced the substring
+test with a BRACKETED one, and U24's own docstring records why: a substring test
+reads `Live` as already carried by `Lively Up`, so two rows of one recording
+collapse onto one identity and deleting either suppresses both. The delimited
+question asks whether a bracketed group of the title NAMES the version, on word
+boundaries, skipping any group that opens with a credit marker.
 
-**What this side enumerates, and where the edge is.** `Wanted.addresses` composes
-round parentheses, square brackets, the dash form when this module's CONSERVATIVE
-reader reads it back, and the multi-group split. Those cover every shape in
-`REKORDBOX_ROWS`, which is why the derivation guard's only gap is R-20's featured
-credit. What is NOT covered is any other bracket shape, `Sun Path {Nightwave
-Remix}` being the pinned example, and any difference INSIDE the version string
-itself, such as a Title spelling `Nightwave RMX` against a provider version of
-`Nightwave Remix`. Both are recorded under one identity by U24 and consulted under
-another here, so the version reports missing and is re-acquired at exit zero.
+So the short circuit fires for `Sun Path (Nightwave Remix)` and `Sun Path
+[Nightwave Remix]`, and does NOT fire for the dash form: a Title of `Sun Path -
+Nightwave Remix` beside a version column repeating `Nightwave Remix` is recorded
+under `sun path - nightwave remix (nightwave remix)`. The shape a library row
+happens to use still survives into the identity where a bracket carries it, so a
+consulter still has to ENUMERATE shapes; what changed is that the enumeration also
+has to include the recorder's own composition on top of a non-bracketed shape.
+
+**What that cost while this entry was wrong.** This file's imitation of
+`version_title` used the substring rule, so the armed derivation guard computed
+ONE unreconciled entry and passed. Against U24's real module the same computation
+yielded FOUR, silently hiding `('Sun Path - Nightwave Remix', 'text')`, the same
+row through `spotify`, and the same row through `tidal`. That is a tombstone U24
+records which none of this side's three readers could address: the version
+reports missing, acquisition re-fetches it, the deletion is undone, and every
+suite stays green. It would have armed RED at merge on that row.
+
+**Closed rather than named.** `_spellings_of` now composes the recorder's own
+parenthesised form on top of the dash spelling, gated on the same conservative
+read-back the dash form itself is gated on, so all three readers reach it and
+`missed` is back to R-20's featured credit alone. The imitation implements the
+bracketed rule, and `U24_COMPOSITIONS` pins eleven shapes the bracketed test
+decides differently from a substring test against literals taken by RUNNING U24's
+module, so a re-drift of either copy fails today rather than at merge.
+
+**What this side enumerates, and where the edge is now.** `Wanted.addresses`
+composes round parentheses, square brackets, the multi-group split, the dash form
+when this module's CONSERVATIVE reader reads it back, and the recorder's
+composition on top of that dash form. What is NOT covered is a bracket shape U24
+does not read either, `Sun Path {Nightwave Remix}` being the pinned example, and
+any difference INSIDE the version string itself, such as a Title spelling
+`Nightwave RMX` against a provider version of `Nightwave Remix`.
+
+The curly edge MOVED with this correction and is sharper for it. U24 does not read
+a curly brace as a bracket, so it composes, recording `sun path {nightwave remix}
+(nightwave remix)`. A list that spells the curly form as plain text carries no
+version this side can parse, so it composes the null-qualifier equivalents and
+misses. A source that carries its version in its OWN FIELD hands this side a title
+and a version and reaches the recorder exactly, curly braces included. The edge is
+therefore a limit of what this side can PARSE out of a spelled title, not a limit
+of what it composes.
 
 **The dash gate is the conservative reader and not the ambiguous one.** An earlier
 round let `split_ambiguous` satisfy the read-back, which reads a string back only
@@ -935,9 +982,12 @@ library is found to use it, not on the chance that one might.
 
 **Pinned rather than assumed.**
 `test_a_title_shape_outside_the_enumerated_ones_is_a_recorded_gap` asserts the
-edge is where this entry says it is, and asserts that a list spelling the record
-the same way still reaches it, so the limit is the enumeration and not the
-addressing rule.
+edge is where this entry says it is: the curly form is unreachable from a spelled
+listing and IS reachable from a source that keeps its version in a field, so the
+limit is what this side can parse rather than what it composes.
+`test_the_only_doubled_address_is_the_one_the_recorder_actually_writes` allows the
+one doubled address the recorder really writes and forbids a double on any
+bracketed spelling, which is the distinction `_already_carries` makes.
 
 **Closes when:** the deletion pass records a normalized identity beside the
 verbatim one and this side consults that, which puts one shape on both sides of
@@ -1167,9 +1217,36 @@ question again on the other.
 question turns it into a version question under a different item, so the key
 answer sits resolved and unreachable. That is the stranding `CANDIDATE_GONE`
 exists to report, and it is not reported here, because reaching that state needs
-the item to be FOUND first and the run is now looking up a different item. What
-is NOT possible any more is the reverse, an answer being APPLIED to a question
-nobody asked, which is the failure that cannot be noticed afterwards.
+the item to be FOUND first and the run is now looking up a different item.
+
+**The sentence that used to end that paragraph was measured false, and correcting
+it is the seventh review's first finding.** It claimed the reverse was no longer
+possible, an answer being APPLIED to a question nobody asked. The identity does
+not deliver that on its own and was never going to: `KEY_DIFFERS` and
+`KEY_RELATIVE` both map to `asks="key"` DELIBERATELY, four identities and not
+five, so the two key whys are one item by design. Driven through `crate match
+run` and `crate review resolve` in both directions: a list line asking for `Sun
+Path` at 03A against a library holding it at 08A is a key-differs question; accept
+it WITHOUT naming the copy; replace the 08A file with an 03B one, the relative
+minor `Why.KEY_RELATIVE` exists to catch; and the run reported
+`matched / verdict-accepted` at exit zero with the 03B file in `paths`, nothing
+in `needs_review` and nothing in `warnings`. The reverse direction did the same.
+
+Splitting `asks` on the two key whys is NOT the fix, and that is the useful half
+of the finding. WHICH of them fires is a function of what that machine's disk
+holds, so splitting them would put the library back inside the identity, which is
+the defect the round before this one removed. The defect was that the identity is
+unique to neither the question nor the candidate: an unspecific acceptance is a
+claim about THE CANDIDATE THAT WAS ON OFFER, and it was being read back as a claim
+about the question in the abstract. `apply_verdict` now takes the options the item
+was stored with and binds an unspecific yes to the single candidate it was given
+about; a yes read back against a different candidate is `CANDIDATE_GONE`, with the
+warning and the `review clear` remedy that state already carries. Naming the copy
+with `--option` was always safe, because `candidate_id` digests the owned key, and
+this gives the answer that names nothing the same protection.
+`test_an_unspecific_yes_about_one_copy_does_not_settle_a_question_about_another`
+drives both directions through the real verbs, including the positive leg where
+the unchanged library still applies the answer.
 
 **Why the trade goes this way.** The two costs are not comparable, which is the
 same argument `tombstone_fold` makes one layer down. An unasked question asked

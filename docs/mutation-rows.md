@@ -252,6 +252,18 @@ by applying the substitution, running the WHOLE suite, reading the count off the
 summary line, and restoring the file, with the tree verified byte identical to
 the committed one between rows. None is derived and none is remembered.
 
+**THIS FILE IS AN ADD/ADD CONFLICT AT MERGE, and the commit that created it said
+otherwise.** `b1ee22d`'s message says the file was "seeded from main so the merge
+is an append rather than a conflict". The seeding claim is true and was checked:
+this branch's first 242 lines are byte identical to main's file, which is 242
+lines long in total, so the resolution really is "take ours" and nothing of
+main's is lost. What is false is the conclusion. The file is ABSENT at the merge
+base `af1d7d2`, so both sides added it, and `git merge-tree main
+unit/u16-three-state-match-and-missing-review` reports `CONFLICT (add/add):
+Merge conflict in docs/mutation-rows.md` over the whole file. Git will not auto
+merge it. Whoever merges resolves it by keeping this side and reads no further,
+but they have to be told to, which is what this paragraph is for.
+
 **Why this section exists at all.** Three earlier rounds of this unit reported
 mutation tables in a commit message and in a review reply, and a fourth round's
 rows were reported in neither. Their ids, `M1..M19`, `N1..N6`, `U1..U6` and a set
@@ -331,10 +343,35 @@ rework, version, vip`.
 ### The earlier rounds' rows, made re-runnable
 
 Reconstructed against `b5532b6` from the intents recorded in this unit's commit
-messages. The counts differ from the numbers those messages reported, and every
+messages.
+
+**THE SENTENCE THAT USED TO BE HERE WAS WRONG AND ROUND 7 MEASURED IT.** It said
+the counts differ from the numbers those messages reported and that "every
 difference is attributable to tests this round added rather than to a row
-changing meaning: the eleven parametrized vocabulary rows and the new
-reading-ambiguous drivers all die to the ambiguity rows.
+changing meaning". Driven with exactly round 6's 38 new node ids deselected, a
+set independently validated because the deselected suite totals 3442, which is
+the recorded pre-round baseline:
+
+| id | round 5 recorded | round 6 whole suite | round 6 with its own 38 deselected |
+| --- | --- | --- | --- |
+| `M1` | 12 | 28 | **14** |
+| `M4` | 12 | 28 | **14** |
+| `M6` | 10 | 23 | **12** |
+| `M2` | 13 | 28 | 13 |
+| `N3` | 2 | 4 | 2 |
+| `N4` | 2 | 16 | 2 |
+| `N5` | 1 | 2 | 1 |
+| `N6` | 7 | 10 | 7 |
+| `U6` | 1 | 2 | 1 |
+
+Six of the eight rows reduce EXACTLY, so for those the old sentence was right.
+For `M1`, `M4` and `M6` it was not: with round 6's own additions taken out they
+still kill two more each than round 5 recorded, so **six kills across three rows
+come from PRE EXISTING node ids**. Either round 5's counts were wrong when they
+were reported, or the reconstructed substitution is not the one round 5 ran. Both
+are possible and neither can be settled, because round 5's rows were reported in a
+commit message with no substitution beside them, which is the whole reason this
+file exists. What is recorded here is the measurement, not the smoothing.
 
 | id | what the substitution reverts | file | round 5 | now |
 | --- | --- | --- | --- | --- |
@@ -442,3 +479,139 @@ rest.
 
 **`M19`.** In `_equivalent_versions`, `return ("", *sorted(_NULL_VERSIONS))`
 becomes `return ("",)`.
+
+---
+
+## U16 round 7
+
+**Baseline: 3496 passed, 16 skipped.** Measured on branch
+`unit/u16-three-state-match-and-missing-review` at `b1ee22d` plus round 7's fixes,
+2026-08-04. The pre-round baseline at `b1ee22d` was 3480 passed, 16 skipped, so
+this round adds 16 node ids and renames one. Every number below was measured by
+applying the substitution, running the WHOLE suite, reading the count off the
+summary line, restoring the file and checksumming it against the pre-row bytes.
+Runs used `PYTHONDONTWRITEBYTECODE=1`, because two mutations of identical byte
+length written under a second apart make CPython reuse a stale `.pyc` and that
+produced a spurious result on a sibling branch.
+
+### This round's rows
+
+| id | what the substitution reverts | file | measured kills |
+| --- | --- | --- | --- |
+| `V1` | an unspecific acceptance is applied to whatever single candidate is on offer now | `acquire/match.py` | 2 |
+| `V2` | this file's imitation of U24's `version_title` goes back to a substring test | `tests/test_match_states.py` | 7 |
+| `V3` | the recorder's own composition on top of the dash form is not consulted | `acquire/match.py` | 3 |
+| `V4` | `DIGEST_WIDTH` 16 to 15 | `acquire/match.py` | 2 |
+| `V5` | `DIGEST_WIDTH` 16 to 17 | `acquire/match.py` | 2 |
+| `V6` | `DIGEST_WIDTH` 16 to 14 | `acquire/match.py` | 2 |
+| `V7` | `DIGEST_WIDTH` 16 to 18 | `acquire/match.py` | 2 |
+| `V8` | `APPROXIMATE_FLOOR` 82 to 77 | `acquire/match.py` | 1 |
+| `V9` | `APPROXIMATE_FLOOR` 82 to 81 | `acquire/match.py` | 1 |
+| `V10` | `APPROXIMATE_FLOOR` 82 to 83 | `acquire/match.py` | 1 |
+| `K5` re-measured | `APPROXIMATE_FLOOR` 82 to 41 | `acquire/match.py` | 2, was 1 |
+| `K6` re-measured | `DIGEST_WIDTH` 16 to 8 | `acquire/match.py` | 3, was 1 |
+
+No zero-kill row.
+
+**`V4` through `V10` are the free bands, closed.** Round 6 pinned `DIGEST_WIDTH`
+with the literal `assert match.DIGEST_WIDTH == 16` and a behavioural half that
+read `len(digest) == match.DIGEST_WIDTH`, which is derived from the constant and
+therefore passes at every width: the test asked the thing it verifies for its own
+expected value. `APPROXIMATE_FLOOR` was pinned only from the extremes, and 77, 81
+and 83 each killed nothing, so at least [77, 83] was free. Both are now asserted
+against computed expectations, and every neighbouring value dies.
+
+### This round's row definitions
+
+**`V1`.** In `apply_verdict`, the `option is None` branch loses the binding and
+goes back to taking whatever single candidate is on offer:
+
+    -        about = offered[0] if len(offered) == 1 else None
+    -        if about is None or len(found.candidates) != 1:
+    -            chosen = []
+    -            unresolved = Why.VERDICT_UNSPECIFIC
+    -        else:
+    -            chosen = [c for c in found.candidates if c.candidate_id == about]
+    -            unresolved = Why.CANDIDATE_GONE
+    +        chosen = list(found.candidates) if len(found.candidates) == 1 else []
+    +        unresolved = Why.VERDICT_UNSPECIFIC
+
+Kills both directions of
+`test_an_unspecific_yes_about_one_copy_does_not_settle_a_question_about_another`,
+which drives `crate match run` and `crate review resolve` for real: a list line
+asking for `Sun Path` at 03A against a library holding it at 08A is a key-differs
+question, accepted without naming the copy; the 08A file is replaced by an 03B
+one, the relative minor `Why.KEY_RELATIVE` exists to catch; and without the
+binding the run reports `matched / verdict-accepted` at exit zero with the 03B
+file in `paths`. The reverse direction, relative first and differs second, does
+the same. The two key whys are ONE item by design, four identities and not five,
+so the fix is on the answer and not on the identity.
+
+**`V2`.** In `u24_already_carries`, the bracketed test becomes the substring test
+U24 replaced three rounds ago:
+
+    -    delimited = re.compile(rf"(?<!\w){re.escape(folded_version)}(?!\w)")
+    -    return any(
+    -        delimited.search(group)
+    -        for found in U24_BRACKETED.finditer(u24_fold(title))
+    -        for group in found.groups()
+    -        if group is not None and not u24_is_a_credit(group)
+    -    )
+    +    return folded_version in u24_fold(title)
+
+Kills six of the eleven `U24_COMPOSITIONS` rows and
+`test_a_title_shape_outside_the_enumerated_ones_is_a_recorded_gap`. This is the
+row that could not be run before this round, because the imitation was pinned by
+nothing: the substring version was live and green.
+
+**`V3`.** In `_spellings_of`, drop the composition the recorder writes on top of
+the dash form:
+
+    -        built.append(f"{dashed} ({version})")
+    +        pass
+
+Kills `test_every_row_spelling_is_addressed_from_every_reader_or_is_a_named_gap`,
+which is the derivation guard: `missed` goes from R-20's one featured-credit entry
+to four, the three additions being `('Sun Path - Nightwave Remix', 'text')` and
+the same row through `spotify` and `tidal`. That is a tombstone U24 records which
+none of this side's readers could address.
+
+**`V4` to `V7`.** `DIGEST_WIDTH = 16` becomes 15, 17, 14 and 18 in turn.
+
+**`V8` to `V10`.** `APPROXIMATE_FLOOR = 82` becomes 77, 81 and 83 in turn.
+
+### Round 6's rows, confirmed
+
+Re-run at `b1ee22d` plus this round's fixes, with this round's 17 changed node ids
+deselected, which is 16 additions and one rename. The deselected suite is 3479
+passed, 16 skipped, which is the `b1ee22d` baseline of 3480 minus the test this
+round renamed. Every row below reverts exactly what its round 6 definition above
+says it reverts.
+
+| id | round 6 recorded | round 7 measured |
+| --- | --- | --- |
+| `M1` | 28 | 28 |
+| `M2` | 28 | 28 |
+| `M4` | 28 | 28 |
+| `M6` | 23 | 23 |
+| `N4` | 16 | 16 |
+| `K11` | 12 | 12 |
+| `M15` | 12 | 12 |
+| `N6` | 10 | 10 |
+| `M9` | 9 | 9 |
+| `M8` | 8 | 8 |
+| `M12` | 8 | 7, and explained below |
+| `M14` | 8 | 8 |
+| `K4` | 7 | 7 |
+| `M19` | 5 | 5 |
+| `K2` | 4 | 4 |
+| `N2` | 4 | 4 |
+| `N3` | 4 | 4 |
+| `M5` | 4 | 4 |
+
+**`M12` is a rename and not a coverage loss, measured rather than assumed.** Run
+against the whole suite with nothing deselected it kills 8, exactly as recorded,
+and the eighth is `test_the_only_doubled_address_is_the_one_the_recorder_actually_writes`.
+That test is this round's rename of `test_the_consulter_never_composes_over_an_already_composed_title`,
+so it sits in the deselected set as one of this round's changed ids. The same
+assertion still dies; only its node id moved.
