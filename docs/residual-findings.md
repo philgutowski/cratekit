@@ -949,3 +949,36 @@ asked about. It was not built here because the same shape flags an ordinary
 duplicate import, one row carrying a label subtitle and one not, and refusing
 those would take the verb away from a real library. Which of the two a
 convergence is needs a signal neither the row nor the library carries today.
+
+## Note. Round 5's mutation evidence, and the shared scratch directory it was measured through
+
+**Recorded:** 2026-08-03, because a measurement whose conditions are not written
+down is a number rather than evidence.
+
+Eight parallel agents were given one scratch directory. Another unit's mutation
+driver overwrote this unit's driver and its restore snapshot at 22:23, which is
+how it was noticed: a batch launched at that moment ran the foreign driver
+instead. Everything from that point used a private driver under a scratch
+directory belonging to this unit alone.
+
+**What was checked, and what was found.** The worktree was compared against the
+git object database rather than against any snapshot, since a snapshot that has
+been overwritten certifies itself. No leaked mutation was present. Commit
+`b4540ee` was inspected line by line for content this unit did not write,
+including every line it REMOVES, which is where a staged mutation would show; the
+one file it touches that other units also touch, `src/cratekit/core/cause.py`,
+carries a single appended reason slug and nothing else.
+
+**Every row measured before the switch was re-measured afterwards** and all
+eleven reproduced their counts exactly: S1-A1 1, S1-A2 1, S1-A3 2, S1-B 1, S1-C1
+1, S1-C2 1, S1-E 1, X08 1, X09a 1, X09b 2, G09 1. Two rows from that window,
+R08 and C05, had already been re-measured against changed code and are reported
+in the stage one commit under their final form.
+
+**One separate defect this exposed, worth keeping.** The driver used a full-suite
+run per row and one batch was killed by a timeout partway through, which left a
+mutation applied in the tree. It was caught by comparing against the snapshot and
+restored, but the failure mode is real: a mutation driver that is interrupted
+leaves the code it was measuring in place. Any future round should checkpoint per
+row, as this one's did after the incident, and verify the tree against git rather
+than against its own snapshot before trusting the next number.
