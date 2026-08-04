@@ -993,11 +993,17 @@ apart", which is now false.
    settle it with.
 3. **The discriminator does not cover the shape a flip would introduce.** Its
    evidence is the removed half of the collection walk. The row a composed title
-   would collide with, `Sun (Sun Path)`, is very often an ACTIVE row, and the
-   active half is read as `trees.ContentRow`, which carries a content id, a
-   recorded path and a deleted flag and no artist, title or code at all. So a
-   flip would introduce a collision class the check cannot see, which is the
-   opposite of the position it improves.
+   would collide with, `Sun (Sun Path)`, can be an ACTIVE row, and the active
+   half is read as `trees.ContentRow`, whose `__dataclass_fields__` are exactly
+   `content_id`, `recorded` and `deleted`, with no artist, title or code at all;
+   `run.plan` feeds `stores.ambiguous_versions(seen.removed)` and nothing else.
+   So a flip would introduce a collision class the check STRUCTURALLY cannot see,
+   which is the opposite of the position it improves. **An earlier version of
+   this point said such a row is "very often" active. That is a frequency over a
+   real library, unmeasured and unmeasurable from this repository, which is the
+   standard applied to "roughly half" sixty lines above, and it is deleted rather
+   than restated.** The structure carries the argument without it: a class the
+   check cannot see at all is a hole whatever its size.
 
 **Closes when:** either a real `TIT3` column is sampled, so the frequency the
 flip depends on is measured rather than asserted, or the active half of the walk
@@ -1005,39 +1011,83 @@ carries enough identity for the discriminator to answer for an active row, at
 which point the flip and the check cover the same ground and the trade can be
 made on numbers.
 
-## R-24. A remixer whose name ends in a version word is still spelled unmatchably
+## R-24. A designation filed in the remixer column is spelled unmatchably, deliberately
 
-**Found:** during the U24 round 6 fix, 2026-08-04, as the honest half of the
-`remixer_title` repair.
+**Found:** during the U24 round 6 fix, 2026-08-04. **Rewritten during round
+seven, 2026-08-04, because the rule it described was measurably worse than what
+it replaced and because its own safety claim was false.**
 
-`RemixerName` always holds an artist name, so composing it needs the provider's
-spelling, `Strobe (Michael Woods Remix)` rather than `Strobe (Michael Woods)`.
-The append is skipped only when it would DUPLICATE a word the value already ends
-with, which is `tombstone.ends_as_a_designation`: a designation puts its version
-word last, and the vocabulary's measured false positives, `Radio Slave`, `Dub
-Pistols`, `Cut Chemist`, `Mix Master Mike`, `Club Sweat` and `Original Gee`, all
-put theirs first.
+`RemixerName` is an association proxy over `RemixerID` into `djmdArtist`, so it
+holds an ARTIST NAME, and composing it needs the provider's spelling, `Strobe
+(Michael Woods Remix)` rather than `Strobe (Michael Woods)`. The append is
+skipped only when it would say `Remix` twice, which is
+`tombstone.already_spelled_as_a_remix`, and that function consults no vocabulary
+at all.
 
-**Two shapes are still spelled wrongly and both are named here rather than
-implied.** An artist whose name ENDS in a version word, `The Cut` or `Da Dub`,
-is left alone and composes `(Da Dub)` where a provider spells `(Da Dub Remix)`.
-A column genuinely holding a designation the vocabulary does not know, `Michael
-Woods Refix`, gets `Remix` appended and composes `(Michael Woods Refix Remix)`.
+**WHY THE VOCABULARY WAS TAKEN OUT, MEASURED.** Two rounds asked a word list to
+classify this column: round five asked whether a version word appeared anywhere,
+round six asked whether it appeared last. Over 65 values in three classes, 40
+genuine designations and 25 artist names, misses were 25 of 25 on the artist
+classes for round five and 15 of 25 for round six. The shipped rule misses NONE
+of the 25 and misses 38 of the 40 designations. The totals, 33 and 35 against 38,
+are reported and are not the criterion: a total over a hand-authored set is a
+weighted average whose weights are how often this column holds a designation
+rather than an artist name, which is the same unmeasurable frequency R-21 deleted
+a claim about.
 
-**What bounds them.** Both are the UNDER-suppression direction, and that is a
-property of composition rather than a hope: composing only ever adds a bracket,
-which splits one identity into two, so neither error can make one deletion
-suppress a version the user still wants. The cost is a tombstone that matches no
-provider spelling, so the deletion fails to stick and the version is
-re-acquirable, which is the direction this package calls the milder one. That
-asymmetry is why a word list may decide the SPELLING question at all, and it is
-not true of the BELIEF question the same list answers for `Subtitle`, whose
-failure direction is over-suppression.
+**THE ROUND SIX SAFETY CLAIM WAS FALSE AND THAT IS WHY THE CLASSES ARE NOT
+INTERCHANGEABLE.** That entry said both error directions are under-suppression,
+because "composing only ever adds a bracket". Composing does, but leaving a value
+VERBATIM does not: `Strobe` with `The Cut` in `RemixerName`, an artist, and
+`Strobe` with `The Cut` in `Subtitle`, a designation, both composed `strobe (the
+cut)`. One identity, two versions, and deleting either suppresses the other,
+which is over-suppression. So an error on an artist name has both directions and
+an error on a designation has only the milder one, and the right rule is the one
+that never errs on an artist name whatever it costs on designations.
+
+**WHAT IS STILL SPELLED WRONGLY, WHICH IS THE RESIDUAL.** A column genuinely
+holding a designation that does not end in `Remix`, `Extended Mix` or `Michael
+Woods Refix`, gets `Remix` appended and composes `(Extended Mix Remix)`. That is
+38 of the 40 designations in the value set. It is the UNDER-suppression
+direction: the tombstone matches no provider spelling, so the deletion fails to
+stick and the version is re-acquirable. The second residual is an artist whose
+name's last word is literally `Remix`, which would be left verbatim; none is
+known and none is in the value set.
 
 **Closes when:** the recorder can ask what a provider actually spells for this
 version rather than deriving it, which needs a provider lookup at deletion time
 and is a dependency this pass deliberately does not have (R36: a deletion is a
 fact about this disk and nothing here touches a streaming service).
+
+## R-26. An anchor with no active rows through it can still settle a removal off an empty directory
+
+**Found:** during the U24 round 7 fix, 2026-08-04, while closing the empty mount
+point defect, and recorded rather than papered over.
+
+`candidates.categorize` answers `GONE` for a removed row whose file will not stat
+as long as the anchor DIRECTORY exists, and an empty directory standing where a
+volume mounts passes that. `run._the_anchor_proved_nothing` now refuses to settle
+or retire such a row when `references.suspect_anchors` names its anchor, which is
+an anchor that exists, indexed nothing, and had at least one ACTIVE row go
+missing under it.
+
+**The signal needs an active row to exist.** `missing_under` is only populated
+from the active half of the walk, so an anchor with NO active rows through it is
+never suspect, and a mapped volume holding only removed rows still settles off an
+empty mount point. On the library this pass is built for that case does not
+arise, since the volume carries thousands of active rows, but it is not excluded
+by anything in the code.
+
+**Why it is not closed here.** With no active row through that anchor there is no
+evidence either way, and the only local alternative is a threshold over how many
+REMOVED rows look gone at once. Every threshold that catches an unmounted volume
+also catches a person who deleted an album folder in the Finder, which is the
+all-or-nothing rule `suspect_anchors` was built to replace.
+
+**Closes when:** the pass can ask the operating system whether a path is a mount
+point and whether the volume mounted there is the one the prefix rule names,
+which is the same volume identity question `core.preflight` already answers for
+the library root and would need extending to every mapped target.
 
 ## R-25. The active half of the collection walk carries no identity, so nothing can be proved about an active row's version
 
