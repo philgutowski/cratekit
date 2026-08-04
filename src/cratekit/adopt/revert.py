@@ -901,6 +901,21 @@ class _Matched:
     now: TagSnapshot
 
 
+def _size_of(target: Path) -> int | None:
+    """How many bytes are at ``target``, or None when that cannot be asked.
+
+    ONE ``stat`` THAT SAVES WHOLE-FILE READS. It is the only cheap fact in this
+    module that can rule a record out with certainty, because two different sizes
+    cannot be the same bytes. It can never rule one IN, which is why it never
+    appears on an accepting path without the digest behind it. None means the
+    question could not be asked, and a caller that cannot ask it discards nothing.
+    """
+    try:
+        return target.stat().st_size
+    except OSError:
+        return None
+
+
 def _re_addressed(
     record: TagSnapshot, *, identity: str, path_text: str, keep_path: bool
 ) -> _Matched:
@@ -939,11 +954,115 @@ def _one_or_none(
             f"{resolved} cannot be matched to one record in the revert ledger: "
             f"{why}. Nothing is written to a file whose original cannot be "
             f"recorded first, and choosing between two records here decides "
-            f"which of two values a later revert puts on this file. Run the "
-            f"doctor over the ledger; every original in it is still recorded.",
+            f"which of two values a later revert puts on this file. Nothing has "
+            f"been written and every original in the ledger is still recorded; "
+            f"what has to be settled is the ledger.",
             path=resolved,
         )
     return found[0]
+
+
+def _nothing_unrecorded_is_at_risk(
+    record: TagSnapshot,
+    *,
+    written: str,
+    current: Callable[[], tuple[str, ...] | None],
+) -> bool:
+    """Whether this write can lose a value the ledger does not already hold.
+
+    NOT AN IDENTITY TEST, and the distinction is the whole reason this function
+    has its own name. This module says in three places that the value in a field
+    is NOT evidence about which file this is, and it is right: a taxonomy
+    bucket's display name is shared by most of the library it was written into,
+    so a stranger's recording satisfies "the field holds what adoption wrote"
+    exactly. Nothing here asks which file this is. The addresses have already
+    settled that. What is asked is narrower and answerable: IS THERE A VALUE IN
+    THIS FIELD RIGHT NOW THAT NOTHING HAS WRITTEN DOWN, which is the only thing
+    the write about to happen can destroy.
+
+    THREE WAYS THE ANSWER IS NO, and each is a value the ledger or this call
+    already accounts for.
+
+    * The field holds this record's own ``original``. The first write never
+      landed, or landed and was reverted; either way the original is recorded.
+    * The field holds what this record says adoption wrote. Adoption's own value
+      is still in place, which is the ordinary re-run and the ordinary tagging
+      session that edited some OTHER tag. First-write-wins is exactly right.
+    * The field already holds what THIS call is about to write. A write that
+      changes nothing cannot lose anything, whatever put the value there. This is
+      the clause that keeps a second adoption under a different taxonomy working
+      after a third one runs, where ``record.written`` is the FIRST bucket and is
+      no longer what is on the file.
+
+    Anything else is a value this ledger has never seen, about to be overwritten,
+    and the caller goes and asks the bytes about it rather than proceeding.
+    """
+    held = current()
+    if held == record.original:
+        return True
+    return held in ((record.written,), (written,))
+
+
+def _settled_or_refused(
+    record: TagSnapshot,
+    resolved: Path,
+    *,
+    identity: str,
+    path_text: str,
+    keep_path: bool,
+    written: str,
+    look: Callable[[], _Looked],
+    current: Callable[[], tuple[str, ...] | None],
+    size_here: int | None,
+) -> _Matched:
+    """A record whose ADDRESSES agree with this file, checked for what it can cost.
+
+    THE TWO SHAPES WHERE THE ADDRESSES CONVERGE USED TO RETURN HERE UNCHECKED and
+    that is what this function is. When the identity and the path both name this
+    file, or when the recorded path is a second name for this same inode, the
+    question "which file is this" is answered twice over and the digest cannot
+    change the answer. Round 7 concluded from that it need not be asked at all,
+    and the conclusion is false, because the digest answers a DIFFERENT question:
+    not which file this is, but whether the file still holds what adoption left.
+
+    Driven end to end through ``apply_plan`` with no forgery: a track A was
+    adopted at path P, the file at P was then replaced IN PLACE by a different
+    recording B, which is what ``cp`` and every truncating writer do and which
+    keeps both the inode and the path. The second adoption matched on the two
+    agreeing addresses, never looked at the diverging digest, re-stamped the
+    record with B's bytes, and reported the pass clean. The revert then wrote A's
+    genre onto B's audio and reported THAT clean too. B's own genre was recorded
+    nowhere, which is verbatim the loss :class:`RecordCannotBeMatched` says this
+    whole round exists to prevent.
+
+    A BYTE CHANGE IS NOT EVIDENCE OF A REPLACEMENT, so it is not what refuses.
+    Every ordinary tagging session changes the bytes: mutagen saving a title in
+    place rewrites the file and keeps the inode, and adoption re-stamping its own
+    record afterwards is the common case rather than the adversarial one. What
+    refuses is narrower: the bytes are not what adoption left AND the field holds
+    a value neither this record nor this call accounts for. Then, and only then,
+    a write would destroy something nothing has written down.
+
+    THE CHEAP EVIDENCE IS ASKED FIRST AND USUALLY ENDS IT. Reading one tag field
+    is a fraction of a whole-file sha256, and it is the question whose answer
+    decides whether the expensive one is worth asking. When nothing is at risk
+    this returns without reading the file, so the re-run and the tagging session
+    both stay at zero lookup reads and only the stamp remains.
+    """
+    if _nothing_unrecorded_is_at_risk(record, written=written, current=current):
+        return _re_addressed(
+            record, identity=identity, path_text=path_text, keep_path=keep_path
+        )
+    if _the_bytes_agree(record, look, size_here):
+        # THE BYTES ARE EXACTLY WHAT ADOPTION LEFT, so whatever is in the field
+        # was put there by adoption, however little ``written`` still resembles
+        # it. Nothing unrecorded is present and first-write-wins is right.
+        return _re_addressed(
+            record, identity=identity, path_text=path_text, keep_path=keep_path
+        )
+    raise RecordCannotBeMatched(
+        _a_value_nothing_recorded(record, resolved, current()), path=resolved
+    )
 
 
 def _record_for(
@@ -952,7 +1071,10 @@ def _record_for(
     *,
     field: str,
     identity: str,
+    written: str,
     look: Callable[[], _Looked],
+    current: Callable[[], tuple[str, ...] | None],
+    size_here: int | None,
 ) -> _Matched | None:
     """Which record in ``ledger`` is about the file at ``resolved``, if any.
 
@@ -970,18 +1092,29 @@ def _record_for(
     it. Guessing costs a value that is then in no file and in no record, which is
     the one loss this whole module exists to prevent.
 
+    THAT SENTENCE WAS FALSE IN TWO OF THE SHAPES UNTIL ROUND 8, and it is written
+    here rather than quietly repaired because a capitalised invariant the code
+    does not hold is worse than no invariant. Shapes 2 and 3 returned a match on
+    the two agreeing ADDRESSES and never asked the digest, so a record whose
+    digest had been diverging the whole time was re-stamped and its original was
+    written onto a different recording. :func:`_settled_or_refused` is where both
+    now ask.
+
     THE SIX SHAPES, and every one of them was measured on a real filesystem:
 
     1. **No record claims this file.** A first adoption. A new record, which is
        the overwhelmingly common path and pays for no extra read.
-    2. **One record claims it by BOTH the identity and the path.** They agree, so
-       there is nothing to settle. This is a re-run, including the crash seam
-       where the record was written and the stamp never landed, and it must work
-       without any digest at all because there may not be one.
+    2. **One record claims it by BOTH the identity and the path.** Two addresses
+       converging, so WHICH FILE THIS IS is settled and the digest cannot change
+       it. What the digest still decides is whether this write can destroy
+       something: see :func:`_settled_or_refused`. It must work with no digest at
+       all, because the crash seam leaves a record without one.
     3. **One record claims it by the identity, and its recorded path still
        resolves to this same file.** A hardlink, a case varying spelling on a case
        insensitive volume, or one path in two composition forms. One file with two
-       names, so the record keeps the name it has.
+       names, so the record keeps the name it has. Same check as shape 2, for the
+       same reason: a hardlink is no more proof the content is untouched than a
+       path is.
     4. **One record claims it by the identity, and its recorded path is gone or is
        somebody else.** THIS IS THE DANGEROUS ONE and it has two causes that no
        stat field separates: the file was RENAMED, or the inode was RECYCLED and
@@ -997,6 +1130,34 @@ def _record_for(
        writing a second record for one file.
     6. **Two different records claim it, one by each.** The ledger contradicts
        itself about this file. Refused, never resolved by preferring one claim.
+
+    THE THREE CLAIMS MAKE EIGHT CELLS AND EVERY ONE OF THEM LANDS SOMEWHERE. The
+    shapes above are named by which ADDRESSES claim the file; the table is over
+    what the three claims say, which is not the same enumeration, and a cell that
+    fell between two shapes is how the defect above survived a review round.
+
+    ============================  =========================================
+    identity, path, digest        where it lands
+    ============================  =========================================
+    none claims it                shape 1, or the byte search below
+    all three agree               shape 2, accepted with no read
+    id and path agree, digest
+    diverges                      shape 2, then :func:`_settled_or_refused`
+    id agrees by a hardlink,
+    digest diverges               shape 3, then the same function
+    id agrees, path is somebody
+    else                          shape 4, the bytes decide
+    path agrees, id moved         shape 5, the bytes decide
+    two records, one each         shape 6, refused
+    two records on ONE file and
+    field                         never reaches here: :func:`read` refuses
+                                  the whole document
+    ============================  =========================================
+
+    The last row is the one a hardlinked second path used to reach. It cannot be
+    written by this build, because shape 3 keeps one record for one file, and a
+    document already holding two is refused at the reader with every original in
+    it intact rather than half spent.
 
     A RECORD NOT CLAIMED BY EITHER ADDRESS IS STILL SEARCHED FOR BY ITS BYTES,
     but only among records that are STRANDED and could possibly match. That is
@@ -1039,32 +1200,54 @@ def _record_for(
 
     if by_identity is None and by_path is None:
         return _found_by_its_bytes(
-            ledger, resolved, field=field, identity=identity, look=look
+            ledger,
+            resolved,
+            field=field,
+            identity=identity,
+            look=look,
+            size_here=size_here,
         )
 
     if by_identity is not None and by_path is not None:
         if by_identity is by_path:
-            return _re_addressed(
-                by_identity, identity=identity, path_text=path_text, keep_path=True
+            return _settled_or_refused(
+                by_identity,
+                resolved,
+                identity=identity,
+                path_text=path_text,
+                keep_path=True,
+                written=written,
+                look=look,
+                current=current,
+                size_here=size_here,
             )
         raise RecordCannotBeMatched(
             f"{resolved} is claimed by two different records in the revert "
             f"ledger: one is keyed to the volume and inode this file has now, "
             f"and a different one carries this path. Both cannot be about this "
-            f"file, and nothing here can say which is. Run the doctor over the "
-            f"ledger; both originals are still recorded and nothing has been "
-            f"written.",
+            f"file, and nothing here can say which is. Both originals are still "
+            f"recorded and nothing has been written; what has to be settled is "
+            f"the ledger.",
             path=resolved,
         )
 
     if by_identity is not None:
         if _live_identity(Path(by_identity.path)) == identity:
             # One file under two names. The recorded name still finds it, so
-            # there is nothing to correct and no reason to read the bytes.
-            return _re_addressed(
-                by_identity, identity=identity, path_text=path_text, keep_path=True
+            # there is nothing to CORRECT; whether there is anything to LOSE is
+            # a different question and the shape below is where it is asked.
+            return _settled_or_refused(
+                by_identity,
+                resolved,
+                identity=identity,
+                path_text=path_text,
+                keep_path=True,
+                written=written,
+                look=look,
+                current=current,
+                size_here=size_here,
             )
-        if _the_bytes_agree(by_identity, look):
+        if _the_bytes_agree(by_identity, look, size_here):
             return _re_addressed(
                 by_identity, identity=identity, path_text=path_text, keep_path=False
             )
@@ -1073,7 +1256,7 @@ def _record_for(
         )
 
     assert by_path is not None
-    if _the_bytes_agree(by_path, look):
+    if _the_bytes_agree(by_path, look, size_here):
         return _re_addressed(
             by_path, identity=identity, path_text=path_text, keep_path=True
         )
@@ -1082,7 +1265,9 @@ def _record_for(
     )
 
 
-def _the_bytes_agree(record: TagSnapshot, look: Callable[[], _Looked]) -> bool:
+def _the_bytes_agree(
+    record: TagSnapshot, look: Callable[[], _Looked], size_here: int | None
+) -> bool:
     """Whether the file in hand is byte for byte what this record was stamped from.
 
     THE ONLY CORROBORATION IN THIS MODULE THAT NOTHING CAN FORGE BY MOVING A
@@ -1095,11 +1280,59 @@ def _the_bytes_agree(record: TagSnapshot, look: Callable[[], _Looked]) -> bool:
     of the module's oldest defect. "Nothing recorded" is not agreement, it is the
     absence of the evidence, and every version of this module that let an absence
     stand in for a match ended with a file nobody could put back.
+
+    ``size_here`` IS THE FILE'S OWN SIZE AND IT IS ASKED AGAINST THE RECORD'S,
+    which is the correction round 7 got wrong in a way its own docstring did not
+    notice. The size shortcut lives inside :func:`_look_at`, which only applies it
+    when it is HANDED a recorded size, and the closure this function is given
+    calls :func:`_look_at` with none. So the shortcut was disabled on the whole of
+    this path and the comparison below is where it comes back. Two different
+    sizes cannot be the same bytes, so this can never change an answer, only the
+    number of whole-file reads taken to reach it.
     """
     if record.digest_state is not DigestState.RECORDED:
         return False
+    if record.size is not None and size_here is not None and record.size != size_here:
+        return False
     looked = look()
     return looked.outcome is ByteRead.ANSWERED and looked.digest == record.digest
+
+
+def _the_recorded_path_is_vacant(record: TagSnapshot) -> bool:
+    """Whether the recorded path is DEMONSTRABLY not holding its file any more.
+
+    AN UNMOUNTED VOLUME IS NOT A DELETED FILE, and reading the first as the second
+    is how a byte identical copy took a live file's record. The previous version
+    of this test was ``not Path(record.path).exists()`` and nothing else. Driven
+    on a real ``hdiutil`` MS-DOS FAT image: the track was adopted on the volume, a
+    byte identical backup existed elsewhere, the volume was DETACHED so the
+    recorded path stopped resolving, and the next adoption of the backup was
+    handed the USB file's record. The backup's own value was then overwritten with
+    nothing recorded, and when the volume came back the USB file was adopted
+    afresh with ADOPTION'S OWN value stored as its original. One user value in no
+    file and no record, on a library that lives on a drive that gets unplugged.
+
+    SO IT ASKS FOR THE DIRECTORY TO BE PRESENT AND ANSWERING, which is positive
+    evidence rather than the absence of some. A file that was deleted or renamed
+    leaves its containing directory behind; a volume that was ejected takes the
+    whole path with it, mount point included. When the directory cannot be
+    reached, this build does not know what happened to the file and says so by
+    declining to hand its record to anything else.
+
+    WHAT THAT COSTS, stated rather than left to be discovered. A record whose file
+    was renamed AND whose entire containing directory was then removed is no
+    longer findable by its bytes, so a second record is written beside it. That is
+    a reorganisation of a legacy ledger's library, it costs one record's original
+    rather than a live file's value, and the residual titled "a record whose whole
+    directory is gone is not searched for by its bytes" carries it.
+    """
+    recorded = Path(record.path)
+    try:
+        if not recorded.parent.is_dir():
+            return False
+        return not recorded.exists()
+    except OSError:
+        return False
 
 
 def _found_by_its_bytes(
@@ -1109,19 +1342,34 @@ def _found_by_its_bytes(
     field: str,
     identity: str,
     look: Callable[[], _Looked],
+    size_here: int | None,
 ) -> _Matched | None:
     """A stranded record whose bytes are this file's, when no address matched.
 
-    THE SIZE FILTER RUNS FIRST AND IT IS FREE. Two different sizes cannot be the
-    same bytes, so a record whose recorded size is not this file's size can never
-    be corroborated and is never a reason to hash anything. In a ledger whose
-    records all still resolve, the candidate list is empty and this function
-    reads no file at all.
+    EVERY FILTER THAT DOES NOT NEED THE BYTES RUNS BEFORE THE BYTES ARE READ, and
+    the order below is the whole cost of this function. Round 7 read the file
+    first and filtered afterwards, so a perfectly healthy ledger hashed every
+    track it adopted from the SECOND one onward: the candidate list could not be
+    emptied until after the read that emptying it was supposed to avoid. Measured
+    on a first adoption of eight files into an empty ledger, that was 15 reads
+    for 8 files where 8 is the floor, and the guard test named for the property
+    adopted exactly one file and so could not see it.
 
-    THE PATH CHECK IS SECOND because it costs a stat per surviving candidate. A
-    record whose recorded path still exists is being claimed by whatever is at
-    that path, and quietly taking it away from that file is the defect one door
-    up pointed sideways.
+    1. **A record has to be able to be corroborated at all.** No digest, no size,
+       wrong field: it can never answer, so it is never a reason to read anything.
+    2. **Its recorded path has to be VACANT**, established positively by
+       :func:`_the_recorded_path_is_vacant`. A record whose path still holds a
+       file is being claimed by that file, and quietly taking it away is the
+       defect one door up pointed sideways. This costs one ``stat`` per candidate
+       and it is what makes a healthy ledger read NOTHING here: every record still
+       resolves, so nothing is stranded and there is nothing to hash against.
+    3. **Its recorded size has to be THIS FILE'S size.** Two different sizes
+       cannot be the same bytes, so this cannot change an answer. It is asked
+       against the file in hand rather than against ``None``, which is the part
+       round 7 wrote down and did not do.
+
+    Only what survives all three is worth a whole-file read, and if nothing does,
+    no file is read.
     """
     possible = [
         record
@@ -1132,14 +1380,16 @@ def _found_by_its_bytes(
     ]
     if not possible:
         return None
+    vacant = [record for record in possible if _the_recorded_path_is_vacant(record)]
+    if not vacant or size_here is None:
+        return None
+    same_size = [record for record in vacant if record.size == size_here]
+    if not same_size:
+        return None
     looked = look()
     if looked.outcome is not ByteRead.ANSWERED:
         return None
-    stranded = [
-        record
-        for record in possible
-        if record.digest == looked.digest and not Path(record.path).exists()
-    ]
+    stranded = [record for record in same_size if record.digest == looked.digest]
     matched = _one_or_none(
         stranded,
         resolved=resolved,
@@ -1155,6 +1405,24 @@ def _found_by_its_bytes(
     )
 
 
+def _a_value_nothing_recorded(
+    record: TagSnapshot, resolved: Path, held: tuple[str, ...] | None
+) -> str:
+    """The refusal for a file whose field holds something the ledger never saw."""
+    return (
+        f"{resolved} is the file a record in the revert ledger is about, by both "
+        f"its volume and inode and its path, but the bytes are not the ones "
+        f"adoption left and its {record.field!r} now holds {held!r}, which is "
+        f"neither the {record.original!r} that record kept nor a value adoption "
+        f"has written through it. Something rewrote this file after adoption ran: "
+        f"a tag edited by hand, or a different recording put here in place. "
+        f"Writing over it would put a value in no file and no record, and which "
+        f"of the two happened is not a fact this file carries. Nothing was "
+        f"written and {record.original!r} is still recorded for "
+        f"{(record.path, record.field)!r}."
+    )
+
+
 def _an_inode_is_not_a_file(record: TagSnapshot, resolved: Path) -> str:
     """The refusal for a record keyed to this inode whose own path is elsewhere."""
     return (
@@ -1166,7 +1434,8 @@ def _an_inode_is_not_a_file(record: TagSnapshot, resolved: Path) -> str:
         f"unrelated file that inherited its number. The bytes were asked and did "
         f"not answer to what that record was stamped from, so the two cannot be "
         f"told apart from here. Nothing was written to this file and its own tag "
-        f"value is untouched. Run the doctor over the ledger."
+        f"value is untouched; the record still holds {record.original!r} for "
+        f"{(record.path, record.field)!r}."
     )
 
 
@@ -1180,7 +1449,8 @@ def _a_path_is_not_a_file(record: TagSnapshot, resolved: Path) -> str:
         f"remount, and so does replacing the file with a different one. The bytes "
         f"were asked and did not answer to what that record was stamped from, so "
         f"the three cannot be told apart from here. Nothing was written to this "
-        f"file and its own tag value is untouched. Run the doctor over the ledger."
+        f"file and its own tag value is untouched; the record still holds "
+        f"{record.original!r} for {(record.path, record.field)!r}."
     )
 
 
@@ -1204,28 +1474,45 @@ def _record_locked(
     written down at all. :func:`_record_for` is the answer to both: the claims
     have to converge, and a divergence the bytes cannot settle refuses.
 
-    THE FILE IS HASHED AT MOST ONCE PER CALL AND ONLY WHEN A CLAIM DIVERGES. The
-    ``look`` closure below is what enforces that: the common paths, a first
-    adoption and an ordinary re-run, never call it.
+    THE FILE IS HASHED AT MOST ONCE PER CALL AND ONLY WHEN A CLAIM DIVERGES, and
+    the two closures below are what enforce it. ``look`` is the whole-file read
+    and ``held`` is one tag field; each answers once per call however many times
+    it is asked, and the common paths, a first adoption and an ordinary re-run,
+    call neither. ``size_here`` is one ``stat`` taken up front because it is what
+    lets a candidate be discarded without reading it: two different sizes cannot
+    be the same bytes.
     """
     ledger = read(cfg)
     identity = identity_of(resolved)
     seen: list[_Looked] = []
+    known: list[tuple[str, ...] | None] = []
 
     def look() -> _Looked:
         if not seen:
             seen.append(_look_at(resolved))
         return seen[0]
 
+    def current() -> tuple[str, ...] | None:
+        if not known:
+            known.append(read_field(resolved, field))
+        return known[0]
+
     matched = _record_for(
-        ledger, resolved, field=field, identity=identity, look=look
+        ledger,
+        resolved,
+        field=field,
+        identity=identity,
+        written=written,
+        look=look,
+        current=current,
+        size_here=_size_of(resolved),
     )
     if matched is None:
         record = TagSnapshot(
             file=identity,
             field=field,
             path=str(resolved),
-            original=read_field(resolved, field),
+            original=current(),
             written=written,
             recorded=timestamp(now),
             entry_id=entry_id,
@@ -1923,15 +2210,24 @@ def _cannot_say_which_record(record: TagSnapshot, why: str) -> str:
     a message inviting an override, and the override wrote the value adoption had
     put there back onto the file as though it were the original.
 
-    So this refusal names the ledger as the thing that is wrong and sends the
-    person to the doctor rather than to a flag.
+    So this refusal names the LEDGER as the thing that is wrong rather than
+    offering a flag, and it names it without telling the person to run anything.
+    Every message in this module used to end "Run the doctor over the ledger", and
+    ``crate doctor`` is not a verb this build has: the registry marks it
+    ``planned_in="U27"`` and the parser answers ``invalid choice: 'doctor'``. An
+    instruction that cannot be carried out is worse than none, because the person
+    spends the failure looking for the command instead of at the ledger. The
+    residual titled "the refusal's remedy names a verb that has not landed"
+    carries the machine readable half, which is still ``Remedy.RUN_DOCTOR``
+    because that is this repository's slug for it in five modules and re-slugging
+    one of them is a fix landing on the wrong object.
     """
     return (
         f"this record cannot be spent on the file at that path: {why}. force "
         f"does not apply: it overrides evidence about the BYTES, and what is "
         f"missing here is which record belongs to this file, which is a fact "
-        f"about the ledger. Run the doctor over "
-        f"{(record.path, record.field)!r} instead; every original is still "
+        f"about the ledger. The record is "
+        f"{(record.path, record.field)!r}; every original is still "
         f"recorded and nothing has been written."
     )
 
@@ -2220,8 +2516,14 @@ def _bring_the_bytes_within_reach(
     :func:`write_tag_with_record` on a perfectly local file for the whole of that
     download. Reading the file here makes the provider materialize it, so the
     read under the lock is served locally. The residual titled "a revert hashes
-    every file it considers" carries the cost, which is now honestly TWO reads
-    per refused record rather than one.
+    every file it considers" carries the cost, and the cost is TWO READS PER
+    RECORD, ACCEPTED OR REFUSED, not two per refused one. This docstring said
+    "refused" for a round and the number was measured against the wrong set: the
+    loop below skips a record that is ``forced`` and one that is not
+    :attr:`DigestState.RECORDED`, and those read ZERO times; every other record is
+    read here and read again under the lock whatever the guard then decides. On a
+    64 MiB track that is 128 MiB hashed on the accepting path, which is the common
+    path, so the honest figure is the larger one.
 
     IT IS BEST EFFORT IN EVERY DIRECTION AND CANNOT BE ANYTHING ELSE. An
     unreadable ledger returns and the locked read raises the same thing a moment

@@ -2282,6 +2282,14 @@ def test_the_FIRST_ADOPTION_of_a_library_hashes_NOTHING(cfg, tmp_path, monkeypat
     every track in the library. So the common paths are asserted to perform ZERO
     reads: a first adoption, where no record claims the file, and an ordinary
     re-run, where the identity and the path claim it together.
+
+    THE SECOND FILE IS THE POINT, and this test did not have one for a round. It
+    adopted exactly ONE file, so the ledger it adopted into was EMPTY, and an
+    empty ledger has no candidate to search by bytes whatever the search costs. A
+    test named for the first adoption OF A LIBRARY has to put a second file into a
+    ledger that already holds a stamped record, because that is where round 7 hid
+    a whole-file hash per track: the candidate filter read the file first and
+    discarded the candidates afterwards.
     """
     reads: list[Path] = []
     real_digest = adopt_revert.digest_of
@@ -2306,6 +2314,437 @@ def test_the_FIRST_ADOPTION_of_a_library_hashes_NOTHING(cfg, tmp_path, monkeypat
         f"something that was not in doubt, reads={reads}"
     )
     assert len(adopt_revert.read(cfg).snapshots) == 1
+
+    # A SECOND FILE, INTO A LEDGER THAT ALREADY HOLDS A STAMPED RECORD.
+    second = _synth_in(tmp_path / "second", ".flac")
+    tags.write_genre(second, "Another User Genre")
+    reads.clear()
+    adopt_revert.write_tag_with_record(
+        cfg, second, field="genre", written="Adopted Bucket", entry_id="e3"
+    )
+    assert reads == [second], (
+        f"the second file into a non-empty ledger was hashed to look itself up "
+        f"and then hashed again to stamp it, which doubles the reads of the one "
+        f"pass that touches every track in the library, reads={reads}"
+    )
+    assert len(adopt_revert.read(cfg).snapshots) == 2
+
+
+def test_a_first_adoption_of_EIGHT_files_reads_EIGHT_times_and_not_FIFTEEN(
+    cfg, tmp_path, monkeypatch
+):
+    """The headline cost, counted per file rather than asserted in a docstring.
+
+    Round 7's ``_found_by_its_bytes`` filtered its candidates on
+    ``record.size is not None``, which is a fact about the RECORD and never a
+    comparison against the file in hand, and it ran the whole-file read BEFORE the
+    test that empties the candidate list. So a perfectly healthy ledger, every one
+    of whose records still resolves, hashed each new file twice: once to look it
+    up against records that could not have matched, and once to stamp it.
+
+    Measured on eight files at the time: ``1, 2, 2, 2, 2, 2, 2, 2`` = 15 reads for
+    8 files, where 8 stamps is the floor. This asserts the per-file list rather
+    than the total, so a fix that moved a read from one file to another could not
+    hide in the sum.
+    """
+    reads: list[Path] = []
+    real_digest = adopt_revert.digest_of
+    monkeypatch.setattr(
+        adopt_revert, "digest_of", lambda p, **kw: (reads.append(p), real_digest(p))[1]
+    )
+
+    per_file: list[int] = []
+    for index in range(8):
+        track = _synth_in(tmp_path / f"track{index}", ".flac")
+        tags.write_genre(track, f"User Genre {index}")
+        reads.clear()
+        adopt_revert.write_tag_with_record(
+            cfg, track, field="genre", written="Adopted Bucket", entry_id=f"e{index}"
+        )
+        per_file.append(len(reads))
+
+    assert per_file == [1] * 8, (
+        f"a first adoption into an empty ledger read some file more than once "
+        f"per track, which is the whole-library pass paying twice: {per_file}"
+    )
+    assert sum(per_file) == 8
+    assert len(adopt_revert.read(cfg).snapshots) == 8
+
+
+def test_an_UNMOUNTED_VOLUME_does_not_let_a_COPY_take_a_LIVE_files_record(
+    cfg, tmp_path
+):
+    """A path that will not resolve because its VOLUME is absent is not a deletion.
+
+    THE DEFECT ROUND 7 INTRODUCED, and it is this module's oldest recurring shape
+    pointed at the one function written to prevent it: absence read as evidence of
+    absence. ``_found_by_its_bytes`` decided a record was STRANDED, and therefore
+    available to whatever else carried its bytes, from
+    ``not Path(record.path).exists()`` alone.
+
+    Driven on a real ``hdiutil`` MS-DOS FAT image and reproduced portably here.
+    The track is adopted on a detachable volume. A byte identical backup exists
+    elsewhere, which is what a backup IS. The volume is detached, so the recorded
+    path stops resolving. The next adoption of the BACKUP was handed the volume
+    file's record: the backup's own value was overwritten with nothing recorded,
+    and when the volume came back the original track was adopted afresh with
+    ADOPTION'S OWN value stored as its original. One user value in no file and no
+    record, on a library that lives on a drive that gets unplugged.
+
+    The volume is simulated by removing the directory the mount point stands in,
+    which is exactly what an eject leaves behind: the file's parent is not there
+    to be asked.
+    """
+    volume = tmp_path / "Volumes" / "PORTABLE"
+    on_the_volume = _synth_in(volume, ".flac")
+    tags.write_genre(on_the_volume, "Volume Own Genre")
+
+    adopt_revert.write_tag_with_record(
+        cfg, on_the_volume, field="genre", written="Adopted Bucket", entry_id="e1"
+    )
+    held = adopt_revert.read(cfg).snapshots[0]
+    assert held.original == ("Volume Own Genre",)
+    assert held.digest_state is adopt_revert.DigestState.RECORDED
+
+    # The backup is byte for byte what adoption left, which is the whole point of
+    # a backup and is exactly the evidence the byte search accepts.
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+    backup = backup_dir / "probe.flac"
+    backup.write_bytes(on_the_volume.read_bytes())
+    assert (
+        hashlib.sha256(backup.read_bytes()).hexdigest() == held.digest
+    ), "the fixture did not produce a byte identical copy"
+
+    # DETACHED. Nothing was deleted; the volume is simply not there.
+    for leftover in sorted(volume.iterdir()):
+        leftover.unlink()
+    volume.rmdir()
+    assert not Path(held.path).exists()
+
+    adopt_revert.write_tag_with_record(
+        cfg, backup, field="genre", written="Adopted Bucket", entry_id="e2"
+    )
+    ledger = adopt_revert.read(cfg)
+    assert len(ledger.snapshots) == 2, [
+        (entry.path, entry.original) for entry in ledger.snapshots
+    ]
+    kept = [entry for entry in ledger.snapshots if entry.path == held.path]
+    assert kept == [held], (
+        "the copy took the record of a file whose volume was merely unplugged, "
+        "so that file's own genre is now in no record at all"
+    )
+    # AND THE BACKUP GETS ITS OWN RECORD, recording what the BACKUP held, which
+    # is adoption's value because a copy of an adopted file holds an adopted
+    # file's tag. That is the honest record for it and it costs nothing: the
+    # volume file's own original is still filed under the volume file.
+    taken = [entry for entry in ledger.snapshots if entry.path == str(backup)]
+    assert len(taken) == 1 and taken[0].original == ("Adopted Bucket",), taken
+
+    # REPLUGGED. The record is still the volume file's, so a re-adoption finds it
+    # rather than writing adoption's own value down as the original.
+    volume.mkdir(parents=True)
+    Path(held.path).write_bytes(backup.read_bytes())
+    adopt_revert.write_tag_with_record(
+        cfg, Path(held.path), field="genre", written="Adopted Bucket", entry_id="e3"
+    )
+    settled = [
+        entry
+        for entry in adopt_revert.read(cfg).snapshots
+        if entry.path == held.path
+    ]
+    assert len(settled) == 1 and settled[0].original == ("Volume Own Genre",), (
+        f"the replugged file's original is no longer recorded anywhere: {settled}"
+    )
+
+
+def test_a_DIFFERENT_RECORDING_put_here_IN_PLACE_is_refused_not_re_stamped(
+    cfg, tmp_path
+):
+    """Two agreeing addresses settle WHICH FILE, and settle nothing about content.
+
+    Round 7 returned a match from the two agreeing addresses and never asked the
+    digest, which had been diverging the whole time. Driven with no forgery: track
+    A is adopted at path P; the file at P is then replaced IN PLACE by a different
+    recording B, which is what ``cp`` and every truncating writer do and which
+    keeps both the inode and the path. The second adoption re-stamped the record
+    with B's bytes and reported clean; the revert then wrote A's genre onto B's
+    audio and reported THAT clean. B's own genre was recorded nowhere, which is
+    verbatim the loss ``RecordCannotBeMatched``'s own docstring says this round
+    exists to prevent.
+
+    A BYTE CHANGE IS NOT WHAT REFUSES. See the sibling below: a tag edited in
+    place changes the bytes too and is accepted, because adoption's own value is
+    still in the field and nothing unrecorded can be lost.
+    """
+    path = _synth(tmp_path, ".flac")
+    tags.write_genre(path, "A Own Genre")
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Adopted Bucket", entry_id="e1"
+    )
+    first = adopt_revert.read(cfg).snapshots[0]
+    assert first.original == ("A Own Genre",)
+    inode = path.stat().st_ino
+
+    other = _synth_in(tmp_path / "b", ".flac")
+    tags.write_tags(other, {"title": "A Different Recording"})
+    tags.write_genre(other, "B Own Genre")
+    with path.open("r+b") as handle:
+        handle.truncate(0)
+        handle.write(other.read_bytes())
+    assert path.stat().st_ino == inode, "the fixture moved the inode"
+    assert tags.read_genre_from_file(path) == "B Own Genre"
+
+    with pytest.raises(adopt_revert.RecordCannotBeMatched) as refused:
+        adopt_revert.write_tag_with_record(
+            cfg, path, field="genre", written="Adopted Bucket", entry_id="e2"
+        )
+    assert "not the ones adoption left" in refused.value.cause.message
+    assert "B Own Genre" in refused.value.cause.message
+    assert "doctor" not in refused.value.cause.message
+
+    assert tags.read_genre_from_file(path) == "B Own Genre", (
+        "adoption wrote over a value it had not recorded, which is the one act "
+        "this product cannot undo"
+    )
+    assert adopt_revert.read(cfg).snapshots == (first,), (
+        "the record was re-stamped from a different recording's bytes, so the "
+        "revert now accepts B and writes A's genre onto it"
+    )
+
+
+def test_a_TAG_EDITED_IN_PLACE_is_still_accepted_because_nothing_is_at_risk(
+    cfg, tmp_path
+):
+    """The other half of the decision, and the reason it is not just "bytes moved".
+
+    A mutagen save that does not go through ``os.replace`` rewrites the file in
+    place: the inode stays, the path stays, and the BYTES CHANGE. That is an
+    ordinary tagging session, it happens to every track somebody edits, and
+    refusing it would make one tagging session cost the next adoption of the whole
+    library. So a byte change on its own is not what refuses. What refuses is a
+    byte change together with a value in the adopted field that neither the record
+    nor this call accounts for.
+
+    Here the tagging session edits the TITLE. The genre still holds what adoption
+    wrote, so nothing unrecorded can be lost, the record keeps its original, and
+    the file is never read to decide it.
+    """
+    path = _synth(tmp_path, ".flac")
+    tags.write_genre(path, "User Genre")
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Adopted Bucket", entry_id="e1"
+    )
+    stamped = adopt_revert.read(cfg).snapshots[0]
+
+    tags.write_tags(path, {"title": "Edited In A Tagging Session"})
+    assert (
+        hashlib.sha256(path.read_bytes()).hexdigest() != stamped.digest
+    ), "the fixture did not change the bytes, so this proves nothing"
+    assert path.stat().st_ino == Path(stamped.path).stat().st_ino
+
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Adopted Bucket", entry_id="e2"
+    )
+    ledger = adopt_revert.read(cfg)
+    assert len(ledger.snapshots) == 1, [
+        (entry.file, entry.original) for entry in ledger.snapshots
+    ]
+    assert ledger.snapshots[0].original == ("User Genre",)
+    assert ledger.snapshots[0].written_by("e1") and ledger.snapshots[0].written_by("e2")
+
+    report = adopt_revert.revert_tags(cfg)
+    assert report.failed == {}, report.failed
+    assert tags.read_genre_from_file(path) == "User Genre"
+
+
+def test_a_HARDLINKED_second_name_asks_the_BYTES_when_the_field_holds_a_stranger(
+    cfg, tmp_path
+):
+    """The hardlink shape returned before the byte check, so it never reached one.
+
+    Two names for one inode. The recorded name still resolves to this same file,
+    which settles WHICH FILE and used to end the matter. It does not settle
+    whether the content is still what adoption left: a hardlink is no more proof
+    of that than a path is, and the file under both names can be rewritten in
+    place by anything.
+
+    So the same question is asked here as in the two-address shape, and it is
+    asked in the right ORDER: this cell used to be decided by the hardlink test
+    returning before the byte test was reached, which is an answer produced by
+    line order rather than by evidence.
+    """
+    first = _synth(tmp_path, ".flac")
+    tags.write_genre(first, "User Genre")
+    second = tmp_path / "second-name.flac"
+    os.link(first, second)
+
+    adopt_revert.write_tag_with_record(
+        cfg, first, field="genre", written="Adopted Bucket", entry_id="e1"
+    )
+    held = adopt_revert.read(cfg).snapshots[0]
+
+    other = _synth_in(tmp_path / "b", ".flac")
+    tags.write_tags(other, {"title": "A Different Recording"})
+    tags.write_genre(other, "Stranger Own Genre")
+    with second.open("r+b") as handle:
+        handle.truncate(0)
+        handle.write(other.read_bytes())
+    assert first.stat().st_ino == second.stat().st_ino, "the fixture broke the link"
+    assert Path(held.path).exists(), "the recorded name must still resolve"
+
+    with pytest.raises(adopt_revert.RecordCannotBeMatched) as refused:
+        adopt_revert.write_tag_with_record(
+            cfg, second, field="genre", written="Adopted Bucket", entry_id="e2"
+        )
+    assert "Stranger Own Genre" in refused.value.cause.message
+    assert adopt_revert.read(cfg).snapshots == (held,)
+    assert tags.read_genre_from_file(second) == "Stranger Own Genre"
+
+
+def test_a_SAME_LENGTH_rewrite_reaches_the_DIGEST_rather_than_the_size_shortcut(
+    cfg, tmp_path
+):
+    """The size can rule a record out and can never rule one in, so pin the digest.
+
+    A refusal reached by the size comparison alone would leave the digest check
+    untested on this path, and the size is the cheap fact this module says twice
+    over is not evidence about content. Here the replacement is padded to exactly
+    the recorded length, so the only thing left that can tell the two apart is the
+    sha256.
+    """
+    path = _synth(tmp_path, ".flac")
+    tags.write_genre(path, "A Own Genre")
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Adopted Bucket", entry_id="e1"
+    )
+    held = adopt_revert.read(cfg).snapshots[0]
+
+    other = _synth_in(tmp_path / "b", ".flac")
+    tags.write_genre(other, "B Own Genre")
+    payload = bytearray(other.read_bytes())
+    assert held.size is not None
+    if len(payload) < held.size:
+        payload.extend(b"\x00" * (held.size - len(payload)))
+    del payload[held.size :]
+    with path.open("r+b") as handle:
+        handle.truncate(0)
+        handle.write(bytes(payload))
+    assert path.stat().st_size == held.size, "the fixture did not match the size"
+    assert hashlib.sha256(path.read_bytes()).hexdigest() != held.digest
+
+    with pytest.raises(adopt_revert.RecordCannotBeMatched) as refused:
+        adopt_revert.write_tag_with_record(
+            cfg, path, field="genre", written="Adopted Bucket", entry_id="e2"
+        )
+    assert "not the ones adoption left" in refused.value.cause.message
+    assert adopt_revert.read(cfg).snapshots == (held,)
+
+
+def test_TWO_RECORDS_for_ONE_FILE_AND_FIELD_never_reach_the_lookup_at_all(
+    cfg, tmp_path
+):
+    """The cell a hardlinked second path used to be able to write.
+
+    A file under two names, each with its own record for the same field, is two
+    answers to "what was this file's genre before adoption". Nothing downstream
+    can choose between them, and the choice decides what a user's audio ends up
+    holding. ``_record_for`` stops this build WRITING the second record; this is
+    the other end, for a document already on disk.
+
+    The whole document is refused at the reader with every original in it intact,
+    rather than half of it being spent before the contradiction is noticed. So the
+    lookup never runs and there is no shape in ``_record_for`` for this: that is
+    the answer to the cell rather than a gap in it.
+    """
+    first = _synth(tmp_path, ".flac")
+    tags.write_genre(first, "User Genre")
+    second = tmp_path / "second-name.flac"
+    os.link(first, second)
+    adopt_revert.write_tag_with_record(
+        cfg, first, field="genre", written="Adopted Bucket", entry_id="e1"
+    )
+
+    document = json.loads(adopt_revert.path_for(cfg).read_text())
+    twin = dict(document["snapshots"][0])
+    twin["path"] = str(second)
+    twin["original"] = ["Adopted Bucket"]
+    document["snapshots"].append(twin)
+    adopt_revert.path_for(cfg).write_text(json.dumps(document))
+
+    with pytest.raises(adopt_revert.RevertLedgerUnreadable) as refused:
+        adopt_revert.read(cfg)
+    assert "two records for" in refused.value.cause.message
+
+    with pytest.raises(adopt_revert.RevertLedgerUnreadable):
+        adopt_revert.write_tag_with_record(
+            cfg, second, field="genre", written="Adopted Bucket", entry_id="e2"
+        )
+    assert tags.read_genre_from_file(first) == "Adopted Bucket"
+
+
+def test_no_refusal_in_this_module_tells_the_person_to_RUN_A_VERB_THAT_IS_PLANNED(
+    cfg, tmp_path
+):
+    """Every message here ended by naming a command the build does not have.
+
+    ``crate doctor`` answers ``invalid choice: 'doctor'``: the registry marks it
+    ``planned_in="U27"``. An instruction that cannot be carried out is worse than
+    none, because the person spends the failure looking for the command instead of
+    at the ledger. The machine readable remedy stays ``RUN_DOCTOR``, which is this
+    repository's slug for it in five modules; the residual titled "the refusal's
+    remedy names a verb that has not landed" carries that half.
+
+    Each refusal below is built through the public API rather than by calling the
+    message helpers, so a new message that reintroduces the instruction is caught
+    wherever it is added.
+    """
+    from cratekit.cli import registry as cli_registry
+
+    assert cli_registry.entry("doctor").planned_in, (
+        "doctor has landed, so this test and the residual it names are stale"
+    )
+    assert all(
+        landed.name != "doctor" for landed in cli_registry.landed_entries()
+    )
+
+    said: list[str] = []
+
+    replaced = _synth(tmp_path, ".flac")
+    tags.write_genre(replaced, "A Own Genre")
+    adopt_revert.write_tag_with_record(
+        cfg, replaced, field="genre", written="Adopted Bucket", entry_id="e1"
+    )
+    other = _synth_in(tmp_path / "b", ".flac")
+    tags.write_genre(other, "B Own Genre")
+    with replaced.open("r+b") as handle:
+        handle.truncate(0)
+        handle.write(other.read_bytes())
+    with pytest.raises(adopt_revert.RecordCannotBeMatched) as value_refusal:
+        adopt_revert.write_tag_with_record(
+            cfg, replaced, field="genre", written="Adopted Bucket", entry_id="e2"
+        )
+    said.append(value_refusal.value.cause.message)
+
+    saved = _synth_in(tmp_path / "saved", ".flac")
+    tags.write_genre(saved, "User Genre")
+    adopt_revert.write_tag_with_record(
+        cfg, saved, field="genre", written="Adopted Bucket", entry_id="e3"
+    )
+    moving = tmp_path / "moving.flac"
+    moving.write_bytes(saved.read_bytes())
+    tags.write_tags(moving, {"title": "Retagged Elsewhere"})
+    os.replace(moving, saved)
+    with pytest.raises(adopt_revert.RecordCannotBeMatched) as path_refusal:
+        adopt_revert.write_tag_with_record(
+            cfg, saved, field="genre", written="Adopted Bucket", entry_id="e4"
+        )
+    said.append(path_refusal.value.cause.message)
+
+    assert len(said) == 2
+    for message in said:
+        assert "doctor" not in message, message
+        assert "Run the" not in message, message
 
 
 def test_a_CRASH_SEAM_record_with_no_digest_still_matches_its_own_file(cfg, tmp_path):
@@ -3909,10 +4348,15 @@ def test_a_TARGETED_revert_cannot_DISSOLVE_the_group_refusal(cfg, tmp_path):
         "originals belongs to it cannot be decided from the ledger. force does "
         "not apply: it overrides evidence about the BYTES, and what is missing "
         "here is which record belongs to this file, which is a fact about the "
-        "ledger. Run the doctor over "
-        f"{key!r} instead; every original is still recorded and nothing has been "
+        "ledger. The record is "
+        f"{key!r}; every original is still recorded and nothing has been "
         "written."
     ), targeted.failed[key]
+    # AND IT NAMES NO COMMAND, because `crate doctor` is not a verb this build
+    # has: the registry marks it planned_in="U27" and the parser answers
+    # `invalid choice: 'doctor'`. Every refusal in this module used to end by
+    # telling the person to run it.
+    assert "doctor" not in targeted.failed[key], targeted.failed[key]
 
     # THE OTHER SIDE OF THE GROUP, whose original is adoption's own value, is the
     # one the chain ended on. It must not be reachable by naming its entry either.
