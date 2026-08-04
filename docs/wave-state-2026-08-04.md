@@ -546,6 +546,58 @@ registers the module obligation. `KIND_VERSION`, not `TOMBSTONE_KIND`. A merge
 instruction naming a symbol that does not exist gets followed literally, so
 this one is worth more than its size.
 
+### U38, and a fourth pattern: a fix justified by a fixture, not the tree
+
+Round 4's entire justification was that round 3's wide key set over fired,
+"27 of 28 ordinary constructs reported". **That number came from a hand
+written fixture. It was never measured against the repository.**
+
+Measured against all 60 plus real package modules under round 3's rule:
+**ZERO offenders** outside the two declared table owners. On the fixture that
+actually ships it is 18 of 18 under the wide rule, and the 28 construct set is
+not in the repository at all.
+
+So round 4 traded real coverage away to fix an over fire that does not occur
+here. The coverage traded is not small: across 15 realistic second
+reservation table shapes keyed on registry only slugs, 15 of 15 were caught
+under round 3's rule and **0 of 15 under the tiers.**
+
+Two compounding findings. **R-19 is factually wrong about the rule it
+documents**, claiming tier 2 accepts a conversion wrapped round an `ExitCode`
+when it does not, and the fixture round 4 itself added to drive that case is
+only ever run with a tier 1 key. And **the alternative round 4 rejected was
+rejected on a property the shipped scheme also lacks**: it declined to narrow
+to the 18 live integers because that would "blind the guard to a new module
+inventing 33", and `{"tree-registry-unusable": 33}` is not reported by what
+shipped.
+
+Worst of the twelve, and the smallest: **R-15's headline fix, the whole point
+of the round, ships with zero tests holding it.** Reverting the repaired
+import walk to the exact pre fix expression kills 0. No fixture anywhere in
+`tests/` contains `from .review import` or `from . import review`. The defect
+is repaired in the file whose entire thesis is that a guard answering "no"
+instead of "wrong" is the defect.
+
+**Name the fourth pattern: a fix justified by a measurement taken on a
+fixture rather than on the real system.** It is more dangerous than the other
+three because it produces a confident number, a defensible argument, and a
+green suite, and the number describes something that was written to make the
+argument. Ask of every justifying measurement: was this taken on the tree, or
+on something authored alongside the fix?
+
+### A process failure that is mine, not the agents'
+
+U38's verifier could not compare round 4's mutation table row by row, because
+**the row descriptions existed nowhere.** Not in the worktree, not in the
+repo, not in any file. Only the claimed counts survived, in a chat message.
+
+A mutation table is the primary evidence a round produces, and this wave has
+been generating it into a medium that does not persist. Every table so far is
+recoverable only from a session transcript. **Standing correction: a fix round
+writes its table into the repository, with full row descriptions and not only
+counts.** A table that cannot be checked by the next person is a claim, not a
+result.
+
 ### What these findings have in common
 
 All three are the wave's two named patterns, again. U23 and U34 are IDENTITY
