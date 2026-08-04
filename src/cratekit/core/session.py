@@ -75,7 +75,7 @@ from types import MappingProxyType
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.cli import output
-from cratekit.core import backup_facts, config, preflight, rb_writer
+from cratekit.core import backup_facts, config, preflight, rb_writer, reconcile
 from cratekit.core.cause import (
     Cause,
     CratekitError,
@@ -1361,10 +1361,11 @@ def assert_gates(
     session log. It arrives as a parameter because this layer names no verb (D2);
     the layer that owns verb names supplies one.
 
-    ``intent`` is a DECLARATION, not an override, and it changes exactly one of
-    the gates: a ``RECOVERY`` session is not held by the unresolved-session latch,
-    because a recovery is what the latch's own refusal names as the remedy. See
-    :class:`Intent`. All three of the gates below apply to it unchanged.
+    ``intent`` is a DECLARATION, not an override, and it changes exactly the two
+    LATCHES: a ``RECOVERY`` session is held neither by the unresolved-session
+    latch nor by the unreconciled-restore latch, because a recovery is what each
+    of those refusals names as its remedy. See :class:`Intent`. All three of the
+    gates below apply to it unchanged.
 
     THE ORDER IS ARGUED IN THE MODULE DOCSTRING and is not the order the plan
     lists them in. Volume, then acknowledgment, then lock: the first two read
@@ -1389,6 +1390,13 @@ def assert_gates(
     )
     if intent is not Intent.RECOVERY:
         assert_no_unresolved_session(resolved)
+        # The second latch, and it lives HERE for the reason the first one does:
+        # a refusal a caller can forget is a refusal that is eventually
+        # forgotten. A restore that left effects it could not undo, or trees that
+        # need rebuilding, refuses every ordinary destructive session until a
+        # person has closed each one. Read-only work is untouched, because
+        # nothing below this line runs for a caller that is not about to write.
+        reconcile.assert_converged(resolved)
     acknowledgment = assert_backup_acknowledged(resolved, now=now)
     watched = list(analysis_roots)
     with session_lock(resolved, path=lock, holder=holder) as held:
@@ -1521,6 +1529,9 @@ def close_session(
     cfg: config.Config,
     *,
     state: SessionState = SessionState.CLOSED,
+    intent: Intent = Intent.WRITE,
+    identity_provider: preflight.IdentityProvider | None = None,
+    mount_enumerator: preflight.MountEnumerator | None = None,
     now: datetime | None = None,
 ) -> SessionRecord:
     """End a session, releasing the capture it referenced.
@@ -1529,7 +1540,45 @@ def close_session(
     non-terminal one. Closing into ``awaiting-import`` would say the session is
     over while a person still has something to do, and would make its capture
     prunable at the moment it is most likely to be needed.
+
+    CLOSING IS GATED ON CONVERGENCE AND ABANDONING IS NOT, which is the same
+    split ``close_run`` already makes for the same reason. Closing is the CLAIM
+    that the run finished, and a run cannot have finished into a library holding
+    a restore nobody reconciled; abandoning is the opposite claim, and gating it
+    would leave somebody with a run they can neither finish nor give up on.
+
+    The gate is not vacuous even though the library lock is exclusive, and the
+    reason is worth stating because the obvious reading is that it must be. A
+    session that ended ``awaiting-import`` is OPEN across processes with the lock
+    long since released, so a restore can land between that session's write and
+    its close. That close is exactly the one this refuses: the export it is
+    reporting as imported was written against a library that has since been
+    rolled back underneath it.
+
+    ``intent`` selects, and does not override. A RECOVERY closes normally,
+    because a restore is what the refusal names as its own remedy and a latch
+    that condemned its remedy leaves a library with no exit but a hand-edited
+    file.
+
+    THE VOLUME IS ASSERTED BEFORE THE CONVERGENCE GATE, and it was not, which made
+    that gate silently permissive in one specific state. ``assert_gates`` asserts
+    the volume first and every other reader of the reconciliation record sits
+    behind it; this close does not go through ``assert_gates`` at all. With the
+    library volume gone, the record's path simply does not exist, and the reader
+    cannot tell that from a library with nothing recorded yet, so an open
+    reconciliation marker vanished and the close it should have refused was
+    allowed. The reader cannot be made to tell the difference without the recorded
+    volume identity, and this is where that identity is available. Asserted only on
+    the gated path, because abandoning is deliberately not gated: gating it would
+    leave somebody with a run they can neither finish nor give up on.
     """
+    if state is SessionState.CLOSED and intent is not Intent.RECOVERY:
+        assert_volume_identity(
+            cfg,
+            identity_provider=identity_provider,
+            mount_enumerator=mount_enumerator,
+        )
+        reconcile.assert_converged(cfg)
     if state not in TERMINAL_STATES:
         raise refuse(
             "internal-error",

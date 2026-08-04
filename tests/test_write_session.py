@@ -522,7 +522,12 @@ def test_the_log_records_everything_a_restore_has_to_judge(cfg):
             session.TreeChange(tree="tree-two", created=0, updated=7),
         )
     )
-    session.close_session(record, cfg)
+    session.close_session(
+        record,
+        cfg,
+        identity_provider=lambda _path: cfg.library.volume_id,
+        mount_enumerator=lambda: (),
+    )
 
     written = json.loads(session.log_path(record.session_id, cfg).read_text())
     assert written["session_id"] == record.session_id

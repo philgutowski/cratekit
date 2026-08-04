@@ -401,6 +401,57 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # slug because the file to look at is the database rather than one of the
         # state documents.
         "library-fingerprint-unreadable": ExitCode.LIBRARY_UNREADABLE,
+        # ── U32's refusals, appended for the reason the block above gives ────
+        #
+        # The capture store cannot fit one more capture. PRECONDITION rather than
+        # a library code, because nothing is wrong with the library: this
+        # installation has run out of somewhere to put the undo. It carries STEPS
+        # rather than a remedy token for the reason ``job-unknown`` does; freeing
+        # disk is not a command this product runs, and inventing a token that
+        # rendered to one would be worse than saying the sentence.
+        "snapshot-store-full": ExitCode.PRECONDITION,
+        # The reconciliation record is present and cannot be understood. ONE SLUG
+        # for every way one file can be unusable, exactly as ``config-unusable``
+        # and ``routing-ledger-unusable`` already argue: what differs between them
+        # is the REMEDY, and the remedy travels on the remediation.
+        "restore-record-unusable": ExitCode.PRECONDITION,
+        # A bare-metal target that is not one: the library volume turns out to be
+        # reachable after all, the target is the empty stub a mount point leaves
+        # behind, or it already holds a library nobody named for replacement. One
+        # slug, three sentences, because the answer in each case is a different
+        # act by the same person and the act rides on the steps.
+        "recovery-target-refused": ExitCode.PRECONDITION,
+        # Restoring this session would discard a later one that committed. It is
+        # a DECISION rather than a failure: the answer is a person naming the
+        # sessions they are prepared to lose, and the refusal carries the trees
+        # and the counts they would be losing so the naming is informed.
+        "restore-discards-committed-work": ExitCode.DECISION_REQUIRED,
+        # A restore landed and left markers nobody has dispositioned, or trees
+        # nobody has rebuilt. UNCONVERGED because that is precisely what it is:
+        # what the library holds and what the record says have come apart, and
+        # only a person can close the gap. It shares the code with
+        # ``tree-unconverged`` and keeps its own slug because the two name
+        # different things to repair, and the detail shapes differ accordingly.
+        "restore-reconciliation-outstanding": ExitCode.UNCONVERGED,
+        # One step of a restore could not be performed: the volume filled, the
+        # directory is not writable by this account, or the drive returned an
+        # error. PRECONDITION because every one of those is a condition of the
+        # machine that a person puts right and then repeats the restore, and it
+        # carries STEPS rather than a remedy token for the reason
+        # ``snapshot-store-full`` does. It exists at all because the alternative
+        # was a raw OSError escaping mid restore: no reason, no remedy, no
+        # reserved exit code, at the moment somebody is already recovering.
+        "restore-step-failed": ExitCode.PRECONDITION,
+        # A restore's staging directory already holds a companion file under the
+        # name this attempt wants, so moving the live one there would overwrite
+        # the only surviving copy of transactions that are in no capture. ITS OWN
+        # SLUG RATHER THAN ``internal-error``, which is where it used to land,
+        # and the difference is what a person is told to do: an internal error
+        # says report a defect and stop, and this condition is cleared by running
+        # the restore again, because a fresh attempt takes a fresh staging
+        # directory. PRECONDITION for the reason ``restore-step-failed`` is one:
+        # it is a condition of the machine that a repeat clears.
+        "restore-staging-occupied": ExitCode.PRECONDITION,
     }
 )
 

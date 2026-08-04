@@ -58,28 +58,6 @@ PENDING: dict[str, tuple[str, str]] = {
         "cratekit.core.session.close_session, because the gate is opt-in and its "
         "bypass is the exported call",
     ),
-    "cratekit.core.restore": (
-        "U32",
-        "that a restore replaces exactly the derived coupled set, and that it "
-        "keeps the source system's sidecar asymmetry: clear both live sidecars "
-        "first, write back the -wal, never the -shm. THREE MORE OBLIGATIONS "
-        "arrive with U8's destructive-session gates and are registered here "
-        "because U32 owns the verb that spends them (P5). One: the verb holds "
-        "ONE session across the plan and the run, passing its own open guard in "
-        "as backup.plan_restore's and backup.run_restore's `gates`, because the "
-        "default shape takes the lock twice and a second process can commit in "
-        "the window between them, leaving the run to copy a snapshot over a "
-        "commit its plan was built before. Two: the verb RESOLVES the session "
-        "record after a successful restore, through "
-        "session.resolve_unverified_session, because the session log is declared "
-        "SURVIVES_ROLLBACK and the committed-unverified record therefore outlives "
-        "the restore that answers it. Three: bare-metal recovery, where the "
-        "library volume itself is gone, needs a path of its own; every gate U8 "
-        "publishes is library-scoped by KTD21, so the lock, the acknowledgment "
-        "and the log all sit on the disk that just died. Today that case refuses "
-        "honestly with mount-library-volume, and refusing honestly is not the "
-        "same as serving it",
-    ),
     "cratekit.acquire.match_cli": (
         "U16",
         "that R11's three states are split the way U11 declared them: the "
@@ -224,6 +202,61 @@ PENDING: dict[str, tuple[str, str]] = {
         "needed the gates the unconverged flag is holding shut is a diagnostic "
         "nobody can reach",
     ),
+    "cratekit.session.restore_cli": (
+        "U27",
+        "the command-line surface for the two restore verbs, which the registry "
+        "declares against this module and which U32 could not land. REGISTERED "
+        "HERE RATHER THAN LEFT AS A planned_in MARKER for the reason the routing "
+        "CLI above gives at length: scripts/board.py reads this file and nothing "
+        "else, so an obligation carried only by a marker on a closing unit is "
+        "owned by nobody the moment that unit closes (P5). WHY U32 COULD NOT LAND "
+        "IT, stated so a human can judge whether to move this: conformance 3 "
+        "requires a landed gated verb to exit OK once its gate is answered, and "
+        "restore.run is destructive, writes db_tree, and would have to perform a "
+        "real restore of a real capture against a real database to exit OK at "
+        "all. The two verbs name one module, so landing either lands both. "
+        "RE-POINTED TO U27 rather than to any other open unit, and the reasoning "
+        "is left legible because it is a judgement somebody may want to move "
+        "again: U27 owns the operator-facing surface, must already solve exactly "
+        "this problem for doctor.repair-paths, which is destructive and carries "
+        "the same marker, and ships the status verb whose own summary promises to "
+        "report open runs and unconverged trees, which are the two things "
+        "cratekit.core.restore and cratekit.core.reconcile now record. A SECOND "
+        "OBLIGATION rides on the same module because the same module owns the "
+        "composition: the verb holds ONE session across the whole restore, "
+        "through cratekit.core.restore.recovery_session, and passes that value's "
+        "`guard` in as backup.plan_restore's and backup.run_restore's `gates`. "
+        "The default shape takes the library lock twice and a second process can "
+        "commit in the window between them, leaving the run to copy a snapshot "
+        "over a commit its plan was built before. U32 landed and tested the "
+        "composition; what is left is the one wiring call, and it is left here "
+        "because core may not import the modules layer",
+    ),
+    # THE ``cratekit.write.rebuild`` ENTRY WAS HERE AND IS DELETED, because U36
+    # LANDED. It shipped ``src/cratekit/write/rebuild.py`` on `main` in this
+    # session, and issue #36 is closed. A register that still owes a closed unit a
+    # module is the contradiction ``scripts/board.py audit`` exits 2 on, and the
+    # repository's own rule for that exit is to reopen the issue or clear the
+    # entry, never to leave it: U36 is finished, so the entry goes.
+    #
+    # WHAT THE ENTRY WAS HOLDING, and where each half went, because deleting a
+    # countdown without saying that is how an obligation evaporates:
+    #
+    # * that a rebuild clears an unconverged tree only on a convergence check and
+    #   never on a bare disposition. U36's own suite drives this rather than
+    #   grepping for it: `tests/test_rebuild.py` on `main` refuses
+    #   `clear_unconverged` while the check still differs, and its rebuild
+    #   disposes with REPAIRED rather than ACCEPTED. Discharged.
+    # * that the call-time resolution of `core.convergence` in
+    #   `core.restore._hand_tree_shortness_over`, and the
+    #   `reconcile.Kind.UNCONVERGED_TREE` fallback behind it, are deleted once the
+    #   two modules share a build. NOT discharged, and it cannot be discharged
+    #   from this branch, whose tree has no `core.convergence` to import. It is
+    #   item 3 of R-21 in `docs/residual-findings.md`, and
+    #   `tests/test_restore.py` now carries an always-armed tripwire that fails
+    #   the moment both modules are present with the fallback still there. That is
+    #   a countdown that needs no register key, so it cannot be orphaned by a unit
+    #   closing.
 }
 
 

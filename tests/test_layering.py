@@ -86,6 +86,15 @@ _LAYER_RULES: tuple[tuple[str, str], ...] = (
     #       that lived with each writer would be several implementations of one
     #       rule, which is how they come to disagree.
     (r"^cratekit\.core\.(tree_registry|convergence)$", "write"),
+    # The restore takes the SAME exception, for the same reason and with the same
+    # cost. It lives under core/ because the pending register and the state
+    # inventory both name it there, and it is a WRITE concern: it reads the tree
+    # registry to decide which trees a pre-cutover restore leaves unconverged, and
+    # a module ranked below the registry cannot ask it. Nothing beneath the write
+    # layer imports it, which is what keeps the exception free: the session
+    # boundary underneath reaches ``core.reconcile``, which is infrastructure and
+    # deliberately does not touch the registry at all.
+    (r"^cratekit\.core\.restore$", "write"),
     (r"^cratekit\.core\.", "infrastructure"),
     (r"^cratekit\.write\.", "write"),
     (r"^cratekit\.cli\.", "cli"),
@@ -728,3 +737,57 @@ def test_every_package_module_is_placed_in_the_ladder():
     """An unplaced module is an unguarded one, so absence must be loud."""
     for module, _ in _package_modules():
         layer_of(module)  # raises with a clear message if unplaced
+
+
+#: The write-ranked modules that live under ``core/``, and the ONE write-layer
+#: module each is ranked that way in order to reach. The exception buys a named
+#: import, not a layer's worth of them.
+_WRITE_RANKED_CORE_MODULES: dict[str, frozenset[str]] = {
+    "cratekit.core.tree_registry": frozenset(),
+    "cratekit.core.restore": frozenset(),
+}
+
+
+def test_a_write_ranked_core_module_imports_no_write_layer_module():
+    """The exception is narrower than the rank that implements it, so say so here.
+
+    Ranking ``core.restore`` as write is what lets it read the tree registry,
+    which is itself a write-ranked module under ``core/``. The rank is a blunt
+    instrument: it also grants permission to import every ``cratekit.write.*``
+    module, which is a whole layer of licence for one named dependency, and the
+    licence is the kind nobody notices being spent. Neither module uses any of it
+    today, and this is what keeps that true: adding such an import is a decision
+    that has to be made in this file, in a diff, rather than by an editor's
+    autocomplete in a module that already compiles.
+    """
+    offenders: dict[str, list[str]] = {}
+    for module, source in _package_modules():
+        allowed = _WRITE_RANKED_CORE_MODULES.get(module)
+        if allowed is None:
+            continue
+        found = sorted(
+            {
+                name
+                for name in _imported_cratekit_modules(source)
+                if name.startswith("cratekit.write") and name not in allowed
+            }
+        )
+        if found:
+            offenders[module] = found
+    assert not offenders, (
+        f"a core module ranked write is using the whole layer its rank grants "
+        f"rather than the one dependency the exception was taken for: {offenders}. "
+        f"Either narrow the import or widen the entry above with the reason."
+    )
+
+
+def _imported_cratekit_modules(source: str) -> set[str]:
+    """Every ``cratekit`` module path this source imports, lazy ones included."""
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            found.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            found.add(node.module)
+            found.update(f"{node.module}.{alias.name}" for alias in node.names)
+    return {name for name in found if name.startswith("cratekit")}

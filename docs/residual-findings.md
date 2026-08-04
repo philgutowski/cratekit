@@ -264,10 +264,15 @@ still skips is the sidecar CLEARING, which is unchanged and is a different
 question: clearing is itself destructive, so a rehearsal that cleared and then
 transferred nothing would do the damage and skip the repair.
 
-**Still open, and all three belong to the verb rather than to the wiring.** An
-adversarial read of this commit found them; each is registered in
-`tests/_pending.py` against `cratekit.core.restore` so it is a countdown rather
-than a note.
+**All three were still open, and all three are CLOSED 2026-08-02, by U32.** Each
+was registered in `tests/_pending.py` against `cratekit.core.restore` so it was a
+countdown rather than a note, and clearing that entry is what armed the guard.
+What closed each is recorded beneath it. One residue survives, and it is the
+wiring rather than the mechanism: the two restore verbs still have no
+command-line module, so the composition in item 1 is proven at the seam and is
+not yet called by anything a user can type. That obligation moved to
+`cratekit.session.restore_cli` in the same register, with the reasoning for
+re-pointing it left legible.
 
 1. **The plan and the run each take the lock and give it back.** With `gates`
    left at its default, `plan_restore` enters the guard, builds the plan, and
@@ -277,12 +282,24 @@ than a note.
    so a caller can hold ONE session across both halves, and the verb must: a plan
    is a value and cannot own a live context manager, so the composition is the
    caller's to make.
+
+   **Closed by** `restore.recovery_session`, which enters the gates once and
+   yields a `Held` whose `guard` is a pass-through the modules layer passes in as
+   `gates`. Holding the value is not the same as being inside the block, so
+   `restore.plan` and `restore.run` both assert that this process still holds the
+   lock at the moment they are called rather than merely that it once did.
 2. **The record outlives the restore that answers it.** The session log is
    declared `SURVIVES_ROLLBACK`, deliberately, because rolling it back would
    erase the record of which sessions are restorable. So a
    `committed-unverified` record is still there after the restore that resolves
    it, and the verb has to call `session.resolve_unverified_session` on success.
    The function landed with U8; naming it in the verb's success path is U32's.
+
+   **Closed by** a `resolve-session` step in the restore's own ordered plan, one
+   per condemning record, placed last because it is the claim that the work is
+   done. Every such record is answered rather than only the one being restored
+   to: the library now holds a capture that passed its integrity check, so no
+   earlier unverified commit condemns these bytes either.
 3. **Bare-metal recovery, where the library volume itself is gone, has no path.**
    Every gate is library-scoped by KTD21, on purpose: the lock, the
    acknowledgment and the session log all sit beside the library so a second
@@ -295,6 +312,22 @@ than a note.
    volume, and the live case would lose a real check. What this needs is a
    recovery path that does not read its gates from the library it is rebuilding,
    which is a decision U32 owns.
+
+   **Closed by** `restore.bare_metal_session`, which substitutes one gate at a
+   time and says what each substitute is worth. The volume assertion becomes two:
+   that the configured library is genuinely UNREACHABLE, refusing on "mounted
+   elsewhere" and on "this platform cannot say" because neither is the same
+   question; and that the target is a real filesystem rather than the empty
+   folder an unmounted volume leaves behind at its own mount point, which is the
+   failure that would otherwise write a whole library onto the internal disk. The
+   lock becomes an installation-scoped one, and nothing is lost, because with the
+   library gone there is no shared volume for two machines to contend over. The
+   acknowledgment becomes an explicit decision by a derived actor at a
+   controlling terminal, and that substitute is WEAKER than the gate it replaces:
+   the recorded acknowledgment R34 asks for lives on the volume that died. That
+   is stated rather than papered over. The advice not to move the volume
+   assertion onto the target was followed: the target assertions are additional
+   to the unreachability assertion, not a replacement for it.
 
 ---
 
@@ -767,3 +800,509 @@ too, so the first library that can reach this state is one U20 created.
 
 **Closes when:** U20 ships the disposition surface, at which point both entries
 are answerable by a person rather than only by the engine.
+
+---
+
+## R-19. R30's second sentence is computed and never reported
+
+**Found:** during the U32 adversarial review, 2026-08-02. Confirmed against
+`src/` before it was recorded.
+
+**Numbered R-19 rather than R-14, and the merge left it there. R-18 IS A
+DELIBERATE GAP.** When this entry was written, `main` defined R-14 and R-15,
+U27's branch was renumbering its own to R-16, and U16's fix round was adding
+R-17. Both of those predictions were wrong: **U36 took R-16 and R-17 when it
+merged**, and `main` ended at R-17. U32 brought five entries numbered R-19
+through R-23, so the merged file runs R-1 to R-17 and then R-19 onward with
+nothing at R-18.
+
+**The gap was kept rather than closed, and the reason is the paragraph below.**
+Closing it means renumbering five headings, and every citation of each of them
+has to move with it, in prose, in source comments and in docstrings. That repoint
+was missed once already at the U36 merge and was caught only by eye. A gap in a
+number sequence is visible and harmless; a citation pointing at the wrong finding
+is invisible and wrong. Nothing in this repository derives meaning from these
+numbers being contiguous.
+
+**And the citations are not all inside this repository's source.**
+`docs/wave-state-2026-08-04.md` names "U32's R-21" four times while it is
+tracking several branches at once, each carrying its own R-numbers. Keeping these
+five where they are is what leaves those four sentences true. Renumbering would
+have made them silently name somebody else's finding, which is the same failure
+one layer out from the one this entry is about.
+
+That is exactly why `core/restore.py` cites these findings by TITLE rather than
+by number, and why `tests/test_restore.py` asserts the titles still resolve. A
+number written into source survives a renumber by pointing at somebody else's
+finding: the citation still reads correctly and is silently false, which is the
+failure already caught once here, where `core/convergence.py` said "See R-15" and
+R-15 on the merged tree named a different entry. This file is one another branch
+appends to, and two entries sharing a number is the shape where one of them
+silently becomes unreadable.
+
+**The unmet sentence, verbatim from R30:** *"the capture store does not sit on
+the same filesystem as the database, so that one volume failure cannot take both
+the library and every undo for it."*
+
+**Current state, with file and line.**
+`core/restore.py:shares_the_database_volume` computes the answer, comparing on
+the filesystem identifier rather than on path prefixes, and
+`core/restore.py:RetentionPlan.shares_the_database_volume` carries it on every
+retention plan. Nothing in `src/` renders it. There is no command-line surface
+for retention, no doctor check that reads it, and no session-time warning. The
+honest status is **computed, not reported**, and the unit's own prose said
+"REPORTED", which overstates what landed.
+
+**Why it is not enforced, and why that decision stands.** The reviewer upheld the
+call to report rather than refuse, and the argument is worth keeping because it
+is the reason this cannot simply be closed with a guard. The containment rule
+pulls `db_path` inside `library.root`, because an atomic commit cannot span
+filesystems. So "put captures on another volume" and "keep the database inside
+the library root" cannot both be refusals: the preferred install satisfies the
+second and therefore violates the first, and a guard that fires on the product's
+own default install is a guard people route around. The honest fix is a second
+capture location the user chooses, which is configuration U32 did not add.
+
+**The exposure, in one sentence.** On the default install one volume failure
+takes the library, the database and every capture together, so the KTD21b undo
+does not survive the single failure it is most likely to meet.
+
+**What closes it.** A rendered report, in all three of the places a person would
+meet it: `doctor` names it as a check with the two paths and the shared
+filesystem identifier; the retention verb prints it beside the plan it is already
+carrying it on; and a first destructive session in a new install says it once.
+Not a fourth mechanism: `RetentionPlan` already carries the value, so every one
+of those is a read.
+
+**Owner: U27.** It lands doctor, it already owns the operator-facing surface, and
+it already carries this unit's `cratekit.session.restore_cli` obligation, which
+is the surface the retention verb would live on. Recorded here with a number
+rather than left in a `core/restore.py` docstring for the reason this unit argues
+twice in `tests/_pending.py` about somebody else's markers: an obligation carried
+by a marker on a closing unit is owned by nobody the moment that unit closes, and
+`scripts/board.py` reads the register and this file, not docstrings.
+
+**What must NOT close it.**
+
+1. **Turning it into a refusal.** That is the version this unit already
+   considered and rejected, on the containment argument above. A refusal on the
+   default install is worse than the gap, because it is switched off once and
+   then never seen again.
+2. **Asking once at setup.** A setup-time prompt is answered by somebody who has
+   not yet lost a drive, and it is answered once, on a machine whose layout then
+   changes. The value is cheap to recompute on every run precisely because it is
+   derived from the filesystem rather than from a recorded answer, and a recorded
+   answer would go stale the first time somebody moves their library.
+
+---
+
+## R-20. Closing the bare-metal bypass removed the bare-metal write path
+
+**Found:** by the independent verification of U32's first fix round, 2026-08-02.
+Recorded here rather than fixed, because the fix is a feature and the bypass had
+to close tonight.
+
+**What R-8's third item asked for.** Every gate KTD21 publishes is library-scoped
+on purpose, so all three sit on the disk that died and the ordinary restore
+refuses by naming a drive that no longer exists. U32 answered that with
+`restore.bare_metal_session`, which substitutes one gate at a time against a
+replacement target.
+
+**What the first fix round did.** The reviewer found that a `bare_metal_session`
+yielded a session that `plan` and `run` accepted for a restore of
+`cfg.library.root`, so composing it against a replacement drive rewrote the
+library on the volume the identity gate had just refused, with no acknowledgment
+and with the library lock held by another process. That is closed: a `Held` now
+carries the directory it authorises, and `plan` and `run` refuse one that does not
+authorise the path they are about to write.
+
+**The residue, stated plainly.** `plan` and `run` resolve every path from
+`cfg.library.root`, and a bare-metal session authorises the replacement target, so
+there is now no composition in which a bare-metal session reaches a plan at all.
+Neither function takes a `target`, and nothing in `src/` consumes
+`bare_metal_session`. The bypass was closed by removing the path rather than by
+correcting it, and R-8's third item is unserved again. The honest status of
+`bare_metal_session` today is: it validates a target, substitutes three gates,
+takes an installation-scoped lock, and hands back a session that can be used for
+nothing.
+
+**Why that is the right order anyway.** A recovery path that cannot run is a
+missing feature. A recovery path that rewrites the library on a volume the
+identity gate refused is data loss with the product's own gates reporting success.
+Shipping the first while the second is open is not a trade this unit is entitled
+to make.
+
+**What closes it.** `plan` and `run` resolve their paths from the session rather
+than from `cfg.library.root`: the `Held` already carries `authorises`, so the
+change is to derive the target set from that directory and to build a
+configuration rooted at it, rather than to add a `target=` parameter that the two
+functions would then have to agree with the session about. The `Held` machinery
+this round added is what makes that safe, because the authorisation check then
+reads the same field the paths are derived from.
+
+**Owner: U27,** which owns the operator-facing surface and already carries this
+unit's `cratekit.session.restore_cli` obligation. The bare-metal verb is the one
+place this composition would be made, so the unit that writes the verb is the unit
+that finds out whether the derivation above is right.
+
+**What must NOT close it.**
+
+1. **Relaxing the authorisation check for bare metal.** That is the bypass,
+   re-opened, with a comment explaining why it is fine.
+2. **A `target=` parameter on `plan` and `run` that is trusted without being
+   checked against the session.** Two sources for one answer is how the first
+   version got here: `assert_recovery_target` validated a target and then dropped
+   it, and everything downstream resolved a different one.
+
+---
+
+## R-21. What the U36 merge owes, from this side. Four conflicts, six items, and one thing not to undo
+
+**Found:** by the verification of U32's second fix round, 2026-08-03, against a
+real trial merge rather than by inference. **Re-verified during fix round 4**
+against a scratch three-way merge of this branch onto `main` at `c114afa` from
+merge base `4368171`. Every count below was measured on that merge.
+
+U36 records the same obligation on its own side. It was **R-14 on its branch and
+is R-16 on `main` now**, and its own text says so; an earlier version of this
+paragraph cited the branch number, which is the same silent-repointing hazard
+item 7 is about. Two of the items below were found only from this side and both
+are worse than a failing test, so the list is kept on both sides rather than
+trusted to one. **U36's entry needs the same additions.**
+
+### The four textual conflicts
+
+`git merge` stops on every one of these, so none is silent. They belong on the
+checklist anyway, because a list that omits them reads as "this merges cleanly
+and then needs six edits", and that is not what happens.
+
+1. `docs/residual-findings.md`. Both sides append entries at the end.
+2. `src/cratekit/core/cause.py`. Both sides add to the same region.
+3. `tests/test_layering.py`. **BOTH SIDES MUST SURVIVE.** `main` widened the rule
+   to `(r"^cratekit\.core\.(tree_registry|convergence)$", "write")` and this branch
+   adds `(r"^cratekit\.core\.restore$", "write")`. Taking either side wholesale
+   fails RED, so the resolution keeps both entries rather than picking one.
+4. `tests/test_pending_units.py`. Both sides edit `EXPECTED_PENDING`.
+
+### Two of the six are now applied ON THIS BRANCH, and here is why they moved
+
+**Items 2 and 5 were applied in fix round 6, before the merge, because leaving
+them for the merge was already costing something today.** `scripts/board.py audit`
+exits 2 on this branch RIGHT NOW: issue #36 is closed, U36's module is on `main`,
+and this branch's `tests/_pending.py` still owed U36 `cratekit.write.rebuild`. The
+repository's own rule for that exit is to reopen the issue or clear the entry, and
+U36 is finished, so the entry goes. Clearing it forces item 5 in the same commit,
+because `_pending.requires` raises `KeyError` at import for a key that is no
+longer in `PENDING`, which is the collection failure item 5 describes.
+
+**Item 3 could not move with them, and that is a property of this tree rather
+than a choice.** `src/cratekit/core/convergence.py` does not exist here, so
+"import `core.convergence` normally" makes `restore.py` unimportable and takes the
+whole suite with it. It stays a merge item.
+
+**What carries item 3 now that its register entry is gone.**
+`tests/test_restore.py` grew
+`test_the_convergence_fallback_expires_the_moment_both_modules_share_a_build`,
+which is ALWAYS ARMED and needs no register key, so no unit closing can orphan it.
+It asks what the build it is running in contains: with `core.convergence` absent
+it asserts the fallback is present and latched, which is correct here; with
+`core.convergence` present it asserts `_convergence_module` and the
+`Kind.UNCONVERGED_TREE` filter are gone from `restore.py`, and its failure message
+names the three deletions. So item 3 announces itself on the merged tree instead
+of waiting to be read off this list.
+
+### ALL SIX ARE APPLIED. This merge happened, and here is what it cost
+
+**The U32 merge landed on `main` and every item on this list is discharged.**
+Items 2 and 5 moved early, on the branch, for the reason the section above gives.
+Items 1, 3, 4 and 6 were applied at the merge itself. The four textual conflicts
+occurred exactly as predicted, all four resolved as unions, and none was
+contradictory. Item 1 auto-resolved as predicted: the three-way merge took this
+branch's deletion of `cratekit.core.restore` from both files with no conflict.
+
+**Two of the six announced themselves as failing tests rather than as checklist
+lines, which is what they were designed to do.** With the conflicts resolved and
+nothing else done, the suite failed exactly twice:
+`test_every_coupled_entry_declares_what_leaves_the_coupled_set` named the
+`tree_convergence` entry for item 4, and
+`test_the_convergence_fallback_expires_the_moment_both_modules_share_a_build`
+named the three deletions for item 3. Applying item 3 then turned item 6 red with
+the `AttributeError` this list predicted for it, in that order.
+
+**Item 3's third deletion was not just a deletion.** Removing the
+`Kind.UNCONVERGED_TREE` filter from the RECORD step could not be done by deleting
+the filter alone, because the plan was still putting tree markers into the
+recorded set and the filter was the only thing keeping them out of the
+reconciliation document. The plan now carries effect markers there and tree
+markers on `tree_markers` alone, so the two stores hold one fact each rather than
+one fact twice. That is what the item meant and the filter was the symptom.
+
+### The six items to apply
+
+**1. Delete the stale `cratekit.core.restore` entry from `tests/_pending.py`.**
+Required, and it AUTO-RESOLVES. **Confirmed on the scratch merge:**
+`cratekit.core.restore` is still present in `main`'s `_pending.py` and in `main`'s
+`EXPECTED_PENDING`, this branch deletes it from both, and the three-way merge
+takes this branch's deletion from both files with no conflict. Listed so nobody
+re-adds it by hand.
+
+**2. Delete the `cratekit.write.rebuild` entry from `tests/_pending.py` and from
+`EXPECTED_PENDING` in `tests/test_pending_units.py`. ALREADY DONE, fix round 6.**
+Nothing to apply at the merge. It moved forward because the entry was already a
+`board.py audit` exit 2 on this branch, not because the countdown fired.
+
+**3. Remove the fallback branch in `restore._hand_tree_shortness_over` and the
+`_convergence_module` helper behind it, and import `core.convergence` normally.**
+STILL OWED, and it is the one item of the six that this branch genuinely cannot
+write, because the module to import is not on this tree. The register entry that
+used to name it is gone with item 2, and what names it now is the always-armed
+test described above, which fails on the merged tree until this is applied and
+says which three deletions to make.
+
+**4. Add `rollback_effects=(RollbackEffect.NONE,)` to the `tree_convergence`
+entry in `core/config.py`.** **Still not writable by U32 alone, re-confirmed:**
+`grep tree_convergence src/cratekit/core/config.py` on this branch returns
+nothing at all. The `StateFile` entry exists only on `main` and the
+`RollbackEffect` enum exists only here, so neither branch can write the line by
+itself and it stays a merge item. `main`'s own comment at `config.py:1246-1265`
+names the exact line. The three facts that entry holds are about rows in this
+database and nothing outside the coupled set, so NONE is the right answer.
+
+**5. Drop the `@requires("cratekit.write.rebuild")` decorator in
+`tests/test_restore.py`. ALREADY DONE, fix round 6,** in the same commit as item 2
+because item 2 forces it. The decorator and the test under it are both gone; what
+replaced the test is described at the top of this entry. Nothing to apply at the
+merge, and the paragraphs below are kept because the reasoning is what makes item
+2 and item 5 one commit rather than two. **IT IS NOT SILENT, AND THE EARLIER TEXT
+HERE WAS WRONG ABOUT BOTH ITS SHAPE AND ITS SIZE.** With items 2, 3 and 4 applied
+and this one skipped, `tests/test_restore.py` fails to COLLECT: `_pending.requires` raises
+`KeyError` at IMPORT time, at `tests/_pending.py:267`, for a key no longer in
+`PENDING`. A plain `pytest` run then EXITS 2 with `Interrupted: 1 error during
+collection` and runs NOTHING at all. It does not look like a suite that passed,
+it looks like a suite that refused to start. It is invisible only to a run that
+was explicitly told to continue past collection errors, or to a subset run that
+does not name this file. The magnitude is **every test in
+`tests/test_restore.py`, not "roughly two hundred"**.
+
+**THE COUNT MOVES WITH THIS BRANCH'S TIP AND THE FLOOR DOES NOT.** It read "123
+tests, collection drops from 3,419 to 3,296", which was measured at `c7a1a7d` and
+was already wrong two rounds later, because every round since has added tests to
+that one file while the paragraph under "the verified numbers" updated the totals
+and left this sentence alone. Stated so it stays true: the loss is the whole of
+`tests/test_restore.py`, **132 tests at tip `f37cfae` plus fix round 5**, and what
+a person on the checklist should compare against is the FLOOR, **3,298 collected**,
+which does not move while this branch's new tests keep landing in that file.
+
+**6. Rewrite `test_the_tree_shortness_handoff_calls_the_module_that_owns_the_gate`
+to patch `convergence.mark_unconverged` instead of `restore._convergence_module`.**
+Silent in the way item 5 is not: item 3 deletes the attribute the test patches, so
+it raises `AttributeError` at setup, and that is one red test.
+
+### The one thing not to undo
+
+**7. The residual-finding citations in `core/restore.py` are by TITLE, and the
+merge must keep them that way.** `shares_the_database_volume` and
+`bare_metal_session` used to cite **R-19** and **R-20** by number. This branch
+adds **five** entries, not three: R-19 through R-23, the last two of which landed
+after this item was first written. `main` ends at R-17, so a sequential renumber
+moves all five down one, at which point BOTH citations name the wrong finding and
+the second one names this checklist.
+
+**MEASURED ON THE TRIAL MERGE: nothing renumbers.** Both sides append, `git
+merge` takes both appends, and the merged file runs R-1 to R-17 and then R-19
+onward with **R-18 missing**. So the renumber is a hand edit somebody chooses to
+make, and the gap is the thing that invites it: a person tidying that gap is the
+mechanism this item is about, not the merge. Whoever closes the gap renumbers
+FIVE entries and must move every citation of each of them, in prose, in source
+comments and in docstrings, which is the repoint that was missed once already at
+the U36 merge. Leaving the gap and saying in the file why it is there is the
+cheaper answer and is equally correct. **DECIDED AT THIS MERGE: the gap stays,
+and R-19 says at its head why.** These two citations survive either decision,
+because they now cite
+`restore.RESIDUAL_CAPTURE_VOLUME_UNREPORTED` and
+`restore.RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH`, whose values are the finding
+titles, and `test_round4_the_residual_findings_this_module_names_still_exist`
+asserts each title still names a heading in this file. A renumber leaves that
+green, which is correct; a retitle turns it red, which is also correct. This is
+the shape already caught at the U36 merge, where `core/convergence.py` said "See
+R-15" and R-15 on the merged tree was a different finding.
+
+### The verified numbers
+
+**With the four conflicts resolved and NONE of the six items applied:** exactly
+**three failures**, each one mapping to an item on this list, and nothing fails
+that is not on it.
+
+**With all six applied:** **3,402 passed, 17 skipped, 3,419 collected**, `ruff`
+clean, `scripts/scan_repo.py` exit 0. The six are NECESSARY and SUFFICIENT: the
+only remaining differences are the two documentation notes recorded below.
+
+**THOSE COUNTS ARE STALE IN BOTH DIRECTIONS AND ARE NOT TO BE DERIVED FROM.** They
+were measured against branch tip `c7a1a7d` and `main` at `c114afa`. Both sides have
+moved: this branch is at fix round 6, and `main` has taken at least three commits
+past `c114afa` in the same session, from other units and from documentation. This
+paragraph used to carry an arithmetic extrapolation for each round, which is the
+habit the section below forbids, so the extrapolation is deleted rather than
+extended. **The next person who needs a number re-runs the scratch merge; nothing
+here may be added to.**
+
+**WHAT DID NOT MOVE, re-checked at fix round 6.** The four conflicts are unchanged.
+`main`'s `_pending.py` still carries `cratekit.core.restore`, so item 1 stands
+exactly as written. Item 4 is still unwritable from either side alone. Items 2 and
+5 are applied here, which can only REDUCE the three failures, and item 3 is still
+owed. Those are properties of the two sides rather than of a tip.
+
+**AND ONE FAILURE MOVED RATHER THAN DISAPPEARED.** Items 2 and 5 removed the
+`board.py` contradiction and the collection error, and the always-armed test that
+replaced them fails on the merged tree until item 3 is applied. That is the same
+obligation, announcing itself in a test whose message names the fix instead of in
+a checklist line, and it is deliberate: item 3 is the one thing on this list that
+nothing else can detect.
+
+**Two documentation corrections the merge should also carry.** U36's
+`assert_no_latched_restore` docstring says U32's `LATCHING_KINDS` does not include
+the tree kind and that its exemption is therefore inert. Fix round 2 put that kind
+back, so the premise is false while the derivation it justifies is still exactly
+right: the exemption is now LIVE rather than inert. Nothing behaves differently,
+because that function subtracts the tree kind by name from whatever the set holds.
+The reverse direction is already correct in `reconcile.assert_converged`.
+
+---
+
+## R-22. Two identity generators in one codebase, 16 bits and 64, and only one of them was argued
+
+**Found:** by the independent verification of U32's fix round 4, 2026-08-03.
+Recorded rather than fixed, because the file is outside this unit's scope.
+
+**What this branch changed.** `core/snapshot.py:new_stamp` builds a capture stamp
+as a timestamp plus `secrets.token_hex(8)`, 64 bits of random tail. It was widened
+during this unit's rounds because the stamp keys the pre-restore staging
+directory, and two restore attempts landing on one stamp would put the second
+attempt's write-ahead log on top of the first attempt's, destroying bytes that are
+in no capture. Fix round 5 also made that collision a deterministic refusal in
+`restore._stage_companion_aside`, so the width is now a second line rather than
+the only one.
+
+**What was left.** `cli/output.py:261:new_run_id` still builds a run identifier as
+a timestamp plus `secrets.token_hex(2)`, 16 bits. So the product now has two
+identity generators with a 48-bit difference between them, and nothing anywhere
+says why they differ.
+
+**Why it is worth a number rather than a shrug.** `new_run_id`'s own docstring
+states a consequence at least as serious as the one this branch acted on: *"two
+runs can start inside the same second, and a collision would let one run's
+decisions answer another run's gate."* A gate answered by the wrong run's
+decisions is a person approving one thing and a different thing happening. Sixteen
+bits inside one second is roughly a one-in-a-quarter-million chance per colliding
+pair, which is small and is not the same as the capture stamp's, and the two
+numbers were chosen by different rounds for different reasons that were never
+compared.
+
+**The test does not close it either.** `tests/test_cli_contract.py:687` asserts
+`output.new_run_id() != output.new_run_id()`, which reads both sides out of the
+function under test. It is not vacuous, since it does catch a constant
+identifier, but at 16 bits inside one second it is the assertion that flakes
+rather than the guard that holds, and it is the only coverage the tail has.
+`tests/test_snapshot.py` makes the same shape against `snapshot.new_stamp`, where
+64 bits puts the flake rate past caring.
+
+**What closes it.** Either widen `new_run_id` to match, which costs four
+characters in a log line and nothing else, or write one sentence in its docstring
+saying why a run identifier tolerates a width a capture stamp does not. Either
+outcome makes the asymmetry deliberate. The current state is that it is
+accidental.
+
+**Owner: whoever next edits `cli/output.py`.** It is one line and one docstring,
+and it is recorded here rather than fixed inside a restore unit because a fix
+round reaching into a CLI module it was not reviewing is how the next round
+inherits an unreviewed change.
+
+**What must NOT close it.** Narrowing the capture stamp to 16 bits for symmetry.
+The stamp's width is load bearing for a reason written down beside it, and
+symmetry achieved by taking the argued side down to the unargued one is the wrong
+direction.
+
+---
+
+## R-23. Three things the occupied-staging refusal leaves standing, each verified safe
+
+**Found:** by the independent verification of U32's fix round 6 and by round 7's
+own driving of them, 2026-08-03 and 2026-08-04. **Recorded rather than fixed, and
+each one was MEASURED rather than reasoned about**, because a residual that is
+silent about a live behaviour reads later as closure.
+
+### 1. `already_staged` lists whatever is in the directory, and calls all of it companions
+
+`core/restore.py:1691-1692` and `:1708`. The refusal names the staging
+directory's whole listing, and one of its remediation steps calls that listing
+"the live storage-engine companion files already moved out of the way". Those are
+two different things wearing one label.
+
+**Measured.** With a user file `holiday-photo.jpg` sitting in the staging
+directory beside an earlier attempt's log, the refusal reads "the staging
+directory ... already holds holiday-photo.jpg, master.db-wal" and its detail
+carries `already_staged: ['holiday-photo.jpg', 'master.db-wal']`, under a step
+saying those are companion files this run moved. The photograph is neither.
+
+**Why it is cosmetic rather than dangerous.** The listing is DESCRIPTION, not
+decision: what decides the refusal is `os.path.lexists` on the one resting name,
+so an unrelated file cannot cause a refusal and cannot suppress one. **Measured:**
+with only `holiday-photo.jpg` in the staging directory and no collision at the
+resting name, the restore completes and converges. The cost is a sentence that
+over claims to somebody already recovering from something.
+
+**What would close it.** Either list only the names this run staged, which the
+performing path knows and the preflight does not, or drop the word "companion"
+from the step and say plainly that the directory holds these names.
+
+### 2. One rehearsal and run disagreement survives, and it is the safe direction
+
+`core/restore.py:1683-1687`. `os.path.lexists` answers False on ANY `OSError`,
+including a permission error, so a staging directory this account cannot search
+hides its occupant from the guard rather than reporting it.
+
+**Measured.** Staging directory at mode `0o000` with an earlier attempt's log at
+the resting name: `os.path.lexists(resting)` answers False, the guard returns, the
+REHEARSAL proceeds and reports all eight steps performed, and the REAL RUN then
+refuses `restore-step-failed`. That is the shape this unit has spent two rounds
+removing, and this instance of it is safe: `os.replace` is the first thing the
+real run tries and it fails before anything has moved. Measured on the same run,
+the live log still holds its bytes, the earlier attempt's log still holds its
+bytes, and the database is untouched. Nothing ends half done, which is what makes
+this different from the round 5 shape.
+
+**Why it is not worth code today.** The product never creates a staging directory
+in that mode; `config._mkdir_private` makes it `0o700`. Reaching this needs
+somebody to have chmodded it by hand or a filesystem to have lost the mode. The
+honest description is absence read as evidence of absence, one layer out from the
+two reads this unit already fixed, and the layer it is in is `os.path.lexists`
+itself rather than this module.
+
+**What would close it.** Ask `os.lstat` in a `try` and distinguish "not there"
+from "cannot tell", refusing on the second. That is a real improvement and it is a
+change to the guard's contract, so it belongs to whoever next opens this function
+rather than to a fix round closing out.
+
+### 3. The performing backstop, when a race genuinely reaches it, still leaves the half done state
+
+`core/restore.py:1644-1653`. The preflight copy of the staging check is the
+primary and the copy inside `_stage_companion_aside` is the backstop for the
+window between the check and the rename. If that window is genuinely hit, with
+two companions live and the SECOND one's resting name taken in the window, the
+first companion has already been renamed out of the live tree when the backstop
+raises. The run then stops with the live write-ahead log missing from the library
+and the database never replaced.
+
+**This is stated plainly here because the code already states it plainly and a
+silent residual would read as though it did not.** The docstring at those lines
+says the preflight is what decides, says the backstop exists only for that window,
+and says reaching it should be impossible. That is accurate. The refusal reached
+this way NAMES the companion it already moved and where it now is, in the message
+and in the detail, which is what makes the state recoverable by hand.
+`test_round6_the_performing_backstop_names_what_it_already_moved` drives exactly
+that path by planting the collision after the first companion has really been
+staged.
+
+**What would close it.** Undoing the moves already made before re-raising, which
+is a rollback inside a rollback and needs its own failure story. Recorded as the
+residual race rather than attempted inside this unit.

@@ -1155,6 +1155,59 @@ def test_a_planned_verb_whose_module_has_landed_must_lose_its_marker(entry):
     )
 
 
+def test_a_planned_verb_and_the_pending_register_name_the_same_unit():
+    """Two registers hold "who lands this module" and neither read the other.
+
+    ``registry.Entry.planned_in`` and ``tests/_pending.PENDING`` both answer that
+    question, for the same modules, and they drifted: the two ``restore.*`` verbs
+    carried ``planned_in="U32"`` while the register had already moved
+    ``cratekit.session.restore_cli`` to U27 precisely because U32 could not land
+    it. Nothing compared them. ``board.py`` reads the register and never reads
+    ``planned_in``, and the countdown above only asks whether the module EXISTS,
+    never who owes it, so the marker stayed pointing at a unit that was closing.
+    An obligation attributed to a closed unit is owned by nobody, which is the
+    exact failure the register entry's own text says it was written to prevent.
+
+    Asked over the intersection rather than over either register whole: a planned
+    verb whose module nothing in the register mentions is a separate question, and
+    the register legitimately holds keys that are not verb modules at all.
+
+    THE ANTI-VACUITY GUARD MEASURES THE SET THAT IS ACTUALLY COMPARED, and the
+    first version of it did not. It rebuilt the intersection in a second
+    comprehension and asked its question of that, which is a re-derivation of the
+    predicate rather than a measurement of the comparison. Found by mutation:
+    neutering the filter on the comparison alone killed NOTHING, because the guard
+    went on building a populated list of its own and stayed green over a
+    comparison that now compared nothing. One list is built once and both
+    statements read it.
+    """
+    from tests import _pending  # noqa: PLC0415
+
+    compared = [
+        entry
+        for entry in registry.entries()
+        if not entry.landed and entry.module in _pending.PENDING
+    ]
+    # First, that the intersection is not empty, or everything below is vacuous.
+    # Emptying the REGISTRY side lands here by name. Emptying the register side
+    # never reaches this file at all: ``_pending.requires`` raises at import for a
+    # key that is gone, which is a collection error rather than a green run.
+    assert {"restore.list", "restore.run"} <= {entry.name for entry in compared}, (
+        f"the two restore verbs are no longer compared against the register; "
+        f"what is compared is {sorted(entry.name for entry in compared)}"
+    )
+    disagreements = {
+        entry.name: (entry.planned_in, _pending.PENDING[entry.module][0])
+        for entry in compared
+        if entry.planned_in != _pending.PENDING[entry.module][0]
+    }
+    assert not disagreements, (
+        f"planned_in and tests/_pending.PENDING name different units for the same "
+        f"module: {disagreements}. The register is what scripts/board.py reads, so "
+        f"it wins; repoint the marker."
+    )
+
+
 # ── the nine conformance properties, over every entry ────────────────────────
 
 ALL_ENTRIES = list(registry.entries())

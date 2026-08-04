@@ -751,7 +751,6 @@ def test_the_capture_unit_derives_its_source_set_rather_than_listing_it():
     )
 
 
-@requires("cratekit.core.restore")
 def test_the_restore_unit_derives_its_target_set_rather_than_listing_it():
     """The symmetric half, and the one the plan's top-ranked risk turns on.
 
@@ -759,6 +758,20 @@ def test_the_restore_unit_derives_its_target_set_rather_than_listing_it():
     is how the registry rolls back while the database does not. It must derive
     the set, and it must get the sidecar asymmetry from the declaration rather
     than from a suffix it typed.
+
+    WHAT THIS ACTUALLY PROVES, STATED SO NOBODY OVER-READS IT. It is a text search
+    over a source file, and both assertions are satisfied by a module whose entire
+    body is a docstring mentioning ``sidecar_paths`` and a ``run()`` that raises
+    ``NotImplementedError``. What it can see is a literal companion suffix typed
+    into this module, which is the specific regression it was written for and is
+    the one a reviewer reading a diff is most likely to miss. What it cannot see
+    is whether the derivation is USED, and nothing in this file can: that is
+    behaviour, and it is covered behaviourally in ``tests/test_restore.py``, where
+    a real restore is driven and the set it touches is compared against the
+    inventory by fingerprinting the whole library tree. The symmetric
+    ``core.snapshot`` guard above has the same form and the same limit. Two text
+    guards backed by behavioural coverage elsewhere is an acceptable arrangement;
+    two text guards presented as proof of behaviour would not be.
     """
     import cratekit.core.restore as restore  # noqa: PLC0415
 

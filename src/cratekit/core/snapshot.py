@@ -36,10 +36,15 @@ has no coupled directory yet. Every one of those paths is copied only if it is
 there, and the manifest records which were and which were not, because "this was
 not captured" and "this was captured empty" call for different restores.
 
-CAPACITY AND RETENTION BELONG TO U32. Nothing here prunes, bounds, or refuses on
-free space. ``rb_writer.prune_snapshots`` already exists and already spares a
-capture an open session references; this module's job is to make what it spares
-real.
+RETENTION BELONGS TO U32 AND CAPACITY ARRIVED WITH IT. Nothing here prunes or
+bounds; ``rb_writer.prune_snapshots`` already exists, ``core.restore`` gives it
+the count, age and byte bounds R30 asks for, and this module's job is to make
+what it spares real. What DID land here is the capacity refusal, and it landed
+here rather than beside the retention policy because this is the function that
+writes: a check placed anywhere else is a check some future caller reaches the
+copy without. See :func:`assert_room_for_capture`, and :func:`assert_room_for`
+underneath it, which the restore asks the same question of the library volume
+because a restore copies the same bytes back the other way.
 
 LAYER: infrastructure. It reads configuration, does input and output, and
 carries remediation TOKENS rather than any text a user types (D2).
@@ -92,12 +97,24 @@ def new_stamp(now: datetime | None = None) -> str:
     on a machine running a queued job beside an interactive one, and a collision
     would have the second capture write into the first one's directory.
 
+    SIXTY-FOUR BITS OF TAIL, NOT SIXTEEN, and the widening is not defensive
+    rounding. This string names more than a capture directory: ``restore``
+    derives one staged-companion directory per ATTEMPT from it, and a restore
+    repeated after a failure runs several attempts back to back, so same-second
+    stamps are the ordinary case there rather than the rare one. At sixteen bits
+    a run of eight attempts collides about once in every two thousand runs, and
+    the loss when it does is precisely the one the staging exists to prevent: the
+    second attempt's ``os.replace`` puts its write-ahead log over the first
+    attempt's, and those bytes are in no capture. Eight bytes of tail costs twelve
+    characters in a directory name and moves that number below any rate worth
+    reasoning about. ``tests/test_snapshot.py`` pins the width.
+
     No colon and no space, unlike the run identifier, because this string becomes
     a directory name on whatever filesystem the user's library lives on and a
     colon is not a legal character on all of them.
     """
     moment = now or datetime.now(timezone.utc)
-    return f"{moment.strftime('%Y-%m-%dT%H%M%SZ')}-{secrets.token_hex(2)}"
+    return f"{moment.strftime('%Y-%m-%dT%H%M%SZ')}-{secrets.token_hex(8)}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -298,6 +315,290 @@ def _verify(database: Path, verifier: Verifier | None) -> bool:
         return False
 
 
+#: How much more room than the capture needs must be free before one is taken.
+#:
+#: A copy is not the only thing that lands: the manifest goes in beside it, the
+#: engine checkpoint can grow the database file just before it is read, and a
+#: filesystem driven to zero free bytes fails in ways that have nothing to do
+#: with this write and are much harder to read afterwards. Ten percent is small
+#: enough that it never refuses a capture a disk could genuinely hold.
+CAPACITY_HEADROOM = 1.10
+
+
+#: What one filesystem block costs when the platform will not say. Used only as
+#: the floor for a file whose ``st_blocks`` is unavailable; every POSIX platform
+#: this product supports reports it.
+#:
+#: IT IS OBSERVABLE ON EXACTLY ONE SHAPE, and it is worth saying which, because
+#: the value survived being changed from 4096 to 1 with nothing red and that
+#: looked like a constant nobody tests. :func:`_allocated_file` returns
+#: ``max(st_blocks * 512, ceil(st_size / ALLOCATION_UNIT) * ALLOCATION_UNIT)``,
+#: and for an ordinary file on a filesystem whose block size is also 4096 those
+#: two expressions agree, so the rounding term is invisible. It is the larger of
+#: the two only for a SPARSE file, whose ``st_blocks`` under-reports what the
+#: destination copy will occupy, and that is the case the max exists for.
+#: ``tests/test_snapshot.py`` pins it there, on a sparse file whose length is not
+#: a multiple of the unit, which is the only shape where the two candidate
+#: answers differ.
+ALLOCATION_UNIT = 4096
+
+#: What one directory entry costs beyond the blocks its file occupies. A copy of
+#: a directory tree grows the destination's own directory structure as well as
+#: allocating the files, and on a copy-on-write filesystem that growth is not
+#: small. MEASURED rather than guessed; see :func:`_allocated_size`.
+DIRECTORY_ENTRY_OVERHEAD = 2048
+
+
+def _allocated_size(path: Path, *, entry_overhead: int = DIRECTORY_ENTRY_OVERHEAD) -> int:
+    """What ``path`` costs a filesystem, not what its bytes add up to.
+
+    THE DIFFERENCE IS TWO ORDERS OF MAGNITUDE ON THE SHAPE THIS PRODUCT ACTUALLY
+    CAPTURES, which is why the apparent size is not used. A filesystem allocates
+    whole blocks and grows its own directory structure, so a tree of many small
+    documents costs far more than the sum of its file lengths. ``review_queue``
+    and ``label_outcomes`` are both directories of small documents, and both are
+    captured whole. Measured on the development machine:
+
+    ======================  ==========  ===========  ==================
+    coupled contents        ``st_size``  allocated   real free-space
+    ======================  ==========  ===========  ==================
+    10 MiB database only    10,485,760  10,489,856   10,489,856
+    2,000 items, 120 bytes     241,024   8,200,192    9,617,408
+    20,000 items, 60 bytes   1,201,024  81,928,192  112,484,352
+    ======================  ==========  ===========  ==================
+
+    The middle column is ``st_blocks * 512`` and it accounts for the blocks. The
+    gap between it and the last column is the destination's own directory growth,
+    which is why every entry also carries :data:`DIRECTORY_ENTRY_OVERHEAD`. With
+    both terms the estimate is above the measured cost in all three rows, which
+    is the direction that matters: an over-estimate refuses a capture that would
+    have just fitted, and an under-estimate writes the truncated capture this
+    exists to prevent.
+
+    ``entry_overhead`` IS A PARAMETER BECAUSE THE THREE CALLERS ANSWER DIFFERENTLY,
+    and the split is by DIRECTION rather than by side. A capture charges it
+    (:func:`assert_room_for_capture`), and so does the incoming half of a restore
+    (:func:`incoming_bytes`), because both write a tree of entries that did not
+    exist a moment ago: a staged copy beside its target is a fresh allocation of
+    directory structure exactly as a capture is. Only :func:`freed_bytes` passes
+    zero, because it is counting what a step GIVES BACK, and over-counting that
+    is how an estimate ends up below the real peak.
+
+    An earlier version of this paragraph said the whole restore side charged
+    nothing, on the argument that a restore writes back over a tree of nearly the
+    same shape. That argument was measured wrong: the staged sibling is a second
+    tree, not an overwrite of the first, and the version that charged nothing
+    passed a preflight and then died with ENOSPC part way through a coupled copy.
+    :func:`incoming_bytes` says the same thing in one line beside its own code, so
+    the two accounts agree.
+
+    Absence is normal rather than exceptional, exactly as it is everywhere else
+    in this module: a database just folded in by the engine has no companion
+    files, and a library that has never run a sweep has no coupled directory yet.
+    A missing source contributes nothing, because it will contribute nothing to
+    the copy.
+    """
+    try:
+        if path.is_dir():
+            total = entry_overhead
+            for current, directories, files in os.walk(path):
+                here = Path(current)
+                total += entry_overhead * len(directories)
+                for name in files:
+                    total += _allocated_file(here / name, entry_overhead=entry_overhead)
+            return total
+        return _allocated_file(path, entry_overhead=entry_overhead)
+    except OSError:
+        return 0
+
+
+def _allocated_file(path: Path, *, entry_overhead: int = DIRECTORY_ENTRY_OVERHEAD) -> int:
+    """One file's cost: its blocks, or its rounded-up length, whichever is larger.
+
+    The larger of the two, because ``st_blocks`` under-reports a SPARSE file and a
+    copy of a sparse file is not sparse at the destination unless the copier was
+    asked to make it so, and this module's copier is not.
+    """
+    try:
+        stat_result = path.stat()
+    except OSError:
+        return 0
+    blocks = getattr(stat_result, "st_blocks", None)
+    occupied = 0 if blocks is None else int(blocks) * 512
+    rounded = -(-int(stat_result.st_size) // ALLOCATION_UNIT) * ALLOCATION_UNIT
+    return max(occupied, rounded) + entry_overhead
+
+
+def _free_bytes(root: Path) -> int | None:
+    """Free space on the filesystem that will hold ``root``, or None if unknowable.
+
+    The capture directory does not exist yet, and neither may its parent, so the
+    question is asked of the nearest ancestor that DOES exist. Asking about a
+    path that is not there answers about nothing.
+
+    None is not zero, and it is NOT a pass either. See
+    :func:`assert_room_for`: every supported platform answers this, so the only
+    way to reach None is a path that is disappearing or unreadable underneath the
+    question, and that is a reason to refuse rather than to proceed.
+    """
+    probe = root
+    while True:
+        if probe.exists():
+            try:
+                return shutil.disk_usage(probe).free
+            except OSError:
+                return None
+        if probe.parent == probe:
+            return None
+        probe = probe.parent
+
+
+def assert_room_for_capture(
+    cfg: config.Config,
+    *,
+    root: Path | str | None = None,
+    headroom: float = CAPACITY_HEADROOM,
+    free_bytes: int | None = None,
+) -> int:
+    """Refuse BEFORE a capture is taken when the store cannot hold one.
+
+    Returns the estimate, so a caller that wants to report it does not have to
+    compute it a second way.
+
+    THE REFUSAL HAS TO COME FIRST, and that is the whole property. A copy that
+    runs out of room part way leaves a truncated database inside a directory that
+    looks like a capture, and the session then commits behind it. The integrity
+    check would catch that particular file, but only after the partial write has
+    already consumed the last of the disk and only if the truncation happens to
+    land somewhere the check reads. Refusing up front costs one stat per source
+    and leaves the store byte for byte as it was found.
+
+    THE ESTIMATE IS DERIVED FROM THE SAME DECLARATION THE COPY USES. It walks
+    ``database_paths`` and ``config.snapshot_sources``, which is exactly what
+    :func:`capture` copies, so an entry added to the inventory is measured
+    without anybody remembering to add it here (P4). It is measured in ALLOCATED
+    bytes rather than in apparent ones, for the reason :func:`_allocated_size`
+    states at length with the measurements behind it: the apparent size of a tree
+    of small documents under-reports what the copy costs by up to two orders of
+    magnitude, and both of this product's queue directories are exactly that
+    shape.
+    """
+    destination_root = Path(root) if root is not None else store_root(cfg)
+    sources = {*database_paths(cfg), *config.snapshot_sources(cfg)}
+    playlist = config.state_path(DATABASE_KEY, cfg).parent / rb_writer.MASTER_PLAYLIST_XML
+    sources.add(playlist)
+    needed = sum(_allocated_size(source) for source in sorted(sources))
+    return assert_room_for(
+        needed,
+        destination_root,
+        what="one capture of this library",
+        headroom=headroom,
+        free_bytes=free_bytes,
+    )
+
+
+def assert_room_for(
+    needed: int,
+    destination: Path | str,
+    *,
+    what: str,
+    steps: tuple[str, ...] = (
+        "free space on the volume holding this path, or prune older captures, "
+        "and run this again",
+    ),
+    headroom: float = CAPACITY_HEADROOM,
+    free_bytes: int | None = None,
+) -> int:
+    """Refuse when ``destination``'s filesystem cannot hold ``needed`` bytes.
+
+    Split out of :func:`assert_room_for_capture` so a RESTORE can ask the same
+    question of the library volume. It had only one call site, inside the capture
+    function, so a restore that copies a whole database and coupled tree back onto
+    the library checked nothing about free space at all; and a restore is the verb
+    people reach for when a disk is already misbehaving.
+
+    A FILESYSTEM THAT WILL NOT REPORT ITS FREE SPACE REFUSES. That is the reverse
+    of what this used to do, and the reverse is right. Every platform this product
+    supports answers ``statvfs``, so the only way to get no answer is a path that
+    is disappearing or unreadable underneath the question. Reading that as
+    permission to proceed is reading the one signal that something is wrong as the
+    all-clear.
+    """
+    where = Path(destination)
+    available = free_bytes if free_bytes is not None else _free_bytes(where)
+    required = int(needed * headroom)
+    if available is None:
+        raise refuse(
+            "snapshot-store-full",
+            f"the free space on the filesystem holding {where} could not be read, "
+            f"so there is no way to know whether {what} fits; every supported "
+            f"platform answers this question, which makes silence a symptom of the "
+            f"path being unreadable rather than a platform that cannot say",
+            steps=(
+                "check that the volume holding this path is mounted and readable, "
+                "and run this again",
+            ),
+            scope=Scope.SESSION,
+            detail={"root": str(where), "required_bytes": required, "estimated_bytes": needed},
+        )
+    if available >= required:
+        return needed
+    raise refuse(
+        "snapshot-store-full",
+        f"{where} has {available} bytes free and {what} needs about {required}; "
+        f"refusing before the copy rather than writing a truncated one and "
+        f"committing behind it",
+        steps=steps,
+        scope=Scope.SESSION,
+        detail={
+            "root": str(where),
+            "free_bytes": available,
+            "required_bytes": required,
+            "estimated_bytes": needed,
+        },
+    )
+
+
+def incoming_bytes(source: Path) -> int:
+    """What a copy of ``source`` will ALLOCATE at the destination.
+
+    Charged WITH the directory-entry overhead, because a staged copy is a tree of
+    entries that did not exist a moment ago, exactly as a capture is.
+    """
+    return _allocated_size(source, entry_overhead=DIRECTORY_ENTRY_OVERHEAD)
+
+
+def freed_bytes(target: Path) -> int:
+    """What removing ``target`` will give back, counted conservatively.
+
+    Charged WITHOUT the entry overhead, which is the opposite choice from
+    :func:`incoming_bytes` and is deliberate: over-counting what a step gives back
+    is how an estimate ends up below the real peak, and the whole point of the
+    estimate is to be above it. Directory structure is also not reliably returned
+    to the filesystem when a tree is removed.
+
+    IT IS WORTH 2,048 BYTES, NOT A HEADLINE, and stating the real magnitude is
+    the honest version of the paragraph above. What a step gives back enters
+    ``restore.space_peak_bytes`` only through the running total, and the running
+    total only raises the peak at a LATER step; on this product's plans the
+    largest step is the coupled tree and it is last, so the only outgoing that
+    ever reaches a peak is the database file's, a single entry. Measured on the
+    branch's own shapes: an 8 MiB database with a 4 MiB log and 2,000 queue items
+    estimates 16,490,496 with this choice and 16,488,448 with the overhead charged
+    on both sides, and at 20,000 items the two answers are 127,082,496 and
+    127,080,448. One directory entry, either way.
+
+    IT IS KEPT ANYWAY, AND IT IS TESTED. Kept because the argument does not
+    depend on the size of the term: an estimate that is under is a preflight that
+    passes and a restore that dies part way through, and the cost of being over
+    by one entry is nothing. Tested because "too small to matter" and "wrong" are
+    indistinguishable from a green suite, so ``tests/test_restore.py`` asserts the
+    exact peak of an ordinary plan as a literal, which is the one assertion shape
+    that can see a 2,048-byte difference at all.
+    """
+    return _allocated_size(target, entry_overhead=0)
+
+
 def capture(
     cfg: config.Config,
     *,
@@ -321,6 +622,9 @@ def capture(
     behind it, whichever function produced it.
     """
     destination_root = Path(root) if root is not None else store_root(cfg)
+    # BEFORE the collision check and before anything is created, because a
+    # refusal that has already made a directory is a refusal that did something.
+    assert_room_for_capture(cfg, root=destination_root)
     chosen = stamp or new_stamp(now)
     destination = destination_root / chosen
     if destination.exists():
@@ -471,35 +775,93 @@ def assert_verified(record: Capture) -> None:
     not. A capture that failed its check is not a smaller recovery point, it is
     the absence of one, and proceeding would put the commit's only undo behind a
     file nobody has established can be opened.
+
+    IT ASKS THE DISK AS WELL AS THE MANIFEST, and the second question is not
+    redundant. ``integrity_verified`` records a verdict reached at capture time
+    about bytes that existed then; a partial cloud pull, an interrupted copy or a
+    hand-cleared store can take those bytes away afterwards and leave the manifest
+    saying they passed. A restore that trusted the manifest alone would rehearse
+    clean, clear the live write-ahead log, and only then discover the file it was
+    going to put in its place is not there.
     """
-    if record.verified:
+    if record.verified and record.database is not None and record.database.exists():
         return
+    missing = record.database is not None and not record.database.exists()
     raise refuse(
         "snapshot-integrity-failed",
-        f"the capture at {record.root} did not pass its integrity check, so "
-        f"there is no verified recovery point for this session to commit behind",
+        (
+            f"the capture at {record.root} records a database at "
+            f"{record.database} that is no longer on disk, so the manifest's "
+            f"verdict is about bytes that have since gone"
+            if missing
+            else f"the capture at {record.root} did not pass its integrity check, "
+            f"so there is no verified recovery point for this session to commit "
+            f"behind"
+        ),
         remedy=Remedy.REPORT_DEFECT,
         scope=Scope.SESSION,
         detail={
             "stamp": record.stamp,
             "root": str(record.root),
             "database": str(record.database) if record.database is not None else None,
+            "database_present": record.database is not None and record.database.exists(),
         },
     )
 
 
+def assert_sources_present(record: Capture) -> None:
+    """Refuse when the manifest names captured bytes the store no longer holds.
+
+    :func:`assert_verified` covers the database, which is the file that matters
+    most. This covers the rest of the matched set, and it exists for the same
+    reason: a restore is a sequence of destructive steps, and finding out half way
+    through that the source of step four is gone means steps one to three have
+    already happened. Everything a restore is going to read is therefore checked
+    before anything it is going to write.
+    """
+    absent = [
+        str(entry.captured)
+        for entry in record.sources
+        if entry.captured is not None and not entry.captured.exists()
+    ]
+    if not absent:
+        return
+    raise refuse(
+        "snapshot-integrity-failed",
+        f"the capture at {record.root} records "
+        + (
+            f"{len(absent)} file it no longer holds"
+            if len(absent) == 1
+            else f"{len(absent)} files it no longer holds"
+        )
+        + ", so restoring from it would replace part of the library and then stop:\n"
+        + "\n".join(f"  - {entry}" for entry in absent[:20]),
+        remedy=Remedy.REPORT_DEFECT,
+        scope=Scope.SESSION,
+        detail={"stamp": record.stamp, "root": str(record.root), "absent": absent[:20]},
+    )
+
+
 __all__ = [
+    "ALLOCATION_UNIT",
+    "CAPACITY_HEADROOM",
     "DATABASE_KEY",
+    "DIRECTORY_ENTRY_OVERHEAD",
     "MANIFEST_NAME",
     "MANIFEST_SCHEMA_VERSION",
     "STORE_KEY",
     "Capture",
     "CapturedSource",
     "Verifier",
+    "assert_room_for",
+    "assert_room_for_capture",
+    "assert_sources_present",
     "assert_verified",
     "capture",
     "database_paths",
     "new_stamp",
     "read_manifest",
+    "freed_bytes",
+    "incoming_bytes",
     "store_root",
 ]
