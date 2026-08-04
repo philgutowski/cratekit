@@ -256,14 +256,34 @@ user their file's bytes were not adoption's, and handed them a `force` key that
 wrote `Adopted Bucket` on as the original. The user's genre was then in no file
 and no record.
 
-Identity is now `(st_dev, st_ino)`. It is NOT a lowercased path: case
-insensitivity is a property of the volume rather than of the string, and folding
-two real files into one record is the same defect pointed the other way. A ledger
-written by the old scheme is migrated on the next adoption rather than doubled,
-and the ledgers already on disk are covered from the other end too, where two
-records resolving to one file refuse as a group and are deliberately offered no
-`force`, because `force` overrides evidence about bytes and cannot supply which
-record belongs to a file.
+Identity is NOT a lowercased path: case insensitivity is a property of the volume
+rather than of the string, and folding two real files into one record is the same
+defect pointed the other way.
+
+**AND IT IS NOT `(st_dev, st_ino)` EITHER, which round 6 shipped and round 7 took
+out again.** That pair is not unique in either direction and both directions were
+measured on real filesystems rather than argued. An inode number is REUSED once
+the file holding it is deleted, reproduced on a real MS-DOS FAT image, which is
+the format of every rekordbox export drive: adopting the new file found the dead
+file's record, REFRESHED the record's path to the new file, stamped the new
+file's digest into it, and the revert then wrote the dead file's original onto
+the live file and reported the pass clean. The same pair also MOVES for a file
+nobody touched, three ways: a FAT remount renumbered the inode, an `os.replace`
+save on APFS moved it at the same path on the same volume, which is how every
+tagger and this repository's own atomic writer save, and remounting two volumes
+in the opposite order moved the device number.
+
+So a record now carries THREE claims about which file it is about, and
+`_record_for` requires them to converge: the volume and inode, the path, and a
+digest of the bytes adoption left. A disagreement the BYTES can settle is
+settled, which is what carries a rename, a remount and a legacy ledger through.
+Every other disagreement REFUSES with `RecordCannotBeMatched`, per entry, with
+the file untouched. **The recorded path is never rewritten to a different file's
+path**, because that one line is what destroyed the evidence. A ledger written by
+the old scheme is migrated on the next adoption rather than doubled, and the
+ledgers already on disk are covered from the other end too, where two records
+resolving to one file refuse as a group, computed over the WHOLE LEDGER rather
+than over the records one pass selected, and are deliberately offered no `force`.
 
 **And the guard blocked forever on a file whose bytes cannot be produced, holding
 that lock.** Removing the eviction branch left `digest_of` unbounded, and
@@ -274,10 +294,26 @@ never returns, the revert still running at 6 seconds, and a concurrent
 it for its whole life. Three fixes, and the permissive choice for evicted files
 is kept: the mode is asked before any descriptor is opened, the read has a
 deadline that RAISES rather than folding into "unreadable" (`TimeoutError` is an
-`OSError`, which is the trap), and every guard read now happens BEFORE the lock
-is taken and is spent under it only while a `stat` says it is still current.
-R-25 is corrected rather than re-filed; R-27 and R-28 record what the identity
-change costs.
+`OSError`, which is the trap), and the read that would otherwise be a provider
+download happens BEFORE the lock is taken.
+
+**What round 7 changed about that last one.** The pre-lock answer used to be
+SPENT under the lock whenever `(st_dev, st_ino, st_size, st_mtime_ns)` had not
+moved. Those are the four values this module's own docstring says are not
+evidence about content, deciding whether evidence about content still applied.
+Measured on a real FAT image, whose modification time granularity is one second:
+an in-place rewrite of the same length inside one tick left all four identical
+while the digest had changed, and the restore ran on the replaced bytes. So the
+pre-lock pass now decides NOTHING. It reads to make a provider materialize the
+file with no lock held, and the read that decides is taken again under the lock.
+That is two reads per refused record and the cost is written down rather than
+rounded off. The residual about a revert hashing every file it considers is
+corrected rather than re-filed; the residual about inode recycling is CLOSED
+rather than accepted; two new ones record what a stalled mount can still do to a
+single `read` and what a digest-less record cannot survive.
+
+Round 7's mutation table is `docs/mutation-rows-u23.md`, with every row's exact
+substitution beside its count. Fold it into `docs/mutation-rows.md` at merge.
 
 
 

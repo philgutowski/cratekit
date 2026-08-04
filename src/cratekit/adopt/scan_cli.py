@@ -125,8 +125,9 @@ def scan(ctx) -> Envelope:
     rekordbox library into :class:`cratekit.adopt.scan.CollectionRow` values needs
     a collection reader that has not landed, and the engine underneath
     (:func:`cratekit.adopt.scan.scan_rows`) deliberately takes its rows from a
-    caller so that it is testable without a database at all. Recorded as residual
-    R-20 rather than left as a surprise.
+    caller so that it is testable without a database at all. Recorded in the
+    residual titled "adoption's tag write takes no destructive session and no
+    library lock" rather than left as a surprise.
     """
     cfg = _load()
     with jobs.open_store() as store:

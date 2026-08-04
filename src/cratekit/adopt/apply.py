@@ -460,8 +460,9 @@ def apply_plan(
     reaching the database twice is R31's lock, taken one layer up.
 
     THE TAG WRITE IS OUTSIDE THAT LOCK, WHICH IS THE RESIDUE, and it is now
-    written down where somebody will find it rather than only here: residual
-    finding R-20, and the obligation rides with the apply command line in
+    written down where somebody will find it rather than only here: the residual
+    titled "adoption's tag write takes no destructive session and no library
+    lock", and the obligation rides with the apply command line in
     ``tests/_pending.py``. Two runs both writing the same value to the same file
     is harmless, and the revert ledger's first-write-wins rule is what keeps the
     original safe if they are not. What is genuinely missing is a session and a

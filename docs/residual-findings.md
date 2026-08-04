@@ -855,6 +855,19 @@ running after its answer was abandoned. The shapes that genuinely never return
 from `open` are all non-regular files and are refused before the open; a regular
 file on a wedged mount is the case that remains.
 
+**CORRECTED in U23's seventh round, 2026-08-04: it is now TWO reads per record,
+not one.** The pass used to read each file once, before the lock, and spend that
+answer under the lock whenever `(st_dev, st_ino, st_size, st_mtime_ns)` had not
+moved. Measured on a real FAT image, an in-place rewrite of the same length inside
+one modification-time tick moves none of those four, and the restore then ran on
+bytes the pass had never read. So the pre-lock read no longer decides anything: it
+exists to make a provider materialize the file with no lock held, and the read that
+decides is taken again under the lock. Counted rather than estimated, in
+`test_a_cloud_EVICTED_file_IS_read_because_the_restore_fetches_it_anyway`: two
+reads of the same file per record, in that order. The second is served locally
+after the first, so the cost is a second sha256 pass and cache pressure rather than
+a second download, and that is the honest shape of it.
+
 **Closes when:** the read runs where it can be abandoned, which means a
 subprocess or a worker whose result the pass can stop waiting for, or a provider
 API that answers "are these bytes local" without the answer being a shortcut past
@@ -904,37 +917,49 @@ unit is willing to double that.
 ## R-27. A filesystem that recycles inode numbers can hand one file another file's record
 
 **Found:** during U23's sixth round, 2026-08-03, as the accepted cost of keying
-the revert ledger on `(st_dev, st_ino)` instead of on a digest of the path.
+the revert ledger on `(st_dev, st_ino)`. **CLOSED in U23's seventh round,
+2026-08-04**, because the cost was measured rather than estimated and it was not
+a residual, it was a data loss.
 
-`identity_of` asks the filesystem which file it is rather than guessing from the
-name, which is what makes a hardlink, a case varying spelling and a rename all
-resolve to the ONE record they should. It buys one exposure back. On a filesystem
-that reuses inode numbers, a file created after another file was deleted can be
-handed the dead file's number, and an adoption of the new file then finds the
-dead file's record. First-write-wins keeps the dead file's `original`, so the new
-file's own original is never recorded.
+**What this entry got wrong, and both halves were wrong.** It said the exposure
+was small because "APFS, which is the volume format this product targets, does
+not reuse". APFS was then driven over four thousand create and delete cycles and
+did not reuse, so that sentence is true and irrelevant: FAT and exFAT are the
+format of every rekordbox export USB drive, and reuse was reproduced directly on
+a real MS-DOS FAT image. A file at `st_ino` 9, deleted, and the next file created
+came back as `st_ino` 9. The filesystem list omitted the one this product's users
+plug in.
 
-**Why the alternative is worse, driven rather than argued.** The obvious defence
-is to check that the record's recorded path still carries that identity and to
-REPLACE the record when it does not. A rename is indistinguishable from a
-recycled inode by exactly that test, and renaming a track is ordinary while
-recycling is not: replacing would destroy the only copy of a renamed file's
-original, every time somebody reorganised a folder. The permissive branch is
-taken deliberately and the record's `path` is refreshed instead, so the revert
-still has an address for the file.
+It also stopped one step short of the harm. It predicted a MISSING record for the
+new file. What actually happened, driven end to end against the code, is worse:
+`_record_locked` found the dead file's record by the live identity, found the
+dead file's path no longer stat'd, and REFRESHED the record's path to the new
+file. The stamp after the write then put the new file's digest into the dead
+file's record, so at revert the guard compared the new file against its own bytes,
+accepted, wrote the dead file's original onto it, dropped the record, and
+reported `restored: 1  failed: {}`. The new file's own genre was in no file and
+no record.
 
-**Why the exposure is small.** APFS, which is the volume format this product
-targets and the default on the platform it runs on, allocates inode numbers from
-a monotonic counter and does not reuse them. ext4 and HFS+ do reuse. The window
-also needs all four of: a file adopted, that file deleted, a new file created
-that receives the number, and that new file adopted, with no adoption of the
-first file in between to migrate it.
+**What replaced it.** `identity_of` is no longer a key. A record carries three
+claims about which file it is about, and `_record_for` requires them to converge:
+the volume and inode, the path, and a digest of the bytes adoption left. A
+divergence the BYTES can settle is settled, and every other divergence refuses
+with `RecordCannotBeMatched`, which `apply_plan` fails per entry. In particular
+the recorded path is never rewritten to a different file's path.
 
-**Closes when:** the record also carries a creation time, which APFS and ext4
-both expose as `st_birthtime`, so a record whose birth time does not match the
-file at that identity is a recycled number rather than a rename. That is a second
-stamp on every record and it belongs with whichever unit is willing to widen the
-document.
+**What the closing choice costs**, because it is a real cost and not zero. A
+recycled inode now REFUSES the second adoption instead of silently taking the
+wrong record, so an entry fails and a person runs the doctor. So does an
+`os.replace` save on an already-adopted file, and so does the crash seam plus a
+rename. All three leave the file untouched with its own value in it, which is the
+trade this module makes everywhere: refusing costs an override on a run somebody
+asked for, accepting costs a file nobody can put back.
+
+**The birth-time proposal is withdrawn.** This entry named `st_birthtime` as the
+fix. FAT stores a creation time with two second granularity and exFAT with ten
+millisecond granularity, and neither survives the file being copied, so a second
+metadata stamp would have been a fourth thing that correlates with the file and
+does not identify it. The bytes were available the whole time.
 
 ---
 
@@ -960,3 +985,75 @@ deleted themselves has to work out that that is what it means.
 writing and reports a deleted track as deleted, which is `scan.probe_readability`
 being called from `apply` and is a small piece of work that belongs with the
 adopt verb's command line rather than with the ledger.
+
+---
+
+## R-29. A single `read` that never returns is not bounded, and neither is the `stat` in front of it
+
+**Found:** during U23's seventh round, 2026-08-04. **Read from the source rather
+than measured, and that distinction is the entry.** A stalling NFS, SMB or FUSE
+mount could not be produced on this machine, the shape was NOT simulated, and no
+number below is a measurement.
+
+`digest_of` gives up after `_READ_DEADLINE_SECONDS`, and the deadline is asked
+BETWEEN blocks: `handle.read` returns, the hash is updated, and only then is
+`time.monotonic()` compared. A single `read` that never returns therefore never
+reaches the comparison. `_look_at`'s first statement is `target.stat()`, with
+nothing in front of it, and a `stat` against a mount that has stopped answering
+does not return either.
+
+**What is bounded and what is not.** A stream arriving slowly is bounded, which
+is the cloud-provider case the deadline was added for and which IS measured, in
+`test_the_deadline_ends_a_read_that_keeps_arriving_forever`. A filesystem that
+has stopped answering entirely is not bounded anywhere in this module.
+
+**Where it lands.** `_bring_the_bytes_within_reach` reads before the lock, so a
+hang there costs the pass and not the library. The guard's own read is under the
+exclusive lock, so a hang there holds the lock that serializes every apply and
+every revert. That is the same lock the FIFO guard was added to protect, and the
+FIFO guard does not help: a FIFO is refused from `st_mode`, and a stalled mount
+hangs the `stat` that reads `st_mode`.
+
+**Closes when:** the read runs on a thread with a join deadline and the pass
+abandons the answer rather than the thread, or a `statfs`-based liveness probe
+refuses a mount that is not answering before any path on it is opened. Both are
+bigger than this unit and neither should be written from an argument: the first
+step is to produce a stalled mount and measure what actually happens.
+
+---
+
+## R-30. A record with no digest cannot survive a rename
+
+**Found:** during U23's seventh round, 2026-08-04, as the stated limit of the
+identity that replaced R-27's.
+
+`_record_for` matches a record to a file when the claims converge. After a rename
+the recorded path is wrong; after a rename on a legacy path-digest ledger the key
+is wrong too, and then the only surviving claim is the digest of what adoption
+left. `_found_by_its_bytes` uses exactly that, and it is what carries a legacy
+record through a rename, pinned by
+`test_a_LEGACY_record_SURVIVES_A_RENAME_rather_than_being_doubled`.
+
+**What is left.** A record with NO digest whose file has been both renamed and
+re-inoded has no claim left to answer. Nothing finds it, a new record is written
+beside it, and that record's `original` is the value adoption itself wrote. That
+is the same data loss R-27 closed, arriving through a door only a digest-less
+record can open.
+
+**Why the population is small rather than zero.** A record has no digest in three
+cases: a document written before digests existed, a run interrupted between the
+tag write and the stamp, and a stamping read that failed. The first is the one
+that matters and it exists only in ledgers written by builds inside this unit's
+own history, none of which shipped. The other two refuse at revert anyway, so
+their originals are already only spendable by hand.
+
+**Why the obvious defence was not taken, measured rather than argued.** The
+proposal was to refuse to CREATE a record whenever a stranded digest-less record
+for the same field exists and the file in hand already holds the value adoption
+is about to write. On a library that was already correctly tagged, every file
+holds that value legitimately, so one stranded record would refuse the whole
+library. A signal that fires on the ordinary case is not a signal.
+
+**Closes when:** the ledger is migrated forward once, at read time, so no
+digest-less record survives into a build that has digests. That is a document
+migration and it belongs with whichever unit owns the doctor.

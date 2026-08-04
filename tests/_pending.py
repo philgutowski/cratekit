@@ -166,7 +166,9 @@ PENDING: dict[str, tuple[str, str]] = {
         "U27",
         "the command-line surface for adopt.apply, and with it the destructive "
         "session and the library lock that apply_plan honestly says it does not "
-        "take (residual R-20). R29 says one source per run, and the loop is not "
+        "take (the residual titled 'adoption's tag write takes no destructive "
+        "session and no library lock'). R29 says one source per run, and the "
+        "loop is not "
         "a run, so only the verb can open that session. REGISTERED HERE RATHER "
         "THAN LEFT AS A planned_in MARKER because scripts/board.py reads this "
         "file and nothing else, so an obligation carried only by a marker on a "

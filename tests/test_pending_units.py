@@ -46,7 +46,9 @@ EXPECTED_PENDING = frozenset(
         "path:skills",  # U28, the shipped operator skills
         "cratekit.cli.exit_codes",  # U38, the reserved exit-code vocabulary
         "cratekit.write.routing_cli",  # U20, the route.* verbs and the gated close
-        # U27, the adopt.apply shell and the session R-20 records as missing.
+        # U27, the adopt.apply shell and the session the residual titled
+        # "adoption's tag write takes no destructive session and no library
+        # lock" records as missing.
         # Its sibling adopt.scan is NOT here: it shared a module string with this
         # verb, is not gated and not destructive, and has landed.
         "cratekit.adopt.apply_cli",
