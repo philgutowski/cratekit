@@ -376,6 +376,82 @@ worth going straight to rather than rediscovering:
 - **U12, verify round 3.** "Two zero death rows already." Round 3 has at least
   two guards covered by nothing. Not yet identified which.
 
+## Verifications from the 2026-08-04 recovery session
+
+Three verifications completed after the session limit was lifted. All three
+came back BLOCKING. Recorded here because these are the highest value output
+of the wave and they exist nowhere else.
+
+### U23, the worst finding of the wave, and it destroys user data
+
+`revert.py:154`. **Adoption identity is a digest of the PATH, so two recorded
+locations that name ONE file on disk produce two ledger records.** Two shapes,
+both driven end to end with real FLAC and the shipped `genre` field:
+
+- a hardlink or symlink, `os.link(a, b)`, gives 2 records for one inode
+- `Song000.flac` and `song000.flac` on a case insensitive volume, which is
+  APFS default and the platform this product targets, because
+  `location_to_path` normalizes Unicode composition and NOT case
+
+The second record stores adoption's own value, `Adopted Bucket`, as the
+original. Revert then behaves differently depending on **the sort order of two
+sha256 path digests**. In the bad ordering it restores the real genre, then
+refuses on the bogus record with *"its bytes are not the ones adoption left
+there"*, an accusation of tampering caused by its own previous line. The user
+does what the message instructs, `force=(path, 'genre')`, which writes
+`Adopted Bucket` on as the original, reports `restored`, and empties the
+ledger. **The user's real genre is then in no file and no record.**
+
+The fix is at identity, not comparison: `(st_dev, st_ino)`. **Do not lowercase
+the path.** Case insensitivity is a property of the volume, not the path
+string, and lowercasing collapses two genuinely different files on a case
+sensitive volume, which is the same bug pointed the other way.
+
+Second U23 finding: `_changed_since_adoption` calls `digest_of` with no
+timeout while holding the ledger's exclusive lock. Driven with a FIFO at the
+recorded path, `open()` never returns and every other apply and revert in the
+library blocks behind it. R-25 documents the cost as bandwidth only and is
+wrong about the severity.
+
+### U32, a rehearsal that passes and a run that destroys
+
+`restore.py:1631`. Round 5's "never overwrite a staged companion" refusal went
+on the PERFORMING path and not the preflight. With two companions present and
+the second's resting name occupied, `run()` moves `master.db-wal` out of the
+live tree and THEN refuses, aborting with the write ahead log gone and the
+database never replaced. That is verbatim the state the docstring says the
+staging exists to prevent. **`dry_run=True` reports all 8 steps performed and
+refuses nothing.** A rehearsal that passes followed by a run that destroys is
+the most misleading shape this module can have.
+
+The refusal also emits `remedy=report-defect, retryable=False` while a fresh
+plan demonstrably succeeds, and its only assertion is `reason ==
+"internal-error"`, the eleventh use of that slug in the file.
+
+### U34, and the finding nobody was looking for
+
+`test_reports.py:1769`. The read only guard resolves a receiver only from the
+import table, so `alias = config` then `alias.save(cfg)` writes the config
+file with both structural guards green. Two lines, in a module that already
+imports `config`. Eight more bindings miss the same way.
+
+The one nobody asked for: **the guard has live FALSE POSITIVES today.**
+`def f(config): return config.load` is reported as a write, because an
+unresolvable receiver falls back to being treated as a module named after the
+variable. A guard that fires on ordinary code is one the next author weakens.
+
+### What these three have in common
+
+All three are the wave's two named patterns, again. U23 and U34 are IDENTITY
+THAT IS NOT UNIQUE. U23's lock hang, and U32's dangling symlink reading as a
+free name, are ABSENCE READ AS EVIDENCE OF ABSENCE. Neither pattern has been
+exhausted by five rounds of fixing.
+
+A third pattern is now firm enough to name: **a fix round that lands on the
+performing path instead of the checking path.** U32 put its refusal after the
+destructive step. U23 put its fix at byte comparison when the defect was at
+identity. Both fixes were correct in isolation and both left the hole open.
+
 ## Open decisions for Phillip
 
 1. ~~**Board drift on #52 and #53.**~~ **RESOLVED 2026-08-04, no decision
