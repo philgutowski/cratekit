@@ -679,6 +679,10 @@ def _declared_enum_values(tree: ast.AST) -> set[str]:
 #:     A3 = A2
 #:     CODES = {"config-unusable": A3}
 #:
+#: MEASURED AT EVERY VALUE, so the boundary is a number rather than a guess. The
+#: two alias chain is reported at 2, 3, 4, 5 and 6. The three alias chain is
+#: SILENT at 2 and 3 and reported at 4, 5 and 6, so the boundary this constant
+#: sets sits exactly between 3 and 4.
 #: ``test_the_hop_bound_is_a_coverage_dial_and_this_is_what_it_gives_up`` pins
 #: both, so the silence is a fixture somebody has to look at rather than a hole
 #: nobody has met, and raising the constant to reach further fails that test and

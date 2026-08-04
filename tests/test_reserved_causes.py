@@ -3274,11 +3274,13 @@ def test_the_hop_bound_is_a_coverage_dial_and_this_is_what_it_gives_up():
     recursion limit stops the hang the bound exists to prevent; the value decides
     how long a chain of aliases the guard can read.
 
-    At three it reads at most TWO aliases before the literal. The three alias
-    chain below is a real evasion and it is SILENT, which is the price of the
-    number, so it is pinned here rather than left to be discovered. Raising the
-    constant to reach further fails this test and demands the new boundary be
-    written down the same way.
+    At three it reads at most TWO aliases before the literal. Swept across every
+    value from 2 to 6: the two alias chain is reported at all of them, and the
+    three alias chain is silent at 2 and 3 and reported at 4, 5 and 6. So the
+    boundary sits exactly between 3 and 4, and the three alias chain below is a
+    real evasion this guard does not see. That is the price of the number, pinned
+    here rather than left to be discovered. Raising the constant to reach further
+    fails this test and demands the new boundary be written down the same way.
     """
     assert _guards.MAX_HOPS == 3
     assert reserved_code_tables(

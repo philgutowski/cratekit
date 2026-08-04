@@ -1053,8 +1053,9 @@ A0 = 30; A1 = A0; A2 = A1; A3 = A2
 CODES = {"config-unusable": A3}
 ```
 
-is reported at 6 and SILENT at 3. That silence is the price of the number and is
-pinned in both directions by
+is SILENT at 2 and 3 and reported at 4, 5 and 6, so the boundary sits exactly
+between 3 and 4. The two alias chain is reported at every one of those values.
+That silence is the price of the number and is pinned in both directions by
 `test_the_hop_bound_is_a_coverage_dial_and_this_is_what_it_gives_up`, so raising
 the constant fails a test and demands the new boundary be written down the same
 way.
