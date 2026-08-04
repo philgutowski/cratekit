@@ -177,9 +177,18 @@ class Category(StrEnum):
     #: lock it cannot take, a Ctrl-C, and the ``SystemExit`` a SIGTERM handler
     #: raises. It cannot cover what the process never observes. A SIGKILL or a
     #: power loss in the window between the rename and the record leaves the file
-    #: in the Trash with no tombstone, and on the next run this category retires
-    #: the row. NO HANDLER CLOSES THAT, and claiming the state is unreachable
-    #: would be claiming something no in-process code can deliver.
+    #: in the Trash with no tombstone. NO HANDLER CLOSES THAT WINDOW, and
+    #: claiming the state is unreachable would be claiming something no
+    #: in-process code can deliver.
+    #:
+    #: **WHAT THE NEXT RUN DOES ABOUT IT HAS CHANGED, AND IT IS THE HALF THAT WAS
+    #: ACTUALLY REACHABLE.** This category used to retire the row silently, so
+    #: the suppression was lost with nothing recording it. A move only ever
+    #: happens after a person confirms, and a verdict is durable, so the next run
+    #: finds a CONFIRMED row whose file is absent with no tombstone and settles it
+    #: through ``run._settle_a_confirmed_absence``, which writes the record the
+    #: deletion owes. The interrupted deletion therefore completes rather than
+    #: disappearing, for as long as the confirmation is still in the queue.
     #:
     #: Three things bound the cost rather than remove it. The window is one
     #: rename plus one store write per candidate, so it is small and it is not a
@@ -202,6 +211,19 @@ class Category(StrEnum):
     #: already destroyed something: between the move to the Trash and the record
     #: of what was moved.
     UNIDENTIFIABLE = "unidentifiable"
+    #: The tombstone this deletion would write is addressed by an identity a
+    #: SECOND removed row also produces, and the two rows carry two different
+    #: ISRCs, so they are two recordings rather than one recording filed twice.
+    #: Deleting either would suppress the other, which is over-suppression: the
+    #: user silently stops being able to acquire a version they never deleted.
+    #:
+    #: **IT IS NOT THE SAME AS A CONVERGENCE, WHICH IS REQUIRED.** ``Strobe``
+    #: with a remixer column against ``Strobe (Michael Woods Remix)`` with none
+    #: is one version filed under two conventions, and composition exists to give
+    #: those two rows ONE identity. Both shapes are two rows on one identity and
+    #: nothing about the identity separates them, which is what R-21 recorded as
+    #: unresolvable. The ISRC separates them, and the rows already carry it.
+    AMBIGUOUS_VERSION = "ambiguous-version"
 
 
 #: The categories that are finished business, so the watermark may pass over
@@ -738,6 +760,7 @@ def categorize(
     referenced: frozenset[str] = frozenset(),
     declined: Callable[[RemovedRow], bool] = lambda _row: False,
     identifiable: Callable[[RemovedRow], bool] = lambda _row: True,
+    ambiguous: Callable[[RemovedRow], bool] = lambda _row: False,
     stat: Stat = os.stat,
 ) -> tuple[Candidate, ...]:
     """Answer every removed row, in the order R37 states its assertions.
@@ -775,18 +798,41 @@ def categorize(
     rules = list(prefix_map)
     anchors = _Anchors(stat)
     for row in removed:
-        if declined(row):
-            out.append(Candidate(row=row, category=Category.DECLINED))
-            continue
+        # IDENTIFIABILITY IS ASKED FIRST, BEFORE THE DECLINE. It used to be
+        # asked second, and the decline predicate derives a suppression
+        # identifier from the row, so a row that cannot be addressed at all
+        # raised inside the question about whether somebody had already answered
+        # for it. Neither question touches a file, so the order costs nothing and
+        # the only thing it changes is which category an unaddressable row that
+        # somebody once declined is reported under, where UNIDENTIFIABLE is the
+        # more useful answer anyway.
         if not identifiable(row):
             out.append(
                 Candidate(
                     row=row,
                     category=Category.UNIDENTIFIABLE,
                     problem=(
-                        "the row records neither an artist nor a title, so the "
-                        "tombstone R36 requires could not identify the version "
-                        "this deletion suppresses"
+                        "the row cannot be identified: R36's tombstone needs an "
+                        "artist or a title to name the version this deletion "
+                        "suppresses, and the review item needs the row's own "
+                        "identifier to be answerable"
+                    ),
+                )
+            )
+            continue
+        if declined(row):
+            out.append(Candidate(row=row, category=Category.DECLINED))
+            continue
+        if ambiguous(row):
+            out.append(
+                Candidate(
+                    row=row,
+                    category=Category.AMBIGUOUS_VERSION,
+                    problem=(
+                        "another removed row produces the same version identity "
+                        "as this one and carries a different ISRC, so the two are "
+                        "two recordings rather than one filed twice; a tombstone "
+                        "for either would suppress the other"
                     ),
                 )
             )
@@ -934,6 +980,7 @@ def recheck(
     referenced: frozenset[str] = frozenset(),
     declined: Callable[[RemovedRow], bool] = lambda _row: False,
     identifiable: Callable[[RemovedRow], bool] = lambda _row: True,
+    ambiguous: Callable[[RemovedRow], bool] = lambda _row: False,
     stat: Stat = os.stat,
 ) -> Candidate:
     """Re-run every assertion for ONE candidate, immediately before its move.
@@ -959,6 +1006,7 @@ def recheck(
         referenced=referenced,
         declined=declined,
         identifiable=identifiable,
+        ambiguous=ambiguous,
         stat=stat,
     )
     return answered[0]

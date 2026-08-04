@@ -129,6 +129,13 @@ class Plan:
     candidates: tuple[Candidate, ...] = ()
     references: candidate_rules.ReferenceSet | None = None
     baselined_over: int = 0
+    #: The rows whose version identity is shared with a removed row carrying a
+    #: DIFFERENT ISRC. Computed over the whole collection walk rather than over
+    #: the filtered removals, because the row a candidate collides with may be
+    #: one an earlier run already dealt with, and carried on the plan rather than
+    #: recomputed because ``apply`` re-checks each candidate through the same
+    #: categoriser and has to hand it the same answer the review was made under.
+    ambiguous: frozenset[str] = frozenset()
 
     @property
     def deletable(self) -> tuple[Candidate, ...]:
@@ -291,6 +298,13 @@ def plan(
         )
     referenced = library.playlist_referenced(db.get_playlist_songs())
 
+    # OVER THE WHOLE WALK, NOT OVER THE FILTERED REMOVALS. See
+    # ``stores.ambiguous_versions``: what makes a tombstone dangerous is that a
+    # SECOND row produces the same identity, and that second row is very often
+    # one an earlier run already retired, which is exactly the set the watermark
+    # filter has just removed. Asking the filtered set would find the collision
+    # only when both halves of it happened to be removed in the same window.
+    ambiguous = stores.ambiguous_versions(seen.removed)
     answered = candidate_rules.categorize(
         removed,
         references,
@@ -299,6 +313,7 @@ def plan(
         referenced=referenced,
         declined=stores.decline_predicate(cfg),
         identifiable=stores.identifiable,
+        ambiguous=lambda row: row.content_id in ambiguous,
         stat=stat,
     )
     return Plan(
@@ -307,6 +322,7 @@ def plan(
         baselined=False,
         candidates=answered,
         references=references,
+        ambiguous=ambiguous,
     )
 
 
@@ -473,62 +489,94 @@ def _record_or_put_it_back(
         raise
 
 
-def _finished_business(
-    answered: Candidate, *, recorded: Callable[[library.RemovedRow], bool]
+def _settle_a_confirmed_absence(
+    cfg: config.Config,
+    answered: Candidate,
+    *,
+    actor: str,
+    recorded: Callable[[library.RemovedRow], bool],
 ) -> bool:
-    """Whether a CONFIRMED candidate that did not move may be retired.
+    """Finish a CONFIRMED removal whose file is not where the row named it. Returns handled.
 
-    **ABSENCE READ AS EVIDENCE OF ABSENCE, IN THE ONE PLACE IT COSTS A CONFIRMED
-    DELETION.** ``GONE`` is the single member of :data:`candidates.HANDLED`, so a
-    confirmed row whose file is not where the row named was retired by the
-    watermark and never offered again. Its docstring reasons about that as a
-    crash between the rename and the record, and it fires for an ordinary act: a
-    person confirms a deletion, moves or renames the file by hand before the
-    apply, and the run reports nothing trashed, writes no tombstone, and advances
-    the watermark straight over the row. The file's not being where it was is
-    read as the deletion having been completed.
+    **ABSENCE IS NOT EVIDENCE THAT A DELETION HAPPENED, AND HOLDING THE ROW OPEN
+    FOREVER IS NOT THE ANSWER EITHER. BOTH OF THOSE HAVE SHIPPED HERE.** ``GONE``
+    is the single member of :data:`candidates.HANDLED`, so a confirmed row whose
+    file is absent was once retired by the watermark with no tombstone written:
+    a person confirmed a deletion, moved the file by hand before the apply, and
+    the run reported nothing trashed, recorded nothing, and passed over the row.
+    That was closed by refusing to retire the row without a tombstone, and the
+    refusal has a cost nobody measured: a person who confirmed a removal and then
+    deleted that file in the Finder can never satisfy it. The file cannot come
+    back. The row holds the watermark at its own sequence forever, and because
+    the watermark is contiguous, EVERY REMOVAL ABOVE IT IS HELD TOO, including
+    ones this pass trashed and recorded perfectly. One Finder delete wedges the
+    whole queue.
 
-    The tombstone is what actually distinguishes the two, so it is what is asked.
-    A recorded deletion is finished; an unrecorded absence is not, and the row
-    holds the watermark at its own sequence until the file is back where the row
-    names it or the person withdraws the confirmation. That is the same bounded
-    cost a decline already pays, and it is paid loudly: the caller names the
-    remedy in the warning rather than leaving a person to find it.
+    **SO THE DELETION IS COMPLETED RATHER THAN HELD.** The person confirmed this
+    removal, rekordbox no longer holds the row, and the file is not at the path
+    the row records. That is a deletion that happened, by their hand rather than
+    by this pass's, and R36 says a completed deletion writes a tombstone. Writing
+    it is what makes the row finished business honestly, rather than retiring it
+    while R36 is quietly false, which is what the original defect did.
 
-    ONLY FOR A CONFIRMED ROW. A removal nobody has answered for that is simply
-    gone is still retired, and it must be: a person who deletes music in the
-    Finder has not asked this pass for anything, so there is no promise to keep
-    and re-walking their whole removal history forever would be the refusal doing
-    more harm than the defect.
+    WHAT IT COSTS WHEN THE FILE WAS MOVED RATHER THAN DELETED, stated because it
+    is the case that is not certain. The bytes are still on the disk somewhere,
+    outside the collection, and the version is now suppressed from future
+    acquisition. No music is lost: they have the file. The suppression is
+    LISTABLE and REVOCABLE by R36, which is the property that makes writing it
+    the recoverable choice and holding the queue open the unrecoverable one, and
+    the caller says out loud that it happened and names the identifier to revoke.
+
+    ONLY FOR A CONFIRMED ROW. A removal nobody has answered for is not settled
+    here at all: a person who deletes music in the Finder has not asked this pass
+    for anything, so there is no deletion of ours to record.
     """
-    if not answered.handled:
-        return False
-    if answered.category is Category.GONE and not recorded(answered.row):
-        return False
+    if answered.category is not Category.GONE:
+        return answered.handled
+    if recorded(answered.row):
+        return True
+    record = stores.record_tombstone(cfg, answered.row, actor=actor, trashed_to="")
+    logger.warning(
+        "confirmed removal %s is not at %s, so nothing was moved to the Trash; "
+        "the deletion has been RECORDED anyway, because you confirmed it and the "
+        "collection no longer holds the row, and R36 says a completed deletion "
+        "is recorded. If you moved the file rather than deleting it, it is still "
+        "on this disk outside the collection and this library will not acquire "
+        "that version again until suppression %s is revoked",
+        answered.row.content_id,
+        answered.resolved or answered.row.recorded,
+        record.suppression_id,
+    )
     return True
 
 
-def _warn_if_the_row_is_held_open(
+def _warn_that_an_unanswered_removal_is_being_retired(
     answered: Candidate, *, recorded: Callable[[library.RemovedRow], bool]
 ) -> None:
-    """Say out loud that a confirmed deletion is now holding the watermark, and why.
+    """Say that a removal nobody answered for is being retired with its file elsewhere.
 
-    THE REFUSAL NAMES THE REMEDY, which is the half the sibling guard on the
-    resolved path was missing until this round. A row held open by
-    :func:`_finished_business` is not a transient: it stays held for as long as
-    the file is somewhere other than where the row records it, so a person who is
-    told only that nothing moved is told nothing they can act on. The two acts
-    that clear it are both theirs, and both are named.
+    **THE MIRROR OF THE CONFIRMED CASE, AND IT WAS SILENT.** A removal with no
+    verdict uses ``item.handled`` directly, ``GONE`` is in
+    :data:`candidates.HANDLED`, so the row is retired, the watermark passes it,
+    no tombstone is written, and nothing offers it again. That scoping is
+    deliberate and stays: nobody asked this pass for anything, so it has no
+    deletion to record and re-walking a person's whole removal history forever
+    would do more harm than the defect.
+
+    What was wrong is that it happened without a word. If the file was MOVED
+    rather than deleted it is still on the disk, no longer in the collection, and
+    now no longer reachable by this pass either, which is the one state where a
+    person has a file they can neither see in rekordbox nor be reminded of here.
+    Saying it costs one log line and is the only notice they will get.
     """
     if answered.category is not Category.GONE or recorded(answered.row):
         return
     logger.warning(
-        "confirmed removal %s is gone from %s and no tombstone records this "
-        "library ever deleting it, so it is NOT being treated as finished: "
-        "nothing was moved to the Trash and nothing was recorded. Put the file "
-        "back where the collection row names it and run this again, or clear the "
-        "review item to withdraw the confirmation; until one of those happens "
-        "this removal holds the deletion watermark at its own position",
+        "removal %s was retired without being offered: the file is not at %s and "
+        "no tombstone records this library ever deleting it, so there is nothing "
+        "to move and nothing to record. If you deleted it yourself that is the "
+        "end of it; if you MOVED it, the file is still on this disk outside the "
+        "collection and nothing will offer it again",
         answered.row.content_id,
         answered.resolved or answered.row.recorded,
     )
@@ -686,6 +734,7 @@ def apply(
         for item in found.candidates:
             verdict = decided.get(_item_id(item))
             if verdict is None:
+                _warn_that_an_unanswered_removal_is_being_retired(item, recorded=recorded_now)
                 handled.append((item.row.sequence, item.handled))
                 continue
             if verdict.verdict is review.Verdict.REJECTED:
@@ -712,8 +761,14 @@ def apply(
                     item.problem,
                 )
                 refused.append(item)
-                handled.append((item.row.sequence, _finished_business(item, recorded=recorded_now)))
-                _warn_if_the_row_is_held_open(item, recorded=recorded_now)
+                handled.append(
+                    (
+                        item.row.sequence,
+                        _settle_a_confirmed_absence(
+                            cfg, item, actor=actor, recorded=recorded_now
+                        ),
+                    )
+                )
                 continue
 
             # RE-ASSERTED IMMEDIATELY BEFORE THE MOVE, through the same
@@ -728,6 +783,7 @@ def apply(
                 referenced=referenced,
                 declined=declined_now,
                 identifiable=stores.identifiable,
+                ambiguous=lambda row: row.content_id in found.ambiguous,
                 stat=stat,
             )
             if not fresh.deletable or fresh.resolved is None:
@@ -739,9 +795,13 @@ def apply(
                 )
                 refused.append(fresh)
                 handled.append(
-                    (item.row.sequence, _finished_business(fresh, recorded=recorded_now))
+                    (
+                        item.row.sequence,
+                        _settle_a_confirmed_absence(
+                            cfg, fresh, actor=actor, recorded=recorded_now
+                        ),
+                    )
                 )
-                _warn_if_the_row_is_held_open(fresh, recorded=recorded_now)
                 continue
 
             # THE PATH THE PERSON WAS SHOWN IS PART OF WHAT THEY ANSWERED, even

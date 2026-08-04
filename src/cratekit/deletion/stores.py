@@ -94,6 +94,94 @@ def version_of(row: RemovedRow) -> dict[str, str]:
     return tombstone.version_identity(artist=row.artist, title=title)
 
 
+def spellings_earlier_builds_wrote(row: RemovedRow) -> tuple[dict[str, str], ...]:
+    """Every identity a PREVIOUS build of this pass would have written for this row.
+
+    **A STORE WRITTEN BY AN EARLIER BUILD IS EVERY EXISTING USER, AND TWO
+    COMMITS CHANGED THE SPELLING WITH NOTHING RECORDING THAT THEY INTERACT.** One
+    commit made :func:`tombstone_predicate` the test for whether a confirmed
+    removal whose file is absent may be retired. Another changed how a
+    ``RemixerName`` is spelled into the identity, from the column's own value to
+    the value with ``Remix`` appended. Separately each is right. Together they
+    say that a deletion an earlier build COMPLETED, correctly, with the file in
+    the Trash and the tombstone written, is no longer recognised: the predicate
+    computes ``strobe (michael woods remix)``, the store holds ``strobe (michael
+    woods)``, and the row is held open forever while the person is told to put
+    back a file that is already in the Trash where they put it.
+
+    So the recognition question asks the earlier spellings too. It is asked ONLY
+    by the recognition question, never by :func:`suppressed_version`: a consulter
+    holds a provider's title and must be answered under the one spelling
+    providers use, and widening the consult would suppress candidates under a
+    spelling this build has decided is wrong.
+
+    TWO SPELLINGS PRECEDE THIS BUILD AND BOTH COLLAPSE TO ONE STRING. Before the
+    remixer column was spelled at all, the value was composed verbatim. After it
+    was spelled but while the test was :func:`tombstone.reads_as_version`, a
+    remixer whose name merely CONTAINED a version word was also composed
+    verbatim, which is the defect this round closed. Verbatim composition is
+    therefore the whole of the history, and it is returned only when it differs
+    from what this build writes.
+    """
+    if not row.version:
+        return ()
+    verbatim = tombstone.version_identity(
+        artist=row.artist, title=tombstone.version_title(row.title, row.version)
+    )
+    return () if verbatim == version_of(row) else (verbatim,)
+
+
+def ambiguous_versions(rows: Any) -> frozenset[str]:
+    """The rows whose version identity is shared with a row that is a DIFFERENT recording.
+
+    **R-21 SAID THIS NEEDED "A SIGNAL NEITHER THE ROW NOR THE LIBRARY CARRIES
+    TODAY", AND THE ROW ALREADY CARRIES IT.** The claim was that two rows landing
+    on one identity are indistinguishable: the LEGITIMATE convergence,
+    ``Strobe`` with ``Michael Woods`` in the remixer column against ``Strobe
+    (Michael Woods Remix)`` with it filled in as well, is the same shape as the
+    feared COLLISION, two different recordings whose designations the ``Subtitle``
+    vocabulary did not believe, both keeping a bare title. The identity IS the
+    claim that two rows are one version, so no test of the identity can tell them
+    apart.
+
+    ``RemovedRow.isrc`` is read from the ``ISRC`` column and already rides in
+    every tombstone's payload, and it settles it. The legitimate convergence is
+    ONE recording filed twice, so it carries one code. The collision is TWO
+    recordings, so it carries two. R-21's stated reason for not building this,
+    that the same shape flags an ordinary duplicate import, is what the code
+    resolves rather than a reason to skip it: a duplicate import is one recording
+    imported twice and carries the SAME code.
+
+    IT IS INCONCLUSIVE WHERE A CODE IS ABSENT, AND SILENCE IS READ AS AGREEMENT.
+    A convergence where one row has no code, or neither has one, is left
+    deletable, because the identity's own claim is the default and an absent code
+    is not evidence against it. What is refused is a convergence carrying two
+    codes that are both present and different, which is a positive statement that
+    the two rows are two recordings.
+
+    THIS IS THE ONLY THING BOUNDING THE VOCABULARY'S WORSE ERROR DIRECTION. A
+    ``Subtitle`` designation the closed list does not know leaves the row with a
+    bare title, so two versions of one recording collide and deleting either
+    suppresses the other, which costs the user a track they did not delete.
+    Nothing local could see that before, because it is not visible in one row. It
+    is visible in the one collection walk ``run.plan`` already holds.
+    """
+    grouped: dict[tuple[tuple[str, str], ...], list[RemovedRow]] = {}
+    for row in rows:
+        try:
+            identity = version_of(row)
+        except Exception:  # noqa: BLE001 - a row with no identity collides with nothing
+            continue
+        grouped.setdefault(tuple(sorted(identity.items())), []).append(row)
+    ambiguous: set[str] = set()
+    for sharing in grouped.values():
+        codes = {(row.isrc or "").strip() for row in sharing}
+        codes.discard("")
+        if len(codes) > 1:
+            ambiguous.update(row.content_id for row in sharing)
+    return frozenset(ambiguous)
+
+
 def identifiable(row: RemovedRow) -> bool:
     """Whether a tombstone COULD be written for this row, asked before anything moves.
 
@@ -102,9 +190,18 @@ def identifiable(row: RemovedRow) -> bool:
     happen. Asking here, at review time, is what keeps that from being discovered
     between the move and the record, which is the one window in this whole pass
     where a failure has already destroyed something.
+
+    **BOTH IDENTITIES ARE ASKED FOR, NOT JUST THE VERSION'S.** A row also has to
+    be addressable as a ROW, because that is what the review item a person
+    answers, the decline that remembers their answer, and the suppression
+    identifier are all derived from. A row carrying no identifier of its own has
+    no version identity problem at all and would sail past a check that only
+    asked about the version, then refuse at the moment it was offered, which is
+    a refusal in the middle of a pass rather than a category on one row.
     """
     try:
         version_of(row)
+        row_identity(row)
     except Exception:  # noqa: BLE001 - the refusal is the answer, not the exception
         return False
     return True
@@ -159,6 +256,13 @@ def tombstone_predicate(cfg: config.Config) -> Callable[[RemovedRow], bool]:
     acquirable again and says nothing about whether the file was moved, and
     reading a revocation as "no deletion happened" would re-open the very row the
     person had already dealt with.
+
+    **AND A RECORD AN EARLIER BUILD WROTE COUNTS TOO.** See
+    :func:`spellings_earlier_builds_wrote`. This question is about history, so it
+    has to be asked in the spellings history was written in; asking only in this
+    build's spelling made a completed deletion unrecognisable to the build that
+    followed it, which held the row open forever and told the person to put back
+    a file that was already in the Trash.
     """
     held = frozenset(
         record.suppression_id
@@ -167,12 +271,13 @@ def tombstone_predicate(cfg: config.Config) -> Callable[[RemovedRow], bool]:
 
     def recorded(row: RemovedRow) -> bool:
         try:
-            identity = version_of(row)
+            identities = (version_of(row), *spellings_earlier_builds_wrote(row))
         except Exception:  # noqa: BLE001 - a row with no identity has no tombstone
             return False
-        return (
+        return any(
             review.suppression_id_for(tombstone.STORE_KEY, tombstone.KIND_VERSION, identity)
             in held
+            for identity in identities
         )
 
     return recorded
@@ -308,6 +413,7 @@ def summarize(record: review.Suppression) -> Mapping[str, Any]:
 
 
 __all__ = [
+    "ambiguous_versions",
     "decline_predicate",
     "declines",
     "identifiable",
@@ -317,6 +423,7 @@ __all__ = [
     "revoke_decline",
     "revoke_tombstone",
     "row_identity",
+    "spellings_earlier_builds_wrote",
     "summarize",
     "suppressed_version",
     "tombstone_predicate",

@@ -84,6 +84,21 @@ composed. ``Subtitle`` is ID3 ``TIT3``, holds anything at all, and is believed
 only when it reads as a version, which is :data:`VERSION_WORDS` and is a closed
 list with both its error directions measured and written down there.
 
+**AND THE COLLISION THAT SURVIVES BOTH OF THOSE IS BOUNDED FROM OUTSIDE THIS
+MODULE, BY THE ISRC.** Two rows of one recording whose designations the
+vocabulary did not believe both keep a bare title, so they land on one identity
+and deleting either suppresses the other, which is the over-suppression
+direction. Nothing here can tell that from the legitimate convergence
+composition is REQUIRED to produce, ``Strobe`` with a remixer against ``Strobe
+(Michael Woods Remix)`` with none, because both are two rows landing on one
+identity and the identity IS the claim that they are one version. The row
+carries the discriminator anyway: the legitimate convergence is one recording
+and carries ONE code, the collision is two recordings and carries TWO. The check
+belongs to the recorder, which sees a whole collection at once, and lives in
+``deletion.stores.ambiguous_versions``. It is stated here because this module is
+where the collision is argued and an argument whose answer lives elsewhere has
+to say so.
+
 **WHY THE ISRC IS NOT IN THE IDENTITY, recorded because it is the obvious
 suggestion and it is wrong.** An ISRC does identify a specific recording, and a
 database row often carries one. A provider candidate often does not. If the
@@ -159,9 +174,21 @@ _BRACKETED = re.compile(r"\(([^()]*)\)|\[([^\[\]]*)\]")
 #:
 #: **IT LIVES HERE, BELOW BOTH READERS, FOR THE REASON THE STORE KEY DOES.** It
 #: was private to ``deletion.library``, where it answered one question: is this
-#: ``Subtitle`` a version. It answers a second one now, in :func:`remixer_title`,
-#: which is about SPELLING rather than belief, and a vocabulary with two callers
-#: in two packages is the shape this module exists to prevent.
+#: ``Subtitle`` a version. It is read by a second question now, the one
+#: :func:`ends_as_a_designation` asks on behalf of :func:`remixer_title`, and a
+#: vocabulary with two callers in two packages is the shape this module exists to
+#: prevent.
+#:
+#: **THE TWO QUESTIONS ARE NOT THE SAME QUESTION AND MAY NOT SHARE A TEST.**
+#: :func:`reads_as_version` asks whether a version word appears ANYWHERE, which
+#: is the only thing that can be asked of a free text column, and the false
+#: positives measured below are exactly the values where that is wrong: artist
+#: and label names carrying a version word at the HEAD. Asking that same test
+#: about a remixer routed the spelling decision through the set of values it had
+#: just been measured to get wrong, so every one of those artists composed an
+#: unmatchable identity. The spelling question asks about the LAST word instead,
+#: which is where a designation puts its version word and where none of the
+#: measured false positives put theirs.
 #:
 #: **BOTH ERROR DIRECTIONS ARE MEASURED, AND THEY ARE NOT SYMMETRIC.** Against 75
 #: genuine version designations a real library holds, 56 read as NOT a version:
@@ -236,6 +263,46 @@ _WORD_SPLIT = re.compile(r"\W+", re.UNICODE)
 #: match a provider's spelling, and a literal buried in a format string is not a
 #: decision anybody can find.
 REMIX_DESIGNATION = "Remix"
+
+
+def ends_as_a_designation(value: str) -> bool:
+    """Whether a value's LAST WORD is a version word, which is where a mix name puts it.
+
+    **THIS EXISTS BECAUSE :func:`reads_as_version` WAS ASKED ABOUT A REMIXER AND
+    IS MEASURABLY WRONG THERE.** That test answers "does this value contain a
+    version word anywhere", which is the right question for a free text
+    ``Subtitle`` and the wrong one for a column rekordbox guarantees holds an
+    artist name. Its measured false positives are, exactly, artist and label
+    names carrying a version word: ``Radio Slave``, ``Dub Pistols``, ``Cut
+    Chemist``, ``Mix Master Mike``, ``Club Sweat``, ``Original Gee``. Every one
+    of those made :func:`remixer_title` take the "already reads as a designation"
+    branch and compose the bare name verbatim, so ``Screamer`` remixed by Radio
+    Slave produced ``screamer (radio slave)`` while a provider spells ``Screamer
+    (Radio Slave Remix)``. That is the unmatchable spelling the round that
+    introduced the branch existed to close, reintroduced by the branch itself,
+    for the one set of values the vocabulary is already known to get wrong.
+
+    **WHAT IS ASKED INSTEAD IS A QUESTION ABOUT THE STRING THIS IS ABOUT TO
+    BUILD.** The only reason to leave a value alone is that appending would
+    duplicate a word it already ends with, giving ``(Michael Woods Remix Remix)``
+    or ``(Extended Mix Remix)``. A designation puts its version word LAST, and
+    the measured false positives all put theirs FIRST, so the position is the
+    discriminator and the vocabulary is only being asked where it has been
+    measured to answer.
+
+    **ITS OWN ERROR DIRECTION, MEASURED AND STATED.** A remixer whose name ends
+    in a version word, ``The Cut`` or ``Da Dub``, is left alone and composes an
+    unmatchable ``(Da Dub)``. A column genuinely holding a designation the
+    vocabulary does not know, ``Michael Woods Refix``, gets ``Remix`` appended
+    and composes an unmatchable ``(Michael Woods Refix Remix)``. BOTH are the
+    under-suppression direction: composing only ever adds a bracket, which splits
+    one identity into two, so neither error can make one deletion suppress a
+    version the user still wants. That is why this may be decided on a word list
+    at all, and it is not true of the belief question :func:`reads_as_version`
+    answers, whose failure direction is over-suppression.
+    """
+    words = [word for word in _WORD_SPLIT.split(fold(value)) if word]
+    return bool(words) and words[-1] in VERSION_WORDS
 
 #: The words that open a FEATURED CREDIT. A bracketed group starting with one of
 #: these names a guest performer rather than a version of the recording, and the
@@ -366,13 +433,28 @@ def remixer_title(title: str, remixer: str) -> str:
     ``Michael Woods`` in the column and ``Strobe (Michael Woods Remix)`` with it
     filled in as well now produce ONE identity, where before they produced two.
 
-    A VALUE THAT ALREADY READS AS A DESIGNATION IS LEFT ALONE. Some libraries and
+    A VALUE THAT ALREADY ENDS IN A DESIGNATION IS LEFT ALONE. Some libraries and
     some importers put a whole mix name in the column, and appending to that
     gives ``(Michael Woods Remix Remix)``, which is a second unmatchable spelling
-    replacing the first. That is the one place :func:`reads_as_version` is asked
-    about this column, and it is asked about SPELLING rather than about belief: a
-    non-empty remixer is a version either way, and all this decides is how it is
-    written down.
+    replacing the first.
+
+    **AND THE TEST FOR THAT USED TO BE :func:`reads_as_version`, WHICH IS THE
+    ROUND'S OWN DEFECT WEARING THE ROUND'S OWN FIX.** That test asks whether a
+    version word appears ANYWHERE, and its measured false positives are precisely
+    artist and label names that carry one: ``Radio Slave``, ``Dub Pistols``,
+    ``Cut Chemist``, ``Mix Master Mike``, ``Club Sweat``, ``Original Gee``. For
+    every one of those the branch fired and the bare name was composed verbatim,
+    so ``Screamer`` remixed by Radio Slave produced ``screamer (radio slave)``
+    and the consulter, asking under ``Screamer (Radio Slave Remix)``, missed.
+    A test measured wrong in one place was then relied on in another, applied to
+    a column whose own docstring says it ALWAYS holds a bare artist name and
+    therefore never holds a designation at all.
+
+    :func:`ends_as_a_designation` is asked instead, and it asks about the string
+    this is about to BUILD rather than about what the value reads like: appending
+    is skipped exactly when it would duplicate a word the value already ends
+    with. Both of its error directions are under-suppression, which is stated and
+    measured there.
 
     A REMIXER THE TITLE ALREADY NAMES IS NOT COMPOSED AT ALL, and that test is on
     the BARE name rather than on the spelled one. ``Strobe (Michael Woods
@@ -383,7 +465,7 @@ def remixer_title(title: str, remixer: str) -> str:
     folded = fold(remixer)
     if not folded or _already_carries(title, folded):
         return title
-    spelled = remixer if reads_as_version(remixer) else f"{remixer} {REMIX_DESIGNATION}"
+    spelled = remixer if ends_as_a_designation(remixer) else f"{remixer} {REMIX_DESIGNATION}"
     return version_title(title, spelled)
 
 
@@ -465,8 +547,23 @@ def removed_file_identity(*, content_id: str, recorded: str) -> dict[str, str]:
     prefix map, which is configuration. A decline recorded before a remount would
     stop matching after one, and a person would be asked again about a file they
     had already answered for.
+
+    **THE GUARD BELOW USED TO BE THE ``str(None)`` SHAPE THIS MODULE FIXED ONE
+    FUNCTION AWAY.** It read ``if not str(content_id)``, and ``str(None)`` is
+    ``'None'``, which is truthy, so a row with no identifier of its own did not
+    refuse: it produced the identity ``{'content_id': 'None', ...}`` and that
+    string went on to address the review item, the decline, and the membership
+    test that decides whether a playlist still points at the file. Two such rows
+    do not fully collide, because ``recorded`` disambiguates them, so what it
+    produced was a WRONG key rather than a collapse; the guard existed to make
+    the wrong key unreachable and did not.
+
+    ``None`` is tested for BEFORE the string conversion, which is the whole
+    correction, and the emptiness test then runs on the converted value so that
+    ``0`` stays addressable: a numeric identifier is a legitimate identifier and
+    ``not 0`` would refuse it.
     """
-    if not str(content_id):
+    if content_id is None or not str(content_id):
         raise refuse(
             "review-selection-invalid",
             "a removed row has to be identified by its collection row; without "
@@ -502,6 +599,7 @@ __all__ = [
     "STORE_KEY",
     "VERSION_WORDS",
     "describe",
+    "ends_as_a_designation",
     "fold",
     "reads_as_version",
     "remixer_title",

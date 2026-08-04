@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from cratekit.core.cause import Scope, refuse
+from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.tombstone import reads_as_version
 from cratekit.write import trees
@@ -218,6 +218,30 @@ def _text(row: Any, attribute: str) -> str:
     return str(getattr(row, attribute, "") or "")
 
 
+def _identifier(row: Any, attribute: str) -> str:
+    """One IDENTIFIER column, with a missing one folded to empty rather than to ``'None'``.
+
+    **``str(row.ID)`` IS THE ``str(None)`` SHAPE THIS MODULE ALREADY REFUSED ONCE
+    FOR ``DBID``, AND IT WAS STILL HERE FOR THE COLUMN THAT ADDRESSES EVERY
+    DECISION.** A collection row whose ``ID`` is ``None`` produced the
+    ``content_id`` ``'None'``, a perfectly ordinary truthy string, and that
+    string then addressed the review item a person answers, the decline that
+    remembers their answer, and the membership test that decides whether a
+    playlist still points at the file. ``tombstone.removed_file_identity`` has a
+    guard against exactly this and could never fire, because what reached it was
+    already a string.
+
+    Folded to EMPTY rather than refused here, because refusing is the identity
+    module's job and it does refuse: an empty identifier reaches it and is turned
+    away, ``stores.identifiable`` reports the row unidentifiable, and
+    ``candidates.categorize`` answers ``UNIDENTIFIABLE`` before anything is
+    resolved. That keeps one rule in one place and keeps a single unaddressable
+    row from stopping a pass over a library full of good ones.
+    """
+    value = getattr(row, attribute, None)
+    return "" if value is None else str(value)
+
+
 #: The columns that can hold a mix name, in the order they are believed, each
 #: with what it is guaranteed to hold. FIRST BELIEVED VALUE WINS rather than the
 #: two being joined, because two columns describing one mix would otherwise
@@ -316,7 +340,7 @@ def read_collection(rows: Iterable[Any]) -> CollectionRead:
         if not trees.soft_delete_marker(row):
             active.append(
                 trees.ContentRow(
-                    content_id=str(row.ID),
+                    content_id=_identifier(row, "ID"),
                     recorded=_text(row, "FolderPath"),
                     deleted=False,
                 )
@@ -325,7 +349,7 @@ def read_collection(rows: Iterable[Any]) -> CollectionRead:
         version, kind, unbelieved = _version_of(row)
         removed.append(
             RemovedRow(
-                content_id=str(row.ID),
+                content_id=_identifier(row, "ID"),
                 recorded=_text(row, "FolderPath"),
                 sequence=_sequence_of(row),
                 size=_size_of(row),
@@ -397,14 +421,68 @@ def playlist_referenced(memberships: Any) -> frozenset[str]:
     An honest ZERO is accepted, and only an honest one: a library whose playlists
     are all empty declares zero and walks zero, and those agree. A spent cursor
     declares nothing at all and is refused rather than read as that library.
+
+    **THE COMPARISON IS EQUALITY RATHER THAN A FLOOR, AND IT USED TO BE A
+    FLOOR.** ``walked < declared`` catches a walk that came back short and passes
+    silently for a count that came back short, so any source that UNDERCOUNTS
+    satisfies the proof by being wrong in the permissive direction: declare zero,
+    walk one, and the assertion that exists to prove the walk complete agrees
+    with a number that proves nothing. No production shape reaching it has been
+    constructed, since both callers request a fresh query and ``Query.count()``
+    issues its own statement, so this is a guard tightened rather than a defect
+    observed. It is worth tightening because the whole point of the check is that
+    the walk is compared against a number the walk did not produce, and a
+    one-sided comparison quietly accepts the case where that number is the broken
+    one.
+
+    **A FAILURE INSIDE THE WALK IS A REFUSAL RATHER THAN A TRACEBACK.** The count
+    is already taken through a handler that answers "it cannot say"; the walk
+    itself was not, so a binding that raised partway through it reached the
+    command line as an internal defect with the remedy discarded (S4). It stops
+    the run either way, which is right: a membership walk that fails is a set of
+    playlist references nothing can prove complete.
     """
     declared = _declared_membership_count(memberships)
     walked = 0
     referenced: set[str] = set()
-    for row in memberships:
-        walked += 1
-        if not trees.soft_delete_marker(row):
-            referenced.add(str(row.ContentID))
+    try:
+        for row in memberships:
+            walked += 1
+            if not trees.soft_delete_marker(row):
+                referenced.add(_identifier(row, "ContentID"))
+    except CratekitError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - any failure to walk is one refusal
+        raise refuse(
+            "deletion-evidence-incomplete",
+            f"the walk of this library's playlist memberships failed after "
+            f"{walked} of them ({exc}), so the set of files a playlist still "
+            f"points at is whatever happened to arrive before the failure; every "
+            f"file missing from it would be proved unreferenced against a "
+            f"question that was never fully asked",
+            remedy=Remedy.RUN_DOCTOR,
+            scope=Scope.RUN,
+            origin=("deletion.library",),
+            detail={"walked": walked},
+        ) from exc
+    if "" in referenced:
+        # A LIVE MEMBERSHIP THAT NAMES NO ROW IS NOT A MEMBERSHIP NAMING NOTHING.
+        # ``_identifier`` folds an absent column to empty, and empty matches no
+        # removed row's identifier, so a reference this pass cannot address would
+        # read as "no playlist points at that file" for whichever file it was
+        # protecting. That is the permissive answer to the one question in this
+        # module that decides whether somebody's music moves.
+        raise refuse(
+            "deletion-evidence-incomplete",
+            "a live playlist membership in this library names no collection row, "
+            "so what it points at cannot be worked out; a reference this pass "
+            "cannot address would read as no reference at all, and the file it "
+            "protects would be offered for deletion",
+            remedy=Remedy.RUN_DOCTOR,
+            scope=Scope.RUN,
+            origin=("deletion.library",),
+            detail={"walked": walked},
+        )
     if declared is None:
         raise refuse(
             "deletion-evidence-incomplete",
@@ -418,14 +496,14 @@ def playlist_referenced(memberships: Any) -> frozenset[str]:
             origin=("deletion.library",),
             detail={"walked": walked},
         )
-    if walked < declared:
+    if walked != declared:
         raise refuse(
             "deletion-evidence-incomplete",
             f"the rekordbox database holds {declared} playlist memberships and "
             f"this walk saw {walked} of them, so the set of files a playlist "
-            f"still points at is short by {declared - walked}; every file missing "
-            f"from it would be proved unreferenced against a question that was "
-            f"never fully asked",
+            f"still points at cannot be shown to be the whole set; every file "
+            f"missing from it would be proved unreferenced against a question "
+            f"that was never fully asked",
             remedy=Remedy.RUN_DOCTOR,
             scope=Scope.RUN,
             origin=("deletion.library",),
