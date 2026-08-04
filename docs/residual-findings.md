@@ -958,13 +958,116 @@ the name (an `AttributeError` at runtime), reading a factory's local class from
 outside the factory (a `NameError`), and reading `Outer.Keeper.mod` where `Outer`
 is a parameter.
 
-**Not fixed here**, deliberately, for the three wrapper spellings only. Closing
-them means deciding whether an arbitrary callee hands its argument back, which is
-the same undecidable question the residual titled "One reflective call shape stays
-out of reach, and it is named" declines to answer for `map(getattr(p, n), items)`.
-The decorated spelling that an author actually writes, `@dataclass` above the
-class, is covered and has a fixture.
+**Not fixed here** for the three wrapper spellings. Closing them means deciding
+whether an arbitrary callee hands its argument back, which is the same undecidable
+question the residual titled "One reflective call shape stays out of reach, and it
+is named" declines to answer for `map(getattr(p, n), items)`. The decorated
+spelling that an author actually writes, `@dataclass` above the class, is covered
+and has a fixture.
+
+**The word "only" was withdrawn, because it covered five shapes nobody had
+measured.** A residual whose wording covers a shape nobody measured is a residual
+that cannot be checked, which is this finding's own rule applied one level in.
+Five further spellings were quiet and none of them is a wrapper:
+
+```python
+Keeper = Keeper or None                  # FIXED, fires
+Keeper = Keeper if True else None        # FIXED, fires
+Keeper = (Keeper,)[0]                    # still quiet
+Keeper = [Keeper][0]                     # still quiet
+Keeper = getattr(_m, "Keeper", Keeper)   # still quiet
+```
+
+The first two are not undecidable by this finding's own standard. `_bound_value`
+already reads `or` and a conditional expression through, on the stated rule that a
+value reachable on one path is reachable, and a class object is always truthy
+besides. Executed, both leave `Keeper.mod is config` True. `_rebound_to_itself`
+reads the ALTERNATIVES of the right hand side now rather than one spelling of it,
+and both fire.
+
+**Three remain quiet and are named rather than covered by a word.** A container
+literal that is immediately subscripted at a constant index is decidable and is
+not read: `_bound_value` renders no key for `(Keeper,)[0]`, because the base of
+the subscript is a literal rather than a receiver. `getattr(_m, "Keeper", Keeper)`
+is a call, so it stays on the undecidable side of the line this finding already
+draws, even though the target's own spelling appears in it as the default.
 
 **Closes when:** either a bounded reading of "this call returns its argument"
-exists, or the three wrapper spellings are accepted permanently. The natural owner
-is whichever unit next widens the binding table.
+exists, or `_bound_value` learns a constant-indexed container literal, or the
+remaining spellings are accepted permanently. The natural owner is whichever unit
+next widens the binding table.
+
+---
+
+## R-26. A base binding reachable only through a branch is read as unreachable
+
+**Found:** during the U34 round 9 fix, 2026-08-04. It is the stated cost of the
+path model that closed round nine's first finding, chosen in the direction that
+misses rather than the direction that fires on ordinary code.
+
+An attribute set inside a base class's `__init__` is reachable from a subclass
+only when something on the running path actually runs that `__init__`. Round nine
+reads two suppliers: an UNCONDITIONAL chaining call in the scope doing the
+overriding, and an attribute the class body already binds. Three shapes fall
+outside both and go quiet.
+
+**One.** The chaining call lives in the other arm of the same conditional:
+
+```python
+class Row(Base):
+    def __init__(self, raw):
+        if raw:
+            self.mod = dict(raw)
+        else:
+            super().__init__()      # the module IS reachable on this arm
+
+    def go(self, cfg):
+        return self.mod.save(cfg)   # quiet, and it is a real write
+```
+
+**Two.** The base binds the attribute in a method the subclass calls by some name
+other than `__init__`:
+
+```python
+class Base:
+    def setup(self):
+        self.mod = config
+
+
+class Row(Base):
+    def __init__(self, raw):
+        super().setup()
+        if raw:
+            self.mod = dict(raw)
+```
+
+**Three.** A `del` of an instance attribute with nothing under it still reports
+whatever the constructor bound, because the restore is a FILL rather than an
+overwrite:
+
+```python
+class Deleter:
+    def __init__(self):
+        self.mod = config
+
+    def go(self, cfg):
+        del self.mod
+        return self.mod.save(cfg)   # AttributeError at runtime, reported anyway
+```
+
+The third is a false positive rather than a miss, and it is the pre-existing
+answer rather than one round nine introduced: the shape reported the same thing
+before `del` was read at all. It is named here rather than left silent because the
+`del` rule now sits beside it and a later reader would otherwise take the fill
+semantics for a judgement about this shape.
+
+**Not fixed here**, deliberately, for the first two. Both need PATH modelling
+inside a method rather than a fact about the method: which arm binds what, and
+which arm the read is reachable from. The unconditional reading is chosen because
+its error is a miss, and a guard that fires on ordinary code is not a lesser
+failure than one that misses. The third needs the same modelling from the other
+side, since the delete and the read are ordered within one method.
+
+**Closes when:** whichever unit next widens the binding table gives a method body
+an ordering rather than a set. All three shapes have a spelling above, so a later
+round can drive them without re-deriving them.

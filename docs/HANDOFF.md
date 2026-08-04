@@ -506,3 +506,28 @@ index was rebuilt per plan entry. Handed a list it was merely quadratic; handed 
 database cursor, which is the natural way to pass every content row, entry one
 consumed the whole thing and every entry after it reported its tracks absent while
 the run reported clean.
+
+**A rule's SCOPE is a claim, and a claim stated in prose is a claim nobody drove.**
+U34's binding table exempts a veto written inside a branch, because a run that
+skipped the branch never cast it. That is right for a NAME and was written as if
+it were right for the whole table. It is wrong for an ATTRIBUTE: `class Base`
+binds nothing by itself, so a subclass overriding `self.mod` inside an `if`
+without calling `super().__init__()` has no path on which the base's binding
+exists. Six ordinary branch spellings were reported as writes to the configuration
+file for six rounds, with a docstring in two places saying the rule was applied to
+the veto only. Drive the scope of a rule the same way you drive its result, on
+both halves of whatever the rule ranges over.
+
+**A guard whose coverage is a typed list is a guard that stops covering.** U34's
+citation guard named nine files while the branch changed seventeen, and deleting a
+report module from the list left the whole suite green. Two of the eight it never
+read carry residual citations another unit wrote. Derive the coverage from
+something that moves with the branch, and keep a named floor so a silent narrowing
+of the derivation has something to get past.
+
+**Do not exempt a guard's own file from that guard.** The same unit skipped the
+suite for the "no stray delimiter" check on the grounds that the suite DEFINES the
+delimiters. The definitions are assignments and are not delimiter lines, while the
+reader honours a delimiter found there exactly as it does anywhere else. An
+unclosed marker plus a citation went green in the one file the pair was told not
+to look at.

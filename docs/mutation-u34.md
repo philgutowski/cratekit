@@ -31,6 +31,254 @@ a re-measured count differs from the recorded one it says whether the difference
 is the round's new tests, a change in what the row means, or a spelling nobody
 can recover.
 
+## Round 9
+
+Thirty nine rows: twenty this round adds, four of round eight's RE-SPELLED because
+this round edited the lines they anchored on, and fifteen of the earlier rounds'
+re-run unchanged. **No row killed zero.** Seven measured zero on the first pass
+and every one was ANSWERED rather than argued:
+
+- `W06` and `W07` by writing the fixture the guard was aimed at and had never had;
+- `W09`, `W13` and `W21` by moving the row onto a clause that decides something;
+- `W14` by folding two half guards into one function, `_restored_attributes`, so
+  the half that decided nothing stopped existing;
+- `W11` by withdrawing the row and recording the measurement that says it
+  distinguishes nothing.
+
+One clause of `_record` was DELETED on the same basis, and its spelling is written
+out below so the deletion leaves an artifact.
+
+Every revert is written out verbatim in `docs/mutation/u34-round-9-reverts.py`.
+Counts are scoped to `tests/modules/test_reports.py`, which nothing else in the
+suite imports.
+
+Baseline before the round: 3486 passed, 15 skipped. The file collects 313.
+Baseline after: 3508 passed, 15 skipped. The file collects 335.
+
+Twenty two tests are added and none removed, verified by collecting node ids with
+a plugin and diffing them against `HEAD`. **Every one of the 22 is killed by at
+least one revert**, checked by taking the union of failing ids across all 39 rows
+and subtracting: 0 uncovered.
+
+Real tree, all four governed modules: **0 filesystem mutations, 0 forbidden
+imports, 0 unnamed writers, 0 citation offenders across 17 covered files.**
+
+### F1: the branch rule was stated over the whole table and driven on half of it
+
+`_branched` says which statements a run can skip. Round eight applied that to the
+veto for every key and wrote the scope of the rule in PROSE. It is right for a
+NAME and wrong for an ATTRIBUTE, and **six ordinary branch spellings came back as
+writes to the configuration file, one indent in from round eight's six:**
+
+```python
+class Base:
+    def __init__(self):
+        self.mod = config
+
+
+class Row(Base):
+    def __init__(self, raw):
+        if raw:
+            self.mod = dict(raw)
+        else:
+            self.mod = {}
+
+    def go(self, cfg):
+        return self.mod.save(cfg)     # reported: line 358: config.save
+```
+
+A name survives a skipped rebinding because the `class` statement that bound it
+ran anyway. An attribute set only inside `Base.__init__` does not, because `class
+Base` binds nothing by itself: on the arm that ran the attribute is the override,
+and on the arm that did not it was never created. Executed against a stand-in
+`config`, every input to every one of the six gives `self.mod is config` False and
+an `AttributeError` from `go`. The write is unreachable on all paths.
+
+**The one line restriction was measured and rejected.** Adding
+`key.isidentifier()` to the condition makes all six quiet and the whole file green,
+and it also makes a conditional override that DOES call `super().__init__()` first
+go quiet, where the base's binding really is reachable. That is a real write, so
+the flag is not the answer and is recorded as row `W02` rather than shipped.
+
+What ships is the path model. A skipped veto only counts when something else still
+supplies the key on the path that skipped it, and there are exactly two suppliers:
+the scope CHAINS to a base initializer unconditionally, or the attribute is
+already in the scope's table, which is what a class body binding it does. Both
+terms have their own row, `W03` and `W04`, and each is measured to cost the two
+shapes it is there for.
+
+The stated cost, in the direction this guard chooses when it has to choose: a base
+initializer called from the OTHER arm of the same conditional is a reachable
+binding read as unreachable. That is a miss, not a false positive, and it is
+filed as a residual.
+
+### F2: a class body binding is not the same fact under both its spellings
+
+```python
+class Keeper:
+    mod = config
+
+    def __init__(self, raw):
+        self.mod = dict(raw)
+
+    def go(self, cfg):
+        return self.mod.save(cfg)     # reported: line 352: config.save
+```
+
+Executed: `Keeper.mod is config` is True, `Keeper({"a": 1}).mod is config` is
+False, and `go` raises `AttributeError` on every input. An instance attribute
+shadows a class attribute unconditionally and the table had no notion of it, so
+`_record`'s "resolved wins" kept the class body's answer under an ordinary
+constructor. `Keeper.mod` is untouched, because a read through the class really
+does write.
+
+The class body's INSTANCE spelling is now a third tier under both the others: it
+yields to any write an instance scope makes, resolved or not, and to nothing else.
+
+### F3 and F4: the citation guard had two holes, one inside its own blind spot
+
+**F3.** The exemption guard skipped `tests/modules/test_reports.py` on the grounds
+that it DEFINES the markers. The definitions are assignments and are not delimiter
+lines, while `_citing_lines` honours a delimiter found in that file exactly as it
+honours one anywhere else. Measured: an unclosed open marker plus a bare number
+citation left 313 passed and both guards green. Every covered file is now asked
+the same question, and the answer is a COUNT, so a stray closing delimiter is
+caught as well as a stray open.
+
+**F4.** The list was typed and named nine files while the branch changes
+seventeen. Measured: deleting `src/cratekit/modules/reports/aging.py` from it left
+313 passed, so the guard could stop reading a report module silently. Two of the
+eight uncovered files carry `R-13` citations another unit wrote, which is legal
+today and invisible if a number in this unit's range ever lands there. The list is
+derived from git now, and `CITED_FLOOR` is what a silent narrowing of the
+derivation has to get past.
+
+### F5 and F7: three corrections to the record and one real write
+
+**F5.** The residual "A class rebound after its own definition is no longer
+reachable by name" says the remaining silence is "for the three wrapper spellings
+**only**". Five further spellings are quiet and none is a wrapper. Two of them are
+not undecidable by the residual's own standard, since `_bound_value` already reads
+`or` and a conditional expression through and a class object is always truthy, and
+both now fire. The other three stay quiet and are NAMED rather than covered by the
+word "only".
+
+**F7.** `del self.mod` after an instance override falls back to a class attribute
+that IS the module. Executed, the method returns the module's own result. It was
+quiet and now fires, and the restore is a fill rather than an overwrite so a
+delete with nothing under it stays as quiet as it was.
+
+### The rows
+
+| id | what was reverted | deaths |
+|-|-|-|
+| S18 | `_walk_bindings` stops carrying OBJECT bindings out of the scope that made them. RE-SPELLED | 19 |
+| W01 | the branch rule applied to the OBJECT half again, which is the round's whole defect | 8 |
+| W05 | `_chains_to_base` answers yes for every scope | 8 |
+| W02 | the restriction the flag alone would have been: an object key's veto always stands inside a branch | 3 |
+| W15 | `_rebound_to_itself` reads ONE receiver key again instead of the values the expression can evaluate to | 3 |
+| V19 | `_scope_own_bindings` stops recording what an IDLE rebinding already held. RE-SPELLED | 3 |
+| W03 | `_scope_own_bindings` stops asking whether the scope CHAINS | 2 |
+| W08 | `_walk_bindings` writes a class body's instance spelling at full strength | 2 |
+| W09 | `_record` stops MARKING a weak write | 2 |
+| W10 | `_record` stops letting an instance scope's unresolved write clear a weak one | 2 |
+| W19 | `_files_this_branch_writes` quietly stops covering a report module | 2 |
+| W22 | the collision passage's OPENING marker removed from the mutation table | 2 |
+| W04 | `_scope_own_bindings` stops asking whether the key is ALREADY SUPPLIED | 1 |
+| W06 | `_chains_to_base` counts a chaining call written INSIDE a branch | 1 |
+| W07 | `_chains_to_base` accepts any call at all rather than one that reaches an initializer | 1 |
+| W12 | `_walk_bindings` stops reading a `del` of an object key | 1 |
+| W13 | the restore lands on the CLASS spelling instead of the instance one | 1 |
+| W16 | `_alternatives` reads a CALL through as well, so a wrapper is treated as decidable | 1 |
+| W17 | the idle branch stops falling back to what the statement could still evaluate to | 1 |
+| W18 | an unclosed collision marker and a bare number citation injected into the guard's OWN file | 1 |
+| W20 | `_citing_files` stops taking the residual file out of its own coverage | 1 |
+| W21 | a lone CLOSING marker injected into a covered file | 1 |
+| V02 | `_walk_bindings` writes a class body attribute only when it RESOLVED. RE-SPELLED | 1 |
+| V03 | `_record` lets an unresolved key OVERWRITE a resolved one. RE-SPELLED | 1 |
+
+**There is no `W11`, and that is recorded rather than left out.** Making the CLASS
+spelling a weak write as well killed nothing, because a class body is the only
+thing in the walk that ever writes `<class key>.<name>`: the flat `Keeper.mod =
+None` an outside scope writes is a DIFFERENT key, since the class key carries the
+definition site. The asymmetry between the two spellings is carried entirely by
+`W08`.
+
+**One clause was DELETED rather than kept at zero, and its spelling is written out
+here** because a deletion inside one round is otherwise invisible to review.
+`_record`'s weak branch carried a guard against a class body being recorded after
+one of its own methods:
+
+```python
+    if weak:
+        if key in objects and key not in faint:
+            return
+        objects[key] = value
+```
+
+It measured zero on every fixture in the suite, and no walk produces the order it
+guards against: `_walk_bindings` records a class body's own keys before it recurses
+into any nested scope. A clause no input reaches is a clause nobody can check, so
+it is gone and the docstring says what the tier rests on instead. The source order
+a person controls is driven in both directions, with the class body written above
+the constructor in one fixture and below it in another.
+
+### The fifteen confirm rows
+
+Every one still dies, and every count is at or above its round eight number. The
+increases are this round's 22 new tests, not a change in what any row means.
+
+| id | round 8 | round 9 |
+|-|-|-|
+| N21 | 118 | 128 |
+| S16 | 60 | 70 |
+| N05 | 54 | 63 |
+| R06 | 49 | 63 |
+| N12 | 46 | 55 |
+| N22 | 32 | 34 |
+| Q06 | 31 | 44 |
+| M35 | 29 | 29 |
+| Q01 | 19 | 29 |
+| Q11 | 17 | 22 |
+| R02 | 16 | 16 |
+| P14 | 16 | 21 |
+| S09 | 15 | 15 |
+| S18 | 14 | 19 |
+| R06b | 13 | 13 |
+
+### S01, measured rather than explained
+
+Round eight recorded S01 as falling from 11 to 3. On the suite the two rounds
+SHARE it is **11 to 1**. Round seven's tree at `f1202ee` collects 285, and two of
+round eight's three deaths do not exist there:
+
+| id | in round 7's suite | killed by S01 alone at round 9 |
+|-|-|-|
+| `test_an_ordinary_rebinding_in_a_real_report_is_not_a_write[an except target]` | yes | yes |
+| `test_a_binding_that_really_replaced_something_still_takes_the_name[a loop that rebinds the name, with the rebinding inside the body]` | no | yes |
+| `test_a_binding_that_really_replaced_something_still_takes_the_name[a name whose ONLY binding is inside a branch is still taken]` | no | yes |
+
+So **ten** of round seven's eleven moved, not eight. All eleven still exist on
+round nine's tree. The ten that moved are:
+
+- `test_an_ordinary_rebinding_in_a_real_report_is_not_a_write[a plain assignment]`
+- `test_an_ordinary_rebinding_in_a_real_report_is_not_a_write[a loop target]`
+- `test_an_ordinary_rebinding_in_a_real_report_is_not_a_write[a with target]`
+- `test_an_ordinary_rebinding_in_a_real_report_is_not_a_write[a walrus]`
+- `test_an_ordinary_rebinding_in_a_real_report_is_not_a_write[a comprehension target]`
+- `test_an_ordinary_rebinding_in_a_real_report_is_not_a_write[an unpacking target]`
+- `test_an_ordinary_rebinding_in_a_real_report_is_not_a_write[a local built by augmented assignment]`
+- `test_every_shadow_this_table_claims_takes_the_name_back[a nested definition of the same name]`
+- `test_every_shadow_this_table_claims_takes_the_name_back[a starred unpacking target]`
+- `test_every_shadow_this_table_claims_takes_the_name_back[an import of something else under the same name]`
+
+**The composite proves the redundancy instead of asserting it.** Reverting `S01`
+and `V06` TOGETHER against round nine's tree kills **18**, and every one of the
+ten comes back. Twelve of the eighteen appear only under the combination. Neither
+mechanism is detectable by a single row because each is independently sufficient,
+which is the correct signature of real redundancy and not of a hole. Held nowhere:
+none.
+
 ## Round 8
 
 Thirty six rows: twenty this round adds, two of round seven's RE-SPELLED because
@@ -131,6 +379,12 @@ VETO only, never to the shadow, so a name whose only binding is inside a branch 
 still taken and still comes back unresolved. The ten ordinary shadow shapes and
 the branch-only controls are all driven and all still quiet.
 
+> **Corrected by round nine.** That paragraph states the rule's scope over the
+> whole binding table and was driven on the NAME half only. It is not true of an
+> OBJECT key, and the sentence "the rule is applied to the VETO only, never to the
+> shadow" cost six ordinary subclass overrides written one indent in, each of them
+> reported as a write to the configuration file. See round nine's `F1` below.
+
 ### The rows
 
 | id | what was reverted | deaths |
@@ -217,6 +471,24 @@ Two mechanisms that overlap on most fixtures and come apart on three is the same
 shape round seven found in R14 and R16. They are kept apart rather than collapsed
 because the three shapes above are real and only one of the two answers them.
 
+> **Corrected by round nine: on the suite the two rounds SHARE it is 11 to 1, not
+> 11 to 3.** Two of the three above are parametrizations round eight itself added,
+> measured by collecting node ids off round seven's tree at `f1202ee`, which
+> collects 285: "a loop that rebinds the name, with the rebinding inside the body"
+> and "a name whose ONLY binding is inside a branch is still taken" do not exist
+> there. Only the `except` target is shared. **Ten of round seven's eleven deaths
+> moved, not eight.**
+>
+> Round nine measured the explanation rather than accepting it. Reverting `S01`
+> and `V06` TOGETHER against round nine's tree kills **18** (16 against round
+> eight's, the difference being two parametrizations round nine adds), and all ten
+> of the moved deaths come back under the combination, none of them under either
+> revert alone. Neither mechanism is detectable by a single row because each is
+> independently sufficient, which is the signature of real redundancy rather than
+> of a hole. The eleven round seven deaths, the one that stayed, the ten that
+> moved and the composite that recovers them are all named in the round nine
+> section below.
+
 ### Coverage of the 28 new tests
 
 All 28 are killed by at least one of the 36 rows. **Twenty are killed by a round
@@ -224,6 +496,15 @@ eight row and eight only by an earlier round's row**, and that split is not
 accidental: all twenty of round eight's own rows NARROW the guard, while the eight
 are controls whose failure mode is a guard that got WIDER. They are held by N22,
 R06, N05, N12, N21, S16, S18, S09, P14, Q01, Q06, Q11 and the re-spelled S01.
+
+> **Corrected by round nine: the stated reason is wrong for three of the eight.**
+> Three of them are parametrizations of
+> `test_an_override_blocks_upward_and_never_sideways_or_down`, which asserts that
+> `filesystem_mutations(...)` is TRUTHY. Their failure mode is a guard that got
+> NARROWER, which is what all twenty of round eight's own rows do, not one that
+> got wider. Each of the eight does have a real holder, so the coverage claim
+> stands; the sentence explaining why they fell to an earlier round's row does
+> not, and it is withdrawn.
 
 ## Round 7
 
