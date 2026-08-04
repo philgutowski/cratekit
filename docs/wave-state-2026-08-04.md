@@ -945,6 +945,67 @@ comparing the worktree against the git object database rather than against any
 snapshot. **Checksum against `git show HEAD:<path>` between every row, and
 confirm no stray process survives before reporting.**
 
+### Three instrument hazards, all found by agents on themselves
+
+**A stale `.pyc` can invent a result.** Two mutations of IDENTICAL BYTE LENGTH
+written less than a second apart make CPython reuse a cached bytecode file,
+because mtime and size are the invalidation key. That produced one spurious red
+in a verifier's fast pass. **Run mutation drivers with
+`PYTHONDONTWRITEBYTECODE=1`.** A driver that runs a full suite between rows,
+80 to 110 seconds, is not affected; a driver doing fast targeted runs is.
+
+**A `FAILED` line cannot be split on `" - "`.** That separator appears inside
+parametrized ids here, so two ids collapse and a row undercounts. Read node ids
+off a plugin's `report.nodeid`.
+
+**A message mutation must REWORD, never append.** The suite asserts with `in`,
+so an appended mutation measures zero for a reason that says nothing about
+coverage. A verifier caught this in its own first four rows and re-ran them.
+
+### A row measured once on a timing dependent assertion is not a measurement
+
+U12's round 5 replaced free coefficients with a band computed against a
+MEASURED reference rather than a literal, which was the right instinct. Its
+verification found the headline row is a coin flip:
+
+    _PROBE_REAP_SECONDS = 0.81, targeted subset, 25 runs:
+    19 red, 6 green      RRRRRRRgRggRRRRRRRRRggRgR
+
+The floor is `2 * release` where `release` is timed THAT RUN, and 330 samples
+put ambient release at 0.4007 to 0.4121, so the floor lands anywhere in 0.8014
+to 0.8242 and **0.81 sits inside its own jitter window.** The commit and the
+table both recorded "deaths 1" from a single run.
+
+**Standing rule: any row on a timing dependent assertion carries a repeat count
+and a pass rate, never a single number.**
+
+The same report corrected a margin by an order of magnitude. The docstring says
+"an eighteen millisecond spread with no load sensitivity" and edges "about
+seventy milliseconds away". Measured under 32 spinners with the sampler at
+`nice -n 19`, one leg took 0.4926 against a 0.5000 ceiling: **the distance to a
+red suite is 7.4 ms, not 68**, and the spread in that regime is 91.3 ms. The
+cause is parent side wakeup latency, which a `time.sleep` fixture does not
+model, so the round's own "faithful in cost and not in kind" statement is
+honest and the numbers beside it were not.
+
+### The fifth consecutive instance, and it changed shape
+
+U27's classification moved to `CratekitError.cause` so every RAISED refusal is
+covered, and the verification found the one site in the wizard that WRITES to
+the library volume constructs a `doctor.Finding` instead. Driven on a real read
+only image, it prints "a volume mounted read only" and then advises Full Disk
+Access, while the same errno through the classifier answers `remount-writable`
+**in the same run**.
+
+**The pattern is no longer one more unguarded site. It is a whole channel:
+refusals are covered, findings are not.**
+
+And the first advice in this wave that destroys data rather than misleading:
+a `chmod` on the rekordbox database answers `remedy=restore-from-snapshot`,
+sending a user to overwrite library state they still have. The pyrekordbox
+connection site never records which database the error was about, so the one
+thing the classification measures is absent.
+
 ### What these findings have in common
 
 All three are the wave's two named patterns, again. U23 and U34 are IDENTITY
