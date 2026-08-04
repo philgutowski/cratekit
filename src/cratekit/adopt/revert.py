@@ -29,6 +29,17 @@ worse here than in either of those: a dropped decline is a question asked twice,
 and a dropped revert record is a user's file permanently altered with no record
 of what it said.
 
+**A RECORD IS ABOUT A FILE, AND A PATH IS NOT ONE.** First-write-wins below is
+reachable only if two adoptions of one file agree about which file it is, and
+they used to agree by hashing the path. A hardlink, a case varying spelling on a
+case insensitive volume, and a rename between two runs are three ways one file
+has two paths, and each of them produced a SECOND record whose ``original`` was
+the value adoption itself had just written. The user's own value was then in no
+file and in no record. Identity is ``(st_dev, st_ino)``, which asks the
+filesystem instead of guessing from a name; the path stays in the record as an
+address and as documentation. See :func:`identity_of` for why lowercasing the
+path is the same defect pointed the other way.
+
 **A record is written once and never refreshed.** Recording the same field for
 the same file twice keeps the FIRST value. The second call happens on a re-run
 after a crash, and by then the file already carries the value adoption wrote, so
@@ -98,6 +109,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import stat as stat_module
+import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import StrEnum
@@ -151,19 +165,128 @@ class RevertLedgerUnreadable(CratekitError):
         self.remedy = remedy
 
 
-def file_id(path: str) -> str:
-    """The stable identifier for one file on disk.
+class AdoptedFileUnidentifiable(CratekitError):
+    """The file about to be written to cannot be identified, so nothing is written.
+
+    RECORDING IS NOT OPTIONAL, so failing to identify the file has to stop the
+    write rather than proceed without a record. A tag write with no record behind
+    it is the one operation in this product that cannot be undone by any means,
+    which is the whole reason this module exists.
+
+    It is per FILE and not per run. :func:`cratekit.adopt.apply.apply_plan`
+    catches it and fails exactly that entry, which is the per-track versus
+    per-pass rule this repository keeps paying for. The shape that reaches it is
+    ordinary: a track present in the census and deleted before the apply gets to
+    it.
+    """
+
+    def __init__(self, message: str, *, path: Path) -> None:
+        super().__init__(
+            Cause(
+                reason="adoption-file-unidentifiable",
+                message=message,
+                remediation=Remediation(remedy=Remedy.RETRY_LATER),
+                scope=Scope.ITEM,
+                origin=("adopt",),
+                detail={"path": str(path)},
+            )
+        )
+        self.path = path
+
+
+#: What the identity of a file is a statement ABOUT, spelled into the value so a
+#: document cannot be read as the other scheme by accident.
+IDENTITY_SCHEME = "dev-ino"
+
+#: The identity this build writes: the volume and the inode, and nothing else.
+_INODE_IDENTITY = re.compile(rf"^{IDENTITY_SCHEME}:-?\d+:-?\d+$")
+
+#: The width the PREVIOUS scheme truncated its path digest to. Ledgers written by
+#: it are still on disk, so the width is still load bearing: it is how
+#: :func:`_legacy_file_id` finds the record an upgraded run has to keep rather
+#: than write a second one beside. Changing it re-keys every legacy record and
+#: strands the original each one holds.
+_LEGACY_ID_WIDTH = 24
+
+_LEGACY_IDENTITY = re.compile(rf"^[0-9a-f]{{{_LEGACY_ID_WIDTH}}}$")
+
+
+def identity_of(path: Path) -> str:
+    """The stable identifier for one file on disk: its VOLUME and its INODE.
+
+    THE PATH IS NOT THE IDENTITY, and reading it as one destroyed user data. The
+    previous scheme hashed the decoded, composition-normalized path, which is
+    correct about exactly one of the ways two strings name one file and wrong
+    about the rest:
+
+    * **A hardlink or a symlink.** ``os.link(a, b)`` makes two names for one
+      inode. Two path digests, two records, and the SECOND record's ``original``
+      is whatever the first record's write had already put in the field, because
+      :meth:`RevertLedger.with_snapshot`'s first-write-wins never engages between
+      two different identities. The user's own value then exists in no file and
+      no record.
+    * **A case varying spelling on a case insensitive volume**, which is the APFS
+      default and the platform this product targets. ``Song.flac`` and
+      ``song.flac`` are ONE file and two path digests, with the same result.
+    * **A rename between two adoption runs.** The file is the same file, the
+      digest is different, and the second run records adoption's own value as the
+      original.
+
+    LOWERCASING THE PATH IS NOT THE FIX AND WAS NOT TAKEN. Case insensitivity is
+    a property of the VOLUME rather than of the string, so a case sensitive
+    volume genuinely can hold two files differing only in case, and folding them
+    together is the same defect pointed the other way: one record for two files,
+    one original lost. ``(st_dev, st_ino)`` answers all four shapes without
+    deciding anything about strings, because it asks the filesystem which file it
+    is instead of guessing from its name.
+
+    THE PATH IS STILL RECORDED, because a person reading the ledger needs to know
+    which file a record is about and the revert needs somewhere to look. It is
+    documentation and an address, not identity.
+
+    RAISES rather than falling back when the file cannot be stat'd. A fallback to
+    the path would put a second identity scheme back into one ledger, which is
+    the defect this function exists to remove.
+    """
+    try:
+        info = path.stat()
+    except OSError as exc:
+        raise AdoptedFileUnidentifiable(
+            f"{path} cannot be identified on this machine: {exc}. Nothing is "
+            f"written to a file whose original cannot be recorded first, because "
+            f"a tag write with no record behind it is the one thing this product "
+            f"cannot undo",
+            path=path,
+        ) from exc
+    return f"{IDENTITY_SCHEME}:{info.st_dev}:{info.st_ino}"
+
+
+def _legacy_file_id(path: str) -> str:
+    """The identifier the PREVIOUS scheme wrote, for finding its records.
+
+    Kept solely so an upgraded run finds the record a legacy ledger already holds
+    for this file and KEEPS it, rather than writing a second record whose
+    ``original`` is the value adoption itself wrote. It is never written into a
+    new record.
 
     A digest of the DECODED, composition-normalized path, which is the primitive
-    U31 owns and the reason it exists: the same accented filename arrives in two
-    different codepoint sequences depending on who produced the string, and a
-    ledger keyed on the raw text holds two records for one file. Here that would
-    mean a revert that restored one of them and left the other, with the report
-    saying both were done.
+    U31 owns: the same accented filename arrives in two different codepoint
+    sequences depending on who produced the string.
     """
     return hashlib.sha256(
         locations.location_to_path(str(path)).encode("utf-8")
-    ).hexdigest()[:24]
+    ).hexdigest()[:_LEGACY_ID_WIDTH]
+
+
+def _is_an_identity(value: str) -> bool:
+    """Whether ``value`` is an identifier one of the two schemes actually wrote.
+
+    RECOGNIZED POSITIVELY, like every other field this reader takes off disk. The
+    previous version accepted any non-empty string, so a record whose ``file``
+    said ``not-a-digest`` restored normally and a build that changed the identity
+    scheme left every old record in place as a second identity for the same file.
+    """
+    return bool(_INODE_IDENTITY.match(value) or _LEGACY_IDENTITY.match(value))
 
 
 class DigestState(StrEnum):
@@ -255,13 +378,24 @@ class TagSnapshot:
       still holds what adoption wrote" exactly, and a revert that trusted it put
       one file's genre onto another file's audio, destroyed the replacement's own
       genre with no record anywhere, and dropped the ledger record.
-    * **The inode.** The same inode is the same file, but it is not the same
+    * **The inode.** The same inode is the same FILE and says nothing about its
       CONTENT. Both ``Path.write_bytes`` and ``cp`` truncate in place and keep
       the inode, measured True for both, and that is how a track is actually
       replaced. So an inode match cannot separate "this product rewrote a tag"
-      from "somebody put a different recording here", and it is not recorded.
+      from "somebody put a different recording here", and ``file`` is never
+      consulted by :func:`_changed_since_adoption` for that reason.
+
+    WHICH IS EXACTLY WHY ``file`` HOLDS IT, and the two uses must not be
+    confused. ``file`` answers "which file is this record about", where
+    ``(st_dev, st_ino)`` is precisely right and a path is precisely wrong (see
+    :func:`identity_of`). ``digest`` answers "are these the bytes adoption left",
+    where the inode says nothing at all. One record needs both answers and they
+    are different questions.
     """
 
+    #: WHICH FILE, as ``dev-ino:<st_dev>:<st_ino>``, or a legacy path digest on a
+    #: record written before :func:`identity_of`. Never a path. See
+    #: :func:`identity_of` for the four ways a path is not an identity.
     file: str
     field: str
     path: str
@@ -483,13 +617,28 @@ def _digest_state(
     was recorded, and anything else means nothing about the bytes is available.
     Neither derived answer accepts a file; only the first can even be compared.
 
-    A STATE AND A DIGEST THAT CONTRADICT EACH OTHER ARE REFUSED, because a record
-    claiming to carry evidence it does not carry is the exact confusion this
-    field exists to end.
+    AN ABSENT KEY AND AN EXPLICIT NULL ARE DIFFERENT FACTS HERE, which is the
+    distinction ``original`` next door refuses to collapse and this field used to
+    collapse silently. ``entry.get("digest_state")`` answers None for both, so a
+    document spelling ``"digest_state": null`` took the older-document derivation
+    reserved for a document that never had the key, while ``""`` was refused. A
+    build that wrote null wrote a state it could not name, and the honest answer
+    to a state this reader cannot name is the refusal below rather than a guess
+    at what an older build would have meant. ``_digest`` next door states the
+    opposite choice for its own field, and states why: there, both spellings mean
+    the same thing.
+
+    A STATE AND A DIGEST THAT CONTRADICT EACH OTHER ARE REFUSED, IN BOTH
+    DIRECTIONS, because a record claiming to carry evidence it does not carry and
+    a record carrying evidence it says it does not have are the same confusion
+    this field exists to end. Only the first direction was checked, so a record
+    spelling ``absent`` while holding a digest that matched the file exactly was
+    accepted and then refused at the guard with ``no digest was recorded``, which
+    is a false statement about the document on disk.
     """
-    found = entry.get("digest_state")
-    if found is None:
+    if "digest_state" not in entry:
         return DigestState.RECORDED if digest else DigestState.ABSENT
+    found = entry["digest_state"]
     if not isinstance(found, str) or found not in _DIGEST_STATES:
         raise RevertLedgerUnreadable(
             f"{path} holds a record at position {position} whose digest_state is "
@@ -503,6 +652,15 @@ def _digest_state(
             f"{path} holds a record at position {position} that says its digest "
             f"was recorded and carries none; a record cannot claim evidence it "
             f"does not have",
+            path=path,
+            remedy=Remedy.RUN_DOCTOR,
+        )
+    if state is not DigestState.RECORDED and digest:
+        raise RevertLedgerUnreadable(
+            f"{path} holds a record at position {position} that says its digest "
+            f"is {found!r} and carries one anyway; a record cannot disown the "
+            f"evidence it is holding, and reporting that record as carrying no "
+            f"digest says something false about the document on disk",
             path=path,
             remedy=Remedy.RUN_DOCTOR,
         )
@@ -601,6 +759,22 @@ def read(cfg: config.Config) -> RevertLedger:
                 path=path,
                 remedy=Remedy.RUN_DOCTOR,
             )
+        if not _is_an_identity(str(entry["file"])):
+            # POSITIVELY RECOGNIZED, like every other field here. Accepting any
+            # non-empty string meant nothing could notice a record keyed by a
+            # scheme this build does not write: a build that changed the
+            # identifier left every old record in the document as a SECOND
+            # identity for the same file, which is two records for one file
+            # arriving through a constant nothing guarded.
+            raise RevertLedgerUnreadable(
+                f"{path} holds a record at position {position} whose file "
+                f"identifier is {entry['file']!r}, which is neither this build's "
+                f"{IDENTITY_SCHEME} identity nor the {_LEGACY_ID_WIDTH} character "
+                f"path digest that preceded it; a record keyed by an unknown "
+                f"scheme is a second identity for a file that already has one",
+                path=path,
+                remedy=Remedy.RUN_DOCTOR,
+            )
         original = _original_values(entry["original"], path=path, position=position)
         digest = _digest(entry, path=path, position=position)
         record = TagSnapshot(
@@ -655,10 +829,47 @@ def _record_locked(
     now: datetime | None,
     read_field: Callable[[Path, str], tuple[str, ...] | None],
 ) -> tuple[RevertLedger, TagSnapshot]:
-    """The record half, assuming the caller already holds the lock."""
+    """The record half, assuming the caller already holds the lock.
+
+    THE LOOKUP IS WHAT MAKES FIRST-WRITE-WINS REACHABLE, and it is the half that
+    was broken. Two recorded locations naming one file used to produce two
+    identities, so :meth:`RevertLedger.with_snapshot` never saw the record it was
+    supposed to keep, and the second record stored the value adoption itself had
+    written as the "original". See :func:`identity_of` for the four spellings
+    that do that.
+
+    A LEGACY RECORD IS FOUND AND MIGRATED RATHER THAN LEFT BESIDE A NEW ONE. A
+    ledger written by the path-digest scheme is on disk and its records hold the
+    only copy of their originals. Looking only for the new identity would find
+    nothing and write a second record whose original is adoption's value, which
+    is the same data loss arriving through the upgrade rather than through a
+    hardlink.
+
+    THE RECORDED PATH IS REFRESHED WHEN IT NO LONGER NAMES THIS FILE, because the
+    path is the revert's only address for it. A file renamed between two adoption
+    runs is the same inode and a different name, and leaving the old name in the
+    record points the revert at something that is not there.
+    """
     ledger = read(cfg)
-    identifier = file_id(str(resolved))
+    identifier = identity_of(resolved)
     existing = ledger.snapshot(identifier, field)
+    if existing is None:
+        legacy = _legacy_file_id(str(resolved))
+        held = ledger.snapshot(legacy, field)
+        if held is not None:
+            existing = replace(held, file=identifier)
+            ledger = ledger.without(frozenset({(legacy, field)}))
+            ledger = ledger.with_snapshot(existing)
+            write(cfg, ledger)
+    if existing is not None and existing.path != str(resolved):
+        try:
+            still_there = identity_of(Path(existing.path)) == identifier
+        except AdoptedFileUnidentifiable:
+            still_there = False
+        if not still_there:
+            existing = replace(existing, path=str(resolved))
+            ledger = ledger.replacing(existing)
+            write(cfg, ledger)
     if existing is None:
         record = TagSnapshot(
             file=identifier,
@@ -683,7 +894,21 @@ def _record_locked(
     return ledger, amended
 
 
-def digest_of(path: Path) -> str:
+#: How long one file's bytes are waited for before the read gives up and SAYS SO.
+#: A whole number of seconds because it is a patience, not a measurement: what it
+#: separates is "this disk is busy" from "this file is being fetched across a
+#: network", and nothing between those two needs deciding to the millisecond.
+#: Generous rather than tight, because the answer to exceeding it is a refusal
+#: the person then has to override.
+_READ_DEADLINE_SECONDS = 30
+
+#: One megabyte per read, which is what makes the deadline checkable at all: the
+#: bound is asked BETWEEN blocks, so a smaller block asks it more often and a
+#: whole-file read asks it never.
+_READ_BLOCK_BYTES = 1024 * 1024
+
+
+def digest_of(path: Path, *, deadline_seconds: float = _READ_DEADLINE_SECONDS) -> str:
     """A digest of the whole file. Empty when it cannot be read.
 
     Over the file's own bytes rather than its decoded audio, deliberately. What a
@@ -698,12 +923,41 @@ def digest_of(path: Path) -> str:
     it were "no digest was recorded", and :func:`_changed_since_adoption` used to
     let it fall into the inequality and report a file nobody had touched as
     somebody else's bytes. Both now name it.
+
+    A TIMEOUT RAISES AND IS NOT FOLDED INTO THE EMPTY ANSWER, which is the same
+    "one value standing for two facts" this module has been wrong about
+    repeatedly, and here it is worse than usual: ``TimeoutError`` IS an
+    ``OSError``, so a plain ``except OSError`` swallows a deadline into "the
+    bytes cannot be read", and a person is told their file is unreadable when
+    what actually happened is that a provider is still fetching it. The
+    ``except`` order below is load bearing for that reason.
+
+    WHAT THE DEADLINE DOES AND DOES NOT BOUND, stated rather than implied. It is
+    asked BETWEEN blocks, so it bounds a stream that is arriving slowly and it
+    does NOT bound one ``read`` call that never returns at all. A blocking read
+    against a filesystem that has stopped answering is uninterruptible from
+    Python without a thread, and a thread would leave the read running after the
+    answer was abandoned. The shapes that genuinely never return are answered
+    one level up instead, by refusing anything that is not a regular file before
+    a descriptor is ever opened: see :func:`_look_at`. Residual R-25 states what
+    is left.
     """
     hasher = hashlib.sha256()
+    give_up_at = time.monotonic() + deadline_seconds
     try:
         with path.open("rb") as handle:
-            for block in iter(lambda: handle.read(1024 * 1024), b""):
+            while True:
+                block = handle.read(_READ_BLOCK_BYTES)
+                if not block:
+                    break
                 hasher.update(block)
+                if time.monotonic() > give_up_at:
+                    raise TimeoutError(
+                        f"{path} did not finish arriving within "
+                        f"{deadline_seconds} seconds"
+                    )
+    except TimeoutError:
+        raise
     except OSError:
         return ""
     return hasher.hexdigest()
@@ -728,10 +982,18 @@ def _stamp_digest(path: Path) -> str:
     IS THE WHOLE POINT: a build that wrote this file seconds ago and could not
     read it back is not the same thing as a document written before digests
     existed, and the previous version stored both as an empty string.
+
+    A DEADLINE ENDS THE RETRIES RATHER THAN DOUBLING THEM. The argument for
+    asking twice is that a transient failure costs nothing to re-ask; a read that
+    ran out of patience is the opposite, and asking again spends the whole
+    deadline a second time with the ledger's lock held throughout.
     """
     found = ""
     for _attempt in range(_STAMP_READ_ATTEMPTS):
-        found = digest_of(path)
+        try:
+            found = digest_of(path)
+        except TimeoutError:
+            return ""
         if found:
             break
     return found
@@ -754,11 +1016,25 @@ def _stamped(record: TagSnapshot, path: Path) -> TagSnapshot:
     above had succeeded, which does not follow: a write returning does not make a
     later ``stat`` succeed, and the pragma was a claim about a branch nothing
     drove. It is driven now.
+
+    THE FAILED ``stat`` BRANCH CLEARS THE STAMP RATHER THAN LEAVING IT. A re-run
+    over an already-adopted file arrives here holding the FIRST run's digest, and
+    the write one line above has just rewritten the file, so that digest now
+    describes bytes that are gone. Keeping it produced a record spelling
+    ``unreadable`` while carrying a digest, which is the contradiction
+    :func:`_digest_state` refuses in both directions, so the record this build
+    wrote made its own ledger unreadable at the next :func:`read`.
     """
     try:
         info = path.stat()
     except OSError:
-        return replace(record, digest_state=DigestState.UNREADABLE)
+        return replace(
+            record,
+            size=None,
+            mtime_ns=None,
+            digest="",
+            digest_state=DigestState.UNREADABLE,
+        )
     digest = _stamp_digest(path)
     return replace(
         record,
@@ -938,7 +1214,129 @@ def restore_tag(path: Path, tag_field: str, original: tuple[str, ...] | None) ->
     return tags.write_tag_values(path, tag_field, original)
 
 
-def _changed_since_adoption(record: TagSnapshot, target: Path) -> str | None:
+class ByteRead(StrEnum):
+    """How an attempt to read one file's bytes ended.
+
+    FOUR OUTCOMES RATHER THAN A STRING AND AN EMPTY STRING, for the reason
+    :class:`DigestState` gives about its own field: the previous shape answered
+    "" for every way a read can fail, so a file being fetched across a network,
+    a directory, a named pipe and a permission error were one fact on the way out
+    and one message to the person.
+    """
+
+    #: The whole file was read and hashed.
+    ANSWERED = "answered"
+
+    #: There is no file there to hash: a directory, a named pipe, a socket, a
+    #: device. Decided from ``st_mode`` BEFORE a descriptor is opened, which is
+    #: what makes a FIFO cost nothing instead of blocking forever.
+    NOT_A_REGULAR_FILE = "not-a-regular-file"
+
+    #: The bytes did not arrive within :data:`_READ_DEADLINE_SECONDS`.
+    TOOK_TOO_LONG = "took-too-long"
+
+    #: The filesystem answered and refused, or the stat failed outright.
+    UNREADABLE = "unreadable"
+
+    #: The recorded size and the file's size disagree, so no read was attempted.
+    #: The one shortcut in front of the digest, and it can never change an
+    #: answer: two different sizes cannot be the same bytes.
+    A_DIFFERENT_SIZE = "a-different-size"
+
+
+@dataclass(frozen=True, slots=True)
+class _Looked:
+    """What the bytes at one path are, and the ``stat`` that dates the answer.
+
+    ``stamp`` is what makes the answer re-usable. It is taken immediately BEFORE
+    the read, so a later ``stat`` that still equals it says nothing has touched
+    the file since, and the digest beside it is still about the bytes that are
+    there now. That is the whole mechanism by which the read can happen outside
+    the ledger's lock: see :func:`_look_before_the_lock`.
+    """
+
+    outcome: ByteRead
+    digest: str = ""
+    stamp: tuple[int, int, int, int] | None = None
+
+
+def _stamp_of(info) -> tuple[int, int, int, int]:
+    """The cheap facts that say a file has not been touched since it was read.
+
+    The inode is in here for the reason it is NOT in a
+    :class:`TagSnapshot`: this is a question about whether the same file is still
+    there between two calls seconds apart, which is exactly what an inode
+    answers, and not about whether its content is what somebody recorded, which
+    is exactly what an inode does not.
+    """
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+
+
+def _look_at(target: Path, *, recorded_size: int | None = None) -> _Looked:
+    """Ask what the bytes at ``target`` are, bounded, and date the answer.
+
+    THE MODE IS ASKED BEFORE A DESCRIPTOR IS OPENED, and that is the fix for a
+    hang rather than a tidiness. ``open`` on a named pipe blocks until a writer
+    appears, which is FOREVER for a path nobody is writing to, and the whole pass
+    holds the ledger's exclusive lock while it waits, so every apply and every
+    revert in the library waits with it. ``exists`` answered True and ``stat``
+    answered instantly; only the open did not return. It is the same kernel
+    behaviour :func:`cratekit.adopt.scan._probe` refuses to walk into, and this
+    module had no equivalent guard: a DIRECTORY at the recorded path reached the
+    hash and was reported as "its bytes cannot be read here", which is a
+    different fact from "that is not a file".
+
+    THE SIZE SHORTCUT IS ASKED HERE rather than at the caller, so the read that
+    it makes unnecessary is never started. It cannot change an answer, which is
+    the only reason a shortcut in front of the evidence is tolerable at all.
+    """
+    try:
+        info = target.stat()
+    except OSError:
+        return _Looked(ByteRead.UNREADABLE)
+    stamp = _stamp_of(info)
+    if not stat_module.S_ISREG(info.st_mode):
+        return _Looked(ByteRead.NOT_A_REGULAR_FILE, stamp=stamp)
+    if recorded_size is not None and info.st_size != recorded_size:
+        return _Looked(ByteRead.A_DIFFERENT_SIZE, stamp=stamp)
+    try:
+        found = digest_of(target)
+    except TimeoutError:
+        return _Looked(ByteRead.TOOK_TOO_LONG, stamp=stamp)
+    if not found:
+        return _Looked(ByteRead.UNREADABLE, stamp=stamp)
+    return _Looked(ByteRead.ANSWERED, found, stamp)
+
+
+def _looked_at_still(
+    target: Path, sighted: _Looked | None, *, recorded_size: int | None
+) -> _Looked:
+    """``sighted`` if it is still current for ``target``, else a fresh look.
+
+    ONE READ SITE, TWO CALLERS. The answer either came from before the lock was
+    taken and is still exactly current, or it is taken now. What is deliberately
+    NOT here is a second way of deciding about bytes: both branches end in
+    :func:`_look_at`, so there is one definition of what the bytes at a path are.
+
+    THE STAMP IS THE WHOLE OF THE RE-USE TEST. A sighting is spent only when a
+    ``stat`` taken under the lock still equals the one taken beside the read, so
+    anything that touched the file in between, including this pass's own restore
+    of another record naming the same file, drops the sighting and the bytes are
+    asked about again.
+    """
+    if sighted is not None and sighted.stamp is not None:
+        try:
+            info = target.stat()
+        except OSError:
+            return _Looked(ByteRead.UNREADABLE)
+        if _stamp_of(info) == sighted.stamp:
+            return sighted
+    return _look_at(target, recorded_size=recorded_size)
+
+
+def _changed_since_adoption(
+    record: TagSnapshot, target: Path, sighted: _Looked | None = None
+) -> str | None:
     """Why this file is not the one adoption wrote to, or None when it is.
 
     IT ACCEPTS ONLY EVIDENCE ABOUT THE BYTES, and the four ways this function has
@@ -989,10 +1387,12 @@ def _changed_since_adoption(record: TagSnapshot, target: Path) -> str | None:
        restore, an rsync without timestamps, a cloud re-download and a
        cloud-evicted file that nobody has rewritten all look like.
 
-    Every other path REFUSES and names which of the five it is, and ``force``
+    Every other path REFUSES and names which of the seven it is, and ``force``
     spends any of them one record at a time:
 
-    * the digest disagrees, so the bytes are somebody else's;
+    * the digest disagrees, so the bytes are not the recorded ones;
+    * what is at that path is not a regular file at all;
+    * the bytes did not arrive within the deadline;
     * the file cannot be read here to produce a digest at all;
     * the record was never stamped, which is the crash between the write and the
       stamp;
@@ -1010,6 +1410,14 @@ def _changed_since_adoption(record: TagSnapshot, target: Path) -> str | None:
     (:data:`cratekit.adopt.scan.ADOPTABLE`), so a record can only name an evicted
     file that was readable when adoption wrote it and was evicted afterwards. The
     cost that remains is real and is recorded as residual R-25.
+
+    THE READ IS BOUNDED AND IT HAPPENS BEFORE THE LOCK IS TAKEN. Removing the
+    shortcut left an UNBOUNDED fetch inside the exclusive lock that serializes
+    every apply and every revert in the library, which R-25 recorded as a
+    bandwidth cost and nothing else. Both halves are answered rather than
+    documented: ``sighted`` carries the answer :func:`_look_before_the_lock`
+    already took outside the lock, and :func:`digest_of` gives up after
+    :data:`_READ_DEADLINE_SECONDS`.
 
     WHAT THE READ COSTS, stated for the case that dominates at scale rather than
     for the flattering one. On the ACCEPTING path it is strictly cheaper than the
@@ -1041,18 +1449,24 @@ def _changed_since_adoption(record: TagSnapshot, target: Path) -> str | None:
     """
     if record.digest_state is not DigestState.RECORDED:
         return _replaced(record, _why_nothing_to_compare(record))
-    info = target.stat()
-    if record.size is not None and info.st_size != record.size:
+    looked = _looked_at_still(target, sighted, recorded_size=record.size)
+    if looked.outcome is ByteRead.A_DIFFERENT_SIZE:
         # The one shortcut in front of the digest, kept only because it can never
         # change an answer: no hash of a differently sized file can match.
         return _replaced(record, _NOT_THE_RECORDED_BYTES)
-    found = digest_of(target)
-    if not found:
+    if looked.outcome is ByteRead.NOT_A_REGULAR_FILE:
+        return _replaced(record, _NOT_A_REGULAR_FILE)
+    if looked.outcome is ByteRead.TOOK_TOO_LONG:
+        # NOT folded into "cannot be read". A file still arriving from a provider
+        # is a file that will answer later, and telling somebody it is unreadable
+        # sends them looking for damage that is not there.
+        return _replaced(record, _TOOK_TOO_LONG_TO_READ)
+    if looked.outcome is ByteRead.UNREADABLE:
         # An unreadable file is not a verdict about its content. Reporting it as
         # "these are somebody else's bytes" would send a person looking for a
         # replacement that never happened.
         return _replaced(record, _NOT_READABLE_TO_COMPARE)
-    if found != record.digest:
+    if looked.digest != record.digest:
         return _replaced(record, _NOT_THE_RECORDED_BYTES)
     return None
 
@@ -1072,11 +1486,24 @@ def _why_nothing_to_compare(record: TagSnapshot) -> str:
 
 
 #: The refusals, named once so a report and a test cannot spell them apart. Each
-#: one is asserted as a LITERAL in the suite rather than by reading the constant
-#: back, because a test comparing the output against the constant the output is
-#: built from asserts that X equals X and passes whatever either says.
-_NOT_THE_RECORDED_BYTES = "its bytes are not the ones adoption left there"
+#: one is asserted as a LITERAL IN FULL in the suite rather than by reading the
+#: constant back, because a test comparing the output against the constant the
+#: output is built from asserts that X equals X and passes whatever either says.
+#: In FULL because a leading substring is the same failure one step along: three
+#: of these were asserted by their first clause only, so every word after it
+#: could be reworded and no test moved.
+_NOT_THE_RECORDED_BYTES = (
+    "its bytes are not the ones this record was stamped from, and nothing here "
+    "can say whether another program wrote them or this tool did"
+)
 _NOT_READABLE_TO_COMPARE = "its bytes cannot be read here to compare"
+_NOT_A_REGULAR_FILE = (
+    "what is at that path is not a regular file, so it has no bytes to compare"
+)
+_TOOK_TOO_LONG_TO_READ = (
+    "its bytes did not finish arriving within the time this pass waits, which is "
+    "what a file still being fetched from a provider looks like"
+)
 _THE_STAMP_NEVER_LANDED = (
     "adoption never finished recording what it left there, which is a run "
     "interrupted between the tag write and the stamp"
@@ -1089,15 +1516,69 @@ _NO_DIGEST_WAS_RECORDED = (
     "this record carries no digest, so nothing in it is about the bytes at all"
 )
 
+#: The two refusals that are about THE LEDGER rather than about the file, and the
+#: reason they are separate from the ones above is what a person is told to do
+#: next. See :func:`_cannot_say_which_record`.
+_TWO_RECORDS_NAME_THIS_FILE = (
+    "more than one record in this ledger names the file at that path, so which "
+    "of their originals belongs to it cannot be decided from the ledger"
+)
+_FORCE_NAMES_MORE_THAN_ONE_RECORD = (
+    "more than one record in this ledger carries that path and that field, so a "
+    "force key naming them cannot say which single record it means"
+)
+
 
 def _replaced(record: TagSnapshot, why: str) -> str:
-    """The refusal, naming the key that overrides THIS record and no other."""
+    """The refusal about the BYTES, naming the key that overrides THIS record.
+
+    IT STATES THE EVIDENCE AND DOES NOT ACCUSE ANYBODY, which is a correction
+    rather than a wording preference. The previous text read "the file cannot be
+    recognized as the one adoption wrote to: its bytes are not the ones adoption
+    left there", which tells a person their file was replaced. Several of the
+    ways this refusal is reached are this tool's own doing: a second field
+    written to the same file (R-22), a pass that died inside its own restore
+    (R-24). A person who reads an accusation and is then handed a ``force`` key
+    in the same breath does the thing the message implies, and forcing writes the
+    recorded original over whatever is actually there.
+
+    So it says what is known, says that the cause is not determinable from here,
+    and says plainly that LEAVING IT is safe. The record keeps the original
+    either way; that is the sentence that was missing.
+    """
     return (
-        f"the file cannot be recognized as the one adoption wrote to: {why}. "
-        f"Restoring the recorded original onto a file that is not that one puts "
-        f"one file's tag onto another file's audio, and nothing anywhere records "
-        f"what it destroyed. Override this one record by reverting with "
-        f"force={(record.path, record.field)!r}."
+        f"this record cannot be matched to the file at that path: {why}. "
+        f"Restoring the recorded original onto bytes that are not the recorded "
+        f"ones writes one file's tag onto another file's audio, and nothing "
+        f"anywhere records what it destroyed. If you know that file is the one "
+        f"adoption wrote to, override this ONE record by reverting with "
+        f"force={(record.path, record.field)!r}. If you do not know, leave it: "
+        f"the record keeps the original either way and nothing is lost by "
+        f"deciding later."
+    )
+
+
+def _cannot_say_which_record(record: TagSnapshot, why: str) -> str:
+    """The refusal about the LEDGER, which deliberately offers no ``force``.
+
+    ``force`` OVERRIDES EVIDENCE ABOUT BYTES AND CANNOT SUPPLY A MISSING FACT.
+    What is missing in both cases below is which record belongs to the file, and
+    a person answering "yes, that file is mine" does not answer it. Offering the
+    override here is what completed the data loss this round exists to fix: two
+    records for one file, the good one restored first, the bogus one refused with
+    a message inviting an override, and the override wrote the value adoption had
+    put there back onto the file as though it were the original.
+
+    So this refusal names the ledger as the thing that is wrong and sends the
+    person to the doctor rather than to a flag.
+    """
+    return (
+        f"this record cannot be spent on the file at that path: {why}. force "
+        f"does not apply: it overrides evidence about the BYTES, and what is "
+        f"missing here is which record belongs to this file, which is a fact "
+        f"about the ledger. Run the doctor over "
+        f"{(record.path, record.field)!r} instead; every original is still "
+        f"recorded and nothing has been written."
     )
 
 
@@ -1123,6 +1604,15 @@ def revert_tags(
     somebody else owns with no override is a heuristic that decides, and a wrong
     refusal strands the only copy of a value as surely as a wrong restore
     overwrites one.
+
+    ``force`` CANNOT REACH TWO RECORDS AND CANNOT SUPPLY AN IDENTITY, which are
+    the two limits on it and both were paid for. Its ``(path, field)`` key is not
+    unique across records, so one entry used to override every record carrying
+    that path; a key that names more than one record now overrides none of them
+    and says so. And a record whose file another record also names refuses before
+    ``force`` is consulted at all, because what is missing there is which record
+    belongs to the file, which is not a fact an override supplies. See
+    :func:`_cannot_say_which_record`.
 
     IT IS NOT A BOOLEAN, and that is the whole of its design. A pass-wide flag,
     which is what this was, is offered by a message printed PER RECORD: a person
@@ -1194,14 +1684,35 @@ def revert_tags(
     restored: list[tuple[str, str]] = []
     failed: dict[tuple[str, str], str] = {}
     forced = {(str(path), str(field)) for path, field in force}
+    sighted = _look_before_the_lock(cfg, entry_id=entry_id, forced=forced)
     with config._exclusive_lock(lock_path(cfg)):
         ledger = read(cfg)
-        for record in ledger.snapshots:
-            if entry_id is not None and not record.written_by(entry_id):
-                continue
+        selected = tuple(
+            record
+            for record in ledger.snapshots
+            if entry_id is None or record.written_by(entry_id)
+        )
+        confused = _records_that_cannot_be_told_apart(selected)
+        crowded = _paths_more_than_one_record_carries(selected)
+        for record in selected:
             reported = (record.path, record.field)
+            if _key(record) in confused:
+                failed[reported] = _cannot_say_which_record(
+                    record, _TWO_RECORDS_NAME_THIS_FILE
+                )
+                continue
+            if reported in forced and _key(record) in crowded:
+                failed[reported] = _cannot_say_which_record(
+                    record, _FORCE_NAMES_MORE_THAN_ONE_RECORD
+                )
+                continue
             try:
-                refusal = _revert_one(record, reported in forced, restore=restore)
+                refusal = _revert_one(
+                    record,
+                    reported in forced,
+                    restore=restore,
+                    sighted=sighted.get(_key(record)),
+                )
             except (OSError, ValueError, tags.UnsupportedContainer) as exc:
                 failed[reported] = str(exc)
                 continue
@@ -1214,18 +1725,156 @@ def revert_tags(
     return RevertReport(restored=tuple(restored), failed=failed)
 
 
+def _live_identity(path: Path) -> str | None:
+    """Which file is at ``path`` right now, or None when that cannot be asked.
+
+    NAMED RATHER THAN FALLING BACK TO THE PATH. A record whose file is missing or
+    cannot be stat'd is one this pass knows nothing about, and answering with
+    something derived from the path would put the identity scheme this round
+    removed straight back in beside the one that replaced it. The callers below
+    treat None as "not comparable with anything", which is what it is.
+    """
+    try:
+        return identity_of(path)
+    except AdoptedFileUnidentifiable:
+        return None
+
+
+def _records_that_cannot_be_told_apart(
+    selected: tuple[TagSnapshot, ...],
+) -> frozenset[tuple[str, str]]:
+    """The records whose file another record in this pass also names.
+
+    WHY THIS EXISTS AT ALL. :func:`identity_of` stops this build from WRITING two
+    records for one file. It does nothing about the ledgers already on disk,
+    where a hardlink, a case varying spelling on a case insensitive volume, or a
+    rename between two runs each produced a second record whose ``original`` is
+    the value adoption itself wrote. Restoring those in ledger order restores the
+    real original and then offers to overwrite it with adoption's value, which is
+    exactly what happened.
+
+    THE WHOLE GROUP REFUSES, and picking one of them was tried and taken out
+    again. The rule "the record carrying the file's own identity wins and the
+    rest are ghosts" is decidable, and it makes one ``(path, field)`` key appear
+    in ``restored`` AND in ``failed`` in the same report, which is the reporting
+    collapse this round is also fixing one door along. It buys nothing real
+    either: with :func:`identity_of` in the write path, a group where exactly one
+    member carries the live identity is not a shape any sequence of adoptions
+    produces. So the pass writes nothing, keeps every original, and says the
+    ledger is what needs attention.
+
+    A GROUP OF ONE IS NEVER CONFUSED, whatever its identity says. That is what
+    keeps a legacy ledger working: one record for one file is unambiguous however
+    it is keyed, and refusing on the SCHEME rather than on the ambiguity would
+    strand every ledger written before this round.
+    """
+    groups: dict[tuple[str, str], list[TagSnapshot]] = {}
+    for record in selected:
+        found = _live_identity(Path(record.path))
+        if found is not None:
+            groups.setdefault((found, record.field), []).append(record)
+    return frozenset(
+        _key(member)
+        for members in groups.values()
+        if len(members) > 1
+        for member in members
+    )
+
+
+def _paths_more_than_one_record_carries(
+    selected: tuple[TagSnapshot, ...],
+) -> frozenset[tuple[str, str]]:
+    """The records a ``(path, field)`` force key could not have meant uniquely.
+
+    ``force`` IS KEYED ON SOMETHING THAT IS NOT UNIQUE, which is the same defect
+    as the ledger's old identity one layer up. The ledger keys on the file and
+    the field; ``force`` keys on the PATH and the field, because a person has to
+    be able to type it. Two records carrying one path therefore both matched one
+    force entry, both were overridden, and both were restored, against the
+    message's own promise to override "this ONE record".
+
+    Refused rather than resolved, because the fact that would resolve it is which
+    record belongs to the file, and that is the fact
+    :func:`_records_that_cannot_be_told_apart` has already established cannot be
+    had here. What is left is one force key and two candidates, and spending it
+    on both is the outcome this refuses.
+
+    THE TWO SETS OVERLAP COMPLETELY OR NOT AT ALL, and that is worth writing down
+    because filtering one by the other was tried and measured as changing
+    nothing. Two records sharing a path share a field's live identity too, so a
+    ``(path, field)`` carried by more than one record is either a group that is
+    entirely confused, when the path can be stat'd, or a group that is entirely
+    not, when it cannot. Neither set can ever hold part of the other's group.
+    """
+    counted: dict[tuple[str, str], list[TagSnapshot]] = {}
+    for record in selected:
+        counted.setdefault((record.path, record.field), []).append(record)
+    return frozenset(
+        _key(record)
+        for members in counted.values()
+        if len(members) > 1
+        for record in members
+    )
+
+
+def _look_before_the_lock(
+    cfg: config.Config,
+    *,
+    entry_id: str | None,
+    forced: Collection[tuple[str, str]],
+) -> dict[tuple[str, str], _Looked]:
+    """Hash every file this pass is going to ask about, BEFORE the lock is taken.
+
+    THE LOCK SERIALIZES EVERY APPLY AND EVERY REVERT IN THE LIBRARY, and the read
+    behind the guard is a whole-file hash that can be a network fetch. Held
+    together, one evicted track's download blocked an unrelated
+    :func:`write_tag_with_record` on a perfectly local file for the whole of that
+    download. The read does not need the lock: what it produces is dated by a
+    ``stat``, and :func:`_looked_at_still` spends it only while a ``stat`` taken
+    UNDER the lock still equals that one.
+
+    WHAT IT DOES NOT MOVE, stated because the flattering version of this claim is
+    wrong. An ACCEPTED record is restored by mutagen reopening the same file
+    under the lock, so an evicted file that passes the guard is fetched under the
+    lock regardless. What moves outside is the REFUSING path, which is precisely
+    the cost R-25 names: the evicted file that is downloaded in order to be
+    refused, and the library re-tagged by another tool where every record is that
+    case.
+
+    IT IS BEST EFFORT IN EVERY DIRECTION. An unreadable ledger returns nothing
+    and the locked read raises the same thing a moment later; a record whose file
+    changed between here and the lock simply misses and is read again. Nothing
+    here decides anything, which is what makes doing it unlocked safe.
+    """
+    try:
+        ledger = read(cfg)
+    except RevertLedgerUnreadable:
+        return {}
+    seen: dict[tuple[str, str], _Looked] = {}
+    for record in ledger.snapshots:
+        if entry_id is not None and not record.written_by(entry_id):
+            continue
+        if record.digest_state is not DigestState.RECORDED:
+            continue
+        if (record.path, record.field) in forced:
+            continue
+        seen[_key(record)] = _look_at(Path(record.path), recorded_size=record.size)
+    return seen
+
+
 def _revert_one(
     record: TagSnapshot,
     forced: bool,
     *,
     restore: Callable[[Path, str, tuple[str, ...] | None], bool],
+    sighted: _Looked | None = None,
 ) -> str | None:
     """Put one record's original back. None on success, else why not."""
     target = Path(record.path)
     if not target.exists():
         return "the file is no longer there"
     if not forced:
-        replaced = _changed_since_adoption(record, target)
+        replaced = _changed_since_adoption(record, target, sighted)
         if replaced is not None:
             return replaced
     if not restore(target, record.field, record.original):
@@ -1235,15 +1884,18 @@ def _revert_one(
 
 __all__ = [
     "EMPTY",
+    "IDENTITY_SCHEME",
     "LOCK_KEY",
     "SCHEMA_VERSION",
     "STATE_KEY",
+    "AdoptedFileUnidentifiable",
+    "ByteRead",
     "DigestState",
     "RevertLedger",
     "RevertLedgerUnreadable",
     "RevertReport",
     "TagSnapshot",
-    "file_id",
+    "identity_of",
     "lock_path",
     "path_for",
     "read",

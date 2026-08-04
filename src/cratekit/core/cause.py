@@ -381,6 +381,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # a document from a newer build asks for an upgrade and a corrupt one
         # asks for the doctor.
         "adoption-ledger-unusable": ExitCode.PRECONDITION,
+        # U23. The file an adoption is about to write a tag into cannot be
+        # identified on this machine, so its ORIGINAL cannot be recorded first.
+        # A separate slug from the one above because it is about a file rather
+        # than about a document, and it is per ITEM: the shape that reaches it is
+        # a track that was in the census and was deleted before the apply got to
+        # it, which costs that entry and nothing else. PRECONDITION rather than a
+        # defect code, because the state of the library is what is wrong.
+        "adoption-file-unidentifiable": ExitCode.PRECONDITION,
     }
 )
 

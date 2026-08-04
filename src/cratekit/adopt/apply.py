@@ -535,14 +535,26 @@ def apply_plan(
         if wanted is not None and target is not None:
             # THE ORIGINAL AND THE WRITE ARE ONE ACT. See the module docstring:
             # a revert landing between them leaves the write with no record.
-            _record, landed = revert.write_tag_with_record(
-                cfg,
-                target,
-                field=ADOPTED_TAG_FIELD,
-                written=wanted,
-                entry_id=entry.entry_id,
-                now=now,
-            )
+            #
+            # AND A FILE THAT CANNOT BE IDENTIFIED COSTS EXACTLY THIS ENTRY. The
+            # ledger keys a record on the file's own identity rather than on its
+            # path, so a track that was in the census and is gone by the time the
+            # apply reaches it cannot be recorded, and a tag write with no record
+            # behind it is the one act this product cannot undo. Caught here for
+            # the same per-track versus per-pass reason everything else in this
+            # loop is: unhandled, one deleted track ended the run.
+            try:
+                _record, landed = revert.write_tag_with_record(
+                    cfg,
+                    target,
+                    field=ADOPTED_TAG_FIELD,
+                    written=wanted,
+                    entry_id=entry.entry_id,
+                    now=now,
+                )
+            except revert.AdoptedFileUnidentifiable as exc:
+                failed[entry.entry_id] = exc.cause.message
+                continue
             if not landed:
                 failed[entry.entry_id] = "the container refused the tag write"
                 continue

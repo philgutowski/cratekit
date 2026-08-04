@@ -811,12 +811,57 @@ was evicted afterwards. `SF_DATALESS` is also not settable from userspace and is
 0 on Linux and on network mounts, so the population is macOS file-provider
 libraries whose tracks were adopted locally and evicted later.
 
-**Closes when:** the pass can ask a provider whether a file's bytes are local
-WITHOUT the answer being a shortcut past the evidence, which means an eviction
-check that changes only the ORDER of work and never the verdict: batch the
-evicted records, tell the person how much would be downloaded, and let them
-decide once for the run instead of the guard deciding per file. That is a command
-line concern and belongs with the adopt verb.
+### CORRECTED IN ROUND 6. This entry described the cost as bandwidth and it was worse than that
+
+Round 5 wrote the cost up as "an evicted file whose bytes have changed is now
+downloaded in order to be refused", which is true and is the small half. Two
+facts were missing and both were driven in round 6 rather than reasoned about.
+
+**The fetch was UNBOUNDED.** `digest_of` had no deadline of any kind, so a file
+whose bytes never arrive is a call that never returns.
+
+**It happened under the lock that serializes every apply and every revert in the
+library.** `revert_tags` wraps its whole pass in `config._exclusive_lock`, so one
+stalled record blocked a concurrent `write_tag_with_record` on a DIFFERENT,
+perfectly local, perfectly readable file for as long as the stall lasted.
+Measured with a FIFO at the recorded path, which is the same shape a stalled
+provider is from Python's point of view: `exists()` answered True, `stat()`
+answered instantly, `open()` never returned, the revert child was still running
+at 6 seconds, and the concurrent writer was still waiting when it was killed.
+
+**Both are answered rather than documented.** The permissive choice is KEPT: an
+evicted file is still read rather than refused, because on the accepting path the
+restore materializes it one line later anyway. What changed is where and for how
+long.
+
+- `_look_before_the_lock` takes every guard read BEFORE the lock, dates each
+  answer with a `stat`, and `_looked_at_still` spends the answer only while a
+  `stat` taken under the lock still equals that one. The refusing path, which is
+  exactly the case this entry is about, no longer holds the lock at all.
+- `digest_of` gives up after `_READ_DEADLINE_SECONDS` and RAISES rather than
+  answering the empty string, because `TimeoutError` is an `OSError` and folding
+  it into "cannot be read" tells a person their file is damaged when it is
+  merely still arriving.
+- Anything that is not a regular file is refused from `st_mode` before a
+  descriptor is opened, which is what `adopt.scan._probe` already did and this
+  module did not. That covers the FIFO, the socket, the device and the
+  directory, and it costs one `stat`.
+
+**What is still residual, precisely.** The deadline is asked BETWEEN blocks, so
+it bounds a stream that is arriving slowly and NOT a single `read` call that
+never returns. A blocking read against a filesystem that has stopped answering is
+uninterruptible from Python without a thread, and a thread would leave the read
+running after its answer was abandoned. The shapes that genuinely never return
+from `open` are all non-regular files and are refused before the open; a regular
+file on a wedged mount is the case that remains.
+
+**Closes when:** the read runs where it can be abandoned, which means a
+subprocess or a worker whose result the pass can stop waiting for, or a provider
+API that answers "are these bytes local" without the answer being a shortcut past
+the evidence. The second is still the better shape and is still a command line
+concern: batch the evicted records, tell the person how much would be
+downloaded, and let them decide once for the run instead of the guard deciding
+per file.
 
 ---
 
@@ -853,3 +898,65 @@ never landed, so the revert is a no-op and can settle the record without asking
 anybody. It costs one extra whole-file hash per adopted file at write time, which
 is the same cost the post-write stamp already pays, and it belongs with whichever
 unit is willing to double that.
+
+---
+
+## R-27. A filesystem that recycles inode numbers can hand one file another file's record
+
+**Found:** during U23's sixth round, 2026-08-03, as the accepted cost of keying
+the revert ledger on `(st_dev, st_ino)` instead of on a digest of the path.
+
+`identity_of` asks the filesystem which file it is rather than guessing from the
+name, which is what makes a hardlink, a case varying spelling and a rename all
+resolve to the ONE record they should. It buys one exposure back. On a filesystem
+that reuses inode numbers, a file created after another file was deleted can be
+handed the dead file's number, and an adoption of the new file then finds the
+dead file's record. First-write-wins keeps the dead file's `original`, so the new
+file's own original is never recorded.
+
+**Why the alternative is worse, driven rather than argued.** The obvious defence
+is to check that the record's recorded path still carries that identity and to
+REPLACE the record when it does not. A rename is indistinguishable from a
+recycled inode by exactly that test, and renaming a track is ordinary while
+recycling is not: replacing would destroy the only copy of a renamed file's
+original, every time somebody reorganised a folder. The permissive branch is
+taken deliberately and the record's `path` is refreshed instead, so the revert
+still has an address for the file.
+
+**Why the exposure is small.** APFS, which is the volume format this product
+targets and the default on the platform it runs on, allocates inode numbers from
+a monotonic counter and does not reuse them. ext4 and HFS+ do reuse. The window
+also needs all four of: a file adopted, that file deleted, a new file created
+that receives the number, and that new file adopted, with no adoption of the
+first file in between to migrate it.
+
+**Closes when:** the record also carries a creation time, which APFS and ext4
+both expose as `st_birthtime`, so a record whose birth time does not match the
+file at that identity is a recycled number rather than a rename. That is a second
+stamp on every record and it belongs with whichever unit is willing to widen the
+document.
+
+---
+
+## R-28. A tag write is refused when its file cannot be identified, and one shape of that is ordinary
+
+**Found:** during U23's sixth round, 2026-08-03, as the accepted cost of R-27's
+identity.
+
+`identity_of` stats the file, so a file that cannot be stat'd cannot be recorded,
+and `write_tag_with_record` raises `AdoptedFileUnidentifiable` rather than
+writing a tag with no record behind it. That is the right order: a tag write with
+no record is the one operation in this product nothing can undo.
+
+**What it costs.** `apply_plan` catches it per entry, so the run continues and
+the entry is reported failed. The ordinary shape that reaches it is a track that
+was READABLE in the census and was deleted before the apply reached it, which
+previously produced a record for a file that was not there and then a failed
+write. The new behaviour is better in substance and different in report text, and
+a person who reads "cannot be identified on this machine" about a track they
+deleted themselves has to work out that that is what it means.
+
+**Closes when:** the apply re-probes readability for an entry immediately before
+writing and reports a deleted track as deleted, which is `scan.probe_readability`
+being called from `apply` and is a small piece of work that belongs with the
+adopt verb's command line rather than with the ledger.

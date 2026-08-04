@@ -232,9 +232,52 @@ pins the constant to it. The same treatment is applied to every refusal message:
 the suite asserts the literal string in the report, never the constant the report
 is built from.
 
+**That last claim was half true and round 6 corrects it.** Three of the refusals
+were asserted by their LEADING CLAUSE only, so every word after it could be
+reworded and no test moved: `_THE_STAMP_NEVER_LANDED`, `_THE_STAMP_COULD_NOT_BE_READ`
+and `_NO_DIGEST_WAS_RECORDED`. Round 5's mutation table credited them one, two and
+one death, which is what a WHOLESALE replacement of the constant measures rather
+than a nearby rewording. Every message constant is now asserted in full.
+
 **Net:** one acceptance where there were three, and it is the recorded digest
 matching the file's bytes. Everything else refuses, names which of the four ways
 it is, and names the `(path, field)` pair that overrides it.
+
+**Round 6 found the guard was right and the IDENTITY was wrong, which is a layer
+below everything above.** A record was keyed on a digest of the PATH, so two
+recorded locations naming one file produced two identities and first-write-wins,
+which this module's own docstring calls load bearing, never engaged. The second
+record then stored the value adoption had just written as the "original". Three
+spellings reach it and none of them is exotic: a hardlink, a case varying
+spelling on a case insensitive volume (the APFS default), and a rename between
+two runs. Driven end to end, the revert restored the real genre through one
+record, refused the other because its own restore had changed the bytes, told the
+user their file's bytes were not adoption's, and handed them a `force` key that
+wrote `Adopted Bucket` on as the original. The user's genre was then in no file
+and no record.
+
+Identity is now `(st_dev, st_ino)`. It is NOT a lowercased path: case
+insensitivity is a property of the volume rather than of the string, and folding
+two real files into one record is the same defect pointed the other way. A ledger
+written by the old scheme is migrated on the next adoption rather than doubled,
+and the ledgers already on disk are covered from the other end too, where two
+records resolving to one file refuse as a group and are deliberately offered no
+`force`, because `force` overrides evidence about bytes and cannot supply which
+record belongs to a file.
+
+**And the guard blocked forever on a file whose bytes cannot be produced, holding
+that lock.** Removing the eviction branch left `digest_of` unbounded, and
+`revert_tags` holds the ledger's exclusive lock across its whole pass. Driven
+with a FIFO at the recorded path: `exists()` True, `stat()` instant, `open()`
+never returns, the revert still running at 6 seconds, and a concurrent
+`write_tag_with_record` on a different and perfectly readable file waiting behind
+it for its whole life. Three fixes, and the permissive choice for evicted files
+is kept: the mode is asked before any descriptor is opened, the read has a
+deadline that RAISES rather than folding into "unreadable" (`TimeoutError` is an
+`OSError`, which is the trap), and every guard read now happens BEFORE the lock
+is taken and is spent under it only while a `stat` says it is still current.
+R-25 is corrected rather than re-filed; R-27 and R-28 record what the identity
+change costs.
 
 
 
