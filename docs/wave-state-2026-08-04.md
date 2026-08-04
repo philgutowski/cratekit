@@ -822,6 +822,52 @@ written explanations with no artifact behind them. If something is added and
 removed within one round, either do not add it, or record the revert and its
 measurement in the table.
 
+### Round six state, and three findings that generalize
+
+**U38: an escape hatch is an off switch.** Round 5 removed the tiers, which was
+right, and added `# not-a-reservation: <reason>` as the escape. Measured, all
+three of its claims about itself are false. One comment on `core/cause.py:158`,
+the line opening the `REASONS` mapping, **silences all 61 reservations in the
+closed reason registry**, from 215 lines above them.
+`def build(): return {...}  # not-a-reservation: honest` is silenced because the
+mark and the body share one physical line, and ruff does not catch it because
+`pyproject.toml` selects only `["E9","F","I"]`. A semicolon silences two
+statements on one reason.
+
+The measurement that settles it: **if every kebab shaped string in the package
+were added to the key set, 189 distinct and 108 not currently keys, new
+offenders outside the two table owners would be ZERO.** The wide rule has no
+headroom problem here, so the hatch is unused and unneeded.
+
+Seven of that verification's ten findings were a sentence in the repository
+that measurement contradicts, including **one measurement carried in three
+mutually inconsistent counts inside a single commit** (fifteen of fifteen and
+none; sixteen and thirteen; fifteen), none of which matched the measured answer
+of two reported and fourteen silent. None of them changed a behaviour. All of
+them would have been believed by the next reader.
+
+**U24: a round used a test it had itself just proven wrong.** `remixer_title`
+decides how to spell a remixer by asking `reads_as_version()` on the remixer's
+NAME, so `Radio Slave`, `Dub Pistols`, `Cut Chemist` and `Mix Master Mike` get
+composed verbatim into the unmatchable spelling the round claims to close.
+**Those four are the same artists the round's own residual records as the
+vocabulary's measured false positives.**
+
+And the design decision I accepted was made on a false premise. R-21 argued a
+legitimate convergence and a feared collision are indistinguishable. **The
+discriminator exists and the row already carries it: `RemovedRow.isrc`.**
+Measured on the residual's own two examples, the convergence is one recording
+with one ISRC and the collision is two recordings with two. The stated reason
+for not building it, that the same shape flags an ordinary duplicate import, is
+exactly what ISRC resolves, since a duplicate import carries the same one.
+
+**U23: the fix for the identity pattern has the identity pattern.**
+`(st_dev, st_ino)` is unique among LIVE files and is not unique over time. A
+deleted file's inode returns to the free pool, so a record for file A can
+resolve to an unrelated file B that inherited it. `os.replace` from a temp file,
+which is how most taggers save, changes the inode while the path does not.
+Under verification now.
+
 ### What these findings have in common
 
 All three are the wave's two named patterns, again. U23 and U34 are IDENTITY
