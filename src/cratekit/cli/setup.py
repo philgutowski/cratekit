@@ -276,6 +276,12 @@ def existing_document() -> tuple[dict[str, Any], str]:
         with path.open("rb") as handle:
             raw = tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError) as exc:
+        # "REPAIR OR RECREATE IT" IS FOR A DOCUMENT THAT IS ACTUALLY DAMAGED.
+        # A configuration file with mode 0o000 is byte for byte intact, and
+        # telling its owner to repair or recreate it sends them to rewrite work
+        # they still have over a chmod. The ``from exc`` is what lets the refusal
+        # constructor overrule the token when the operating system is what
+        # refused; the token stands for a document that really will not parse.
         raise _refuse(
             f"setup will not overwrite a configuration it cannot read: {exc}",
             remedy=Remedy.REPAIR_CONFIG_FILE,
@@ -556,10 +562,14 @@ def _resolve_volume_id(
     except OSError as exc:
         # See ``_unreachable_root``. A refusal naming the path, under a slug of
         # its own, rather than a traceback the dispatcher files as a defect.
+        #
+        # ``path`` as well as ``root``, spelled the way every other refusal in
+        # the package spells it, because a consumer reading the actionable path
+        # out of a cause should not have to know which slug it arrived under.
         raise _refuse(
             _unreachable_root(root, exc),
             remedy=Remedy.GRANT_PATH_ACCESS,
-            detail={"key": "library.volume_id", "root": root},
+            detail={"key": "library.volume_id", "root": root, "path": root},
             reason="library-root-unreachable",
         ) from exc
     if source is None:
@@ -740,7 +750,8 @@ def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) 
     # not write and for a library volume mounted read only. Neither was handled,
     # so both escaped into the dispatcher's blanket and were rendered
     # "internal-error ... this is a defect; report it", which is verbatim the
-    # support failure R-18 item 3 records.
+    # support failure item 3 of the residual finding "Five places where "I could
+    # not look" is still not said out loud" records.
     #
     # TWO HANDLERS RATHER THAN ONE, because they are two different acts with two
     # different remedies in the same sentence family: one is a path this account

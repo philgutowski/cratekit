@@ -1458,7 +1458,9 @@ def _state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
 def test_conformance_6_destructive_verbs_refuse_without_the_session_gates(
     entry, configured, tmp_path
 ):
-    """Assertion 6, now that the write session has landed (U8, R-5).
+    """Assertion 6, now that the write session has landed (U8, and the residual
+    finding "Four conformance assertions are written in full and gated on units
+    that have not landed").
 
     Three refusals, three distinct codes, zero writes each time: a lock held
     elsewhere is 20, a missing backup acknowledgment is 32, and a volume whose

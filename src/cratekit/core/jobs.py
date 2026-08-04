@@ -55,7 +55,7 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from cratekit.cli.output import new_run_id, timestamp
 from cratekit.core import config
-from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
+from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, name_the_database, refuse
 from cratekit.core.exit_codes import Remedy
 
 #: The queue's own schema version. A cross-version resume REFUSES rather than
@@ -287,22 +287,39 @@ class JobStore:
         # Left on, the driver opens a DEFERRED transaction that takes its write
         # lock at the first WRITE, which is after the SELECT that chose the item,
         # and that gap is precisely how two drivers claim the same item.
-        self.conn = sqlite3.connect(str(path), isolation_level=None, timeout=30.0)
-        self.conn.row_factory = sqlite3.Row
-        # The mode goes on BEFORE the write-ahead-log pragma, because SQLite
-        # gives the log and shared-memory files the permissions the database file
-        # has when it creates them. Doing it afterwards would leave two
-        # umask-moded sidecars beside a correctly moded database, which is the
-        # "file mode without the directory mode" defect one level along: the
-        # queue's real contents live in the log until a checkpoint.
-        _make_private(path)
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA synchronous=FULL")
-        # A concurrent writer holds the database for one small transaction, so
-        # waiting is right and failing immediately is not. The busy timeout is
-        # the difference between two processes serializing and one of them
-        # raising "database is locked" at the user.
-        self.conn.execute("PRAGMA busy_timeout=30000")
+        #
+        # THE DRIVER'S ERROR CARRIES NO PATH AND NO ERRNO, so the whole opening
+        # sequence is named. A queue file this account cannot open raises
+        # ``sqlite3.OperationalError("unable to open database file")``, which is
+        # not an ``OSError``: no errno, no filename, no ``__cause__``. Every
+        # errno-shaped classification in the package was blind to it, and the
+        # verb exited "this is a defect; report it" over a chmod on the file this
+        # program keeps its own state in. The pragmas are inside the same block
+        # because a database on a read only volume connects and then refuses the
+        # write-ahead-log pragma with SQLITE_READONLY.
+        #
+        # It records the path on the SAME exception and re-raises it untouched,
+        # so the traceback, the class and every existing catcher are unaffected.
+        try:
+            self.conn = sqlite3.connect(str(path), isolation_level=None, timeout=30.0)
+            self.conn.row_factory = sqlite3.Row
+            # The mode goes on BEFORE the write-ahead-log pragma, because SQLite
+            # gives the log and shared-memory files the permissions the database
+            # file has when it creates them. Doing it afterwards would leave two
+            # umask-moded sidecars beside a correctly moded database, which is
+            # the "file mode without the directory mode" defect one level along:
+            # the queue's real contents live in the log until a checkpoint.
+            _make_private(path)
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA synchronous=FULL")
+            # A concurrent writer holds the database for one small transaction,
+            # so waiting is right and failing immediately is not. The busy
+            # timeout is the difference between two processes serializing and one
+            # of them raising "database is locked" at the user.
+            self.conn.execute("PRAGMA busy_timeout=30000")
+        except sqlite3.Error as exc:
+            name_the_database(exc, path)
+            raise
 
     def close(self) -> None:
         self.conn.close()

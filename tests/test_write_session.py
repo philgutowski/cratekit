@@ -21,7 +21,8 @@ standing debts it is on the hook to close.
 
 Plus:
 
-* R-8. The backup restore passes the same gates, because KTD24 binds them to
+* The residual finding "The backup restore is not yet bound to the
+  destructive-session gates". The backup restore passes the same gates, because KTD24 binds them to
   destruction and a restore destroys while writing no database row.
 * The runtime half of R17's fifth surface: a real analysis file is moved while a
   session is open and the session refuses.
@@ -983,7 +984,8 @@ def test_the_watched_set_covers_every_file_surface_five_declares():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# R-8: the backup restore passes the same gates
+# The residual finding "The backup restore is not yet bound to the
+# destructive-session gates": the backup restore passes the same gates
 # ═══════════════════════════════════════════════════════════════════════════
 
 

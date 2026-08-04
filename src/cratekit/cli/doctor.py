@@ -254,7 +254,9 @@ def _rclone_remotes(rclone: str) -> Mapping[str, Mapping[str, Any]] | None:
     """Every configured rclone remote and its settings, or None if unreadable.
 
     ``config dump`` is asked for rather than ``listremotes`` because the question
-    is not only whether a remote exists but how it is configured: R-7 records
+    is not only whether a remote exists but how it is configured: the residual
+    finding "Backup pruning reclaims space only if the remote is configured to"
+    records
     that a provider which trashes on delete reclaims nothing when a backup is
     pruned unless its per-remote option says otherwise, and ``listremotes``
     cannot answer that.
@@ -294,7 +296,8 @@ def _checkout_root() -> Path | None:
 
     ``src/cratekit/__init__.py`` sits two directories below the root, so the
     walk is arithmetic rather than a search. An installed wheel has no ``.git``
-    beside it and the answer is None, which is what makes R-1's check a
+    beside it and the answer is None, which is what makes the check asked for by
+    the residual finding "The commit hook is off by default on a fresh clone" a
     developer check that says nothing on a user's machine.
     """
     root = Path(cratekit.__file__).resolve().parents[2]
@@ -634,12 +637,19 @@ def _check_config(inputs: _Inputs) -> Finding:
     # hierarchy, so it is read directly. A ``getattr`` with a default here would
     # hand back a permissive answer for a field whose whole purpose is that the
     # five failures do NOT share one remediation.
+    #
+    # AND THEN THE CLASSIFICATION OVERRULES IT WHEN THE OPERATING SYSTEM IS WHAT
+    # REFUSED. A config file with mode 0o000 is byte for byte intact, and this
+    # check reported "repair or recreate it" over it, which is a report telling
+    # its reader to rewrite a file that is perfectly good. The declared remedy
+    # stands for every other way a config can be unusable.
+    note = render.access_note(error)
     return Finding(
         key=key,
         title=title,
         status=Status.FAIL,
-        detail=str(error),
-        remedy=Remedy(str(error.remedy)),
+        detail=str(error) + (f". {note}" if note else ""),
+        remedy=access_remedy(error, otherwise=Remedy(str(error.remedy))),
     )
 
 
@@ -1454,7 +1464,8 @@ class TrashPolicy:
     disabled: str = "false"
 
 
-#: What each rclone remote type does on delete. R-7: pruning a backup archive on a
+#: What each rclone remote type does on delete. The residual finding "Backup pruning
+#: reclaims space only if the remote is configured to": pruning a backup archive on a
 #: provider that trashes reclaims nothing for the retention period unless the
 #: remote's own option says otherwise, and the source system solved it by passing
 #: a Drive flag from inside the prune, which is the one-provider assumption this
@@ -1767,7 +1778,8 @@ def _hook_dispatch_problem(body: str, root: Path) -> str | None:
     satisfied by a hook whose entire content is the comment ``# pre-commit``, and
     by a hook that dispatches to a completely different repository's
     configuration. Both report green while nothing scans the commit, which is the
-    state R-1 exists to end, and the check's own message already CLAIMED it
+    state the residual finding "The commit hook is off by default on a fresh
+    clone" exists to end, and the check's own message already CLAIMED it
     refused when the hook "does not dispatch to this repository's pre-commit
     configuration". This makes the claim and the code agree.
 
@@ -1807,7 +1819,7 @@ def _hook_dispatch_problem(body: str, root: Path) -> str | None:
 
 
 def _check_commit_hook(inputs: _Inputs) -> Finding:
-    """R-1: the repository's own guard is off by default on a fresh clone.
+    """The residual finding "The commit hook is off by default on a fresh clone".
 
     A personal path or a credential that reaches a commit is already in the
     history, and removing it is a rewrite every clone has to follow. The scan is

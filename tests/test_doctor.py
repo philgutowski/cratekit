@@ -25,6 +25,7 @@ green and wrong:
 from __future__ import annotations
 
 import ast
+import errno
 import json
 import os
 import sys
@@ -36,11 +37,12 @@ import pytest
 from cratekit import cli
 from cratekit.acquire import adapter as adapter_contract
 from cratekit.cli import doctor, prompt, registry, render
+from cratekit.cli import jobs as jobs_cli
 from cratekit.cli import setup as setup_verb
 from cratekit.cli.doctor import Probes as RealProbes
 from cratekit.cli.verbs import login as login_verb
-from cratekit.core import backup_facts, binaries, config, profiles, secrets, session
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope
+from cratekit.core import backup_facts, binaries, config, jobs, profiles, secrets, session
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from tests import doctor_machines
 
@@ -694,7 +696,8 @@ def test_a_recorded_backup_reports_its_age_and_its_destination(configured):
 
 
 def test_a_remote_whose_provider_trashes_on_delete_is_reported(configured):
-    """R-7, closed. The source system passed a provider flag from inside the
+    """The residual finding "Backup pruning reclaims space only if the remote is
+    configured to", closed. The source system passed a provider flag from inside the
     prune, which is the one-provider assumption this port removed; without the
     per-remote option a pruned archive keeps counting against the quota, which is
     the whole point of pruning.
@@ -755,7 +758,7 @@ def hook_finding(library, checkout) -> doctor.Finding:
 
 
 def test_the_commit_hook_check_says_nothing_on_an_installed_package(library):
-    """R-1 is a developer check. Reporting a missing developer tool to somebody
+    """The commit hook finding is a developer check. Reporting a missing developer tool to somebody
     who is not a developer is noise, and noise is what stops the report being read.
     """
     installed = find(
@@ -805,7 +808,8 @@ def test_the_commit_hook_check_says_nothing_on_an_installed_package(library):
 def test_a_hook_that_does_not_dispatch_to_this_repository_is_refused(
     library, tmp_path, body, config_file, because
 ):
-    """R-1's own sentence, made true.
+    """The sentence of the residual finding "The commit hook is off by default on a
+    fresh clone", made true.
 
     The check CLAIMED it refused when the hook "does not dispatch to this
     repository's pre-commit configuration" and tested ``"pre-commit" in body``,
@@ -2140,7 +2144,8 @@ def test_a_template_name_shaped_like_a_path_is_a_configuration_problem(library):
 def test_a_provider_with_a_recycle_bin_is_no_longer_green_by_default(configured, kind):
     """The one-row table reported OK for every type that was not in it.
 
-    R-7 is entirely about providers that trash on delete, and four of them read
+    The residual finding "Backup pruning reclaims space only if the remote is
+    configured to" is entirely about providers that trash on delete, and four of them read
     green over the exact condition the check exists to find, because the branch
     said "no row, therefore fine".
     """
@@ -3021,7 +3026,9 @@ def test_the_presence_index_has_no_locking_helper_left_to_deadlock_on():
 # ── a check that cannot answer says so, and the report survives it ───────────
 
 
-def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(configured):
+def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(
+    configured, tmp_path
+):
     """BLOCKING. ``run`` documented "never raise" and nothing made it true.
 
     Three of these checks reach the outside world through calls that raise on an
@@ -3036,12 +3043,26 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(con
     carries report-defect, which pinned the defect this unit was sent back for
     three rounds running: doctor told the user their own filesystem permission was
     a Cratekit bug, on the same page where the wizard told them it was not.
+
+    THE REFUSAL IS REAL IN ROUND SEVEN. It was a hand-built
+    ``PermissionError(13)`` with no filename on it, and the sentence the product
+    then rendered told the reader to grant access to "the path named below" with
+    nothing below it. A refusal with no path is now not claimed as one, which is
+    what made this leg fail until it drove a real directory with mode 0o000.
     """
+    sealed = tmp_path / "sealed"
+    sealed.mkdir()
+    inside = sealed / "inside"
+    inside.write_text("x")
+    sealed.chmod(0o000)
 
     def blind():
-        raise PermissionError(13, "this account may not enumerate processes")
+        inside.read_text()
 
-    report = doctor.run(configured, probes=probes(process_lister=blind))
+    try:
+        report = doctor.run(configured, probes=probes(process_lister=blind))
+    finally:
+        sealed.chmod(0o700)
 
     # Every check still answered, in order.
     assert [f.key for f in report.findings] == list(doctor.CHECK_KEYS)
@@ -3051,6 +3072,7 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(con
     assert "PermissionError" in broken.detail
     assert broken.remedy is Remedy.GRANT_PATH_ACCESS
     assert "rather than a defect in this program" in broken.detail
+    assert str(inside) in broken.detail, "a permission with no path to grant is unactionable"
     # And the answers either side of it are the real ones rather than casualties.
     assert find(report, "interpreter.version").status is doctor.Status.OK
     assert find(report, "library.identity").status is doctor.Status.OK
@@ -3797,7 +3819,8 @@ def test_a_platform_with_no_declared_row_refuses_nothing(tmp_path, monkeypatch):
     """An empty table is "nothing to refuse", not "refuse everything".
 
     Inventing a location for a platform nobody has described would refuse
-    ordinary paths on it. The gap for Windows specifically is R-18 item 1.
+    ordinary paths on it. The gap for Windows specifically is item 1 of the residual
+    finding "Five places where "I could not look" is still not said out loud".
     """
     from cratekit.core import preflight
 
@@ -4041,7 +4064,8 @@ def test_a_template_that_ships_and_will_not_open_is_a_damaged_install_too(
 
 
 def test_the_status_verb_survives_a_state_directory_that_cannot_be_walked(monkeypatch):
-    """ZERO DEATH, and R-20 item 1 argued it could not be anything else.
+    """ZERO DEATH, and item 1 of the residual finding "Two rescues that are kept
+    without being covered" argued it could not be anything else.
 
     The argument was about the TRIGGER and it stands: measured on this
     interpreter, ``Path.glob`` swallows a ``PermissionError`` inside its own
@@ -4194,7 +4218,8 @@ def sealed_ancestor(tmp_path):
 def test_the_wizard_refuses_an_unreachable_ancestor_rather_than_filing_a_defect(
     sealed_ancestor,
 ):
-    """R-18 item 3, and what it recorded was not what happens.
+    """Item 3 of the residual finding "Five places where "I could not look" is
+    still not said out loud", and what it recorded was not what happens.
 
     It said the wizard "exits with a traceback" and deferred it because a
     traceback is loud rather than wrong. Driven end to end there is no traceback:
@@ -4367,60 +4392,92 @@ def test_doctor_still_answers_every_check_over_an_unreachable_root(
 # is what pinned the wrong answer for three rounds.
 
 
+@pytest.mark.parametrize("arrangement", ["configuration-directory", "library-root"])
 def test_both_verbs_answer_a_real_permission_with_an_act_the_user_can_perform(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, arrangement
 ):
     """THE WHOLE VERB, through the real dispatcher, against a real 0o000 directory.
 
-    Two arrangements, because the defect had two homes. A library root behind a
-    sealed ancestor is answered by the verbs themselves; a configuration
-    directory behind one is answered by NOBODY, because ``config.load`` stats the
-    file before it reads it and a stat is not a ``ConfigError``. That second one
-    is what the dispatcher's classification is for: a site nobody has guarded
-    still comes out as a permission rather than as a defect report.
+    TWO ARRANGEMENTS, AND ONLY ONE OF THEM USED TO RUN. The docstring named both
+    and the body sealed only the configuration directory: the library root was
+    created fresh under ``tmp_path`` and nothing ever refused it, so the row
+    called "the whole verb" covered exactly one sealed location and asserted one
+    slug that the other arrangement does not produce. Both are driven now, and
+    what is asserted per arrangement is what that arrangement is entitled to.
 
-    What is asserted is the thing a user reads. Not a slug, not an exception
-    type: whether the product told them to file a bug about their own filesystem.
+    A library root behind a sealed ancestor is answered by the verbs THEMSELVES,
+    under their own slug, because a refusal that knows which path it was about
+    keeps the better name for it. A configuration directory behind one is
+    answered by NOBODY, because ``config.load`` stats the file before it reads it
+    and a stat is not a ``ConfigError``.
+
+    What is asserted in both is the thing a user reads. Not a slug, not an
+    exception type: whether the product told them to file a bug about their own
+    filesystem, and whether it named the path they have to act on.
     """
     sealed = tmp_path / "sealed"
     (sealed / "cfg").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(sealed / "cfg"))
+    library = (sealed / "lib") if arrangement == "library-root" else (tmp_path / "library")
+    if arrangement == "library-root":
+        library.mkdir()
+        monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "cfg"))
+    else:
+        monkeypatch.setenv(config.ENV_CONFIG_DIR, str(sealed / "cfg"))
     config.reset_cache()
     monkeypatch.setattr(doctor, "Probes", lambda: probes())
+
+    argv = [
+        "--output", "json", "setup",
+        "--library-root", str(library),
+        "--db-path", str(library / "db" / "master.db"),
+        "--staging", str(tmp_path / "staging"),
+        "--profile", "slim",
+        "--taxonomy", "default",
+    ]
+    if arrangement == "configuration-directory":
+        # The identity is supplied, so the run reaches the configuration file.
+        # Withholding it in the other arrangement is what makes the wizard DERIVE
+        # an identity, which is the act that meets the sealed ancestor.
+        argv += ["--volume-id", VOLUME]
 
     sealed.chmod(0o000)
     try:
         doctor_code, doctor_out, doctor_err = drive(["--output", "json", "doctor"])
-        setup_code, setup_out, setup_err = drive(
-            [
-                "--output", "json", "setup",
-                "--library-root", str(tmp_path / "library"),
-                "--db-path", str(tmp_path / "library" / "db" / "master.db"),
-                "--volume-id", VOLUME,
-                "--staging", str(tmp_path / "staging"),
-                "--profile", "slim",
-                "--taxonomy", "default",
-            ]
-        )
+        setup_code, setup_out, setup_err = drive(argv)
     finally:
         sealed.chmod(0o755)
         config.reset_cache()
 
-    for code, out, err in (
-        (doctor_code, doctor_out, doctor_err),
-        (setup_code, setup_out, setup_err),
-    ):
+    surfaces = [(setup_code, setup_out, setup_err)]
+    if arrangement == "configuration-directory":
+        # Doctor reports on the CONFIGURATION it could not load. With the config
+        # readable and only the library sealed, it reports a library finding and
+        # exits on the FAIL band rather than refusing, which the check-table
+        # tests already cover; this row is about a refusal.
+        surfaces.append((doctor_code, doctor_out, doctor_err))
+
+    for code, out, err in surfaces:
         envelope = json.loads(out)
         cause = envelope["cause"]
-        assert code == int(ExitCode.PRECONDITION), err
-        assert cause["reason"] == "path-permission-denied"
-        assert cause["remediation"]["remedy"] == "grant-path-access"
+        # The ACT is the same in both, and it is what the user performs.
+        assert cause["remediation"]["remedy"] == "grant-path-access", err
         assert "report it" not in err
         assert "report-defect" not in out
         # The path is the entire actionable content: "permission denied" with
         # nothing to grant access TO is a sentence nobody can act on.
         assert str(sealed) in cause["message"]
         assert cause["detail"]["path"] is not None
+        # THE SLUG AND THE CODE DIFFER BY ARRANGEMENT, and both are right. A
+        # refusal that knows the path was the LIBRARY says so on the library's
+        # band; one raised where nobody knew which path it was says so on the
+        # installation's, and only that one is written by the classification.
+        if arrangement == "library-root":
+            assert cause["reason"] == "library-root-unreachable"
+            assert code == int(ExitCode.LIBRARY_UNAVAILABLE)
+        else:
+            assert cause["reason"] == "path-permission-denied"
+            assert code == int(ExitCode.PRECONDITION)
+            assert f"The path is {cause['detail']['path']}." in cause["message"]
 
 
 def test_the_help_screen_survives_a_configuration_directory_it_cannot_open(
@@ -4756,14 +4813,603 @@ def test_the_classification_reads_the_declared_cause_and_not_the_context(tmp_pat
         assert exc.__context__ is denied
         assert cause_module.permission_denied(exc) is None
 
+    # ``access_remedy`` chooses an ACT, so it asks the question that requires a
+    # path. ``permission_denied`` above answers a narrower one for the callers
+    # deciding whether to re-raise, and they tell nobody anything.
+    named = PermissionError(13, "refused", str(tmp_path / "sealed" / "inside"))
     assert (
-        cause_module.access_remedy(denied, otherwise=Remedy.REPORT_DEFECT)
+        cause_module.access_remedy(named, otherwise=Remedy.REPORT_DEFECT)
         is Remedy.GRANT_PATH_ACCESS
     )
     assert (
         cause_module.access_remedy(RuntimeError("x"), otherwise=Remedy.REPORT_DEFECT)
         is Remedy.REPORT_DEFECT
     )
+    assert (
+        cause_module.access_remedy(denied, otherwise=Remedy.REPORT_DEFECT)
+        is Remedy.REPORT_DEFECT
+    ), "a refusal naming no path has no path to grant access to"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Round seven: the classification lives where a refusal is CONSTRUCTED
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Round six put the decision in two blankets, the dispatcher and doctor's check
+# runner, and argued it from a property that measurement contradicts: an AST walk
+# over the package finds nineteen ``except OSError`` sites that raise a
+# structured refusal, and eighteen of them never reach either blanket, because a
+# blanket only ever sees what nobody caught. Three of the eighteen hard coded the
+# wrong answer. So the decision moved to ``cause.classified``, which every
+# structured refusal in the package passes through, and the tests below drive it
+# from the OUTSIDE: real permissions, a real read only volume, a real locked
+# file, and the driver level error this program's own state store raises.
+
+
+def _sealed(path: Path):
+    """A real 0o000 file, restored however the test ends."""
+    import contextlib
+
+    @contextlib.contextmanager
+    def arranged():
+        before = path.stat().st_mode
+        path.chmod(0o000)
+        try:
+            yield path
+        finally:
+            path.chmod(before & 0o777)
+
+    return arranged()
+
+
+def test_a_sealed_state_database_answers_with_its_path_and_an_act(tmp_path, monkeypatch):
+    """F1. THE CLASSIFICATION WAS BLIND TO EVERYTHING ARRIVING THROUGH A C EXTENSION.
+
+    ``sqlite3.OperationalError`` is not an ``OSError``. It carries no errno, no
+    filename and no ``__cause__``, so an errno-shaped rule answers None for it,
+    and this program keeps its own job queue in SQLite. Driven end to end, a
+    ``chmod 000`` on ``queue.db`` with every directory left traversable produced
+    exit 1, ``internal-error``, ``report-defect`` and "this is a defect; report
+    it" over a file the user had every ability to fix.
+
+    The connection site is the only place that knows WHICH file the driver meant,
+    so it records it; the classification then measures the path rather than
+    assuming, and answers with a remedy and the path to apply it to.
+    """
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
+    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
+    config.reset_cache()
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    config.save(config.from_dict(document_for(root)))
+    config.reset_cache()
+
+    # One clean run, which is what creates the queue.
+    code, _out, _err = drive(["--output", "json", "job", "list"])
+    assert code == 0, "the arrangement itself must be green before it is broken"
+    queue = jobs.queue_path()
+    assert queue.exists()
+
+    with _sealed(queue):
+        code, out, err = drive(["--output", "json", "job", "list"])
+
+    envelope = json.loads(out)
+    cause = envelope["cause"]
+    assert cause["reason"] == "path-permission-denied", cause
+    assert cause["remediation"]["remedy"] == "grant-path-access"
+    assert cause["detail"]["path"] == str(queue)
+    assert str(queue) in cause["message"]
+    assert code == int(ExitCode.PRECONDITION)
+    assert "report it" not in err
+    assert "report-defect" not in out
+
+
+def test_a_refusal_that_names_no_path_does_not_claim_one(tmp_path, monkeypatch):
+    """F2. OVER CLASSIFICATION, AND THE SENTENCE IT PRODUCED HAD NOTHING IN IT.
+
+    The kernel refuses several things that are not paths at all: a bind to a
+    privileged port and a signal to another account's process both raise
+    ``PermissionError`` with ``filename`` set to None. The old rule said "yes, a
+    permission" for those, and the line the user then read was "this account
+    cannot reach or write the path named below; grant this interpreter access to
+    it, on macOS through Full Disk Access" with no path below it, over an act
+    Full Disk Access has nothing to do with.
+
+    A guard that misfires on ordinary code is not a lesser failure than one that
+    misses. The classification now requires a path before it asserts one, and
+    what has no path stays the honest "this program did not anticipate it".
+    """
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
+    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    config.reset_cache()
+    config.save(config.from_dict(document_for(root)))
+    config.reset_cache()
+
+    def refused(_ctx):
+        # A REAL kernel refusal with no path in it: signalling another account's
+        # process. Nothing is sent; signal 0 asks permission and nothing else.
+        # NOT GUARDED WITH A SKIP, because a skip is a guard switched off with no
+        # record of when it comes back. An account that CAN signal pid 1 is root,
+        # on which the whole 0o000 suite is meaningless anyway, and this fails
+        # loudly there instead of passing quietly.
+        os.kill(1, 0)
+        raise AssertionError("this account signalled pid 1, so the arrangement is void")
+
+    monkeypatch.setattr(jobs_cli, "list_jobs", refused)
+    code, out, err = drive(["--output", "json", "job", "list"])
+
+    envelope = json.loads(out)
+    cause = envelope["cause"]
+    assert cause["reason"] == "internal-error", cause
+    assert cause["remediation"]["remedy"] == "report-defect"
+    assert "path named below" not in err
+    assert "the arrangement is void" not in cause["message"]
+    assert code == int(ExitCode.INTERNAL)
+    # And the sentence is not produced at all, rather than produced empty.
+    assert render.access_note(PermissionError(1, "Operation not permitted")) is None
+
+
+def test_a_read_only_volume_is_not_sent_to_full_disk_access(tmp_path):
+    """F8. EROFS WAS NOT CLASSIFIED, SO THE ADVICE WAS EITHER A DEFECT OR WRONG.
+
+    A read only volume refuses every writer on the machine. No permission grant
+    changes that, so "grant this interpreter access, on macOS through Full Disk
+    Access" is an instruction that cannot succeed, and ``internal-error`` with
+    "report it" beside it is worse. A DJ's library on a read only disk image or a
+    write protected card is ordinary.
+
+    The refusal here is REAL. Every current macOS mounts its system volume read
+    only, so a write to it is the kernel's own EROFS rather than a constructed
+    one, and the test says so rather than asserting it.
+    """
+    from cratekit.core import cause as cause_module
+
+    refused: OSError | None = None
+    try:
+        os.mkdir("/cratekit-u27-read-only-probe")
+    except OSError as exc:
+        refused = exc
+    else:  # pragma: no cover - only on a machine with a writable root volume
+        os.rmdir("/cratekit-u27-read-only-probe")
+        raise AssertionError("this machine's root volume is writable, so it proves nothing")
+    assert refused.errno == errno.EROFS, (
+        f"this machine's root volume answered {refused.errno} rather than EROFS, "
+        f"so the arrangement is not a read only volume"
+    )
+
+    refusal = cause_module.access_refusal(refused)
+    assert refusal is not None, "a read only volume was read as an unanticipated failure"
+    assert refusal.kind is cause_module.AccessKind.READ_ONLY
+    assert refusal.path == "/cratekit-u27-read-only-probe"
+    assert refusal.remedy is Remedy.REMOUNT_WRITABLE
+    assert refusal.reason == "path-read-only"
+
+    words = render.remedy_text(Remedy.REMOUNT_WRITABLE)
+    assert "Full Disk Access" not in words
+    assert "read only" in words
+    note = render.access_note(refused)
+    assert "/cratekit-u27-read-only-probe" in note
+    assert "Full Disk Access" not in note
+
+    # And it travels: a refusal built anywhere in the package under an EROFS is
+    # answered with the act for a read only volume rather than with the act for a
+    # permission, even where the site itself named the permission.
+    try:
+        try:
+            os.mkdir("/cratekit-u27-read-only-probe")
+        except OSError as inner:
+            raise refuse(
+                "library-root-unreachable",
+                "the library root could not be created",
+                remedy=Remedy.GRANT_PATH_ACCESS,
+            ) from inner
+    except CratekitError as err:
+        assert err.cause.remediation.remedy is Remedy.REMOUNT_WRITABLE
+        assert err.declared_cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
+
+
+def test_a_locked_file_is_routed_to_the_lock_and_names_the_destination(tmp_path, monkeypatch):
+    """F5. THE COMMONEST NON PERMISSION EPERM ON macOS, ANSWERED TWO WAYS WRONG.
+
+    Finder's "Locked" checkbox writes the ``uchg`` flag, and a write to a file
+    carrying it fails EPERM for the file's own owner. Full Disk Access will never
+    make that write succeed; ``chflags nouchg`` will.
+
+    AND THE PATH IT NAMED DID NOT EXIST. Every state file is written by renaming
+    a temporary one over the destination, and ``os.replace`` reports the SOURCE
+    in ``filename``. So the product named ``cfg/tmpXXXX.tmp`` at the user, a file
+    that is gone by the time they read about it, while the file they actually
+    have to unlock went unmentioned. The destination is in ``filename2`` and is
+    what is read first now.
+    """
+    import subprocess
+
+    from cratekit.core import cause as cause_module
+
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
+    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
+    config.reset_cache()
+    destination = config.config_path()
+    destination.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
+    locked = subprocess.run(["chflags", "uchg", str(destination)], check=False)
+    assert locked.returncode == 0, "this platform has no per-file lock flag to drive"
+
+    try:
+        code, out, err = drive(
+            [
+                "--output", "json", "setup",
+                "--library-root", str(tmp_path / "library"),
+                "--db-path", str(tmp_path / "library" / "db" / "master.db"),
+                "--volume-id", VOLUME,
+                "--staging", str(tmp_path / "staging"),
+                "--profile", "slim",
+                "--taxonomy", "default",
+            ]
+        )
+    finally:
+        subprocess.run(["chflags", "nouchg", str(destination)], check=False)
+        config.reset_cache()
+
+    envelope = json.loads(out)
+    cause = envelope["cause"]
+    assert cause["reason"] == "path-locked", cause
+    assert cause["remediation"]["remedy"] == "unlock-path"
+    assert cause["detail"]["path"] == str(destination), "the temporary file was named again"
+    assert ".tmp" not in cause["detail"]["path"]
+    assert "chflags nouchg" in err
+    assert "Full Disk Access" not in err
+    assert code == int(ExitCode.PRECONDITION)
+
+    # AND THE DESTINATION RULE IS NOT ONLY THE LOCK'S. A rename into a directory
+    # this account cannot write refuses the same way with no lock anywhere in it,
+    # and ``filename`` is still the temporary file. Driven separately because the
+    # locked leg above finds its path through the flag rather than through the
+    # ordering, so the ordering was covered by nothing.
+    source = tmp_path / "source"
+    source.mkdir()
+    staged = source / "tmpABCD.tmp"
+    staged.write_text("x")
+    unwritable = tmp_path / "unwritable"
+    unwritable.mkdir()
+    landing = unwritable / "config.toml"
+    unwritable.chmod(0o500)
+    try:
+        try:
+            os.replace(staged, landing)
+        except OSError as exc:
+            renamed = cause_module.access_refusal(exc)
+    finally:
+        unwritable.chmod(0o700)
+    assert renamed is not None
+    assert renamed.path == str(landing), "the temporary file was named instead"
+    assert ".tmp" not in renamed.path
+
+
+def test_the_session_reader_does_not_read_absence_out_of_a_refusal(tmp_path, monkeypatch):
+    """F3, site one, and recurring defect one: ABSENCE READ AS EVIDENCE OF ABSENCE.
+
+    One handler over every ``OSError`` answered "no session is recorded with the
+    identifier 'x'" for a record this account was not allowed to open, under
+    ``internal-error`` with ``report-defect`` beside it. Two wrong claims in one
+    raise: a read that never happened reported as a fact about what is there, and
+    a permission reported as a defect in this program.
+    """
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "cfg"))
+    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    config.reset_cache()
+    cfg = config.from_dict(document_for(root))
+
+    path = session.log_path("session-abc", cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}")
+
+    with _sealed(path):
+        with pytest.raises(CratekitError) as excinfo:
+            session.read_record("session-abc", cfg)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "path-permission-denied"
+    assert cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
+    assert cause.detail["path"] == str(path)
+    assert "no session is recorded" not in cause.message
+    assert "was not established" in cause.message
+
+    # AND ABSENCE IS STILL ABSENCE. Splitting the handler must not cost the
+    # answer that was right: a record that genuinely is not there still says so.
+    path.unlink()
+    with pytest.raises(CratekitError) as absent:
+        session.read_record("session-abc", cfg)
+    assert "no session is recorded" in absent.value.cause.message
+
+
+def test_the_acknowledgment_reader_does_not_claim_the_file_exists(tmp_path, monkeypatch):
+    """F3, site two. "Exists and could not be read" was not established either.
+
+    Absent is caught above by its own class, so everything reaching that handler
+    is a read that did not happen, and an untraversable PARENT fails exactly that
+    way while establishing nothing about what is under it. ``backup_facts`` says
+    this in so many words one module over; this site said the opposite.
+    """
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "cfg"))
+    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    config.reset_cache()
+    cfg = config.from_dict(document_for(root))
+
+    ack = session.ack_path(cfg)
+    ack.parent.mkdir(parents=True, exist_ok=True)
+    ack.write_text("{}")
+
+    with _sealed(ack):
+        with pytest.raises(CratekitError) as excinfo:
+            session.read_acknowledgment(cfg)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "path-permission-denied"
+    assert cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
+    assert "exists and could not be read" not in cause.message
+    assert "whether it is even there was not established" in cause.message
+
+
+def test_an_unreadable_capture_manifest_is_not_a_defect_report(tmp_path):
+    """F3, site three. The same hard coded ``report-defect``, one module over.
+
+    Nothing about the SENTENCE here was wrong. What was wrong is that the act
+    beside it was "report a defect" whatever the operating system said, and the
+    ``raise ... from exc`` at the site is what lets the refusal constructor
+    overrule it.
+    """
+    from cratekit.core import snapshot
+
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    manifest = capture / snapshot.MANIFEST_NAME
+    manifest.write_text("{}")
+
+    with _sealed(manifest):
+        with pytest.raises(CratekitError) as excinfo:
+            snapshot.read_manifest(capture)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "path-permission-denied"
+    assert cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
+    assert cause.detail["path"] == str(manifest)
+    # The site's own reading is kept, because it is still worth reading.
+    assert cause.detail["declared_reason"] == "internal-error"
+
+
+def test_the_wizard_does_not_call_an_intact_configuration_corrupt(tmp_path, monkeypatch):
+    """F4. "REPAIR OR RECREATE IT" OVER A FILE THAT IS BYTE FOR BYTE INTACT.
+
+    A configuration this account cannot read is not a configuration to repair,
+    and telling its owner to recreate it sends them to rewrite work they still
+    have. The third edge of the residual finding "Three edges of the permission
+    classification, stated rather than closed", the one that says the
+    classification stops at the configuration reader, scopes the
+    ``core/config.py`` half to another unit; this half is this unit's own file
+    and was left standing beside it.
+    """
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
+    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
+    config.reset_cache()
+    document = config.config_path()
+    document.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
+    intact = document.read_bytes()
+
+    with _sealed(document):
+        code, out, err = drive(
+            [
+                "--output", "json", "setup",
+                "--library-root", str(tmp_path / "library"),
+                "--db-path", str(tmp_path / "library" / "db" / "master.db"),
+                "--volume-id", VOLUME,
+                "--staging", str(tmp_path / "staging"),
+                "--profile", "slim",
+                "--taxonomy", "default",
+            ]
+        )
+    config.reset_cache()
+
+    envelope = json.loads(out)
+    cause = envelope["cause"]
+    assert cause["remediation"]["remedy"] != "repair-config-file", cause
+    assert cause["remediation"]["remedy"] == "grant-path-access"
+    assert cause["reason"] == "path-permission-denied"
+    assert code == int(ExitCode.PRECONDITION)
+    assert "repair or recreate" not in err
+    assert document.read_bytes() == intact, "the file it called unrepairable was never touched"
+
+
+def test_the_wizards_second_read_does_not_call_an_intact_configuration_corrupt(
+    tmp_path, monkeypatch
+):
+    """F4 at the site, not at the boundary. ``cli/setup.py`` reads the file TWICE.
+
+    An incomplete configuration is loaded, found invalid, and then re-opened raw
+    so the answers it does hold are kept. Its own comment says the second open is
+    what happens when "a file removed, a permission taken away, or a truncation"
+    lands between the two, and its handler answered ``repair-config-file`` for
+    every one of them. The permission leg tells a user to repair or recreate a
+    document that is byte for byte intact.
+
+    THE REFUSAL IS THE KERNEL'S. Only the TIMING is arranged: the real
+    ``config.load`` runs against a real file and the file is sealed after it
+    returns, which is exactly the window the handler exists for. What
+    ``existing_document`` then meets is a real 0o000 file through a real
+    ``Path.open``.
+    """
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
+    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
+    config.reset_cache()
+    document = config.config_path()
+    document.write_text("schema_version = 1\n")
+    intact = document.read_bytes()
+
+    real_load = config.load
+
+    def load_then_seal():
+        try:
+            return real_load()
+        finally:
+            document.chmod(0o000)
+
+    monkeypatch.setattr(setup_verb.config, "load", load_then_seal)
+    try:
+        with pytest.raises(CratekitError) as excinfo:
+            setup_verb.existing_document()
+    finally:
+        document.chmod(0o600)
+        config.reset_cache()
+
+    cause = excinfo.value.cause
+    assert cause.remediation.remedy is not Remedy.REPAIR_CONFIG_FILE
+    assert cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
+    assert cause.reason == "path-permission-denied"
+    assert cause.detail["path"] == str(document)
+    assert cause.detail["declared_reason"] == "config-unusable"
+    assert document.read_bytes() == intact, "the file it called unrepairable was never touched"
+
+
+def test_doctors_configuration_check_does_not_call_an_intact_file_corrupt(tmp_path, monkeypatch):
+    """F4 in the REPORT. ``config.present`` read the remedy off the error class.
+
+    ``ConfigError.remedy`` is a declared class attribute, which is right for
+    every way a configuration can genuinely be unusable and wrong for the one way
+    that is not the file's fault at all. A document with mode 0o000 is byte for
+    byte intact and the report told its owner to repair or recreate it, on the
+    same page the wizard tells them it is a permission.
+    """
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
+    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
+    config.reset_cache()
+    document = config.config_path()
+    document.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
+
+    with _sealed(document):
+        finding = find(doctor.run(probes=probes()), "config.present")
+    config.reset_cache()
+
+    assert finding.status is doctor.Status.FAIL
+    assert finding.remedy is not Remedy.REPAIR_CONFIG_FILE
+    assert finding.remedy is Remedy.GRANT_PATH_ACCESS
+    assert str(document) in finding.detail
+    assert "repair or recreate" not in (render.remedy_text(finding.remedy) or "")
+
+
+def test_a_verb_that_lets_a_config_error_escape_is_classified_too(tmp_path, monkeypatch):
+    """F4 at the LAST hop. Six verbs call ``config.load()`` and catch nothing.
+
+    The dispatcher converts a ``ConfigError`` that reaches it, reading the
+    remedy off the error class exactly as the report did. ``ConfigError`` is not
+    a ``CratekitError``, so the refusal constructor never sees it and this is the
+    one place the classification can be applied to that family.
+    """
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
+    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
+    config.reset_cache()
+    document = config.config_path()
+    document.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
+
+    with _sealed(document):
+        code, out, err = drive(["--output", "json", "review", "list"])
+    config.reset_cache()
+
+    cause = json.loads(out)["cause"]
+    assert cause["remediation"]["remedy"] == "grant-path-access", cause
+    assert cause["reason"] == "path-permission-denied"
+    assert cause["detail"]["path"] == str(document)
+    assert cause["detail"]["declared_reason"] == "config-unusable"
+    assert code == int(ExitCode.PRECONDITION)
+    assert "repair or recreate" not in err
+
+
+def test_the_access_sentence_names_the_path_it_is_about(tmp_path):
+    """F6, guard one: the path clause killed nothing and is the actionable half.
+
+    ``access_note``'s own docstring calls the path "the entire actionable
+    content", and deleting the clause that carries it killed no test, because the
+    only assertion near it was satisfied by the raw ``{exc}`` text that happens to
+    repeat the path. This asserts the clause itself.
+    """
+    sealed = tmp_path / "sealed"
+    sealed.mkdir()
+    inside = sealed / "inside"
+    inside.write_text("x")
+
+    with _sealed(sealed):
+        try:
+            inside.read_text()
+        except OSError as exc:
+            note = render.access_note(exc)
+
+    assert note.startswith(f"The path is {inside}. ")
+    assert "rather than a defect in this program" in note
+
+
+def test_the_cause_walk_terminates_on_a_chain_that_names_itself(tmp_path):
+    """F6, guard two: the cycle guard killed nothing, and without it nothing dies.
+
+    ``__cause__`` is assignable, so two exceptions can name each other, and the
+    walk over the chain is then infinite. A defect that HANGS is the worst shape
+    one can take: the process does not fail, it stops responding, and no failing
+    assertion is ever reached. It is driven in a subprocess with a deadline for
+    exactly that reason, because a test that hangs cannot report anything either.
+    """
+    import subprocess
+
+    script = (
+        "from cratekit.core import cause\n"
+        "a = OSError('one')\n"
+        "b = OSError('two')\n"
+        "a.__cause__ = b\n"
+        "b.__cause__ = a\n"
+        "assert cause.permission_denied(a) is None\n"
+        "assert cause.access_refusal(a) is None\n"
+        "print('terminated')\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
+    )
+    assert done.returncode == 0, done.stderr
+    assert "terminated" in done.stdout
+
+
+def test_is_mount_point_answers_an_unrepresentable_path(tmp_path):
+    """F7. The sibling ninety lines below catches this and this one did not.
+
+    ``os.path.ismount`` answers False for a path with an embedded null;
+    ``os.lstat`` raises ``ValueError`` for one. So the confirming stat added in
+    round six turned an answer into an exception for an input the standard
+    library already handles, in the one function three mount rules go through.
+    """
+    from cratekit.core import preflight
+
+    assert os.path.ismount("a\x00b") is False
+    assert preflight.is_mount_point(Path("a\x00b")) is False
+    assert preflight.slot_holds_a_volume(Path("a\x00b")) is False
 
 
 # ── the handler sweep: every rescue answers something, or says why it cannot ──

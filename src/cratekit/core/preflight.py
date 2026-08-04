@@ -347,7 +347,8 @@ def deepest_existing(path: Path) -> Path:
 #: :func:`root_can_be_created`, which the row made permanently False. The wizard
 #: refused to write the active template forever, doctor read for it, found
 #: nothing and answered with "run setup", and the user re-ran setup forever.
-#: Losing the row costs what R-18 already records for every hand-mounted
+#: Losing the row costs what the residual finding "Five places where "I could
+#: not look" is still not said out loud" already records for every hand-mounted
 #: location: a drive mounted there is accepted while it is detached. That is a
 #: gap in a platform that records no identity anyway, and it is smaller than a
 #: guard that refuses a correct install with no way out (P7).
@@ -429,6 +430,14 @@ def is_mount_point(path: Path) -> bool:
         if cause.permission_denied(exc) is not None:
             raise
         return False
+    except ValueError:
+        # An unrepresentable path, an embedded null among them. ``os.path.ismount``
+        # answers False for one and this function raised, which made it the only
+        # caller in the module that could not survive an input the standard
+        # library already handles. ``_names_one_path``, written in the same round
+        # ninety lines below, catches exactly this and says exactly this: the
+        # question was asked and the answer is no; nothing was refused.
+        return False
     return False
 
 
@@ -456,7 +465,15 @@ def slot_holds_a_volume(slot: Path) -> bool:
     """
     if is_mount_point(slot):
         return True
-    behind = Path(slot).resolve()
+    try:
+        behind = Path(slot).resolve()
+    except ValueError:
+        # An unrepresentable path, an embedded null among them. The same answer
+        # ``is_mount_point`` gives above and ``_names_one_path`` gives below: the
+        # question was asked and the answer is no. ``Path.resolve`` reaches
+        # ``lstat`` for every component, so guarding the seam alone left this
+        # caller raising over an input the seam already handles.
+        return False
     return behind != Path(slot) and is_mount_point(behind)
 
 
@@ -634,6 +651,14 @@ def root_can_be_created(configured_root: Path | str) -> bool:
     exist" test was a read signal applied to a write: it refused a first run on
     every platform with no identity adapter, which is every platform that is not
     macOS or Windows.
+
+    IT RAISES OVER A REFUSAL RATHER THAN ANSWERING, and the return annotation was
+    the only thing here that said otherwise. :func:`is_mount_point` underneath
+    re-raises when the operating system will not let this account look, because
+    "I could not look" is not "there is nothing there", and a directory with its
+    execute bit off is enough to reach that. The one production caller of
+    :func:`identity_source` handles it by name; a caller of this one has to do
+    the same rather than trusting the annotation alone.
     """
     return identity_source(Path(configured_root)) is not None
 

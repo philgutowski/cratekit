@@ -33,10 +33,13 @@ from __future__ import annotations
 
 import errno
 import json
-from dataclasses import dataclass, field
+import os
+import sqlite3
+import stat
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from cratekit.core.exit_codes import ExitCode, Remedy, meaning_of
 
@@ -47,18 +50,236 @@ from cratekit.core.exit_codes import ExitCode, Remedy, meaning_of
 #: base class carrying only its number.
 PERMISSION_ERRNOS: frozenset[int] = frozenset({errno.EACCES, errno.EPERM})
 
+#: The errno that means the MEDIUM refuses every writer, not this account.
+#: Granting an account more access cannot change it and no amount of Full Disk
+#: Access will, so it is a different act with a different sentence: remount the
+#: volume read write, or slide the card's write-protect tab back. A library on a
+#: read only disk image or a locked SD card is an ordinary DJ arrangement rather
+#: than an exotic one, and it used to arrive as an internal defect.
+READ_ONLY_ERRNOS: frozenset[int] = frozenset({errno.EROFS})
 
-def permission_denied(exc: BaseException | None) -> OSError | None:
-    """The permission this account does not hold, inside ``exc``, or None.
+#: SQLite's own names for "the file system would not give me this file". These
+#: arrive as ``sqlite3.OperationalError``, which is NOT an ``OSError``: it
+#: carries no errno, no filename and no ``__cause__``, so an errno rule alone is
+#: blind to every permission that reaches this program through the C extension
+#: it stores its own state in. The names are stable SQLite result-code names
+#: exposed by CPython 3.11 and later as ``sqlite_errorname``.
+DATABASE_ACCESS_ERRORNAMES: tuple[str, ...] = (
+    "SQLITE_CANTOPEN",
+    "SQLITE_READONLY",
+    "SQLITE_PERM",
+)
 
-    ONE DECISION, MADE ONCE, because making it per call site failed three
-    consecutive review rounds. A directory the operating system will not let this
-    interpreter open is not a defect in this program: it is a permission its user
-    can grant, and every layer that meets one has to say so. Rendering it as an
-    internal error sends a person to file a bug report about their own
-    filesystem, and on macOS that is the ROUTINE first run rather than an
-    exotic state: anything under Documents, Desktop, Downloads or an external
-    volume is refused this way for an interpreter without Full Disk Access.
+#: Where a driver records WHICH file its error was about. The driver knows the
+#: path and the exception does not carry one, so the knowledge is attached at
+#: the one place that has it rather than guessed at the place that does not.
+#: See :func:`name_the_database`.
+DATABASE_PATH_ATTRIBUTE = "cratekit_database_path"
+
+
+class AccessKind(StrEnum):
+    """Which kind of refusal the operating system made, because the acts differ.
+
+    Three different sentences and three different things for a person to do. The
+    vocabulary collapsed all three into "grant this interpreter access, on macOS
+    through Full Disk Access", which is the right instruction for exactly one of
+    them and confidently wrong for the other two: Full Disk Access will never
+    make a write to a read only volume succeed, and it will never clear Finder's
+    Locked checkbox.
+    """
+
+    #: This account is not allowed. Granting it access is the fix.
+    PERMISSION = "permission"
+    #: The volume refuses every writer. Remounting or unlocking the medium is.
+    READ_ONLY = "read-only"
+    #: A per-file immutable flag, which is what Finder's "Locked" checkbox sets.
+    LOCKED = "locked"
+
+
+#: The declared reason slug for each kind. They share an exit code, which is
+#: correct and is what the registry's own note describes: the band answers "can
+#: this installation proceed", and the slug is where the distinction stays
+#: useful.
+ACCESS_REASONS: Mapping[AccessKind, str] = MappingProxyType(
+    {
+        AccessKind.PERMISSION: "path-permission-denied",
+        AccessKind.READ_ONLY: "path-read-only",
+        AccessKind.LOCKED: "path-locked",
+    }
+)
+
+ACCESS_REMEDIES: Mapping[AccessKind, Remedy] = MappingProxyType(
+    {
+        AccessKind.PERMISSION: Remedy.GRANT_PATH_ACCESS,
+        AccessKind.READ_ONLY: Remedy.REMOUNT_WRITABLE,
+        AccessKind.LOCKED: Remedy.UNLOCK_PATH,
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class AccessRefusal:
+    """One refusal by the operating system, with the path it was about.
+
+    ``path`` IS NOT OPTIONAL, and that is the type's whole point. The
+    classification this replaces answered "yes, a permission" for a
+    ``PermissionError`` the kernel raised with no filename at all, which a
+    socket bind to a privileged port and ``os.setuid`` both produce, and the
+    sentence it then rendered told the user to grant access to "the path named
+    below" with no path below it. ``render.access_note``'s own docstring calls
+    the path "the entire actionable content"; a type that cannot be built
+    without one is how that stops being a docstring and starts being a rule.
+    """
+
+    kind: AccessKind
+    path: str
+
+    @property
+    def reason(self) -> str:
+        return ACCESS_REASONS[self.kind]
+
+    @property
+    def remedy(self) -> Remedy:
+        return ACCESS_REMEDIES[self.kind]
+
+
+def _chain(exc: BaseException | None) -> Iterator[BaseException]:
+    """``exc`` and its DECLARED causes, once each.
+
+    THE ``__cause__`` CHAIN IS FOLLOWED AND ``__context__`` IS NOT. An explicit
+    ``raise X from exc`` is a statement that this failure IS that failure, so a
+    wrapper may not hide a refusal underneath it. An implicit context is merely
+    "this happened while handling that", which is exactly what a handler that
+    catches a refusal, recovers, and then raises a real defect produces, and
+    reading it would classify that defect as a refusal.
+
+    The ``seen`` set is not decoration. ``__cause__`` is assignable, so a pair of
+    exceptions can name each other and this walk is then infinite; without it the
+    process does not fail, it stops responding, which is the worst shape a defect
+    in a classification can take.
+    """
+    seen: set[int] = set()
+    current = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        current = current.__cause__
+
+
+def _immutable(path: str) -> bool:
+    """Whether a per-file immutable flag is set on ``path``.
+
+    ``chflags uchg`` is what Finder's "Locked" checkbox writes, and it is the
+    commonest way a macOS user meets EPERM on a file they own and can see. The
+    flags field only exists on the BSD family, so its absence answers False
+    rather than raising.
+    """
+    try:
+        flags = getattr(os.lstat(path), "st_flags", 0)
+    except OSError:
+        return False
+    return bool(flags & (getattr(stat, "UF_IMMUTABLE", 0) | getattr(stat, "SF_IMMUTABLE", 0)))
+
+
+def _refused_path(exc: OSError) -> str | None:
+    """The path the refusal was about, DESTINATION first.
+
+    ``os.replace`` sets ``filename`` to the source and ``filename2`` to the
+    destination, and the guarded writer writes every file by renaming a
+    temporary one over it. Reading ``filename`` alone named ``cfg/tmpXXXX.tmp``
+    at the user, a path that no longer exists by the time they read about it,
+    while the file they actually have to unlock went unmentioned.
+    """
+    for candidate in (exc.filename2, exc.filename):
+        if candidate is None:
+            continue
+        if isinstance(candidate, bytes):
+            return os.fsdecode(candidate)
+        return str(candidate)
+    return None
+
+
+def _from_os_error(exc: BaseException) -> AccessRefusal | None:
+    if not isinstance(exc, OSError):
+        return None
+    path = _refused_path(exc)
+    if path is None:
+        # A refusal with no path is not a refusal this program can tell anybody
+        # how to fix, so it is not claimed as one. See ``AccessRefusal``.
+        return None
+    if exc.errno in READ_ONLY_ERRNOS:
+        return AccessRefusal(kind=AccessKind.READ_ONLY, path=path)
+    if isinstance(exc, PermissionError) or exc.errno in PERMISSION_ERRNOS:
+        for candidate in (exc.filename2, exc.filename):
+            if candidate is None:
+                continue
+            spelled = os.fsdecode(candidate) if isinstance(candidate, bytes) else str(candidate)
+            if _immutable(spelled):
+                return AccessRefusal(kind=AccessKind.LOCKED, path=spelled)
+        return AccessRefusal(kind=AccessKind.PERMISSION, path=path)
+    return None
+
+
+def _probe(path: str, *, writing: bool) -> AccessRefusal | None:
+    """Ask the operating system directly what it does with ``path``.
+
+    A driver level error says "unable to open database file" and nothing else,
+    so whether that was a permission is not stated anywhere in it. It is
+    MEASURED here rather than assumed: the file is opened the same way the driver
+    would have, and the ``OSError`` that comes back carries the errno and the
+    filename the classification needs. An open that succeeds answers None, and
+    the failure keeps its honest "this program did not anticipate it" reading.
+    """
+    flags = (os.O_RDWR if writing else os.O_RDONLY) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        handle = os.open(path, flags)
+    except OSError as probe:
+        return _from_os_error(probe)
+    os.close(handle)
+    return None
+
+
+def _from_database_error(exc: BaseException) -> AccessRefusal | None:
+    if not isinstance(exc, sqlite3.Error):
+        return None
+    name = getattr(exc, "sqlite_errorname", "") or ""
+    if not name.startswith(DATABASE_ACCESS_ERRORNAMES):
+        return None
+    path = getattr(exc, DATABASE_PATH_ATTRIBUTE, None)
+    if path is None:
+        return None
+    return _probe(str(path), writing=not name.startswith("SQLITE_CANTOPEN"))
+
+
+def name_the_database(exc: BaseException, path: Any) -> BaseException:
+    """Record which file a driver level error was about, and return it unchanged.
+
+    The connection site knows the path; the exception does not carry one and
+    never will, because the driver's error is a result code and a sentence. This
+    is the whole hand-off: one attribute, set where the knowledge is, read by
+    :func:`access_refusal` where the decision is. Returning the SAME exception
+    keeps the traceback and the class, so nothing downstream has to learn a new
+    type to catch.
+    """
+    try:
+        setattr(exc, DATABASE_PATH_ATTRIBUTE, os.fspath(path))
+    except (AttributeError, TypeError):  # pragma: no cover - defensive
+        pass
+    return exc
+
+
+def access_refusal(exc: BaseException | None) -> AccessRefusal | None:
+    """The refusal by the operating system inside ``exc``, with its path, or None.
+
+    ONE DECISION, MADE ONCE, because making it per call site failed four
+    consecutive review rounds. A path the operating system will not let this
+    interpreter open, write, or replace is not a defect in this program: it is a
+    machine state its user can act on, and every layer that meets one has to say
+    so. Rendering it as an internal error sends a person to file a bug report
+    about their own filesystem, and on macOS that is the ROUTINE first run rather
+    than an exotic state: anything under Documents, Desktop, Downloads or an
+    external volume is refused this way for an interpreter without Full Disk
+    Access.
 
     The reason it kept reappearing at ordinary looking call sites is that
     ``Path.exists`` and ``Path.is_dir`` RE RAISE under EPERM rather than
@@ -66,35 +287,52 @@ def permission_denied(exc: BaseException | None) -> OSError | None:
     A guard per line is a guard the next line will not have, which is why this is
     a classification rather than a handler.
 
-    THE ``__cause__`` CHAIN IS FOLLOWED AND ``__context__`` IS NOT. An explicit
-    ``raise X from exc`` is a statement that this failure IS that failure, so a
-    wrapper may not hide the permission underneath it. An implicit context is
-    merely "this happened while handling that", which is exactly what a handler
-    that catches a permission and then raises a real defect produces, and reading
-    it would classify that defect as a permission.
+    IT ANSWERS FOR MORE THAN THE ``OSError`` FAMILY. The previous rule was a set
+    of two errno values, and this program keeps its own state in SQLite, whose
+    refusals are not ``OSError`` at all. It also answers with a KIND, because a
+    read only volume and a locked file are refusals that Full Disk Access cannot
+    fix, and confidently telling a user to grant access is not a lesser failure
+    than telling them to file a bug.
     """
-    seen: set[int] = set()
-    current: BaseException | None = exc
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
+    for current in _chain(exc):
+        found = _from_os_error(current) or _from_database_error(current)
+        if found is not None:
+            return found
+    return None
+
+
+def permission_denied(exc: BaseException | None) -> OSError | None:
+    """The permission this account does not hold, inside ``exc``, or None.
+
+    A NARROWER QUESTION THAN :func:`access_refusal`, kept separate on purpose.
+    This one answers "is this the CLASS of failure the operating system raises
+    when an account is not allowed", and its callers are the ones deciding
+    whether to re-raise or to answer False: ``preflight`` will not let a
+    permission masquerade as "not a mount point", and ``backup_facts`` will not
+    let one masquerade as a corrupt file. None of them tells a user anything, so
+    none of them needs a path.
+
+    Anything that RENDERS a refusal asks :func:`access_refusal` instead, because
+    a sentence naming no path is a sentence a user can do nothing with.
+    """
+    for current in _chain(exc):
         if isinstance(current, PermissionError):
             return current
         if isinstance(current, OSError) and current.errno in PERMISSION_ERRNOS:
             return current
-        current = current.__cause__
     return None
 
 
 def access_remedy(exc: BaseException | None, *, otherwise: Remedy) -> Remedy:
-    """The remediation for a failure that MIGHT be a permission this account lacks.
+    """The act for a failure that MIGHT be one the operating system refused.
 
     The one chooser every site calls instead of writing ``Remedy.REPORT_DEFECT``
-    beside a caught ``OSError``. A site that has not been converted still comes
-    out right, because the two blankets that exist to catch what nobody guarded,
-    the dispatcher in ``cli`` and the check runner in ``cli.doctor``, ask this
-    same question of anything that reaches them.
+    beside a caught ``OSError``. It answers with the act for the KIND that was
+    found, so a read only volume is not sent to Full Disk Access and a locked
+    file is not either.
     """
-    return Remedy.GRANT_PATH_ACCESS if permission_denied(exc) is not None else otherwise
+    found = access_refusal(exc)
+    return found.remedy if found is not None else otherwise
 
 
 class Scope(StrEnum):
@@ -225,6 +463,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # or a packaged file. A refusal that DOES know says so under its own
         # slug, which is why ``library-root-unreachable`` still exists.
         "path-permission-denied": ExitCode.PRECONDITION,
+        # The same band, and deliberately NOT the same slug. Neither of these is
+        # a permission this account can be granted: a read only volume refuses
+        # every writer on the machine, and an immutable flag refuses the owner.
+        # One slug for all three would put "grant Full Disk Access" beside two
+        # states it cannot change, which is the collapse the vocabulary exists to
+        # prevent, one level in from where it was last prevented.
+        "path-read-only": ExitCode.PRECONDITION,
+        "path-locked": ExitCode.PRECONDITION,
         "no-evidence": ExitCode.INTERNAL,
         "snapshot-integrity-failed": ExitCode.INTERNAL,
         "smoke-test-failed": ExitCode.INTERNAL,
@@ -541,6 +787,55 @@ class Cause:
         return json.dumps(self.to_json(), sort_keys=True)
 
 
+def classified(cause: Cause, exc: BaseException | None) -> Cause:
+    """``cause``, corrected if the operating system is what actually refused.
+
+    THE CLASSIFICATION LIVES WHERE A REFUSAL IS CONSTRUCTED, NOT ONLY WHERE ONE
+    ESCAPES, and that is the whole point of this function. The previous round put
+    the decision in two blankets, the dispatcher and doctor's check runner, on
+    the stated property that "a site nobody has converted now comes out right".
+    That was true and irrelevant: an AST walk over the package finds nineteen
+    ``except OSError`` sites that raise a structured refusal, and eighteen of them
+    bypassed both blankets by construction, because a blanket only ever sees what
+    nobody caught. Three of the eighteen hard coded the wrong answer, and one of
+    those rendered a permission as "no session is recorded with that identifier",
+    which reads absence out of a refusal that established nothing at all.
+
+    So the correction happens here, at the constructor every structured refusal
+    in the package passes through, and the sites need no edit. A site written
+    next year is right by default.
+
+    WHAT IT READS IS THE DECLARED CAUSE CHAIN. Every one of those sites writes
+    ``raise refuse(...) from exc``, which is the author's own statement that this
+    failure IS that one. Nothing is inferred from the call stack and nothing is
+    inferred from ``__context__``, so a handler that catches a refusal, recovers,
+    and later raises something unrelated is not re-labelled.
+
+    WHAT IT CHANGES IS THE SLUG AND THE ACT, NEVER THE WORDS. This module is
+    FOUNDATION and carries tokens, never sentences (D2); ``cli.render`` owns the
+    words for the token this chooses. A site whose act is ALREADY the right one
+    is left exactly as it is, so a refusal that knows more than this does keeps
+    its better slug.
+    """
+    refusal = access_refusal(exc)
+    if refusal is None or cause.remediation.remedy is refusal.remedy:
+        return cause
+    return replace(
+        cause,
+        reason=refusal.reason,
+        remediation=replace(cause.remediation, remedy=refusal.remedy),
+        detail={
+            **dict(cause.detail),
+            "path": refusal.path,
+            "access": str(refusal.kind),
+            # Kept because the site's own reading is still worth reading, and
+            # dropped from the headline because it was not what happened. It is
+            # never branched on; ``detail`` is not read for control flow.
+            "declared_reason": cause.reason,
+        },
+    )
+
+
 class CratekitError(Exception):
     """The one exception type that carries a cause across a raise.
 
@@ -553,7 +848,29 @@ class CratekitError(Exception):
 
     def __init__(self, cause: Cause) -> None:
         super().__init__(cause.message)
-        self.cause = cause
+        self._declared = cause
+
+    @property
+    def cause(self) -> Cause:
+        """The cause as the reader gets it, classified against what caused it.
+
+        A PROPERTY RATHER THAN AN ATTRIBUTE FOR ONE REASON: ``raise X from exc``
+        sets ``__cause__`` AFTER this object is built, so a value computed in
+        ``__init__`` cannot see the thing the site just declared this failure to
+        be. Reading it here is the first moment the declaration exists, and every
+        consumer, the dispatcher, doctor, the job engine and the tests, reaches
+        the cause through this one name.
+        """
+        return classified(self._declared, self.__cause__)
+
+    @property
+    def declared_cause(self) -> Cause:
+        """The cause exactly as the raising site wrote it, unclassified.
+
+        For the one caller that needs to see the site's own reading rather than
+        the corrected one: the test that proves the correction happened.
+        """
+        return self._declared
 
 
 def refuse(
@@ -598,15 +915,25 @@ def refuse(
 
 
 __all__ = [
+    "ACCESS_REASONS",
+    "ACCESS_REMEDIES",
+    "DATABASE_ACCESS_ERRORNAMES",
+    "DATABASE_PATH_ATTRIBUTE",
     "PERMISSION_ERRNOS",
+    "READ_ONLY_ERRNOS",
     "REASONS",
+    "AccessKind",
+    "AccessRefusal",
     "Cause",
     "CratekitError",
     "Outcome",
     "Remediation",
     "Scope",
     "UnknownReason",
+    "access_refusal",
     "access_remedy",
+    "classified",
+    "name_the_database",
     "permission_denied",
     "refuse",
     "widest_scope",

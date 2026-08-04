@@ -437,6 +437,10 @@ def read_manifest(capture_root: Path | str) -> Capture:
     try:
         raw = path.read_bytes()
     except OSError as exc:
+        # The REMEDY here is the class default for an unanticipated failure, and
+        # it stays that. What it is not allowed to do is stand when the operating
+        # system is what refused: ``raise ... from exc`` is what lets the refusal
+        # constructor see that and answer with an act the reader can perform.
         raise refuse(
             "internal-error",
             f"{path} could not be read, so there is no record of what this "

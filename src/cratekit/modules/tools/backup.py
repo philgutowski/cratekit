@@ -48,7 +48,8 @@ WHAT THIS PORT CHANGES, beyond translating the shell.
 * **Sidecar suffixes are derived** from the state inventory rather than typed
   here, so the set of files that travel with the database cannot drift from the
   set the snapshot unit captures.
-* **The restore passes the destructive-session gates** (R-8, KTD24). A restore
+* **The restore passes the destructive-session gates** (the residual finding "The
+  backup restore is not yet bound to the destructive-session gates", KTD24). A restore
   replaces a live database and the files beside it while writing no database
   row, so a rule that bound the library lock, the backup acknowledgment and the
   volume identity assertion to database WRITES would leave the single most

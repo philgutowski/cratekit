@@ -838,6 +838,27 @@ once: `Path.exists` and `Path.is_dir` RE RAISE under EPERM rather than answering
 False, so every line in the package that reads like a question is a line that can
 throw.
 
+**AND THAT CLOSE WAS ALSO WRONG, FOR THE FOURTH TIME, AND THE SEVENTH REVIEW SAYS
+WHY.** "A site nobody has converted still comes out as a permission" was true and
+irrelevant. An AST walk over `src/cratekit` counts nineteen `except OSError` sites
+that raise a STRUCTURED refusal, and eighteen of them never reach either blanket,
+because a blanket only ever sees what nobody caught. Three of the eighteen hard
+coded the wrong answer, and one of those rendered a refusal as "no session is
+recorded with the identifier x", which reads absence out of a read that never
+happened. The hole had moved from unguarded lines to converted ones, which is the
+same shape as the three closes before it.
+
+The decision now lives in `cause.classified`, called from `CratekitError.cause`,
+which is the constructor every structured refusal in the package passes through.
+It reads the DECLARED cause chain, which is what `raise ... from exc` sets, so
+nothing is inferred from the call stack and a handler that recovers and later
+raises something unrelated is not re-labelled. Three further gaps closed with it:
+the classification answered for the `OSError` family alone and this program keeps
+its own state in SQLite, whose refusals carry no errno and no filename; EROFS was
+not classified at all, so a read only volume was sent to Full Disk Access; and a
+kernel refusal with no path was claimed as a path, producing "grant access to the
+path named below" with nothing below it.
+
 **4. `secrets.exists` answers False for a presence index it could not read.**
 `_index_read` catches `OSError` and `ValueError` alike and returns an empty set,
 so an index this account cannot open reads as "nothing recorded". It errs toward
@@ -962,6 +983,17 @@ error types are a declared vocabulary with their own suite; changing which one a
 permission maps to is that unit's decision rather than a fix smuggled in under
 this one. **Closes when:** U2 splits "could not be read" from "could not be
 understood", which is the same split this unit made in four other modules.
+
+**PARTLY CLOSED IN ROUND SEVEN, at the three hops this unit owns.** The scoping
+above is still right about `core/config.py` and was being used to leave the same
+shape standing in files that are not U2's: `cli/setup.py` gave
+`repair-config-file` for its own second read of a sealed document, `doctor`'s
+`config.present` check read the remedy straight off the error class, and the
+dispatcher's `ConfigError` branch did the same at the last hop. All three now ask
+the classification first, so a document that is byte for byte intact is not
+called unrepairable, and a `ConfigCorrupt` raised by `core/config.py` itself gets
+the right ACT at every surface a user reads even though its type is unchanged.
+What is still open is the type, which is U2's to change.
 
 **3. `_names_one_path` compares paths, not directories, and is named for it.** It
 was `_names_one_directory` and never asked whether either side was a directory:

@@ -52,7 +52,8 @@ from cratekit.core.cause import (
     Outcome,
     Remediation,
     Scope,
-    permission_denied,
+    access_refusal,
+    classified,
 )
 from cratekit.core.exit_codes import ExitCode, Remedy
 
@@ -285,31 +286,35 @@ def _run_state_for(entry: Entry, args: argparse.Namespace) -> gates.RunState:
 def _unhandled_cause(exc: BaseException) -> Cause:
     """The cause for anything that reached the boundary unconverted.
 
-    THE CLASSIFICATION LIVES HERE RATHER THAN AT THE CALL SITES, and that is the
-    whole point of this function. "A permission the user can grant is not a
-    defect in this program" was fixed three times, at six sites, and found again
-    three times, because a guard written per site is a guard the next site does
-    not have. ``Path.exists`` re raises under EPERM instead of answering False,
-    so every ordinary looking filesystem question in the package is a potential
-    seventh site.
+    THIS IS THE BLANKET, NOT THE CLASSIFICATION. It covers exactly what nobody
+    caught, which was the mistake the round before this one made: the same rule
+    was put here and in doctor's check runner on the stated property that "a site
+    nobody has converted now comes out right", while eighteen of the nineteen
+    sites in the package ARE converted and never reach either blanket. The
+    decision now lives in ``cause.classified``, at the constructor every
+    structured refusal passes through, and this function asks the SAME question
+    of the unstructured remainder.
 
-    So the blanket asks the question instead. An ``OSError`` whose errno is
-    EACCES or EPERM, raised anywhere under any verb, leaves under its own reason
-    with ``grant-path-access``, and a site nobody has guarded yet comes out
-    right. What is left for the sites is a BETTER sentence naming what they were
-    doing, never the difference between a defect and a permission.
+    The remainder is not small. ``Path.exists`` re raises under EPERM instead of
+    answering False, so every ordinary looking filesystem question in the package
+    is a site nobody has guarded, and this program keeps its own state in SQLite,
+    whose refusals are not ``OSError`` at all.
 
     Everything else keeps ``internal-error``, which is the honest answer for a
     failure this program did not anticipate, and keeps ``report-defect`` with it.
+    A kernel refusal carrying no path at all, which a bind to a privileged port
+    and ``os.setuid`` both produce, is part of that remainder ON PURPOSE: there
+    is nothing for the user to grant access TO, so claiming a path would be a
+    confident wrong answer rather than a missed one.
     """
-    denied = permission_denied(exc)
-    if denied is not None:
+    refusal = access_refusal(exc)
+    if refusal is not None:
         return Cause(
-            reason="path-permission-denied",
+            reason=refusal.reason,
             message=f"{type(exc).__name__}: {exc}. {render.access_note(exc)}",
-            remediation=Remediation(remedy=Remedy.GRANT_PATH_ACCESS),
+            remediation=Remediation(remedy=refusal.remedy),
             origin=("cli",),
-            detail={"path": str(denied.filename) if denied.filename else None},
+            detail={"path": refusal.path, "access": str(refusal.kind)},
         )
     return Cause(
         reason="internal-error",
@@ -387,16 +392,27 @@ def run(argv: list[str], *, stdout, stderr) -> int:
         # remediation TOKENS. Converting here rather than in each verb means a
         # verb that simply calls ``config.load()`` still refuses with the right
         # code and the right remedy, instead of surfacing as an internal defect.
+        #
+        # THROUGH THE CLASSIFICATION, because a config file this account cannot
+        # read is not a config file to repair. "Repair or recreate it" over a
+        # document that is byte for byte intact sends a user to rewrite work they
+        # still have, and an untraversable PARENT fails the same way without
+        # establishing that the file is there at all. ``ConfigError`` is not a
+        # ``CratekitError``, so the constructor's own correction never sees it;
+        # this is the one hop where it can.
         envelope = output.from_cause(
             verb=entry.name,
             run_id=state.run_id if state is not None else output.new_run_id(),
             started=started,
-            cause=Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("cli",),
-                detail={"kind": type(exc).__name__},
+            cause=classified(
+                Cause(
+                    reason="config-unusable",
+                    message=str(exc),
+                    remediation=Remediation(remedy=Remedy(str(exc.remedy))),
+                    origin=("cli",),
+                    detail={"kind": type(exc).__name__},
+                ),
+                exc,
             ),
         )
     except SystemExit as exc:

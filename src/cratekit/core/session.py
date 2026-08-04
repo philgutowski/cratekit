@@ -396,14 +396,30 @@ def write_record(record: SessionRecord, cfg: config.Config) -> Path:
 
 
 def read_record(session_id: str, cfg: config.Config) -> SessionRecord:
-    """Read one session record, or refuse naming the session."""
+    """Read one session record, or refuse naming the session.
+
+    TWO HANDLERS, BECAUSE ABSENCE AND REFUSAL ARE TWO ANSWERS. One handler over
+    every ``OSError`` said "no session is recorded with that identifier" for a
+    record this account was not allowed to open, which reads absence out of a
+    read that never happened. A directory on the way to the file that the
+    operating system will not traverse fails exactly the same way, and under it
+    nothing has been observed at all.
+    """
     path = log_path(session_id, cfg)
     try:
         raw = path.read_bytes()
-    except OSError as exc:
+    except FileNotFoundError as exc:
         raise refuse(
             "internal-error",
             f"no session is recorded with the identifier {session_id!r}: {exc}",
+            remedy=Remedy.REPORT_DEFECT,
+            detail={"session_id": session_id, "path": str(path)},
+        ) from exc
+    except OSError as exc:
+        raise refuse(
+            "internal-error",
+            f"the session record at {path} could not be read, so whether a "
+            f"session is recorded under {session_id!r} was not established: {exc}",
             remedy=Remedy.REPORT_DEFECT,
             detail={"session_id": session_id, "path": str(path)},
         ) from exc
@@ -1105,9 +1121,15 @@ def read_acknowledgment(cfg: config.Config) -> Acknowledgment | None:
     except FileNotFoundError:
         return None
     except OSError as exc:
+        # NOT "exists and could not be read". Absent is caught above by its own
+        # class, and everything reaching here is a read that did not happen: an
+        # untraversable parent raises exactly this and establishes nothing about
+        # what is under it. The same sentence is written one module over, in
+        # ``backup_facts``, for the same reason.
         raise refuse(
             "internal-error",
-            f"the backup acknowledgment exists and could not be read: {exc}",
+            f"the backup acknowledgment could not be read, and whether it is "
+            f"even there was not established: {exc}",
             remedy=Remedy.REPORT_DEFECT,
             detail={"path": str(ack_path(cfg))},
         ) from exc
