@@ -1168,30 +1168,40 @@ def test_a_planned_verb_and_the_pending_register_name_the_same_unit():
     Asked over the intersection rather than over either register whole: a planned
     verb whose module nothing in the register mentions is a separate question, and
     the register legitimately holds keys that are not verb modules at all.
+
+    THE ANTI-VACUITY GUARD MEASURES THE SET THAT IS ACTUALLY COMPARED, and the
+    first version of it did not. It rebuilt the intersection in a second
+    comprehension and asked its question of that, which is a re-derivation of the
+    predicate rather than a measurement of the comparison. Found by mutation:
+    neutering the filter on the comparison alone killed NOTHING, because the guard
+    went on building a populated list of its own and stayed green over a
+    comparison that now compared nothing. One list is built once and both
+    statements read it.
     """
     from tests import _pending  # noqa: PLC0415
 
-    disagreements = {
-        entry.name: (entry.planned_in, _pending.PENDING[entry.module][0])
+    compared = [
+        entry
         for entry in registry.entries()
         if not entry.landed and entry.module in _pending.PENDING
+    ]
+    # First, that the intersection is not empty, or everything below is vacuous.
+    # Emptying the REGISTRY side lands here by name. Emptying the register side
+    # never reaches this file at all: ``_pending.requires`` raises at import for a
+    # key that is gone, which is a collection error rather than a green run.
+    assert {"restore.list", "restore.run"} <= {entry.name for entry in compared}, (
+        f"the two restore verbs are no longer compared against the register; "
+        f"what is compared is {sorted(entry.name for entry in compared)}"
+    )
+    disagreements = {
+        entry.name: (entry.planned_in, _pending.PENDING[entry.module][0])
+        for entry in compared
         if entry.planned_in != _pending.PENDING[entry.module][0]
     }
     assert not disagreements, (
         f"planned_in and tests/_pending.PENDING name different units for the same "
         f"module: {disagreements}. The register is what scripts/board.py reads, so "
         f"it wins; repoint the marker."
-    )
-    # And the intersection is not empty, or the comparison above is vacuous and
-    # would stay green through either register being emptied.
-    compared = [
-        entry.name
-        for entry in registry.entries()
-        if not entry.landed and entry.module in _pending.PENDING
-    ]
-    assert "restore.list" in compared and "restore.run" in compared, (
-        f"the two restore verbs are no longer compared against the register; "
-        f"what is compared is {sorted(compared)}"
     )
 
 

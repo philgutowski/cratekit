@@ -3799,6 +3799,80 @@ def test_round6_a_dangling_link_at_the_live_name_does_not_defeat_the_collision_g
     assert log.is_symlink(), "the live name was consumed by a rehearsal"
 
 
+def test_round7_an_unreadable_staging_directory_still_refuses_the_same_way(cfg, held):
+    """``_staged_names`` swallows ``OSError``, and nothing drove the swallow.
+
+    Found by mutation: deleting the ``try``/``except`` in ``_staged_names`` and
+    letting the error escape killed NOTHING, while the docstring on that function
+    makes a load bearing claim, that it never raises, because it runs only to
+    DESCRIBE a refusal that is already decided. An unreadable directory must not
+    replace that refusal with a different one, and a claim no test drives is a
+    comment.
+
+    The branch is reachable and this is the shape that reaches it. With the
+    staging directory at mode ``0o111`` the account may traverse it and may not
+    read it: ``os.path.lexists`` still answers True for the occupant, so the guard
+    still decides to refuse, and ``iterdir`` raises ``PermissionError``. Without
+    the swallow that error escapes ``_preflight`` raw, and a person restoring a
+    library receives an unhandled ``PermissionError`` instead of the sentence that
+    tells them a repeat is safe.
+
+    THE DEGRADED OUTPUT IS PINNED TOO, because it is what the swallow produces
+    rather than an accident of it: ``already_staged`` empties, and the message
+    falls back to naming the resting file it refused to overwrite. Both are the
+    honest answer here, since the directory genuinely cannot be listed, and both
+    would otherwise be free to change under a green suite. What must NOT degrade
+    is the refusal itself, which still names the slug, the target, the resting
+    name and the staging root, and still leaves every byte where it was.
+    """
+    log = _wal_path(cfg)
+    log.write_bytes(b"the live log, transactions committed since the checkpoint")
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    decided.pre_restore_root.mkdir(parents=True)
+    survivor = decided.pre_restore_root / log.name
+    survivor.write_bytes(b"an earlier attempt's log, recoverable from nowhere else")
+    decided.pre_restore_root.chmod(0o111)
+    try:
+        assert os.path.lexists(survivor), (
+            "this directory hides its occupant from lexists too, so the guard "
+            "never reaches the listing and the test proves nothing"
+        )
+        with pytest.raises(OSError):
+            list(decided.pre_restore_root.iterdir())
+
+        with pytest.raises(CratekitError) as excinfo:
+            restore.run(decided, cfg, held=held)
+    finally:
+        decided.pre_restore_root.chmod(0o700)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "restore-staging-occupied", (
+        "an unreadable staging directory replaced the decided refusal with a "
+        "different failure"
+    )
+    assert cause.code is ExitCode.PRECONDITION
+    assert cause.retryable is True
+    assert cause.detail["target"] == str(log)
+    assert cause.detail["staged"] == str(survivor)
+    assert cause.detail["staging_root"] == str(decided.pre_restore_root)
+    assert cause.detail["already_staged"] == [], (
+        "the listing failed, so the honest answer is that this refusal cannot "
+        "say what else is in there"
+    )
+    assert survivor.name in cause.message, (
+        f"with nothing listable the message must still name the file it refused "
+        f"to overwrite: {cause.message}"
+    )
+    assert survivor.read_bytes() == (
+        b"an earlier attempt's log, recoverable from nowhere else"
+    )
+    assert log.read_bytes() == (
+        b"the live log, transactions committed since the checkpoint"
+    ), "the live log was moved anyway"
+
+
 def test_round6_a_retry_after_a_partial_failure_still_runs(cfg, held, monkeypatch):
     """A restore that refuses to run is as bad as one that half runs.
 

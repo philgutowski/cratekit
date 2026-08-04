@@ -785,10 +785,22 @@ it raises `AttributeError` at setup, and that is one red test.
 
 **7. The residual-finding citations in `core/restore.py` are by TITLE, and the
 merge must keep them that way.** `shares_the_database_volume` and
-`bare_metal_session` used to cite **R-19** and **R-20** by number. `main` now ends
-at R-17, so this branch's three entries renumber sequentially to R-18, R-19 and
-R-20 at the merge, at which point BOTH citations name the wrong finding and the
-second one names this checklist. They now cite
+`bare_metal_session` used to cite **R-19** and **R-20** by number. This branch
+adds **five** entries, not three: R-19 through R-23, the last two of which landed
+after this item was first written. `main` ends at R-17, so a sequential renumber
+moves all five down one, at which point BOTH citations name the wrong finding and
+the second one names this checklist.
+
+**MEASURED ON THE TRIAL MERGE: nothing renumbers.** Both sides append, `git
+merge` takes both appends, and the merged file runs R-1 to R-17 and then R-19
+onward with **R-18 missing**. So the renumber is a hand edit somebody chooses to
+make, and the gap is the thing that invites it: a person tidying that gap is the
+mechanism this item is about, not the merge. Whoever closes the gap renumbers
+FIVE entries and must move every citation of each of them, in prose, in source
+comments and in docstrings, which is the repoint that was missed once already at
+the U36 merge. Leaving the gap and saying in the file why it is there is the
+cheaper answer and is equally correct. These two citations survive either
+decision, because they now cite
 `restore.RESIDUAL_CAPTURE_VOLUME_UNREPORTED` and
 `restore.RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH`, whose values are the finding
 titles, and `test_round4_the_residual_findings_this_module_names_still_exist`
@@ -891,3 +903,88 @@ inherits an unreviewed change.
 The stamp's width is load bearing for a reason written down beside it, and
 symmetry achieved by taking the argued side down to the unargued one is the wrong
 direction.
+
+---
+
+## R-23. Three things the occupied-staging refusal leaves standing, each verified safe
+
+**Found:** by the independent verification of U32's fix round 6 and by round 7's
+own driving of them, 2026-08-03 and 2026-08-04. **Recorded rather than fixed, and
+each one was MEASURED rather than reasoned about**, because a residual that is
+silent about a live behaviour reads later as closure.
+
+### 1. `already_staged` lists whatever is in the directory, and calls all of it companions
+
+`core/restore.py:1691-1692` and `:1708`. The refusal names the staging
+directory's whole listing, and one of its remediation steps calls that listing
+"the live storage-engine companion files already moved out of the way". Those are
+two different things wearing one label.
+
+**Measured.** With a user file `holiday-photo.jpg` sitting in the staging
+directory beside an earlier attempt's log, the refusal reads "the staging
+directory ... already holds holiday-photo.jpg, master.db-wal" and its detail
+carries `already_staged: ['holiday-photo.jpg', 'master.db-wal']`, under a step
+saying those are companion files this run moved. The photograph is neither.
+
+**Why it is cosmetic rather than dangerous.** The listing is DESCRIPTION, not
+decision: what decides the refusal is `os.path.lexists` on the one resting name,
+so an unrelated file cannot cause a refusal and cannot suppress one. **Measured:**
+with only `holiday-photo.jpg` in the staging directory and no collision at the
+resting name, the restore completes and converges. The cost is a sentence that
+over claims to somebody already recovering from something.
+
+**What would close it.** Either list only the names this run staged, which the
+performing path knows and the preflight does not, or drop the word "companion"
+from the step and say plainly that the directory holds these names.
+
+### 2. One rehearsal and run disagreement survives, and it is the safe direction
+
+`core/restore.py:1683-1687`. `os.path.lexists` answers False on ANY `OSError`,
+including a permission error, so a staging directory this account cannot search
+hides its occupant from the guard rather than reporting it.
+
+**Measured.** Staging directory at mode `0o000` with an earlier attempt's log at
+the resting name: `os.path.lexists(resting)` answers False, the guard returns, the
+REHEARSAL proceeds and reports all eight steps performed, and the REAL RUN then
+refuses `restore-step-failed`. That is the shape this unit has spent two rounds
+removing, and this instance of it is safe: `os.replace` is the first thing the
+real run tries and it fails before anything has moved. Measured on the same run,
+the live log still holds its bytes, the earlier attempt's log still holds its
+bytes, and the database is untouched. Nothing ends half done, which is what makes
+this different from the round 5 shape.
+
+**Why it is not worth code today.** The product never creates a staging directory
+in that mode; `config._mkdir_private` makes it `0o700`. Reaching this needs
+somebody to have chmodded it by hand or a filesystem to have lost the mode. The
+honest description is absence read as evidence of absence, one layer out from the
+two reads this unit already fixed, and the layer it is in is `os.path.lexists`
+itself rather than this module.
+
+**What would close it.** Ask `os.lstat` in a `try` and distinguish "not there"
+from "cannot tell", refusing on the second. That is a real improvement and it is a
+change to the guard's contract, so it belongs to whoever next opens this function
+rather than to a fix round closing out.
+
+### 3. The performing backstop, when a race genuinely reaches it, still leaves the half done state
+
+`core/restore.py:1644-1653`. The preflight copy of the staging check is the
+primary and the copy inside `_stage_companion_aside` is the backstop for the
+window between the check and the rename. If that window is genuinely hit, with
+two companions live and the SECOND one's resting name taken in the window, the
+first companion has already been renamed out of the live tree when the backstop
+raises. The run then stops with the live write-ahead log missing from the library
+and the database never replaced.
+
+**This is stated plainly here because the code already states it plainly and a
+silent residual would read as though it did not.** The docstring at those lines
+says the preflight is what decides, says the backstop exists only for that window,
+and says reaching it should be impossible. That is accurate. The refusal reached
+this way NAMES the companion it already moved and where it now is, in the message
+and in the detail, which is what makes the state recoverable by hand.
+`test_round6_the_performing_backstop_names_what_it_already_moved` drives exactly
+that path by planting the collision after the first companion has really been
+staged.
+
+**What would close it.** Undoing the moves already made before re-raising, which
+is a rollback inside a rollback and needs its own failure story. Recorded as the
+residual race rather than attempted inside this unit.
