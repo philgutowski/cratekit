@@ -2558,6 +2558,128 @@ def test_a_TAG_EDITED_IN_PLACE_is_still_accepted_because_nothing_is_at_risk(
     assert tags.read_genre_from_file(path) == "User Genre"
 
 
+def test_a_SECOND_TAXONOMY_accepts_because_ADOPTIONS_OWN_value_is_in_the_field(
+    cfg, tmp_path
+):
+    """The clause that reads the RECORD's ``written``, driven where it is the only one.
+
+    Every other test in this file adopts into the same bucket twice, so the value
+    the record says adoption wrote and the value this call is about to write are
+    the same string and either clause alone would carry it. Here they differ: the
+    first adoption wrote one bucket, a tagging session then changed the bytes, and
+    the second adoption writes a DIFFERENT bucket. What is in the field is
+    adoption's own value from the first run, so nothing unrecorded can be lost and
+    the original is kept without the file being read to decide it.
+    """
+    path = _synth(tmp_path, ".flac")
+    tags.write_genre(path, "User Genre")
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Bucket Alpha", entry_id="e1"
+    )
+    held = adopt_revert.read(cfg).snapshots[0]
+    assert held.written == "Bucket Alpha"
+
+    tags.write_tags(path, {"title": "Edited In A Tagging Session"})
+    assert hashlib.sha256(path.read_bytes()).hexdigest() != held.digest
+
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Bucket Beta", entry_id="e2"
+    )
+    ledger = adopt_revert.read(cfg)
+    assert len(ledger.snapshots) == 1, [
+        (entry.written, entry.original) for entry in ledger.snapshots
+    ]
+    assert ledger.snapshots[0].original == ("User Genre",)
+    assert tags.read_genre_from_file(path) == "Bucket Beta"
+
+
+def test_a_THIRD_adoption_accepts_when_the_field_ALREADY_holds_what_it_would_write(
+    cfg, tmp_path
+):
+    """The clause that reads THIS CALL's value, and why the record's is not enough.
+
+    ``record.written`` is written once, by the adoption that created the record,
+    and it is never updated. After a second adoption under a different taxonomy
+    the file holds the SECOND bucket while the record still names the FIRST, so by
+    the third adoption the record's own ``written`` no longer describes anything on
+    disk. A rule that only consulted it would refuse a file whose field already
+    holds exactly what is about to be written, which cannot lose anything by
+    definition: a write that changes nothing destroys nothing, whatever put the
+    value there.
+    """
+    path = _synth(tmp_path, ".flac")
+    tags.write_genre(path, "User Genre")
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Bucket Alpha", entry_id="e1"
+    )
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Bucket Beta", entry_id="e2"
+    )
+    held = adopt_revert.read(cfg).snapshots[0]
+    assert held.written == "Bucket Alpha", "the record's written is not the stale one"
+    assert tags.read_genre_from_file(path) == "Bucket Beta"
+
+    tags.write_tags(path, {"title": "Edited In A Tagging Session"})
+    assert hashlib.sha256(path.read_bytes()).hexdigest() != held.digest
+
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Bucket Beta", entry_id="e3"
+    )
+    ledger = adopt_revert.read(cfg)
+    assert len(ledger.snapshots) == 1, [
+        (entry.written, entry.original) for entry in ledger.snapshots
+    ]
+    assert ledger.snapshots[0].original == ("User Genre",)
+    assert ledger.snapshots[0].written_by("e3")
+
+
+def test_a_record_whose_SIZE_is_not_this_files_size_is_never_a_reason_to_HASH(
+    cfg, tmp_path, monkeypatch
+):
+    """The size shortcut cannot change an answer, so only a read COUNT can see it.
+
+    That is exactly why it needs a test of its own: a mutation that deletes it
+    leaves every behavioural assertion in this file green, because the digest
+    behind it reaches the same refusal one whole-file read later. The claim being
+    made is about cost, so the measurement has to be about cost.
+
+    Round 7 wrote this shortcut down in a docstring and did not have it: the
+    comparison lives inside ``_look_at``, which only applies it when it is HANDED a
+    recorded size, and the closure the lookup passes calls ``_look_at`` with none.
+    """
+    reads: list[Path] = []
+    real_digest = adopt_revert.digest_of
+    monkeypatch.setattr(
+        adopt_revert, "digest_of", lambda p, **kw: (reads.append(p), real_digest(p))[1]
+    )
+
+    path = _synth(tmp_path, ".flac")
+    tags.write_genre(path, "User Genre")
+    adopt_revert.write_tag_with_record(
+        cfg, path, field="genre", written="Adopted Bucket", entry_id="e1"
+    )
+    held = adopt_revert.read(cfg).snapshots[0]
+
+    # LONGER BY CONSTRUCTION. A FLAC's padding block absorbs an ordinary tag
+    # edit without the file changing length at all, which is the reason the size
+    # is a shortcut and never evidence. Bytes are appended so the sizes cannot
+    # agree, and the refusal below never parses this container.
+    saving = tmp_path / "saving.flac"
+    saving.write_bytes(path.read_bytes() + b"\x00" * 4096)
+    os.replace(saving, path)
+    assert path.stat().st_size != held.size, "the fixture did not move the size"
+
+    reads.clear()
+    with pytest.raises(adopt_revert.RecordCannotBeMatched):
+        adopt_revert.write_tag_with_record(
+            cfg, path, field="genre", written="Adopted Bucket", entry_id="e2"
+        )
+    assert reads == [], (
+        f"a record whose recorded size is not this file's size was corroborated "
+        f"by hashing the whole file, which no answer could depend on: {reads}"
+    )
+
+
 def test_a_HARDLINKED_second_name_asks_the_BYTES_when_the_field_holds_a_stranger(
     cfg, tmp_path
 ):
