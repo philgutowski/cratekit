@@ -660,3 +660,39 @@ properly is a unit rather than a line.
 container image with a fixed layout this closes as not applicable; if it ships
 onto hosts nobody controls, the mount points get read rather than assumed, with
 the same injection seam the two path constants already have.
+
+---
+
+## R-19. The unlimited sentinel is a benign zero row, and the commit that said otherwise was wrong
+
+**Found:** during U12 round 4, 2026-08-03, correcting a claim rather than the code.
+
+`_CGROUP_UNLIMITED_ABOVE` is four exbibytes, and a published cap at least that
+large is read as the kernel saying "no limit". Round 3's commit message put it in
+a list of constants "pinned by consequence". It is not, and the measurement is
+unambiguous: moved to `1 << 47`, one hundred and twenty eight tebibytes, the
+whole suite stays green, and moved to `1 << 62`, its shipped value, it stays
+green too. Both ends of that range kill nothing.
+
+**Why it is not being fixed.** The constant cannot move far in either direction
+without dying, and the zero row sits in the middle of a range no machine can
+reach. Downward it is held tightly: `1 << 40` kills two tests and `1 << 35`
+kills five, because the suite drives real caps at thirty two gibibytes, a
+tebibyte and sixty four tebibytes and asserts every one of them is still a cap.
+Upward it is held by the version one unlimited literal: `1 << 63` kills two,
+because the number the older kernels actually write must read as no limit rather
+than as an absurd cap. What is left unpinned is the span between one hundred and
+twenty eight tebibytes and four exbibytes, and nothing publishes a cap in it. A
+cgroup limit is a number an administrator sets on hardware that exists, and the
+largest machine anybody sells is already covered by a live test.
+
+Writing a test whose only purpose is to kill a mutation in that span would be
+inventing a machine to justify a number. The honest record is that this row is
+zero, that it is zero for a reason, and that the claim of consequence in the
+round 3 commit was overstated.
+
+**Closes when:** it does not. This is recorded rather than fixed. It reopens as
+real work only if a kernel or a runtime starts publishing caps above one hundred
+and twenty eight tebibytes, at which point the sentinel needs a source rather
+than an estimate, and `/proc/self/mountinfo` in R-18 is the same kind of answer:
+read what the kernel says instead of assuming a bound.

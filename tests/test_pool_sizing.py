@@ -835,7 +835,18 @@ def test_the_recycle_budget_retires_a_child_occasionally_rather_than_constantly(
     assert plan.generations == generations
 
 
-def test_the_probe_deadline_the_module_ships_is_finite_and_is_the_one_it_uses():
+#: What the load this deadline waits for costs on the machine it was written for.
+#:
+#: The 300 megabyte model named in ``_probe_entry``, read off a cold and
+#: fragmented spinning platter at the few megabytes a second one of those
+#: sustains, is about a minute of reading before the spawn, the interpreter, the
+#: framework import and the deserialization are paid on top. Written here rather
+#: than read out of the module, because a bound that reads its own subject out of
+#: the thing it is bounding is not a bound.
+_A_COLD_MODEL_LOAD_SECONDS = 60.0
+
+
+def test_the_probe_deadline_the_module_ships_outlasts_the_load_it_waits_for():
     """A hundred and twenty seconds, pinned as a band because a wait cannot be waited.
 
     The lower half of this is already covered by the probe that really spawns: a
@@ -846,6 +857,15 @@ def test_the_probe_deadline_the_module_ships_is_finite_and_is_the_one_it_uses():
     never returns is a failure. That promise is only kept if the wait is finite
     and short enough that a run survives it. Ten minutes is the outer edge of
     "the run survived"; past it the number is a hang wearing a deadline.
+
+    THE LOWER EDGE WAS HALF A MINUTE AND THAT WAS NOT A BOUND, it was a formality.
+    Measured: the shipped 120 moved to 60 and killed nothing in the suite, so a
+    deadline set at exactly what a cold load costs passed as readily as one set
+    at twice it. That is the failure this constant has: a probe cut off mid load
+    reports the floor, the floor sizes the whole run, and the run looks fine.
+    Waiting too long costs one deadline once and nothing else, so the asymmetry
+    says generous, and generous is a MULTIPLE of the load rather than a match for
+    it. Half again over the cold load is the least that is not a coin flip.
     """
     given: list[float] = []
 
@@ -857,10 +877,18 @@ def test_the_probe_deadline_the_module_ships_is_finite_and_is_the_one_it_uses():
         patch.setattr(pool, "_spawned_probe", capture)
         assert pool.measure_worker_bytes(_nothing, floor_bytes=7) == 7
     assert given, "measure_worker_bytes did not reach the probe at all"
-    assert 30.0 <= given[0] <= 600.0, (
-        f"the shipped probe deadline is {given[0]} seconds; under half a minute "
-        f"reports the floor for a cold model load that would have answered, and "
-        f"over ten minutes is a hang that a caller cannot tell from one"
+    assert given[0] == pool.DEFAULT_PROBE_TIMEOUT_SECONDS, (
+        "the deadline the probe was given is not the one the module ships"
+    )
+    assert given[0] >= 1.5 * _A_COLD_MODEL_LOAD_SECONDS, (
+        f"the shipped probe deadline is {given[0]} seconds against a cold model load "
+        f"that costs about {_A_COLD_MODEL_LOAD_SECONDS}; a deadline that close to the "
+        f"thing it waits for reports the floor for every machine on the slow side of "
+        f"ordinary, and the floor sizes the whole run"
+    )
+    assert given[0] <= 600.0, (
+        f"the shipped probe deadline is {given[0]} seconds; over ten minutes is a "
+        f"hang that a caller cannot tell from one"
     )
 
 
@@ -1319,17 +1347,48 @@ def _still_running_when_the_deadline_passes() -> object:
 #: a child that was killed outright cannot fake it.
 _TERMINATED_CLEANLY = 77
 
+#: How long this file's cooperative child spends releasing what it holds before
+#: it reports that it unwound.
+#:
+#: THE ONE NUMBER THAT MAKES THE REAPING BUDGET MEAN ANYTHING. This child used to
+#: call ``os._exit`` on the first line of its handler, which is a release that
+#: costs nothing, and a release that costs nothing cannot tell a one second
+#: budget from a one millisecond one. Measured: with an instant handler,
+#: ``_PROBE_REAP_SECONDS`` moved from 1.0 to 0.001 and the whole suite stayed
+#: green, so the ladder's order was pinned and the budget that gives its first
+#: rung any chance to work was not.
+#:
+#: A real probe child is one that has just finished loading a model, and letting
+#: go of one is not instant. Four tenths of a second stands in for that: long
+#: enough that a budget a tidier would plausibly pick cannot cover it, and small
+#: enough against the shipped budget that the assertion has more slack than it
+#: needs on a loaded machine.
+_RELEASE_SECONDS = 0.4
+
 
 def _unwinds_on_a_terminate(ready) -> None:
-    """A probe child that exits cleanly when it is ASKED to stop.
+    """A probe child that exits cleanly when it is ASKED to stop, and takes time to.
 
     The first rung of the reaping ladder is a terminate, and a terminate is only
     worth having if a child can act on one. This is that child. It installs a
     handler, says it is armed, and then sleeps well past every deadline the
     reaping uses, so the ONLY thing that can end it is the ladder and the exit
     code says which rung did.
+
+    THE HANDLER SPENDS TIME BEFORE IT REPORTS, and that is not decoration. The
+    exit code alone proves the handler ran; it proves nothing about whether the
+    child was given long enough to finish. Sleeping the release out first means
+    the exit code now answers both, because a budget too short to cover the
+    release turns this child's 77 into a negative signal number.
     """
-    signal.signal(signal.SIGTERM, lambda _signal, _frame: os._exit(_TERMINATED_CLEANLY))
+
+    def unwind(_signal, _frame) -> None:
+        # Standing in for releasing a loaded model: the child is not gone until
+        # it has finished letting go, and only then is the exit code earned.
+        time.sleep(_RELEASE_SECONDS)
+        os._exit(_TERMINATED_CLEANLY)
+
+    signal.signal(signal.SIGTERM, unwind)
     ready.send(True)
     ready.close()
     time.sleep(8)
@@ -1982,15 +2041,32 @@ def test_a_probe_that_gave_up_leaves_no_child_still_allocating():
 # Two children distinguish the rungs, and neither can be answered by the other:
 # one exits cleanly on a terminate and reports a number no signal produces, and
 # one ignores the terminate entirely and can only be ended by the kill.
+#
+# THE ORDER IS HALF OF IT AND THE BUDGET IS THE OTHER HALF, which the first
+# version of this section missed entirely. A terminate that is not given long
+# enough to be acted on is a terminate in name only: the join after it expires,
+# the kill lands anyway, and every abandoned probe meets the unconditional
+# SIGKILL this ladder was written to prevent, with the rungs still in the right
+# order and the suite still green. Measured against the first version of this
+# section: ``_PROBE_REAP_SECONDS`` dropped from 1.0 to 0.001 and killed nothing,
+# because both children reached their exit on the first line of their handler
+# and neither could tell the two budgets apart. The cooperative child now spends
+# ``_RELEASE_SECONDS`` letting go before it reports, so its exit code is a
+# reading of the budget as well as of the order.
 
 
 def test_a_probe_child_that_can_unwind_is_asked_to_before_it_is_killed():
-    """The first rung, and the ORDER, which is the part that has consequences.
+    """The first rung, the ORDER, and the BUDGET the first rung is worth nothing without.
 
     A child that handles a terminate exits with its own code. A child that was
     killed outright reports the negative of the signal that killed it and never
     ran a line of its own. Those are two different numbers, so this test can say
     which rung ended the child rather than only that something did.
+
+    THE CHILD TAKES TIME TO LET GO, so the same exit code also says the ladder
+    waited. A budget below ``_RELEASE_SECONDS`` expires mid release, the kill
+    lands on a child that was in the middle of doing what it was asked, and the
+    77 below becomes a negative number.
 
     POSIX SIGNAL SEMANTICS, ASSERTED UNCONDITIONALLY. Windows has no handleable
     terminate and its kill IS its terminate, so there would be nothing to
@@ -2001,10 +2077,35 @@ def test_a_probe_child_that_can_unwind_is_asked_to_before_it_is_killed():
     watched = _reap_a_child(_unwinds_on_a_terminate)
     assert watched.exitcode == _TERMINATED_CLEANLY, (
         f"the child reported {watched.exitcode} rather than unwinding on a terminate; "
-        f"a negative number here is a SIGKILL, which means the backstop ran first "
-        f"and no probe child ever gets to release what it is holding"
+        f"a negative number here is a SIGKILL, which means either the backstop ran "
+        f"first or the terminate was not given the {_RELEASE_SECONDS} seconds this "
+        f"child needs to let go, and no probe child ever gets to release what it "
+        f"is holding"
     )
     assert watched.rungs == ["join", "terminate", "join", "close"]
+
+
+def test_the_reaping_budget_is_more_than_a_release_costs_rather_than_a_race_with_one():
+    """The margin, so a budget that would merely make the test above FLAKY fails outright.
+
+    The test above dies at any budget under four tenths of a second, which is the
+    far half of this. The near half is worse and it is what a declarative bound
+    is for: at a budget of half a second that test still passes, with a tenth of
+    a second of slack, on a machine running one thing. Under a loaded machine it
+    passes most of the time, and a rung that works most of the time is how an
+    intermittent red suite gets blamed on the runner and retried.
+
+    Twice the release, so the expected case finishes comfortably inside the
+    budget rather than racing it. The relationship is what is asserted, not a
+    literal: a release that is measured to cost more later raises the floor under
+    this budget automatically, which is the direction that matters.
+    """
+    assert pool._PROBE_REAP_SECONDS >= 2 * _RELEASE_SECONDS, (
+        f"the reaping budget is {pool._PROBE_REAP_SECONDS} seconds against a release "
+        f"that costs {_RELEASE_SECONDS}; a child that is asked to stop has to be given "
+        f"long enough to finish stopping, or the terminate rung is decoration and "
+        f"every abandoned probe meets the kill"
+    )
 
 
 def test_a_probe_child_that_refuses_to_unwind_meets_the_kill_backstop():
@@ -2359,6 +2460,158 @@ def test_a_cgroup_path_that_climbs_out_of_the_mount_is_not_followed(tmp_path):
     _version_two(outside, limit=str(64 * MIB), current="0")
     where = _self_cgroup(tmp_path, "0::/../outside\n")
     assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) is None
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["0::/../sibling\n", "0::/service/../sibling\n"],
+    ids=["a-climb-at-the-top", "a-climb-in-the-middle"],
+)
+def test_a_climb_that_lands_on_a_real_cgroup_inside_the_mount_is_refused_too(tmp_path, line):
+    """The half the test above cannot see, and the half that has consequences.
+
+    That one writes its bait OUTSIDE the mount, so all it proves is that the walk
+    does not escape. It never proved the line was REFUSED, and it was not: the
+    ``..`` was dropped and the rest was walked, which rewrites ``/../sibling``
+    into a directory that can exist, can publish a cap, and belongs to a cgroup
+    this process is not in. That is identity that is not unique, and the tightest
+    cap wins, so a stranger's tight number narrows every pool on the machine
+    while the walk stays neatly inside the mount and every existing test agrees.
+
+    A path with ``..`` in it does not name this process's cgroup, at the top or
+    anywhere else along it, so no level it names is read.
+    """
+    root = _hierarchy(tmp_path)
+    sibling = root / "sibling"
+    sibling.mkdir()
+    _version_two(sibling, limit=str(64 * MIB), current="0")
+    where = _self_cgroup(tmp_path, line)
+    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) is None, (
+        "a cgroup this process is not in was read as though it were, and because "
+        "the tightest cap binds it would have narrowed every pool on the machine"
+    )
+
+
+def test_a_climb_still_leaves_the_mounts_own_cap_readable(tmp_path):
+    """Refusing the path is not refusing the hierarchy, and the difference is safety.
+
+    Whatever cgroup this process is really in, it is somewhere under this mount,
+    so a cap published at the mount is an ancestor's cap and an ancestor's cap
+    binds. Discarding that along with the path answers an unparsable line with
+    "no cap at all" on a machine that publishes one, which is looser than the
+    code being replaced rather than safer, and looser is the direction this
+    module cannot afford.
+    """
+    root = _hierarchy(tmp_path)
+    _version_two(root, limit=str(512 * MIB), current=str(64 * MIB))
+    sibling = root / "sibling"
+    sibling.mkdir()
+    _version_two(sibling, limit=str(64 * MIB), current="0")
+    where = _self_cgroup(tmp_path, "0::/../sibling\n")
+    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 448 * MIB
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "0::/system.slice/cratekit.service\n\n",
+        "0::/system.slice/cratekit.service\n0:",
+        "overlayfs\n0::/system.slice/cratekit.service\n",
+        "\n0::/system.slice/cratekit.service\n",
+    ],
+    ids=["a-trailing-blank-line", "a-short-read", "a-line-with-no-colon", "a-leading-blank"],
+)
+def test_a_line_this_reader_cannot_parse_is_skipped_rather_than_raised_out_of(
+    tmp_path, monkeypatch, text
+):
+    """A parse failure in our own reader must not arrive as "this machine is unreadable".
+
+    ``/proc/self/cgroup`` is one line per hierarchy and every line is meant to be
+    ``id:controllers:path``. A trailing blank line, a read that caught the file
+    mid write, and a line from a hierarchy that names no path are none of them
+    that shape, and unpacking three names out of them raises ``ValueError`` from
+    inside :func:`available_bytes`, which is a public function whose docstring
+    promises a number.
+
+    WHAT MAKES IT WORSE THAN A CRASH IS WHERE IT LANDS. ``plan_pool`` catches
+    everything its reader raises, deliberately and correctly, because that reader
+    is an injected seam and a caller's own reader blowing up is not this module's
+    crash to take. So a bug in OUR reader arrives as ``MEMORY_UNREADABLE``, which
+    is a real answer meaning "this machine could not be measured", and the run
+    quietly plans one worker on a four gibibyte service it could read perfectly
+    well. Absence read as evidence of absence, and it hides the bug forever.
+
+    The seam's broad catch stays. What is asserted here is the other side of it:
+    this module's own reader is TOTAL, so nothing it does ever needs catching.
+    """
+    import psutil
+
+    root = _hierarchy(tmp_path)
+    unit = root / "system.slice" / "cratekit.service"
+    unit.mkdir(parents=True)
+    _version_two(unit, limit=str(4 * GIB), current="0")
+    where = _self_cgroup(tmp_path, text)
+    monkeypatch.setattr(
+        psutil, "virtual_memory", lambda: SimpleNamespace(available=512 * GIB)
+    )
+
+    assert pool.available_bytes(cgroup_root=root, cgroup_self=where) == 4 * GIB
+    plan = pool.plan_pool(
+        worker_bytes=256 * MIB,
+        items=500,
+        ceiling=64,
+        read_available=lambda: pool.available_bytes(cgroup_root=root, cgroup_self=where),
+    )
+    assert plan.bound is pool.Bound.AVAILABLE_MEMORY, (
+        f"one unparsable line turned a readable four gibibyte cap into "
+        f"{plan.bound}, which is what this module says when a machine cannot be "
+        f"measured at all"
+    )
+    assert plan.available_bytes == 4 * GIB
+    assert plan.workers == 4
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [b"\xff\xfe\x00\x01\n", "0::/a\x00b\n".encode()],
+    ids=["not-text-at-all", "a-path-with-a-null-byte"],
+)
+def test_a_kernel_file_that_is_not_readable_as_text_is_an_absent_reading(
+    tmp_path, monkeypatch, contents
+):
+    """The same shape as the line above, one function earlier, and it is not OSError.
+
+    :func:`_cgroup_text` said in its own docstring that every way of failing to
+    read one of these files arrives as ``OSError``. Two do not. Bytes that are
+    not valid text raise ``UnicodeDecodeError``, and a path field carrying an
+    embedded null byte, which is a thing this walk will happily join onto the
+    mount and hand to ``read_text``, raises a bare ``ValueError`` out of the open
+    itself. Both escaped the reader, both reached :func:`available_bytes`, and
+    both landed in the same place as everything else this module cannot parse:
+    reported as a machine that could not be measured.
+
+    There is no reading here, which is an answer this module already has. The
+    host's own number stands, exactly as it does on every machine with no cgroups
+    at all.
+    """
+    import psutil
+
+    root = _hierarchy(tmp_path)
+    where = tmp_path / "self-cgroup-bytes"
+    where.write_bytes(contents)
+    monkeypatch.setattr(
+        psutil, "virtual_memory", lambda: SimpleNamespace(available=8 * GIB)
+    )
+
+    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) is None
+    assert pool.available_bytes(cgroup_root=root, cgroup_self=where) == 8 * GIB
+    plan = pool.plan_pool(
+        worker_bytes=256 * MIB,
+        items=500,
+        ceiling=64,
+        read_available=lambda: pool.available_bytes(cgroup_root=root, cgroup_self=where),
+    )
+    assert plan.bound is pool.Bound.AVAILABLE_MEMORY
 
 
 def test_a_capped_service_on_a_huge_host_is_sized_by_the_service(tmp_path, monkeypatch):

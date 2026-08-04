@@ -267,11 +267,31 @@ DEFAULT_MAX_TASKS_PER_CHILD = 100
 #: Finite, because the docstring on :func:`measure_worker_bytes` promises that
 #: every failure returns the floor, and a loader that never returns is a failure
 #: that was keeping that promise only by never being tested.
+#:
+#: TWO MINUTES IS A MULTIPLE OF THE THING IT WAITS FOR, not a round number. The
+#: model this module exists to size is the 300 megabyte one named in
+#: :func:`_probe_entry`, and 300 megabytes off a cold disk at the few megabytes a
+#: second a fragmented spinning platter sustains is about a minute of pure
+#: reading, before the spawn, the interpreter, the framework import and the
+#: deserialization on top. A deadline set AT the expected cost is a coin flip
+#: that pays out as the floor, and the floor is a whole run sized wrong, whereas
+#: waiting too long costs one deadline once. The asymmetry is why this is
+#: generous rather than tight, and the band in the test says so out loud.
 DEFAULT_PROBE_TIMEOUT_SECONDS = 120.0
 
 #: How long a probe child is given to die once it is no longer wanted, at each of
 #: the two escalations. Short, because by this point the answer is already in
 #: hand or already abandoned.
+#:
+#: NOT SHORT ENOUGH TO MAKE THE FIRST RUNG DECORATIVE, which is the thing this
+#: number decides and the reason it is not free to move. :func:`_reap` asks
+#: before it kills so a child gets the chance to unwind and release what it
+#: holds, and a child that has just finished loading a model does not release it
+#: instantly. Set this below what that release costs and the ask expires every
+#: time, the kill lands on every abandoned probe unconditionally, and the ladder
+#: is source order with no consequence. The suite drives a child whose handler
+#: takes a measurable time to let go and asserts it unwound rather than died, so
+#: this budget is pinned by what a release costs rather than by taste.
 _PROBE_REAP_SECONDS = 1.0
 
 #: The two things a probe child can send back down its pipe. Tagged rather than
@@ -455,10 +475,21 @@ def _cgroup_text(path: Path) -> str | None:
     would let a cgroup file with mode 000, or a path that resolved to a
     directory, raise out of :func:`available_bytes`, which is a public function
     that promises a number.
+
+    ``ValueError`` IS THE OTHER HALF, AND IT WAS MISSING. Two ways of failing to
+    read a file are not ``OSError`` at all. Bytes that are not valid text arrive
+    as ``UnicodeDecodeError``, which is a ``ValueError``, and a path carrying an
+    embedded null byte, which is a shape ``/proc/self/cgroup`` can hand this
+    walk, arrives as a bare ``ValueError`` from the open itself. Both escaped a
+    reader whose docstring said every failure was covered, and both reached
+    :func:`available_bytes` as an exception rather than as an absent reading.
+    ``plan_pool`` then caught them and planned one worker on a machine it had
+    simply failed to parse, which is a parse bug wearing the costume of a tight
+    machine. Neither is a limit, and neither is a reason to raise.
     """
     try:
         return path.read_text()
-    except OSError:
+    except (OSError, ValueError):
         return None
 
 
@@ -517,12 +548,27 @@ def _cgroup_directories(mount: Path, relative: str) -> list[Path]:
     unit inside it publishes another, and a process in the unit is bound by
     both. Every level is read rather than only the deepest.
 
-    ``..`` is dropped rather than followed. The only way it can appear here is a
-    kernel writing something this function does not understand, and walking out
-    of the mount to read whatever file is there is not a reading of this
-    process's cgroup.
+    ``..`` IS REFUSED RATHER THAN DROPPED, and the difference is a real cgroup
+    this process is not in. Dropping it rewrites ``/../foo`` into ``<mount>/foo``
+    and ``/a/../foo`` into ``<mount>/a/foo``, both of which are directories that
+    can exist and can publish a cap. Because :func:`cgroup_memory_headroom_bytes`
+    takes the tightest cap it finds, a wrong but tight reading off an unrelated
+    sibling narrows every pool on the machine, and it does it while the walk
+    stays neatly inside the mount, so a test that only proves the walk does not
+    escape cannot see it. A path with ``..`` in it does not name this process's
+    cgroup, so no level it names is read.
+
+    THE MOUNT ITSELF IS STILL READ, because it is the one level that is true
+    regardless. Whatever cgroup this process is really in, it is somewhere under
+    this mount, so the mount's own cap is an ancestor's cap and an ancestor's cap
+    binds. Discarding that as well would answer an unparsable path with "no cap"
+    on a machine that publishes one at the top, which is looser than the code
+    this replaced rather than safer.
     """
-    parts = [part for part in relative.split("/") if part and part != ".."]
+    fields = relative.split("/")
+    if ".." in fields:
+        return [mount]
+    parts = [part for part in fields if part]
     return [mount.joinpath(*parts[:depth]) for depth in range(len(parts), -1, -1)]
 
 
