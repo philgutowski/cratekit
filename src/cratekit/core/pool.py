@@ -300,16 +300,23 @@ DEFAULT_PROBE_TIMEOUT_SECONDS = 120.0
 #: time, the kill lands on every abandoned probe unconditionally, and the ladder
 #: is source order with no consequence.
 #:
-#: A BAND, AND BOTH EDGES ARE MEASURED RATHER THAN CHOSEN. The suite reaps a
-#: child that spends a measurable time letting go and TIMES the join that follows
-#: the terminate, so the number this budget is compared against is what the
-#: ladder really costs on the machine running it rather than a nominal sleep.
-#: Below twice that the budget is racing the release, which is not a failure, it
-#: is an intermittent one, and an intermittent rung gets blamed on the runner and
+#: A BAND, AND ITS REFERENCE IS TIMED RATHER THAN ASSUMED. The suite reaps a
+#: child that spends a measurable time letting go, TIMES the join that follows
+#: the terminate on every reap in a wave of them, and holds the release cost it
+#: bounds this budget against to what those reaps actually paid. Below twice that
+#: cost the budget is racing the release, which is not a failure, it is an
+#: intermittent one, and an intermittent rung gets blamed on the runner and
 #: retried. Above three times it the terminate rung has stopped being a chance to
 #: unwind and become a stall in front of a kill that was always going to land,
-#: paid on every abandoned probe. One second sits inside that band on this
-#: machine and the suite fails outright at either edge.
+#: paid on every abandoned probe.
+#:
+#: THE VERDICT ITSELF READS NO CLOCK, which is the correction the round before
+#: this one needed. Multiplying a leg timed in the same run carried that leg's
+#: jitter into the verdict, and measured, a budget one hundredth of a second
+#: outside the floor then failed on nineteen runs of twenty five and passed on
+#: six. The timing now calibrates the reference and the band is exact arithmetic
+#: over it: one second sits inside [0.8, 1.2] and the suite fails outright at
+#: either edge, on every run rather than on most of them.
 _PROBE_REAP_SECONDS = 1.0
 
 #: The two things a probe child can send back down its pipe. Tagged rather than

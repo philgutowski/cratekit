@@ -936,15 +936,39 @@ def test_every_probe_deadline_default_names_the_constant_rather_than_repeating_i
     somebody typed is a second deadline that stops following the first the day it
     changes, with the whole band above still green.
 
-    Both functions are checked, because ``_spawned_probe`` carries its own copy of
-    the same default and a caller reaching it directly is the path that would
-    quietly use the frozen one.
+    A SWEEP AND NOT A LIST OF NAMES, which is what the version before this one
+    got wrong at the exact object it was added to close. It asserted over
+    ``{"measure_worker_bytes", "_spawned_probe"}``, two names it was handed, so a
+    THIRD entry point was invisible to it. Measured: adding
+
+        def measure_worker_bytes_quickly(
+            loader, *, floor_bytes, timeout_seconds: float = 120.0,
+        ) -> int:
+
+    to this module gave a full green suite and killed nothing, and that signature
+    is the precise defect the paragraph above names. A guard that reports on the
+    names it was given reports absence as evidence of absence. Every function in
+    the module is walked instead, and the only thing this test is told is which
+    two must still be found.
+
+    FOUR WAYS TO SPELL A SECOND DEADLINE, and all four are refused. The default
+    can be a literal; it can be an alias, an arithmetic no-op or a conversion
+    wrapped around the constant, none of which a runtime comparison can see; the
+    parameter can lose its default so every caller spells the number instead; or
+    it can leave keyword only, where a positional deadline is set by accident.
+    The CALL SITES are swept for the same reason: the module ships 120.0 today,
+    so a call passing the literal 120.0 would satisfy every runtime assertion in
+    this file while being a second deadline that stops following the first.
     """
     documented = "DEFAULT_PROBE_TIMEOUT_SECONDS"
-    checked = {"measure_worker_bytes", "_spawned_probe"}
-    seen: dict[str, str] = {}
-    for node in ast.walk(ast.parse(POOL_SOURCE)):
-        if not isinstance(node, ast.FunctionDef) or node.name not in checked:
+    parameter = "timeout_seconds"
+    must_carry_it = {"measure_worker_bytes", "_spawned_probe"}
+    tree = ast.parse(POOL_SOURCE)
+    defaults: dict[str, str] = {}
+    without_a_default: set[str] = set()
+    not_keyword_only: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         arguments = node.args
         for name, default in zip(
@@ -952,13 +976,55 @@ def test_every_probe_deadline_default_names_the_constant_rather_than_repeating_i
             arguments.kw_defaults,
             strict=True,
         ):
-            if name == "timeout_seconds" and default is not None:
-                seen[node.name] = ast.unparse(default)
-    assert seen == {name: documented for name in checked}, (
-        f"a probe deadline default is {seen} rather than the module constant "
-        f"{documented} in both places; a signature that repeats the value instead of "
-        f"naming it is a second deadline, and a default argument is bound once at "
-        f"import, so nothing at runtime can tell the two apart"
+            if name != parameter:
+                continue
+            if default is None:
+                without_a_default.add(node.name)
+            else:
+                defaults[node.name] = ast.unparse(default)
+        positional = [*arguments.posonlyargs, *arguments.args]
+        if any(argument.arg == parameter for argument in positional):
+            not_keyword_only.add(node.name)
+    carrying = set(defaults) | without_a_default | not_keyword_only
+    assert must_carry_it <= carrying, (
+        f"{sorted(must_carry_it - carrying)} no longer takes a {parameter} at all, so "
+        f"this guard now sweeps a module with nothing in it to find; a deadline that "
+        f"left the signature did not stop existing, it moved somewhere this cannot see"
+    )
+    assert not_keyword_only == set(), (
+        f"{sorted(not_keyword_only)} takes {parameter} positionally; a deadline that "
+        f"can be passed by position is one a caller sets by counting arguments, and "
+        f"the constant it should have named is then never mentioned at the call at all"
+    )
+    assert without_a_default == set(), (
+        f"{sorted(without_a_default)} takes {parameter} with no default, so every "
+        f"caller now spells the deadline itself; that is more places for a frozen "
+        f"number to live rather than fewer, and none of them is this constant"
+    )
+    wrong = {name: spelling for name, spelling in defaults.items() if spelling != documented}
+    assert wrong == {}, (
+        f"a probe deadline default is {wrong} rather than the module constant "
+        f"{documented}; a signature that repeats the value instead of naming it is a "
+        f"second deadline, and a default argument is bound once at import, so nothing "
+        f"at runtime can tell the two apart"
+    )
+    passed_in: list[tuple[str, str]] = [
+        (ast.unparse(node.func), ast.unparse(keyword.value))
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        for keyword in node.keywords
+        if keyword.arg == parameter
+    ]
+    assert passed_in, (
+        f"no call in this module passes {parameter} to anything, so the sweep over "
+        f"call sites has nothing to check; the probe that runs the deadline is reached "
+        f"through one, and a sweep that finds none is measuring the wrong module"
+    )
+    frozen = [pair for pair in passed_in if pair[1] not in {documented, parameter}]
+    assert frozen == [], (
+        f"a call passes {frozen} as its deadline rather than forwarding {parameter} or "
+        f"naming {documented}; the module ships 120.0 today, so a literal here matches "
+        f"the constant at runtime and stops following it the day the constant moves"
     )
 
 
@@ -1437,10 +1503,28 @@ _TERMINATED_CLEANLY = 77
 #: FAITHFUL IN COST AND NOT IN KIND, and the difference is worth writing down
 #: rather than leaving for somebody to discover. A real release of a 300 megabyte
 #: model is allocator and kernel work, and work DILATES under contention. A sleep
-#: does not: it takes four tenths of a second on an idle machine and four tenths
-#: of a second under twenty two spinners. So this fixture reproduces the DURATION
-#: a release costs and not its sensitivity to load, and the reap tests are stable
-#: partly for that reason.
+#: does not, and that half is measured rather than assumed: over 330 timed legs
+#: in five load regimes, forty spinners at load average 49.8 moved a single
+#: sample's maximum from 0.4111 to 0.4112 seconds and two gibibytes of churn
+#: moved it to 0.4121. So this fixture reproduces the DURATION a release costs
+#: and not its sensitivity to load.
+#:
+#: THE MEASUREMENT IS LOAD SENSITIVE EVEN THOUGH THE SLEEP IS NOT, and an earlier
+#: version of this note claimed otherwise. The parent has to be SCHEDULED to
+#: observe the child's exit, and it is not always scheduled promptly. Measured
+#: across those same five regimes, per regime standard deviation rose from 0.0033
+#: seconds idle to 0.0118 with the sampler itself at ``nice -n 19`` behind thirty
+#: two spinners, and that one regime produced a leg of 0.4926 against a minimum
+#: of 0.4013, a spread of 91.3 milliseconds rather than the 9.8 the earlier note
+#: recorded. Nothing about the child changed; the sampler simply did not run when
+#: the child died.
+#:
+#: SO THE BOUND IS NOT STATED AGAINST A SINGLE SAMPLE. That excursion is exactly
+#: what put the old form seven milliseconds from a red suite while its own note
+#: claimed sixty eight. See ``_RELEASE_SAMPLES``: the leg is timed several times
+#: and read as a MINIMUM, which drops the parent's wakeup term, and the tolerance
+#: around it is forty one milliseconds below and ninety one above against an
+#: eight millisecond envelope.
 #:
 #: THE SLEEP IS STILL THE RIGHT TRADE, chosen rather than settled for. A fixture
 #: that really allocated and freed three hundred megabytes would model the kind as
@@ -1448,10 +1532,7 @@ _TERMINATED_CLEANLY = 77
 #: assert on a function of what every other process on the machine is doing. The
 #: bound would then fail on a busy runner while the shipped budget was fine, which
 #: is a flaky suite bought with realism, and this repository has no conditional
-#: skip to hide it behind. Measured, the timed leg this stands in for runs 0.401
-#: to 0.419 seconds across eighty reaps spanning load average 4.6 to 39 on eleven
-#: cores, an eighteen millisecond spread with no load sensitivity, against a floor
-#: and a ceiling that sit about seventy milliseconds away on either side.
+#: skip to hide it behind.
 _RELEASE_SECONDS = 0.4
 
 
@@ -1527,12 +1608,25 @@ class _WatchedChild:
     def release_seconds(self) -> float:
         """How long the join AFTER the terminate really took, in seconds.
 
-        THE ONE NUMBER A BUDGET CAN HONESTLY BE COMPARED AGAINST. A bound written
-        against ``_RELEASE_SECONDS`` is a bound against a sleep this file chose,
-        and its own multiplier is then free: halve it and nothing fails, because
-        nothing on either side of the comparison is a measurement. This is the
-        wall clock cost of the leg the budget actually pays for, terminate to
-        exit, taken from the run that is asserting on it.
+        THE ONE NUMBER THAT PINS ``_RELEASE_SECONDS`` TO SOMETHING REAL. That
+        constant is a sleep this file chose, and a sleep this file chose can stop
+        being paid without anything noticing: the handler once exited on its
+        first line while the constant still said four tenths of a second. This is
+        the wall clock cost of the leg the budget is bounded against, terminate
+        to exit, so the constant can be checked against what the ladder pays.
+
+        IT IS NOT COMPARED TO THE BUDGET DIRECTLY, and that is deliberate. A
+        verdict multiplied straight out of this reading carries the reading's
+        jitter into the verdict, and this reading's jitter is a parent wakeup
+        that reached eighty five milliseconds under load. It calibrates a literal
+        with a wide tolerance instead, and the literal carries the exact band.
+
+        WHAT A BROKEN READING DOES, measured rather than reasoned. This is a
+        ``monotonic`` delta and so cannot go negative. Forced to zero it fails the
+        calibration; forced to saturate at 2.0 it pins at the join timeout and
+        fails the calibration and the rung test both. A degenerate reading here
+        produces a false RED and never a false green, which is the safe direction
+        for a value nothing else validates.
 
         The second join is that leg for every child here: the first join is the
         one that expires because the child is sleeping past every deadline, and
@@ -2167,27 +2261,53 @@ def test_a_probe_that_gave_up_leaves_no_child_still_allocating():
 # ``_RELEASE_SECONDS`` letting go before it reports, so its exit code is a
 # reading of the budget as well as of the order.
 #
-# THE BUDGET IS COMPARED AGAINST A MEASUREMENT AND NOT AGAINST THAT SLEEP. A
-# bound of the form "the budget is at least twice ``_RELEASE_SECONDS``" replaces
-# a literal with a relationship whose own multiplier is free: measured, that
-# multiplier halved with the whole suite green, which is the defect this unit
-# exists to catch restated one level up. The reap below is TIMED instead, so both
-# edges are stated against what the ladder really cost in the run doing the
-# asserting.
+# THE MEASUREMENT AND THE BAND ARE TWO ASSERTIONS AND NOT ONE, which is what the
+# version before this one got wrong. It compared the shipped budget against a leg
+# TIMED in the same run, ``budget >= 2 * timed_leg``, which put a tenth of a
+# second of jitter inside a verdict that mutants sit one hundredth of a second
+# away from. Measured over twenty five consecutive runs of the subset: a budget
+# of 0.81 failed on nineteen of them and passed on six. A seventy six percent
+# kill is not a kill, and no bound drawn from one clock reading can be tighter
+# than that reading's jitter.
+#
+# So the chain is split, and each half is asserted where it can be decided
+# outright. The reaps below TIME the terminate-to-exit leg and calibrate
+# ``_RELEASE_SECONDS`` against it, over several samples and with a tolerance
+# measured to be wider than any jitter this machine produces. The band then
+# compares the shipped budget against that calibrated literal in exact
+# arithmetic, with no clock in it at all. The measurement still pins the
+# reference, which is the only reason it was ever taken, and the verdict on the
+# budget is a fixed number rather than a race.
+
+
+#: How many reaps the release measurement is taken over, and why more than one.
+#:
+#: ONE SAMPLE IS NOT A MEASUREMENT ON A LEG THAT JITTERS. Measured over 330 legs
+#: in five load regimes, a single sample ran 0.4007 to 0.4926 seconds, and the
+#: widest excursion came from the PARENT not being scheduled promptly rather than
+#: from the leg costing more. Five, because the statistic below is a minimum and
+#: a minimum stops improving quickly: measured here over eighty further legs,
+#: disjoint blocks of five put that minimum in [0.4010, 0.4090] both idle and
+#: under thirty two spinners at load average thirty four, an eight millisecond
+#: envelope against a single sample's eleven idle and ninety two starved. Each
+#: reap costs about a second and a half of wall clock, nearly all of it the first
+#: join expiring, so five is also what the suite can afford.
+_RELEASE_SAMPLES = 5
 
 
 @pytest.fixture(scope="module")
-def a_cooperative_reap() -> _WatchedChild:
-    """One reap of the child that unwinds, run once and read by two tests.
+def cooperative_reaps() -> list[_WatchedChild]:
+    """``_RELEASE_SAMPLES`` reaps of the child that unwinds, read by two tests.
 
-    Two things are being asked of the same event, the rung order and the budget,
-    and a second spawn to ask the second question would pay a second second and a
-    half of wall clock to observe the same ladder twice.
+    Module scoped because two questions are being asked of the same events, the
+    rung order and what the leg cost, and a second wave of spawns to ask the
+    second one would pay the whole wall clock again to watch the same ladder
+    twice.
     """
-    return _reap_a_child(_unwinds_on_a_terminate)
+    return [_reap_a_child(_unwinds_on_a_terminate) for _ in range(_RELEASE_SAMPLES)]
 
 
-def test_a_probe_child_that_can_unwind_is_asked_to_before_it_is_killed(a_cooperative_reap):
+def test_a_probe_child_that_can_unwind_is_asked_to_before_it_is_killed(cooperative_reaps):
     """The first rung, the ORDER, and the BUDGET the first rung is worth nothing without.
 
     A child that handles a terminate exits with its own code. A child that was
@@ -2205,22 +2325,99 @@ def test_a_probe_child_that_can_unwind_is_asked_to_before_it_is_killed(a_coopera
     distinguish there, and this repository allows no conditional skip outside the
     pending register. The battery runs on darwin and continuous integration runs
     on linux, which are the two machines this has to be true on.
+
+    EVERY REAP IN THE WAVE, not the first one. The measurement beside this takes
+    several samples anyway, and a ladder that ran correctly once and wrongly on
+    the fourth spawn is a rung that works most of the time, which is the thing
+    this whole section refuses to accept elsewhere.
     """
-    watched = a_cooperative_reap
-    assert watched.exitcode == _TERMINATED_CLEANLY, (
-        f"the child reported {watched.exitcode} rather than unwinding on a terminate; "
-        f"a negative number here is a SIGKILL, which means either the backstop ran "
-        f"first or the terminate was not given the {_RELEASE_SECONDS} seconds this "
-        f"child needs to let go, and no probe child ever gets to release what it "
-        f"is holding"
+    for index, watched in enumerate(cooperative_reaps):
+        assert watched.exitcode == _TERMINATED_CLEANLY, (
+            f"reap {index} of {len(cooperative_reaps)}: the child reported "
+            f"{watched.exitcode} rather than unwinding on a terminate; a negative "
+            f"number here is a SIGKILL, which means either the backstop ran first or "
+            f"the terminate was not given the {_RELEASE_SECONDS} seconds this child "
+            f"needs to let go, and no probe child ever gets to release what it is "
+            f"holding"
+        )
+        assert watched.rungs == ["join", "terminate", "join", "close"]
+
+
+#: The least the timed leg may be, as a multiple of the cost the fixture DECLARES.
+#:
+#: The honest floor is one. A leg that contains a ``time.sleep(_RELEASE_SECONDS)``
+#: cannot return sooner than that sleep, and every other term in it, signal
+#: delivery, the child's exit, the parent's wakeup, only adds. Nine tenths is one
+#: with room under it, because measured over eighty legs the minimum of five ran
+#: 0.4010 to 0.4090 against a declared 0.4, so an exact floor would have shipped
+#: with one millisecond of clearance and one millisecond of clearance is the
+#: intermittent red this section exists to remove. Nine tenths has forty one.
+_RELEASE_FLOOR_IN_DECLARED = 0.9
+
+#: The most it may be, in the same units. Past this the declared cost is not what
+#: the ladder pays, and the band below is then exact arithmetic over a number
+#: that has stopped describing anything. Measured: the minimum of five sat ninety
+#: one milliseconds under this edge idle and under thirty two spinners alike, and
+#: of the 330 single legs the review timed across five load regimes, the dearest
+#: was 0.4926 and not one reached it.
+_RELEASE_CEILING_IN_DECLARED = 1.25
+
+
+def test_the_release_the_fixture_declares_is_what_the_ladder_was_timed_paying(
+    cooperative_reaps,
+):
+    """``_RELEASE_SECONDS`` is a literal, and this is the mechanism that pins it.
+
+    The band below is exact arithmetic over two constants, which is only worth
+    having while one of them still describes something real. This is what keeps
+    it real: the terminate-to-exit leg is TIMED, and the literal that band
+    multiplies has to agree with what was timed.
+
+    WHAT IT CATCHES, and it is the defect this whole section was written for.
+    This child once called ``os._exit`` on the first line of its handler, a
+    release that costs nothing, while the constant beside it still said four
+    tenths of a second. Nothing in the suite could tell, and so
+    ``_PROBE_REAP_SECONDS`` moved from 1.0 to 0.001 with everything green. Under
+    this, the minimum over five reaps reads about five milliseconds against a
+    declared 0.4 and the floor fails at once.
+
+    WHY THE MINIMUM AND NOT THE MEAN OR THE MAXIMUM. The noise on this leg is one
+    sided. The child's handler sleeps, a sleep is a kernel timer, and the parent
+    times from before its join to after it returns, so every error term ADDS.
+    Measured: forty spinners at load average fifty moved a single sample's
+    maximum by a tenth of a millisecond and two gibibytes of churn moved it by
+    one, while a sampler that was not scheduled promptly moved it by eighty. The
+    excursion is the PARENT'S WAKEUP and not the leg. A minimum drops exactly
+    that term and keeps the one the fixture controls, which is why it reads the
+    same idle and starved while a maximum does not.
+
+    THE TOLERANCE IS WIDER THAN THE JITTER BY DESIGN AND BY MEASUREMENT. This
+    admits [0.36, 0.50] against a statistic measured to sit in [0.4010, 0.4090],
+    so the nearest edge is forty one milliseconds away and the envelope is eight.
+    That is the whole difference from the version before it, which put the
+    nearest edge seven milliseconds from a statistic whose own spread was
+    ninety one.
+    """
+    measured = min(watched.release_seconds for watched in cooperative_reaps)
+    assert measured >= _RELEASE_FLOOR_IN_DECLARED * _RELEASE_SECONDS, (
+        f"the cheapest of {len(cooperative_reaps)} timed terminate-to-exit legs was "
+        f"{measured:.4f} seconds against a fixture that declares {_RELEASE_SECONDS}; "
+        f"a leg cannot cost less than the sleep inside it, so this is a child that no "
+        f"longer pays what it says it pays, and the band below is then arithmetic "
+        f"over a number that describes nothing"
     )
-    assert watched.rungs == ["join", "terminate", "join", "close"]
+    assert measured <= _RELEASE_CEILING_IN_DECLARED * _RELEASE_SECONDS, (
+        f"the cheapest of {len(cooperative_reaps)} timed terminate-to-exit legs was "
+        f"{measured:.4f} seconds against a fixture that declares {_RELEASE_SECONDS}; "
+        f"letting go costs materially more than this file claims, so every budget "
+        f"bounded against that claim is bounded against the wrong number"
+    )
 
 
-#: The least the budget may be, as a multiple of the terminate-to-exit leg that
-#: was just timed. At one times it the budget is racing the release rather than
-#: covering it, which does not fail, it fails sometimes, and a rung that works
-#: most of the time is how an intermittent red suite gets blamed on the runner.
+#: The least the budget may be, as a multiple of what a release costs. At one
+#: times it the budget is racing the release rather than covering it, which does
+#: not fail, it fails sometimes, and a rung that works most of the time is how an
+#: intermittent red suite gets blamed on the runner.
 _BUDGET_FLOOR_IN_RELEASES = 2.0
 
 #: The most it may be, in the same units. Past this the first rung has stopped
@@ -2230,49 +2427,54 @@ _BUDGET_FLOOR_IN_RELEASES = 2.0
 _BUDGET_CEILING_IN_RELEASES = 3.0
 
 
-def test_the_reaping_budget_is_a_band_around_what_a_release_was_measured_to_cost(
-    a_cooperative_reap,
-):
+def test_the_reaping_budget_is_a_band_around_what_a_release_costs():
     """The margin, so a budget that would merely make the test above FLAKY fails outright.
 
     The test above dies at any budget under four tenths of a second, which is the
     far half of this. The near half is worse and it is what a bound is for: at a
-    budget of half a second that test still passes, with under a tenth of a second
-    of slack on a leg whose spread this machine measures in milliseconds. It
-    passes most of the time, and most of the time is not a rung.
+    budget of half a second that test still passes, with a tenth of a second of
+    slack on a leg whose spread this machine measures in milliseconds. It passes
+    most of the time, and most of the time is not a rung.
 
-    THE SUBJECT IS THE TIMED LEG AND NOT ``_RELEASE_SECONDS``, and that is what
-    makes the multipliers here mean anything. Written against the sleep, this
-    read ``budget >= 2 * _RELEASE_SECONDS``, and measured, that ``2`` moved to
-    ``1`` with the whole suite green: both sides of the comparison were numbers
-    typed into this file, so the coefficient between them was free and the bound
-    was no more pinned than the literal it replaced. Timing the reap puts a
-    measurement on one side. The floor then refuses 0.81 seconds, which the old
-    form admitted, and the ceiling refuses 2.0, which the old form had nothing to
-    say about at all.
+    NO CLOCK IN THIS ASSERTION, DELIBERATELY, and that is the correction. The
+    version before this multiplied a leg timed in the same run, so the edge moved
+    with the scheduler: measured, the floor landed anywhere in [0.8014, 0.8242],
+    which put 0.81 and 0.82 inside their own jitter window and made the verdict
+    on them a coin flip, nineteen red and six green over twenty five runs. Both
+    edges are now exact. The floor is 0.8000 and the ceiling is 1.2000, on every
+    run, on every machine, and the reference they multiply is pinned to the clock
+    by the test above rather than by this one.
+
+    WHAT THAT COSTS AND WHAT IT BUYS, stated rather than left to be discovered.
+    The ceiling TIGHTENS, from a fuzzy [1.2021, 1.2363] to an exact 1.2000, so
+    1.21 and 1.22 now fail every time where they used to pass or flip. The floor
+    LOOSENS, from a fuzzy [0.8014, 0.8242] to an exact 0.8000, so 0.81 and 0.82
+    now pass every time. That is the trade: one edge value given up, two gained,
+    and no verdict anywhere that depends on what else the machine was doing.
 
     A BAND RATHER THAN A FLOOR, because too long is a real failure and not merely
     an inelegance. ``_reap`` spends this budget up to three times on a wedged
     child, in the ``finally`` of a probe that has already failed, on a machine
     this module has already decided cannot afford what it was asked for.
 
-    THE MULTIPLIERS ARE JUDGEMENTS AND THE MEASUREMENT IS NOT, which is the split
-    worth being explicit about. Two and three are chosen; what they multiply is
-    read off this run. That is why moving the shipped budget one realistic step
-    in either direction now fails here rather than passing quietly.
+    THE MULTIPLIERS ARE JUDGEMENTS AND THE REFERENCE IS NOT. Two and three are
+    chosen and written down; what they multiply is a number the test above will
+    not let drift from the ladder's real cost. Halving either multiplier alone
+    weakens a bound and cannot fail on its own, which is arithmetic rather than
+    evidence, so the pairs that show what they hold are recorded in
+    ``docs/mutation-u12.md`` beside them.
     """
-    release = a_cooperative_reap.release_seconds
-    assert pool._PROBE_REAP_SECONDS >= _BUDGET_FLOOR_IN_RELEASES * release, (
+    assert pool._PROBE_REAP_SECONDS >= _BUDGET_FLOOR_IN_RELEASES * _RELEASE_SECONDS, (
         f"the reaping budget is {pool._PROBE_REAP_SECONDS} seconds against a release "
-        f"this run measured at {release:.3f}; a child that is asked to stop has to be "
-        f"given comfortably longer than stopping costs, or the terminate rung is a "
-        f"race and every abandoned probe meets the kill on the runs it loses"
+        f"that costs {_RELEASE_SECONDS}; a child that is asked to stop has to be given "
+        f"comfortably longer than stopping costs, or the terminate rung is a race and "
+        f"every abandoned probe meets the kill on the runs it loses"
     )
-    assert pool._PROBE_REAP_SECONDS <= _BUDGET_CEILING_IN_RELEASES * release, (
+    assert pool._PROBE_REAP_SECONDS <= _BUDGET_CEILING_IN_RELEASES * _RELEASE_SECONDS, (
         f"the reaping budget is {pool._PROBE_REAP_SECONDS} seconds against a release "
-        f"this run measured at {release:.3f}; a budget that far above what letting go "
-        f"costs is not patience, it is a stall in front of a kill that was always "
-        f"going to land, and it is paid on every abandoned probe"
+        f"that costs {_RELEASE_SECONDS}; a budget that far above what letting go costs "
+        f"is not patience, it is a stall in front of a kill that was always going to "
+        f"land, and it is paid on every abandoned probe"
     )
 
 
