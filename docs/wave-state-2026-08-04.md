@@ -507,6 +507,45 @@ lines down does the same thing: reverting it turns a public function that
 promises a number into a `ValueError`, which `plan_pool` swallows into
 "this machine's memory is unreadable" and one worker.
 
+### U16, and the third pattern in its purest form
+
+Round 4 was told to fix a machine dependent `match_id`, and it did. `match_id`
+is now genuinely a function of the list line alone. **But the identity that
+`review export` and `review import` actually move is a different one, and that
+one is still library dependent.**
+
+`match.py:1508` derives the review item identity from
+`wanted.question(about_the_key=self.asks_about_key)`, and `asks_about_key` is
+set at `:1772` by whichever branch the LIBRARY chose. Driven end to end: one
+list line gives item `rv_5b77...` on a machine holding the track at `03A` and
+`rv_0efa...` on a machine holding only `Extended`, while `match_id` is
+identical on both. A answers and exports, B imports with no conflict, and B's
+next `adjudicate` re-asks the same question under the other identity. The
+answer is imported and ignored. Reverting the line kills ONE test.
+
+The fix was correct. It landed on the wrong object. The docstring and R-24
+both assert a property the code now has for `match_id` and does not have for
+the thing that travels.
+
+Second U16 finding, and the reason it matters more than it looks: finding (a)
+was closed on two readers and left open on the third. A Tidal row carrying its
+version in its own field discards the listing's credit BEFORE the new
+precondition can check it, so the check is vacuously true. Result is
+`SUPPRESSED / TOMBSTONED`, exit zero, **acquisition silently skipping a track
+nobody deleted.** Every test pinning it drives `read_text_lines` only. A fix
+verified on one reader out of three is how this defect came back after being
+fixed once already.
+
+### A merge instruction that was wrong, now corrected
+
+The 08-03 snapshot said U24 and U16 collapse into `match.TOMBSTONE_KIND` and
+`match.version_identity`. Neither symbol exists. **The real names are
+`cratekit.core.tombstone.KIND_VERSION` and
+`cratekit.core.tombstone.version_identity`**, and `tests/_pending.py:109`
+registers the module obligation. `KIND_VERSION`, not `TOMBSTONE_KIND`. A merge
+instruction naming a symbol that does not exist gets followed literally, so
+this one is worth more than its size.
+
 ### What these findings have in common
 
 All three are the wave's two named patterns, again. U23 and U34 are IDENTITY
