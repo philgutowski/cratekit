@@ -598,6 +598,60 @@ writes its table into the repository, with full row descriptions and not only
 counts.** A table that cannot be checked by the next person is a claim, not a
 result.
 
+### A technique addition: argue a zero row with a COMPOSITE, not a paragraph
+
+U12's round 4 solved a problem this wave kept hitting. Some assertions cannot
+die alone, and saying so has until now been indistinguishable from excusing a
+hole.
+
+**An assertion that TIGHTENS a bound cannot die alone, because the shipped
+constant satisfies the loose bound too.** Reverting it changes nothing while
+the constant is still correct. Round 4's answer is to pair it with a mutation
+of the constant it guards and report both:
+
+    M64 reap margin assertion removed   alone 0   with the budget at 0.5:  0
+    M64                                 alone 0   with the budget at 0.25: 1
+    M65 fixture release 0.4 to 0.0      alone 0   with the budget at 0.25: 0
+    M65                                 alone 0   with the budget at 0.001:0
+
+The last two rows are the point: they REPRODUCE the original blind spot on
+demand, proving the fixture fix was necessary rather than asserting it.
+
+**Standing rule: a zero death row is acceptable only when a composite shows
+what it does hold.** A prose argument is not evidence. This replaces the
+weaker convention of declaring a row redundant and moving on.
+
+U12 round 4 also found a THIRD instance of its own quiet degradation shape.
+`_cgroup_text` claimed every failure arrives as `OSError`. Two do not:
+non-UTF-8 bytes raise `UnicodeDecodeError`, and a path field with an embedded
+null byte raises a bare `ValueError` out of the open. Both escaped and landed
+as `MEMORY_UNREADABLE`, so a parse bug in our own reader reported as the
+machine's memory being unreadable.
+
+### U27, where the hole has now moved three times
+
+Sites four, five and six of R-18 item 3. **Site by site guarding has failed
+three consecutive rounds**, so round 6 is directed to fix the CLASSIFICATION
+instead: an `OSError` whose errno is `EACCES` or `EPERM`, raised anywhere
+under setup or doctor, is a permission the user can grant, decided once at the
+dispatcher so an unguarded site still comes out right.
+
+The worst is not a bad message, it is a dead verb. **`crate setup` cannot
+complete at all** on a machine where rekordbox's own settings name a database
+this interpreter cannot stat, which is a library on an external SSD or under
+`~/Documents` without Full Disk Access. The path is not one the user supplied,
+so there is no way around it, and the wizard dies before asking anything.
+
+Instance seven of absence read as absence: a mount slot this account cannot
+stat reads as a slot with nothing mounted in it, so with the drive attached
+and mounted the tool tells the user to attach the drive.
+
+And the reason it keeps coming back: **the suite PINS the wrong behaviour.**
+Mutating the remedy to `GRANT_PATH_ACCESS` kills two tests. The defect is
+enshrined, and it got that way because those tests raise a synthetic
+`PermissionError` instead of hitting a real permission. That is the fourth
+pattern, found one round after it was named.
+
 ### What these findings have in common
 
 All three are the wave's two named patterns, again. U23 and U34 are IDENTITY
