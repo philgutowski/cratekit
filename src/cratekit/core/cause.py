@@ -409,6 +409,16 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # was a raw OSError escaping mid restore: no reason, no remedy, no
         # reserved exit code, at the moment somebody is already recovering.
         "restore-step-failed": ExitCode.PRECONDITION,
+        # A restore's staging directory already holds a companion file under the
+        # name this attempt wants, so moving the live one there would overwrite
+        # the only surviving copy of transactions that are in no capture. ITS OWN
+        # SLUG RATHER THAN ``internal-error``, which is where it used to land,
+        # and the difference is what a person is told to do: an internal error
+        # says report a defect and stop, and this condition is cleared by running
+        # the restore again, because a fresh attempt takes a fresh staging
+        # directory. PRECONDITION for the reason ``restore-step-failed`` is one:
+        # it is a condition of the machine that a repeat clears.
+        "restore-staging-occupied": ExitCode.PRECONDITION,
     }
 )
 

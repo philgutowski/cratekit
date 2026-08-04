@@ -693,6 +693,33 @@ and then needs six edits", and that is not what happens.
    fails RED, so the resolution keeps both entries rather than picking one.
 4. `tests/test_pending_units.py`. Both sides edit `EXPECTED_PENDING`.
 
+### Two of the six are now applied ON THIS BRANCH, and here is why they moved
+
+**Items 2 and 5 were applied in fix round 6, before the merge, because leaving
+them for the merge was already costing something today.** `scripts/board.py audit`
+exits 2 on this branch RIGHT NOW: issue #36 is closed, U36's module is on `main`,
+and this branch's `tests/_pending.py` still owed U36 `cratekit.write.rebuild`. The
+repository's own rule for that exit is to reopen the issue or clear the entry, and
+U36 is finished, so the entry goes. Clearing it forces item 5 in the same commit,
+because `_pending.requires` raises `KeyError` at import for a key that is no
+longer in `PENDING`, which is the collection failure item 5 describes.
+
+**Item 3 could not move with them, and that is a property of this tree rather
+than a choice.** `src/cratekit/core/convergence.py` does not exist here, so
+"import `core.convergence` normally" makes `restore.py` unimportable and takes the
+whole suite with it. It stays a merge item.
+
+**What carries item 3 now that its register entry is gone.**
+`tests/test_restore.py` grew
+`test_the_convergence_fallback_expires_the_moment_both_modules_share_a_build`,
+which is ALWAYS ARMED and needs no register key, so no unit closing can orphan it.
+It asks what the build it is running in contains: with `core.convergence` absent
+it asserts the fallback is present and latched, which is correct here; with
+`core.convergence` present it asserts `_convergence_module` and the
+`Kind.UNCONVERGED_TREE` filter are gone from `restore.py`, and its failure message
+names the three deletions. So item 3 announces itself on the merged tree instead
+of waiting to be read off this list.
+
 ### The six items to apply
 
 **1. Delete the stale `cratekit.core.restore` entry from `tests/_pending.py`.**
@@ -703,12 +730,17 @@ takes this branch's deletion from both files with no conflict. Listed so nobody
 re-adds it by hand.
 
 **2. Delete the `cratekit.write.rebuild` entry from `tests/_pending.py` and from
-`EXPECTED_PENDING` in `tests/test_pending_units.py`.** The countdown fires the
-moment U36's module exists, which is the mechanism working.
+`EXPECTED_PENDING` in `tests/test_pending_units.py`. ALREADY DONE, fix round 6.**
+Nothing to apply at the merge. It moved forward because the entry was already a
+`board.py audit` exit 2 on this branch, not because the countdown fired.
 
 **3. Remove the fallback branch in `restore._hand_tree_shortness_over` and the
 `_convergence_module` helper behind it, and import `core.convergence` normally.**
-Item 2's register text names this as the act that discharges it.
+STILL OWED, and it is the one item of the six that this branch genuinely cannot
+write, because the module to import is not on this tree. The register entry that
+used to name it is gone with item 2, and what names it now is the always-armed
+test described above, which fails on the merged tree until this is applied and
+says which three deletions to make.
 
 **4. Add `rollback_effects=(RollbackEffect.NONE,)` to the `tree_convergence`
 entry in `core/config.py`.** **Still not writable by U32 alone, re-confirmed:**
@@ -720,9 +752,13 @@ names the exact line. The three facts that entry holds are about rows in this
 database and nothing outside the coupled set, so NONE is the right answer.
 
 **5. Drop the `@requires("cratekit.write.rebuild")` decorator in
-`tests/test_restore.py`.** **IT IS NOT SILENT, AND THE EARLIER TEXT HERE WAS
-WRONG ABOUT BOTH ITS SHAPE AND ITS SIZE.** With items 2, 3 and 4 applied and this
-one skipped, `tests/test_restore.py` fails to COLLECT: `_pending.requires` raises
+`tests/test_restore.py`. ALREADY DONE, fix round 6,** in the same commit as item 2
+because item 2 forces it. The decorator and the test under it are both gone; what
+replaced the test is described at the top of this entry. Nothing to apply at the
+merge, and the paragraphs below are kept because the reasoning is what makes item
+2 and item 5 one commit rather than two. **IT IS NOT SILENT, AND THE EARLIER TEXT
+HERE WAS WRONG ABOUT BOTH ITS SHAPE AND ITS SIZE.** With items 2, 3 and 4 applied
+and this one skipped, `tests/test_restore.py` fails to COLLECT: `_pending.requires` raises
 `KeyError` at IMPORT time, at `tests/_pending.py:267`, for a key no longer in
 `PENDING`. A plain `pytest` run then EXITS 2 with `Interrupted: 1 error during
 collection` and runs NOTHING at all. It does not look like a suite that passed,
@@ -771,21 +807,27 @@ that is not on it.
 clean, `scripts/scan_repo.py` exit 0. The six are NECESSARY and SUFFICIENT: the
 only remaining differences are the two documentation notes recorded below.
 
-**Those counts were measured against branch tip `c7a1a7d`,** and every fix round
-since has added tests on this side, so a merge of the current tip lands higher:
-fix round 4 added nine, giving 3,411 passed and 3,428 collected, and fix round 5
-added two more, giving **3,413 passed, 17 skipped, 3,430 collected**. The three
-failures, the six items and the four conflicts are unchanged by either round,
-neither of which touched a file `main` touched except this one.
+**THOSE COUNTS ARE STALE IN BOTH DIRECTIONS AND ARE NOT TO BE DERIVED FROM.** They
+were measured against branch tip `c7a1a7d` and `main` at `c114afa`. Both sides have
+moved: this branch is at fix round 6, and `main` has taken at least three commits
+past `c114afa` in the same session, from other units and from documentation. This
+paragraph used to carry an arithmetic extrapolation for each round, which is the
+habit the section below forbids, so the extrapolation is deleted rather than
+extended. **The next person who needs a number re-runs the scratch merge; nothing
+here may be added to.**
 
-**WHICH NUMBERS HERE ARE TIP DEPENDENT, so the next round does not have to guess.**
-The passed and collected totals in this section move every time this branch adds
-a test, and so does the test count in item 5; they are the only figures that do.
-The three failures, the six items, the four conflicts, the merge base `4368171`,
-and item 5's floor of 3,298 collected are all properties of the two sides rather
-than of a tip, and none of them has moved across four fix rounds. Update the
-former, leave the latter, and re-measure rather than deriving if `main` moves off
-`c114afa`.
+**WHAT DID NOT MOVE, re-checked at fix round 6.** The four conflicts are unchanged.
+`main`'s `_pending.py` still carries `cratekit.core.restore`, so item 1 stands
+exactly as written. Item 4 is still unwritable from either side alone. Items 2 and
+5 are applied here, which can only REDUCE the three failures, and item 3 is still
+owed. Those are properties of the two sides rather than of a tip.
+
+**AND ONE FAILURE MOVED RATHER THAN DISAPPEARED.** Items 2 and 5 removed the
+`board.py` contradiction and the collection error, and the always-armed test that
+replaced them fails on the merged tree until item 3 is applied. That is the same
+obligation, announcing itself in a test whose message names the fix instead of in
+a checklist line, and it is deliberate: item 3 is the one thing on this list that
+nothing else can detect.
 
 **Two documentation corrections the merge should also carry.** U36's
 `assert_no_latched_restore` docstring says U32's `LATCHING_KINDS` does not include

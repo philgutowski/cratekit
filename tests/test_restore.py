@@ -2386,65 +2386,72 @@ def test_the_tree_mark_happens_after_the_coupled_state_is_replaced(cfg, held):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# The two register entries this unit owns, each gating a real guard.
+# The register entry this unit owns, gating a real guard, plus the obligation
+# that no longer has a register entry to hang on.
 #
 # An entry in tests/_pending.py that no @requires cites gates NO test: it is an
 # unenforced countdown wearing the costume of an enforced one, and this unit
-# shipped two of them. Both are cited below with their full assertion bodies, so
-# the moment the unit named in the register lands, these run and have to pass.
+# shipped two of them. The one still pending is cited below with its full
+# assertion body, so the moment U27 lands it runs and has to pass.
+#
+# THE OTHER ONE'S UNIT LANDED. U36 shipped cratekit.write.rebuild on `main` in
+# this session and issue #36 closed, so its register entry had to go: a register
+# owing a closed unit a module is what scripts/board.py audit exits 2 on, and the
+# obligation on it was owned by nobody the moment #36 closed. What replaces it is
+# below, and it needs no register key at all, which is the point.
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@requires("cratekit.write.rebuild")
-def test_the_rebuild_clears_tree_shortness_on_evidence_and_in_one_place(cfg, held):
-    """U36's two obligations to this unit, asserted rather than described.
+def test_the_convergence_fallback_expires_the_moment_both_modules_share_a_build():
+    """The countdown that survived its own register entry being deleted.
 
-    FIRST, that a rebuild never disposes a tree AWAY. It may close a legacy
-    reconciliation marker, and it has to, because a marker written by a build that
-    had this record and not the convergence one outlives the merge and would
-    otherwise stand open forever over a fact now cleared somewhere else. What it
-    may not do is close one with ACCEPTED, which is a person saying "leave it as
-    it is" about a tree that only a rebuild repairs, and is the softening path
-    this unit registered against U36 to forbid. The clearing call must also be
-    handed the convergence check's own difference list rather than an empty
-    literal, so the refusal behind it cannot be satisfied by fabricated evidence.
+    ``restore._hand_tree_shortness_over`` resolves ``core.convergence`` AT CALL
+    TIME and falls back to recording tree shortness in this unit's own store,
+    because ``core.convergence`` is not in this build and a module-level import of
+    a module that does not exist is a breakage rather than a handoff. On a tree
+    where both modules are present that fallback is dead weight recording a fact a
+    rebuild does not clear, which is precisely how the two answers came apart in
+    the first place.
 
-    SECOND, that tree shortness lives in ONE record. Both units found the same
-    fact from opposite directions and each wrote it into its own store, so a
-    successful rebuild cleared one flag and left the other standing. This drives a
-    real pre-cutover restore and asserts the fact landed in the record the rebuild
-    clears and nowhere else.
+    IT IS ASSERTED WITHOUT A SKIP AND WITHOUT A REGISTER KEY. The obligation used
+    to ride on ``@requires("cratekit.write.rebuild")``, which stopped working in
+    both directions at once when U36 landed: the register entry became a
+    ``board.py`` contradiction, and the guard behind it would have gone live on a
+    tree where the fallback was still there. A test that asks what THIS BUILD
+    contains and asserts the right thing for it has neither problem. It passes
+    here, where the fallback is correct and load bearing, and it fails on the
+    first tree that holds both modules with the fallback still in place, naming
+    the three deletions. That is R-21 item 3 in ``docs/residual-findings.md``,
+    made self-announcing rather than left on a checklist.
     """
-    from cratekit.core import convergence  # noqa: PLC0415
-    from cratekit.write import rebuild  # noqa: PLC0415
+    import importlib.util  # noqa: PLC0415
 
-    rebuild_source = Path(rebuild.__file__).read_text()
-    assert "Disposition.ACCEPTED" not in rebuild_source, (
-        "the rebuild accepts a tree away with a verdict, which is the softening "
-        "path: a tree is closed only by a rebuild, never by a decision"
-    )
-    assert re.search(r"clear_unconverged\([^)]*differences=", rebuild_source, re.S), (
-        "the rebuild does not hand the check's own difference list to the clearing "
-        "call, so the refusal on the other side of it can be satisfied by a caller "
-        "fabricating the evidence for it"
-    )
+    source = Path(inspect.getfile(restore)).read_text(encoding="utf-8")
+    try:
+        landed = importlib.util.find_spec("cratekit.core.convergence") is not None
+    except ModuleNotFoundError:
+        landed = False
 
-    record, _captured = completed_session(cfg)
-    _cut_over(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
-    restore.run(decided, cfg, held=held)
+    if not landed:
+        # The fallback is the correct shape for this build, so assert it is there
+        # and that it is LATCHED rather than merely written down. An earlier round
+        # recorded the fact without latching it and the result was a fact nothing
+        # read.
+        assert "_convergence_module" in source, (
+            "the call-time resolution is gone while core.convergence is still "
+            "absent, so this build's restore imports a module that is not here"
+        )
+        assert reconcile.Kind.UNCONVERGED_TREE in reconcile.LATCHING_KINDS
+        return
 
-    assert convergence.read(cfg).blocking_trees() == ("routing",), (
-        "a pre-cutover restore did not reach the record that gates tree writes"
+    assert "_convergence_module" not in source, (
+        "core.convergence is in this build, so the handoff is an ordinary import: "
+        "delete _convergence_module, delete the fallback branch in "
+        "_hand_tree_shortness_over, and import the module at the top of restore.py"
     )
-    assert reconcile.unconverged_trees(cfg) == (), (
-        "the fact is recorded in two stores again; a rebuild clears one of them"
-    )
-
-    restore_source = Path(restore.__file__).read_text()
-    assert "_convergence_module" not in restore_source, (
-        "the call-time resolution existed only because core.convergence was not in "
-        "this build; it is now, so the handoff is an ordinary import"
+    assert "Kind.UNCONVERGED_TREE" not in source, (
+        "core.convergence owns tree shortness in this build, so restore.py must "
+        "not still filter a kind it can no longer record"
     )
 
 
@@ -3482,6 +3489,17 @@ def test_round5_the_capacity_headroom_decides_a_refusal_at_two_literal_volumes(
     assert outcome.converged, "the volume the headroom asks for was refused"
 
 
+def _shm_path(cfg) -> Path:
+    """The live shared-memory index, resolved through the inventory like the log."""
+    database = config.state_path("rekordbox_db", cfg)
+    companions = config.sidecar_paths("rekordbox_db", cfg)
+    return next(
+        path
+        for path in companions
+        if path.name.startswith(database.name) and path != _wal_path(cfg)
+    )
+
+
 def test_round5_a_staged_companion_is_never_written_over(cfg, held):
     """The staging side had a probabilistic answer where the capture side has a rule.
 
@@ -3496,6 +3514,14 @@ def test_round5_a_staged_companion_is_never_written_over(cfg, held):
     log holds transactions that are in the main file nowhere and in no capture at
     all, so overwriting a staged one destroys the only copy that exists anywhere.
     Refusing costs a restore that can be run again; not refusing costs the work.
+
+    EVERY FIELD OF THE REFUSAL IS PINNED, not only its slug. The round that added
+    this guard asserted ``reason == "internal-error"`` and nothing else, and that
+    slug is the eleventh use of one string in this module: swapping the remedy,
+    deleting the whole detail dictionary and replacing the entire message all left
+    the suite green. The slug is now this condition's own, and it is asserted here
+    with the remediation, the retryability and the detail, because those are what a
+    person actually receives.
     """
     log = _wal_path(cfg)
     log.write_bytes(b"the live log, transactions committed since the checkpoint")
@@ -3513,13 +3539,308 @@ def test_round5_a_staged_companion_is_never_written_over(cfg, held):
     with pytest.raises(CratekitError) as excinfo:
         restore.run(decided, cfg, held=held)
 
-    assert excinfo.value.cause.reason == "internal-error"
+    cause = excinfo.value.cause
+    assert cause.reason == "restore-staging-occupied"
+    assert cause.code is ExitCode.PRECONDITION
     assert survivor.read_bytes() == (
         b"an earlier attempt's log, recoverable from nowhere else"
     )
     assert log.read_bytes() == (
         b"the live log, transactions committed since the checkpoint"
     ), "the live log was moved anyway"
+
+
+def test_round6_the_occupied_staging_is_a_repeat_rather_than_a_defect(cfg, held):
+    """The refusal used to say "report a defect and do not retry", and a retry works.
+
+    Driven rather than argued: the refusal fires, and then a fresh plan and a fresh
+    run of the SAME restore complete, because a fresh attempt takes a fresh staging
+    directory. Telling somebody to file a bug for a condition they clear by running
+    the command again is a support failure, and the sibling refusal a hundred lines
+    away, for the same class of interrupted restore, already says the true thing.
+
+    THE REMEDY IS ASSERTED AS ABSENT ON PURPOSE. This refusal carries STEPS rather
+    than a remedy token, which is the shape the sibling uses and the shape the
+    reason registry argues for whenever the answer is a sentence rather than a
+    command this product runs.
+    """
+    log = _wal_path(cfg)
+    log.write_bytes(b"the live log, transactions committed since the checkpoint")
+    record, _captured = completed_session(cfg)
+    config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation two")
+    decided = restore.plan(cfg, record.session_id, held=held)
+    decided.pre_restore_root.mkdir(parents=True)
+    (decided.pre_restore_root / log.name).write_bytes(b"an earlier attempt's log")
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore.run(decided, cfg, held=held)
+
+    cause = excinfo.value.cause
+    assert cause.retryable is True, "a condition a repeat clears is retryable"
+    assert cause.remediation.remedy is None, (
+        "this refusal answers with steps, not with a remedy token, and the token it "
+        "used to carry told the user to file a bug"
+    )
+    assert any("safe to repeat" in step for step in cause.remediation.steps), (
+        f"nothing in {cause.remediation.steps} tells the user a repeat is safe"
+    )
+    assert cause.detail["target"] == str(log)
+    assert cause.detail["staged"] == str(decided.pre_restore_root / log.name)
+    assert cause.detail["staging_root"] == str(decided.pre_restore_root)
+    assert cause.detail["already_staged"] == [log.name]
+
+    # And now do exactly what the steps say. A fresh plan takes a fresh staging
+    # directory, so the restore it refused completes.
+    again = restore.plan(cfg, record.session_id, held=held)
+    assert again.pre_restore_root != decided.pre_restore_root
+    outcome = restore.run(again, cfg, held=held)
+
+    assert outcome.converged, "the retry the refusal recommends does not work"
+    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
+        b"database, generation one"
+    )
+    assert (decided.pre_restore_root / log.name).read_bytes() == (
+        b"an earlier attempt's log"
+    ), "the retry destroyed the bytes the refusal existed to protect"
+
+
+def test_round6_the_rehearsal_refuses_the_collision_the_real_run_refuses(cfg, held):
+    """The whole plan is checked before any of it is performed, or it is not.
+
+    The guard was added to the PERFORMING path only, which put it after the point
+    it exists to protect: ``_stage_companion_aside`` runs once per companion, so
+    with both companions live and the SECOND one's resting name occupied, the
+    first was already renamed out of the live tree before anything raised. The run
+    aborted with the live write-ahead log gone and the database never replaced,
+    which is the exact half done state the module says the staging prevents.
+
+    And the rehearsal was worse than useless. Measured on the branch that shipped
+    it: with the collision present, ``dry_run=True`` reported all eight steps
+    performed and refused nothing, and the real run then refused. A rehearsal that
+    passes over a run that refuses is the most misleading shape this module has.
+    """
+    log = _wal_path(cfg)
+    index = _shm_path(cfg)
+    log.write_bytes(b"the live log, transactions committed since the checkpoint")
+    index.write_bytes(b"the live shared-memory index")
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+    cleared = [step.target for step in decided.steps if step.act is restore.Act.CLEAR]
+    assert cleared == [log, index], (
+        f"this plan does not clear both companions in order, so it proves nothing: "
+        f"{cleared}"
+    )
+
+    # The SECOND companion's resting name is the occupied one, so a guard that
+    # only fires while performing fires after the first has already moved.
+    decided.pre_restore_root.mkdir(parents=True)
+    (decided.pre_restore_root / index.name).write_bytes(b"an earlier attempt's index")
+
+    with pytest.raises(CratekitError) as rehearsal:
+        restore.run(decided, cfg, held=held, dry_run=True)
+
+    assert rehearsal.value.cause.reason == "restore-staging-occupied"
+    assert log.read_bytes() == (
+        b"the live log, transactions committed since the checkpoint"
+    ), "the rehearsal moved the first companion, which a rehearsal performs nothing"
+
+    with pytest.raises(CratekitError) as real:
+        restore.run(decided, cfg, held=held)
+
+    assert real.value.cause.reason == rehearsal.value.cause.reason, (
+        "the rehearsal and the run disagree about this plan"
+    )
+    assert log.read_bytes() == (
+        b"the live log, transactions committed since the checkpoint"
+    ), "the run refused after moving the first companion, which is the half done state"
+    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
+        b"database, generation one"
+    )
+
+
+def test_round6_the_performing_backstop_names_what_it_already_moved(cfg, held, monkeypatch):
+    """The preflight decides; this one exists for the window after it.
+
+    A directory can be occupied between the check and the rename, so the guard on
+    the performing path stays. What it must NOT be is the primary, and what it must
+    not do is describe only the file it declined to touch: the previous refusal
+    named ``master.db-shm``, the companion still sitting in the live tree, and said
+    nothing about ``master.db-wal``, the one it had already moved and the one whose
+    disappearance the person is looking at.
+
+    The race is driven rather than described: the collision is planted after the
+    first companion has really been staged, which is the only state this backstop
+    can be reached in.
+    """
+    log = _wal_path(cfg)
+    index = _shm_path(cfg)
+    log.write_bytes(b"the live log, transactions committed since the checkpoint")
+    index.write_bytes(b"the live shared-memory index")
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    real_stage = restore._stage_companion_aside
+
+    def stage_then_race(target: Path, staging: Path) -> None:
+        real_stage(target, staging)
+        # Somebody else lands the second companion's resting name in the window.
+        intruder = staging / index.name
+        if target != index and not intruder.exists():
+            intruder.write_bytes(b"an earlier attempt's index")
+
+    monkeypatch.setattr(restore, "_stage_companion_aside", stage_then_race)
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore.run(decided, cfg, held=held)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "restore-staging-occupied"
+    # The companion this run already moved is named, in the detail AND in the
+    # sentence, alongside where it now is.
+    assert cause.detail["already_staged"] == sorted([log.name, index.name])
+    assert log.name in cause.message
+    assert str(decided.pre_restore_root) in cause.message
+    assert any(
+        str(decided.pre_restore_root) in step for step in cause.remediation.steps
+    ), f"no step says where the moved companion is: {cause.remediation.steps}"
+    assert (decided.pre_restore_root / log.name).read_bytes() == (
+        b"the live log, transactions committed since the checkpoint"
+    ), "the log this run moved is not where the refusal says it is"
+
+
+def test_round6_a_dangling_link_at_the_resting_name_is_a_name_already_taken(cfg, held):
+    """``Path.exists`` follows symlinks, so a broken link read as a free name.
+
+    The rule the guard states is that a name already TAKEN means two attempts, and
+    a name holding a dangling link is taken. Asked with ``exists``, the guard let
+    the rename through and ``os.replace`` put the live log where the link was,
+    which both destroys the link and stages a log under a name a later attempt
+    believes is free. This is absence read as evidence of absence.
+    """
+    log = _wal_path(cfg)
+    log.write_bytes(b"the live log, transactions committed since the checkpoint")
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    decided.pre_restore_root.mkdir(parents=True)
+    taken = decided.pre_restore_root / log.name
+    taken.symlink_to(decided.pre_restore_root / "a-target-that-is-not-there")
+    assert not taken.exists(), "this link resolves, so it is not the shape under test"
+    assert taken.is_symlink()
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore.run(decided, cfg, held=held, dry_run=True)
+
+    assert excinfo.value.cause.reason == "restore-staging-occupied"
+    assert taken.is_symlink(), "the link was replaced, which is the defect"
+    assert log.read_bytes() == (
+        b"the live log, transactions committed since the checkpoint"
+    )
+
+
+def test_round6_a_dangling_link_at_the_live_companion_is_still_moved_aside(cfg, held):
+    """The same read, one line earlier, and the cost is the opposite one.
+
+    A dangling link at ``master.db-wal`` is a name the storage engine follows and
+    CREATES THROUGH, so leaving it beside a replaced database means the next log
+    is written wherever the link points. ``Path.exists`` resolves the link, answers
+    False, and the early return skipped it as though the companion were absent.
+    """
+    log = _wal_path(cfg)
+    log.symlink_to(log.parent / "somewhere-that-is-not-there")
+    assert not log.exists() and log.is_symlink()
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    outcome = restore.run(decided, cfg, held=held)
+
+    assert outcome.converged
+    assert not log.is_symlink(), (
+        "a dangling link is still a name the engine writes through, and it is "
+        "still beside the replaced database"
+    )
+    staged = decided.pre_restore_root / log.name
+    assert staged.is_symlink(), "the link was not moved aside, it was lost"
+
+
+def test_round6_a_dangling_link_at_the_live_name_does_not_defeat_the_collision_guard(
+    cfg, held
+):
+    """The two ``lexists`` reads are separate holes and the second was uncovered.
+
+    Found by mutation: changing the guard's OWN early return back to ``exists``
+    killed nothing, because the caller's early return already asked ``lexists``
+    and the tests drove only that side. The combination is what the mutation
+    described. A dangling link at the live companion's name and an earlier
+    attempt's log at the resting name: the guard resolves the link, answers "no
+    live companion here", returns without refusing, and the caller then renames
+    the link over the one surviving copy of transactions that are in no capture.
+
+    Both conditions are the same absence-read-as-evidence-of-absence shape, and
+    each of them has to be asked with the read that sees a name rather than a
+    file.
+    """
+    log = _wal_path(cfg)
+    log.symlink_to(log.parent / "somewhere-that-is-not-there")
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    decided.pre_restore_root.mkdir(parents=True)
+    survivor = decided.pre_restore_root / log.name
+    survivor.write_bytes(b"an earlier attempt's log, recoverable from nowhere else")
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore.run(decided, cfg, held=held, dry_run=True)
+
+    assert excinfo.value.cause.reason == "restore-staging-occupied"
+    assert survivor.read_bytes() == (
+        b"an earlier attempt's log, recoverable from nowhere else"
+    ), "the link was renamed over the only copy of those transactions"
+    assert log.is_symlink(), "the live name was consumed by a rehearsal"
+
+
+def test_round6_a_retry_after_a_partial_failure_still_runs(cfg, held, monkeypatch):
+    """A restore that refuses to run is as bad as one that half runs.
+
+    The new refusal sits on a destructive path's preflight, so the failure mode it
+    can introduce is over restriction. The shape most at risk is the one the
+    sibling refusal explicitly promises: an attempt dies part way through, leaving
+    a staged log behind, and the person runs the restore again. That must proceed,
+    and the earlier attempt's log must survive it.
+    """
+    log = _wal_path(cfg)
+    log.write_bytes(b"the first attempt's log")
+    record, _captured = completed_session(cfg)
+    config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation two")
+
+    first = restore.plan(cfg, record.session_id, held=held)
+
+    def _explode(_source, _target):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(restore, "_replace_file", _explode)
+    with pytest.raises(CratekitError) as excinfo:
+        restore.run(first, cfg, held=held)
+    assert excinfo.value.cause.reason == "restore-step-failed"
+    stranded = first.pre_restore_root / log.name
+    assert stranded.read_bytes() == b"the first attempt's log"
+
+    # Put right what the error named, then do what the refusal said.
+    monkeypatch.undo()
+    log.write_bytes(b"the second attempt's log")
+    second = restore.plan(cfg, record.session_id, held=held)
+    outcome = restore.run(second, cfg, held=held)
+
+    assert outcome.converged, "the retry the sibling refusal promises was refused"
+    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
+        b"database, generation one"
+    )
+    assert stranded.read_bytes() == b"the first attempt's log", (
+        "the retry overwrote the bytes the first attempt staged"
+    )
+    assert (second.pre_restore_root / log.name).read_bytes() == (
+        b"the second attempt's log"
+    )
 
 
 def test_round4_the_residual_findings_this_module_names_still_exist():

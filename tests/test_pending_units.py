@@ -47,9 +47,15 @@ EXPECTED_PENDING = frozenset(
         "cratekit.cli.exit_codes",  # U38, the reserved exit-code vocabulary
         "cratekit.write.routing_cli",  # U20, the route.* verbs and the gated close
         "cratekit.session.restore_cli",  # U27, the restore verbs and the one held session
-        "cratekit.write.rebuild",  # U36, an unconverged tree clears only on convergence
     }
 )
+
+# ``cratekit.write.rebuild`` was here and is gone, because U36 landed it on `main`
+# in this session and issue #36 closed. A register entry owed by a closed unit is
+# the contradiction ``scripts/board.py audit`` exits 2 on, and it is owned by
+# nobody. ``tests/_pending.py`` records which half of that entry U36's own suite
+# discharged and which half became an always-armed tripwire in
+# ``tests/test_restore.py``.
 
 # U8's two entries were removed here when ``cratekit.core.snapshot`` and
 # ``cratekit.core.session`` landed, which is the countdown working as designed.

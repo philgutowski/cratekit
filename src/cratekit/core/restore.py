@@ -1145,7 +1145,7 @@ def run(
 def _preflight(decided: Plan, cfg: config.Config, *, held: Held) -> None:
     """Evaluate every predicate the plan's steps depend on. Writes nothing.
 
-    Five questions, and each one is a failure the old rehearsal could not see:
+    Six questions, and each one is a failure the old rehearsal could not see:
 
     * does this session AUTHORISE every path the plan writes at, which is the
       per-step half of the check :func:`assert_gates_are_open` makes once;
@@ -1155,8 +1155,22 @@ def _preflight(decided: Plan, cfg: config.Config, *, held: Held) -> None:
       of thing the step expects;
     * can this account write at every destination, so a read-only directory
       refuses before the first companion is moved rather than after;
+    * is every companion's resting name in the staging directory still free, so
+      the attempt that would overwrite an earlier attempt's log refuses before it
+      has moved any log at all;
     * is there room on the library volume for the whole copy, which nothing asked
       at all: the capacity refusal had exactly one call site, inside ``capture``.
+
+    THE STAGING QUESTION LANDED HERE AFTER BEING ANSWERED ONLY ON THE PERFORMING
+    PATH, and the round that put it there relocated the hole rather than closing
+    it. :func:`_stage_companion_aside` is called once PER COMPANION, so with both
+    companions live and the second one's resting name occupied, the first was
+    already renamed out of the live tree when the second raised: the run aborted
+    with the live write-ahead log gone and the database never replaced, which is
+    exactly the half done state this staging exists to prevent. The rehearsal was
+    worse than useless, because it reported all eight steps performed and refused
+    nothing while the real run refused. Asked here, both modes answer the same
+    way, which is the property that makes a rehearsal evidence about the run.
 
     IT ALSO RE-DERIVES WHAT THE RESTORE DISCARDS. A plan is a value and a session
     can commit between building one and running it, so a plan built before that
@@ -1179,6 +1193,8 @@ def _preflight(decided: Plan, cfg: config.Config, *, held: Held) -> None:
     for step in decided.steps:
         if step.act in (Act.REPLACE, Act.REPLACE_TREE):
             _assert_source_usable(step)
+        if step.act is Act.CLEAR and step.target is not None:
+            _assert_staging_is_free(step.target, decided.pre_restore_root)
         if step.target is not None:
             _assert_writable(step)
 
@@ -1624,21 +1640,86 @@ def _stage_companion_aside(target: Path, staging: Path) -> None:
     way: the staging side is per FILE rather than per directory, because one
     attempt legitimately stages several companions into one directory and only a
     name already taken means two attempts.
+
+    THAT REFUSAL IS ASKED HERE AS A BACKSTOP AND IN :func:`_preflight` AS THE
+    PRIMARY, and the difference is a whole restore. Asked only here, it fires
+    while the loop is part way through the companions: with two companions live
+    and the SECOND one's resting name occupied, the first was already renamed out
+    of the live tree before this raised, which is the half done state the module
+    docstring says the staging exists to prevent, and the rehearsal reported every
+    step performed and refused nothing. A rehearsal that passes and a real run
+    that refuses is the most misleading shape this module has. The preflight copy
+    is the one that decides; this one exists because the directory can be occupied
+    in the window between the two, and reaching it should be impossible.
+
+    THE EARLY RETURN ASKS ``lexists``. A dangling symlink at the live companion's
+    name is a name the storage engine will follow and create through, so it is a
+    companion to be moved aside rather than an absence to skip; ``Path.exists``
+    resolves the link and answers False, which read a taken name as a free one.
     """
-    if not target.exists():
+    if not os.path.lexists(target):
+        return
+    _assert_staging_is_free(target, staging)
+    config._mkdir_private(staging)
+    os.replace(target, staging / target.name)
+
+
+def _assert_staging_is_free(target: Path, staging: Path) -> None:
+    """Refuse when an earlier attempt's companion already rests under this name.
+
+    ASKED WITH ``lexists`` ON BOTH SIDES. ``Path.exists`` follows symlinks, so a
+    broken link at the resting name answered False and the guard let the rename
+    through, which replaced the link with the live log. The rule this enforces is
+    that a name already TAKEN means two attempts, and a name holding a dangling
+    link is taken. That is the absence-read-as-evidence-of-absence shape, and it
+    is the same reason the caller's own early return asks ``lexists`` too.
+
+    IT NAMES WHAT IS ALREADY IN THE STAGING DIRECTORY, not only the file it is
+    refusing to move. On the performing path the occupants are what THIS run has
+    already renamed out of the live tree, and a refusal that named only the file
+    it declined to touch left a person with a live log missing and no sentence
+    saying where it went.
+    """
+    if not os.path.lexists(target):
         return
     resting = staging / target.name
-    if resting.exists():
-        raise refuse(
-            "internal-error",
-            f"a staged companion already sits at {resting}, so this restore would "
-            f"move a live log onto the log an earlier attempt saved; those bytes "
-            f"are in no capture and overwriting them destroys the only copy",
-            remedy=Remedy.REPORT_DEFECT,
-            detail={"target": str(target), "staged": str(resting)},
-        )
-    config._mkdir_private(staging)
-    os.replace(target, resting)
+    if not os.path.lexists(resting):
+        return
+    occupied = _staged_names(staging)
+    raise refuse(
+        "restore-staging-occupied",
+        f"the staging directory {staging} already holds "
+        f"{', '.join(occupied) or resting.name}, and this restore would move the "
+        f"live {target} onto {resting}. Those bytes are in no capture, so "
+        f"overwriting them destroys the only copy of them that exists anywhere",
+        steps=(
+            "run the restore again; it is safe to repeat, and a fresh attempt "
+            "takes a staging directory of its own that nothing occupies",
+            f"the live storage-engine companion files already moved out of the "
+            f"way are under {staging}",
+        ),
+        scope=Scope.RUN,
+        origin=("restore",),
+        retryable=True,
+        detail={
+            "target": str(target),
+            "staged": str(resting),
+            "staging_root": str(staging),
+            "already_staged": list(occupied),
+        },
+    )
+
+
+def _staged_names(staging: Path) -> tuple[str, ...]:
+    """What the staging directory holds right now, or nothing if it cannot be read.
+
+    Never raises. This runs only to describe a refusal that is already decided, so
+    an unreadable directory must not replace that refusal with a different one.
+    """
+    try:
+        return tuple(sorted(entry.name for entry in staging.iterdir()))
+    except OSError:
+        return ()
 
 
 #: Why a tree this restore left short is short, in the vocabulary the module that

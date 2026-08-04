@@ -178,47 +178,31 @@ PENDING: dict[str, tuple[str, str]] = {
         "composition; what is left is the one wiring call, and it is left here "
         "because core may not import the modules layer",
     ),
-    # KEYED ON THE MODULE U36 ACTUALLY SHIPS, CHECKED AGAINST U36'S TREE RATHER
-    # THAN INFERRED. This key has now been wrong in both directions, which is worth
-    # recording because the lesson is about the method rather than the spelling.
-    # It began as ``cratekit.write.rebuild``, was moved to
-    # ``cratekit.write.tree_rebuild`` on the strength of reading U36's file list at
-    # one moment, and is moved back here because U36 renamed the module to
-    # ``src/cratekit/write/rebuild.py``, which is what issue #36's Files line names
-    # and what U36's own register says in as many words. A key that cannot resolve
-    # is not a countdown, it is a permanent red light that teaches people to ignore
-    # the audit: ``_is_absent`` answers True forever, the guard behind it skips
-    # forever, and ``scripts/board.py contradictions()`` returns exit 2 for the rest
-    # of the project's life once U36 closes, which ``sync`` deliberately will not
-    # repair. The method that keeps it right is not reading harder, it is the guard
-    # below, which fails the moment the module appears under this name.
-    "cratekit.write.rebuild": (
-        "U36",
-        "TWO OBLIGATIONS, both about the same fact recorded in two places. "
-        "FIRST, that an unconverged tree is cleared ONLY through a convergence "
-        "check reporting no difference, never by a bare disposition. "
-        "cratekit.core.reconcile records a tree marker and exposes one "
-        "`disposition` call because effects and trees share a store, and that "
-        "call is the softening path: a rebuild unit that closed a tree marker "
-        "with a verdict and no convergence check would satisfy every test in "
-        "this repository while leaving the tree exactly as short as it was. "
-        "Registered here rather than asserted in a docstring because U32 built "
-        "the store and U36 is the first unit that can violate it (P5). R39's own "
-        "escape hatch is not this: an explicit, logged operator disposition that "
-        "scopes the refusal to one tree is U36's to design, and it is a different "
-        "act from a rebuild reporting success. SECOND, and this is the one that "
-        "has to be discharged in the commit that removes this entry: U32 and U36 "
-        "both discovered that a database-native tree can be left short, from "
-        "opposite directions, and each wrote it into its own store with its own "
-        "gate, exemption, clearing call and refusal slug. U32 settled the "
-        "ownership on core.convergence and hands the fact over through "
-        "core.restore._hand_tree_shortness_over, which resolves that module at "
-        "call time because it does not exist in U32's build. When it does, the "
-        "fallback branch in that function and the whole "
-        "reconcile.Kind.UNCONVERGED_TREE path behind it are dead weight recording "
-        "a fact a rebuild does not clear, and leaving them is how the two answers "
-        "come apart again",
-    ),
+    # THE ``cratekit.write.rebuild`` ENTRY WAS HERE AND IS DELETED, because U36
+    # LANDED. It shipped ``src/cratekit/write/rebuild.py`` on `main` in this
+    # session, and issue #36 is closed. A register that still owes a closed unit a
+    # module is the contradiction ``scripts/board.py audit`` exits 2 on, and the
+    # repository's own rule for that exit is to reopen the issue or clear the
+    # entry, never to leave it: U36 is finished, so the entry goes.
+    #
+    # WHAT THE ENTRY WAS HOLDING, and where each half went, because deleting a
+    # countdown without saying that is how an obligation evaporates:
+    #
+    # * that a rebuild clears an unconverged tree only on a convergence check and
+    #   never on a bare disposition. U36's own suite drives this rather than
+    #   grepping for it: `tests/test_rebuild.py` on `main` refuses
+    #   `clear_unconverged` while the check still differs, and its rebuild
+    #   disposes with REPAIRED rather than ACCEPTED. Discharged.
+    # * that the call-time resolution of `core.convergence` in
+    #   `core.restore._hand_tree_shortness_over`, and the
+    #   `reconcile.Kind.UNCONVERGED_TREE` fallback behind it, are deleted once the
+    #   two modules share a build. NOT discharged, and it cannot be discharged
+    #   from this branch, whose tree has no `core.convergence` to import. It is
+    #   item 3 of R-21 in `docs/residual-findings.md`, and
+    #   `tests/test_restore.py` now carries an always-armed tripwire that fails
+    #   the moment both modules are present with the fallback still there. That is
+    #   a countdown that needs no register key, so it cannot be orphaned by a unit
+    #   closing.
 }
 
 
