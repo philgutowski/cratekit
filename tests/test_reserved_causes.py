@@ -2062,8 +2062,7 @@ DELAYS = {}
 DELAYS["cloud-sync-unreadable"] = 30
 DELAYS.setdefault("canary-read-failed", 15)
 
-SLOW = ("smoke-test-failed", "doctor-check-failed")
-SLOW_DELAYS = {name: 30 for name in SLOW}
+SLOW_DELAYS = {name: 30 for name in ("smoke-test-failed", "doctor-check-failed")}
 
 SENTENCES = {
     "internal-error": "report this as a defect",
@@ -3052,13 +3051,42 @@ def test_the_registry_tier_does_not_fire_on_ordinary_code_inside_the_reserved_ra
     )
     assert hits == [], f"ordinary code keyed on a registry slug is reported: {hits}"
 
+    # THE ANTI-VACUITY HALF, and it is spelled out construct by construct on
+    # purpose. Asserting merely that SOMETHING fires under the single wide key
+    # set leaves every individual line free to drift out of the reserved range
+    # while its eighteen neighbours keep the assertion true, which is the same
+    # "I could not observe it, so there is nothing there" this whole file is
+    # about, pointed at the fixture instead of at the tree. Every entry below is
+    # one shape somebody would actually write, and losing one has to be a
+    # failure rather than a quieter test.
     everything = declared_causes() | named_only
     assert reserved_code_tables(
         CORRECT_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS, everything, RANGE
-    ), (
-        "the fixture's integers are outside the reserved range, so the range is "
-        "answering every question and this test would pass with no key set at "
-        "all, which is exactly how round three certified the widening safe"
+    ) == [
+        "line 10: 'decision-required' -> status 40",
+        "line 10: 'decision-stale' -> status 24",
+        "line 12: 'job-schema-mismatch' -> status 11",
+        "line 12: 'review-schema-mismatch' -> status 12",
+        "line 14: 'backup-facts-unreadable' -> status 30",
+        "line 16: 'library-database-missing' -> status 50",
+        "line 18: 'cloud-sync-active' -> status 20",
+        "line 18: 'library-volume-unmounted' -> status 30",
+        "line 21: 'cloud-sync-unreadable' -> status 30",
+        "line 22: 'canary-read-failed' -> status 15",
+        "line 24: 'doctor-check-failed' -> status 30",
+        "line 24: 'smoke-test-failed' -> status 30",
+        "line 2: 'session-lock-held' -> status 30",
+        "line 2: 'write-lock-held' -> status 15",
+        "line 33: 'unavailable-transient' -> status 45 as seconds",
+        "line 5: 'credential-missing' -> status 10",
+        "line 6: 'config-unusable' -> status 20",
+        "line 7: 'internal-error' -> status 30",
+    ], (
+        "eighteen ordinary constructs, every integer inside the reserved range "
+        "and every key a registry slug. If this list shrinks, the fixture has "
+        "drifted and the silence above is being bought by the range rather than "
+        "by the key rule, which is exactly how round three certified the "
+        "widening safe"
     )
 
 
