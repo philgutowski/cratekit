@@ -1011,8 +1011,8 @@ CODES = {CONFIG_UNUSABLE: 30}          # SILENT
 
 and so was `{Slug.CONFIG_UNUSABLE: 30}`. The package already carries **37 class
 attributes whose value is a declared cause**, for example
-`src/cratekit/acquire/adapter.py:137`, so that is the tree's own idiom rather
-than an invented one. The fifth round's argument for resolving values, that "a
+`TrackOutcome.UNAVAILABLE_PERMANENT` in `src/cratekit/acquire/adapter.py`, so
+that is the tree's own idiom rather than an invented one. The fifth round's argument for resolving values, that "a
 bare 30 in a mapping tells a reader nothing", is symmetric and was applied to one
 side only. One machinery answers both sides now.
 
