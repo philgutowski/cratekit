@@ -24,6 +24,28 @@ verdicts. Pushed to the private remote. **3164 passed, 16 skipped**, ruff clean,
 
 **There are no unmerged branches and no worktrees.**
 
+## What U23 costs to merge, counted rather than estimated
+
+Round 7 reported a "conflict surface" of 7. That figure is not reproducible, the
+term is defined nowhere in this repository, and no grouping of this branch's
+changes produces it. **Measured against `main` at merge base `4368171`: the branch
+touches 20 files, of which 11 already exist on `main` and 9 are new.** The count
+was 11 before round 7 and 11 after; round 7 itself touched 9 files, all of them
+already in that set or new.
+
+The 11 that exist on `main`, which is the whole of what a merge has to reconcile:
+`docs/HANDOFF.md`, `docs/residual-findings.md`, `src/cratekit/cli/registry.py`,
+`src/cratekit/core/cause.py`, `src/cratekit/core/config.py`,
+`src/cratekit/core/tags.py`, `tests/_pending.py`, `tests/test_cli_contract.py`,
+`tests/test_layering.py`, `tests/test_pending_units.py`,
+`tests/test_review_queue.py`.
+
+Reproduce it with:
+
+    for f in $(git diff --name-only 4368171 HEAD); do
+      git cat-file -e main:$f 2>/dev/null && echo "ON-MAIN $f" || echo "NEW $f"
+    done
+
 ## What U23 changed
 
 **Library adoption: a census nothing falls out of, an approval nothing stands in

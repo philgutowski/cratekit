@@ -949,11 +949,26 @@ the recorded path is never rewritten to a different file's path.
 
 **What the closing choice costs**, because it is a real cost and not zero. A
 recycled inode now REFUSES the second adoption instead of silently taking the
-wrong record, so an entry fails and a person runs the doctor. So does an
+wrong record, so an entry fails and is reported per track. So does an
 `os.replace` save on an already-adopted file, and so does the crash seam plus a
 rename. All three leave the file untouched with its own value in it, which is the
 trade this module makes everywhere: refusing costs an override on a run somebody
 asked for, accepting costs a file nobody can put back.
+
+**THE SENTENCE THIS WAS CLOSED ON WAS NOT TRUE WHEN IT WAS WRITTEN, corrected in
+U23's eighth round, 2026-08-04.** "A divergence the BYTES can settle is settled"
+was false in two of the six shapes. Where the identity and the path both named
+the file, and where the recorded path was a second hardlinked name for it, the
+match returned on the two agreeing ADDRESSES and the digest was never consulted at
+all. Driven with no forgery: a recording replaced IN PLACE keeps both the inode
+and the path, so the second adoption matched, re-stamped the record with the
+replacement's bytes, and reported clean; the revert then wrote the replaced
+recording's genre onto the new one and reported that clean too. That is the same
+loss this entry closed, reached through the two shapes the closure did not check.
+Both shapes now ask, and what they ask is in `_settled_or_refused`: not "did the
+bytes move", which every tagging session does, but "is there a value in this field
+that nothing has written down". The closure stands; the round it was granted in
+did not earn it.
 
 **The birth-time proposal is withdrawn.** This entry named `st_birthtime` as the
 fix. FAT stores a creation time with two second granularity and exFAT with ten
@@ -1057,3 +1072,130 @@ library. A signal that fires on the ordinary case is not a signal.
 **Closes when:** the ledger is migrated forward once, at read time, so no
 digest-less record survives into a build that has digests. That is a document
 migration and it belongs with whichever unit owns the doctor.
+
+---
+
+## R-31. The refusal's remedy names a verb that has not landed
+
+**Found:** during U23's eighth round, 2026-08-04. **Measured, not read:**
+
+    $ crate doctor
+    crate: error: argument <command>: invalid choice: 'doctor'
+            (choose from 'profile', 'run', 'job', 'review', 'adopt')
+
+Every refusal `cratekit.adopt.revert` raises carries
+`Remedy.RUN_DOCTOR`, and `cli/render.py` renders that remedy to the person as the
+literal string `crate doctor`. `cli/registry.py` marks the `doctor` entry
+`planned_in="U27"`, so the verb does not exist in any build this branch produces.
+Until round 8 the message PROSE said it too, five times, in the form "Run the
+doctor over the ledger".
+
+**Half of it is fixed here.** No message in this module tells the person to run
+anything any more. Each refusal now states what did not happen and names the
+`(path, field)` whose original is still recorded, which is a fact they can act on
+today, and `test_no_refusal_in_this_module_tells_the_person_to_RUN_A_VERB_THAT_IS_PLANNED`
+fails if the instruction comes back.
+
+**Half of it is deliberately NOT fixed here, and this is the dependency.** The
+machine readable remedy is still `Remedy.RUN_DOCTOR`. That slug is used at more
+than forty call sites across `adopt/apply.py`, `write/routing_pass.py`,
+`core/tree_registry.py` and this module, and its rendering is one line in
+`cli/render.py` shared by all of them. Re-slugging this module's twelve would
+leave the other thirty naming the same absent verb while looking correct, which is
+a fix landing on the wrong object. There is one rendering and it is U27's to make
+true.
+
+**There is also no `adopt apply` and no `adopt revert` on the command line.** The
+registry marks both behind `ADOPT_APPLY_CLI_UNIT`, so today the only way to reach
+any of these refusals, or the `force` escape that spends one, is the Python API.
+That is not a defect of this module and it is stated here so nobody reads the
+refusal messages as a shipped user experience.
+
+**Closes when:** U27 lands `doctor`, at which point `crate doctor` becomes true
+for all forty call sites at once and the guard test above must be deleted rather
+than adjusted. **Expires if U27 ships without it:** the remedy is then naming a
+verb nobody is building, and the correct move is a new slug rendered as the
+ledger's own path.
+
+---
+
+## R-32. A record whose whole directory is gone is not searched for by its bytes
+
+**Found:** during U23's eighth round, 2026-08-04, as the accepted cost of closing
+a data loss that round 7 introduced.
+
+Round 7 decided a record was STRANDED, and therefore available to be claimed by
+whatever else carried its bytes, from `not Path(record.path).exists()` alone. An
+UNMOUNTED VOLUME was then read as a DELETED FILE. Driven on a real `hdiutil`
+MS-DOS FAT image, attached, detached and reattached, with the line restored:
+
+    adopted the USB track: original=('USB Own Genre',)
+    a byte identical backup copy exists elsewhere: True
+    volume detached, so the recorded path exists = False
+    second adoption over the BACKUP: records=1
+      the USB record survived = False
+    volume replugged, USB file re-adopted: original=('Adopted Genre',)
+
+The user's own value ended in no file and no record. `_the_recorded_path_is_vacant`
+now asks for the record's containing DIRECTORY to be present and answering before
+its file counts as gone, which is positive evidence rather than the absence of
+some, and the same drive on the same image reports `records=2`, the USB record
+surviving, and `('USB Own Genre',)` after the replug.
+
+**What that costs.** A record whose file was renamed AND whose entire containing
+directory was then removed is no longer findable by its bytes. A second record is
+written beside it and that record's `original` is the value adoption itself wrote,
+which is the same shape R-30 describes. A rename WITHIN a directory that still
+exists is unaffected, and that is the case the byte search was built for.
+
+**Why the directory rather than the volume.** The honest distinguisher would be
+"is the filesystem this record was written on currently mounted", and nothing in
+the record answers it: `st_dev` is not stable across a remount, which is the whole
+reason `test_a_REMOUNT_does_not_produce_a_SECOND_record` exists. A present
+directory is weaker and it fails in the safe direction, which is the direction
+that does not hand one file's record to another.
+
+**Closes when:** the record carries the volume it was written on as something a
+remount preserves, at which point "that volume is not mounted" and "that file was
+deleted" become different answers instead of the same missing path.
+
+---
+
+## R-33. A stranger's field value that coincides with the recorded one is accepted
+
+**Found:** during U23's eighth round, 2026-08-04, stated as the exact limit of the
+decision that closed the shape-2 and shape-3 hole.
+
+When the identity and the path both name this file, or when the recorded path is a
+second hardlinked name for it, `_settled_or_refused` asks whether the field holds a
+value nothing has written down. It accepts when the field holds the record's own
+`original`, what the record says adoption wrote, or what this call is about to
+write, and it goes to the bytes otherwise.
+
+**The gap is the first of those three.** If a file is replaced in place by a
+different recording whose own value in that field happens to equal the string the
+record says adoption wrote, nothing unrecorded appears to be at risk, the record
+is kept, and a later revert puts the replaced recording's original onto the new
+audio. `written` is a taxonomy bucket's DISPLAY name, shared by most of the library
+it was written into, so the coincidence is not exotic: it is exactly the
+coincidence this module's own `TagSnapshot` docstring names as the reason a field
+value is not identity.
+
+**Why it was accepted rather than closed.** The alternative is to ask the bytes on
+every shape-2 and shape-3 match, which is a whole-file sha256 per track on the one
+pass that touches every track in the library, to catch a case where the value
+recovered by refusing is the same string as the value already there. The cheap
+question is asked first precisely because its answer decides whether the expensive
+one is worth asking, and the population where it answers wrongly is a replacement
+that landed on the same bucket name.
+
+**What it does NOT cover, so nobody widens it by accident.** This is not a claim
+that the field value identifies the file. It never decides which record belongs to
+a file; the two addresses have already done that. It decides only whether this
+write can destroy something, and its wrong answer costs the same as round 7 cost
+in every case rather than more.
+
+**Closes when:** the record carries something about the CONTENT that is cheaper
+than a whole-file hash and that a replacement cannot reproduce, which is the same
+thing R-25 wants for a different reason. A decoded-stream fingerprint of the first
+few seconds is the candidate and it is a unit of its own.
