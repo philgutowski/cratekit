@@ -891,3 +891,61 @@ rather than from the absence of a file. That is a change to the decision store's
 contract, since `core.review` records settled decisions and has no pending state,
 and it belongs with whoever owns that contract rather than inside a fix round for
 one consumer.
+
+## R-21. The Subtitle vocabulary's false negatives still collide, and the repair is a default flip nothing local can validate
+
+**Found:** during the U24 round 5 review, 2026-08-03, measured rather than
+argued.
+
+`tombstone.VERSION_WORDS` decides whether a rekordbox `Subtitle`, which is ID3
+`TIT3` and holds anything at all, names a version of the recording. Against 75
+genuine version designations a real library holds, 56 read as NOT a version:
+`Acappella`, `A Cappella`, `Vocal`, `Refix`, `Rerub`, `Redux`, `Dubplate`,
+`Rmx`, `Retouch`, `Reimagined`, `Revisited`, `Intro`, `Outro`, `Beats`,
+`Beatapella`, `Tool`, `Nightcore`, `Sped Up`, `Slowed`, `Slowed + Reverb`,
+`Mono`, `12 Inch`, `Bonus Track`, `Take 2`, `Unreleased`, `Orchestral`, and
+every non-English spelling including `Ao Vivo`, `En Vivo`, `Versão`, `Versión`,
+`Mezcla`, `Acústico`, `Livemitschnitt`, `ライブ` and `Живая`. Against 42 ordinary
+`TIT3` values, 15 read AS a version, among them `Original Motion Picture
+Soundtrack`, `Extended Play`, the labels `Club Sweat` and `Toolroom Club`, and
+the artists `Radio Slave`, `Dub Pistols`, `Cut Chemist` and `Mix Master Mike`.
+
+**The two directions do not cost the same.** A false negative leaves the row with
+a bare title, so two versions of one recording collide onto one identity and
+deleting either suppresses the other: the user loses a track they did not delete.
+A false positive composes an extra parenthetical, so the tombstone is written and
+listable and matches no provider spelling: the deletion fails to stick and the
+version becomes re-acquirable. Under those costs "believe the column unless there
+is a reason not to" is the cheaper default and the whitelist has it backwards.
+
+**Why round 5 did not flip it.** Believing on sight regresses an accepted round 4
+finding, the label written into an identity as `atlas (anjunadeep)`, and would do
+it for roughly half of all subtitled rows, since `TIT3` holds a label or a credit
+about as often as it holds a mix name. It also introduces its own collision:
+`Title='Sun'` with `Sun Path` in a version column composes onto the identity of a
+row genuinely titled `Sun (Sun Path)`, and nothing local can tell that from the
+legitimate convergence the composition is required to produce, which is
+`Strobe (Michael Woods Remix)` with an empty column against `Strobe` with the
+remixer in one. Both are two rows landing on one identity, and the identity IS
+the claim that they are the same version, so the question a guard would have to
+answer is the question the identity already answers.
+
+**What round 5 did instead, and why it is not the fix.** Adding the 56 spellings
+would move the rate and not the shape, so no words were added. The membership is
+now asserted exactly, in `test_the_version_vocabulary_is_exactly_this_set_and_no_other`,
+which catches a future narrowing as well as a widening: before this, 24 of the 27
+words could be deleted one at a time with the whole suite green, `mix` among them.
+An unbelieved value is also carried out of the reader on `RemovedRow.version_unbelieved`
+and into the tombstone payload, so a suppression that missed can be audited for
+this cause rather than presenting an empty version that reads like a row which
+never had one.
+
+**Closes when:** the belief default inverts AND something bounds the collision it
+introduces. The candidate is a check on the recorder's side rather than a bigger
+vocabulary: `run.plan` already holds the whole collection in one walk, so it can
+see when two rows with different raw version-column values compose onto one
+identity, and refuse THAT candidate rather than suppressing a version nobody
+asked about. It was not built here because the same shape flags an ordinary
+duplicate import, one row carrying a label subtitle and one not, and refusing
+those would take the verb away from a real library. Which of the two a
+convergence is needs a signal neither the row nor the library carries today.

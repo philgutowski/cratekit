@@ -55,13 +55,34 @@ row's composed title equals another row's plain one::
     ("Sun", "Sun Path")     and  ("Sun (Sun Path)", "")
 
 Both pairs land on one identity, and deleting either member suppresses the other,
-which is the over-suppression direction. What makes those unreachable in practice
-is upstream rather than here: they need a version field holding something that is
-not a mix name, and ``deletion.library`` believes ``RemixerName``, which
-rekordbox's schema dedicates to a remixer, while it believes ``Subtitle``, which
-is ID3 ``TIT3`` and holds anything at all, ONLY when the value reads as a version.
+which is the over-suppression direction.
+
+**AND THE PARAGRAPH THAT USED TO FOLLOW CALLED THOSE UNREACHABLE, WHICH WAS
+FALSE FOR THE COLUMN IT NAMED AS THE SAFE ONE.** It argued that they need a
+version field holding something that is not a mix name, and that ``RemixerName``
+cannot be one because rekordbox's schema dedicates it to a remixer. That is the
+error: a remixer is an ARTIST, so ``RemixerName`` holds an artist NAME, and an
+artist name is exactly "something that is not a mix name". ``("Sun", "Sun Path")``
+against ``("Sun (Sun Path)", "")`` is reachable the moment a row credits a
+remixer called Sun Path, and the column was believed on sight with no test of any
+kind applied to it. The safety argument was resting on the one column it did not
+hold for.
+
+Composing a bare artist name was also unmatchable in its own right, which is the
+same defect :func:`_already_carries` names below and closes only for the branch
+where the title already carries the bracket: a row spelled ``Strobe`` with
+``Michael Woods`` in the column composed ``strobe (michael woods)``, and no
+provider spells that. So a producer holding a REMIXER passes it through
+:func:`remixer_title`, which spells it the way a provider does before composing,
+and the two shapes close together: ``Strobe (Michael Woods Remix)`` is a string a
+provider produces AND is not a title another row is likely to hold bare.
+
 So the honest statement is that composition is safe because of what is fed to it,
-not because of what it does, and the producer is where that is guarded.
+not because of what it does, the producer is where that is guarded, and what
+guards it is different per column. ``RemixerName`` is spelled before it is
+composed. ``Subtitle`` is ID3 ``TIT3``, holds anything at all, and is believed
+only when it reads as a version, which is :data:`VERSION_WORDS` and is a closed
+list with both its error directions measured and written down there.
 
 **WHY THE ISRC IS NOT IN THE IDENTITY, recorded because it is the obvious
 suggestion and it is wrong.** An ISRC does identify a specific recording, and a
@@ -131,6 +152,116 @@ _SPACING = re.compile(r"\s+")
 #: matched on its own anyway.
 _BRACKETED = re.compile(r"\(([^()]*)\)|\[([^\[\]]*)\]")
 
+#: The words that make a value a VERSION DESIGNATION rather than a note about the
+#: track. A closed, explicit list rather than a shape test, because "does this
+#: read as a mix name" has no syntax to test: ``Extended Mix`` and ``Anjunadeep``
+#: are the same shape and only the vocabulary tells them apart.
+#:
+#: **IT LIVES HERE, BELOW BOTH READERS, FOR THE REASON THE STORE KEY DOES.** It
+#: was private to ``deletion.library``, where it answered one question: is this
+#: ``Subtitle`` a version. It answers a second one now, in :func:`remixer_title`,
+#: which is about SPELLING rather than belief, and a vocabulary with two callers
+#: in two packages is the shape this module exists to prevent.
+#:
+#: **BOTH ERROR DIRECTIONS ARE MEASURED, AND THEY ARE NOT SYMMETRIC.** Against 75
+#: genuine version designations a real library holds, 56 read as NOT a version:
+#: ``Acappella``, ``Vocal``, ``Refix``, ``Redux``, ``Rmx``, ``Dubplate``,
+#: ``Nightcore``, ``Slowed``, ``12 Inch``, ``Ao Vivo``, ``Versión`` and the rest
+#: of a long tail, including every non-English spelling. Against 42 ordinary ID3
+#: ``TIT3`` values, 15 read AS a version: ``Original Motion Picture Soundtrack``,
+#: ``Extended Play``, the labels ``Club Sweat`` and ``Toolroom Club``, and the
+#: artists ``Radio Slave``, ``Dub Pistols``, ``Cut Chemist`` and ``Mix Master
+#: Mike``.
+#:
+#: A FALSE NEGATIVE leaves the row with a bare title, so two versions of one
+#: recording collide onto one identity and deleting either suppresses the other:
+#: the user loses a track they did not delete, which is the direction this module
+#: calls the worse one. A FALSE POSITIVE composes an extra parenthetical, so the
+#: tombstone is written and listable and matches no provider spelling: the
+#: deletion fails to stick and the version becomes re-acquirable. Under those
+#: costs "believe the column unless there is a reason not to" is the cheaper
+#: default and this list has it backwards.
+#:
+#: **IT IS NOT REPAIRED BY ADDING WORDS AND THE MEMBERSHIP IS PINNED EXACTLY.**
+#: Adding the 56 spellings would move the rate and not the shape: a closed list
+#: cannot be complete over a free text column, and the previous round's list
+#: could be NARROWED word by word with the suite staying green, which is the
+#: property that lets a defect walk back in. An exact membership assertion is
+#: what catches that, and it catches widening too. Flipping the default is the
+#: real repair and it is not this round's: it regresses an accepted finding, the
+#: label written into an identity, and it introduces its own collision, the one
+#: the module docstring above spells ``("Sun", "Sun Path")``, which nothing local
+#: can tell from a legitimate convergence. That is recorded rather than done.
+VERSION_WORDS = frozenset(
+    {
+        "acapella",
+        "acoustic",
+        "alternate",
+        "bootleg",
+        "club",
+        "cut",
+        "demo",
+        "dub",
+        "edit",
+        "extended",
+        "flip",
+        "instrumental",
+        "interlude",
+        "live",
+        "mashup",
+        "mix",
+        "original",
+        "radio",
+        "remaster",
+        "remastered",
+        "remix",
+        "reprise",
+        "rework",
+        "session",
+        "unplugged",
+        "version",
+        "vip",
+    }
+)
+
+#: Splits a folded value into its words, so a vocabulary hit is a WORD and not a
+#: substring. Without it ``Remixed Records``, a label, would read as a version and
+#: ``Anjunadeep`` would too, on the ``dee``-shaped accidents a substring test
+#: makes. It is a NON-WORD split rather than a whitespace one, so ``Re-Edit`` and
+#: ``Extended/Club Mix`` are read as the several words they are.
+_WORD_SPLIT = re.compile(r"\W+", re.UNICODE)
+
+#: The designation a provider appends to a remixer's name. Named rather than
+#: written inline because it is the one string that makes a composed remix title
+#: match a provider's spelling, and a literal buried in a format string is not a
+#: decision anybody can find.
+REMIX_DESIGNATION = "Remix"
+
+#: The words that open a FEATURED CREDIT. A bracketed group starting with one of
+#: these names a guest performer rather than a version of the recording, and the
+#: difference decides an identity: ``Losing It (feat. Anna)`` with the remixer
+#: column empty and the same title with ``Anna`` in it are two different records,
+#: and treating the credit group as though it named the remix collapsed them onto
+#: one identity, so deleting the remix suppressed the original.
+_CREDIT_MARKERS = frozenset({"feat", "ft", "featuring", "with"})
+
+
+def reads_as_version(value: str) -> bool:
+    """Whether a free text value names a VERSION of the recording.
+
+    Folded through :func:`fold`, which is the same folding the identity itself
+    uses, so this asks its question in the one spelling both sides of the
+    identity already agree on rather than inventing a second one.
+
+    WHICH WAY IT FAILS IS MEASURED AND IS RECORDED ON :data:`VERSION_WORDS`. The
+    short version: a designation using none of these words is not believed, so
+    the row keeps its bare title and two versions of one recording can share one
+    identity, which is over-suppression and the worse direction; a note that
+    happens to contain one of these words IS believed, so the identity carries a
+    parenthetical no provider spells and the tombstone suppresses nothing.
+    """
+    return bool(VERSION_WORDS.intersection(_WORD_SPLIT.split(fold(value))))
+
 
 def fold(value: str) -> str:
     """One spelling of a free-text field, for identity purposes only.
@@ -178,6 +309,18 @@ def _already_carries(title: str, folded_version: str) -> bool:
     Lookarounds rather than ``\\b`` because a mix name may begin or end with a
     character that is not a word character, and ``\\b`` is defined against the
     character next to it in the PATTERN, so it silently means nothing there.
+
+    **A FEATURED CREDIT GROUP IS NOT A VERSION GROUP, and reading it as one gave
+    two different tracks one identity.** ``Fisher / Losing It (feat. Anna)`` with
+    the remixer column empty and the same title with ``Anna`` in that column are
+    the original and a remix of it. The bracket that carries the guest credit
+    contains the remixer's name at word boundaries, so the version was judged
+    already carried, nothing was composed, and both rows produced ``losing it
+    (feat. anna)``: deleting the remix suppressed the original, which is the
+    over-suppression direction. A group opening with a credit marker is skipped,
+    so the remix composes and the two stay apart. It is skipped rather than
+    stripped, because what is inside it is a performer either way and none of it
+    names a version.
     """
     folded_title = fold(title)
     delimited = re.compile(rf"(?<!\w){re.escape(folded_version)}(?!\w)")
@@ -185,8 +328,63 @@ def _already_carries(title: str, folded_version: str) -> bool:
         delimited.search(group)
         for match in _BRACKETED.finditer(folded_title)
         for group in match.groups()
-        if group is not None
+        if group is not None and not _is_a_credit(group)
     )
+
+
+def _is_a_credit(group: str) -> bool:
+    """Whether a bracketed group names GUEST PERFORMERS rather than a version.
+
+    Tested on the group's first word, because that is where the convention puts
+    the marker and nowhere else: ``(feat. Anna)``, ``(ft. Anna)``,
+    ``(with Anna)``. A marker anywhere else in the group is a word in a mix name,
+    ``(Live with Strings)`` being the shape that would break under a containment
+    test, so the head is the whole rule.
+    """
+    words = _WORD_SPLIT.split(fold(group).strip())
+    return bool(words) and words[0] in _CREDIT_MARKERS
+
+
+def remixer_title(title: str, remixer: str) -> str:
+    """The title a PROVIDER spells, for a producer holding a bare REMIXER name.
+
+    **THE RECORDER OWES THE CONSULTER THE EXACT STRING IT WILL BE HANDED, AND FOR
+    THIS COLUMN IT WAS NEVER PAYING.** ``RemixerName`` is an association proxy
+    over ``RemixerID`` into ``djmdArtist``, so it always holds an ARTIST NAME
+    rather than a mix name: the row is ``Strobe`` by ``deadmau5`` with ``Michael
+    Woods`` in the column. Composed as it stood, that produced the identity
+    ``strobe (michael woods)``, and a provider spells the same version ``Strobe
+    (Michael Woods Remix)``, so the consulter asked for ``strobe (michael woods
+    remix)`` and missed. Every tombstone written from that column was
+    unmatchable, which means every remix the user deleted was re-acquirable, and
+    the remixer column is the normal case in a remix-heavy library rather than an
+    edge. :func:`_already_carries` names this defect in its own docstring and
+    closes it only for the branch where the title already carries the bracket.
+
+    So the artist name is SPELLED as a designation before it is composed, and the
+    two conventions one collection routinely holds then agree: ``Strobe`` with
+    ``Michael Woods`` in the column and ``Strobe (Michael Woods Remix)`` with it
+    filled in as well now produce ONE identity, where before they produced two.
+
+    A VALUE THAT ALREADY READS AS A DESIGNATION IS LEFT ALONE. Some libraries and
+    some importers put a whole mix name in the column, and appending to that
+    gives ``(Michael Woods Remix Remix)``, which is a second unmatchable spelling
+    replacing the first. That is the one place :func:`reads_as_version` is asked
+    about this column, and it is asked about SPELLING rather than about belief: a
+    non-empty remixer is a version either way, and all this decides is how it is
+    written down.
+
+    A REMIXER THE TITLE ALREADY NAMES IS NOT COMPOSED AT ALL, and that test is on
+    the BARE name rather than on the spelled one. ``Strobe (Michael Woods
+    Extended Remix)`` carries ``Michael Woods`` and does not carry ``Michael
+    Woods Remix``, so testing the spelled form would compose a second bracket
+    onto a title that already says everything it needs to.
+    """
+    folded = fold(remixer)
+    if not folded or _already_carries(title, folded):
+        return title
+    spelled = remixer if reads_as_version(remixer) else f"{remixer} {REMIX_DESIGNATION}"
+    return version_title(title, spelled)
 
 
 def version_title(title: str, version: str) -> str:
@@ -300,9 +498,13 @@ __all__ = [
     "DECLINE_STORE_KEY",
     "KIND_REMOVED_FILE",
     "KIND_VERSION",
+    "REMIX_DESIGNATION",
     "STORE_KEY",
+    "VERSION_WORDS",
     "describe",
     "fold",
+    "reads_as_version",
+    "remixer_title",
     "removed_file_identity",
     "version_identity",
     "version_title",

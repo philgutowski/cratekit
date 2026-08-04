@@ -237,7 +237,7 @@ def plan(
     # highest sequence any removal carries and the filter needs the baseline. A
     # second walk would return nothing at all against a database cursor, which is
     # the shape that reports an empty library while the run reports clean.
-    seen = library.read_collection(db.get_content(), since=watermark_store.UNBASELINED)
+    seen = library.read_collection(db.get_content())
     highest = max((row.sequence for row in seen.removed), default=counter)
 
     mark, baselined = marks.baseline(
@@ -254,6 +254,13 @@ def plan(
             baselined_over=len(seen.removed),
         )
 
+    # STRICTLY GREATER, AND THIS IS THE ONLY PLACE THE RULE IS APPLIED. The
+    # watermark names the highest sequence everything at or below which has been
+    # handled, so a row sitting exactly on it is one this pass has already
+    # finished with; greater-or-equal would re-offer the last row of every
+    # previous run, forever. ``read_collection`` used to carry the same test
+    # behind a parameter the only caller permanently disabled, which is one rule
+    # written twice with one copy unreachable, so neither copy could be measured.
     removed = tuple(row for row in seen.removed if row.sequence > mark.sequence)
     rules = _rules(cfg, prefix_map)
     references = candidate_rules.reference_set(

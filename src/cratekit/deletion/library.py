@@ -27,14 +27,20 @@ no verb.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any, Iterable
 
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.core.tombstone import fold
+from cratekit.core.tombstone import reads_as_version
 from cratekit.write import trees
+
+#: What a version-bearing column is GUARANTEED to hold, which decides both
+#: whether its value is believed and how the value is SPELLED into a title.
+#: Declared kinds rather than a boolean, because the boolean answered only the
+#: first question and the second one is where the tombstones were being lost.
+VERSION_IS_AN_ARTIST = "artist"
+VERSION_IS_A_DESIGNATION = "designation"
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +70,19 @@ class RemovedRow:
     #: than folded into it here, so the payload a person reads still shows what
     #: the row actually says while ``stores.version_of`` composes the identity.
     version: str = ""
+    #: What the column holding :attr:`version` is guaranteed to MEAN, which is
+    #: what decides how the value is spelled into a title. An artist name and a
+    #: designation compose differently and composing an artist name as though it
+    #: were a designation is a tombstone no provider spelling can match. Defaults
+    #: to the designation, which is the reading that changes nothing, so a caller
+    #: constructing a row with a mix name in hand gets the composition that
+    #: shipped rather than a silent re-spelling.
+    version_kind: str = VERSION_IS_A_DESIGNATION
+    #: A non-empty version column value this reader did NOT believe. Recorded so
+    #: a suppression that missed can be audited: an empty ``version`` reads the
+    #: same way for a row that never had one and for a row whose designation the
+    #: vocabulary did not recognise, and only one of those is a defect.
+    version_unbelieved: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,93 +218,38 @@ def _text(row: Any, attribute: str) -> str:
     return str(getattr(row, attribute, "") or "")
 
 
-#: The words that make a value a VERSION DESIGNATION rather than a note about the
-#: track. A closed, explicit list rather than a shape test, because "does this
-#: read as a mix name" has no syntax to test: ``Extended Mix`` and ``Anjunadeep``
-#: are the same shape and only the vocabulary tells them apart.
-_VERSION_WORDS = frozenset(
-    {
-        "acapella",
-        "acoustic",
-        "alternate",
-        "bootleg",
-        "club",
-        "cut",
-        "demo",
-        "dub",
-        "edit",
-        "extended",
-        "flip",
-        "instrumental",
-        "interlude",
-        "live",
-        "mashup",
-        "mix",
-        "original",
-        "radio",
-        "remaster",
-        "remastered",
-        "remix",
-        "reprise",
-        "rework",
-        "session",
-        "unplugged",
-        "version",
-        "vip",
-    }
-)
-
-#: Splits a folded value into its words, so a vocabulary hit is a WORD and not a
-#: substring. Without it ``Remixed Records``, a label, would read as a version and
-#: ``Anjunadeep`` would too, on the ``dee``-shaped accidents a substring test
-#: makes.
-_WORD_SPLIT = re.compile(r"\W+", re.UNICODE)
-
 #: The columns that can hold a mix name, in the order they are believed, each
-#: with whether a non-empty value is believed ON SIGHT or has to read as a version
-#: first. FIRST BELIEVED VALUE WINS rather than the two being joined, because two
-#: columns describing one mix would otherwise produce a title carrying it twice,
-#: and that is a second identity for one version.
+#: with what it is guaranteed to hold. FIRST BELIEVED VALUE WINS rather than the
+#: two being joined, because two columns describing one mix would otherwise
+#: produce a title carrying it twice, and that is a second identity for one
+#: version.
 #:
-#: **THE SECOND HALF OF EACH PAIR IS WHAT THE COLUMN IS GUARANTEED TO MEAN, AND
-#: THE TWO COLUMNS ARE NOT GUARANTEED THE SAME THING.** ``RemixerName`` is not a
-#: text column at all: it is an association proxy over ``RemixerID`` into
-#: ``djmdArtist``, exactly as ``ArtistName`` is, so rekordbox's own schema says a
-#: non-empty value is the artist who remixed this, and it is believed on sight.
+#: **THE TWO COLUMNS ARE NOT GUARANTEED THE SAME THING, AND THE DIFFERENCE RUNS
+#: FURTHER THAN BELIEF.** ``RemixerName`` is not a text column at all: it is an
+#: association proxy over ``RemixerID`` into ``djmdArtist``, exactly as
+#: ``ArtistName`` is, so rekordbox's own schema says a non-empty value is the
+#: ARTIST who remixed this. That makes it believed on sight, and it also makes it
+#: the wrong string to put in a title: a provider spells the version ``Strobe
+#: (Michael Woods Remix)`` and never ``Strobe (Michael Woods)``, so
+#: ``stores.version_of`` composes this column through
+#: ``tombstone.remixer_title``.
+#:
 #: ``Subtitle`` is a free text column that maps to ID3 ``TIT3``, "subtitle or
 #: description refinement", and in real files that holds a label, a featured
 #: credit or a note as often as it holds a mix name. Believing it on sight put an
 #: ordinary track's identity under ``atlas (anjunadeep)``, so the consulter, which
 #: asks under the bare ``Atlas`` a provider hands it, answered NOT SUPPRESSED and
-#: R36 silently did not work for that row.
-_VERSION_COLUMNS: tuple[tuple[str, bool], ...] = (
-    ("RemixerName", False),
-    ("Subtitle", True),
+#: R36 silently did not work for that row. It is believed only when it reads as a
+#: version, and both error rates of that test are measured on
+#: ``tombstone.VERSION_WORDS``.
+_VERSION_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("RemixerName", VERSION_IS_AN_ARTIST),
+    ("Subtitle", VERSION_IS_A_DESIGNATION),
 )
 
 
-def _reads_as_version(value: str) -> bool:
-    """Whether a free text value names a VERSION of the recording.
-
-    Folded through ``core.tombstone.fold``, which is the same folding the
-    identity itself uses, so this asks its question in the one spelling both
-    sides of the identity already agree on rather than inventing a second one.
-
-    WHICH WAY IT FAILS, STATED, because a vocabulary is never complete. A mix
-    name using none of these words is not believed, so the row keeps the bare
-    title it had before the version columns were read at all, and two versions
-    of one recording can share one identity again: that is the over-suppression
-    shape, and it is the price of the list. A note that happens to contain one of
-    these words IS believed, so an ordinary track's identity carries a
-    parenthetical and its tombstone misses, which is under-suppression. The list
-    is deliberately short and made of words that are version designations
-    wherever they appear, so the second direction stays rare.
-    """
-    return bool(_VERSION_WORDS.intersection(_WORD_SPLIT.split(fold(value))))
-
-
-def _version_of(row: Any) -> str:
-    """The mix name from whichever column holds it, or the empty string.
+def _version_of(row: Any) -> tuple[str, str, str]:
+    """The mix name, what the column that held it means, and what was NOT believed.
 
     Read through :func:`_text`, so a binding that does not expose the column at
     all answers "" rather than raising. That is the right default HERE and would
@@ -297,15 +261,26 @@ def _version_of(row: Any) -> str:
     A column that is not believed is SKIPPED rather than returned empty, so the
     order in :data:`_VERSION_COLUMNS` keeps meaning what it says if a third
     column is ever added below these two.
+
+    **AND WHAT WAS SKIPPED IS CARRIED OUT RATHER THAN DROPPED.** A ``Subtitle``
+    that does not read as a version leaves the row with a bare title, which is
+    the measured failure direction of a closed vocabulary and the one that costs
+    the user a track. Dropping the value made that invisible after the fact: the
+    tombstone's payload showed an empty version, which reads exactly like a row
+    that never had one. Carried out, it goes into the payload, so an audit
+    looking at a suppression that missed can see the column value the identity
+    was NOT composed from, which is the first thing to look at.
     """
-    for column, must_read_as_version in _VERSION_COLUMNS:
+    unbelieved = ""
+    for column, holds in _VERSION_COLUMNS:
         found = _text(row, column)
         if not found:
             continue
-        if must_read_as_version and not _reads_as_version(found):
+        if holds == VERSION_IS_A_DESIGNATION and not reads_as_version(found):
+            unbelieved = unbelieved or found
             continue
-        return found
-    return ""
+        return found, holds, unbelieved
+    return "", "", unbelieved
 
 
 def _size_of(row: Any) -> int | None:
@@ -319,14 +294,17 @@ def _size_of(row: Any) -> int | None:
     return size if size > 0 else None
 
 
-def read_collection(rows: Iterable[Any], *, since: int) -> CollectionRead:
-    """Split one walk of the collection into the active rows and the recent removals.
+def read_collection(rows: Iterable[Any]) -> CollectionRead:
+    """Split one walk of the collection into the active rows and every removal.
 
-    ``since`` is the recorded watermark, and the comparison is STRICTLY greater:
-    the watermark names the highest sequence everything at or below which has
-    been handled, so a row sitting exactly on it is one this pass has already
-    finished with. Using greater-or-equal would re-offer the last row of every
-    previous run, forever.
+    EVERY removal, unfiltered, and it used to take a ``since`` that filtered
+    here as well. That parameter was dead by construction rather than merely
+    unused: the only production call passed ``UNBASELINED``, because the baseline
+    needs the highest sequence any removal in the library carries and the filter
+    needs the baseline, so the walk cannot be filtered at all. The real filter
+    lives in ``run.plan``, which applies it to the rows this returns, and one
+    rule expressed twice with one copy permanently switched off is a guard
+    nothing can be measured against: mutate it and the suite cannot notice.
 
     Takes an iterable of mapped rows rather than a database handle, so every
     branch here is reachable without a database and the module does no input of
@@ -344,19 +322,19 @@ def read_collection(rows: Iterable[Any], *, since: int) -> CollectionRead:
                 )
             )
             continue
-        sequence = _sequence_of(row)
-        if sequence <= since:
-            continue
+        version, kind, unbelieved = _version_of(row)
         removed.append(
             RemovedRow(
                 content_id=str(row.ID),
                 recorded=_text(row, "FolderPath"),
-                sequence=sequence,
+                sequence=_sequence_of(row),
                 size=_size_of(row),
                 artist=_text(row, "ArtistName"),
                 title=_text(row, "Title"),
                 isrc=_text(row, "ISRC") or None,
-                version=_version_of(row),
+                version=version,
+                version_kind=kind or VERSION_IS_A_DESIGNATION,
+                version_unbelieved=unbelieved,
             )
         )
     return CollectionRead(active=tuple(active), removed=tuple(removed))
@@ -457,6 +435,8 @@ def playlist_referenced(memberships: Any) -> frozenset[str]:
 
 
 __all__ = [
+    "VERSION_IS_AN_ARTIST",
+    "VERSION_IS_A_DESIGNATION",
     "CollectionRead",
     "RemovedRow",
     "current_sequence",

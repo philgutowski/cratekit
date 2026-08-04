@@ -39,7 +39,7 @@ from __future__ import annotations
 from typing import Any, Callable, Mapping
 
 from cratekit.core import config, review, tombstone
-from cratekit.deletion.library import RemovedRow
+from cratekit.deletion.library import VERSION_IS_AN_ARTIST, RemovedRow
 
 
 def declines(cfg: config.Config) -> review.DecisionStore:
@@ -64,23 +64,34 @@ def version_of(row: RemovedRow) -> dict[str, str]:
     so two different remixes of one recording reach here as two rows carrying one
     title. Handing those straight to ``version_identity`` gave them ONE identity,
     and deleting either reported the other suppressed and never re-acquired it.
-    ``tombstone.version_title`` is where the rule lives, below both this and the
-    acquisition side, so a recorder and a consulter cannot compose differently.
+    ``core.tombstone`` is where the composition rules live, below both this and
+    the acquisition side, so a recorder and a consulter cannot compose
+    differently.
 
     **HOW THE RECORDER AND THE CONSULTER AGREE, WHICH IS NOT BY BOTH COMPOSING.**
     :func:`suppressed_version` composes nothing, and it cannot: a provider
     candidate arrives as one title with the mix name already inside it and no
     second field to offer. So the agreement runs the other way. The RECORDER is
-    obliged to produce exactly the string the consulter will be handed, and it
-    keeps that obligation by composing only from a field that really is a version
-    designation, which ``library._version_of`` is what decides. Composing from a
-    ``Subtitle`` holding a label wrote the identity ``atlas (anjunadeep)`` for a
-    track a provider spells ``Atlas``, so the tombstone was written, was
-    listable, and answered NOT SUPPRESSED to the only question ever asked of it.
+    obliged to produce exactly the string the consulter will be handed.
+
+    **AND THAT OBLIGATION IS PAID DIFFERENTLY PER COLUMN, WHICH IS THE CORRECTION
+    THIS ROUND MAKES.** It used to be paid one way, by composing only from a
+    field that really is a version designation, which is what
+    ``library._version_of`` decides for the ``Subtitle``. That is the right
+    guard for a free text column and it was the wrong guard for the other one:
+    ``RemixerName`` is an association proxy into ``djmdArtist`` and therefore
+    always holds an ARTIST NAME, so believing it and composing it verbatim wrote
+    ``strobe (michael woods)`` while every provider spells ``Strobe (Michael
+    Woods Remix)``. The value was true, the belief was correct, and the SPELLING
+    was one no consulter would ever ask about, so every tombstone written from
+    the commonest version column in a remix-heavy library suppressed nothing.
+    ``tombstone.remixer_title`` spells it before composing.
     """
-    return tombstone.version_identity(
-        artist=row.artist, title=tombstone.version_title(row.title, row.version)
-    )
+    if row.version_kind == VERSION_IS_AN_ARTIST:
+        title = tombstone.remixer_title(row.title, row.version)
+    else:
+        title = tombstone.version_title(row.title, row.version)
+    return tombstone.version_identity(artist=row.artist, title=title)
 
 
 def identifiable(row: RemovedRow) -> bool:
@@ -220,6 +231,14 @@ def record_tombstone(
             # built out of, which is the one thing the composed title cannot show
             # and the first thing to look at when a tombstone missed.
             "version": row.version,
+            # AND THE VALUE THAT WAS NOT BELIEVED RIDES BESIDE IT. An empty
+            # ``version`` reads identically for a row that never carried one and
+            # for a row whose designation the closed vocabulary did not
+            # recognise, and only the second is a defect. That second case is the
+            # measured failure direction of the vocabulary and the one that costs
+            # the user a track, so the audit trail that exists to answer "why did
+            # this tombstone miss" may not be the one place it is invisible.
+            "version_unbelieved": row.version_unbelieved,
             "isrc": row.isrc or "",
             "content_id": row.content_id,
             "recorded": row.recorded,

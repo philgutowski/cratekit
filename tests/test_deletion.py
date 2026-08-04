@@ -1266,7 +1266,7 @@ def test_a_decoy_volume_at_the_configured_path_refuses_before_anything_resolves(
 def test_a_row_that_cannot_report_the_soft_delete_marker_refuses(cfg):
     blind = FakeRow(ID="9", FolderPath="/x.flac")
     with pytest.raises(CratekitError) as excinfo:
-        library.read_collection([blind], since=0)
+        library.read_collection([blind])
     assert excinfo.value.cause.code is ExitCode.LIBRARY_UNREADABLE
 
 
@@ -1281,7 +1281,7 @@ def test_a_removed_row_with_no_usable_update_sequence_refuses(cfg, value):
     """
     blind = FakeRow(ID="9", FolderPath="/x.flac", rb_local_deleted=1, rb_local_usn=value)
     with pytest.raises(CratekitError) as excinfo:
-        library.read_collection([blind], since=0)
+        library.read_collection([blind])
     assert excinfo.value.cause.reason == "removal-sequence-unreadable"
 
 
@@ -1438,7 +1438,7 @@ def test_the_real_binding_answers_every_column_the_reader_asks_for(cfg, real_db)
     _write_rows(db_path, [("1", str(music), True, 51, 99, Path(ONE).stem)])
     handle = rb_writer.open_db(db_path, unlock=False, cfg=cfg)
     try:
-        seen = library.read_collection(handle.get_content(), since=0)
+        seen = library.read_collection(handle.get_content())
         assert library.database_identity(handle) == "1"
         assert library.current_sequence(handle) == 100
     finally:
@@ -2242,7 +2242,7 @@ def test_the_reader_takes_the_mix_name_from_either_column(cfg):
     subtitle.RemixerName = ""
     subtitle.Subtitle = "Extended Mix"
 
-    seen = library.read_collection(FakeQuery([remixer, subtitle]), since=0)
+    seen = library.read_collection(FakeQuery([remixer, subtitle]))
     assert [row.version for row in seen.removed] == ["Michael Woods Remix", "Extended Mix"]
     assert stores.version_of(seen.removed[0])["title"] == "strobe (michael woods remix)"
 
@@ -2264,7 +2264,7 @@ def test_a_row_from_a_binding_with_no_version_column_still_answers(cfg):
         ArtistName=ARTIST,
         ISRC=None,
     )
-    seen = library.read_collection(FakeQuery([bare]), since=0)
+    seen = library.read_collection(FakeQuery([bare]))
     assert seen.removed[0].version == ""
     assert stores.version_of(seen.removed[0])["title"] == "strobe"
 
@@ -2301,7 +2301,7 @@ def test_the_real_binding_answers_the_version_columns_too(cfg, real_db):
 
     handle = rb_writer.open_db(db_path, unlock=False, cfg=cfg)
     try:
-        seen = library.read_collection(handle.get_content(), since=0)
+        seen = library.read_collection(handle.get_content())
     finally:
         rb_writer.close_db(handle)
 
@@ -2882,7 +2882,7 @@ def test_a_subtitle_that_is_not_a_mix_name_leaves_the_identity_the_provider_spel
     nothing anywhere reported it, because the tombstone existed and was listable.
     """
     row = _subtitled(cfg, ONE, "1", title="Atlas", subtitle="Anjunadeep")
-    seen = library.read_collection(FakeQuery([row]), since=0)
+    seen = library.read_collection(FakeQuery([row]))
 
     assert seen.removed[0].version == ""
     assert stores.version_of(seen.removed[0])["title"] == "atlas"
@@ -2902,7 +2902,7 @@ def test_a_subtitle_that_is_a_mix_name_is_still_composed(cfg):
     """
     original = _subtitled(cfg, ONE, "1", title="Strobe", subtitle="")
     extended = _subtitled(cfg, TWO, "2", title="Strobe", subtitle="Extended Mix", usn=51)
-    seen = library.read_collection(FakeQuery([original, extended]), since=0)
+    seen = library.read_collection(FakeQuery([original, extended]))
     by_id = {row.content_id: row for row in seen.removed}
 
     assert by_id["2"].version == "Extended Mix"
@@ -2941,7 +2941,7 @@ def test_which_subtitles_read_as_a_version(cfg, subtitle, believed):
     it is tested with ``in``.
     """
     row = _subtitled(cfg, ONE, "1", title="Atlas", subtitle=subtitle)
-    seen = library.read_collection(FakeQuery([row]), since=0)
+    seen = library.read_collection(FakeQuery([row]))
     assert bool(seen.removed[0].version) is believed
 
 
@@ -2952,14 +2952,18 @@ def test_a_remixer_name_is_believed_without_reading_as_a_version(cfg):
     non-empty value IS the artist who remixed this, by schema. Real remixer names
     carry no version word at all, and holding that column to the vocabulary would
     collapse every remix in the library back onto its original.
+
+    The BELIEF is unchanged and the SPELLING is the round-five correction. See
+    the test below: believing the column and writing its value verbatim into the
+    title produced an identity no provider will ever ask about.
     """
     row = _content(cfg, ONE, "1", deleted=True, usn=50, title="Strobe")
     row.RemixerName = "Michael Woods"
     row.Subtitle = ""
-    seen = library.read_collection(FakeQuery([row]), since=0)
+    seen = library.read_collection(FakeQuery([row]))
 
     assert seen.removed[0].version == "Michael Woods"
-    assert stores.version_of(seen.removed[0])["title"] == "strobe (michael woods)"
+    assert seen.removed[0].version_kind == library.VERSION_IS_AN_ARTIST
 
 
 def test_a_bracketed_group_that_merely_contains_the_version_is_not_a_carry(cfg):
@@ -3484,7 +3488,297 @@ def test_a_row_that_recorded_a_zero_size_can_never_be_proved(cfg):
     empty.write_bytes(b"")
     for recorded in (0, -1):
         row = _content(cfg, ONE, "1", deleted=True, usn=50, size=recorded)
-        seen = library.read_collection(FakeQuery([row]), since=0)
+        seen = library.read_collection(FakeQuery([row]))
         assert seen.removed[0].size is None
         answered = _categorize(cfg, [seen.removed[0]], _references(cfg, []))
         assert answered[0].category is candidates.Category.SIZE_MISMATCH
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 10: round five, stage two. The version vocabulary.
+#
+# Two questions were being asked of one word list. BELIEF, "is this Subtitle a
+# version at all", which has no syntax to test and whose error rates are
+# measured on ``tombstone.VERSION_WORDS``. And SPELLING, "how is this written
+# into a title a provider will hand the consulter", which was never asked at all
+# for the column that always needs it.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+# ── S2-D: a tombstone written from RemixerName matched nothing ───────────────
+
+
+def _remixed_row(cfg, name, content_id, *, title, remixer, usn=50):
+    row = _content(cfg, name, content_id, deleted=True, usn=usn, title=title)
+    row.RemixerName = remixer
+    row.Subtitle = ""
+    return library.read_collection(FakeQuery([row])).removed[0]
+
+
+def test_a_remix_filed_as_a_bare_artist_name_is_spelled_the_way_a_provider_spells_it(
+    cfg,
+):
+    """THE DEEPEST FINDING OF THE ROUND, and the code already knew why.
+
+    ``RemixerName`` is an association proxy into ``djmdArtist``, so it ALWAYS
+    holds a bare artist name. Composed verbatim it wrote ``strobe (michael
+    woods)``, and a provider spells the same version ``Strobe (Michael Woods
+    Remix)``, so the consulter asked for ``strobe (michael woods remix)`` and
+    missed. ``_already_carries`` states that exact defect in its own docstring,
+    "a spelling no provider will ever produce and therefore a tombstone that
+    suppresses nothing", and closed it only for the branch where the title
+    already has the bracket. The bare-title branch, which is the normal case,
+    composed the same unmatchable string. Every remix the user deleted was
+    re-acquirable.
+    """
+    row = _remixed_row(cfg, ONE, "1", title="Strobe", remixer="Michael Woods")
+    assert stores.version_of(row)["title"] == "strobe (michael woods remix)"
+
+    stores.record_tombstone(cfg, row, actor="cli")
+    assert stores.suppressed_version(
+        cfg, artist=ARTIST, title="Strobe (Michael Woods Remix)"
+    ), "the tombstone was written under a spelling no provider will ever produce"
+    assert not stores.suppressed_version(cfg, artist=ARTIST, title="Strobe"), (
+        "deleting the remix suppressed the original"
+    )
+
+
+def test_the_two_conventions_one_collection_holds_now_reach_one_identity(cfg):
+    """The same collection holds both spellings, and they used to be two identities.
+
+    ``Strobe`` with ``Michael Woods`` in the column and ``Strobe (Michael Woods
+    Remix)`` with the column filled in as well are ONE version of ONE recording.
+    Composed verbatim they were ``strobe (michael woods)`` and ``strobe (michael
+    woods remix)``, so re-importing under the other convention walked straight
+    past its own tombstone. Spelling the artist name closes that too.
+    """
+    split = _remixed_row(cfg, ONE, "1", title="Strobe", remixer="Michael Woods")
+    inline = _remixed_row(
+        cfg, TWO, "2", title="Strobe (Michael Woods Remix)", remixer="Michael Woods", usn=51
+    )
+    assert stores.version_of(split) == stores.version_of(inline)
+    assert stores.version_of(split)["title"] == "strobe (michael woods remix)"
+
+
+def test_a_remixer_the_title_already_names_is_not_given_a_second_bracket(cfg):
+    """The test is on the BARE name, not on the spelled one, and it has to be.
+
+    ``Strobe (Michael Woods Extended Remix)`` carries ``Michael Woods`` and does
+    not carry ``Michael Woods Remix``. Testing the spelled form would compose a
+    second bracket onto a title that already says everything it needs to, which
+    is the unmatchable spelling coming back one bracket further out.
+    """
+    row = _remixed_row(
+        cfg, ONE, "1", title="Strobe (Michael Woods Extended Remix)", remixer="Michael Woods"
+    )
+    assert stores.version_of(row)["title"] == "strobe (michael woods extended remix)"
+
+
+def test_a_remixer_column_already_holding_a_mix_name_is_not_doubled(cfg):
+    """Some importers put a whole mix name in the column, and appending breaks it.
+
+    ``(Michael Woods Remix Remix)`` is a second unmatchable spelling replacing
+    the first, so the value is asked whether it already reads as a designation.
+    That is the one place the vocabulary touches this column, and it decides
+    SPELLING rather than belief: a non-empty remixer is a version either way.
+    """
+    row = _remixed_row(cfg, ONE, "1", title="Strobe", remixer="Michael Woods Remix")
+    assert stores.version_of(row)["title"] == "strobe (michael woods remix)"
+
+
+def test_an_empty_remixer_column_leaves_the_ordinary_identity_alone(cfg):
+    """Most rows. The spelling rule may not move the ordinary case one character."""
+    row = _remixed_row(cfg, ONE, "1", title="Strobe", remixer="")
+    assert stores.version_of(row) == tombstone.version_identity(artist=ARTIST, title="Strobe")
+
+
+# ── S2-E: one identity naming two tracks, and one track with two identities ──
+
+
+def test_a_featured_credit_bracket_does_not_stand_in_for_the_remix(cfg):
+    """Two DIFFERENT tracks reached one identity through the guest credit.
+
+    ``Losing It (feat. Anna)`` with the remixer column empty is the original.
+    The same title with ``Anna`` in the column is Anna's remix of it. The credit
+    bracket contains the remixer's name at word boundaries, so the version read
+    as already carried, nothing was composed, and both rows produced ``losing it
+    (feat. anna)``: deleting the remix suppressed the original, which is the
+    over-suppression direction this package calls the worse one.
+    """
+    original = _remixed_row(cfg, ONE, "1", title="Losing It (feat. Anna)", remixer="")
+    remix = _remixed_row(cfg, TWO, "2", title="Losing It (feat. Anna)", remixer="Anna", usn=51)
+
+    assert stores.version_of(original) != stores.version_of(remix), (
+        "the original and the remix of it share one identity, so deleting the "
+        "remix suppresses music the user still wants"
+    )
+    stores.record_tombstone(cfg, remix, actor="cli")
+    assert not stores.suppressed_version(cfg, artist=ARTIST, title="Losing It (feat. Anna)")
+
+
+@pytest.mark.parametrize(
+    ("title", "version", "carried"),
+    [
+        ("Track (feat. Anna)", "Anna", False),
+        ("Track (ft. Anna)", "Anna", False),
+        ("Track (featuring Anna)", "Anna", False),
+        ("Track (with Anna)", "Anna", False),
+        # A marker anywhere but the HEAD is a word in a mix name, and the head is
+        # the whole rule. Reading it by containment would break this one.
+        ("Track (Live with Strings)", "Live with Strings", True),
+        ("Track (Anna Remix)", "Anna", True),
+    ],
+)
+def test_which_bracketed_groups_can_stand_in_for_the_version(title, version, carried):
+    assert (tombstone.version_title(title, version) == title) is carried
+
+
+def test_the_module_no_longer_claims_the_remixer_column_makes_composition_safe(cfg):
+    """The docstring said those collisions were unreachable, and named the wrong reason.
+
+    A remixer is an ARTIST, so ``RemixerName`` holds an artist NAME, which is
+    exactly "something that is not a mix name": the ``("Sun", "Sun Path")``
+    collision it called unreachable was reachable the moment a row credited a
+    remixer called Sun Path. Spelling the column closes the collision as well as
+    the missed match, and this is the driven half of that claim.
+    """
+    remixed = _remixed_row(cfg, ONE, "1", title="Sun", remixer="Sun Path")
+    titled = _remixed_row(cfg, TWO, "2", title="Sun (Sun Path)", remixer="", usn=51)
+    assert stores.version_of(remixed)["title"] == "sun (sun path remix)"
+    assert stores.version_of(remixed) != stores.version_of(titled)
+
+    source = (SRC_ROOT / "cratekit" / "core" / "tombstone.py").read_text()
+    assert "unreachable in practice" not in source, (
+        "the corrected claim was left in place beside the code that disproves it"
+    )
+
+
+# ── S2-A: the vocabulary's membership, pinned exactly ────────────────────────
+
+
+def test_the_version_vocabulary_is_exactly_this_set_and_no_other():
+    """WIDENING WAS CAUGHT AND NARROWING WAS NOT, which is how a defect walks back.
+
+    Adding ``anjunadeep`` or ``records`` killed tests through the negative pins,
+    but 24 of the 27 words could be DELETED one at a time with the whole suite
+    green, ``mix`` among them: the tests that need it spell ``Extended Mix``, and
+    ``extended`` covers that on its own, and vice versa. A list that can be
+    silently emptied is a list nothing pins. This is the assertion that catches
+    both directions, and it is deliberately a literal rather than anything
+    derived from the module, because a derived expectation moves with the defect.
+    """
+    assert tombstone.VERSION_WORDS == frozenset(
+        {
+            "acapella",
+            "acoustic",
+            "alternate",
+            "bootleg",
+            "club",
+            "cut",
+            "demo",
+            "dub",
+            "edit",
+            "extended",
+            "flip",
+            "instrumental",
+            "interlude",
+            "live",
+            "mashup",
+            "mix",
+            "original",
+            "radio",
+            "remaster",
+            "remastered",
+            "remix",
+            "reprise",
+            "rework",
+            "session",
+            "unplugged",
+            "version",
+            "vip",
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("subtitle", "believed"),
+    [
+        # One realistic phrase per word that carries the ordinary library. The
+        # membership assertion above catches a deletion; these say what each
+        # deletion would COST, which is a different thing and worth both.
+        ("Club Mix", True),
+        ("Dub", True),
+        ("VIP", True),
+        ("Acoustic", True),
+        ("Original Mix", True),
+        ("Radio Edit", True),
+        ("Extended Mix", True),
+        ("Instrumental", True),
+        ("Live", True),
+        ("Nightwave Remix", True),
+        ("2024 Remaster", True),
+        ("Piano Version", True),
+        # A NON-WORD split rather than a whitespace one. ``Re-Edit`` is two words
+        # and a whitespace split reads it as one, so the designation is lost and
+        # the row keeps a bare title, which is the collision direction.
+        ("Re-Edit", True),
+        ("Extended/Club Mix", True),
+    ],
+)
+def test_each_word_the_ordinary_library_leans_on_is_driven_by_a_real_phrase(
+    cfg, subtitle, believed
+):
+    row = _subtitled(cfg, ONE, "1", title="Atlas", subtitle=subtitle)
+    seen = library.read_collection(FakeQuery([row]))
+    assert bool(seen.removed[0].version) is believed
+
+
+def test_a_subtitle_the_vocabulary_did_not_believe_is_still_recorded(cfg):
+    """The measured failure direction may not be the one place it is invisible.
+
+    56 of 75 genuine version designations do not read as versions, so the row
+    keeps a bare title and two versions of one recording can collide. The
+    tombstone's payload showed an empty version for that row, which reads exactly
+    like a row that never had one, so the audit trail that exists to answer "why
+    did this suppression miss" was silent on the commonest reason.
+    """
+    row = _subtitled(cfg, ONE, "1", title="Atlas", subtitle="Anjunadeep")
+    seen = library.read_collection(FakeQuery([row])).removed[0]
+
+    assert seen.version == "" and seen.version_unbelieved == "Anjunadeep"
+    written = stores.record_tombstone(cfg, seen, actor="cli")
+    assert written.payload["version"] == ""
+    assert written.payload["version_unbelieved"] == "Anjunadeep"
+
+
+# ── S2-F: the dead filter, deleted, and the surviving one pinned ─────────────
+
+
+def test_a_removal_sitting_exactly_on_the_watermark_is_not_offered_again(cfg, gates_pass):
+    """STRICTLY GREATER, and it is now written in exactly one place.
+
+    ``read_collection`` carried the same comparison behind a ``since`` the only
+    caller permanently disabled, so one rule was written twice with one copy
+    unreachable and neither could be measured. Greater-or-equal here would
+    re-offer the last row of every previous run, forever.
+    """
+    for name in (ONE, TWO):
+        _music(cfg, name)
+    on_the_mark = _content(cfg, ONE, "1", deleted=True, usn=40)
+    above_it = _content(cfg, TWO, "2", deleted=True, usn=41)
+
+    run.plan(cfg, FakeDb([], usn=40), actor="cli")
+    found = run.plan(cfg, FakeDb([on_the_mark, above_it], usn=41), actor="cli")
+    assert [item.row.content_id for item in found.candidates] == ["2"]
+
+
+def test_the_collection_walk_hands_back_every_removal_it_saw(cfg):
+    """The walk is unfiltered, because the baseline needs the highest sequence.
+
+    The filter needs the baseline and the baseline needs the walk, so the walk
+    cannot be filtered at all. That was the reason the parameter was permanently
+    disabled, and saying it as a test is what keeps somebody from re-adding one.
+    """
+    rows = [_content(cfg, ONE, str(index), deleted=True, usn=index) for index in range(1, 6)]
+    seen = library.read_collection(FakeQuery(rows))
+    assert [row.sequence for row in seen.removed] == [1, 2, 3, 4, 5]
