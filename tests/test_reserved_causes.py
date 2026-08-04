@@ -126,7 +126,8 @@ carried a description of its own rule that was wrong about five spellings. The
 trade
 runs on error costs rather than on preference. A miss is a module quietly
 disagreeing with the registry about what a refusal exits with, and nothing else
-in this suite would notice. That residual carries the measurement, and
+in this suite would notice. That residual carries the measurement, and the
+residual
 "The mutation table for this unit's guards, written into the repository"
 carries the mutation table.
 
@@ -2257,6 +2258,63 @@ def wait_for(cause):
     return 0
 """
 
+#: THE SAME RESIDUAL, KEYED ON A NAME RATHER THAN ON AN INLINE STRING, which is
+#: the tree's own dominant idiom and which the fixture above does not contain one
+#: instance of.
+#:
+#: Measured off the syntax tree, every hit-producing construct in
+#: ``RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS`` uses an inline string key,
+#: so the fixture that documents the wide rule's false alarm surface documented
+#: exactly the half of it that predates the key widening. The widening moved the
+#: RESOLVER, and the measurement that justified it, 189 kebab literals with 108
+#: not keys and zero new offenders, was taken on the KEY SET.
+#:
+#: ``TrackOutcome`` is not invented. It is copied from
+#: ``src/cratekit/acquire/adapter.py``, where a ``StrEnum`` declares cause-shaped
+#: values that the registry also reserves. Measured on the shipped tree, TEN
+#: modules hold a name the key side resolves to a registry-declared cause and
+#: FOURTEEN hold one once a source's own enum declarations are counted, four of
+#: those fourteen also holding an in-range integer literal. The tree has zero
+#: offenders today and one ordinary mapping in any of those four is what an
+#: offender looks like.
+#:
+#: KEPT AS A FIXTURE RATHER THAN NARROWED AWAY for the same reason as the one
+#: above: the alternative is a key rule that reads an inline string and not the
+#: name holding it, which is one question with two answers decided by spelling.
+RESIDUAL_ORDINARY_DATA_KEYED_ON_A_NAME = """
+from enum import StrEnum
+
+
+class TrackOutcome(StrEnum):
+    ACQUIRED = "acquired"
+    UNAVAILABLE_PERMANENT = "unavailable-permanent"
+    UNAVAILABLE_TRANSIENT = "unavailable-transient"
+
+
+class Reason:
+    LOCK = "session-lock-held"
+    STALE = "decision-stale"
+
+
+CONFIG_UNUSABLE = "config-unusable"
+
+RETRY_SECONDS = {TrackOutcome.UNAVAILABLE_TRANSIENT: 30}
+
+DISPLAY_ORDER = {Reason.LOCK: 10, Reason.STALE: 20}
+
+COLUMN_WIDTH = {CONFIG_UNUSABLE: 40}
+
+PANEL = Panel(CONFIG_UNUSABLE, 40)
+
+SLOW_DELAYS = {slug: 30 for slug in (CONFIG_UNUSABLE, Reason.STALE)}
+
+
+def wait_for(cause):
+    if cause == TrackOutcome.UNAVAILABLE_TRANSIENT:
+        return 45
+    return 0
+"""
+
 #: THE SAME CONSTRUCTS WITH THE ROUND-BEFORE'S ESCAPE COMMENT ON EACH, and every
 #: one of them is still reported. The comment is text now. It is kept as a
 #: fixture rather than deleted because deleting it would leave nothing watching
@@ -3160,6 +3218,118 @@ A3 = A2
 CODES = {"config-unusable": A3}
 """
 
+# ── The two constructs the key widening reached past ────────────────────────
+#
+# ``cause_key`` learned to read a name and FOUR constructs inherited it. Two did
+# not, because each pre-filtered its own subtree to ``ast.Constant`` before
+# asking: the ``if`` arm of ``_branches`` and a dict comprehension's iterable.
+# The ``match`` arm passed its pattern value in unfiltered and did inherit it, so
+# one table written two ways got two answers from one method. The pairs below are
+# kept together on purpose: a spelling that goes quiet alone is what this shape
+# looks like coming back.
+
+EVASION_A_BRANCH_COMPARING_AGAINST_A_CLASS_ATTRIBUTE = """
+class Slug:
+    CONFIG_UNUSABLE = "config-unusable"
+
+
+def code(cause):
+    if cause == Slug.CONFIG_UNUSABLE:
+        return 30
+    return 0
+"""
+
+EVASION_A_BRANCH_COMPARING_AGAINST_A_MODULE_CONSTANT = """
+CONFIG_UNUSABLE = "config-unusable"
+
+
+def code(cause):
+    if cause == CONFIG_UNUSABLE:
+        return 30
+    return 0
+"""
+
+#: The direct twin of the first one, and the one that WAS reported. Driven beside
+#: it so the two cannot disagree again without failing.
+EVASION_A_MATCH_AGAINST_A_CLASS_ATTRIBUTE = """
+class Slug:
+    CONFIG_UNUSABLE = "config-unusable"
+
+
+def code(cause):
+    match cause:
+        case Slug.CONFIG_UNUSABLE:
+            return 30
+    return 0
+"""
+
+#: The literal spelling, which was reported throughout. It is the control that
+#: says the branch machinery was live and only the KEY was unread.
+CONTROL_A_BRANCH_COMPARING_AGAINST_A_LITERAL = """
+def code(cause):
+    if cause == "config-unusable":
+        return 30
+    return 0
+"""
+
+EVASION_A_COMPREHENSION_OVER_NAMED_SLUGS = """
+CONFIG_UNUSABLE = "config-unusable"
+SMOKE_TEST_FAILED = "smoke-test-failed"
+CODES = {slug: 30 for slug in (CONFIG_UNUSABLE, SMOKE_TEST_FAILED)}
+"""
+
+CONTROL_A_COMPREHENSION_OVER_LITERAL_SLUGS = """
+CODES = {slug: 30 for slug in ("config-unusable", "smoke-test-failed")}
+"""
+
+# ── The vocabulary at a value the reserved range does not cover ─────────────
+#
+# ``{"config-unusable": ExitCode.SUCCESS}`` was reported and
+# ``{"config-unusable": ExitCode(0)}`` was silent, because the conversion branch
+# only returned when the inner expression was ALREADY a status and an out of
+# range integer is not one. One vocabulary, two answers, decided by the spelling.
+
+EVASION_A_CONSTRUCTOR_ON_A_CODE_BELOW_THE_RANGE = """
+from cratekit.core.exit_codes import ExitCode
+
+CODES = {"config-unusable": ExitCode(0)}
+"""
+
+EVASION_A_CONSTRUCTOR_ON_A_CODE_ABOVE_THE_RANGE = """
+from cratekit.core.exit_codes import ExitCode
+
+CODES = {"config-unusable": ExitCode(126)}
+"""
+
+#: The narrowing that keeps the widening off ordinary code. ``cli/output.py``
+#: writes exactly this, reading a recorded status back out of a document, and it
+#: reserves nothing.
+CORRECT_A_CONSTRUCTOR_ON_A_RUNTIME_VALUE = """
+from cratekit.core.exit_codes import ExitCode
+
+
+def read(document):
+    return {"config-unusable": ExitCode(document["exit_code"])}
+"""
+
+#: An INTEGER out of range, reached three ways. All three are silent and that is
+#: the range decision rather than a hole, so all three are pinned: the record
+#: claimed a constant and arithmetic reaching an out of range value were still
+#: reported, and arithmetic can produce nothing but an integer.
+RESIDUAL_A_BARE_INTEGER_OUT_OF_RANGE = """
+CODES = {"config-unusable": 5}
+"""
+
+RESIDUAL_A_NAMED_CONSTANT_OUT_OF_RANGE = """
+BASE = 70
+CODES = {"config-unusable": BASE}
+"""
+
+RESIDUAL_ARITHMETIC_OUT_OF_RANGE = """
+BASE = 35
+CODES = {"config-unusable": BASE * 2}
+"""
+
 
 @pytest.mark.parametrize(
     "source,line",
@@ -3182,6 +3352,118 @@ def test_a_key_held_in_a_name_is_still_a_cause(source, line):
     assert reserved_code_tables(source, declared_causes(), RANGE) == [
         f"line {line}: 'config-unusable' -> status 30"
     ]
+
+
+@pytest.mark.parametrize(
+    "source,line",
+    [
+        (EVASION_A_BRANCH_COMPARING_AGAINST_A_CLASS_ATTRIBUTE, 7),
+        (EVASION_A_BRANCH_COMPARING_AGAINST_A_MODULE_CONSTANT, 6),
+        (EVASION_A_MATCH_AGAINST_A_CLASS_ATTRIBUTE, 8),
+        (CONTROL_A_BRANCH_COMPARING_AGAINST_A_LITERAL, 3),
+    ],
+)
+def test_a_branch_table_reads_its_key_the_same_way_whichever_branch_it_is(source, line):
+    """The fifteenth shape, and it is the direct twin of one already closed.
+
+    ``_branches`` has two arms and they disagreed. The ``match`` arm passed its
+    pattern value into ``cause_key`` unfiltered and inherited the key widening;
+    the ``if`` arm filtered its test to ``ast.Constant`` first and did not.
+    Measured on the shipped tree, ``case Slug.CONFIG_UNUSABLE`` was REPORTED and
+    ``if cause == Slug.CONFIG_UNUSABLE`` was SILENT, which is one method
+    answering one question two ways over a spelling difference that means
+    nothing. All four are the same table.
+    """
+    assert reserved_code_tables(source, declared_causes(), RANGE) == [
+        f"line {line}: 'config-unusable' -> status 30"
+    ]
+
+
+@pytest.mark.parametrize(
+    "source,line",
+    [
+        (EVASION_A_COMPREHENSION_OVER_NAMED_SLUGS, 4),
+        (CONTROL_A_COMPREHENSION_OVER_LITERAL_SLUGS, 2),
+    ],
+)
+def test_a_comprehension_reads_named_slugs_and_inlined_slugs_alike(source, line):
+    """The sixteenth shape, and the second construct the widening reached past.
+
+    ``{slug: 30 for slug in (CONFIG_UNUSABLE, SMOKE_TEST_FAILED)}`` was SILENT
+    while the identical comprehension over inlined slugs reported both keys, for
+    the same reason the ``if`` arm was silent: the iterable was filtered to
+    ``ast.Constant`` before anything asked whether a name held a cause.
+    """
+    assert reserved_code_tables(source, declared_causes(), RANGE) == [
+        f"line {line}: 'config-unusable' -> status 30",
+        f"line {line}: 'smoke-test-failed' -> status 30",
+    ]
+
+
+@pytest.mark.parametrize(
+    "source,spelled",
+    [
+        (EVASION_A_CONSTRUCTOR_ON_A_CODE_BELOW_THE_RANGE, "ExitCode(0)"),
+        (EVASION_A_CONSTRUCTOR_ON_A_CODE_ABOVE_THE_RANGE, "ExitCode(126)"),
+    ],
+)
+def test_a_constructor_on_the_vocabulary_is_a_code_at_any_value(source, spelled):
+    """The range gates an INTEGER. It never gated the vocabulary, and it did.
+
+    ``{"config-unusable": ExitCode.SUCCESS}`` was reported and
+    ``{"config-unusable": ExitCode(0)}`` was silent, because the conversion
+    branch returned only when the inner expression was already a status and
+    ``status`` answers None for an out of range integer. A member and its
+    constructor spelling are the same code, so the range decision cannot apply to
+    one of them.
+    """
+    assert reserved_code_tables(source, declared_causes(), RANGE) == [
+        f"line 4: 'config-unusable' -> {spelled}"
+    ]
+
+
+def test_a_constructor_wrapping_a_runtime_value_reserves_nothing():
+    """The narrowing that keeps the widening above off ordinary code.
+
+    ``cli/output.py`` reads a recorded status back out of a document with exactly
+    this call. A rule that read any one-argument call on the vocabulary as a
+    reservation would report it, which is the false alarm that gets a guard
+    switched off (P7). The argument has to RESOLVE to an integer.
+    """
+    assert (
+        reserved_code_tables(
+            CORRECT_A_CONSTRUCTOR_ON_A_RUNTIME_VALUE, declared_causes(), RANGE
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        RESIDUAL_A_BARE_INTEGER_OUT_OF_RANGE,
+        RESIDUAL_A_NAMED_CONSTANT_OUT_OF_RANGE,
+        RESIDUAL_ARITHMETIC_OUT_OF_RANGE,
+    ],
+)
+def test_an_integer_outside_the_reserved_range_is_silent_however_it_is_spelled(source):
+    """The recorded shape, pinned so the record cannot describe it wrongly again.
+
+    The residual
+    "The tiers were bought with a number that does not exist"
+    said "an ``ExitCode`` member, a conversion, a constant or arithmetic reaching
+    an out of range value is still reported". Measured, that sentence was false
+    in three of its four clauses. The member is reported. The conversion is
+    reported now and was not. The constant and the arithmetic are SILENT, and
+    arithmetic can evaluate to nothing but an integer, so the arithmetic clause
+    was unconditionally false rather than false in some cases.
+
+    All three are the SAME rule seen three ways: an integer counts only inside
+    the reserved range, because widening past it reports every count, width and
+    percent in the package. This drives that rule at its boundary so the sentence
+    describing it has to match it.
+    """
+    assert reserved_code_tables(source, declared_causes(), RANGE) == []
 
 
 def test_resolving_the_key_widens_what_is_read_and_not_what_is_a_cause():
@@ -3424,7 +3706,7 @@ def package_of(relative: str) -> str:
     return ".".join(["cratekit"] + relative.split("/")[:-1])
 
 
-#: Every residual this unit cites, by TITLE rather than by number.
+#: Every residual cited by TITLE anywhere the rule below reaches.
 #:
 #: THE NUMBERS COLLIDE ACROSS BRANCHES. Six residual numbers currently mean one
 #: thing on this branch and something else on another branch in flight, so a
@@ -3432,8 +3714,12 @@ def package_of(relative: str) -> str:
 #: has already broken once in this wave. A title survives a renumbering; a number
 #: does not survive a merge.
 #:
-#: The files below are the ones this unit owns. Citations elsewhere in the tree
-#: belong to the units that wrote them.
+#: DECLARED HERE AND SCANNED FOR, and the two are asserted EQUAL rather than one
+#: being checked against the document alone. The round before proved every
+#: declared title resolves to a heading and never proved that a title WRITTEN in
+#: a file is declared, so an invented or drifted title passed silently in the one
+#: direction that matters: seven citations existed, all seven resolved, and an
+#: eighth with a typo would not have failed.
 CITED_RESIDUALS = (
     "Five accepted findings from the U38 reviews",
     "Two copies of one import walk still carry a relative-import defect",
@@ -3442,15 +3728,132 @@ CITED_RESIDUALS = (
     "The conversion proof shows that a conversion exists, not that it keeps anything",
     "The tiers were bought with a number that does not exist",
     "The mutation table for this unit's guards, written into the repository",
+    "The backup restore is not yet bound to the destructive-session gates",
 )
 
-#: The files whose citations this unit is responsible for.
-OWNED_SOURCES = (
-    "tests/test_reserved_causes.py",
-    "tests/_source_guards.py",
-    "tests/test_review_queue.py",
-    "src/cratekit/cli/exit_codes.py",
-)
+#: WHAT A CITATION LOOKS LIKE, as a form rather than as a convention: the word
+#: ``residual``, then nothing but whitespace and comment prefixes, then the
+#: finding's TITLE in double quotes.
+#:
+#: The form is what makes the REVERSE direction checkable. A citation a regular
+#: expression cannot find is a citation this test cannot judge, so prose that
+#: names a title without the word in front of it is not a citation and has to be
+#: rewritten into one. That is not hypothetical: one of the eight titles above
+#: was written two lines below a sentence ending "and", outside the form, and was
+#: invisible to the scan until it was rewritten.
+CITATION = re.compile(r"\bresiduals?\b[\s#:]*\"([^\"\n]+)\"")
+
+#: The authored surface the citation rule is scanned over. Vendored code is
+#: excluded for the reason the conformance suite excludes it.
+AUTHORED_GLOBS = ("src/**/*.py", "tests/**/*.py", "scripts/**/*.py", "docs/**/*.md")
+
+#: The residual document, which is always covered: it defines the titles and it
+#: cross-references its own findings in prose, which is exactly where a citation
+#: by number hides inside the letter of the rule.
+FINDINGS_DOCUMENT = "docs/residual-findings.md"
+
+
+def authored_sources() -> list[tuple[str, str]]:
+    """Every file the citation rule is allowed to look at, as (relative, text)."""
+    found: dict[str, str] = {}
+    for pattern in AUTHORED_GLOBS:
+        for path in REPO_ROOT.glob(pattern):
+            if "_vendor" in path.parts:
+                continue
+            found[path.relative_to(REPO_ROOT).as_posix()] = path.read_text()
+    return sorted(found.items())
+
+
+def owned_sources() -> list[str]:
+    """The files the citation rule covers, DERIVED rather than hand listed.
+
+    A FILE THAT HAS ADOPTED THE CONVENTION IS COVERED BY IT, plus the residual
+    document itself. The round before carried a hand written tuple of four
+    entries against the eight files this branch changes, so half of what the unit
+    touched was outside a rule the unit wrote, and
+    ``tests/modules/test_tools.py`` carried two bare number-only citations that the
+    test could not see. Deriving it means a file cannot fall out of the rule by
+    being forgotten, and a file that adopts the rule is inside it from the first
+    citation.
+
+    WHY NOT THE FILES THIS BRANCH CHANGES. That list is the honest description of
+    "what the unit touches" and it is the wrong mechanism: derived from the diff
+    against the base it goes EMPTY the moment the branch merges, at which point
+    the rule covers nothing and passes, which is the shape
+    "The tiers were bought with a number that does not exist" rejects for the key
+    set. This derivation does not decay.
+
+    WHAT IT DOES NOT REACH, said rather than implied: a file that cites a
+    residual ONLY by number and never by title is outside it, because it has
+    adopted nothing to be held to. ``src/cratekit/modules/tools/backup.py`` and
+    ``tests/test_write_session.py`` are the live instances, both citing the backup
+    restore residual by number, both
+    belonging to that residual's owner rather than to this unit.
+    """
+    found = {FINDINGS_DOCUMENT}
+    for relative, text in authored_sources():
+        if CITATION.search(text):
+            found.add(relative)
+    return sorted(found)
+
+
+def residual_headings() -> list[tuple[str, str]]:
+    """Every heading in the findings document, as (number, title), IN ORDER.
+
+    A LIST, NEVER A SET, and the difference is the whole convention. The round
+    before collected the titles into a set, so two headings whose text is byte
+    identical collapsed into one entry and the single collision the convention
+    exists to prevent, one title naming two findings, was the one collision the
+    test could not see. Measured: appending a second heading under an unused
+    number, with
+    text identical to a cited title left the check passing. A near duplicate that
+    merely STARTED with a cited title was caught, so the rule it enforced was
+    "exactly one distinct heading TEXT", not "exactly one heading", which is this
+    repository's recurring identity defect inside the artifact built to stop it.
+    """
+    document = (REPO_ROOT / FINDINGS_DOCUMENT).read_text()
+    found = []
+    for line in document.splitlines():
+        if line.startswith("## R-") and ". " in line:
+            number, _, title = line[3:].partition(". ")
+            found.append((number.strip(), title.strip()))
+    return found
+
+
+def test_a_residual_heading_names_exactly_one_finding():
+    """IDENTITY THAT IS NOT UNIQUE, checked on the identifier the convention uses.
+
+    The convention replaced a number with a title because numbers collide across
+    branches. That trade only holds if a TITLE does not collide, and nothing
+    asserted it: the round before read the headings into a ``set``, which makes
+    two byte identical headings indistinguishable from one. Measured against the
+    shipped test, appending a second heading under an unused number whose text
+    equalled a
+    cited title left it PASSING, while a near duplicate that merely started with
+    a cited title failed. The check was over the distinct heading TEXTS and the
+    prose describing it said headings.
+
+    Both halves of the identity are asserted here, off a LIST: no two findings
+    share a title, and no two share a number.
+    """
+    headings = residual_headings()
+    assert headings, (
+        "no residual headings were found in docs/residual-findings.md, so every "
+        "citation check below would pass over nothing"
+    )
+    titles = [title for _number, title in headings]
+    numbers = [number for number, _title in headings]
+    repeated_titles = sorted({title for title in titles if titles.count(title) > 1})
+    repeated_numbers = sorted({number for number in numbers if numbers.count(number) > 1})
+    assert repeated_titles == [], (
+        f"these residual TITLES name more than one finding: {repeated_titles}. A "
+        f"title is the identifier this unit's citations use, so a duplicate title "
+        f"is the collision the convention exists to prevent, arriving through the "
+        f"identifier that replaced the colliding one"
+    )
+    assert repeated_numbers == [], (
+        f"these residual NUMBERS name more than one finding: {repeated_numbers}"
+    )
 
 
 def test_every_residual_this_unit_cites_is_cited_by_title():
@@ -3463,24 +3866,27 @@ def test_every_residual_this_unit_cites_is_cited_by_title():
     fails when it does, which is this repository's own signature defect: a wrong
     answer that reads as a right one.
 
-    So every citation names a TITLE, and this asserts both halves of that. Each
-    cited title has to be a real heading in ``docs/residual-findings.md``, so a
-    title that drifts fails here instead of dangling. And no file this unit owns
-    may carry a bare ``R-<number>`` citation, so going back to numbers fails
-    rather than passing quietly.
+    THREE HALVES, and the round before had one and a half of them.
+
+    1. Every DECLARED title resolves to exactly one heading, so a title that
+       drifts fails here instead of dangling.
+    2. Every title WRITTEN in a covered file is declared and resolves. This
+       direction was missing entirely, so a citation carrying a typo or an
+       invented title passed silently: seven citations existed and all seven
+       resolved, which proved nothing about an eighth.
+    3. No covered file carries a bare ``R-<number>``, so going back to numbers
+       fails rather than passing quietly. The covered set is DERIVED now. The
+       hand written tuple it replaced named four files against the eight this
+       branch changes, and the residual document itself was outside it while
+       citing four of its own findings by number in prose.
     """
-    findings = (REPO_ROOT / "docs" / "residual-findings.md").read_text()
-    headings = {
-        line.split(". ", 1)[1].strip()
-        for line in findings.splitlines()
-        if line.startswith("## R-") and ". " in line
-    }
+    headings = residual_headings()
     # MATCHED AS A PREFIX, and it has to resolve to EXACTLY ONE heading. Two of
     # these headings carry a second clause that reads badly inline, so prose
     # cites the leading phrase; requiring exactly one match is what stops that
     # being a partial name that could later fit two findings.
     resolved = {
-        title: [heading for heading in headings if heading.startswith(title)]
+        title: [heading for _number, heading in headings if heading.startswith(title)]
         for title in CITED_RESIDUALS
     }
     unresolved = {
@@ -3488,20 +3894,79 @@ def test_every_residual_this_unit_cites_is_cited_by_title():
     }
     assert unresolved == {}, (
         f"these cited titles do not name exactly one heading in "
-        f"docs/residual-findings.md: {unresolved}. A citation that names nothing "
+        f"{FINDINGS_DOCUMENT}: {unresolved}. A citation that names nothing "
         f"is worse than a number, because it looks resolved"
     )
 
+    # THE REVERSE DIRECTION. Every title written down somewhere has to be one of
+    # the declared ones, which is what catches the typo the forward direction
+    # cannot see.
+    covered = set(owned_sources())
+    written: dict[str, set[str]] = {}
+    for relative, source in authored_sources():
+        if relative not in covered:
+            continue
+        for title in CITATION.findall(source):
+            written.setdefault(title, set()).add(relative)
+    undeclared = {
+        title: sorted(files)
+        for title, files in written.items()
+        if title not in set(CITED_RESIDUALS)
+    }
+    assert undeclared == {}, (
+        f"these titles are cited as residuals and are not declared in "
+        f"CITED_RESIDUALS: {undeclared}. A citation nobody declared is a citation "
+        f"nothing checks, which is what a number was"
+    )
+    assert set(CITED_RESIDUALS) == set(written), (
+        f"CITED_RESIDUALS and the citations actually written disagree. Declared "
+        f"and never written: {sorted(set(CITED_RESIDUALS) - set(written))}. "
+        f"Written and never declared: {sorted(set(written) - set(CITED_RESIDUALS))}"
+    )
+
     numbered = {}
-    for relative in OWNED_SOURCES:
-        source = (REPO_ROOT / relative).read_text()
-        hits = re.findall(r"R-\d+(?:\.\d+)?", source)
+    for relative, source in authored_sources():
+        if relative not in covered:
+            continue
+        hits = [
+            match
+            for line in source.splitlines()
+            # A heading DEFINES a number. Only a reference to one is a citation.
+            if not line.startswith("## R-")
+            for match in re.findall(r"R-\d+(?:\.\d+)?", line)
+        ]
         if hits:
             numbered[relative] = sorted(set(hits))
     assert numbered == {}, (
         f"these files cite a residual by NUMBER: {numbered}. Six numbers collide "
         f"across the branches in flight, so a number silently changes subject at "
         f"merge. Cite the title from CITED_RESIDUALS instead"
+    )
+
+
+def test_the_covered_file_set_is_derived_and_reaches_what_the_unit_touched():
+    """The list that was hand maintained, and what deriving it changed.
+
+    A POSITIVE CONTROL ON THE DERIVATION, because every assertion in the test
+    above is an ABSENCE: a derivation that answers the empty set makes all three
+    of them pass over nothing, which is this file's own recurring defect aimed at
+    the file itself.
+
+    The four files the hand written tuple named are still covered, the residual
+    document is covered now and was not, and ``tests/modules/test_tools.py`` is
+    covered now because its two bare number-only citations were rewritten as titles
+    rather than left invisible.
+    """
+    covered = set(owned_sources())
+    assert {
+        "tests/test_reserved_causes.py",
+        "tests/_source_guards.py",
+        "tests/test_review_queue.py",
+        "src/cratekit/cli/exit_codes.py",
+        "tests/modules/test_tools.py",
+        FINDINGS_DOCUMENT,
+    } <= covered, (
+        f"the derivation lost a file that carries citations: {sorted(covered)}"
     )
 
 
@@ -3648,6 +4113,41 @@ def test_the_closed_reason_registry_is_in_the_one_key_set():
     ) == ["line 4: 'credential-missing' -> int(ExitCode.PRECONDITION)"]
 
 
+def _reported_key_kinds(source: str) -> dict[str, int]:
+    """What KIND of expression each reported key is, off the syntax tree.
+
+    The anti-vacuity half of a fixture that claims to cover the NAMED spelling of
+    the residual. A list of hits says which slugs and which lines, and a slug
+    reads identically whether it was written inline or reached through a
+    constant, so a fixture claiming to cover names can be rewritten entirely into
+    literals with every assertion still true. That is not hypothetical: measured
+    off the syntax tree, ``RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS``
+    contains ZERO non-literal keys while it was the fixture documenting the false
+    alarm surface of a rule whose whole change was the resolver.
+
+    Deduplicated the way ``reserved_code_tables`` deduplicates, so a construct
+    reaching the walk twice counts once.
+    """
+    tree = ast.parse(source)
+    table = _guards.ReservedCodeTable(tree, declared_causes(), RANGE, None)
+    counted: dict[str, int] = {}
+    seen: set[tuple[int, str, str]] = set()
+    for key, value, label in table.pairs():
+        slug = table.cause_key(key)
+        if slug is None:
+            continue
+        status = label if label is not None else table.status(value)
+        if status is None:
+            continue
+        entry = (key.lineno, slug, status)
+        if entry in seen:
+            continue
+        seen.add(entry)
+        kind = type(key).__name__
+        counted[kind] = counted.get(kind, 0) + 1
+    return counted
+
+
 def _construct_shapes(source: str) -> dict[str, int]:
     """How many of each TABLE SHAPE a source is written with.
 
@@ -3765,6 +4265,82 @@ def test_ordinary_data_keyed_on_a_cause_slug_is_the_residual_the_wide_rule_pays(
         "for another that reports the same slugs and values has to fail rather "
         "than pass quietly"
     )
+
+    # THE KEY-KIND HALF, and it is what says this fixture covers the SPELLING it
+    # was written for and not the other one. Every key above is an inline string.
+    assert _reported_key_kinds(RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS) == {
+        "Constant": 18
+    }, (
+        "this fixture is the LITERAL half of the residual. If a named key appears "
+        "here it belongs in the fixture below, where the named half is pinned"
+    )
+
+
+def test_ordinary_data_keyed_on_a_NAME_is_the_same_residual_in_the_tree_s_own_idiom():
+    """The half of the false alarm surface the resolver widening actually moved.
+
+    THE MEASUREMENT THAT JUSTIFIED THE WIDENING WAS TAKEN ON THE KEY SET. It
+    added 189 kebab shaped literals, 108 of them not keys today, and measured
+    zero new offenders. That is a measurement over what counts as a CAUSE. What
+    the round changed was the RESOLVER, and the fixture documenting the residual
+    contained zero non-literal keys, so the surface the change created was not
+    covered by the artifact built to cover it.
+
+    Every construct here is silent before the widening and reported after it, and
+    ``TrackOutcome`` is copied from ``src/cratekit/acquire/adapter.py`` rather
+    than invented.
+
+    THE HEADROOM, RE-TAKEN AGAINST THE RESOLVER and measured on this tree rather
+    than argued: with the resolver ON, the package still reports ZERO offenders
+    outside the two table owners, and still zero with all 189 kebab literals in
+    the key set. The population at risk is what moved: TEN modules hold a name
+    the key side resolves to a registry-declared cause, FOURTEEN once a source's
+    own enum declarations count, and FOUR of those fourteen also hold an in-range
+    integer literal. The pre-existing literal-key surface is larger, at 25
+    non-owner modules holding a cause literal of which five also hold an in-range
+    integer, so the widening added a second spelling to an accepted surface
+    rather than a new class of false alarm. That is why it is documented here
+    instead of narrowed away.
+    """
+    hits = reserved_code_tables(
+        RESIDUAL_ORDINARY_DATA_KEYED_ON_A_NAME, declared_causes(), RANGE
+    )
+    assert hits == [
+        "line 18: 'unavailable-transient' -> status 30",
+        "line 20: 'decision-stale' -> status 20",
+        "line 20: 'session-lock-held' -> status 10",
+        "line 22: 'config-unusable' -> status 40",
+        "line 24: 'config-unusable' -> status 40",
+        "line 26: 'config-unusable' -> status 30",
+        "line 26: 'decision-stale' -> status 30",
+        "line 30: 'unavailable-transient' -> status 45",
+    ], (
+        "eight HITS from six ordinary constructs, none of them keyed on an inline "
+        "string. If this list shrinks the resolver has been narrowed and the "
+        "named spelling of a second table went quiet with it"
+    )
+
+    # THE ANTI-VACUITY HALF, and it is the whole point of this fixture existing
+    # beside the one above. A named key and an inline key report identically, so
+    # nothing in the list above would fail if every construct here were rewritten
+    # into literals, at which point this fixture would duplicate the other one.
+    assert _reported_key_kinds(RESIDUAL_ORDINARY_DATA_KEYED_ON_A_NAME) == {
+        "Attribute": 5,
+        "Name": 3,
+    }, (
+        "no reported key here may be an inline string. This fixture exists to "
+        "cover the spelling the key widening reached, and a Constant appearing "
+        "in it means the coverage drifted back to the spelling already covered"
+    )
+
+    # THE SHAPES, so a construct cannot be swapped for another carrying the same
+    # slugs and values on the same lines, which is the defect the tally beside
+    # the literal fixture was added for.
+    assert _construct_shapes(RESIDUAL_ORDINARY_DATA_KEYED_ON_A_NAME) == {
+        "dict literal": 3,
+        "dict comprehension": 1,
+        "branch returning a value": 1,
+    }
 
 
 def test_a_comment_cannot_silence_a_reservation():

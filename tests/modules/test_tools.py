@@ -59,7 +59,9 @@ def _open_gates():
 def open_gates():
     """The gates seam, injected wherever a test is asserting something else.
 
-    R-8 binds the library lock, the backup acknowledgment and the volume identity
+    The residual
+    "The backup restore is not yet bound to the destructive-session gates"
+    binds the library lock, the backup acknowledgment and the volume identity
     assertion to a restore. Those need a real volume identity and a person's
     recorded acknowledgment, neither of which belongs in a test about the ORDER
     the sidecars are cleared in. Injecting the seam here is what keeps this file
@@ -267,7 +269,11 @@ def test_every_declared_verb_is_in_the_static_registry():
 
 
 def test_the_destructive_verb_is_wired_to_the_destructive_session_gates():
-    """KTD24 and R38, armed now that the session boundary has landed (R-8).
+    """KTD24 and R38, armed now that the session boundary has landed.
+
+    The residual
+    "The backup restore is not yet bound to the destructive-session gates" is the
+    one this drives.
 
     A backup restore replaces a live database and its sidecars while writing no
     database row, so a rule binding the gates to database writes alone would

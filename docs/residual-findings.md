@@ -573,18 +573,29 @@ registry included, and a bare integer in range reserves any of them. The fourth
 round narrowed sixty of those keys on the strength of an over fire measured
 against a hand written fixture; measured against the real tree the wide rule
 reports ZERO offenders outside the two table owners, and the narrowing cost
-thirteen of sixteen realistic second-table shapes. R-19 carries the measurement
-and the reasoning.
+thirteen of sixteen realistic second-table shapes. The residual
+"The tiers were bought with a number that does not exist" carries the
+measurement and the reasoning.
 
-So this residual is general rather than small, and it is written down as such:
-`RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS` pins eighteen ordinary
-constructs that ARE reported.
+So this residual is general rather than small, and it is written down as such.
+Two fixtures pin it, one per SPELLING of a key.
+`RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS` pins eighteen hits from eleven
+ordinary constructs keyed on inline strings.
+`RESIDUAL_ORDINARY_DATA_KEYED_ON_A_NAME` pins eight hits from six constructs
+keyed on an enum member, a class attribute or a module constant, which is the
+tree's own idiom and which the first fixture contains zero instances of. Both
+counts measured in this worktree.
 
-**Closes when:** nothing has to close it. It is a stated limit with a fixture, and
-the escape for a module that genuinely needs it is one `# not-a-reservation:
-<reason>` comment on the statement, which silences that statement and nothing
-else. `TABLE_OWNERS` remains the whole-file escape and remains pinned to exactly
-two entries.
+**Closes when:** nothing has to close it. It is a stated limit with two fixtures.
+**There is no per-statement escape and the sixth round deleted the one there
+was**, so the only escape is `TABLE_OWNERS`, which switches the guard off for a
+WHOLE FILE and is pinned to exactly two entries by a membership assertion. That
+is strictly wider in blast radius than the per-statement mark it replaced and it
+is the trade taken deliberately: the per-statement mark was measured to silence a
+one line `def` body, two statements on one reason, and sixty one reservations
+from one comment, and its expansion set could be widened in three directions with
+only one of them pinned. A wide escape somebody has to argue for in a test is
+preferred to a narrow one nobody reviews.
 
 **5. `NOT_A_CAUSE` is a classification a person has to keep making.** Every
 package enum reaching an exception's constructor is treated as a refusal cause
@@ -762,8 +773,9 @@ COVERAGE DIAL: at 3 the guard reads at most two aliases before the literal, and 
 three alias chain is a real evasion that is silent. The sixth round did not raise
 it, because the give-up is the same KIND at any finite value and raising only
 moves it; it wrote the give-up down instead, pinned in both directions by
-`test_the_hop_bound_is_a_coverage_dial_and_this_is_what_it_gives_up`. R-19 has
-the shapes.
+`test_the_hop_bound_is_a_coverage_dial_and_this_is_what_it_gives_up`. The
+residual "The tiers were bought with a number that does not exist" has the
+shapes.
 
 **Closes when:** nothing has to close it. It is a record of ONE deliberate
 retention, plus the correction of a claim that was made about five others, so a
@@ -781,8 +793,9 @@ The guard reports a second reservation only for a key somebody DECLARED to be a
 refusal cause. That set is four declarations wide and one rule wide: the
 reservation table, the package-wide derivation, a source's own enums, and the
 closed reason registry `core.cause.REASONS`, with a bare integer in the reserved
-range reserving any of them. See R-19 for why the registry is carried on the same
-rule as the rest.
+range reserving any of them. See the residual
+"The tiers were bought with a number that does not exist" for why the registry
+is carried on the same rule as the rest.
 
 Two vocabularies are still outside it, both deliberately:
 
@@ -796,8 +809,9 @@ module mapping `"not_mounted"` to a code of its own is not reported.
 **The tokens carried by the refusals in `CONVERTED_ELSEWHERE`.** Twenty one
 strings, and most of them are remediation tokens rather than causes:
 `fix-config-values`, `switch-adapter`, `retry-later` and their neighbours. Adding
-them would widen R-14.4, the residual where a duration in range keyed by a
-declared cause reads as a status, from the causes to the remedies, and
+them would widen the fourth item of the residual
+"Five accepted findings from the U38 reviews", where a duration in range keyed
+by a declared cause reads as a status, from the causes to the remedies, and
 `{"retry-later": 30}` is precisely the backoff that residual describes.
 
 Both widenings were driven over the real tree and both find zero offenders today,
@@ -836,15 +850,19 @@ zero tests. It is scoped to the handler now, and driven by
 What it still cannot say is whether the conversion is LOSSLESS, and there is a
 live example: `core/session.py:1026` catches `BackupFactsUnreadable`, reads
 `exc.path`, and hardcodes `Remedy.REPAIR_BACKUP_FACTS`, discarding the remedy the
-exception carried. That is R-14.2. That handler satisfies this proof and should.
+exception carried. That is item 2 of the residual
+"Five accepted findings from the U38 reviews". That handler satisfies this
+proof and should.
 
 The alternative is a rule about WHICH attributes a handler must read, and that is
 a rule an ordinary refactor breaks, which puts it in the same family as reading a
 role from a parameter name. So the proof answers the question it can answer, and
-the losslessness question is answered by R-14.2 and by the one line that closes
+the losslessness question is answered by item 2 of the residual
+"Five accepted findings from the U38 reviews" and by the one line that closes
 it.
 
-**Closes when:** nothing has to close it. R-14.2 closes the live instance.
+**Closes when:** nothing has to close it. Item 2 of the residual
+"Five accepted findings from the U38 reviews" closes the live instance.
 
 ---
 
@@ -879,6 +897,58 @@ in the package to the key set, 189 distinct literals of which 108 are not keys
 today, still measures **ZERO** offenders outside the two table owners. The wide
 rule is not close to over firing here; it has 108 keys of slack.
 
+### The headroom measurement was taken on the key set, and the round moved the resolver
+
+**That measurement is over what counts as a CAUSE. The sixth round changed what
+counts as a KEY**, and it deleted the per-statement escape on the strength of the
+key-set number. Both halves are re-measured here against the RESOLVER, in this
+worktree, on the shipped tree.
+
+What did not change:
+
+* With the resolver ON and the registry key set of 82, the package reports
+  **ZERO** offenders outside the two table owners, and 22 and 61 inside them.
+* With the resolver ON and every kebab literal added, **190 keys**, still
+  **ZERO** outside.
+
+What did change is the DISTANCE to an offender, and that is the number the key
+set measurement could not see:
+
+* **10 modules** hold a name the key side now resolves to a registry-declared
+  cause. **14** hold one once a source's own enum declarations are counted, which
+  is what `ReservedCodeTable` actually reads. **4 of those 14** also hold an
+  in-range integer literal, so one ordinary mapping in any of the four is what an
+  offender looks like.
+* `src/cratekit/core/exit_codes.py` is the sharpest: **6** names resolving to a
+  registry-declared cause, **36** more resolving through its own `Remedy` enum,
+  **28** in-range integer literal occurrences, and it is NOT in `TABLE_OWNERS`.
+* `TrackOutcome` at `src/cratekit/acquire/adapter.py` is real, and
+  `RETRY_SECONDS = {TrackOutcome.UNAVAILABLE_TRANSIENT: 30}` is reported.
+
+**The widening is kept**, and the argument is the comparison the round before did
+not make. The at-risk population under the OLD constant-only key rule was already
+**25 non-owner modules holding a cause literal, 5 of them also holding an
+in-range integer**. The named surface is SMALLER than the literal surface the
+tree has carried and accepted since the fifth round. Every one of those four
+constructs already fired in its inline spelling, so the widening added a second
+SPELLING to an accepted residual rather than a new class of false alarm.
+
+Narrowing the key side instead was rejected on a measurement, not a preference. A
+narrowing that reads an inline string and not the name holding it puts one
+question back to two answers decided by spelling, which is the defect this round
+closed in `_branches`. And it would not work: `_declared_enum_values` treats a
+cause-shaped value in a source's own enum as a DECLARATION in that file, so
+`"unavailable-transient"` is a cause inside `adapter.py` before the registry is
+consulted, and the inline spelling of the same key would still fire.
+
+`RESIDUAL_ORDINARY_DATA_KEYED_ON_A_NAME` is what documents and pins it. The
+fixture that already documented this surface,
+`RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS`, contains **zero** non-literal
+keys measured off the syntax tree, so it covered the half of the residual that
+predates the widening. Both fixtures now carry a key-kind assertion, `Constant`
+18 for one and `Attribute` 5 plus `Name` 3 for the other, so neither can drift
+into the other's spelling without failing.
+
 The over fire the tiers were built to stop does not occur. What the tiers cost is
 not hypothetical, and this is the count the fifth round got wrong three different
 ways inside one commit. Round four's gate, re-implemented verbatim and run over
@@ -894,7 +964,7 @@ test docstring and "drives fifteen" in another. Four spellings of one
 measurement, no two agreeing, and none matching it. Every copy says two and
 fourteen now.
 
-### R-19 was also wrong about the rule it documented
+### This section was also wrong about the rule it documented
 
 The old text said the second tier accepted "an `ExitCode` member in any import
 spelling or a conversion wrapped round one". Measured, for all sixty registry
@@ -903,7 +973,8 @@ keys, every one of these was NOT reported:
 - `{"config-unusable": ExitCode(30)}`, which IS a conversion wrapped round the
   vocabulary.
 - `{"config-unusable": exit_codes.ExitCode(30)}`, which is the fixture the fourth
-  round itself added to drive R-16's fourth entry, only ever run with a key the
+  round itself added to drive the fourth entry of the residual
+  "One check in this unit is unreachable", only ever run with a key the
   narrow tier did not apply to.
 - `class Code(IntEnum): PRECONDITION = 30` then
   `{"doctor-check-failed": Code.PRECONDITION}`, a module declaring its own status
@@ -996,7 +1067,7 @@ own scheme was blind to `{"tree-registry-unusable": 33}` for sixty of the eighty
 two keys. `test_the_alternative_is_not_rejected_for_a_flaw_this_scheme_shares`
 drives that input, and the mutation table has the narrowing as a row.
 
-### Fourteen shapes were silent, not three, and the largest was not an import spelling
+### Sixteen shapes were silent, not three, and the largest was not an import spelling
 
 The fifth round recorded three still-silent import spellings. **Measured, the
 number is fourteen and the two largest are not import spellings at all: the guard
@@ -1014,9 +1085,33 @@ attributes whose value is a declared cause**, for example
 `TrackOutcome.UNAVAILABLE_PERMANENT` in `src/cratekit/acquire/adapter.py`, so
 that is the tree's own idiom rather than an invented one. The fifth round's argument for resolving values, that "a
 bare 30 in a mapping tells a reader nothing", is symmetric and was applied to one
-side only. One machinery answers both sides now.
+side only.
 
-Fourteen shapes measured, **six closed in this round and eight recorded**:
+**"One machinery answers both sides now" was written a round early and was
+false.** The widening reached FOUR constructs that hold a key in a subtree and
+missed TWO, because the `match` arm of `_branches` passed its pattern value into
+`cause_key` unfiltered and inherited it while the `if` arm and a dict
+comprehension's iterable each pre-filtered their subtree to `ast.Constant` first.
+Measured on the shipped tree before this round:
+
+```python
+match cause:
+    case Slug.CONFIG_UNUSABLE: return 30          # REPORTED
+if cause == Slug.CONFIG_UNUSABLE: return 30       # SILENT
+if cause == CONFIG_UNUSABLE:      return 30       # SILENT
+if cause == "config-unusable":    return 30       # REPORTED, the control
+CODES = {slug: 30 for slug in (CONFIG_UNUSABLE, SMOKE)}   # SILENT
+CODES = {slug: 30 for slug in ("config-unusable", ...)}   # REPORTED, the control
+```
+
+The first pair is one table written two ways and the guard read one of them.
+Every construct that finds its keys in a subtree asks `cause_keys_within` now, so
+the claim is a structure rather than a sentence: widening what a key can be
+widens all of them together or none of them.
+
+Sixteen shapes measured, **nine closed and seven recorded**. The enumeration grew
+by two the round after it was written down as complete, which is the argument for
+writing it down:
 
 | Shape | Now |
 | --- | --- |
@@ -1026,10 +1121,13 @@ Fourteen shapes measured, **six closed in this round and eight recorded**:
 | `getattr(ExitCode, "PRECONDITION")` | CLOSED. `ProcessExits` has recognized `getattr(sys, "exit")` since round two and called it the shape that matters most; this half of the same file did not recognize it. |
 | a code reached by `//` | CLOSED. `resolve_int` read `+`, `-` and `*` and not these two. |
 | a code reached by `%` | CLOSED. |
-| `{"config-unusable": {"code": 30, "remedy": ...}}`, the record dict as the VALUE | recorded. Closing it means reading a status out of a container held as a value, which pairs a cause with any in-range integer anywhere inside a nested structure. That is a wider residual than the one this guard already accepts, and it has no instance in the tree. |
-| dataclass field defaults, `cause: str = "config-unusable"` beside `code: int = 30` | recorded. The two defaults are separate statements in a class body with nothing binding them, so pairing them is a proximity rule rather than a structural one. |
+| `if cause == Slug.X` and `if cause == CONSTANT` returning a code | CLOSED. The fifteenth shape, found this round, and the direct twin of `case Slug.X`, which was already reported. One method, two arms, two answers. |
+| a dict comprehension over NAMED slugs, `{slug: 30 for slug in (CONFIG_UNUSABLE, ...)}` | CLOSED. The sixteenth shape, found this round. The same comprehension over inlined slugs reported both keys. |
+| `ExitCode(0)` and `ExitCode(126)`, the vocabulary at a value outside `[10, 60)` | CLOSED. `{"config-unusable": ExitCode.SUCCESS}` was reported and its constructor spelling was silent, because the conversion branch returned only when the inner expression was already a status and `status` answers None out of range. A member and its constructor spelling are one code, so the range cannot gate one of them. Narrowed to an argument that RESOLVES to an integer, so `ExitCode(document["exit_code"])`, which `cli/output.py` writes, reserves nothing. |
+| `{"config-unusable": {"code": 30, "remedy": ...}}`, the record dict as the VALUE | recorded, and the reason the round before gave for it was OVERSTATED. It said closing it "pairs a cause with any in-range integer anywhere inside a nested structure". A ONE LEVEL rule, crossing the outer key against the inner dict's values, is bounded, costs one level rather than unbounded depth, and is the exact mirror of the record dict as a KEY set, which IS closed. The honest reason it stays open is that it has no instance in the tree and no test would drive it beyond the fixture that opened it. |
+| dataclass field defaults, `cause: str = "config-unusable"` beside `code: int = 30` | recorded, and this is the RISKIEST row in the table rather than the most theoretical. `cli/exit_codes.py`'s own `Reservation` is `cause: str` beside `code: ExitCode`, so a second module copying the house style WITH DEFAULTS is the closest thing in this tree to the defect the whole guard exists for, and it is silent. It stays open because the two defaults are separate statements in a class body with nothing binding them, so pairing them is a proximity rule rather than a structural one, and a proximity rule is what fires on ordinary code. |
 | parallel indexed lists, `{SLUGS[0]: CODES[0]}` | recorded. Resolving a subscript into a named sequence is a second evaluator, and `dict(zip(...))` is the spelling anybody actually writes and is already read. |
-| a code outside `[10, 60)` | recorded, and it is the range decision rather than a hole. Widening the bare-integer rule past the reserved range reports every count, width and percent in the package. An `ExitCode` member, a conversion, a constant or arithmetic reaching an out of range value is still reported. |
+| a bare integer, a named constant or arithmetic reaching a value outside `[10, 60)` | recorded, and it is the range decision rather than a hole. Widening the bare-integer rule past the reserved range reports every count, width and percent in the package. All three of these produce an INTEGER and nothing else, so all three are governed by the range and all three are SILENT. The round before wrote "an `ExitCode` member, a conversion, a constant or arithmetic reaching an out of range value is still reported", and measured that sentence was false in three of its four clauses: `ExitCode(0)` and `ExitCode(126)` were silent, `BASE = 70` then `{"config-unusable": BASE}` was silent, and since arithmetic can evaluate to nothing but an integer the arithmetic clause was unconditionally false. The conversion clause is true now because the shape above it was closed; the constant and arithmetic clauses are withdrawn. `test_an_integer_outside_the_reserved_range_is_silent_however_it_is_spelled` pins all three. |
 | a chain of three or more name aliases | recorded, and it is `MAX_HOPS` at 3. See below. |
 | `import cratekit.core` then `cratekit.core.exit_codes.ExitCode.X` | recorded, pre-existing. The walk binds a name to the module or to the class and a partial package import reaches neither. |
 | `from cratekit import core` then `core.exit_codes.ExitCode.X` | recorded, pre-existing. Same shape one spelling further out. |

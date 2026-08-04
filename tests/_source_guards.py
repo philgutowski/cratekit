@@ -870,7 +870,24 @@ class ReservedCodeTable:
     is the same table, and ``{Slug.CONFIG_UNUSABLE: 30}`` is the same table with a
     namespace round it. The package already carries 37 class attributes whose
     value is a declared cause, so this is the spelling in the tree rather than an
-    invented one, and both were SILENT. One machinery answers both sides now.
+    invented one, and both were SILENT.
+
+    ONE MACHINERY ANSWERS BOTH SIDES, and saying so was premature by one round.
+    The widening reached four constructs and missed two: ``cause_keys_within``
+    exists because ``case Slug.CONFIG_UNUSABLE`` was reported while its direct
+    twin ``if cause == Slug.CONFIG_UNUSABLE`` was silent, and a dict
+    comprehension over named slugs was silent while the same comprehension over
+    inlined slugs was reported. Every construct that finds its keys in a subtree
+    asks one method now, so the claim is a structure rather than a sentence.
+
+    WHAT THE RANGE GATES AND WHAT IT DOES NOT, because the record had this wrong
+    in three of four clauses. An ``ExitCode`` member and a conversion wrapped
+    round the vocabulary are the vocabulary at ANY value, in range or out. A bare
+    integer, a named constant holding one and arithmetic producing one are all
+    the same thing to this guard, an INTEGER, and all three are reported only
+    inside the reserved range. Arithmetic can produce nothing but an integer, so
+    "arithmetic reaching an out of range value is still reported" was
+    unconditionally false and is not claimed.
 
     NOT NARROWED TO THE EIGHTEEN INTEGERS THE ENUM ACTUALLY USES, which was the
     other candidate. The case this table exists for is a new module deciding its
@@ -887,11 +904,14 @@ class ReservedCodeTable:
     answer to it is a decision recorded in the suite, not a comment: see the note
     above ``ReservedCodeTable`` for why the per-line escape was deleted.
 
-    WHAT IS STILL SILENT IS WRITTEN DOWN RATHER THAN LEFT TO BE FOUND. Fourteen
-    realistic shapes were measured against this guard and every one was silent;
-    six are closed here and the residual
-    "The tiers were bought with a number that does not exist" carries the other eight with the reason each is
-    recorded rather than closed. A gap nobody wrote down is a gap nobody reviews.
+    WHAT IS STILL SILENT IS WRITTEN DOWN RATHER THAN LEFT TO BE FOUND. Sixteen
+    realistic shapes have been measured against this guard and every one was
+    silent when it was found; NINE are closed here and the residual
+    "The tiers were bought with a number that does not exist" carries the other
+    seven with the reason each is recorded rather than closed. The enumeration
+    grew from fourteen to sixteen the round after it was written down as
+    complete, which is the argument for writing it down: a gap nobody wrote down
+    is a gap nobody reviews.
     """
 
     def __init__(
@@ -935,6 +955,36 @@ class ReservedCodeTable:
         if not (isinstance(held, ast.Constant) and isinstance(held.value, str)):
             return None
         return held.value if held.value in self.causes else None
+
+    def cause_keys_within(self, node: ast.AST) -> list[ast.AST]:
+        """Every expression anywhere inside ``node`` that names a declared cause.
+
+        ONE FILTER FOR EVERY CONSTRUCT THAT HOLDS ITS KEYS IN A SUBTREE, and
+        having three was how one question got two answers inside one method. The
+        round before widened ``cause_key`` to read a name, and three callers
+        reached it through a subtree: the ``match`` arm passed ``pattern.value``
+        straight in and INHERITED the widening, while the ``if`` arm and the
+        dict comprehension's iterable each pre-filtered the subtree to
+        ``ast.Constant`` and did not. Measured on the shipped tree before this
+        method existed::
+
+            match cause:
+                case Slug.CONFIG_UNUSABLE: return 30      # REPORTED
+            if cause == Slug.CONFIG_UNUSABLE: return 30   # SILENT
+            if cause == CONFIG_UNUSABLE:      return 30   # SILENT
+            if cause == "config-unusable":    return 30   # REPORTED
+            {slug: 30 for slug in (CONFIG_UNUSABLE, SMOKE)}   # SILENT
+            {slug: 30 for slug in ("config-unusable", ...)}   # REPORTED
+
+        The first pair is the same table written two ways, and the guard read one
+        of them. Every construct that finds its keys in a subtree now asks this,
+        so widening what a key can be widens all of them at once or none of them.
+
+        A node that is not a cause answers nothing, exactly as an undeclared
+        literal does, so this reads more spellings rather than treating more
+        strings as causes.
+        """
+        return [element for element in ast.walk(node) if self.cause_key(element)]
 
     def _resolved(self, node: ast.AST | None) -> ast.AST | None:
         """A key expression reduced to what it holds: a name or a class attribute.
@@ -1009,11 +1059,24 @@ class ReservedCodeTable:
         # nothing; both halves were wrong in the useful direction, and
         # ``test_a_two_argument_call_is_not_a_conversion`` now drives it.
         if isinstance(held, ast.Call) and len(held.args) == 1:
-            # ``int(ExitCode.X)`` and ``ExitCode(30)``: a code with a conversion
-            # wrapped round it is still a code, and both spellings read as
-            # ordinary Python rather than as an evasion.
-            wraps_a_code = _dotted(held.func) == "int" or self.codes.names_the_class(held.func)
-            if wraps_a_code and self.status(held.args[0], extra) is not None:
+            # ``ExitCode(0)``: a one-argument call on the vocabulary CLASS is the
+            # constructor spelling of a member, so the RESERVED RANGE does not
+            # gate it, exactly as ``ExitCode.SUCCESS`` is not gated. It was gated
+            # for a round, because this branch only returned when the inner
+            # expression was already a status, and an out-of-range integer is
+            # not one. Measured on the shipped tree,
+            # ``{"config-unusable": ExitCode.SUCCESS}`` was reported and
+            # ``{"config-unusable": ExitCode(0)}`` was silent, which is one
+            # vocabulary read two ways on the spelling alone. Narrowed to an
+            # argument that RESOLVES to an integer, so ``ExitCode(result.code)``
+            # is somebody reading a runtime value and is not a reservation.
+            if self.codes.names_the_class(held.func):
+                if self._as_int(held.args[0], extra) is not None:
+                    return as_written
+            # ``int(ExitCode.X)``: a conversion is a code only when what it wraps
+            # is one. ``int(5)`` is the bare-integer rule's business, not this
+            # branch's.
+            if _dotted(held.func) == "int" and self.status(held.args[0], extra) is not None:
                 return as_written
         # ``getattr(ExitCode, "PRECONDITION")``, which is the vocabulary reached
         # by a string rather than by an attribute. The bare-status guard below
@@ -1095,11 +1158,13 @@ class ReservedCodeTable:
                 found.extend(self._crossed(list(node.elts)))
             elif isinstance(node, ast.DictComp):
                 # ``{slug: 30 for slug in (...)}``: the value is the code and
-                # every slug in the iterables is a key it is given to.
+                # every slug in the iterables is a key it is given to. Through
+                # ``cause_keys_within``, so a comprehension over NAMED slugs
+                # reads the same as one over inlined slugs; it pre-filtered the
+                # iterable to ``ast.Constant`` for one round and did not.
                 for generator in node.generators:
-                    for element in ast.walk(generator.iter):
-                        if isinstance(element, ast.Constant):
-                            found.append((element, node.value, None))
+                    for element in self.cause_keys_within(generator.iter):
+                        found.append((element, node.value, None))
             elif isinstance(node, ast.Assign):
                 # ``CODES[slug] = 30`` after ``CODES = {}``, which is a table
                 # built a line at a time and is a table all the same.
@@ -1154,24 +1219,25 @@ class ReservedCodeTable:
         ``code = 41`` then ``return code`` reads the same as ``return 41``.
         Without that, the two sides of this guard swapped on a spelling that has
         nothing to do with what the code means.
+
+        BOTH ARMS ASK ``cause_keys_within``, which they did not for one round.
+        ``case Slug.CONFIG_UNUSABLE`` was reported and its direct twin
+        ``if cause == Slug.CONFIG_UNUSABLE`` was silent, because the ``match``
+        arm passed its pattern value in unfiltered and the ``if`` arm filtered
+        the test to ``ast.Constant`` first. One method answered one question two
+        ways; it asks once now.
         """
         found: list[tuple[ast.AST, ast.AST, str | None]] = []
         for node in ast.walk(self.tree):
             if isinstance(node, ast.Match):
                 for case in node.cases:
-                    keys = [
-                        pattern.value
-                        for pattern in ast.walk(case.pattern)
-                        if isinstance(pattern, ast.MatchValue)
-                    ]
-                    found.extend(self._returned(keys, case.body))
+                    found.extend(
+                        self._returned(self.cause_keys_within(case.pattern), case.body)
+                    )
             elif isinstance(node, ast.If):
-                keys = [
-                    element
-                    for element in ast.walk(node.test)
-                    if isinstance(element, ast.Constant)
-                ]
-                found.extend(self._returned(keys, node.body))
+                found.extend(
+                    self._returned(self.cause_keys_within(node.test), node.body)
+                )
         return found
 
     def _returned(
