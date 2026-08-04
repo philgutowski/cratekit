@@ -1005,3 +1005,57 @@ version that stat-ed for `is_dir` would refuse a first run into a mount slot tha
 does not exist yet, which is the over-restriction rounds three and four both
 produced. **Closes when:** the declared rows are validated where they are
 declared, so the comparison never has to.
+
+---
+
+## R-22. Four edges of the round eight classification, measured and left open
+
+**Found:** during the eighth review of U27, 2026-08-04, while closing the two
+channels a refusal travels: the exception a site raises, and the finding a site
+reports.
+
+**NUMBERING.** `main` carries R-14 and R-15; this branch adds R-16 through R-22.
+A merge that finds another R-22 renumbers whichever arrives second.
+
+**1. A read only volume names the atomic writer's temporary file.** Driven on a
+real `hdiutil attach -readonly` HFS+ image, `crate setup` answers `path-read-only`
+with `remount-writable`, which is the act, and the path it names is
+`.../coupled/tmpXXXX.tmp` rather than the destination beside it. The write fails
+while the TEMPORARY file is being created, so the kernel's error carries one
+filename and that filename is the temporary one; the destination-first rule in
+`_refused_path` exists for the `os.replace` half, which never runs here. The
+volume is the actionable content and the volume is right, and the destination is
+named in the same sentence by the wizard's own words, so the report is
+actionable and the path line is momentarily confusing rather than wrong. Fixing
+it means a second hand-off like `name_the_database`, at
+`config.atomic_write_bytes`, so the destination travels with a refusal that
+happened before any destination was touched. **Closes when:** the guarded writer
+grows that hand-off, or `atomic_write_bytes` reports the destination as
+`filename2` on the way out.
+
+**2. The open side of `open_db` records a path that nothing drives.** The mutation
+row `M8-02-open-path` kills zero, and the reason is measured rather than guessed:
+`Rekordbox6Database` does not connect while it constructs, so every failure it
+raises there is a Python level error or an `OSError` carrying its own filename,
+and both are already classifiable without a recorded path. The case the recording
+exists for is a driver level `sqlite3.Error` at construction, which only an
+eagerly connecting binding produces. It is kept because the slug on that handler
+shares the canary's exit band and therefore its `restore-from-snapshot` default.
+**Closes when:** the binding connects while it constructs, at which point the row
+starts killing the sealed-database test, or the binding is replaced.
+
+**3. `os.link` and `os.symlink` appear nowhere in `src/cratekit`.** The measured
+pick between two named paths is therefore correct and unexercised by production
+code today: it is driven from a real `os.link` out of a sealed directory in the
+suite, and the shape it protects against is equally reachable from `os.rename`
+whenever the SOURCE side is what the kernel refused, which no writer in this
+package currently arranges. **Closes when:** a writer links or renames with a
+source it does not control, at which point the row stops being latent.
+
+**4. The probe does not cover a mount that has stopped responding.**
+`_probe` opens with `O_NONBLOCK`, which returns immediately for a FIFO with no
+writer and does NOT cover a blocking wait inside the virtual filesystem layer, so
+a hung network mount would still block there. This was not measured, because no
+stalled mount was available to drive it, and it is recorded as unmeasured rather
+than claimed either way. **Closes when:** a stalled mount can be arranged in the
+suite, or the probe grows a deadline.

@@ -91,7 +91,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from cratekit.cli import doctor, output, prompt, registry
+from cratekit.cli import doctor, output, prompt, registry, render
 from cratekit.cli.output import Envelope
 from cratekit.core import config, preflight, profiles, rb_writer, secrets, taxonomy
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope
@@ -205,6 +205,26 @@ def _refuse(
     )
 
 
+def _act(exc: BaseException, otherwise: str) -> str:
+    """The closing clause of a wizard sentence, chosen by the KIND of refusal.
+
+    ONE FUNCTION SO THE SENTENCE CANNOT DRIFT FROM THE TOKEN. Every one of these
+    branches used to close with "grant this interpreter access", written into the
+    prose, beside a remedy token the classification now chooses. Those two can
+    disagree, and on a read only volume they did: the sentence named the read only
+    case and then gave the advice for the other one, over a volume no permission
+    grant can change. ``render.access_note`` holds one sentence per kind and is
+    the same wording every other caller in the package gets, so this is a lookup
+    rather than a fourth wording.
+
+    ``otherwise`` is for the failure the operating system did not refuse at all,
+    where there is no kind to follow, and it says what the wizard can offer
+    without claiming to know what happened.
+    """
+    note = render.access_note(exc)
+    return f" {note}" if note is not None else f" {otherwise}"
+
+
 def _unreachable_root(root: str, exc: OSError) -> str:
     """The sentence for a library root behind a directory nobody can open.
 
@@ -223,16 +243,23 @@ def _unreachable_root(root: str, exc: OSError) -> str:
     permission as a Cratekit bug and sent them to file a report, in the one verb
     whose whole job is getting a fresh clone to a first write. Doctor already
     answers it as a failed check; the wizard now refuses in the same words.
+
+    THE ACT COMES FROM THE KIND, NOT FROM THIS FUNCTION. The closing clause used
+    to be "Grant this interpreter access to the path", hard coded, beside a
+    remedy token the classification is free to change: under a read only volume
+    or a locked file the token flips and the sentence would then contradict it,
+    which is the same collapse one level in. ``render.access_note`` owns one
+    sentence per kind and every other caller in the package already uses it, so
+    the sentence follows the token by construction. A failure the operating
+    system did not refuse keeps the generic close, because there is no kind to
+    follow.
     """
     return (
         f"{root} could not be examined: {exc}. A directory on the way to it "
         f"cannot be opened by this account, so which volume the library would "
         f"sit on was not established and nothing was recorded. This is not a "
-        f"defect and it is not a missing drive: on macOS an interpreter without "
-        f"Full Disk Access is refused exactly this way under Documents, Desktop, "
-        f"Downloads and external volumes. Grant this interpreter access to the "
-        f"path, or choose a library root it can already reach"
-    )
+        f"defect and it is not a missing drive."
+    ) + _act(exc, "Choose a library root this account can already reach")
 
 
 def existing_document() -> tuple[dict[str, Any], str]:
@@ -360,9 +387,27 @@ class _Wizard:
         status: doctor.Status,
         detail: str,
         remedy: Remedy | None = None,
+        *,
+        error: BaseException | None = None,
     ) -> None:
+        """Record one answer. ``error`` is the exception this answer is ABOUT.
+
+        A NOTE IS NOT A LESSER REFUSAL, and until this it was the unclassified
+        one. Everything the wizard RAISES goes through ``CratekitError``, whose
+        constructor classifies against its declared cause. Everything the wizard
+        REPORTS came through here instead, which builds a ``doctor.Finding`` and
+        returns, so the remedy was whatever the branch hard coded, forever. Hand
+        the exception over and the finding decides; see ``doctor.Finding``.
+        """
         self.notes.append(
-            doctor.Finding(key=key, title=title, status=status, detail=detail, remedy=remedy)
+            doctor.Finding(
+                key=key,
+                title=title,
+                status=status,
+                detail=detail,
+                remedy=remedy,
+                error=error,
+            )
         )
 
     def resolve(
@@ -662,6 +707,7 @@ def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) 
             f"nothing was written under {cfg.library.root}: "
             + _unreachable_root(str(cfg.library.root), exc),
             Remedy.GRANT_PATH_ACCESS,
+            error=exc,
         )
         return
     if not preflight.library_state_may_be_written(status):
@@ -769,12 +815,11 @@ def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) 
                 f"examined ({exc}). A directory on the way to it cannot be opened "
                 f"by this account, so whether the library already carries its own "
                 f"template was not established and nothing was written. This is "
-                f"not a defect: on macOS an interpreter without Full Disk Access "
-                f"is refused exactly this way under Documents, Desktop, Downloads "
-                f"and external volumes. Grant this interpreter access to the path, "
-                f"or choose a library root it can already reach"
-            ),
+                f"not a defect."
+            )
+            + _act(exc, "Choose a library root this account can already reach"),
             Remedy.GRANT_PATH_ACCESS,
+            error=exc,
         )
         return
     if already_there:
@@ -796,13 +841,12 @@ def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) 
                 f"the template {name!r} could not be written to {path} ({exc}), so "
                 f"nothing was copied beside the database and this library does not "
                 f"describe its own tree. The location WAS reached and the write "
-                f"was refused, which is a directory this account may not write in "
-                f"or a volume mounted read only rather than a defect, and it is "
-                f"not something a second run of setup repairs. Give this "
-                f"interpreter write access to that directory, or choose a library "
-                f"root it can already write"
-            ),
+                f"was refused, which is a state of this machine rather than a "
+                f"defect, and it is not something a second run of setup repairs."
+            )
+            + _act(exc, "Choose a library root this account can already write"),
             Remedy.GRANT_PATH_ACCESS,
+            error=exc,
         )
         return
     wizard.note(

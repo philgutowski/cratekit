@@ -4329,6 +4329,13 @@ def test_the_seed_reports_a_write_it_was_refused_rather_than_filing_a_defect(lib
     account, is reached and stat-ed perfectly well and refuses the write. That
     escaped as an internal defect too. It must not borrow the sentence above,
     which asserts a directory could not be opened: this one was opened.
+
+    THE SENTENCE NOW NAMES THE KIND THAT HAPPENED RATHER THAN BOTH. It used to
+    hedge, "a directory this account may not write in or a volume mounted read
+    only", and then close with the act for the first of those two whichever one
+    had actually occurred. This arrangement is the first: a directory mode, on a
+    writable volume. So the read only act must NOT appear, and the sibling test
+    below drives a real read only volume and asserts the reverse.
     """
     cfg = config.from_dict(document_for(library))
     state = config.state_path("taxonomy_active", cfg).parent
@@ -4345,7 +4352,10 @@ def test_the_seed_reports_a_write_it_was_refused_rather_than_filing_a_defect(lib
     assert note.status is doctor.Status.FAIL
     assert note.remedy is Remedy.GRANT_PATH_ACCESS
     assert "could not be written" in note.detail
-    assert "read only" in note.detail
+    assert "Full Disk Access" in note.detail
+    # The act for the OTHER kind is absent, because the other kind did not occur.
+    assert "mounted read only" not in note.detail
+    assert "chflags nouchg" not in note.detail
     # And it does not claim the path could not be looked at, because it was.
     assert "could not be examined" not in note.detail
     assert not config.state_path("taxonomy_active", cfg).exists()
@@ -5845,3 +5855,327 @@ def test_setup_leaves_under_the_code_a_refusing_check_reserved(monkeypatch, tmp_
     )
     assert code == int(ExitCode.LIBRARY_UNAVAILABLE), err
     assert json.loads(out)["cause"]["reason"] == "library-volume-unmounted"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Round eight: the channel a refusal travels when nothing is RAISED
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Round seven put the classification at the constructor every ``CratekitError``
+# passes through, which covers every site that raises. It does not cover the
+# sites that REPORT: a check, and every branch of the wizard, answers by building
+# a ``doctor.Finding`` and returning, so the exception is caught and never
+# re-raised and ``cause.classified`` never sees it. The gap was not evenly
+# spread. It sat on the one site in the wizard that WRITES to the library volume,
+# which is where EROFS actually arises, and that site hard coded "grant this
+# interpreter access" for a volume no grant can change.
+
+
+def test_a_finding_that_carries_a_refusal_is_classified_where_it_is_built(tmp_path):
+    """The channel, at the object that owns it, rather than at one call site.
+
+    The previous four rounds each fixed this class of miss at the site that
+    happened to be found, and it recurred at the next site. A ``Finding`` is the
+    only way a check or the wizard reports, so this is the whole channel: hand it
+    the exception and the act follows the kind, whatever the site wrote.
+
+    THREE KINDS, ONE OF THEM ON A REAL READ ONLY VOLUME. Each is driven from a
+    real refusal by the operating system rather than from a constructed
+    exception, and each site is given the WRONG token on purpose, because a test
+    that passes the right token cannot tell a classification from an assignment.
+    """
+    sealed = tmp_path / "sealed.toml"
+    sealed.write_text("x = 1\n", encoding="utf-8")
+    sealed.chmod(0o000)
+    try:
+        try:
+            sealed.open("rb")
+        except OSError as exc:
+            refused = exc
+        else:
+            raise AssertionError("a 0o000 file opened, so the arrangement is void")
+
+        finding = doctor.Finding(
+            key="setup.taxonomy",
+            title="active taxonomy template",
+            status=doctor.Status.FAIL,
+            detail="the template could not be read",
+            # The site's own reading, deliberately the token for a different act.
+            remedy=Remedy.REMOUNT_WRITABLE,
+            error=refused,
+        )
+    finally:
+        sealed.chmod(0o600)
+
+    assert finding.remedy is Remedy.GRANT_PATH_ACCESS
+    assert finding.cause is not None, "a failing refusal must reach the envelope as one"
+    assert finding.cause.reason == "path-permission-denied"
+    assert finding.cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
+    assert finding.cause.detail["path"] == str(sealed)
+    assert finding.cause.detail["check"] == "setup.taxonomy"
+
+    # A real read only volume, which is this machine's own system volume.
+    try:
+        os.mkdir("/cratekit-u27-finding-probe")
+    except OSError as exc:
+        read_only = exc
+    else:  # pragma: no cover - only on a machine with a writable root volume
+        os.rmdir("/cratekit-u27-finding-probe")
+        raise AssertionError("this machine's root volume is writable, so it proves nothing")
+    assert read_only.errno == errno.EROFS
+
+    on_a_read_only_volume = doctor.Finding(
+        key="setup.taxonomy",
+        title="active taxonomy template",
+        status=doctor.Status.FAIL,
+        detail="the template could not be written",
+        remedy=Remedy.GRANT_PATH_ACCESS,
+        error=read_only,
+    )
+    assert on_a_read_only_volume.remedy is Remedy.REMOUNT_WRITABLE
+    assert on_a_read_only_volume.cause.reason == "path-read-only"
+
+    # And a finding about something the operating system did not refuse is left
+    # exactly as its site built it, because there is no kind to follow.
+    ordinary = doctor.Finding(
+        key="taxonomy.active",
+        title="active taxonomy template",
+        status=doctor.Status.FAIL,
+        detail="the file is not valid TOML",
+        remedy=Remedy.REPORT_DEFECT,
+        error=ValueError("not a refusal"),
+    )
+    assert ordinary.remedy is Remedy.REPORT_DEFECT
+    assert ordinary.cause is None
+
+    # A finding carrying no exception at all is the ordinary case and is inert.
+    assert (
+        doctor.Finding(
+            key="k", title="t", status=doctor.Status.FAIL, detail="d", remedy=Remedy.RUN_DOCTOR
+        ).remedy
+        is Remedy.RUN_DOCTOR
+    )
+
+
+def test_the_seed_on_a_read_only_library_volume_is_not_sent_to_full_disk_access(monkeypatch):
+    """F1. THE ONE SITE IN THE WIZARD THAT WRITES, WHICH IS WHERE EROFS ARISES.
+
+    ``_seed_taxonomy`` is the only thing ``crate setup`` puts on the library
+    volume, so it is the only place in the verb a read only volume can be met,
+    and it hard coded ``grant-path-access`` and closed its sentence with "Give
+    this interpreter write access to that directory". Full Disk Access cannot
+    make a write to a read only volume succeed. The sentence even named the read
+    only case, as one of two possibilities, and then gave the advice for the
+    other one.
+
+    THE VOLUME IS REAL. Every current macOS mounts its system volume read only,
+    so a library root at ``/`` refuses the state directory with the kernel's own
+    EROFS, and the test asserts that rather than assuming it.
+    """
+    # Over the suite-wide override, which RELOCATES ``library.root`` on every
+    # load: without this the configuration built below would name a writable
+    # temporary directory and the test would assert about the wrong disk (P2).
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, "/")
+    cfg = config.from_dict(document_for(Path("/")))
+    state = config.state_path("taxonomy_active", cfg)
+    assert state.parent.parent == Path("/.cratekit"), state
+
+    try:
+        os.mkdir("/cratekit-u27-seed-probe")
+    except OSError as exc:
+        assert exc.errno == errno.EROFS, (
+            f"this machine's root volume answered {exc.errno} rather than EROFS, "
+            f"so the arrangement is not a read only volume"
+        )
+    else:  # pragma: no cover - only on a machine with a writable root volume
+        os.rmdir("/cratekit-u27-seed-probe")
+        raise AssertionError("this machine's root volume is writable, so it proves nothing")
+
+    wizard = setup_verb._Wizard({}, silent())
+    setup_verb._seed_taxonomy(wizard, cfg, probes())
+
+    note = next(n for n in wizard.notes if n.key == "setup.taxonomy")
+    assert note.status is doctor.Status.FAIL
+    assert note.remedy is Remedy.REMOUNT_WRITABLE, "a read only volume is not a grant"
+    assert "Full Disk Access" not in note.detail
+    assert "mounted read only" in note.detail
+    assert "/.cratekit" in note.detail
+
+    # The one-line fix a person reads is the act for THIS kind.
+    assert "Full Disk Access" not in render.remedy_text(note.remedy)
+
+    # And the envelope carries it: before this the wizard's report reached the
+    # boundary as "N checks are failing" with a null remedy, because a note built
+    # a Finding and ``failure_cause`` had no cause to read.
+    cause = doctor.failure_cause(doctor.Report(tuple(wizard.notes)), origin="cli.setup")
+    assert cause.reason == "path-read-only"
+    assert cause.remediation.remedy is Remedy.REMOUNT_WRITABLE
+    assert cause.detail["access"] == "read-only"
+    assert not state.exists()
+
+
+def test_a_path_no_filesystem_can_represent_is_answered_rather_than_raised():
+    """F3. A GUARD ROUND SEVEN WROTE TWICE, IN THE MODULE IT DID NOT WRITE IT IN.
+
+    ``os.lstat`` and ``os.open`` reject a path with an embedded null before any
+    syscall is made, and they reject it with ``ValueError`` rather than with an
+    ``OSError``. Both are reached from ``access_refusal``, which is read INSIDE
+    the dispatcher's own ``except CratekitError`` handler: an exception escaping
+    there replaces a refusal the user could act on with a traceback. Round seven
+    guarded exactly this input twice in ``core/preflight`` and left it in the
+    module it rewrote.
+
+    LATENT RATHER THAN LIVE, AND SAID SO. No real syscall produces an ``OSError``
+    carrying a null in ``filename``, and ``sqlite3.connect`` raises the
+    ``ValueError`` before any ``sqlite3.Error`` exists, so the last assertion
+    below is the only one built from a constructed exception and it is here
+    because the guard is cheap and the failure mode is the worst shape there is.
+    """
+    from cratekit.core import cause as cause_module
+
+    unrepresentable = "/tmp/cratekit-u27\0probe"
+
+    # The two real functions really do raise, so the guards are not decorative.
+    with pytest.raises(ValueError):
+        os.lstat(unrepresentable)
+    with pytest.raises(ValueError):
+        os.open(unrepresentable, os.O_RDONLY)
+
+    # And the two seams answer instead, exactly as ``os.path.ismount`` does.
+    assert os.path.ismount(unrepresentable) is False
+    assert cause_module._immutable(unrepresentable) is False
+    assert cause_module._probe(unrepresentable, writing=False) is None
+    assert cause_module._probe(unrepresentable, writing=True) is None
+
+    # Constructed, because no syscall can carry one: the classification answers
+    # rather than raising through the handler that is reading it.
+    assert cause_module.access_refusal(
+        PermissionError(errno.EACCES, "Permission denied", unrepresentable)
+    ) == cause_module.AccessRefusal(
+        kind=cause_module.AccessKind.PERMISSION, path=unrepresentable
+    )
+
+
+def test_a_two_path_refusal_names_the_side_the_operating_system_refused(tmp_path):
+    """F4. DESTINATION FIRST IS RIGHT FOR A RENAME AND WRONG FOR A LINK.
+
+    ``os.replace`` sets ``filename`` to the source and ``filename2`` to the
+    destination, and the guarded writer writes every file by renaming a temporary
+    one over it, so reading ``filename`` alone named a ``.tmp`` that no longer
+    exists. ``os.link`` fills the same two fields in the same order and the
+    refusal is on the OTHER side: with a source this account cannot reach,
+    destination-first names the one path there is nothing to do about.
+
+    So which side was refused is MEASURED, the same way a driver level error is,
+    and the destination keeps precedence: it is asked first and the source is
+    named only when the destination is not itself refused and the source is.
+    Neither ``os.link`` nor ``os.symlink`` appears anywhere in ``src/cratekit``
+    today, which is what makes this latent rather than live.
+    """
+    from cratekit.core import cause as cause_module
+
+    sealed_dir = tmp_path / "sealed"
+    sealed_dir.mkdir()
+    source = sealed_dir / "source.bin"
+    source.write_bytes(b"x")
+    destination = tmp_path / "destination.bin"
+    sealed_dir.chmod(0o000)
+    try:
+        try:
+            os.link(source, destination)
+        except OSError as exc:
+            refused = exc
+        else:
+            raise AssertionError("a link out of a 0o000 directory succeeded")
+
+        assert refused.filename == str(source), "the arrangement is not the one described"
+        assert refused.filename2 == str(destination)
+
+        refusal = cause_module.access_refusal(refused)
+        assert refusal is not None
+        assert refusal.path == str(source), "the refusal named the path the account can write"
+        assert refusal.kind is cause_module.AccessKind.PERMISSION
+    finally:
+        sealed_dir.chmod(0o700)
+
+    # THE RENAME CASE IS UNCHANGED, which is what the precedence is for: a
+    # destination this account cannot write in, named ahead of the temporary file.
+    unwritable = tmp_path / "unwritable"
+    unwritable.mkdir()
+    target = unwritable / "config.toml"
+    target.write_bytes(b"y")
+    temporary = tmp_path / "tmpXXXX.tmp"
+    temporary.write_bytes(b"z")
+    target.chmod(0o000)
+    unwritable.chmod(0o500)
+    try:
+        try:
+            os.replace(temporary, target)
+        except OSError as exc:
+            renamed = exc
+        else:
+            raise AssertionError("a rename into a 0o500 directory succeeded")
+        found = cause_module.access_refusal(renamed)
+        assert found is not None
+        assert found.path == str(target), "the user was sent to a temporary file again"
+    finally:
+        unwritable.chmod(0o700)
+        target.chmod(0o600)
+
+
+def test_a_copy_that_gave_up_on_one_member_is_classified_by_its_paths(tmp_path):
+    """F5. THE ONE REFUSAL IN THE PACKAGE THAT ARRIVES AS RENDERED TEXT.
+
+    ``shutil.copytree`` does not raise the refusal it met. It collects every
+    member it could not copy and raises one ``shutil.Error`` at the end whose
+    single argument is a list of ``(source, destination, why)`` triples, and
+    ``why`` has already been rendered to a string. Measured on this platform that
+    exception IS an ``OSError`` subclass, contrary to the shape one would guess
+    from its behaviour, and it carries ``errno``, ``filename`` and ``filename2``
+    all None and no ``__cause__``, so every errno rule in the module answered
+    None for it.
+
+    ``core/snapshot`` copies each declared capture source with exactly this call
+    and does not guard it, so a sealed member of a declared source reached the
+    dispatcher's blanket as "this is a defect; report it". The paths survive the
+    rendering even though the errno does not, so the paths are what is measured.
+    """
+    import shutil
+
+    from cratekit.core import cause as cause_module
+
+    tree = tmp_path / "source"
+    (tree / "inner").mkdir(parents=True)
+    member = tree / "inner" / "member.bin"
+    member.write_bytes(b"z")
+    member.chmod(0o000)
+    try:
+        try:
+            shutil.copytree(tree, tmp_path / "captured")
+        except shutil.Error as exc:
+            gave_up = exc
+        else:
+            raise AssertionError("a 0o000 member copied, so the arrangement is void")
+
+        # The shape the classification has to work from, stated rather than assumed.
+        assert isinstance(gave_up, OSError)
+        assert gave_up.errno is None
+        assert gave_up.filename is None
+        assert gave_up.__cause__ is None
+
+        refusal = cause_module.access_refusal(gave_up)
+        assert refusal is not None, "a sealed member was read as an unanticipated failure"
+        assert refusal.path == str(member)
+        assert refusal.kind is cause_module.AccessKind.PERMISSION
+        assert refusal.remedy is Remedy.GRANT_PATH_ACCESS
+
+        # And it travels the whole way: the dispatcher's blanket is what an
+        # unguarded copy actually reaches.
+        from cratekit import cli as cli_module
+
+        blanket = cli_module._unhandled_cause(gave_up)
+        assert blanket.reason == "path-permission-denied"
+        assert blanket.remediation.remedy is Remedy.GRANT_PATH_ACCESS
+        assert str(member) in blanket.message
+    finally:
+        member.chmod(0o600)

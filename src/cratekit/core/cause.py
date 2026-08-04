@@ -173,12 +173,30 @@ def _immutable(path: str) -> bool:
     commonest way a macOS user meets EPERM on a file they own and can see. The
     flags field only exists on the BSD family, so its absence answers False
     rather than raising.
+
+    ``ValueError`` IS CAUGHT ALONGSIDE ``OSError`` AND IS NOT THE SAME KIND OF
+    THING. A path with an embedded null is rejected by ``os.lstat`` before any
+    syscall is made, and that is not an ``OSError``: it is the argument being
+    unrepresentable. This function is read from inside the dispatcher's own
+    ``except CratekitError`` handler, where an escaping exception replaces a
+    refusal a user could act on with a traceback, so a question asked about an
+    unrepresentable path answers False here for the same reason
+    ``os.path.ismount`` answers False for it.
     """
     try:
         flags = getattr(os.lstat(path), "st_flags", 0)
-    except OSError:
+    except (OSError, ValueError):
         return False
     return bool(flags & (getattr(stat, "UF_IMMUTABLE", 0) | getattr(stat, "SF_IMMUTABLE", 0)))
+
+
+def _spelled(candidate: Any) -> str | None:
+    """One filename off an ``OSError``, as text, or None when it carries none."""
+    if candidate is None:
+        return None
+    if isinstance(candidate, bytes):
+        return os.fsdecode(candidate)
+    return str(candidate)
 
 
 def _refused_path(exc: OSError) -> str | None:
@@ -191,12 +209,39 @@ def _refused_path(exc: OSError) -> str | None:
     while the file they actually have to unlock went unmentioned.
     """
     for candidate in (exc.filename2, exc.filename):
-        if candidate is None:
-            continue
-        if isinstance(candidate, bytes):
-            return os.fsdecode(candidate)
-        return str(candidate)
+        spelled = _spelled(candidate)
+        if spelled is not None:
+            return spelled
     return None
+
+
+def _refused_of_two(exc: OSError, fallback: str) -> str:
+    """Which of two named paths the operating system ACTUALLY refused.
+
+    POSITION ALONE DOES NOT SAY WHICH SIDE WAS REFUSED, and the destination-first
+    rule above is measured right for ``os.replace``, ``os.rename``, ``os.symlink``
+    and ``shutil.move`` and measured WRONG for ``os.link``: with a source this
+    account cannot reach, ``filename`` is the sealed source and ``filename2`` is
+    the destination it can already write, so destination-first names the one path
+    there is nothing to do about. The same shape is reachable from ``os.rename``
+    whenever the SOURCE side is what the kernel refused.
+
+    So it is measured rather than guessed, the same way ``_probe`` measures a
+    driver level error instead of assuming one. The destination keeps precedence:
+    it is asked first, and the source is named only when the destination is not
+    itself refused and the source is.
+
+    ONLY FOR A PERMISSION OR A LOCK, never for a read only volume, and that is
+    the one caller's job to enforce rather than this function's to explain twice.
+    See :func:`_from_os_error`.
+    """
+    for candidate in (exc.filename2, exc.filename):
+        spelled = _spelled(candidate)
+        if spelled is None:
+            continue
+        if _probe(spelled, writing=False) is not None:
+            return spelled
+    return fallback
 
 
 def _from_os_error(exc: BaseException) -> AccessRefusal | None:
@@ -208,15 +253,51 @@ def _from_os_error(exc: BaseException) -> AccessRefusal | None:
         # how to fix, so it is not claimed as one. See ``AccessRefusal``.
         return None
     if exc.errno in READ_ONLY_ERRNOS:
+        # THE DESTINATION, WITHOUT MEASURING. A read only volume is a property of
+        # the MEDIUM rather than of one path on it: a two path call that answers
+        # EROFS had both paths on that volume, because a call across two
+        # filesystems answers EXDEV instead. There is nothing to choose between
+        # them and the destination is the one the user was trying to reach.
         return AccessRefusal(kind=AccessKind.READ_ONLY, path=path)
     if isinstance(exc, PermissionError) or exc.errno in PERMISSION_ERRNOS:
         for candidate in (exc.filename2, exc.filename):
-            if candidate is None:
-                continue
-            spelled = os.fsdecode(candidate) if isinstance(candidate, bytes) else str(candidate)
-            if _immutable(spelled):
+            spelled = _spelled(candidate)
+            if spelled is not None and _immutable(spelled):
                 return AccessRefusal(kind=AccessKind.LOCKED, path=spelled)
+        if exc.filename2 is not None and exc.filename is not None:
+            path = _refused_of_two(exc, path)
         return AccessRefusal(kind=AccessKind.PERMISSION, path=path)
+    return None
+
+
+def _from_copy_error(exc: BaseException) -> AccessRefusal | None:
+    """The refusal inside a ``shutil`` copy that gave up on individual members.
+
+    ``shutil.copytree`` DOES NOT RAISE THE REFUSAL IT MET. It collects every
+    member it could not copy and raises one ``shutil.Error`` at the end whose
+    single argument is a list of ``(source, destination, why)`` triples, and
+    ``why`` has already been rendered to TEXT. Measured on this platform, that
+    exception is an ``OSError`` subclass carrying ``errno``, ``filename`` and
+    ``filename2`` all None and no ``__cause__``, so every errno rule in this
+    module answers None for it and a sealed member of a declared capture source
+    reached the user as "this is a defect; report it".
+
+    The paths survive the rendering even though the errno does not, so the paths
+    are what this measures: each named source is asked directly, exactly as
+    :func:`_probe` asks for a driver level error. A member that is merely gone by
+    now claims nothing.
+    """
+    if type(exc).__module__ != "shutil" or type(exc).__name__ != "Error":
+        return None
+    entries = exc.args[0] if exc.args else ()
+    if not isinstance(entries, (list, tuple)):
+        return None
+    for entry in entries:
+        if not isinstance(entry, (list, tuple)) or not entry:
+            continue
+        found = _probe(str(entry[0]), writing=False)
+        if found is not None:
+            return found
     return None
 
 
@@ -229,12 +310,24 @@ def _probe(path: str, *, writing: bool) -> AccessRefusal | None:
     would have, and the ``OSError`` that comes back carries the errno and the
     filename the classification needs. An open that succeeds answers None, and
     the failure keeps its honest "this program did not anticipate it" reading.
+
+    ``ValueError`` is caught for the reason :func:`_immutable` gives: a path with
+    an embedded null is rejected by ``os.open`` before any syscall, and this is
+    read from inside the dispatcher's own refusal handler, where raising replaces
+    an act the user could take with a traceback.
+
+    NOT MEASURED: a mount that has stopped responding. ``O_NONBLOCK`` covers a
+    FIFO with no writer, which returns immediately, and does not cover a blocking
+    wait inside the virtual filesystem layer, so a hung network mount would still
+    block here. No stalled mount was available to drive it.
     """
     flags = (os.O_RDWR if writing else os.O_RDONLY) | getattr(os, "O_NONBLOCK", 0)
     try:
         handle = os.open(path, flags)
     except OSError as probe:
         return _from_os_error(probe)
+    except ValueError:
+        return None
     os.close(handle)
     return None
 
@@ -260,11 +353,26 @@ def name_the_database(exc: BaseException, path: Any) -> BaseException:
     :func:`access_refusal` where the decision is. Returning the SAME exception
     keeps the traceback and the class, so nothing downstream has to learn a new
     type to catch.
+
+    IT RECORDS ALONG THE DECLARED CHAIN, NOT ONLY ON THE EXCEPTION HANDED IN.
+    Two of this package's three connection sites catch ``sqlite3.Error`` itself,
+    so the chain is one link long and this changes nothing for them. The third
+    goes through an object mapper, which catches the driver's error and re-raises
+    its OWN type ``from`` it: the exception a handler there can see is a
+    ``sqlalchemy.exc.OperationalError``, and the ``sqlite3.OperationalError``
+    that actually carries ``sqlite_errorname`` is two links down. Recording only
+    on the top of that chain records on the one object the classification cannot
+    read, which is a fix landing beside the thing it was meant to land on.
     """
     try:
-        setattr(exc, DATABASE_PATH_ATTRIBUTE, os.fspath(path))
-    except (AttributeError, TypeError):  # pragma: no cover - defensive
-        pass
+        spelled = os.fspath(path)
+    except TypeError:  # pragma: no cover - defensive
+        return exc
+    for current in _chain(exc):
+        try:
+            setattr(current, DATABASE_PATH_ATTRIBUTE, spelled)
+        except AttributeError:  # pragma: no cover - defensive
+            continue
     return exc
 
 
@@ -295,7 +403,11 @@ def access_refusal(exc: BaseException | None) -> AccessRefusal | None:
     than telling them to file a bug.
     """
     for current in _chain(exc):
-        found = _from_os_error(current) or _from_database_error(current)
+        found = (
+            _from_copy_error(current)
+            or _from_os_error(current)
+            or _from_database_error(current)
+        )
         if found is not None:
             return found
     return None

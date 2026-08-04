@@ -117,6 +117,7 @@ from cratekit.core.cause import (
     Outcome,
     Remediation,
     Scope,
+    access_refusal,
     access_remedy,
 )
 from cratekit.core.exit_codes import Remedy
@@ -148,6 +149,21 @@ class Finding:
     when the fix is not expressible as a token at all, and in that case
     ``detail`` states the act, which is legal here and only here: this is the
     layer that renders.
+
+    A FINDING IS THE SECOND CHANNEL A REFUSAL TRAVELS, AND UNTIL THIS IT WAS THE
+    UNCLASSIFIED ONE. Round seven put the operating system's own refusal at the
+    constructor every ``CratekitError`` passes through, which covers every site
+    that RAISES. It does not cover the sites that REPORT: a check, and every
+    branch of the wizard, answers by building one of these and returning, so the
+    exception is caught and never re-raised and ``cause.classified`` is never
+    reached. That gap is not theoretical or evenly spread. It sits exactly on the
+    one site in the wizard that WRITES to the library volume, which is where
+    EROFS actually arises, and that site hard coded "grant this interpreter
+    access" for a volume no grant can change.
+
+    So the classification happens HERE, where a finding is built, for the same
+    reason it happens at the refusal constructor: a site written next year is
+    right without being edited. Pass ``error`` and the act follows the kind.
     """
 
     key: str
@@ -162,6 +178,52 @@ class Finding:
     #: refusal that names its own code leaves the process under that code instead
     #: of under the report's generic one.
     cause: Cause | None = None
+    #: The exception this answer is ABOUT, when the answer came from catching one.
+    #: Never rendered and never serialized: it is read once, at construction, to
+    #: decide whether the operating system is what refused. Excluded from equality
+    #: and from the repr because two findings that say the same thing are the same
+    #: finding whether or not they carry the same exception object.
+    error: BaseException | None = field(default=None, compare=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Correct the act, and give the report a cause, when the answer is a refusal.
+
+        THREE THINGS AND NO MORE. The remedy token follows the KIND the operating
+        system actually made, so a read only volume is not sent to Full Disk
+        Access. A failing finding with no cause of its own gains one, because a
+        refusal that reaches the envelope as "N checks are failing" with a null
+        remedy has lost the one field a machine consumer reads. The words are not
+        touched: this layer renders them from the token, and a site that writes an
+        act into its own sentence is the defect this closes rather than a second
+        place to fix it.
+
+        A finding that carries no exception, or one the operating system did not
+        refuse, is left exactly as it was built.
+        """
+        if self.error is None:
+            return
+        refusal = access_refusal(self.error)
+        if refusal is None:
+            return
+        if self.remedy is not refusal.remedy:
+            object.__setattr__(self, "remedy", refusal.remedy)
+        if self.cause is None and self.status is Status.FAIL:
+            object.__setattr__(
+                self,
+                "cause",
+                Cause(
+                    reason=refusal.reason,
+                    message=self.detail,
+                    remediation=Remediation(remedy=refusal.remedy),
+                    scope=Scope.RUN,
+                    origin=("cli.doctor",),
+                    detail={
+                        "path": refusal.path,
+                        "access": str(refusal.kind),
+                        "check": self.key,
+                    },
+                ),
+            )
 
     @property
     def failed(self) -> bool:

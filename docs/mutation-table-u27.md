@@ -282,3 +282,186 @@ R6-14 narrows `except (config.ConfigError, OSError):` to
 `except config.ConfigError:` in `cli._membership`. M33w replaces the whole
 `try` / `except (OSError, UnicodeDecodeError)` around the commondir read with the
 bare return.
+
+---
+
+## Round eight, 2026-08-04
+
+**Baseline: 3431 passed, 14 skipped, 3445 collected.** Measured on branch
+`unit/u27-setup-wizard-and-doctor` with round eight's changes applied, after the
+round's own seven tests landed. Round seven's baseline was 3424 passed and 14
+skipped; the seven new tests are the whole difference.
+
+Method unchanged, per `docs/mutation-rows.md` on `main`: one exact textual
+substitution, the whole suite, count from the summary line, restore from a
+snapshot taken before the substitution. The driver asserts the file is byte for
+byte identical after each restore, and the four files no row touches were
+checksummed against `git show HEAD:<path>` at the end. `pyproject.toml` already
+sets `addopts = "-q"`, so no second `-q` is passed and the summary line survives.
+
+| id | file | guard | deaths |
+|-|-|-|-|
+| `M8-01-canary-path` | `core/rb_writer.py` | the canary records WHICH file its read failure was about | 1 |
+| `M8-02-open-path` | `core/rb_writer.py` | the open records the same, at the other half of the connection | **0** |
+| `M8-03-chain-record` | `core/cause.py` | the path is recorded along the DECLARED chain, not only on the exception handed in | 1 |
+| `M8-04-finding-classified` | `cli/doctor.py` | a finding carrying an exception is classified where it is BUILT | 2 |
+| `M8-05-finding-cause` | `cli/doctor.py` | a failing finding that IS a refusal reaches the envelope as one | 2 |
+| `M8-06-wizard-act` | `cli/setup.py` | the wizard's closing clause follows the kind rather than the prose | 5 |
+| `M8-07-two-path` | `core/cause.py` | which of two named paths was refused is MEASURED | 1 |
+| `M8-08-copy-error` | `core/cause.py` | a `shutil.Error` is classified by the paths it names | 1 |
+| `M8-09-null-immutable` | `core/cause.py` | `_immutable` answers for a path no filesystem can represent | 1 |
+| `M8-10-null-probe` | `core/cause.py` | `_probe` answers for the same | 1 |
+
+### The row definitions
+
+Each is the exact `old` -> `new` substitution. Applying it by hand reproduces the
+count beside it.
+
+**`M8-01-canary-path`.** In `rb_writer.canary`'s read handler:
+
+    -        if named is not None:
+    -            name_the_database(exc, named)
+    +        if named is not None:
+    +            pass
+
+**THE ROUND'S SUBJECT, AND THE ONLY FINDING IN THIS UNIT'S HISTORY THAT DESTROYS
+DATA IF FOLLOWED.** `canary-read-failed` sits on the library-unreadable band,
+whose declared remedy is `restore-from-snapshot`. The binding opens lazily, so a
+`chmod 000` on the database passes the open and fails at the canary's two reads,
+and what comes back is an object mapper error wrapping a
+`sqlite3.OperationalError`: no errno, no filename, no path anywhere. With nothing
+recorded, the classification found nothing and the destructive default stood, so
+the tool answered a mode change by telling the user to overwrite the library
+state they still have. `queue.db` and `review.db` were answered correctly all
+along because their two connection sites record the path; this one did not.
+
+**`M8-02-open-path`.** In `open_db`'s construction handler, delete
+`name_the_database(exc, target)`.
+
+**MEASURED ZERO, AND RECORDED RATHER THAN QUIETLY FIXED.** The reason is measured
+rather than guessed: `Rekordbox6Database` never connects while it constructs, so
+every failure it raises there is a Python level error or an `OSError` carrying
+its own filename, and the classification already answers both. Driven directly, a
+sealed `masterPlaylists6.xml` beside the database refuses as a `PermissionError`
+and is classified correctly with the recording removed. The case the recording
+exists for is a driver level `sqlite3.Error` at construction, which only an
+eagerly connecting binding produces. It is kept because that handler's slug
+shares the canary's band and therefore its `restore-from-snapshot` default. See
+residual finding "Four edges of the round eight classification".
+
+**`M8-03-chain-record`.** In `cause.name_the_database`, replace the walk with
+round seven's single `setattr` on the exception handed in:
+
+    -    for current in _chain(exc):
+    -        try:
+    -            setattr(current, DATABASE_PATH_ATTRIBUTE, spelled)
+    -        except AttributeError:  # pragma: no cover - defensive
+    -            continue
+    +    try:
+    +        setattr(exc, DATABASE_PATH_ATTRIBUTE, spelled)
+    +    except AttributeError:  # pragma: no cover - defensive
+    +        pass
+
+The other half of `M8-01`, and the reason recording at the site was not enough on
+its own. Two of the three connection sites in this package catch `sqlite3.Error`
+itself, so their chain is one link long and this changes nothing for them. The
+third goes through an object mapper, which catches the driver's error and
+re-raises its own type `from` it, so the exception the handler can see is a
+`sqlalchemy.exc.OperationalError` and the `sqlite3.OperationalError` that carries
+`sqlite_errorname` is two links down. Recording only on the top of that chain
+records on the one object the classification cannot read.
+
+**`M8-04-finding-classified`.** In `doctor.Finding.__post_init__`:
+
+    -        refusal = access_refusal(self.error)
+    +        refusal = None
+
+The channel fix. Round seven put the classification at the constructor every
+`CratekitError` passes through, which covers every site that RAISES and no site
+that REPORTS: a check, and every branch of the wizard, answers by building a
+`Finding` and returning. The gap sat exactly on the one site in the wizard that
+writes to the library volume, which is where EROFS actually arises.
+
+**`M8-05-finding-cause`.** In the same method:
+
+    -        if self.cause is None and self.status is Status.FAIL:
+    +        if False:
+
+Separate from the row above because it is a separate property: the remedy TOKEN
+is what a person reads and the CAUSE is what a machine reads, and before this the
+wizard's report reached the boundary as `doctor-check-failed` with `remedy: null`
+however well the finding itself was worded.
+
+**`M8-06-wizard-act`.** In `setup._act`:
+
+    -    note = render.access_note(exc)
+    -    return f" {note}" if note is not None else f" {otherwise}"
+    +    return f" {otherwise}"
+
+The sentence, as distinct from the token. All three wizard branches used to close
+with "grant this interpreter access", written into the prose, beside a token the
+classification is now free to change. On a read only volume the sentence named
+the read only case and then gave the advice for the other one.
+
+**`M8-07-two-path`.** In `_from_os_error`:
+
+    -        if exc.filename2 is not None and exc.filename is not None:
+    +        if exc.filename2 is not None and exc.filename is None:
+
+Destination-first is measured right for `os.replace`, `os.rename`, `os.symlink`
+and `shutil.move`, and measured wrong for `os.link`: with a source this account
+cannot reach, `filename` is the sealed source and `filename2` is the destination
+it can already write. EROFS deliberately does NOT go through the measurement,
+because a read only volume is a property of the medium and a two path call across
+two filesystems answers EXDEV rather than EROFS.
+
+**`M8-08-copy-error`.** In `access_refusal`, drop the first member of the chain
+of alternatives:
+
+    -            _from_copy_error(current)
+    -            or _from_os_error(current)
+    +            _from_os_error(current)
+
+`shutil.copytree` does not raise the refusal it met. It collects every member it
+could not copy and raises one `shutil.Error` whose single argument is a list of
+`(source, destination, why)` triples with `why` already rendered to text.
+Measured: that exception IS an `OSError` subclass, and it carries `errno`,
+`filename` and `filename2` all None and no `__cause__`, so every errno rule
+answered None for it. `core/snapshot._copy` makes exactly this call and does not
+guard it.
+
+**`M8-09-null-immutable`.** In `_immutable`:
+
+    -    except (OSError, ValueError):
+    +    except OSError:
+
+**`M8-10-null-probe`.** In `_probe`, delete the `except ValueError: return None`
+clause.
+
+`os.lstat` and `os.open` reject a path with an embedded null before any syscall
+and reject it with `ValueError`, which is not an `OSError`. Both are reached from
+`access_refusal`, which is read INSIDE the dispatcher's own `except CratekitError`
+handler, so an exception escaping there replaces a refusal the user could act on
+with a traceback. Round seven guarded exactly this input twice in `core/preflight`
+and left it in the module it rewrote. Latent rather than live: no real syscall
+produces an `OSError` carrying a null in `filename`.
+
+### Rows re-confirmed, and one count that changed
+
+| id | guard | round seven | round eight |
+|-|-|-|-|
+| C-01 | `identity_source` refuses a mount slot with nothing mounted in it | 13 | 13 |
+| C-06 | the persisted `grant-path-access` slug in the remediation vocabulary | 10 | 10 |
+| `M7-01-constructor` | the refusal constructor classifies against its declared cause chain | 6 | **8** |
+| `M7-11-note-path` | the access sentence names the path it is about | 4 | 4 |
+| `M7-03-require-path` | a refusal with no path is not claimed as one | 3 | 3 |
+| R6-02 | doctor's check runner attaches an access remedy to an unstructured break | 2 | 2 |
+| R6-05 | `is_mount_point` confirms a False answer instead of calling an unstattable slot empty | 2 | 2 |
+| R6-14 | `_membership` tolerates a configuration directory the operating system will not open | 2 | 2 |
+| M33w | the WHOLE commondir handler in `doctor._git_dir`, deleted | 2 | 2 |
+
+`M7-01-constructor` rose from 6 to 8, and the attribution was measured rather
+than asserted: under the mutation the failing set is round seven's own six tests
+plus exactly the two this round added to `tests/test_rb_writer_db.py`, which
+assert the same guard through the rekordbox connection. It is the effect this
+file already records for C-01 and C-06 and is not a change of behaviour.
