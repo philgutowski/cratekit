@@ -693,6 +693,36 @@ lost the four token wrapper, round 3 lost it one token longer, round 4 loses it
 one LINE longer.** Three rounds, each closing the previous spelling and none
 closing the shape.
 
+### An operating failure of the wave itself: one scratch directory, eight agents
+
+U38's round 5 reported this and it is worth more than any single finding:
+
+> the shared scratch directory is being written by parallel unit sessions, and
+> my mutation driver plus its snapshot were overwritten mid run by U16's
+> driver, briefly leaving one mutation applied in the u38 worktree
+
+**Every agent had been told to keep its restore baseline out of the worktree,
+and then all of them were pointed at the SAME directory outside it.** So the
+rule that was supposed to prevent a contaminated snapshot certifying itself
+produced exactly that, from outside the process instead of inside it.
+
+U38 detected it, repaired from the git object database, and moved to a private
+subdirectory with sha256 verified restores. Nothing reached `main`; the main
+checkout was verified clean and byte identical to `origin/main` throughout.
+
+**The standing rule for a parallel wave is now three things per unit, not two:
+its own worktree, its own venv, and its own scratch directory.** The venv rule
+already exists because an editable install would otherwise name the wrong
+`src`. The scratch rule has the same shape and the same failure mode, and it
+was missing.
+
+Second lesson, and it generalizes past this repository. **Uncontrolled parallel
+load invalidates timing measurements.** U12's round 4 verification was asked to
+report a flake rate for a 400 ms fixture, "unloaded" and then under load, while
+six other agents were running full pytest suites on the same machine. Neither
+figure means what it says. A timing verdict has to record the machine load it
+was taken under, or say it could not.
+
 ### What these findings have in common
 
 All three are the wave's two named patterns, again. U23 and U34 are IDENTITY
