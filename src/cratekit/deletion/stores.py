@@ -155,6 +155,16 @@ def ambiguous_versions(rows: Any) -> frozenset[str]:
     resolves rather than a reason to skip it: a duplicate import is one recording
     imported twice and carries the SAME code.
 
+    **THE CODES ARE FOLDED BEFORE THEY ARE COMPARED.** An ISRC is
+    case-insensitive by specification, so ``gbaya1500001`` and ``GBAYA1500001``
+    are one code, and comparing the raw strings answered "two recordings" for one
+    recording whose two rows were typed in different cases. The direction was
+    safe, since refusing leaves both rows deletable-by-nobody rather than
+    suppressing something, but a discriminator that fires on a difference in
+    spelling is not discriminating on the thing it names. ``tombstone.fold`` is
+    the folding both halves of every identity in this package already agree on,
+    so it is the one used here rather than a second one invented locally.
+
     IT IS INCONCLUSIVE WHERE A CODE IS ABSENT, AND SILENCE IS READ AS AGREEMENT.
     A convergence where one row has no code, or neither has one, is left
     deletable, because the identity's own claim is the default and an absent code
@@ -178,7 +188,7 @@ def ambiguous_versions(rows: Any) -> frozenset[str]:
         grouped.setdefault(tuple(sorted(identity.items())), []).append(row)
     ambiguous: set[str] = set()
     for sharing in grouped.values():
-        codes = {(row.isrc or "").strip() for row in sharing}
+        codes = {tombstone.fold(row.isrc or "") for row in sharing}
         codes.discard("")
         if len(codes) > 1:
             ambiguous.update(row.content_id for row in sharing)
@@ -328,16 +338,15 @@ def record_tombstone(
         payload={
             "artist": row.artist,
             "title": row.title,
-            # RIDES BESIDE THE TITLE RATHER THAN INSIDE IT, and the claim made
-            # here used to be that a person reading a LISTING tells two
-            # same-titled versions apart by it. They do not: ``summarize`` is the
-            # only projection any surface renders and it does not emit this, and
-            # what distinguishes the two rows there is the composed identity line.
-            # What this is actually for is the record itself. It keeps the row's
+            # RIDES BESIDE THE TITLE RATHER THAN INSIDE IT. It keeps the row's
             # own spelling of the mix name, uncomposed and unfolded, so somebody
             # auditing a suppression can see WHICH COLUMN VALUE the identity was
-            # built out of, which is the one thing the composed title cannot show
-            # and the first thing to look at when a tombstone missed.
+            # built out of, which the composed title cannot show and which is the
+            # first thing to look at when a tombstone missed. That sentence was
+            # written twice for two fields while ``summarize`` emitted neither,
+            # which made it a claim about a surface that did not exist;
+            # ``summarize`` emits both now and the claim is true of the shipped
+            # listing rather than of the payload alone.
             "version": row.version,
             # AND THE VALUE THAT WAS NOT BELIEVED RIDES BESIDE IT. An empty
             # ``version`` reads identically for a row that never carried one and
@@ -350,6 +359,10 @@ def record_tombstone(
             "isrc": row.isrc or "",
             "content_id": row.content_id,
             "recorded": row.recorded,
+            # EMPTY WHERE THIS PASS MOVED NOTHING, which is the settled-absence
+            # case, and ``summarize`` emits it for exactly that reason: a person
+            # listing suppressions has to be able to tell a deletion this tool
+            # performed from one it recorded on somebody else's behalf.
             "trashed_to": trashed_to or "",
         },
         actor=actor,
@@ -402,13 +415,42 @@ def suppressed_version(cfg: config.Config, *, artist: str, title: str) -> bool:
 
 
 def summarize(record: review.Suppression) -> Mapping[str, Any]:
-    """One suppression projected for a listing or a structured payload."""
+    """One suppression projected for a listing or a structured payload.
+
+    **IT COULD NOT TELL A DELETION THIS TOOL PERFORMED FROM ONE IT ASSERTED, AND
+    IT IS THE ONLY SURFACE THERE IS.** ``run._settle_a_confirmed_absence`` writes
+    a tombstone with ``trashed_to`` EMPTY, on purpose: the row was confirmed, the
+    collection no longer holds it, and the file was not at the recorded path, so
+    the deletion happened by somebody's hand rather than by this pass's. That is
+    a materially different record from one written beside a real move into the
+    Trash, and this projection omitted the one field that says which. The log
+    line naming the identifier scrolls away; the listing is what a person has
+    weeks later. So ``trashed_to`` is emitted, empty string and all, and an empty
+    value is the statement that nothing was moved.
+
+    **``version`` IS EMITTED FOR A DEFECT THIS ROUND MADE TWICE IN TWO LINES.**
+    ``record_tombstone`` corrected a claim that the ISRC payload lets a person
+    tell two same-titled versions apart in a listing, because this projection did
+    not emit it, and then wrote the identical claim for ``version`` two lines
+    later. Rather than correct the sentence again, the projection now emits what
+    the sentences say it does: the row's own uncomposed spelling of the mix name,
+    the value the vocabulary did NOT believe, and the code. Those four are the
+    whole answer to "why did this tombstone miss", which is the only question
+    anybody brings to this listing that the identity line cannot already answer.
+    """
     return {
         "id": record.suppression_id,
         "kind": record.kind,
         "identity": tombstone.describe(record.identity or {}),
         "artist": record.payload.get("artist", ""),
         "title": record.payload.get("title", ""),
+        "version": record.payload.get("version", ""),
+        "version_unbelieved": record.payload.get("version_unbelieved", ""),
+        "isrc": record.payload.get("isrc", ""),
+        # EMPTY MEANS THIS PASS MOVED NOTHING. Not absent, not omitted: a key
+        # that disappears when the value is empty is a key a reader cannot tell
+        # from one the build never wrote.
+        "trashed_to": record.payload.get("trashed_to", ""),
         "recorded": record.recorded,
         "actor": record.actor,
         "revoked": record.revoked,

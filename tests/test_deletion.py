@@ -3873,27 +3873,39 @@ def test_a_remixer_whose_name_carries_a_version_word_is_still_spelled_matchably(
 @pytest.mark.parametrize(
     ("remixer", "expected"),
     [
-        # A column genuinely holding a whole designation puts its version word
-        # LAST, which is the position the spelling question asks about and the
-        # position none of the false positives above put theirs in.
+        # THE ONLY VALUES LEFT VERBATIM. The last word is the very word about to
+        # be appended, so appending would write it twice.
         ("Michael Woods Remix", "strobe (michael woods remix)"),
         ("Michael Woods Extended Remix", "strobe (michael woods extended remix)"),
-        ("Michael Woods Dub", "strobe (michael woods dub)"),
-        ("Extended Mix", "strobe (extended mix)"),
-        # And an ordinary artist name, which is what the column is guaranteed to
-        # hold, is spelled the way a provider spells it.
+        # A designation ending in some OTHER vocabulary word is composed anyway.
+        # That is this rule's error class, stated here rather than hidden: the
+        # spelling misses, so the deletion does not stick, which is the milder
+        # direction. Round six left both of these alone by consulting the
+        # vocabulary, and paid for it on every row below.
+        ("Michael Woods Dub", "strobe (michael woods dub remix)"),
+        ("Extended Mix", "strobe (extended mix remix)"),
+        # An ordinary artist name, which is what this column is guaranteed to
+        # hold, spelled the way a provider spells it. The last four are the two
+        # shapes the two vocabulary rules each got wrong: round five composed
+        # ``Radio Slave`` and ``Cut Copy`` verbatim, round six composed ``The
+        # Cut`` and ``Todd Terry Live`` verbatim.
         ("Michael Woods", "strobe (michael woods remix)"),
         ("Anna", "strobe (anna remix)"),
+        ("Radio Slave", "strobe (radio slave remix)"),
+        ("Cut Copy", "strobe (cut copy remix)"),
+        ("The Cut", "strobe (the cut remix)"),
+        ("Todd Terry Live", "strobe (todd terry live remix)"),
     ],
 )
-def test_the_spelling_question_is_about_the_last_word_and_nothing_else(
+def test_the_only_remixer_left_verbatim_is_one_that_already_says_remix(
     cfg, remixer, expected
 ):
     """Both halves of the rule in one table, so neither can be moved alone.
 
-    Skipping the append is only ever right when appending would DUPLICATE a word
-    the value already ends with. Anything wider is the vocabulary being asked a
-    question it has been measured to answer wrongly.
+    Skipping the append is only ever right when appending would DUPLICATE the
+    word being appended. Anything wider is a vocabulary being asked to classify a
+    column whose schema already classified it, which is what both previous rounds
+    did and what the 65 value measurement below settles.
     """
     row = _remixed_row(cfg, ONE, "1", title="Strobe", remixer=remixer)
     assert stores.version_of(row)["title"] == expected
@@ -4407,4 +4419,492 @@ def test_a_name_the_filesystem_calls_invalid_costs_one_file_and_not_the_run(
     assert excinfo.value.cause.reason == "trash-unavailable"
     assert excinfo.value.cause.scope is Scope.ITEM, (
         "one unacceptable name aborted the whole pass"
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Round 7: an empty mount point is not a deletion, and a remixer is an artist
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _removed_elsewhere(count, *, usn=50):
+    """``count`` REMOVED collection rows recorded under the mapped prefix."""
+    rows = []
+    for index in range(count):
+        row = FakeRow(
+            ID=f"r{index}",
+            FolderPath=f"{RECORDED_ELSEWHERE}/Music/Removed {index}.flac",
+            FileSize=len(b"audio bytes"),
+            rb_local_deleted=1,
+            rb_local_usn=usn + index,
+            Title=f"Removed {index}",
+            ArtistName=ARTIST,
+            ISRC=None,
+        )
+        rows.append(row)
+    return rows
+
+
+def _mapped_volume(cfg, tmp_path, *, active=50, removed=20):
+    """A mounted volume holding ``active`` referenced files and ``removed`` candidates.
+
+    Returns the volume path, the prefix rule, the binding, and the removed rows,
+    with the pass already baselined so the removals are the only outstanding work.
+    """
+    volume = tmp_path / "Volumes" / "EP_DJ_LIBRARY"
+    volume.mkdir(parents=True)
+    live = _elsewhere(active)
+    gone = _removed_elsewhere(removed)
+    _populate(volume, live)
+    for row in gone:
+        target = Path(str(volume) + row.FolderPath[len(RECORDED_ELSEWHERE) :])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"audio bytes")
+    rule = [locations.PrefixRule(RECORDED_ELSEWHERE, str(volume))]
+    run.plan(cfg, FakeDb([], usn=40), actor="cli", prefix_map=rule)
+    active_rows = [
+        FakeRow(
+            ID=row.content_id,
+            FolderPath=row.recorded,
+            FileSize=len(b"audio bytes"),
+            rb_local_deleted=0,
+            rb_local_usn=10,
+            Title=Path(row.recorded).stem,
+            ArtistName=ARTIST,
+            ISRC=None,
+        )
+        for row in live
+    ]
+    return volume, rule, FakeDb([*active_rows, *gone], usn=100), gone
+
+
+def _empty_the_mount_point(volume: Path) -> None:
+    """What macOS leaves after an unclean eject: the directory, and nothing in it."""
+    for child in sorted(volume.rglob("*"), reverse=True):
+        if child.is_file() or child.is_symlink():
+            child.unlink()
+        else:
+            child.rmdir()
+
+
+def test_a_stale_empty_mount_point_writes_no_tombstone_and_retires_no_row(
+    cfg, gates_pass, tmp_path, caplog
+):
+    """F1: ABSENCE READ AS EVIDENCE, upgraded to a permanent record of a deletion.
+
+    A ``GONE`` verdict asks only whether the row's ANCHOR DIRECTORY exists, and
+    an empty directory standing where a volume mounts passes that. macOS leaves
+    exactly that behind after an unclean eject, and anything at all that writes
+    to the path while the drive is detached creates it. Every removed row on the
+    volume then reads ``GONE``; every confirmed one was given a tombstone,
+    ``handled=True`` and a watermark that walked past it, so remounting the drive
+    brought none of them back. Twenty rows, twenty suppressions, twenty files
+    still on a disk sitting on the desk.
+
+    The refusing signal was already computed one function up and was wired to
+    nothing that decides: ``reference_set`` walks the ACTIVE rows through the
+    same anchor, and ``suspect_anchors`` names an anchor that exists, indexed
+    nothing, and had rows go missing under it. Here that is fifty active rows
+    missing and zero indexed.
+    """
+    volume, rule, db, gone = _mapped_volume(cfg, tmp_path)
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
+    offered = run.present(cfg, found)
+    assert len(offered) == len(gone), "every removed row was offered while mounted"
+    for item in offered:
+        _confirm(cfg, item.item_id)
+
+    _empty_the_mount_point(volume)
+
+    with caplog.at_level(logging.WARNING):
+        report = run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
+
+    assert report.plan.references.suspect_anchors == (str(volume),)
+    assert len(report.plan.references.missing) == 50
+    assert [item.category for item in report.refused] == [candidates.Category.GONE] * len(gone)
+    assert stores.list_tombstones(cfg, include_revoked=True) == (), (
+        "twenty deletions were RECORDED for an unmounted drive, so remounting it "
+        "brings none of those versions back"
+    )
+    assert report.watermark.sequence == 40, (
+        "the watermark walked past twenty rows whose files this run never saw"
+    )
+    assert str(volume) in caplog.text
+
+
+def test_a_genuine_unmount_still_answers_unresolved_on_every_row(cfg, tmp_path):
+    """The half that must not regress, and it is a DIFFERENT branch from F1's.
+
+    A volume that unmounted cleanly leaves no mount point at all, so the anchor
+    is absent, and every row through it is ``UNRESOLVED`` rather than ``GONE``:
+    not finished business, not retired, offered again on the next run that finds
+    the drive. That answer comes from ``_Anchors.present`` and owes nothing to
+    the reference set, which is why F1's repair had to be additional rather than
+    a change to this test.
+    """
+    volume = tmp_path / "Volumes" / "EP_DJ_LIBRARY"
+    rule = [locations.PrefixRule(RECORDED_ELSEWHERE, str(volume))]
+    rows = [
+        library.RemovedRow(
+            content_id=f"r{index}",
+            recorded=f"{RECORDED_ELSEWHERE}/Music/Removed {index}.flac",
+            sequence=50 + index,
+            size=11,
+            artist=ARTIST,
+            title=f"Removed {index}",
+        )
+        for index in range(20)
+    ]
+    answered = _categorize(cfg, rows, _references(cfg, []), prefix_map=rule)
+
+    assert [item.category for item in answered] == [candidates.Category.UNRESOLVED] * 20
+    assert not any(item.handled for item in answered)
+    assert all(str(volume) in item.problem for item in answered)
+
+
+def test_an_unanswered_removal_under_a_stale_mount_point_is_not_retired_either(
+    cfg, gates_pass, tmp_path, caplog
+):
+    """The mirror, because a retirement is permanent with or without a tombstone.
+
+    A removal nobody answered for uses ``item.handled`` directly, and ``GONE`` is
+    the one member of ``HANDLED``. An empty mount point therefore retired a whole
+    library's removal history in one silent pass: no tombstone, no offer, no
+    second chance. The same anchor question settles it, so the two paths cannot
+    drift apart.
+    """
+    volume, rule, db, gone = _mapped_volume(cfg, tmp_path)
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    run.plan(cfg, db, actor="cli", prefix_map=rule)
+    _empty_the_mount_point(volume)
+
+    with caplog.at_level(logging.WARNING):
+        report = run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
+
+    assert report.trashed == ()
+    assert report.watermark.sequence == 40, (
+        "twenty unanswered removals were retired off an empty directory"
+    )
+    assert "was NOT retired" in caplog.text
+
+
+def test_one_file_deleted_by_hand_under_a_healthy_anchor_is_still_settled(
+    cfg, gates_pass, tmp_path
+):
+    """The wedge fix that F1 may not take back, driven on the case it was for.
+
+    A person confirms a removal and then deletes that file in the Finder. The
+    file cannot come back, so holding the row open holds every removal above it
+    forever. Here the anchor indexes fifty live rows, so it is answering, the
+    absence IS evidence about the file, and the deletion is completed with the
+    tombstone R36 owes.
+    """
+    volume, rule, db, gone = _mapped_volume(cfg, tmp_path, removed=1)
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
+    _confirm(cfg, run.present(cfg, found)[0].item_id)
+    Path(str(volume) + gone[0].FolderPath[len(RECORDED_ELSEWHERE) :]).unlink()
+
+    report = run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
+
+    assert report.plan.references.suspect_anchors == ()
+    recorded = stores.list_tombstones(cfg, include_revoked=True)
+    assert len(recorded) == 1, "the queue wedged on a file that cannot come back"
+    assert report.watermark.sequence == 50
+
+
+# ── F4: the remixer spelling, measured over 65 values in three classes ───────
+
+
+#: 40 values that are genuine mix-name DESIGNATIONS. A designation in this column
+#: is a data anomaly, since ``RemixerName`` is an association proxy over
+#: ``RemixerID`` into ``djmdArtist``, but importers write them. Twenty put their
+#: version word last and twenty do not, which is the shape both previous rules
+#: turned on.
+_DESIGNATIONS = (
+    "Extended Mix",
+    "Club Mix",
+    "Radio Edit",
+    "Original Mix",
+    "Michael Woods Remix",
+    "Instrumental Version",
+    "Acoustic Version",
+    "Extended Remix",
+    "Dub Mix",
+    "Radio Mix",
+    "Extended Club Mix",
+    "Remix Edit",
+    "Original Version",
+    "Extended Version",
+    "Radio Version",
+    "Acapella",
+    "Bootleg",
+    "Rework",
+    "Instrumental Dub",
+    "Live Session",
+    "Versión Extendida",
+    "Mezcla Extendida",
+    "Versão Estendida",
+    "Version Longue",
+    "Ao Vivo em Lisboa",
+    "Live aus Berlin",
+    "Studioversion 2",
+    "Versione Estesa",
+    "Live at Wembley",
+    "Mixed by Someone",
+    "Remix Edit 2024",
+    "Dub Mix Pt. 2",
+    "Alternate Take",
+    "Remastered 2019",
+    "Live in Tokyo",
+    "Demo Take 2",
+    "Extended Mix 2",
+    "Live Session at Maida Vale",
+    "Club Mix Pt. 2",
+    "Mezcla Ampliada",
+)
+
+#: 15 ARTIST names whose LAST word is in the vocabulary. Round six left every one
+#: of these verbatim.
+_ARTISTS_WORD_LAST = (
+    "The Cut",
+    "Da Dub",
+    "Todd Terry Live",
+    "Bicep Live",
+    "Sasha Live",
+    "Group Therapy Radio",
+    "Anjunadeep Radio",
+    "Kaskade Radio",
+    "Rinse Club",
+    "Sub Club",
+    "Smoke Machine Dub",
+    "King Tubby Dub",
+    "Studio Session",
+    "Boiler Room Live",
+    "Defected Radio",
+)
+
+#: 10 ARTIST names carrying a vocabulary word anywhere but last. Round five left
+#: every one of these verbatim.
+_ARTISTS_WORD_FIRST = (
+    "Radio Slave",
+    "Dub Pistols",
+    "Cut Chemist",
+    "Mix Master Mike",
+    "Club Sweat",
+    "Original Gee",
+    "Dub Phizix",
+    "Remix Artist Collective",
+    "Live Element",
+    "Cut Copy",
+)
+
+#: The measured miss counts for the SHIPPED rule, per class, pinned exactly so a
+#: change in either direction is a failing test rather than a paragraph. See
+#: ``tombstone.already_spelled_as_a_remix`` for the comparison against the two
+#: rules this replaced and for why the artist column is the criterion and the
+#: total is not.
+_MEASURED_MISSES = {"designation": 38, "artist-word-last": 0, "artist-word-first": 0}
+
+
+def _provider_spelling(value: str, klass: str) -> str:
+    """What a provider actually spells for the version this value names."""
+    if klass == "designation":
+        return tombstone.version_title("Strobe", value)
+    return tombstone.version_title("Strobe", f"{value} {tombstone.REMIX_DESIGNATION}")
+
+
+def test_the_remixer_spelling_misses_exactly_where_it_is_measured_to_miss():
+    """F4: the rule is decided by a measurement over classes, not by a frequency.
+
+    A raw rate over a hand-authored value set measures the SET, since the total
+    is a weighted average whose weights are how often this column holds a
+    designation rather than an artist name, and nothing in this repository
+    samples a real ``RemixerName``. That is the unmeasurable frequency the
+    residual findings deleted a claim about. So both class rates are pinned
+    separately, and the criterion is the artist classes: 25 values the schema
+    says this column holds, and the shipped rule must miss NONE of them.
+
+    The designation rate is pinned in the same table rather than left implicit,
+    because it is the cost being paid and a rule that quietly stopped paying it
+    would be a rule that started guessing again.
+    """
+    values = (
+        [(value, "designation") for value in _DESIGNATIONS]
+        + [(value, "artist-word-last") for value in _ARTISTS_WORD_LAST]
+        + [(value, "artist-word-first") for value in _ARTISTS_WORD_FIRST]
+    )
+    assert len(values) == 65
+    misses = {klass: 0 for klass in _MEASURED_MISSES}
+    for value, klass in values:
+        if tombstone.remixer_title("Strobe", value) != _provider_spelling(value, klass):
+            misses[klass] += 1
+
+    assert misses == _MEASURED_MISSES
+    assert misses["artist-word-last"] + misses["artist-word-first"] == 0, (
+        "the rule errs on an ARTIST NAME, which is the class the column holds by "
+        "schema and the only error class that can reach over-suppression"
+    )
+
+
+def test_appending_unconditionally_would_be_strictly_worse_and_by_how_much():
+    """Why a test survives at all, stated as the two values that decide it.
+
+    Deleting the branch entirely also misses nothing on the artist classes, so
+    the artist criterion cannot separate the two. What separates them is the
+    designation class, where the two rules differ on exactly the values already
+    ending in ``Remix``: there the unconditional rule writes ``Remix Remix`` and
+    this one writes what a provider spells. Two of the 65, measured. The shipped
+    rule dominates pointwise and is never worse, which needs no claim about how
+    often anything occurs.
+    """
+    differing = [
+        value
+        for value in (*_DESIGNATIONS, *_ARTISTS_WORD_LAST, *_ARTISTS_WORD_FIRST)
+        if tombstone.remixer_title("Strobe", value)
+        != tombstone.version_title("Strobe", f"{value} {tombstone.REMIX_DESIGNATION}")
+    ]
+    assert differing == ["Michael Woods Remix", "Extended Remix"]
+    assert all(
+        tombstone.remixer_title("Strobe", value) == _provider_spelling(value, "designation")
+        for value in differing
+    ), "the branch that survives has to be right on the values it survives for"
+
+
+def test_one_string_read_as_an_artist_and_as_a_designation_stays_two_identities(cfg):
+    """F2: the fix's own safety claim, falsified on the docstring's own examples.
+
+    Round six argued that composing can only ADD a bracket, so no error of its
+    spelling rule could merge two identities. It could. ``The Cut`` in
+    ``RemixerName`` is an artist and was left verbatim, giving ``strobe (the
+    cut)``; ``The Cut`` in ``Subtitle`` is a designation and composes ``strobe
+    (the cut)`` as well. One identity, two versions, and deleting either
+    suppressed the other, which is the OVER-suppression direction this package
+    calls the worse one. The ISRC discriminator does not save it: with either
+    code absent the convergence is accepted as deletable.
+
+    The repair is structural rather than a widened list. The verbatim branch now
+    fires only on a value already ending in ``Remix``, and a ``Subtitle`` holding
+    that same string names that same version, so no reading of it can produce two
+    versions wearing one identity.
+    """
+    for value in ("The Cut", "Da Dub"):
+        as_artist = _remixed_row(cfg, ONE, "1", title="Strobe", remixer=value)
+        subtitled = _subtitled(cfg, TWO, "2", title="Strobe", subtitle=value, usn=51)
+        as_designation = library.read_collection(FakeQuery([subtitled])).removed[0]
+
+        assert stores.version_of(as_artist) != stores.version_of(as_designation), (
+            f"{value!r} read as an artist and read as a designation are one "
+            f"identity, so deleting either suppresses the other"
+        )
+        assert stores.ambiguous_versions([as_artist, as_designation]) == frozenset(), (
+            "the discriminator cannot see this and was never the thing holding it"
+        )
+
+
+# ── F3: the listing has to say which deletions this tool actually performed ──
+
+
+def test_a_listing_says_which_suppressions_moved_no_file(cfg, gates_pass, tmp_path):
+    """A tombstone the tool HONOURED and one it ASSERTED were indistinguishable.
+
+    ``_settle_a_confirmed_absence`` writes ``trashed_to`` empty on purpose: the
+    row was confirmed, the collection no longer holds it, and there was nothing
+    at the recorded path to move. That is a materially different record from one
+    written beside a real rename into the Trash, and ``summarize`` is the sole
+    projection any surface renders. It emitted neither ``trashed_to`` nor
+    ``version``, ``version_unbelieved`` or ``isrc``, so the only notice was a log
+    line that scrolls away.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    db = _prepared(cfg, names=(ONE, TWO), usn=50)
+    found = run.plan(cfg, db, actor="cli")
+    offered = run.present(cfg, found)
+    for item in offered:
+        _confirm(cfg, item.item_id)
+    (Path(cfg.library.root) / "Music" / TWO).unlink()
+
+    run.apply(cfg, db, actor="cli", home=home)
+
+    listed = {
+        record["title"]: record for record in map(stores.summarize, stores.list_tombstones(cfg))
+    }
+    assert set(listed) == {Path(ONE).stem, Path(TWO).stem}
+    assert listed[Path(ONE).stem]["trashed_to"], "a real move is not shown as one"
+    assert listed[Path(TWO).stem]["trashed_to"] == "", (
+        "a suppression written for a file this pass never touched is listed "
+        "exactly like one it moved into the Trash"
+    )
+    assert set(listed[Path(ONE).stem]) >= {"version", "version_unbelieved", "isrc"}, (
+        "the payload's own comment says an auditor can see which column value "
+        "the identity was built from, and the listing did not emit it"
+    )
+
+
+def test_the_listing_carries_the_column_value_a_missed_tombstone_was_built_from(cfg):
+    """The other half of the same claim, on the row where it is the whole answer.
+
+    A ``Subtitle`` the closed vocabulary does not believe leaves the row with a
+    bare title, which is the vocabulary's measured worse direction. The record
+    keeps the unbelieved value so an audit can answer "why did this tombstone
+    miss", and that answer has to reach a person through the listing.
+    """
+    row = library.read_collection(
+        FakeQuery([_subtitled(cfg, ONE, "1", title="Atlas", subtitle="Anjunadeep")])
+    ).removed[0]
+    stores.record_tombstone(cfg, row, actor="cli", trashed_to="/x/.Trash/Atlas.flac")
+
+    listed = stores.summarize(stores.list_tombstones(cfg)[0])
+    assert listed["version"] == ""
+    assert listed["version_unbelieved"] == "Anjunadeep"
+    assert listed["trashed_to"] == "/x/.Trash/Atlas.flac"
+
+
+# ── F8 and F9: two low residuals on identity and on the discriminator ────────
+
+
+@pytest.mark.parametrize("blank", ["   ", "\t", "\n ", " "])
+def test_a_removed_row_identified_by_whitespace_is_refused(blank):
+    """The same shape as the ``'None'`` defect just closed, one step along.
+
+    ``'   '`` is truthy, so the guard passed it, and ``{'content_id': '   '}``
+    went on to address the review item, the decline and the membership test. A
+    wrong key rather than a collapse, since ``recorded`` still separates two such
+    rows, and a key nobody can type is a decision nobody can revoke.
+    """
+    with pytest.raises(CratekitError) as excinfo:
+        tombstone.removed_file_identity(content_id=blank, recorded="/x.flac")
+    assert excinfo.value.cause.reason == "review-selection-invalid"
+
+
+def test_a_numeric_identifier_is_still_addressable():
+    """The half the stripped test may not cost: ``not 0`` would refuse a real row."""
+    assert tombstone.removed_file_identity(content_id=0, recorded="/x.flac")["content_id"] == "0"
+
+
+def test_two_spellings_of_one_isrc_are_one_recording(cfg):
+    """F9: an ISRC is case-insensitive by specification and was compared raw.
+
+    ``gbaya1500001`` against ``GBAYA1500001`` is one code, and the raw comparison
+    read it as a positive statement that two rows are two recordings, so a
+    legitimate convergence was refused as ambiguous. The direction was safe and
+    the discriminator was still firing on a difference in spelling rather than on
+    the thing it names. ``tombstone.fold`` is the folding both halves of every
+    identity in this package already agree on.
+    """
+    one = replace(_removed(cfg, ONE, "1"), title="Strobe", isrc="gbaya1500001")
+    other = replace(_removed(cfg, TWO, "2"), title="Strobe", isrc="GBAYA1500001")
+    assert stores.version_of(one) == stores.version_of(other)
+    assert stores.ambiguous_versions([one, other]) == frozenset(), (
+        "one recording filed twice was refused as two recordings on case alone"
+    )
+
+    third = replace(_removed(cfg, ACCENTED, "3"), title="Strobe", isrc="USRC17607839")
+    assert stores.ambiguous_versions([one, third]) == frozenset({"1", "3"}), (
+        "folding may not cost the discriminator the collision it exists for"
     )

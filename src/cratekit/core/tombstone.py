@@ -174,21 +174,21 @@ _BRACKETED = re.compile(r"\(([^()]*)\)|\[([^\[\]]*)\]")
 #:
 #: **IT LIVES HERE, BELOW BOTH READERS, FOR THE REASON THE STORE KEY DOES.** It
 #: was private to ``deletion.library``, where it answered one question: is this
-#: ``Subtitle`` a version. It is read by a second question now, the one
-#: :func:`ends_as_a_designation` asks on behalf of :func:`remixer_title`, and a
-#: vocabulary with two callers in two packages is the shape this module exists to
-#: prevent.
+#: ``Subtitle`` a version. It moved here when a second question was routed
+#: through it, and a vocabulary with two callers in two packages is the shape
+#: this module exists to prevent.
 #:
-#: **THE TWO QUESTIONS ARE NOT THE SAME QUESTION AND MAY NOT SHARE A TEST.**
-#: :func:`reads_as_version` asks whether a version word appears ANYWHERE, which
-#: is the only thing that can be asked of a free text column, and the false
-#: positives measured below are exactly the values where that is wrong: artist
-#: and label names carrying a version word at the HEAD. Asking that same test
-#: about a remixer routed the spelling decision through the set of values it had
-#: just been measured to get wrong, so every one of those artists composed an
-#: unmatchable identity. The spelling question asks about the LAST word instead,
-#: which is where a designation puts its version word and where none of the
-#: measured false positives put theirs.
+#: **IT HAS ONE CALLER AGAIN, AND THE SECOND QUESTION WAS NOT A QUESTION FOR A
+#: VOCABULARY.** :func:`reads_as_version` asks whether a version word appears
+#: ANYWHERE, which is the only thing that can be asked of a free text column, and
+#: the false positives measured below are exactly the values where that is wrong:
+#: artist and label names carrying a version word. Round five asked that same
+#: test about a ``RemixerName`` and round six asked a positional variant of it,
+#: and both were asking a word list to classify a column whose schema already
+#: says it holds an artist name. :func:`already_spelled_as_a_remix` replaces both
+#: and consults nothing here; the measurement that decided it is on that
+#: function. This list now answers the belief question for ``Subtitle`` and
+#: nothing else.
 #:
 #: **BOTH ERROR DIRECTIONS ARE MEASURED, AND THEY ARE NOT SYMMETRIC.** Against 75
 #: genuine version designations a real library holds, 56 read as NOT a version:
@@ -265,44 +265,79 @@ _WORD_SPLIT = re.compile(r"\W+", re.UNICODE)
 REMIX_DESIGNATION = "Remix"
 
 
-def ends_as_a_designation(value: str) -> bool:
-    """Whether a value's LAST WORD is a version word, which is where a mix name puts it.
+def already_spelled_as_a_remix(value: str) -> bool:
+    """Whether appending :data:`REMIX_DESIGNATION` would write that word twice.
 
-    **THIS EXISTS BECAUSE :func:`reads_as_version` WAS ASKED ABOUT A REMIXER AND
-    IS MEASURABLY WRONG THERE.** That test answers "does this value contain a
-    version word anywhere", which is the right question for a free text
-    ``Subtitle`` and the wrong one for a column rekordbox guarantees holds an
-    artist name. Its measured false positives are, exactly, artist and label
-    names carrying a version word: ``Radio Slave``, ``Dub Pistols``, ``Cut
-    Chemist``, ``Mix Master Mike``, ``Club Sweat``, ``Original Gee``. Every one
-    of those made :func:`remixer_title` take the "already reads as a designation"
-    branch and compose the bare name verbatim, so ``Screamer`` remixed by Radio
-    Slave produced ``screamer (radio slave)`` while a provider spells ``Screamer
-    (Radio Slave Remix)``. That is the unmatchable spelling the round that
-    introduced the branch existed to close, reintroduced by the branch itself,
-    for the one set of values the vocabulary is already known to get wrong.
+    **NO VOCABULARY IS CONSULTED, AND THAT IS THE WHOLE OF THE CHANGE.** Two
+    rounds asked a version-word list whether a ``RemixerName`` "reads like a
+    designation": round five asked whether a version word appeared ANYWHERE,
+    round six asked whether it appeared LAST. Both are classifiers over a column
+    whose own schema settles the question, since ``RemixerName`` is an
+    association proxy over ``RemixerID`` into ``djmdArtist`` and therefore holds
+    an ARTIST NAME. Asking whether an artist name reads like a designation is the
+    wrong question of the wrong column, and the two rounds got two different
+    wrong answers to it.
 
-    **WHAT IS ASKED INSTEAD IS A QUESTION ABOUT THE STRING THIS IS ABOUT TO
-    BUILD.** The only reason to leave a value alone is that appending would
-    duplicate a word it already ends with, giving ``(Michael Woods Remix Remix)``
-    or ``(Extended Mix Remix)``. A designation puts its version word LAST, and
-    the measured false positives all put theirs FIRST, so the position is the
-    discriminator and the vocabulary is only being asked where it has been
-    measured to answer.
+    **MEASURED, OVER 65 VALUES IN THREE CLASSES.** 40 genuine mix-name
+    designations, 15 artist names whose last word is in the vocabulary
+    (``The Cut``, ``Todd Terry Live``, ``Defected Radio``), and 10 artist names
+    carrying a vocabulary word anywhere but last (``Radio Slave``, ``Cut
+    Chemist``, ``Cut Copy``). Misses, meaning a composed title that is not what a
+    provider spells for that version:
 
-    **ITS OWN ERROR DIRECTION, MEASURED AND STATED.** A remixer whose name ends
-    in a version word, ``The Cut`` or ``Da Dub``, is left alone and composes an
-    unmatchable ``(Da Dub)``. A column genuinely holding a designation the
-    vocabulary does not know, ``Michael Woods Refix``, gets ``Remix`` appended
-    and composes an unmatchable ``(Michael Woods Refix Remix)``. BOTH are the
-    under-suppression direction: composing only ever adds a bracket, which splits
-    one identity into two, so neither error can make one deletion suppress a
-    version the user still wants. That is why this may be decided on a word list
-    at all, and it is not true of the belief question :func:`reads_as_version`
-    answers, whose failure direction is over-suppression.
+    ======================================  ===========  ===========  =========
+    rule                                    designation  artist name  total
+    ======================================  ===========  ===========  =========
+    round five ``reads_as_version``          8 of 40     25 of 25     33 of 65
+    round six ``ends_as_a_designation``     20 of 40     15 of 25     35 of 65
+    unconditional append, no test at all    40 of 40      0 of 25     40 of 65
+    this rule                               38 of 40      0 of 25     38 of 65
+    ======================================  ===========  ===========  =========
+
+    **THE TOTAL COLUMN IS REPORTED AND IS NOT THE CRITERION, deliberately.** It
+    is a weighted average whose weights are how often this column holds a
+    designation rather than an artist name, and nothing in this repository
+    samples a real ``RemixerName``, so that weight is exactly the unmeasurable
+    frequency the residual findings deleted a claim about. The class columns are
+    the measurement, and on the class the schema says the column holds, this
+    rule and the no-test rule miss NOTHING and both vocabulary rules miss most of
+    it.
+
+    **THE TWO CLASSES OF ERROR ARE NOT EQUALLY BAD, AND THIS IS STRUCTURAL RATHER
+    THAN FREQUENTIAL.** Getting a DESIGNATION wrong appends, giving
+    ``(Extended Mix Remix)``, which no provider spells: the tombstone misses, so
+    the deletion fails to stick and the version is re-acquirable, which is the
+    under-suppression direction this module calls the milder one. Getting an
+    ARTIST wrong leaves the name verbatim, giving ``(the cut)``, and that has
+    BOTH directions: it misses the provider spelling, AND it is the same string
+    ``Subtitle`` composes for a designation reading ``The Cut``, so one identity
+    now stands for two versions and deleting either suppresses the other. Under
+    that asymmetry the right rule is the one that never errs on an artist name,
+    whatever it costs on designations.
+
+    **WHY A TEST AT ALL RATHER THAN APPENDING UNCONDITIONALLY.** The two differ
+    on exactly the values whose last word is already ``Remix``, measured: two of
+    the 65. There the unconditional rule writes ``(Michael Woods Remix Remix)``
+    and this writes ``(Michael Woods Remix)``, which is what a provider spells
+    when Michael Woods is the remixer. So this dominates the unconditional rule
+    pointwise, is never worse, and needs no claim about how often anything
+    happens.
+
+    **AND IT CANNOT MANUFACTURE THE CONVERGENCE THE VOCABULARY RULE DID.** The
+    verbatim branch fires only on a value that already ENDS in ``Remix``. A
+    ``Subtitle`` holding that identical string names that identical version, so
+    two rows landing on one identity through this branch are one version filed
+    twice, which is the convergence the identity is supposed to find. That is not
+    true of a branch firing on ``The Cut``, where the artist reading and the
+    designation reading are two different versions wearing one string.
+
+    **ITS OWN ERROR DIRECTION, STATED.** An artist whose name's last word is
+    literally ``Remix`` is left verbatim and composes an unmatchable identity.
+    None is known and none is in the value set; the direction is
+    under-suppression, so the cost is a deletion that does not stick.
     """
     words = [word for word in _WORD_SPLIT.split(fold(value)) if word]
-    return bool(words) and words[-1] in VERSION_WORDS
+    return bool(words) and words[-1] == fold(REMIX_DESIGNATION)
 
 #: The words that open a FEATURED CREDIT. A bracketed group starting with one of
 #: these names a guest performer rather than a version of the recording, and the
@@ -433,28 +468,38 @@ def remixer_title(title: str, remixer: str) -> str:
     ``Michael Woods`` in the column and ``Strobe (Michael Woods Remix)`` with it
     filled in as well now produce ONE identity, where before they produced two.
 
-    A VALUE THAT ALREADY ENDS IN A DESIGNATION IS LEFT ALONE. Some libraries and
-    some importers put a whole mix name in the column, and appending to that
-    gives ``(Michael Woods Remix Remix)``, which is a second unmatchable spelling
-    replacing the first.
+    THE APPEND IS SKIPPED ONLY WHERE IT WOULD SAY ``Remix`` TWICE. Some libraries
+    and some importers put a whole mix name in the column, and appending to
+    ``Michael Woods Remix`` gives ``(Michael Woods Remix Remix)``, which is a
+    second unmatchable spelling replacing the first.
 
-    **AND THE TEST FOR THAT USED TO BE :func:`reads_as_version`, WHICH IS THE
-    ROUND'S OWN DEFECT WEARING THE ROUND'S OWN FIX.** That test asks whether a
-    version word appears ANYWHERE, and its measured false positives are precisely
-    artist and label names that carry one: ``Radio Slave``, ``Dub Pistols``,
-    ``Cut Chemist``, ``Mix Master Mike``, ``Club Sweat``, ``Original Gee``. For
-    every one of those the branch fired and the bare name was composed verbatim,
-    so ``Screamer`` remixed by Radio Slave produced ``screamer (radio slave)``
-    and the consulter, asking under ``Screamer (Radio Slave Remix)``, missed.
-    A test measured wrong in one place was then relied on in another, applied to
-    a column whose own docstring says it ALWAYS holds a bare artist name and
-    therefore never holds a designation at all.
+    **TWO ROUNDS DECIDED THAT SKIP WITH A WORD LIST AND BOTH WERE WRONG,
+    MEASURED.** Round five asked :func:`reads_as_version`, which answers "does a
+    version word appear anywhere", so ``Radio Slave``, ``Dub Pistols``, ``Cut
+    Chemist``, ``Mix Master Mike``, ``Club Sweat`` and ``Original Gee`` were all
+    composed verbatim and every one of them missed. Round six asked whether the
+    version word came LAST, which fixed those six and broke ``The Cut``, ``Da
+    Dub``, ``Todd Terry Live`` and every other artist with a vocabulary word at
+    the tail, while also missing every designation that does not put its version
+    word last: ``Versión Extendida``, ``Live at Wembley``, ``Mixed by Someone``.
+    Both were asking a vocabulary to classify a column that is an association
+    proxy into ``djmdArtist``, which is to say a column the schema has already
+    classified.
 
-    :func:`ends_as_a_designation` is asked instead, and it asks about the string
-    this is about to BUILD rather than about what the value reads like: appending
-    is skipped exactly when it would duplicate a word the value already ends
-    with. Both of its error directions are under-suppression, which is stated and
-    measured there.
+    :func:`already_spelled_as_a_remix` is asked instead. It consults no
+    vocabulary: it asks whether the value's last word is the very word about to
+    be appended, which is the only thing the skip ever existed to prevent. Its
+    measurement over 65 values, the two error classes and why they are not
+    equally bad are all on that function.
+
+    **WHY THE VERBATIM BRANCH IS SAFE HERE AND WAS NOT BEFORE.** A branch that
+    fires on ``The Cut`` composes ``(the cut)``, and ``Subtitle`` holding the
+    designation ``The Cut`` composes ``(the cut)`` as well, so one identity
+    stands for two versions and deleting either suppresses the other. That is
+    over-suppression, reached through a rule meant to avoid the milder error.
+    This branch fires only on a value already ending in ``Remix``, and a
+    ``Subtitle`` holding that same string names that same version, so the rows it
+    can converge are one version filed twice.
 
     A REMIXER THE TITLE ALREADY NAMES IS NOT COMPOSED AT ALL, and that test is on
     the BARE name rather than on the spelled one. ``Strobe (Michael Woods
@@ -465,7 +510,7 @@ def remixer_title(title: str, remixer: str) -> str:
     folded = fold(remixer)
     if not folded or _already_carries(title, folded):
         return title
-    spelled = remixer if ends_as_a_designation(remixer) else f"{remixer} {REMIX_DESIGNATION}"
+    spelled = remixer if already_spelled_as_a_remix(remixer) else f"{remixer} {REMIX_DESIGNATION}"
     return version_title(title, spelled)
 
 
@@ -562,8 +607,18 @@ def removed_file_identity(*, content_id: str, recorded: str) -> dict[str, str]:
     correction, and the emptiness test then runs on the converted value so that
     ``0`` stays addressable: a numeric identifier is a legitimate identifier and
     ``not 0`` would refuse it.
+
+    **AND THE EMPTINESS TEST IS ON THE STRIPPED VALUE, WHICH IS THE SAME DEFECT
+    ONE STEP ALONG.** ``'   '`` is truthy, so a row whose identifier is nothing
+    but spaces produced ``{'content_id': '   '}`` and that string went on to
+    address the review item, the decline and the playlist membership test, in the
+    same way ``'None'`` did. It is the wrong-key shape rather than a collapse,
+    because ``recorded`` still separates two such rows, and a key nobody can type
+    is a decision nobody can revoke. Stripping is only for the TEST: what is
+    returned is the value as given, because the identifier belongs to the
+    collection row and this module does not get to rewrite it.
     """
-    if content_id is None or not str(content_id):
+    if content_id is None or not str(content_id).strip():
         raise refuse(
             "review-selection-invalid",
             "a removed row has to be identified by its collection row; without "
@@ -598,8 +653,8 @@ __all__ = [
     "REMIX_DESIGNATION",
     "STORE_KEY",
     "VERSION_WORDS",
+    "already_spelled_as_a_remix",
     "describe",
-    "ends_as_a_designation",
     "fold",
     "reads_as_version",
     "remixer_title",

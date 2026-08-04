@@ -489,12 +489,54 @@ def _record_or_put_it_back(
         raise
 
 
+def _the_anchor_proved_nothing(
+    answered: Candidate, references: candidate_rules.ReferenceSet
+) -> bool:
+    """Whether this row's missing file is a statement about a DIRECTORY, not a file.
+
+    **THE WHOLE OF THE ROUND SIX DEFECT IS THAT NOBODY ASKED THIS.**
+    ``candidates.categorize`` answers ``GONE`` for a row whose file will not stat
+    as long as the anchor directory EXISTS, and existence is not the question. A
+    volume that unmounted cleanly leaves no mount point and every row through it
+    is ``UNRESOLVED``, which is right and is not the case here. What macOS leaves
+    after an UNCLEAN eject, and what anything at all creates by writing to the
+    path while the drive is detached, is the mount point directory standing there
+    EMPTY. Every removed row through it then stats absent, reads ``GONE``, and
+    the round six settlement writes each one a tombstone, marks it handled, and
+    lets the watermark past. Remounting the drive brings none of them back. That
+    is a whole library's removal history recorded as deleted, with the files
+    untouched, off one empty directory.
+
+    **THE COUNTER-EVIDENCE WAS ALREADY COMPUTED AND WAS NOT WIRED TO ANYTHING
+    THAT DECIDES.** ``reference_set`` walks the ACTIVE rows through the same
+    anchors, and ``suspect_anchors`` names every anchor that exists, produced no
+    filesystem identity at all, and had at least one active row go missing under
+    it. On the empty mount point that is the whole volume; on a mounted library
+    where somebody deleted one track in the Finder it is nothing, because
+    thousands of active rows are indexed under that same anchor. So the signal
+    separates the two cases this pass most needs separated, and it does it
+    without a threshold: the question is whether ANY active row found a file
+    there, not how many.
+
+    WHICH WAY THIS FAILS. An anchor with no active rows through it at all is not
+    suspect, because ``missing_under`` never records it, so a mapped volume
+    holding only removed rows still settles off an empty mount point. Nothing
+    local can do better: with no active row through that anchor there is no
+    evidence either way, and the alternative is a threshold over how many removed
+    rows look gone, which is the same all-or-nothing rule ``suspect_anchors``
+    replaced. It is recorded as its own residual finding rather than papered
+    over.
+    """
+    return answered.anchor is not None and answered.anchor in references.suspect_anchors
+
+
 def _settle_a_confirmed_absence(
     cfg: config.Config,
     answered: Candidate,
     *,
     actor: str,
     recorded: Callable[[library.RemovedRow], bool],
+    references: candidate_rules.ReferenceSet,
 ) -> bool:
     """Finish a CONFIRMED removal whose file is not where the row named it. Returns handled.
 
@@ -530,11 +572,36 @@ def _settle_a_confirmed_absence(
     ONLY FOR A CONFIRMED ROW. A removal nobody has answered for is not settled
     here at all: a person who deletes music in the Finder has not asked this pass
     for anything, so there is no deletion of ours to record.
+
+    **AND ONLY WHERE THE ABSENCE IS EVIDENCE ABOUT THE FILE.** The paragraph
+    above reasons from "the file is not at the path the row records", and that
+    sentence is worth nothing when the DIRECTORY the path hangs off answered
+    nothing either. An empty mount point left behind by an unclean eject makes
+    every row on the volume read absent, and settling them writes a tombstone
+    apiece for files that are all still on a drive sitting on the desk. See
+    :func:`_the_anchor_proved_nothing`: where the reference set says no active
+    row found a file under that anchor, this refuses to settle and the row stays
+    open. Holding the queue is the recoverable state and a shelf of tombstones
+    for an unmounted drive is not, which is the reverse of the trade this
+    function makes when the anchor IS answering.
     """
     if answered.category is not Category.GONE:
         return answered.handled
     if recorded(answered.row):
         return True
+    if _the_anchor_proved_nothing(answered, references):
+        logger.warning(
+            "confirmed removal %s is not at %s and NOTHING WAS RECORDED, because "
+            "every active row under %s is missing too: an anchor no active row "
+            "found a file under says the volume is not really there, and this "
+            "pass will not write a deletion off a directory that is empty. Mount "
+            "the volume and run this again; the removal is still open and every "
+            "removal after it is waiting behind it",
+            answered.row.content_id,
+            answered.resolved or answered.row.recorded,
+            answered.anchor,
+        )
+        return False
     record = stores.record_tombstone(cfg, answered.row, actor=actor, trashed_to="")
     logger.warning(
         "confirmed removal %s is not at %s, so nothing was moved to the Trash; "
@@ -551,9 +618,9 @@ def _settle_a_confirmed_absence(
 
 
 def _warn_that_an_unanswered_removal_is_being_retired(
-    answered: Candidate, *, recorded: Callable[[library.RemovedRow], bool]
+    answered: Candidate, *, recorded: Callable[[library.RemovedRow], bool], held: bool = False
 ) -> None:
-    """Say that a removal nobody answered for is being retired with its file elsewhere.
+    """Say what became of a removal nobody answered for whose file is elsewhere.
 
     **THE MIRROR OF THE CONFIRMED CASE, AND IT WAS SILENT.** A removal with no
     verdict uses ``item.handled`` directly, ``GONE`` is in
@@ -568,8 +635,27 @@ def _warn_that_an_unanswered_removal_is_being_retired(
     now no longer reachable by this pass either, which is the one state where a
     person has a file they can neither see in rekordbox nor be reminded of here.
     Saying it costs one log line and is the only notice they will get.
+
+    ``held`` IS THE ANSWER TO A DIFFERENT QUESTION AND IT CHANGES THE SENTENCE.
+    Retiring is only right where the absence is evidence about the file, and
+    :func:`_the_anchor_proved_nothing` is where that is decided; when it says the
+    anchor answered nothing, the caller does NOT retire the row and this says so
+    instead. One retirement per unanswered removal was already permanent, so an
+    empty mount point would otherwise retire a whole library's removal history in
+    one pass, quietly, with no tombstone and no second chance.
     """
     if answered.category is not Category.GONE or recorded(answered.row):
+        return
+    if held:
+        logger.warning(
+            "removal %s was NOT retired: the file is not at %s, but no active row "
+            "under %s found a file there either, so the volume rather than the "
+            "file is what this run has proved absent. Mount it and run this "
+            "again; nothing about this removal has been decided",
+            answered.row.content_id,
+            answered.resolved or answered.row.recorded,
+            answered.anchor,
+        )
         return
     logger.warning(
         "removal %s was retired without being offered: the file is not at %s and "
@@ -734,8 +820,15 @@ def apply(
         for item in found.candidates:
             verdict = decided.get(_item_id(item))
             if verdict is None:
-                _warn_that_an_unanswered_removal_is_being_retired(item, recorded=recorded_now)
-                handled.append((item.row.sequence, item.handled))
+                # THE SAME QUESTION THE CONFIRMED PATH ASKS, ASKED HERE TOO. A
+                # retirement is permanent whether or not a tombstone rides with
+                # it, so an anchor that proved nothing must not retire this row
+                # any more than it may record one.
+                held = _the_anchor_proved_nothing(item, found.references)
+                _warn_that_an_unanswered_removal_is_being_retired(
+                    item, recorded=recorded_now, held=held
+                )
+                handled.append((item.row.sequence, item.handled and not held))
                 continue
             if verdict.verdict is review.Verdict.REJECTED:
                 # NOT HANDLED, and this is the pair to the one-way door
@@ -765,7 +858,11 @@ def apply(
                     (
                         item.row.sequence,
                         _settle_a_confirmed_absence(
-                            cfg, item, actor=actor, recorded=recorded_now
+                            cfg,
+                            item,
+                            actor=actor,
+                            recorded=recorded_now,
+                            references=found.references,
                         ),
                     )
                 )
@@ -813,7 +910,11 @@ def apply(
                     (
                         item.row.sequence,
                         _settle_a_confirmed_absence(
-                            cfg, fresh, actor=actor, recorded=recorded_now
+                            cfg,
+                            fresh,
+                            actor=actor,
+                            recorded=recorded_now,
+                            references=found.references,
                         ),
                     )
                 )

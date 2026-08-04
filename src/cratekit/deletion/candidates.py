@@ -745,6 +745,14 @@ class Candidate:
     observed_size: int | None = None
     collides_with: tuple[str, ...] = ()
     problem: str = ""
+    #: The directory CONFIGURATION named for this row, carried out only when the
+    #: file was not there, because that is the only answer whose meaning depends
+    #: on it. A caller holding a ``GONE`` row cannot otherwise ask whether the
+    #: absence was a statement about the file or about the directory it hangs
+    #: off, and the two are the difference between a deletion and an unmounted
+    #: drive: see ``ReferenceSet.suspect_anchors``, which is the answer, and
+    #: ``run._the_anchor_proved_nothing``, which is the caller that needs it.
+    anchor: str | None = None
 
     @property
     def deletable(self) -> bool:
@@ -798,6 +806,19 @@ def categorize(
     That is the paragraph above happening to a correct configuration, and an
     external drive dropping mid-walk is an ordinary afternoon rather than a
     curiosity.
+
+    **AN ANCHOR THAT IS THERE IS NOT PROOF, AND THIS FUNCTION DOES NOT PRETEND
+    OTHERWISE ANY MORE.** The test above is existence, so an EMPTY directory
+    standing where a volume mounts passes it, and macOS leaves exactly that
+    behind after an unclean eject, as does anything at all that writes to the
+    path while the drive is detached. Every removed row through it then reads
+    ``GONE`` off a directory holding nothing. What this function does about that
+    is CARRY THE ANCHOR OUT on the answer, because the caller is the only place
+    the counter-evidence exists: ``reference_set`` has already walked the ACTIVE
+    rows through the same anchor and knows whether any of them found a file
+    there. A row is answered here and the answer is qualified there, rather than
+    this walk taking a second opinion on a question the reference set has
+    already settled.
     """
     out: list[Candidate] = []
     rules = list(prefix_map)
@@ -861,13 +882,21 @@ def categorize(
         except FileNotFoundError:
             anchor = _anchor_of(resolved, root=root, prefix_map=rules)
             if anchors.present(anchor):
-                out.append(Candidate(row=row, category=Category.GONE, resolved=resolved.path))
+                out.append(
+                    Candidate(
+                        row=row,
+                        category=Category.GONE,
+                        resolved=resolved.path,
+                        anchor=anchor,
+                    )
+                )
             else:
                 out.append(
                     Candidate(
                         row=row,
                         category=Category.UNRESOLVED,
                         resolved=resolved.path,
+                        anchor=anchor,
                         problem=(
                             f"{anchor} does not exist, so this path establishes "
                             f"nothing about the row: what is proved absent is the "
