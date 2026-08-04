@@ -868,6 +868,83 @@ resolve to an unrelated file B that inherited it. `os.replace` from a temp file,
 which is how most taggers save, changes the inode while the path does not.
 Under verification now.
 
+### The best verification of the wave, and it was measured on a real filesystem
+
+U23 round 6 replaced a path digest identity with `dev-ino:<st_dev>:<st_ino>`.
+Its verification did not argue about inode reuse. It **mounted a real MS-DOS
+FAT image, reproduced reuse, and drove the whole thing end to end**:
+
+    A adopted, genre "Real Genre A"   -> record dev-ino:16777241:6
+    A deleted; B created, inherits inode 6
+    REVERT -> restored 1, failed {}
+    B's genre AFTER REVERT: ('Real Genre A',)
+
+B's own genre is then in no file and no record and **the report says clean.**
+The mechanism is worse than a collision: `_record_locked` finds the record by
+live identity and then **actively erases the contradiction** by refreshing the
+recorded path to B's, and the digest cannot cross check because it is stamped
+AFTER the write it is meant to verify.
+
+FAT and exFAT are the format of every rekordbox export USB drive. APFS was
+probed over 4000 create and delete cycles and does not reuse, so the residual's
+APFS claim was right and its filesystem list omitted the one this product's
+users plug in.
+
+**The second half needs no exotic filesystem at all.** `os.replace` changes the
+inode on APFS, and that is how every tagger saves, how this repository's own
+`atomic_write_bytes` saves, and how Phillip's `dj-tagging` saves. An ordinary
+tag edit produces two records for one file. That falsifies a load bearing
+sentence in the code: *"a group where exactly one member carries the live
+identity is not a shape any sequence of adoptions produces."*
+
+**The lesson is not about inodes.** Round 5's identity was a path digest and
+collided on hardlinks and case. Round 6's was an inode pair and collides on
+reuse, atomic saves and remounts. Both were single stat fields trusted alone.
+The record already carries four things, and the defect each time was that one
+of them was treated as a key while disagreement among them was silently
+repaired rather than refused.
+
+### Two agents that refused to fabricate, and one that caught itself
+
+U23's verifier could not mount a stalling NFS, SMB or FUSE filesystem. **It did
+not simulate one and it said so**, leaving "does a single `read()` that never
+returns hang the pass" explicitly UNMEASURED, and separating what it read in
+the source from what it drove. It also caught its own instrument error: its
+first four message mutations APPENDED text, and the suite asserts with `in`, so
+all four measured zero for a reason that says nothing about coverage. It
+re-ran them as rewordings. **Mutate a message by rewording it, never by
+appending.**
+
+U24's round 6 demonstrated the row naming hazard on itself. It defined a row
+from its NAME, by blanking a pattern, and measured 3; re-measured as the
+mutation the name actually denoted, removing a `^` anchor, it is 5. **Both rows
+are now in the file.** A row name does not identify a mutation.
+
+And on two rows whose counts moved, it wrote: *"I do not know whether these are
+the same mutations, and I am not naming a mechanism I did not reproduce."*
+
+### U24's fix, and a decision declined twice
+
+`ends_as_a_designation` tests the LAST word only, on the measured observation
+that a real designation puts its version word last while all six measured false
+positives put theirs first. A structural distinction replacing a list.
+
+Round 6 also built the ISRC discriminator the previous verification found, and
+then **still declined to flip the belief default**, claiming only two of its
+three reasons as measured. The third is a new finding: the discriminator cannot
+see the collision a flip would introduce, because that row is usually ACTIVE and
+`trees.ContentRow` carries no artist, title or code. R-21 is rewritten with the
+indistinguishability claim retracted and the unmeasurable "roughly half"
+frequency **deleted rather than restated.**
+
+### An operational failure that recurred
+
+A mutation driver kept applying mutations AFTER its parent shell was killed,
+contaminating later rows. Second occurrence this wave. It was caught only by
+comparing the worktree against the git object database rather than against any
+snapshot. **Checksum against `git show HEAD:<path>` between every row, and
+confirm no stray process survives before reporting.**
+
 ### What these findings have in common
 
 All three are the wave's two named patterns, again. U23 and U34 are IDENTITY
