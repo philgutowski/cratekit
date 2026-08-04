@@ -66,8 +66,30 @@ FOUR PROPERTIES, and each one answers a specific way that failed.
    question, and the library chooses only what is offered and how the question
    reads.
 
+   AND DELETING THAT ARGUMENT TOOK A SECOND THING WITH IT, which is the same
+   defect from the other side and cost a round of its own. With the key on every
+   question and nothing saying WHICH question, "your list says 03A and I hold
+   this exact version at 03B" and "your list says 03A and I hold another version
+   entirely" became one item, so one answer settled both. Driven: the library
+   holds only the extended mix, the row is a version question, somebody accepts
+   it, the library later gains the plain cut at 03B, and the run reports MATCHED
+   with the 03B file in ``paths`` and the extended mix gone from them, at exit
+   zero, with no warning and no question. ``Why.KEY_RELATIVE`` exists because 8A
+   and 8B look like agreement to anything comparing wheel positions, and it had
+   become reachable only while nobody had ever accepted anything about that line.
+
+   SO THE IDENTITY IS A FUNCTION OF THE LIST LINE AND OF WHICH QUESTION IS BEING
+   ASKED, AND OF NOTHING ABOUT THE LIBRARY. Every VALUE in it comes off the list
+   line; what varies with the disk is only which of the four questions is put,
+   and two different questions are two items because an identity covering both is
+   an identity that is not unique to the thing it identifies. See
+   :func:`question_shape`, which is where :data:`KEY_QUESTIONS` is read, and the
+   residual titled "A question answered on one machine does not settle a
+   different question about the same line" for what that costs.
+
    THE ONE CLASS WHERE THE THREE READERS CANNOT CONVERGE ON THE STATE, stated
-   rather than papered over. A source that carries its version in its own field
+   rather than papered over in the residual titled "The one-word dash class
+   cannot converge on state across the three readers". A source that carries its version in its own field
    has told us where the boundary is; a source that spells "Sun Path - Live"
    has not, and no rule over that string can. Converging the two anyway needs
    either an identity that moves with the library, which is the defect above, or
@@ -219,6 +241,97 @@ class Why(StrEnum):
 #: must use or two spellings become two items for one candidate.
 QUESTION_KIND = "version-match"
 
+#: WHAT A QUESTION IS ABOUT, as stable identifiers that ride inside the review
+#: item identity. Never display names (R19): a person's answer is recorded
+#: against one of these, so rewording the sentence a person reads must not move
+#: the item the answer lands in.
+ASKS_ABOUT_KEY = "key"
+ASKS_ABOUT_VERSION = "version"
+ASKS_ABOUT_RECORDING = "recording"
+ASKS_ABOUT_READING = "reading"
+
+#: The whys whose question is ABOUT the key rather than about the version. Read
+#: by the item identity, through :func:`question_shape`, so a key question and a
+#: version question about one recording are two items and one answer never
+#: settles the other.
+#:
+#: THAT SENTENCE WAS FALSE OF THE SHIPPED CODE FOR ONE ROUND and the set was
+#: dead: repository-wide, only this definition and the ``__all__`` entry named
+#: it. The round that removed the field this set used to gate left the set
+#: standing with its docstring intact, so the file asserted a property it no
+#: longer had, and one answer settled both questions again. See
+#: :func:`question_shape`, which is the reader that makes the sentence true.
+KEY_QUESTIONS: frozenset[Why] = frozenset({Why.KEY_RELATIVE, Why.KEY_DIFFERS})
+
+#: Every OTHER why that is a question, and what it is about. Deliberately not a
+#: default: a why that reaches :func:`question_shape` without an entry here is a
+#: row that is not a question at all, and giving it a shape would file a
+#: non-question in the queue under an identity somebody could answer.
+_QUESTION_SHAPES: Mapping[Why, str] = {
+    Why.VERSION_DIFFERS: ASKS_ABOUT_VERSION,
+    Why.TITLE_APPROXIMATE: ASKS_ABOUT_RECORDING,
+    Why.READING_AMBIGUOUS: ASKS_ABOUT_READING,
+}
+
+
+def question_shape(why: Why) -> str:
+    """WHICH QUESTION this row is, as the identifier the item identity carries.
+
+    THE IDENTITY OF A QUESTION IS A FUNCTION OF THE LIST LINE AND OF WHICH
+    QUESTION IS BEING ASKED, and dropping the second half is what this exists to
+    stop happening a third time. A round that made the item identity purely list
+    derived collapsed the KEY question and the VERSION question about one
+    recording onto ONE item, and the cost was measured end to end: a list line
+    asking for ``Sun Path`` at 03A against a library holding only the extended
+    mix is a VERSION question; somebody answers "yes, my extended mix is that
+    record"; the library later gains the plain cut at 03B, the RELATIVE MINOR of
+    the key the list asked for; and the next run reports MATCHED on the strength
+    of the version answer, with the 03B file in ``paths``, the extended mix gone
+    from them, exit zero, no warning and no question. ``Why.KEY_RELATIVE`` exists
+    because 8A and 8B look like agreement to anything comparing wheel positions,
+    and it had become reachable only while nobody had ever accepted anything
+    about that line.
+
+    WHAT THIS IS NOT is the defect the round before that one fixed. Nothing about
+    the LIBRARY enters the identity: not a held file's key, not its version, not
+    its path, not how many copies there are. ``question_identity``'s ``key`` is
+    the LIST's key on every question, which is the property that lets one line
+    open one item on two machines that hold different copies of it. What varies
+    here is only WHICH QUESTION IS BEING ASKED, and two different questions are
+    two items by definition, because an identity that covers both is an identity
+    that is not unique to the thing it identifies.
+
+    THE COST, taken deliberately and recorded. Two machines whose libraries make
+    one list line ask two different questions open two items, so an answer
+    exported from one does not settle the other. It should not: the second
+    machine was never asked the first machine's question. See the residual titled
+    "A question answered on one machine does not settle a different question
+    about the same line".
+
+    A why with no entry is REFUSED rather than given a default. A matched row and
+    a missing row are not questions, so they have no question identity, and a
+    default would hand one an identifier a person could answer. The two STALLED
+    whys are refused for a narrower reason: they are written by
+    :func:`apply_verdict` onto a row whose item was already found, so asking this
+    about one means asking which question a rewritten answer was, which is a
+    question with no answer.
+    """
+    if why in KEY_QUESTIONS:
+        return ASKS_ABOUT_KEY
+    shape = _QUESTION_SHAPES.get(why)
+    if shape is None:
+        raise refuse(
+            "review-selection-invalid",
+            f"{why} is not a question, so it has no review item identity; "
+            f"giving it one would file a result in the queue under an "
+            f"identifier somebody could answer",
+            remedy=Remedy.REPORT_DEFECT,
+            scope=Scope.ITEM,
+            origin=("acquire.match",),
+            detail={"why": str(why)},
+        )
+    return shape
+
 #: The kind a tombstone is recorded under. NOT THIS MODULE'S TO CHOOSE, and the
 #: correction is the most expensive thing this unit got wrong. R36's tombstone is
 #: written by the deletion pass and consulted by an acquisition pass, and both of
@@ -244,6 +357,19 @@ TOMBSTONE_KIND = "version"
 #: nothing above it becomes a match, so the cost of a low floor is noise in the
 #: queue and the cost of a high one is a track reported missing that the library
 #: already holds under a slightly different spelling.
+#:
+#: "NOISE IN THE QUEUE" IS NOT A FREE COST AND THE RESIDUAL TITLED "The ambiguous
+#: reading class is queued as a question and does not gate the run" IS THE PRICE
+#: OF IT. That entry accepts a class of question that does not stop the run
+#: precisely because a queue filling faster than a person empties it stops
+#: carrying information, and this constant is the dial that decides how many rows
+#: become questions at all. Lowering it is therefore a product change and not a
+#: tuning: at 41 a list line and a library file sharing barely half their folded
+#: characters open a question, and ``Aurora Bloom - Sun Path`` against a library
+#: holding only ``Sun Path Instrumental`` scores 76.4, which is the pinned
+#: example either side of this number.
+#: ``test_a_resemblance_below_the_floor_is_missing_rather_than_a_question`` is
+#: what makes the value a decision somebody has to take on purpose.
 APPROXIMATE_FLOOR = 82
 
 #: How many approximate CANDIDATES are offered for one wanted track. A person
@@ -252,6 +378,18 @@ APPROXIMATE_FLOOR = 82
 #: is given, and again as a truncation of the candidate list, because one
 #: recording can be held as several versions at several keys and a limit on
 #: recordings alone promises a number it does not deliver.
+#:
+#: ONLY THE SECOND SPEND WAS MEASURED, which made the first a written
+#: justification with nothing behind it: multiplying the scorer's limit by four
+#: left the whole suite green. The two spends are observable apart, and the thing
+#: that separates them is the WITHHELD COUNT. Eight resembling recordings held as
+#: one version each: with the scorer capped here, five candidates are built and
+#: nothing is withheld; with the cap raised, eight are built, five are shown and
+#: three are reported kept back. So a run that says "3 further candidates were
+#: never shown" over a library of one-version recordings is a run whose scorer
+#: limit is not this constant, and
+#: ``test_the_scorer_is_capped_at_the_same_number_the_offer_is`` asserts the
+#: number is spent in both places.
 APPROXIMATE_LIMIT = 5
 
 
@@ -343,41 +481,99 @@ def split_version(title: str) -> tuple[str, str]:
     return remaining, " ".join(reversed(qualifiers))
 
 
-#: Words that END a dash-introduced tail that is a VERSION rather than the rest
-#: of a title. This is what separates "Sun Path - Nightwave Remix" from "Sun -
-#: Rise". Deliberately a vocabulary rather than a shape: the shape is ambiguous,
-#: so anything not recognized stays in the title, and the cost of a word this
-#: list is missing is a question rather than a wrong join.
-_DASH_VERSIONS: frozenset[str] = frozenset(
+#: What makes a word a VERSION DESIGNATION. NOT THIS MODULE'S TO CHOOSE either,
+#: for exactly the reason :data:`TOMBSTONE_KIND` is not: the deletion pass decides
+#: whether a rekordbox ``Subtitle`` names a version, this module decides whether a
+#: dash tail names one, and those are two readers of ONE question. U24 puts the
+#: answer in the domain layer as ``cratekit.core.tombstone.VERSION_WORDS`` and
+#: this is that frozenset replicated element for element, because U24 is landing
+#: in its own worktree and this unit cannot import a file that has not merged yet.
+#: IT COLLAPSES INTO AN IMPORT the day it does::
+#:
+#:     from cratekit.core.tombstone import VERSION_WORDS
+#:
+#: TWO VOCABULARIES ANSWERING ONE QUESTION IS A DEFECT NO PASSING SUITE CAN SEE,
+#: and it was live and measured. This module's own list held 17 words and U24's
+#: held 27, so with the library holding ``Aurora Bloom - Sun Path (Unplugged)``
+#: and a list spelling ``Aurora Bloom - Sun Path - Unplugged``, the run reported
+#: MISSING with an acquisition option and went and fetched a file already on the
+#: shelf, at exit zero, with nothing asked and nothing warned. That is verbatim
+#: the failure :func:`_is_a_version` calls "the other half of the same mistake",
+#: still live for eleven words. ``acapella``, ``alternate``, ``club``, ``cut``,
+#: ``flip``, ``interlude``, ``mashup``, ``original``, ``radio``, ``session`` and
+#: ``unplugged`` are those eleven.
+#:
+#: THE WIDENING IS SAFE IN THIS MODULE'S DIRECTION and it is worth saying which
+#: direction that is, because it is not U24's. Over there a word believed wrongly
+#: composes a parenthetical no provider spells, so a deletion fails to stick.
+#: Here a word believed wrongly makes a one-word tail AMBIGUOUS rather than
+#: split, and an ambiguous reading is only ever taken when the library holds
+#: exactly that head at exactly that version: see :func:`split_ambiguous`. A word
+#: this list should not hold therefore costs a question that the library already
+#: had an answer for, and never a wrong join.
+#:
+#: ``test_the_version_vocabulary_is_u24s_element_for_element`` pins the exact
+#: membership, so the two copies cannot drift in the window where two exist, and
+#: the residual titled "One vocabulary lives in two files until the domain module
+#: merges" carries the countdown.
+VERSION_WORDS: frozenset[str] = frozenset(
     {
+        "acapella",
         "acoustic",
+        "alternate",
         "bootleg",
+        "club",
+        "cut",
         "demo",
         "dub",
         "edit",
         "extended",
+        "flip",
         "instrumental",
+        "interlude",
         "live",
+        "mashup",
         "mix",
+        "original",
+        "radio",
         "remaster",
         "remastered",
         "remix",
         "reprise",
-        "rerecorded",
         "rework",
+        "session",
+        "unplugged",
         "version",
         "vip",
     }
 )
 
-#: Words that START one, kept to the one convention that needs it: the public
-#: playlist API ships "Remastered 2011" and "Remastered Version", so the year is
-#: the last word and the vocabulary above cannot see it. Deliberately tiny, since
-#: a leading-word rule is the loose one: "Reprise Of Nothing" is a title.
+#: Words that START a dash-introduced version tail, kept to the one convention
+#: that needs it: the public playlist API ships "Remastered 2011" and "Remastered
+#: Version", so the year is the last word and a trailing-word vocabulary cannot
+#: see it. Deliberately tiny, since a leading-word rule is the loose one:
+#: "Reprise Of Nothing" is a title.
 #:
 #: These are also the ONLY words allowed to make a one-word tail a version. See
 #: :func:`_is_a_version`.
+#:
+#: ``rerecorded`` is here and is NOT in :data:`VERSION_WORDS`, which is a
+#: difference between the two sides rather than a drift: U24 reads a free text
+#: column and this reads a dash tail, and the leading-word convention is one this
+#: side has and that side has no use for.
 _DASH_VERSION_HEADS: frozenset[str] = frozenset({"remaster", "remastered", "rerecorded"})
+
+#: Words that END a dash-introduced tail that is a VERSION rather than the rest
+#: of a title. This is what separates "Sun Path - Nightwave Remix" from "Sun -
+#: Rise". Deliberately a vocabulary rather than a shape: the shape is ambiguous,
+#: so anything not recognized stays in the title, and the cost of a word this
+#: list is missing is a question rather than a wrong join.
+#:
+#: DERIVED, never spelled a second time. The set is the domain vocabulary plus
+#: the head words, so a word added to either one arrives here without anybody
+#: remembering to add it twice, and the eleven-word divergence measured above
+#: cannot reopen by an edit to one side.
+_DASH_VERSIONS: frozenset[str] = VERSION_WORDS | _DASH_VERSION_HEADS
 
 #: The separator the public playlist API puts before a version. The same three
 #: characters ``read_text_lines`` splits an artist from a title on, which is why
@@ -390,10 +586,10 @@ def _is_a_version(tail: str) -> bool:
 
     A ONE-WORD TAIL IS NOT ENOUGH TO DECIDE ON ITS OWN, and that is the whole of
     this rule. Matching on the last vocabulary word alone split every title whose
-    final word happens to be one of seventeen: "Ziggy Stardust - Reprise", "Hurt
-    - Reprise", "Long - Live", "Studio 54 - Live", "Pump Up The Volume -
-    Extended", "Nice Up - Dub", "Beat It - Demo", "Sunset - Acoustic". The
-    reprise class is the sharpest, because an album reprise is a separate
+    final word happens to be one the vocabulary holds: "Ziggy Stardust -
+    Reprise", "Hurt - Reprise", "Long - Live", "Studio 54 - Live", "Pump Up The
+    Volume - Extended", "Nice Up - Dub", "Beat It - Demo", "Sunset - Acoustic".
+    The reprise class is the sharpest, because an album reprise is a separate
     composition, so the mangle reframed it from "the library holds nothing like
     this" to "the library holds this record as a different version", and
     accepting that reports ownership of a track the library does not hold.
@@ -407,6 +603,13 @@ def _is_a_version(tail: str) -> bool:
     acquisition option, so the run goes and fetches a file the library already
     holds, at exit zero, with nothing asked and nothing warned. The claim that a
     tail this misses "produces a question" is only true above the floor.
+
+    AND THAT WAS THE MEASURED BEHAVIOUR OF ELEVEN WORDS UNTIL THIS ROUND, not a
+    hazard argued in the past tense. This module kept a vocabulary of its own
+    while the domain layer kept another, so ``Unplugged`` reported MISSING and
+    re-acquired a held file while ``Live`` asked a question, for one library and
+    one spelling convention. :data:`VERSION_WORDS` is now the domain layer's
+    list and this module adds only its own head words to it.
 
     So the string alone does not decide it, and this function answers only the
     half a string CAN decide: a multi-word tail ending in the vocabulary, or one
@@ -484,7 +687,11 @@ def split_title(title: str) -> tuple[str, str]:
     THE VOCABULARY IS ENGLISH, so this convergence is English-only. A catalogue
     spelling its versions in another script converges through the bracketed
     reader and not through this one, which is recorded rather than hidden: see
-    R-19 in docs/residual-findings.md.
+    the residual titled "Four accepted findings from the second U16 review,
+    recorded rather than fixed", item 2, in docs/residual-findings.md. CITED BY
+    TITLE AND NOT BY NUMBER, because two branches have already given two
+    different findings the same number and a citation by number cannot survive
+    the merge that renumbers one of them.
     """
     remaining, bracketed = split_version(title)
     head, separator, tail = remaining.rpartition(_DASH)
@@ -721,7 +928,7 @@ def version_identity(*, artist: str, title: str) -> dict[str, str]:
 
 
 def question_identity(
-    artist: str, title: str, version: str, key: str | None = None
+    artist: str, title: str, version: str, key: str | None, why: Why
 ) -> dict[str, str]:
     """What addresses one REVIEW QUESTION about one recording.
 
@@ -759,16 +966,60 @@ def question_identity(
     two items. That is the cost of the rule and it is the cheap side: the same
     line through all three readers is still one item, which is the promise R13
     actually makes, and no answer is ever applied to a question nobody was asked.
+
+    ``asks`` IS THE HALF THE FIX ABOVE DELETED ALONG WITH THE DEFECT. Putting the
+    LIST'S key on every question made the identity stop moving with the disk, and
+    it also made "your list says 03A and I hold this at 03B" and "your list says
+    03A and I hold another version entirely" one item, so an acceptance of the
+    second silently settled the first: the run then reported ownership of the
+    relative minor, in ``paths``, with the file the person had actually pointed
+    at gone from them. :func:`question_shape` is what tells the two apart, and
+    what it reads is :data:`KEY_QUESTIONS`, whose own docstring has claimed this
+    property since before it was true.
+
+    ``version`` IS IN IT FOR THE SAME REASON ONE FIELD OVER, and nothing was
+    asserting it. ``Sun Path (Extended Mix)`` and ``Sun Path (Radio Edit)``
+    against a library holding neither are two version questions about two
+    versions, and an identity without this field makes them one item: answer
+    about the extended mix and the radio edit comes back matched, carrying the
+    paths of whatever the extended-mix answer named.
     """
     return {
         "recording": recording_token(artist, title),
         "version": version_token(version),
         "key": key_token(key),
+        "asks": question_shape(why),
     }
 
 
+#: How many hex characters of the digest an identifier carries. SIXTEEN, which is
+#: 64 bits, and the width is a decision rather than a default.
+#:
+#: EVERY IDENTIFIER THIS MODULE GENERATES IS THIS WIDE: ``match_id``,
+#: ``candidate_id`` and ``option_id``. ``TrackMatch.match_id``'s own docstring
+#: says what a collision costs, that two rows carrying one id put the same
+#: identifier in two arrays of one payload and "a consumer keying by id dropped
+#: one of them with nothing to notice", and a candidate collision is worse: two
+#: different owned versions become one thing a person can accept.
+#:
+#: SIXTY-FOUR BITS RATHER THAN THIRTY-TWO, because the birthday bound is what
+#: decides this and not the length of any one list. At 32 bits two of roughly
+#: 77,000 identifiers collide with even odds, and a library-scale run generates
+#: identifiers per track per candidate across every list somebody ever matches;
+#: at 64 bits the same even-odds point is around five billion. Main's own
+#: residual "Two identity generators in one codebase, 16 bits and 64, and only
+#: one of them was argued" records exactly this class of unargued width for a run
+#: identifier, and this is a third generator that nobody had counted.
+#:
+#: Narrowing it is invisible to every behavioural test in this suite, because a
+#: suite drives tens of identifiers and not tens of thousands.
+#: ``test_every_identifier_this_module_generates_is_the_declared_width`` is what
+#: makes the width a thing somebody has to change on purpose.
+DIGEST_WIDTH = 16
+
+
 def _digest(*parts: str) -> str:
-    return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()[:16]
+    return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()[:DIGEST_WIDTH]
 
 
 # ---------------------------------------------------------------------------
@@ -966,20 +1217,23 @@ class Wanted:
                 seen.append(built)
         return tuple(seen)
 
-    def question(self) -> dict[str, str]:
+    def question(self, why: Why) -> dict[str, str]:
         """THE REVIEW ITEM identity, which is this module's.
 
         Separate from :attr:`identity` because they address different things: a
         tombstone outlives every list and a question is one thing somebody was
         asked. See :func:`question_identity` for why the key is in it.
 
-        NO ARGUMENT, and the one it used to take is the defect. It was told
-        whether the question was about the key, that answer came from whichever
-        branch the LIBRARY chose, and an identity a machine's disk gets a vote in
-        is not an identity. Every field here is read off ``self``, which is the
-        list line and nothing else.
+        ONE ARGUMENT, AND IT IS WHICH QUESTION THIS IS, not what the library
+        holds. The argument it used to take was ``about_the_key``, a boolean the
+        LIBRARY set on a field of the resolved row, and an identity a machine's
+        disk gets a vote in is not an identity. Deleting it took the question
+        with it and collapsed the key question onto the version question, so the
+        replacement is the WHY, which names the question rather than the disk:
+        every VALUE here is still read off ``self``, which is the list line and
+        nothing else. :func:`question_shape` argues both halves.
         """
-        return question_identity(self.artist, self.title, self.version, self.key)
+        return question_identity(self.artist, self.title, self.version, self.key, why)
 
 
 def _field(row: object, name: str, default: Any = None) -> Any:
@@ -1463,8 +1717,9 @@ class Acquisition:
 
     R11's brief says a missing track "becomes a review item with acquisition
     options" and U11 declared missing as an OUTPUT rather than a question, and
-    that disagreement is a product decision recorded as R-17 and reserved for a
-    person. What is settled either way is that the options have to EXIST: the
+    that disagreement is a product decision recorded as the residual titled "Two
+    briefs disagree about whether a missing track is a review item" and reserved
+    for a person. What is settled either way is that the options have to EXIST: the
     verb's own docstring claimed a missing row carried them and the row carried
     an empty candidate list, an empty path list and nothing else.
 
@@ -1523,15 +1778,23 @@ def acquisition_options(wanted: Wanted) -> tuple[Acquisition, ...]:
     return tuple(built)
 
 
-#: The whys whose question is ABOUT the key rather than about the version. Read
-#: by the item identity, so a key question and a version question about one
-#: recording are two items and one answer never settles the other.
-KEY_QUESTIONS: frozenset[Why] = frozenset({Why.KEY_RELATIVE, Why.KEY_DIFFERS})
-
 #: The whys that mean a STORED VERDICT COULD NOT BE APPLIED. The item is resolved
 #: in the queue, so a listing of open items does not show it and resolving it
 #: again is refused; the only way forward is to clear it. Named here so the verb
 #: can name the remedy that actually works rather than the one that reads well.
+#:
+#: BOTH MEMBERS EARN THEIR PLACE and only one of them was pinned. Dropping
+#: ``VERDICT_UNSPECIFIC`` left the whole suite green while the row it names got
+#: no ``verdict-unapplicable`` warning, no ``review clear`` remedy, and a place
+#: in ``_pending``'s answerable half, which files a RESOLVED item, invisible to
+#: ``review list`` and refused by ``review resolve``, under the sentence "list
+#: the queue and record a verdict on each item". That dead end is the one
+#: ``_pending``'s own docstring says it exists to prevent.
+#: ``test_an_unspecific_acceptance_stalls_the_run_the_same_way_a_gone_candidate_does``
+#: drives it through the real store.
+#:
+#: :data:`KEY_QUESTIONS` used to sit here beside it and now sits with :data:`Why`,
+#: because the identity reads it and the identity is defined further up the file.
 STALLED: frozenset[Why] = frozenset({Why.CANDIDATE_GONE, Why.VERDICT_UNSPECIFIC})
 
 
@@ -1575,17 +1838,28 @@ class TrackMatch:
 
     @property
     def question_identity(self) -> dict[str, str]:
-        """THE REVIEW ITEM identity, DERIVED FROM THE LIST LINE AND NOTHING ELSE.
+        """THE REVIEW ITEM identity: the list line, and WHICH QUESTION was asked.
 
-        It carries no state of its own for the same reason ``match_id`` does not.
-        This used to be gated on a ``asks_about_key`` field that resolution set
+        Every VALUE in it is read off ``wanted``, which is the list line. Nothing
+        about this machine's library reaches it, which is what makes one line
+        open one item on two machines that hold different copies of it, and it is
+        the property ``review export`` and ``review import`` are useless without.
+        This used to be gated on an ``asks_about_key`` field that resolution set
         from whichever branch the library took, so the identity a verdict was
-        written under was a function of that machine's disk: the pair of verbs
-        ``review export`` and ``review import`` exist to move an answer between
-        two machines and the answer landed under an identifier the receiving one
-        never looks up. See :func:`question_identity`.
+        written under was a function of that machine's disk and an answer landed
+        under an identifier the receiving machine never looks up.
+
+        ``why`` IS NOT THAT FIELD BACK, and the difference is the whole of
+        :func:`question_shape`. It names which question this row IS, and two
+        different questions must be two items or one answer settles both, which
+        is what happened for a round: a version acceptance came back matched
+        against the relative minor at a key nobody was asked about.
+
+        REFUSES on a row that is not a question. A matched or missing row has no
+        review item, and the identifier it would compute is one somebody could
+        answer.
         """
-        return self.wanted.question()
+        return self.wanted.question(self.why)
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -2047,8 +2321,13 @@ def apply_verdict(
 __all__ = [
     "APPROXIMATE_FLOOR",
     "APPROXIMATE_LIMIT",
+    "ASKS_ABOUT_KEY",
+    "ASKS_ABOUT_READING",
+    "ASKS_ABOUT_RECORDING",
+    "ASKS_ABOUT_VERSION",
     "BY_ISRC",
     "BY_SEARCH",
+    "DIGEST_WIDTH",
     "KEY_QUESTIONS",
     "PAYLOAD_STATES",
     "QUESTION_KIND",
@@ -2058,6 +2337,7 @@ __all__ = [
     "TEXT",
     "TIDAL",
     "TOMBSTONE_KIND",
+    "VERSION_WORDS",
     "Acquisition",
     "Candidate",
     "LibraryIndex",
@@ -2076,6 +2356,7 @@ __all__ = [
     "key_token",
     "listed_title",
     "question_identity",
+    "question_shape",
     "read_spotify_items",
     "read_text_lines",
     "read_text_rows",

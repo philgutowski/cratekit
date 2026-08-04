@@ -47,6 +47,41 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
 MATCH_SOURCE = SRC_ROOT / "cratekit" / "acquire" / "match.py"
 MATCH_CLI_SOURCE = SRC_ROOT / "cratekit" / "acquire" / "match_cli.py"
+RESIDUALS_DOC = REPO_ROOT / "docs" / "residual-findings.md"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Residual citations, by title
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# A RESIDUAL NUMBER IS NOT A STABLE NAME AND THIS UNIT LEARNED IT THE EXPENSIVE
+# WAY. Six numbers in the middle of the range are claimed by this branch and by
+# main at once, with DIFFERENT CONTENT on each side, because two units appended
+# to the same file in parallel. Every citation by number in this unit's tests
+# therefore pointed at a different subject the moment either side renumbered, and
+# that is a break nothing can see: the sentence still reads perfectly and cites
+# the wrong finding.
+#
+# So every citation here names a TITLE. Titles are what the entries are about,
+# they survive a renumber, and a citation that stops resolving is caught by
+# ``test_every_residual_this_unit_cites_is_a_heading_that_exists`` rather than
+# read past. ``test_no_residual_is_cited_by_number_anywhere_in_this_unit`` keeps
+# the other spelling from coming back.
+RESIDUALS: tuple[str, ...] = (
+    "Two briefs disagree about whether a missing track is a review item",
+    "Four accepted findings from the second U16 review, recorded rather than fixed",
+    "A provider row cannot address a library row that kept a featured credit",
+    "The two tombstone derivations are reconciled only at merge",
+    "The index reads a file's title one way, so the disk side of the one-word "
+    "dash stays narrow",
+    "The recorder keeps the Title column's own shape, so the consulter "
+    "enumerates shapes",
+    "The one-word dash class cannot converge on state across the three readers",
+    "The ambiguous reading class is queued as a question and does not gate the run",
+    "A question answered on one machine does not settle a different question "
+    "about the same line",
+    "One vocabulary lives in two files until the domain module merges",
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -310,13 +345,14 @@ def test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist():
     and composes, this side composes from a provider's version field, and the
     property that matters is whether the two compositions produce one string.
 
-    WHAT IT STILL CANNOT PROVE, and this is the residual R-21 records: U24's
+    WHAT IT STILL CANNOT PROVE, and this is what the residual titled "The two
+    tombstone derivations are reconciled only at merge" records: U24's
     RECORDER is not imported here either, so the string it hands
     ``version_identity`` is taken from ``u24_records`` below, which is a
     hand-written imitation of ``deletion.stores.version_of`` that nothing checks
     against U24's real code. This guard compares one real function against one
     real function and one real derivation against an IMITATED one. The check that
-    would close it is named in R-21.
+    would close it is named in that entry.
     """
     from cratekit.core import tombstone
 
@@ -324,6 +360,13 @@ def test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist():
     assert match_cli.TOMBSTONE_STORE == tombstone.STORE_KEY
     for given, _expected in FOLD_PINS:
         assert match.tombstone_fold(given) == tombstone.fold(given)
+    # THE VOCABULARY, which is the third thing that exists twice and the one that
+    # was never compared. This module reads a dash tail and the domain module
+    # reads a free text column, and those are two readers of one question: is
+    # this word a version designation. Two answers to it were live and measured,
+    # 17 words here against 27 there, and the eleven-word gap reported MISSING
+    # and re-acquired a held file for every one of the missing words.
+    assert match.VERSION_WORDS == tombstone.VERSION_WORDS
     for row_title in ROW_SPELLINGS:
         assert match.version_identity(
             artist="Aurora Bloom", title=row_title
@@ -347,7 +390,7 @@ def test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist():
     )
     assert missed == UNRECONCILED, (
         "a library row spelling this side cannot address changed, so either a "
-        "tombstone became invisible or R-20 is now stale"
+        "tombstone became invisible or the featured-credit residual is now stale"
     )
 
 
@@ -434,8 +477,9 @@ REKORDBOX_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
 #: THE DERIVATIONS THAT DO NOT RECONCILE, named rather than left to a silent
 #: miss. A featured credit is dropped from the matching title because it names a
 #: performer, so a source that never spelled it cannot put it back, and the
-#: library row that kept it is unreachable from a provider row. Recorded as R-20
-#: in docs/residual-findings.md. Every other pair reconciles, and this tuple
+#: library row that kept it is unreachable from a provider row. Recorded in
+#: docs/residual-findings.md under "A provider row cannot address a library row
+#: that kept a featured credit". Every other pair reconciles, and this tuple
 #: going empty or growing is a change somebody has to make on purpose.
 UNRECONCILED: tuple[tuple[str, str], ...] = (
     ("Sun Path (feat. Mira) (Nightwave Remix)", match.TIDAL),
@@ -475,7 +519,8 @@ def u24_records(artist: str, row_title: str, row_version: str = "") -> dict[str,
     fold and the composition below are second implementations of algorithms
     stated to this unit; the READER that fills ``row.version`` is a file in
     another worktree. If it maps a column this does not, this helper agrees with
-    the code here and both disagree with what actually gets written. R-21 records
+    the code here and both disagree with what actually gets written. The residual
+    titled "The two tombstone derivations are reconciled only at merge" records
     that and names the check that would close it.
     """
     return {
@@ -563,7 +608,9 @@ def test_a_provider_row_reaches_every_spelling_of_the_version_it_names(spelling)
 
 
 def test_the_one_spelling_a_provider_row_cannot_reach_is_named_rather_than_assumed():
-    """A GAP STATED IS A GAP SOMEBODY CAN CLOSE, and R-20 states this one.
+    """A GAP STATED IS A GAP SOMEBODY CAN CLOSE, and one residual states this one.
+
+    "A provider row cannot address a library row that kept a featured credit".
 
     A featured credit is dropped from the matching title because it names a
     performer rather than an edit, so a row that never spelled it has nothing to
@@ -814,7 +861,8 @@ def test_every_row_spelling_is_addressed_from_every_reader_or_is_a_named_gap():
     independently written second implementation, over all three readers and every
     rekordbox row shape, so the seam is checked every run rather than only after
     a merge. The gaps are a literal tuple: one going missing means a tombstone
-    became invisible, and one going away means R-20 is stale.
+    became invisible, and one going away means the featured-credit residual is
+    stale.
 
     DRIVEN FROM THE ROW AND ITS VERSION COLUMN, not from a title alone, because
     that is what the recorder is handed. The row whose mix name sits only in the
@@ -876,7 +924,8 @@ def test_the_consulter_never_composes_over_an_already_composed_title():
 #: A TITLE SHAPE THIS SIDE DOES NOT ENUMERATE. The recorder keeps whatever shape
 #: the Title column used, so the consulter has to know the shapes; it knows round
 #: parentheses, square brackets, the dash and the multi-group split. Anything
-#: else misses, and that class is recorded as R-23 rather than guessed at.
+#: else misses, and that class is recorded under "The recorder keeps the Title
+#: column's own shape, so the consulter enumerates shapes" rather than guessed at.
 UNENUMERATED_SHAPE = ("Sun Path {Nightwave Remix}", "Nightwave Remix")
 
 
@@ -887,7 +936,9 @@ def test_a_title_shape_outside_the_enumerated_ones_is_a_recorded_gap():
     is discovered by a track coming back after somebody deleted it. This pins
     where the edge is: a curly-brace Title short circuits ``version_title``, so
     the identity keeps that shape, and no spelling this side composes reaches it
-    unless the list happened to spell it the same way. R-23 records the class.
+    unless the list happened to spell it the same way. The residual titled "The
+    recorder keeps the Title column's own shape, so the consulter enumerates
+    shapes" records the class.
     """
     title, version = UNENUMERATED_SHAPE
     recorded = u24_records("Aurora Bloom", title, version)
@@ -1123,17 +1174,100 @@ def test_the_review_item_identity_is_not_the_tombstone_identity():
     every later key question on that recording came back matched, including 03B,
     the relative minor this module names as the trap.
     """
+    version = match.Why.VERSION_DIFFERS
     asked = one(version="Extended Mix", key="08A")
     assert set(asked.identity) == {"artist", "title"}
-    assert set(asked.question()) == {"recording", "version", "key"}
-    assert asked.question()["key"] == "08A"
-    # THE KEY SET NEVER VARIES AND NEITHER DOES THE VALUE. ``question`` takes no
-    # argument, because the one it used to take said whether the question was
-    # about the key and the LIBRARY decided that. A list line naming no key
-    # carries the empty token, which is what an unreadable code folds to too.
-    assert one(version="Extended Mix").question()["key"] == ""
-    assert one(version="Extended Mix", key="8A").question() == asked.question()
-    assert one(version="Extended Mix", key="03B").question() != asked.question()
+    assert set(asked.question(version)) == {"recording", "version", "key", "asks"}
+    assert asked.question(version)["key"] == "08A"
+    # THE KEY SET NEVER VARIES AND NEITHER DOES THE VALUE. Every value is read
+    # off the LIST LINE. The argument ``question`` takes is which question is
+    # being asked, not what the library holds, and the one it used to take was
+    # the second of those. A list line naming no key carries the empty token,
+    # which is what an unreadable code folds to too.
+    assert one(version="Extended Mix").question(version)["key"] == ""
+    assert one(version="Extended Mix", key="8A").question(version) == asked.question(
+        version
+    )
+    assert one(version="Extended Mix", key="03B").question(version) != asked.question(
+        version
+    )
+
+
+def test_a_key_question_and_a_version_question_are_two_items_on_one_line():
+    """THE HALF THE LAST ROUND DELETED ALONG WITH THE DEFECT, on the object.
+
+    Putting the list's key on every question stopped the identity moving with the
+    disk, and it also made "your list says 08A and I hold this exact version at
+    another key" and "your list says 08A and I hold a different version" ONE
+    item. Both carry the same recording, the same version token and the same key,
+    so the only thing that can tell them apart is which question is being asked,
+    which is what ``asks`` carries and what :data:`match.KEY_QUESTIONS` decides.
+
+    THE APPROXIMATE AND READING QUESTIONS ARE TWO MORE, for the same reason and
+    with the same cost if they collapse: an approximate offer is candidates from
+    a DIFFERENT recording and a reading offer is a different parse of the line,
+    so an answer to either of them settling a version question would report
+    ownership of something nobody was asked about.
+    """
+    asked = one(version="Extended Mix", key="08A")
+    shapes = {
+        why: asked.question(why)["asks"]
+        for why in (
+            match.Why.VERSION_DIFFERS,
+            match.Why.KEY_RELATIVE,
+            match.Why.KEY_DIFFERS,
+            match.Why.TITLE_APPROXIMATE,
+            match.Why.READING_AMBIGUOUS,
+        )
+    }
+    assert shapes == {
+        match.Why.VERSION_DIFFERS: match.ASKS_ABOUT_VERSION,
+        match.Why.KEY_RELATIVE: match.ASKS_ABOUT_KEY,
+        match.Why.KEY_DIFFERS: match.ASKS_ABOUT_KEY,
+        match.Why.TITLE_APPROXIMATE: match.ASKS_ABOUT_RECORDING,
+        match.Why.READING_AMBIGUOUS: match.ASKS_ABOUT_READING,
+    }
+    # FOUR IDENTITIES, not five: the two key whys are one question wearing two
+    # reasons, which is the one place two whys may share an item.
+    identities = [asked.question(why) for why in shapes]
+    assert len({tuple(sorted(found.items())) for found in identities}) == 4
+    assert asked.question(match.Why.KEY_RELATIVE) == asked.question(
+        match.Why.KEY_DIFFERS
+    )
+    # AND THE VERSION IS STILL IN IT, one field over, for the same reason. Two
+    # versions of one recording at one key are two questions, and an identity
+    # without this field makes them one item and one answer.
+    version = match.Why.VERSION_DIFFERS
+    assert asked.question(version)["version"] == "extended mix"
+    assert one(version="Radio Edit", key="08A").question(version) != asked.question(
+        version
+    )
+
+
+@pytest.mark.parametrize(
+    "why",
+    [
+        match.Why.EXACT,
+        match.Why.NOT_IN_LIBRARY,
+        match.Why.VERDICT_ACCEPTED,
+        match.Why.VERDICT_REJECTED,
+        match.Why.TOMBSTONED,
+        match.Why.CANDIDATE_GONE,
+        match.Why.VERDICT_UNSPECIFIC,
+    ],
+)
+def test_a_row_that_is_not_a_question_has_no_review_item_identity(why):
+    """A DEFAULT HERE IS AN IDENTIFIER SOMEBODY COULD ANSWER.
+
+    Matched and missing are results and never reach the queue, and the two
+    stalled whys are written onto a row whose item was already found, so asking
+    which question they are is a question with no answer. A shape mapping with a
+    fallback would hand every one of them an item identity, and an item identity
+    is the thing ``review resolve`` takes.
+    """
+    with pytest.raises(CratekitError) as excinfo:
+        one(version="Extended Mix", key="08A").question(why)
+    assert excinfo.value.cause.reason == "review-selection-invalid"
 
 
 def test_a_key_folds_to_the_padded_form_and_an_unreadable_one_folds_to_nothing():
@@ -2336,8 +2470,9 @@ def test_a_missing_track_carries_its_options_as_data_rather_than_as_a_question(
     docstring said it carried its acquisition options as data. The name was false
     the day it was written.
 
-    Whether a missing row belongs in the queue instead is R-17, a product
-    decision reserved for a person. What is settled either way is that the
+    Whether a missing row belongs in the queue instead is the residual titled
+    "Two briefs disagree about whether a missing track is a review item", a
+    product decision reserved for a person. What is settled either way is that the
     sentence has to be true.
     """
     path = write_list(tmp_path, "Nova Reef - Tide Line\n")
@@ -2528,7 +2663,16 @@ def test_the_identifier_of_an_ambiguous_row_never_moves_with_the_library(
     assert empty.state is match.MatchState.MISSING
     assert confirmed.state is match.MatchState.NEEDS_REVIEW
     assert empty.match_id == confirmed.match_id
-    assert empty.question_identity == confirmed.question_identity
+    # THE ITEM IDENTITY IS ASSERTED ACROSS THE TWO LIBRARIES THAT ASK THE SAME
+    # QUESTION, which is the property, rather than across a library that asks
+    # nothing. The empty library produces a MISSING row, and a result has no
+    # review item to compare: see
+    # ``test_a_row_that_is_not_a_question_has_no_review_item_identity``. Held at
+    # 08A and held at 03A are one question with two candidates, and the two
+    # parameters of this test are exactly those two libraries.
+    assert confirmed.question_identity == match.question_identity(
+        "Aurora Bloom", "Sun Path - Live", "", None, match.Why.READING_AMBIGUOUS
+    )
     # The reported title is the one the LIST spelled, in both, because the
     # identifier and the payload have to agree about which record this is.
     assert (confirmed.wanted.title, confirmed.wanted.version) == ("Sun Path - Live", "")
@@ -2982,30 +3126,34 @@ def test_a_verdict_travels_between_two_machines_that_hold_different_versions(
 ):
     """THE PAIR OF VERBS THIS IDENTITY EXISTS FOR, driven across two libraries.
 
-    ``review export`` and ``review import`` move a decision between machines. One
-    list line carrying a key resolves to a KEY question on a machine holding that
-    exact version at another key, and to a VERSION question on a machine holding
-    only another version. The identity used to be gated on which of those two the
-    library chose, so the two machines opened two items under one ``match_id``:
-    the import reported the row inserted with no conflict, the receiving machine
-    looked its own question up under the other identifier, found nothing, and
-    asked again. The answer was imported and ignored, and nothing anywhere said
-    so.
+    ``review export`` and ``review import`` move a decision between machines, and
+    the property that makes them work is that ONE QUESTION about one list line
+    has one identity wherever it is asked. The identity used to be gated on
+    values the library supplied, so two machines holding different COPIES of the
+    same version opened two items under one ``match_id``: the import reported the
+    row inserted with no conflict, the receiving machine looked its own question
+    up under the other identifier, found nothing, and asked again. The answer was
+    imported and ignored, and nothing anywhere said so.
+
+    THE TWO LIBRARIES HERE HOLD DIFFERENT FILES AND ASK THE SAME QUESTION, which
+    is the case the property is about. Both hold another version of the record,
+    so both put a VERSION question; one holds a different other version from the
+    other, at a different key, under a different name. Nothing about any of that
+    reaches the identity.
 
     Driven at the seam rather than asserted on the object, because the object
-    agreeing is what the last round already proved about ``match_id`` while this
-    went on failing underneath it.
+    agreeing is what an earlier round proved about ``match_id`` while this went
+    on failing underneath it.
     """
     line = match.read_tidal_tracks(
         [{"id": "1", "title": "Sun Path", "version": "Nightwave Remix",
           "key": "08A", "artist": {"name": "Aurora Bloom"}}]
     )
 
-    def library(*names: str) -> match.LibraryIndex:
-        room = tmp_path / f"lib{len(names)}{names[0][:3]}"
+    def library(name: str, room_id: str) -> match.LibraryIndex:
+        room = tmp_path / f"lib{room_id}"
         room.mkdir(parents=True, exist_ok=True)
-        for name in names:
-            hold(room, name)
+        hold(room, name)
         return index_of(room)
 
     def settled(index, store) -> match.TrackMatch:
@@ -3017,14 +3165,15 @@ def test_a_verdict_travels_between_two_machines_that_hold_different_versions(
             suppression_id=no_identifier,
         ).matches[0]
 
-    # MACHINE A holds the exact version, at the wrong key.
-    machine_a = library("03A - 124 - Aurora Bloom - Sun Path (Nightwave Remix)")
-    # MACHINE B holds another version entirely.
-    machine_b = library("08A - 124 - Aurora Bloom - Sun Path (Extended)")
+    # MACHINE A holds the extended cut, at 03A.
+    machine_a = library("03A - 124 - Aurora Bloom - Sun Path (Extended)", "a")
+    # MACHINE B holds the instrumental, at 08A. A different file, a different
+    # version, a different key, and the same question.
+    machine_b = library("08A - 124 - Aurora Bloom - Sun Path (Instrumental)", "b")
 
     with review.open_store(cfg, path=tmp_path / "a.sqlite3") as store_a:
         asked = settled(machine_a, store_a)
-        assert asked.why is match.Why.KEY_DIFFERS
+        assert asked.why is match.Why.VERSION_DIFFERS
         review.resolve(
             store_a, asked.item_id, review.Verdict.REJECTED, actor="phillip"
         )
@@ -3047,6 +3196,77 @@ def test_a_verdict_travels_between_two_machines_that_hold_different_versions(
     )
     assert answered.item_id == asked.item_id
     assert asked.match_id == answered.match_id
+
+
+def test_a_key_question_answered_elsewhere_does_not_settle_a_version_question(
+    cfg, music, tmp_path
+):
+    """THE COST OF TELLING THE TWO QUESTIONS APART, DRIVEN AND RECORDED.
+
+    One list line resolves to a KEY question on a machine holding that exact
+    version at another key, and to a VERSION question on a machine holding only
+    another version. Those are two questions: the first asks "is your 03A copy of
+    this remix the record", the second asks "is your extended cut the record",
+    and the answers are not interchangeable. So they are two items, an answer
+    exported from the first does not settle the second, and the second machine
+    asks its own question.
+
+    THE ROUND THAT MADE THEM ONE ITEM PAID FOR IT IMMEDIATELY, which is why this
+    is the direction chosen: an acceptance of the version question came back
+    MATCHED against the relative minor the moment the library gained one, with
+    the accepted file gone from ``paths``. The residual titled "A question
+    answered on one machine does not settle a different question about the same
+    line" records what is given up.
+    """
+    line = match.read_tidal_tracks(
+        [{"id": "1", "title": "Sun Path", "version": "Nightwave Remix",
+          "key": "08A", "artist": {"name": "Aurora Bloom"}}]
+    )
+
+    def library(name: str, room_id: str) -> match.LibraryIndex:
+        room = tmp_path / f"cost{room_id}"
+        room.mkdir(parents=True, exist_ok=True)
+        hold(room, name)
+        return index_of(room)
+
+    def settled(index, store) -> match.TrackMatch:
+        return match_cli.adjudicate(
+            store,
+            resolve(line, index),
+            handler_key="acquire.match.run",
+            suppresses=nothing_suppressed,
+            suppression_id=no_identifier,
+        ).matches[0]
+
+    keyed = library("03A - 124 - Aurora Bloom - Sun Path (Nightwave Remix)", "k")
+    versioned = library("08A - 124 - Aurora Bloom - Sun Path (Extended)", "v")
+
+    with review.open_store(cfg, path=tmp_path / "k.sqlite3") as store_k:
+        asked = settled(keyed, store_k)
+        assert asked.why is match.Why.KEY_DIFFERS
+        review.resolve(
+            store_k, asked.item_id, review.Verdict.REJECTED, actor="phillip"
+        )
+        document = review.export_document(store_k)
+
+    with review.open_store(cfg, path=tmp_path / "v.sqlite3") as store_v:
+        fresh = settled(versioned, store_v)
+        assert fresh.why is match.Why.VERSION_DIFFERS
+        assert fresh.item_id != asked.item_id
+        review.import_document(store_v, document, actor="importer")
+        after = settled(versioned, store_v)
+
+    # THE IMPORTED ANSWER IS NOT APPLIED, and the row stays a question rather
+    # than being decided by something nobody asked here.
+    assert (after.state, after.why) == (
+        match.MatchState.NEEDS_REVIEW,
+        match.Why.VERSION_DIFFERS,
+    )
+    assert after.item_id == fresh.item_id
+    # ONE ``match_id`` ACROSS BOTH, which is the property that did not change:
+    # the two machines agree about which RECORD this row is, and disagree only
+    # about which question they were able to put.
+    assert asked.match_id == after.match_id
 
 
 def test_a_run_blocked_by_an_unapplicable_verdict_names_the_verb_that_can_act(
@@ -3640,3 +3860,657 @@ def test_a_text_document_and_a_plain_text_file_read_the_same(tmp_path):
 def test_the_naming_template_the_index_uses_is_the_declared_one():
     """A second template here would read the library by a convention nobody writes."""
     assert naming.NameTemplate().head_fields == ("key", "bpm")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 6: the identity of a QUESTION, and the coefficients nothing was reading
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def keyed_list(tmp_path, name: str, **fields) -> str:
+    """One provider row as a list document, so the key travels in its own field."""
+    row = {"id": "1", "title": "Sun Path", "artist": {"name": "Aurora Bloom"}}
+    row.update(fields)
+    return write_list(
+        tmp_path,
+        json.dumps({"list": 1, "origin": match.TIDAL, "tracks": [row]}),
+        name,
+    )
+
+
+def test_a_version_answer_never_settles_a_key_question_about_the_same_line(
+    cfg, music, tmp_path
+):
+    """THE DEFECT THE LAST ROUND INTRODUCED, DRIVEN THROUGH THE REAL VERBS.
+
+    Putting the LIST's key on every question stopped the identity moving with the
+    disk and collapsed two questions onto one item. The whole sequence, in one
+    library, with one list line:
+
+    The list asks for ``Sun Path`` at 03A. The library holds only the extended
+    mix, so the run asks a VERSION question. Somebody answers it: yes, my
+    extended mix is that record. The run reports MATCHED with the extended mix in
+    ``paths``, which is right.
+
+    Then the library gains the plain cut at 03B, the RELATIVE MINOR of the key
+    the list asked for and the exact trap ``Why.KEY_RELATIVE`` exists to catch.
+    With one item for both questions, the next run applied the version answer to
+    a key question nobody had asked: MATCHED, exit zero, no warning, ``paths``
+    carrying the 03B file, and the extended mix the person had actually pointed
+    at gone from them.
+
+    So the third run has to be a QUESTION, under a DIFFERENT item, and the file
+    the person accepted must not be reported as this record at a key nobody
+    checked.
+    """
+    hold(music, "05B - 124 - Aurora Bloom - Sun Path (Extended Mix)")
+    path = keyed_list(tmp_path, "relative.json", key="03A")
+
+    code, asked = drive(["match", "run", path])
+    assert code == int(ExitCode.PENDING_HUMAN)
+    version_row = asked["data"]["needs_review"][0]
+    assert version_row["why"] == str(match.Why.VERSION_DIFFERS)
+    version_item = version_row["review_item"]
+    drive(["review", "resolve", version_item, "--verdict", "accepted"])
+
+    _code, settled = drive(["match", "run", path])
+    accepted = settled["data"]["matched"][0]
+    assert accepted["why"] == str(match.Why.VERDICT_ACCEPTED)
+    assert [Path(p).name for p in accepted["paths"]] == [
+        "05B - 124 - Aurora Bloom - Sun Path (Extended Mix).flac"
+    ]
+
+    hold(music, "03B - 124 - Aurora Bloom - Sun Path")
+    code, after = drive(["match", "run", path])
+    assert code == int(ExitCode.PENDING_HUMAN), (
+        "the version answer settled a key question nobody asked"
+    )
+    assert after["data"]["matched"] == []
+    key_row = after["data"]["needs_review"][0]
+    assert key_row["why"] == str(match.Why.KEY_RELATIVE)
+    assert key_row["review_item"] != version_item
+    assert key_row["paths"] == []
+    # BOTH ITEMS ARE IN THE STORE, one answered and one open, which is what two
+    # questions look like.
+    assert len(queue_items(cfg)) == 2
+
+
+def test_two_versions_of_one_recording_are_two_questions_and_two_answers(
+    cfg, music, tmp_path
+):
+    """THE SAME COLLAPSE ONE FIELD OVER, and nothing was asserting this either.
+
+    ``Sun Path (Extended Mix)`` and ``Sun Path (Radio Edit)`` are two records. The
+    library holds neither and holds a third version, so each line is its own
+    version question. With the version out of the item identity they are one
+    item: answer about the extended mix and the radio edit comes back MATCHED,
+    carrying the paths of whatever the first answer named.
+    """
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Nightwave Remix)")
+    both = write_list(
+        tmp_path,
+        "Aurora Bloom - Sun Path (Extended Mix)\nAurora Bloom - Sun Path (Radio Edit)\n",
+        "versions.txt",
+    )
+    _code, asked = drive(["match", "run", both])
+    rows = {row["version"]: row for row in asked["data"]["needs_review"]}
+    assert set(rows) == {"Extended Mix", "Radio Edit"}
+    assert rows["Extended Mix"]["review_item"] != rows["Radio Edit"]["review_item"]
+
+    drive(
+        ["review", "resolve", rows["Extended Mix"]["review_item"],
+         "--verdict", "accepted",
+         "--option", rows["Extended Mix"]["candidates"][0]["id"]]
+    )
+    code, after = drive(["match", "run", both])
+    assert code == int(ExitCode.PENDING_HUMAN)
+    assert [row["version"] for row in after["data"]["matched"]] == ["Extended Mix"]
+    assert [row["version"] for row in after["data"]["needs_review"]] == ["Radio Edit"]
+
+
+def test_the_set_that_names_the_key_questions_is_what_the_identity_reads():
+    """IT WAS DEAD AND ITS DOCSTRING CLAIMED A PROPERTY THE CODE HAD LOST.
+
+    Repository-wide, ``KEY_QUESTIONS`` was named by its own definition and by the
+    ``__all__`` entry and by nothing else, while its comment said it was read by
+    the item identity so that a key question and a version question are two
+    items. Both clauses were false. It is read by ``question_shape`` now, and a
+    why leaving it stops being a key question, which is what this asserts.
+    """
+    assert match.KEY_QUESTIONS == {match.Why.KEY_RELATIVE, match.Why.KEY_DIFFERS}
+    for why in match.KEY_QUESTIONS:
+        assert match.question_shape(why) == match.ASKS_ABOUT_KEY
+    # AND NOTHING ELSE IS A KEY QUESTION, so the set is a boundary rather than a
+    # list of examples.
+    for why in (match.Why.VERSION_DIFFERS, match.Why.TITLE_APPROXIMATE,
+                match.Why.READING_AMBIGUOUS):
+        assert match.question_shape(why) != match.ASKS_ABOUT_KEY
+
+
+def test_every_identifier_this_module_generates_is_the_declared_width(
+    cfg, music, tmp_path
+):
+    """SIXTY-FOUR BITS, ASSERTED, because narrowing it is invisible to behaviour.
+
+    ``match_id``, ``candidate_id`` and ``option_id`` all come out of one digest.
+    Halving the width to 32 bits left the whole suite green, because a suite
+    drives tens of identifiers and a collision needs tens of thousands. Main's
+    own residual about two identity generators, 16 bits and 64, records exactly
+    this class of unargued width for a run identifier; this is a third generator
+    nobody had counted.
+    """
+    assert match.DIGEST_WIDTH == 16
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Nightwave Remix)")
+    path = write_list(
+        tmp_path,
+        "Aurora Bloom - Sun Path (Extended Mix)\nNova Reef - Tide Line\n",
+        "widths.txt",
+    )
+    _code, envelope = drive(["match", "run", path])
+    seen: list[str] = []
+    for state in ("matched", "needs_review", "missing"):
+        for row in envelope["data"][state]:
+            seen.append(row["id"])
+            seen.extend(candidate["id"] for candidate in row["candidates"])
+            seen.extend(option["id"] for option in row["acquisition"])
+    assert len(seen) >= 4
+    for identifier in seen:
+        prefix, _, digest = identifier.partition("_")
+        assert prefix in {"mt", "cd", "aq"}
+        assert len(digest) == match.DIGEST_WIDTH, identifier
+        assert set(digest) <= set("0123456789abcdef")
+
+
+def test_a_resemblance_below_the_floor_is_missing_rather_than_a_question(
+    cfg, music, tmp_path
+):
+    """THE FLOOR IS A PRODUCT DIAL AND NOTHING WAS PINNING IT.
+
+    Lowering it from 82 to 41 left the whole suite green, and the floor decides
+    which rows become questions at all. Its own comment says the cost of a low
+    one is "noise in the queue", which is the very thing the residual titled "The
+    ambiguous reading class is queued as a question and does not gate the run"
+    has just taken a product decision about.
+
+    The pinned example is the one measured by the residual titled "The index
+    reads a file's title one way, so the disk side of the one-word dash stays
+    narrow": ``Sun Path`` against a library holding only ``Sun Path
+    Instrumental`` scores 76.4.
+    The score is computed here rather than asserted from memory, so this row
+    stays a discriminator if the scorer ever changes.
+    """
+    from rapidfuzz import fuzz
+
+    score = fuzz.token_sort_ratio(
+        match.recording_token("Aurora Bloom", "Sun Path"),
+        match.recording_token("Aurora Bloom", "Sun Path Instrumental"),
+    )
+    assert 41 <= score < match.APPROXIMATE_FLOOR, (
+        "this row no longer sits between the two floors it is meant to separate"
+    )
+
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path Instrumental")
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path\n", "floor.txt")
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.OK)
+    assert envelope["data"]["needs_review"] == []
+    assert envelope["data"]["missing"][0]["why"] == str(match.Why.NOT_IN_LIBRARY)
+
+
+def test_the_scorer_is_capped_at_the_same_number_the_offer_is(cfg, music, tmp_path):
+    """THE CONSTANT IS SPENT TWICE AND ONLY THE SECOND SPEND WAS MEASURED.
+
+    Its comment argues at length that the limit is given to the scorer AND used
+    to truncate the candidate list, because one recording can be held as several
+    versions. Multiplying the scorer's limit by four left the suite green, so the
+    first spend was a written justification with nothing behind it.
+
+    The two spends are told apart by the WITHHELD COUNT. Eight resembling
+    recordings held as one version each: capped at the scorer, five candidates
+    are built and nothing is kept back; uncapped, eight are built, five shown and
+    three reported withheld. A run that says three were kept back over a library
+    of one-version recordings is a run whose scorer limit is not this constant.
+    """
+    for suffix in "ABCDEFGH":
+        hold(music, f"08A - 124 - Aurora Bloom - Sun Path {suffix}")
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path\n", "cap.txt")
+    _code, envelope = drive(["match", "run", path])
+    row = envelope["data"]["needs_review"][0]
+    assert row["why"] == str(match.Why.TITLE_APPROXIMATE)
+    assert len(row["candidates"]) == match.APPROXIMATE_LIMIT
+    assert row["candidates_withheld"] == 0, (
+        "more recordings reached the candidate builder than the scorer limit allows"
+    )
+    assert [
+        warning for warning in envelope["warnings"]
+        if warning["code"] == match_cli.CANDIDATES_WITHHELD
+    ] == []
+
+
+def test_an_unspecific_acceptance_stalls_the_run_the_same_way_a_gone_candidate_does(
+    cfg, music, tmp_path
+):
+    """BOTH MEMBERS OF ``STALLED`` EARN THEIR PLACE AND ONLY ONE WAS PINNED.
+
+    Dropping ``VERDICT_UNSPECIFIC`` from that set left the whole suite green
+    while the row it names lost everything the set buys: no
+    ``verdict-unapplicable`` warning, no ``review clear`` remedy, and a place in
+    the ANSWERABLE half of the pending action, which tells a caller to list the
+    queue and record a verdict on an item that is RESOLVED in the store,
+    invisible to ``review list`` and refused by ``review resolve``. That dead end
+    is the one ``_pending``'s own docstring says it exists to prevent.
+    """
+    hold(music, "08A - 124 - Aurora Bloom - Tide Line (Someone Remix)")
+    hold(music, "03A - 124 - Aurora Bloom - Tide Line (Another Remix)")
+    path = write_list(tmp_path, "Aurora Bloom - Tide Line (Extended Mix)\n", "vague.txt")
+    _code, first = drive(["match", "run", path])
+    item_id = first["data"]["needs_review"][0]["review_item"]
+    assert len(first["data"]["needs_review"][0]["candidates"]) == 2
+    drive(["review", "resolve", item_id, "--verdict", "accepted"])
+
+    code, after = drive(["match", "run", path])
+    assert code == int(ExitCode.PENDING_HUMAN)
+    row = after["data"]["needs_review"][0]
+    assert row["why"] == str(match.Why.VERDICT_UNSPECIFIC)
+    warned = [
+        w for w in after["warnings"] if w["code"] == match_cli.VERDICT_UNAPPLICABLE
+    ]
+    assert [(w["item"], w["remedy"]) for w in warned] == [
+        (item_id, match_cli.CLEAR_VERB)
+    ]
+    pending = after["pending_human_action"]
+    assert pending["verify_verb"] == match_cli.CLEAR_VERB
+    assert f"crate review clear {item_id}" in pending["steps"]
+    # NOT FILED AS ANSWERABLE. ``review resolve`` refuses it, so a step telling
+    # somebody to record a verdict on it is a printed instruction that fails.
+    assert not any(step.startswith("list the version-match queue") for step in pending["steps"])
+
+
+def test_an_unanswered_item_is_re_offered_so_its_candidates_follow_the_library(
+    cfg, music, tmp_path
+):
+    """AN OPEN ITEM WHOSE OPTIONS ARE FROZEN AT THE FIRST RUN OFFERS FICTION.
+
+    ``adjudicate`` re-offers an item that exists but carries no verdict. Dropping
+    that condition left the suite green and left the stored payload and options
+    at whatever the library held the first time the line was seen, so ``review
+    show`` offered a person candidates that no longer exist while the library
+    moved underneath them. ``review.offer`` is the thing that refreshes an open
+    item, and it only gets the chance if it is called.
+    """
+    first_file = hold(music, "08A - 124 - Aurora Bloom - Sun Path (Someone Remix)")
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path (Extended Mix)\n", "moving.txt")
+    _code, asked = drive(["match", "run", path])
+    item_id = asked["data"]["needs_review"][0]["review_item"]
+    stored = {option.option_id for option in queue_items(cfg)[0].options}
+    assert stored == {
+        candidate["id"] for candidate in asked["data"]["needs_review"][0]["candidates"]
+    }
+
+    first_file.unlink()
+    hold(music, "03A - 124 - Aurora Bloom - Sun Path (Another Remix)")
+    _code, again = drive(["match", "run", path])
+    offered = again["data"]["needs_review"][0]
+    assert offered["review_item"] == item_id
+    refreshed = queue_items(cfg)[0]
+    assert {option.option_id for option in refreshed.options} == {
+        candidate["id"] for candidate in offered["candidates"]
+    }
+    assert {option.option_id for option in refreshed.options} != stored, (
+        "the item kept offering a candidate the library no longer holds"
+    )
+    assert refreshed.payload["candidates"] == offered["candidates"]
+
+
+def test_a_tombstone_over_the_file_being_offered_as_the_answer_is_reported(
+    cfg, music, tmp_path
+):
+    """THE SILENCE THE LAST ROUND CREATED, in both states it survives into.
+
+    The warning loop asks under ``Wanted.addresses``, which since the round that
+    narrowed it walks only the reading the LIST spelled. A candidate is by
+    construction a version the list did NOT spell, which is what makes it a
+    question, so a tombstone standing over the file being OFFERED as the answer
+    was reported in no state at all.
+
+    Driven: a tombstone under ``Sun Path (Live)``, the library still holding that
+    file, and the list line ``Aurora Bloom - Sun Path - Live``. The first run
+    offered that exact file and said nothing about the tombstone. Accepting it
+    produced a matched row with an EMPTY warning array. This file's own docstring
+    promises the opposite in as many words: a tombstone over a version the
+    library actually holds is a stale record, and saying so is cheaper than
+    letting somebody discover it during a deletion.
+    """
+    recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
+        kind=match.TOMBSTONE_KIND,
+        identity=u24_records("Aurora Bloom", "Sun Path (Live)"),
+        actor="deletion",
+    )
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Live)")
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path - Live\n", "stale.txt")
+
+    code, asked = drive(["match", "run", path])
+    assert code == int(ExitCode.OK)
+    row = asked["data"]["needs_review"][0]
+    assert row["why"] == str(match.Why.READING_AMBIGUOUS)
+    stale = [w for w in asked["warnings"] if w["code"] == match_cli.TOMBSTONE_OVER_OWNED]
+    assert [w["suppression"] for w in stale] == [recorded.suppression_id]
+
+    drive(
+        ["review", "resolve", row["review_item"], "--verdict", "accepted",
+         "--option", row["candidates"][0]["id"]]
+    )
+    _code, settled = drive(["match", "run", path])
+    assert settled["data"]["matched"][0]["why"] == str(match.Why.VERDICT_ACCEPTED)
+    still = [w for w in settled["warnings"] if w["code"] == match_cli.TOMBSTONE_OVER_OWNED]
+    assert [w["suppression"] for w in still] == [recorded.suppression_id], (
+        "the row that reports ownership of a tombstoned file says nothing about it"
+    )
+
+
+def test_one_tombstone_over_one_row_is_one_warning_however_it_is_reached(
+    cfg, music, tmp_path
+):
+    """The row's own address and the offered file can be the same tombstone.
+
+    A list spelling ``Sun Path (Live)`` addresses that string itself AND is
+    offered the file held under it, so both loops find one suppression for one
+    row. Two warnings about one stale record is one thing to fix wearing two
+    hats.
+    """
+    recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
+        kind=match.TOMBSTONE_KIND,
+        identity=u24_records("Aurora Bloom", "Sun Path (Live)"),
+        actor="deletion",
+    )
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Live)")
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path (Live)\n", "once.txt")
+    _code, envelope = drive(["match", "run", path])
+    stale = [w for w in envelope["warnings"] if w["code"] == match_cli.TOMBSTONE_OVER_OWNED]
+    assert [w["suppression"] for w in stale] == [recorded.suppression_id]
+
+
+#: U24's ``cratekit.core.tombstone.VERSION_WORDS``, WRITTEN OUT INDEPENDENTLY.
+#: Not derived from ``match.VERSION_WORDS``, because a pin computed from the
+#: thing it pins asserts that the code agrees with itself, which is the shape
+#: that let three defects through in this unit already. The gated drift guard
+#: compares this side against the real module the day it merges; until then this
+#: literal is the only thing standing between the two copies.
+U24_VERSION_WORDS: frozenset[str] = frozenset(
+    {
+        "acapella", "acoustic", "alternate", "bootleg", "club", "cut", "demo",
+        "dub", "edit", "extended", "flip", "instrumental", "interlude", "live",
+        "mashup", "mix", "original", "radio", "remaster", "remastered", "remix",
+        "reprise", "rework", "session", "unplugged", "version", "vip",
+    }
+)
+
+#: The words that were in this module's list and in nobody else's, and the ones
+#: that were in the domain module's and not here. The second column is the one
+#: that cost: every word in it reported MISSING for a file the library held.
+VOCABULARY_GAP: tuple[str, ...] = (
+    "acapella", "alternate", "club", "cut", "flip", "interlude", "mashup",
+    "original", "radio", "session", "unplugged",
+)
+
+
+def test_the_version_vocabulary_is_u24s_element_for_element():
+    """ONE QUESTION, ONE VOCABULARY, and there were two of them.
+
+    "Is this word a version designation" is asked by the deletion pass about a
+    rekordbox ``Subtitle`` and by this module about a dash tail. Two lists
+    answering it is the same defect as two spellings of the tombstone identity,
+    one level down, and it is invisible to any suite that drives one side.
+
+    ``rerecorded`` is the one deliberate difference and it is a HEAD word rather
+    than a tail word: this module has a leading-word convention because the
+    public playlist API ships "Remastered 2011", and the domain module has no use
+    for one.
+    """
+    assert match.VERSION_WORDS == U24_VERSION_WORDS
+    assert set(VOCABULARY_GAP) < match.VERSION_WORDS
+    # DERIVED, so a word cannot be added to one and forgotten in the other.
+    assert match._DASH_VERSIONS == match.VERSION_WORDS | match._DASH_VERSION_HEADS
+    assert match._DASH_VERSIONS - match.VERSION_WORDS == {"rerecorded"}
+
+
+@pytest.mark.parametrize("word", VOCABULARY_GAP)
+def test_a_word_only_the_domain_vocabulary_knew_no_longer_re_acquires_a_held_file(
+    cfg, music, tmp_path, word
+):
+    """THE MEASURED COST OF THE SECOND VOCABULARY, one row per missing word.
+
+    With the library holding ``Aurora Bloom - Sun Path (Unplugged)`` and a list
+    spelling ``Aurora Bloom - Sun Path - Unplugged``, the run reported MISSING
+    with an acquisition option and went and fetched a file already on the shelf,
+    at exit zero, with nothing asked and nothing warned. That is verbatim what
+    ``_is_a_version``'s docstring calls "the other half of the same mistake", and
+    it was live for eleven words while ``Live`` asked a question.
+
+    Four of the eleven landed on ``title-approximate`` instead, which is not the
+    same failure but is the same wrong question: an approximate hit offers
+    candidates from a DIFFERENT recording, so a person was asked whether some
+    other record is theirs rather than whether their unplugged cut is this one.
+    """
+    hold(music, f"08A - 124 - Aurora Bloom - Sun Path ({word.title()})")
+    path = write_list(
+        tmp_path, f"Aurora Bloom - Sun Path - {word.title()}\n", f"{word}.txt"
+    )
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.OK)
+    assert envelope["data"]["missing"] == [], f"{word} re-acquires a file on the shelf"
+    row = envelope["data"]["needs_review"][0]
+    assert row["why"] == str(match.Why.READING_AMBIGUOUS)
+    assert row["acquisition"] == []
+    assert [candidate["version"] for candidate in row["candidates"]] == [word.title()]
+
+
+def test_the_pending_summary_counts_every_outstanding_question_not_only_the_gating_ones(
+    cfg, music, tmp_path
+):
+    """THE SENTENCE A CALLER READS UNDERCOUNTED THE QUEUE SIX FOLD.
+
+    The ungated class is filtered out of the GATE on purpose. It was filtered out
+    of the SENTENCE too, so a run whose ``needs_review`` array held 24 rows
+    printed "4 tracks ... need a person" and the other 20 existed only on the
+    warning channel. The caller who reads a summary is exactly the caller who
+    does not read every warning, so that is R11's silence wearing this unit's own
+    fix as a costume.
+
+    What must NOT change is the exit status: the ungated rows still do not gate,
+    which is the decision the ambiguous-reading residual records.
+    """
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Someone Remix)")
+    for tail in ("Live", "Edit", "Dub"):
+        hold(music, f"08A - 124 - Nova Reef - Tide Line ({tail})")
+    path = write_list(
+        tmp_path,
+        "Aurora Bloom - Sun Path (Extended Mix)\n"
+        "Nova Reef - Tide Line - Live\n"
+        "Nova Reef - Tide Line - Edit\n"
+        "Nova Reef - Tide Line - Dub\n",
+        "counts.txt",
+    )
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.PENDING_HUMAN)
+    assert len(envelope["data"]["needs_review"]) == 4
+    summary = envelope["pending_human_action"]["summary"]
+    assert summary.startswith("1 tracks")
+    assert "3 further questions are queued and did not block this run" in summary
+    assert "4 outstanding in all" in summary
+    assert any("3 further questions" in step for step in envelope["pending_human_action"]["steps"])
+
+
+def test_an_ungated_question_on_its_own_still_leaves_the_run_at_exit_zero(
+    cfg, music, tmp_path
+):
+    """The count is in the sentence and not in the gate, which is the whole point."""
+    for tail in ("Live", "Edit"):
+        hold(music, f"08A - 124 - Nova Reef - Tide Line ({tail})")
+    path = write_list(
+        tmp_path,
+        "Nova Reef - Tide Line - Live\nNova Reef - Tide Line - Edit\n",
+        "onlyungated.txt",
+    )
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.OK)
+    assert envelope["pending_human_action"] is None
+    assert len(envelope["data"]["needs_review"]) == 2
+    assert len(
+        [w for w in envelope["warnings"] if w["code"] == match_cli.READING_UNSETTLED]
+    ) == 2
+
+
+def test_rejecting_an_ambiguous_reading_can_skip_rather_than_acquire(
+    cfg, music, tmp_path
+):
+    """THE COUNTEREXAMPLE TO A REASON THAT WAS WRITTEN AS IF MEASURED.
+
+    The ambiguous-reading residual rejected a proposed narrowing on the ground
+    that the two readings "ALWAYS differ in acquisition": the question is asked
+    exactly when the library holds the confirming file, so accepting means the
+    library has it and rejecting means going and getting it.
+
+    That is false whenever a tombstone stands over the reading the LIST spelled.
+    Accepting holds; rejecting reaches ``apply_verdict``'s tombstone consult and
+    produces SUPPRESSED with nothing to acquire. So for this class the two
+    answers are hold versus SKIP, and a narrowing on "genuinely different
+    acquisitions" would drop it outright rather than leaving it untouched. The
+    control below is the same pair with no tombstone, which is where the reason
+    does hold.
+    """
+    review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
+        kind=match.TOMBSTONE_KIND,
+        identity=u24_records("Aurora Bloom", "Sun Path - Live"),
+        actor="deletion",
+    )
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Live)")
+    hold(music, "08A - 124 - Nova Reef - Tide Line (Live)")
+    tombstoned = write_list(tmp_path, "Aurora Bloom - Sun Path - Live\n", "skip.txt")
+    control = write_list(tmp_path, "Nova Reef - Tide Line - Live\n", "fetch.txt")
+
+    for path, verdict in ((tombstoned, "accepted"), (control, "accepted")):
+        _code, asked = drive(["match", "run", path])
+        row = asked["data"]["needs_review"][0]
+        drive(
+            ["review", "resolve", row["review_item"], "--verdict", verdict,
+             "--option", row["candidates"][0]["id"]]
+        )
+    _code, held = drive(["match", "run", tombstoned])
+    assert held["data"]["matched"][0]["why"] == str(match.Why.VERDICT_ACCEPTED)
+    assert len(held["data"]["matched"][0]["paths"]) == 1
+
+    # Now the other answer to the same question, on both lists.
+    for path in (tombstoned, control):
+        item_id = drive(["match", "run", path])[1]["data"]["matched"][0]["review_item"]
+        drive(["review", "clear", item_id])
+        _code, asked = drive(["match", "run", path])
+        row = asked["data"]["needs_review"][0]
+        drive(["review", "resolve", row["review_item"], "--verdict", "rejected"])
+
+    _code, skipped = drive(["match", "run", tombstoned])
+    assert skipped["data"]["matched"] == []
+    assert skipped["data"]["missing"] == []
+    assert skipped["data"]["needs_review"] == []
+    assert [w["code"] for w in skipped["warnings"]] == [match_cli.SUPPRESSED_WARNING]
+
+    _code, fetched = drive(["match", "run", control])
+    row = fetched["data"]["missing"][0]
+    assert row["why"] == str(match.Why.VERDICT_REJECTED)
+    assert len(row["acquisition"]) == 1
+
+
+def test_the_dash_spelling_re_acquires_a_deleted_version_and_says_nothing_about_it(
+    cfg, music, tmp_path
+):
+    """WHAT THE ENUMERATION RESIDUAL COSTS, MEASURED RATHER THAN ASSERTED.
+
+    That entry says the cost is taken "because the run says what it is about to
+    get". Driven with the file actually gone from the disk, the run says what it
+    is about to GET and says nothing about the DELETION: the dash-spelled list
+    exits 0 with a missing row, an acquisition query, and ZERO warnings, so the
+    row is indistinguishable from any other missing track in a 200 row list.
+
+    The bracket-spelled list is the control and is the shape the enumeration does
+    reach: same tombstone, same absent file, all three arrays empty and a warning
+    naming the suppression. The difference between the two is the whole residual.
+    """
+    recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
+        kind=match.TOMBSTONE_KIND,
+        identity=u24_records("Aurora Bloom", "Sun Path (Live)"),
+        actor="deletion",
+    )
+    bracketed = write_list(tmp_path, "Aurora Bloom - Sun Path (Live)\n", "bracket.txt")
+    dashed = write_list(tmp_path, "Aurora Bloom - Sun Path - Live\n", "dash.txt")
+
+    code, reached = drive(["match", "run", bracketed])
+    assert code == int(ExitCode.OK)
+    assert reached["data"] == {"matched": [], "needs_review": [], "missing": []}
+    assert [(w["code"], w["suppression"]) for w in reached["warnings"]] == [
+        (match_cli.SUPPRESSED_WARNING, recorded.suppression_id)
+    ]
+
+    code, missed = drive(["match", "run", dashed])
+    assert code == int(ExitCode.OK)
+    row = missed["data"]["missing"][0]
+    assert row["why"] == str(match.Why.NOT_IN_LIBRARY)
+    assert [option["query"] for option in row["acquisition"]] == [
+        "Aurora Bloom Sun Path - Live"
+    ]
+    assert missed["warnings"] == [], (
+        "the run that undoes a deliberate deletion now says so, and this entry's "
+        "cost has changed"
+    )
+
+
+#: A residual cited the old way, built from pieces so this pattern does not match
+#: its own source line. Two branches have already given two different findings one
+#: number, so a citation by number is a citation that stops resolving silently.
+_BY_NUMBER = re.compile(r"\bR" + "-" + r"[0-9]+")
+
+#: The files this unit owns. Other units cite their own residuals by number and
+#: that is their business; what this guard is about is the three files whose
+#: citations were measured to be pointing at six colliding numbers.
+UNIT_FILES = (MATCH_SOURCE, MATCH_CLI_SOURCE, Path(__file__).resolve())
+
+
+def test_every_residual_this_unit_cites_is_a_heading_that_exists():
+    """A CITATION BY TITLE IS ONLY BETTER THAN A NUMBER IF SOMETHING CHECKS IT.
+
+    Every title in ``RESIDUALS`` is matched against the headings in
+    ``docs/residual-findings.md``, so a renumber leaves the citations working and
+    a RETITLE fails a test rather than leaving a sentence pointing at nothing.
+    """
+    headings = {
+        line.split(". ", 1)[1].strip()
+        for line in RESIDUALS_DOC.read_text(encoding="utf-8").splitlines()
+        if line.startswith("## ") and ". " in line
+    }
+    missing = [title for title in RESIDUALS if title not in headings]
+    assert missing == [], f"cited titles that are not headings: {missing}"
+
+
+def test_every_residual_title_this_unit_names_is_actually_cited_somewhere():
+    """A REGISTER THAT OUTLIVES ITS CITATIONS IS A LIST NOBODY MAINTAINS."""
+    prose = "\n".join(path.read_text(encoding="utf-8") for path in UNIT_FILES)
+    # The register itself is prose in this file, so a title is cited when it
+    # appears somewhere OTHER than the tuple that declares it.
+    # COMMENT MARKERS AND QUOTES COME OFF FIRST. A title is written across two
+    # adjacent string literals in the register above and across several ``#:``
+    # comment lines in the source, so a raw whitespace collapse finds neither.
+    flattened = re.sub(r"\s+", " ", re.sub(r"#:?", " ", prose).replace('"', " "))
+    for title in RESIDUALS:
+        assert flattened.count(re.sub(r"\s+", " ", title)) >= 2, title
+
+
+def test_no_residual_is_cited_by_number_anywhere_in_this_unit():
+    """THE MECHANISM THAT ALREADY BROKE ONCE ON THIS WAVE, closed.
+
+    A trial merge against main reports six residual numbers colliding with
+    different content on each side, and this unit's source and tests cited four
+    of them a total of eleven times. After the merge every one of those points at
+    a different subject, and nothing anywhere fails.
+    """
+    for path in UNIT_FILES:
+        found = _BY_NUMBER.findall(path.read_text(encoding="utf-8"))
+        assert found == [], f"{path.name} cites a residual by number: {found}"

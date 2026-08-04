@@ -897,11 +897,34 @@ drives it at resolution and
 `test_neither_reading_of_an_ambiguous_title_composes_the_other_ones_address`
 asserts the symmetry on the object.
 
-**What that costs.** A deliberate deletion of `Sun Path (Live)` is undone when a
-later list spells the record `Sun Path - Live`: the version reports MISSING and
-acquisition fetches it back. That is the direction `tombstone_fold` says to take,
-because the run says what it is about to get, and the alternative withholds music
-somebody wants and says nothing.
+**What that costs, MEASURED, because the sentence here was an argument and not a
+measurement.** It said the version "reports MISSING and acquisition fetches it
+back", and that the direction is acceptable "because the run says what it is
+about to get". Driven, with the file actually gone from the disk and a tombstone
+recorded from the row `Sun Path (Live)`:
+
+| the list spells | exit | arrays | warnings |
+| --- | --- | --- | --- |
+| `Aurora Bloom - Sun Path (Live)` | 0 | all three empty | `acquisition-suppressed`, naming the suppression |
+| `Aurora Bloom - Sun Path - Live` | 0 | `missing / not-in-library` | NONE |
+
+The dash row carries an acquisition query of `Aurora Bloom Sun Path - Live`. So
+the run says what it is about to GET and says nothing at all about the DELETION,
+and the row is indistinguishable from any other missing track in a 200 row list.
+The justification is therefore narrower than it read: the cost is not "a reported
+re-acquisition", it is a silent one, and what makes it acceptable is only that
+the alternative is an over-eager withhold that is also silent and is worse.
+`test_the_dash_spelling_re_acquires_a_deleted_version_and_says_nothing_about_it`
+drives both rows and asserts the empty warning array, so the day this stops being
+silent is the day that test fails.
+
+**How often, priced here rather than left to another entry.** The class is a list
+spelling a version after a dash where the deletion recorded a bracketed one. The
+ambiguous-reading residual measures the same spelling class and calls `- Edit`,
+`- Mix` and `- Live` "three of the commonest spellings a public playlist ships",
+so this is not a rare shape: it is as common as that entry says, and only the
+overlap with a standing tombstone narrows it. One entry pricing the class as
+ubiquitous while the entry carrying its cost did not price it at all was the gap.
 
 **Not fixed by widening.** Adding shapes is cheap and adding the wrong one is not:
 every extra composed spelling is another string a deletion of somebody else's
@@ -1053,11 +1076,31 @@ applies to, `_pending` filters it, and `READING_UNSETTLED` reports each such row
 on the warning channel with its item identifier and `review.list` as the remedy.
 
 The alternative offered was to narrow the question to cases where the two readings
-lead to genuinely different acquisitions. It was rejected because it is vacuous:
-the question is asked exactly when the library holds the confirming file, and at
-that point accepting means the library already holds the record and rejecting
-means going and getting it, so the two readings ALWAYS differ in acquisition.
-Narrowing on that condition removes no question at all.
+lead to genuinely different acquisitions. It is not taken, and the reason
+originally written here was false and was written as if it had been measured. It
+said the two answers "ALWAYS differ in acquisition", because the question is asked
+exactly when the library holds the confirming file, so accepting means the library
+has the record and rejecting means going and getting it.
+
+**The counterexample, driven.** List line `Aurora Bloom - Sun Path - Live`, the
+library holding `Sun Path (Live)`, and a tombstone standing over the reading the
+LIST spelled. ACCEPT gives `matched` with one path. REJECT reaches
+`apply_verdict`'s tombstone consult and gives `suppressed / tombstoned` with ZERO
+acquisitions. The control, the same pair with no tombstone, gives `missing /
+verdict-rejected` with one acquisition. So for this class the two answers are hold
+versus SKIP rather than hold versus fetch, and a narrowing written on "genuinely
+different acquisitions" would drop the class outright rather than leave it
+untouched. `test_rejecting_an_ambiguous_reading_can_skip_rather_than_acquire`
+drives all three.
+
+**What can be measured instead, and it is what the decision actually rests on.**
+The narrowing needs a condition evaluated BEFORE the question is asked, and the
+only thing available at that point is which spelling the list used and what the
+library holds. Neither says what a person will answer, and both of the two answers
+are reachable for every row in the class. So the narrowing has no input: it would
+have to guess the answer to decide whether to ask the question. That is a
+statement about the information available, which is checkable, rather than a
+claim about acquisitions that turned out to be false for a whole subclass.
 
 **What is not given up.** The row stays in `needs_review`, so nothing counts it
 owned and nothing acquires it. The item is still offered, so the question is
@@ -1082,3 +1125,134 @@ at a time, so "a bare `- Live` tail in my lists means a live version" is a singl
 decision that settles every row it applies to, or a person decides this class
 should be resolved by a policy setting rather than by a question. Both are surface
 decisions and belong on an issue rather than in this unit.
+
+---
+
+## R-26. A question answered on one machine does not settle a different question about the same line
+
+**Found:** by the sixth U16 review, 2026-08-04, as the price of closing that
+review's first finding. Numbered after R-25, which the same unit added. If a
+concurrent unit claims R-26 first, renumber this entry at merge; the content is
+what matters, not the number, and nothing cites it by number.
+
+**What the identity is now.** A review item is addressed by the list line AND by
+which question is being asked: `question_identity` carries the recording, the
+version token, the list's key and an `asks` field, and `question_shape` derives
+that field from the `Why`, reading `KEY_QUESTIONS` for the two whys that are one
+question. Nothing about the library reaches any VALUE in it.
+
+**Why the fourth field had to come back.** The round before this one made the
+identity purely list derived, which fixed a real defect and collapsed the KEY
+question and the VERSION question onto one item. Driven end to end: a list line
+asking for `Sun Path` at 03A against a library holding only the extended mix is a
+version question; somebody accepts it; the library later gains the plain cut at
+`03B`, the RELATIVE MINOR of the key the list asked for; and the next run
+reported `matched / verdict-accepted` at exit zero with the 03B file in `paths`
+and the extended mix the person had actually pointed at gone from them.
+`Why.KEY_RELATIVE` exists, in this module's own words, because 8A and 8B "look
+like agreement to anything comparing wheel positions", and it had become
+reachable only while nobody had ever accepted anything about that line.
+
+**The cost, which is this entry.** Two machines whose libraries make one list
+line ask two DIFFERENT questions now open two items. A machine holding that exact
+version at another key asks a key question; a machine holding only another
+version asks a version question; an answer exported from the first and imported
+into the second lands in the store and does not settle the second machine's
+question, which asks again. That is correct, because the second machine was never
+asked the first machine's question, and it is still a loss: a person who has
+answered "my extended cut is that record" on one machine answers a related
+question again on the other.
+
+**The same shape on one machine.** Deleting the copy that made a line a key
+question turns it into a version question under a different item, so the key
+answer sits resolved and unreachable. That is the stranding `CANDIDATE_GONE`
+exists to report, and it is not reported here, because reaching that state needs
+the item to be FOUND first and the run is now looking up a different item. What
+is NOT possible any more is the reverse, an answer being APPLIED to a question
+nobody asked, which is the failure that cannot be noticed afterwards.
+
+**Why the trade goes this way.** The two costs are not comparable, which is the
+same argument `tombstone_fold` makes one layer down. An unasked question asked
+again is visible: it is in `needs_review`, in the queue, in the pending action
+and in the warning channel. An answer applied to the wrong question is silent: it
+is a matched row at exit zero naming a file at a key nobody checked.
+
+**Pinned rather than assumed.**
+`test_a_version_answer_never_settles_a_key_question_about_the_same_line` drives
+the whole 03B sequence through the real dispatcher and the real store.
+`test_a_verdict_travels_between_two_machines_that_hold_different_versions` keeps
+the export and import property for two machines asking the SAME question over
+different files at different keys.
+`test_a_key_question_answered_elsewhere_does_not_settle_a_version_question`
+drives this entry's cost, so it is a fact somebody measured rather than a
+paragraph.
+
+**Closes when:** the review store can record that two items are the same
+DECISION, so a person answering one is offered the other rather than asked it
+cold, or the queue learns to answer a class of question once. Both are surface
+decisions and belong on an issue rather than in this unit.
+
+---
+
+## R-27. One vocabulary lives in two files until the domain module merges
+
+**Found:** by the sixth U16 review, 2026-08-04. Numbered after R-26, which the
+same unit added. If a concurrent unit claims R-27 first, renumber this entry at
+merge; nothing cites it by number.
+
+**What was wrong.** "Is this word a version designation" was answered by two
+lists. `match._DASH_VERSIONS` held 17 words and `cratekit.core.tombstone.VERSION_WORDS`
+on U24 held 27. Driven, with the library holding `Aurora Bloom - Sun Path
+(<word>)` and the list spelling `Aurora Bloom - Sun Path - <word>`:
+
+| the word | what shipped |
+| --- | --- |
+| `Unplugged` | `missing / not-in-library`, with an acquisition option |
+| `Radio`, `Acapella`, `Original`, `Club` | `needs_review / title-approximate` |
+| `Live` | `needs_review / reading-ambiguous` |
+
+The first row is verbatim the defect `_is_a_version`'s own docstring calls "the
+other half of the same mistake", still live for eleven words: the run goes and
+fetches a file the library already holds, at exit zero, with nothing asked and
+nothing warned. The four in the middle are not that failure but are the wrong
+question: an approximate hit offers candidates from a DIFFERENT recording, so the
+person is asked whether some other record is theirs.
+
+**Fixed by taking the domain layer's list.** `match.VERSION_WORDS` is U24's
+frozenset replicated element for element, and `_DASH_VERSIONS` is DERIVED from it
+plus this module's own head words, so a word added to either arrives in both.
+`rerecorded` is the one deliberate difference and it is a head word: this side
+has a leading-word convention because the public playlist API ships "Remastered
+2011" and the domain module has no use for one.
+
+**What is still residual.** Two copies exist. U24 is on its own branch, so this
+is a replica with a countdown, exactly like `TOMBSTONE_KIND` and
+`version_identity` beside it. `tests/_pending.py` carries the obligation,
+`test_the_version_vocabulary_is_u24s_element_for_element` pins the membership
+against an independently written literal, and the gated drift guard compares it
+against the real module the day it merges.
+
+**And the widening is safe in one direction only, which is worth stating because
+it is not U24's direction.** Over there a word believed wrongly composes a
+parenthetical no provider spells, so a deletion fails to stick. Here a word
+believed wrongly makes a one-word tail AMBIGUOUS rather than split, and an
+ambiguous reading is taken only when the library holds exactly that head at
+exactly that version, so a wrong word costs a question the library already had an
+answer for and never a wrong join.
+
+**Closes when:** U24 merges and this becomes `from cratekit.core.tombstone import
+VERSION_WORDS`, which is the same line the two tombstone symbols beside it are
+waiting for.
+
+---
+
+## A note on citing these entries
+
+**Cite by TITLE, never by number.** Six numbers in this file, in the R-17 to R-23
+range, were claimed by two branches at once with DIFFERENT CONTENT on each side,
+because two units appended here in parallel. Every citation by number in source
+or tests therefore points at a different subject the moment either side
+renumbers, and that break is invisible: the sentence still reads perfectly and
+cites the wrong finding. U16's source and tests cite by title only, and
+`test_no_residual_is_cited_by_number_anywhere_in_this_unit` and
+`test_every_residual_this_unit_cites_is_a_heading_that_exists` keep it that way.

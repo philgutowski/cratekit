@@ -19,8 +19,17 @@ Issue #16 says twice that missing items become review items with acquisition
 options, and plan line 271 AE11 agrees; U11 declared matched and missing as
 OUTPUTS and registered a countdown against this unit for that reading. Two
 briefs disagree, the disagreement is a product decision, and it belongs to
-Phillip rather than to whoever writes this file. It is recorded as **R-17** in
-``docs/residual-findings.md`` and needs its own issue.
+Phillip rather than to whoever writes this file. It is recorded in
+``docs/residual-findings.md`` under the title **Two briefs disagree about
+whether a missing track is a review item** and needs its own issue.
+
+**EVERY RESIDUAL THIS UNIT CITES IS CITED BY TITLE.** Six residual numbers are
+claimed by two branches at once with different content on each side, so a
+citation by number points at a different subject the moment either side
+renumbers, and that has already caused one silent break on this wave.
+``test_every_residual_this_unit_cites_is_a_heading_that_exists`` checks each
+cited title against the headings in that file, so a citation that stops
+resolving fails a test rather than reading plausibly.
 
 What this file owes either way is that the sentence it prints be true. A missing
 row now genuinely carries its acquisition options as DATA in the match result,
@@ -527,6 +536,7 @@ def _warnings(
     # and get different codes: over a held file the record is STALE and the disk
     # wins, while over a question the record still stands and whatever the person
     # answers, acquisition must not go and fetch it.
+    seen: set[tuple[str, str]] = set()
     for state in match.PAYLOAD_STATES:
         for track in result.of(state):
             # ASKED UNDER EVERY SPELLING, the same set the suppression itself is
@@ -539,8 +549,9 @@ def _warnings(
             standing = match.standing_tombstone(
                 track.wanted, suppresses=suppresses, suppression_id=identify
             )
-            if standing is None:
+            if standing is None or (track.match_id, standing) in seen:
                 continue
+            seen.add((track.match_id, standing))
             held = state is match.MatchState.MATCHED
             found.append(
                 {
@@ -554,6 +565,52 @@ def _warnings(
                         f"{track.wanted.artist} / {track.wanted.title}, which "
                         f"resolved to {state} rather than being suppressed; "
                         f"acquisition must skip it whatever this row says"
+                    ),
+                    "suppression": standing,
+                    "match": track.match_id,
+                    "item": track.item_id or "",
+                    "remedy": "",
+                }
+            )
+    # AND THE FILE BEING OFFERED AS THE ANSWER IS A SECOND PLACE A TOMBSTONE CAN
+    # STAND, which the loop above cannot see and which went unreported in every
+    # state. It asks under the addresses of the reading the LIST spelled, and a
+    # candidate is by construction a version the list did NOT spell: that is what
+    # makes it a question. So with a tombstone under ``Sun Path (Live)`` and the
+    # library still holding that file, the list line ``Aurora Bloom - Sun Path -
+    # Live`` reported the candidate, said nothing about the tombstone, and after
+    # somebody accepted it came back MATCHED with an empty warning array. This
+    # file's own docstring promises the opposite in as many words, that a
+    # tombstone over a version the library actually holds is a stale record and
+    # saying so is cheaper than letting somebody find out during a deletion.
+    #
+    # ALWAYS ``TOMBSTONE_OVER_OWNED``, never the suppression code, and in every
+    # state including SUPPRESSED. A candidate is a file this run read off the
+    # disk, so the disk has already won: the record is stale whatever the row
+    # around it resolved to. The pair (row, suppression) is the dedupe key, so a
+    # candidate standing under the same tombstone the row already reported is one
+    # warning rather than two.
+    for track in result.matches:
+        for candidate in track.candidates:
+            offered = match.Wanted(
+                artist=candidate.artist,
+                title=candidate.title,
+                version=candidate.version,
+            )
+            standing = match.standing_tombstone(
+                offered, suppresses=suppresses, suppression_id=identify
+            )
+            if standing is None or (track.match_id, standing) in seen:
+                continue
+            seen.add((track.match_id, standing))
+            found.append(
+                {
+                    "code": TOMBSTONE_OVER_OWNED,
+                    "message": (
+                        f"{track.wanted.artist} / {track.wanted.title} is offered "
+                        f"the held file {candidate.artist} / {offered.listed} as "
+                        f"an answer, and a tombstone stands over that file; the "
+                        f"disk is the truth and the tombstone is stale"
                     ),
                     "suppression": standing,
                     "match": track.match_id,
@@ -674,12 +731,27 @@ def _pending(result: match.MatchResult, *, run_id: str) -> PendingHumanAction | 
     filtered here rather than left out of the queue, so the question is still
     asked and still answerable; what changes is only whether one common public
     playlist spelling stops the caller's pipeline.
+
+    IT IS FILTERED OUT OF THE GATE AND NOT OUT OF THE SENTENCE, and for one round
+    it was filtered out of both. Measured on a 200 line list: 4 rows gate, 20
+    more queue ungated, ``needs_review`` holds 24, and the summary a caller reads
+    said "4 tracks ... need a person". Undercounting the outstanding questions
+    six fold is the same silence R11 exists to remove wearing this unit's own fix
+    as a costume, since the caller who reads the summary is exactly the caller
+    who does not read every warning. So the ungated rows are counted in the
+    sentence and named in a step, and what they do not do is change the exit
+    status.
     """
     open_questions = [
         found
         for found in result.of(match.MatchState.NEEDS_REVIEW)
         if found.why not in UNGATED
     ]
+    ungated = {
+        found.item_id or found.match_id
+        for found in result.of(match.MatchState.NEEDS_REVIEW)
+        if found.why in UNGATED
+    }
     if not open_questions:
         return None
     stalled = sorted(
@@ -711,6 +783,12 @@ def _pending(result: match.MatchResult, *, run_id: str) -> PendingHumanAction | 
         # printed instruction this field exists to replace, so rendering one here
         # was the same defect wearing this unit's own fix as a costume.
         steps.extend(f"crate review clear {item_id}" for item_id in stalled)
+    if ungated:
+        steps.append(
+            f"{len(ungated)} further questions are queued and did not block this "
+            f"run, because this list spells a version after a dash and no rule "
+            f"over that string decides it; they are answered the same way"
+        )
     return PendingHumanAction(
         kind="review",
         id=output.new_pending_id(run_id),
@@ -721,6 +799,13 @@ def _pending(result: match.MatchResult, *, run_id: str) -> PendingHumanAction | 
                 f"; {len(stalled)} of them carry a verdict that could not be "
                 f"applied and have to be cleared first"
                 if stalled
+                else ""
+            )
+            + (
+                f"; {len(ungated)} further questions are queued and did not "
+                f"block this run, for {len(questions) + len(ungated)} outstanding "
+                f"in all"
+                if ungated
                 else ""
             )
         ),

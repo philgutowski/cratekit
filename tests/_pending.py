@@ -120,7 +120,18 @@ PENDING: dict[str, tuple[str, str]] = {
         "fetches it back, and a deletion somebody made on purpose is undone with "
         "the whole suite green. This is the ONE guard that can compare them, and "
         "it can only run once the domain module exists in the same tree, which "
-        "is the moment this entry is deleted",
+        "is the moment this entry is deleted. A THIRD COPY IS REGISTERED HERE "
+        "for the same reason and it is the VERSION VOCABULARY: 'is this word a "
+        "version designation' is asked by the deletion pass about a rekordbox "
+        "Subtitle and by cratekit.acquire.match about a dash tail, and those are "
+        "two readers of one question. Two answers to it were live and measured, "
+        "17 words on the match side against 27 in the domain module, and for the "
+        "eleven that were missing a list spelling 'Sun Path - Unplugged' against "
+        "a library holding 'Sun Path (Unplugged)' reported MISSING and went and "
+        "fetched a file already on the shelf, at exit zero, with nothing asked "
+        "and nothing warned. match.VERSION_WORDS is now that frozenset "
+        "replicated element for element and the gated guard compares the two the "
+        "day both exist",
     ),
     # U16 APPENDED A SECOND OBLIGATION HERE AND IT HAS BEEN REMOVED, which is
     # worth a note because removing an obligation is normally the wrong move.
