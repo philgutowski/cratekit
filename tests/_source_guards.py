@@ -30,11 +30,11 @@ from __future__ import annotations
 import ast
 import re
 
-#: The module every question here is asked about.
+#: The module every question here is asked about. The package it lives in, which
+#: is what ``from cratekit.core import review`` names, is DERIVED from this
+#: rather than written out a second time. It was a second constant until R-15,
+#: and two spellings of one fact is how a pair drifts.
 REVIEW_MODULE = "cratekit.core.review"
-
-#: The package it lives in, for the ``from cratekit.core import review`` shape.
-REVIEW_PACKAGE = "cratekit.core"
 
 #: The two constructors that produce a comma separated writer. Named once so the
 #: files that need this question cannot ask it two different ways.
@@ -65,12 +65,25 @@ class ReviewImports:
         from cratekit.core import review       # review.offer(...)
         from cratekit.core.review import offer # offer(...)
 
-    A relative import is recognized too. Nothing in the package uses one today,
-    and a guard that failed the first module to do so would be a guard somebody
-    routes around rather than a defect anybody fixes.
+    A relative import is recognized too, and until R-15 was fixed only ONE of
+    the three relative spellings was. The rule read ``node.level > 0`` beside a
+    two-element suffix match on ``node.module``, and ``node.module`` holds only
+    the TAIL: ``from .review import offer`` records ``review`` and ``from .
+    import review`` records nothing at all, so the two spellings a file sitting
+    BESIDE the review module would actually use were the two that matched
+    nothing. Every question in this file returns early when the source does not
+    reach the module, so those sources were answered no rather than answered
+    wrong, which is the silence a green suite cannot show you.
+
+    ``_import_targets`` answers it now, resolving ``node.level`` against the
+    importing file's package the way CPython's ``_resolve_name`` does when the
+    caller knows that package, and reading the tail when it does not. No caller
+    of this class knows it today, so the fallback is the live path here and the
+    resolved one is driven by U38's suite; the exit-code walk lower down passes
+    a real package on every file it scans.
     """
 
-    def __init__(self, tree: ast.AST) -> None:
+    def __init__(self, tree: ast.AST, package: str | None = None) -> None:
         #: Local names that ARE the module.
         self.module_names: set[str] = set()
         #: Local name -> the module attribute it was imported as.
@@ -81,12 +94,8 @@ class ReviewImports:
                     if alias.name == REVIEW_MODULE:
                         self.module_names.add(alias.asname or REVIEW_MODULE)
             elif isinstance(node, ast.ImportFrom):
-                module = node.module or ""
-                names_the_module = module == REVIEW_MODULE or (
-                    node.level > 0 and module.split(".")[-2:] == ["core", "review"]
-                )
-                names_the_package = module == REVIEW_PACKAGE or (
-                    node.level > 0 and module.split(".")[-1:] == ["core"]
+                names_the_module, names_the_package = _import_targets(
+                    node, REVIEW_MODULE, package
                 )
                 if names_the_module:
                     for alias in node.names:
@@ -143,10 +152,16 @@ def _assignments(tree: ast.AST) -> list[tuple[str, ast.AST]]:
     return found
 
 
-def calls_review(source: str, wanted: str) -> bool:
-    """Whether this source CALLS the review module's ``wanted`` function."""
+def calls_review(source: str, wanted: str, package: str | None = None) -> bool:
+    """Whether this source CALLS the review module's ``wanted`` function.
+
+    ``package`` is the dotted package the source sits in, which is what lets a
+    relative import be RESOLVED rather than pattern matched. A caller holding
+    only a source string does not know it; ``ReviewImports`` says what it falls
+    back to.
+    """
     tree = ast.parse(source)
-    imports = ReviewImports(tree)
+    imports = ReviewImports(tree, package)
     if not imports.reaches_review:
         return False
     return any(
@@ -155,7 +170,7 @@ def calls_review(source: str, wanted: str) -> bool:
     )
 
 
-def offers_into(source: str, queue: str) -> bool:
+def offers_into(source: str, queue: str, package: str | None = None) -> bool:
     """Whether a review ``offer`` call is given the review queue named by ``queue``.
 
     The queue has to reach the CALL. An assignment naming the queue and going
@@ -165,7 +180,7 @@ def offers_into(source: str, queue: str) -> bool:
     ``queue=QUEUE`` at the call is ordinary correct code.
     """
     tree = ast.parse(source)
-    imports = ReviewImports(tree)
+    imports = ReviewImports(tree, package)
     if not imports.reaches_review:
         return False
     aliases = {
@@ -186,12 +201,14 @@ def offers_into(source: str, queue: str) -> bool:
     return False
 
 
-def constructs_review(source: str, wanted: str) -> bool:
+def constructs_review(source: str, wanted: str, package: str | None = None) -> bool:
     """Whether this source CONSTRUCTS the review module's ``wanted`` class."""
-    return calls_review(source, wanted)
+    return calls_review(source, wanted, package)
 
 
-def methods_on_review_construction(source: str, wanted: str) -> set[str]:
+def methods_on_review_construction(
+    source: str, wanted: str, package: str | None = None
+) -> set[str]:
     """Method names called on something this source built from review's ``wanted``.
 
     The receiver is traced rather than assumed, through the three shapes a real
@@ -201,7 +218,7 @@ def methods_on_review_construction(source: str, wanted: str) -> set[str]:
     the store.
     """
     tree = ast.parse(source)
-    imports = ReviewImports(tree)
+    imports = ReviewImports(tree, package)
     if not imports.reaches_review:
         return set()
 
@@ -314,9 +331,9 @@ def package_modules(package_root) -> list[tuple[str, str]]:
 # the exact pair of failures the armed review guards already shipped once.
 # ---------------------------------------------------------------------------
 
-#: The module that owns the status vocabulary, and the package it sits in.
+#: The module that owns the status vocabulary. As with ``REVIEW_MODULE``, the
+#: package it sits in is derived from this rather than spelled a second time.
 EXIT_CODE_MODULE = "cratekit.core.exit_codes"
-EXIT_CODE_PACKAGE = "cratekit.core"
 
 #: A cause slug as this repository spells one: lowercase words joined by single
 #: hyphens.
@@ -351,6 +368,16 @@ def _relative_module(node: ast.ImportFrom, package: str) -> str | None:
     directory in both cases. None means the level walks off the top of the
     package, which Python refuses to import at all, so it names no module here
     either.
+
+    THE OFF THE TOP CLAUSE IS NOT DEFENSIVE PADDING. Python's slicing is
+    forgiving where an import is not: with a package of ``cratekit.core.sub``
+    and five dots, ``len(parts) - (node.level - 1)`` is ``-1``, and ``parts[:-1]``
+    quietly hands back ``cratekit.core``, so the walk would resolve an import
+    the interpreter refuses outright onto the very module it is hunting and
+    REPORT an offender that cannot exist.
+    ``test_a_relative_import_that_walks_off_the_top_names_nothing`` drives that
+    case. The assertion that used to claim it, two dots from ``cratekit``,
+    proved nothing: the short base it leaves behind matches nothing either way.
     """
     parts = package.split(".")
     if node.level - 1 >= len(parts):
@@ -359,21 +386,61 @@ def _relative_module(node: ast.ImportFrom, package: str) -> str | None:
     return ".".join(base + ([node.module] if node.module else []))
 
 
+def _import_targets(
+    node: ast.ImportFrom, module: str, package: str | None
+) -> tuple[bool, bool]:
+    """Whether one ``from ... import`` names MODULE, or the package MODULE sits in.
+
+    ONE implementation for both walks in this file, and R-15 is why. The same
+    question was answered twice here and the two answers disagreed about
+    relative imports: one resolved the level and the other matched a two-element
+    suffix that ``from .review import offer`` does not have and ``from . import
+    review`` does not have either. Two answers to "does this source reach that
+    module" is exactly the drift these guards exist to report in other people's
+    code.
+
+    Resolved against the importer's package when the caller knows it, which is
+    the whole tree scan, so ``from . import exit_codes`` inside ``cli`` resolves
+    to the reservation table and stays out exactly as its absolute spelling
+    does.
+
+    The fallback, for a source with no path, matches the TAIL and accepts a bare
+    sibling. A fixture is a file that could be anywhere, so the only honest
+    reading of ``from .exit_codes import ExitCode`` there is that it names a
+    module called ``exit_codes``. ``node.module`` is None for ``from . import
+    X``, which names the package and nothing else, and reading that None as an
+    empty string is how the shape went missing.
+    """
+    owner, _, leaf = module.rpartition(".")
+    if not node.level:
+        named = node.module or ""
+        return named == module, named == owner
+    if package is not None:
+        absolute = _relative_module(node, package)
+        return absolute == module, absolute == owner
+    tail = (node.module or "").split(".")
+    parent = owner.rsplit(".", 1)[-1]
+    names_the_module = tail[-2:] == [parent, leaf] or tail == [leaf]
+    names_the_package = node.module is None or tail[-1:] == [parent]
+    return names_the_module, names_the_package
+
+
 class ExitCodeImports:
     """How one source file reaches ``ExitCode``, in every import shape.
 
-    U12 COORDINATION, and it is now a THREE way duplication rather than a two.
-    This is the same walk ``ReviewImports`` does, asked about a different module.
-    U12 is generalizing that one into a module-parameterized ``ImportsOf``, and
-    the conformance branch has a third copy of it as ``SoftDeleteNames``. All
-    three merge textually clean in any order, so nothing will flag it. When they
-    land together, this class collapses into ``ImportsOf(tree,
-    EXIT_CODE_MODULE)`` with one narrowing, because this one records only the
-    ``ExitCode`` symbol where ``ImportsOf`` records every symbol a source
-    imported, and ``SoftDeleteNames`` collapses the same way. THE COLLAPSE HAS TO
-    TAKE THE RELATIVE HANDLING BELOW WITH IT. The other two copies still carry
-    the suffix match this one replaced, and a collapse onto either of them would
-    reinstate the defect in one place instead of three. R-15 records that.
+    U12 COORDINATION. This is the same walk ``ReviewImports`` does, asked about
+    a different module, and the relative half of it is now literally shared:
+    both call ``_import_targets``. U12 is generalizing ``ReviewImports`` into a
+    module-parameterized ``ImportsOf`` on its own branch, and the conformance
+    branch has a third copy as ``SoftDeleteNames``. All three merge textually
+    clean in any order, so nothing will flag it. When they land together, this
+    class collapses into ``ImportsOf(tree, EXIT_CODE_MODULE)`` with one
+    narrowing, because this one records only the ``ExitCode`` symbol where
+    ``ImportsOf`` records every symbol a source imported, and ``SoftDeleteNames``
+    collapses the same way. THE COLLAPSE HAS TO TAKE ``_import_targets`` WITH IT.
+    The two copies on the other branches still carry the suffix match this file
+    has now replaced in both of its own, and a collapse onto either of them
+    would reinstate the defect in one place instead of two. R-15 records that.
 
     Seven shapes are recognized, and they are every shape this repository's own
     modules use between them::
@@ -404,7 +471,9 @@ class ExitCodeImports:
                     if alias.name == EXIT_CODE_MODULE:
                         self.module_names.add(alias.asname or EXIT_CODE_MODULE)
             elif isinstance(node, ast.ImportFrom):
-                names_the_module, names_the_package = self._targets(node, package)
+                names_the_module, names_the_package = _import_targets(
+                    node, EXIT_CODE_MODULE, package
+                )
                 if names_the_module:
                     for alias in node.names:
                         if alias.name == "ExitCode":
@@ -414,31 +483,6 @@ class ExitCodeImports:
                         if alias.name == "exit_codes":
                             self.module_names.add(alias.asname or "exit_codes")
 
-    @staticmethod
-    def _targets(node: ast.ImportFrom, package: str | None) -> tuple[bool, bool]:
-        """Whether this import names the vocabulary MODULE, or the package it sits in.
-
-        Resolved against the importer's package when the caller knows it, which
-        is the whole tree scan, so ``from . import exit_codes`` inside ``cli``
-        resolves to the reservation table and stays out exactly as its absolute
-        spelling does.
-
-        The fallback, for a source with no path, matches the TAIL and accepts a
-        bare sibling. A fixture is a file that could be anywhere, so the only
-        honest reading of ``from .exit_codes import ExitCode`` there is that it
-        names a module called ``exit_codes``.
-        """
-        if not node.level:
-            module = node.module or ""
-            return module == EXIT_CODE_MODULE, module == EXIT_CODE_PACKAGE
-        if package is not None:
-            absolute = _relative_module(node, package)
-            return absolute == EXIT_CODE_MODULE, absolute == EXIT_CODE_PACKAGE
-        tail = (node.module or "").split(".")
-        names_the_module = tail[-2:] == ["core", "exit_codes"] or tail == ["exit_codes"]
-        names_the_package = tail[-1:] == ["core"] or node.module is None
-        return names_the_module, names_the_package
-
     def names_the_class(self, node: ast.AST) -> bool:
         """Whether ``node`` names the ``ExitCode`` CLASS this source imported."""
         dotted = _dotted(node)
@@ -446,10 +490,13 @@ class ExitCodeImports:
             return False
         if dotted in self.class_names:
             return True
-        # The module-qualified spelling, ``exit_codes.ExitCode(30)``. Reachable
-        # only through ``status``'s conversion branch, and no fixture in the tree
-        # writes a conversion that way today, so a reader should take this as
-        # defence in depth rather than as a live path. See R-16.
+        # The module-qualified spelling, ``exit_codes.ExitCode(30)``. Round three
+        # called this unreachable; it is ordinary Python that no fixture happened
+        # to write, which is a different thing and the difference is the whole
+        # point of R-16. ``EVASION_A_CONVERSION_THROUGH_THE_MODULE_NAME`` writes
+        # it now: without this branch the call is not a conversion, the guard
+        # falls through to resolving a ``Call`` as an integer, gets nothing, and
+        # says nothing about a module that reserved 30 for a reserved cause.
         parts = dotted.split(".")
         return len(parts) >= 2 and ".".join(parts[:-1]) in self.module_names and parts[-1] == "ExitCode"
 
@@ -583,11 +630,14 @@ def resolve_int(
     if node is None or hops > MAX_HOPS:
         return None
     if isinstance(node, ast.Constant):
-        # The bool exclusion is unobservable today: nothing in the tree or the
-        # fixtures maps a cause to True, and the reserved range would reject
-        # ``1`` anyway. Kept because the FIRST version of this guard reported
-        # ``'rekordbox-running' -> bare status False``, which is the false
-        # positive that got it suppressed. See R-16.
+        # THE BOOL EXCLUSION RUNS, and round three's comment here said it did
+        # not. ``CORRECT_A_RETRY_FLAG_PER_CAUSE`` maps a cause to ``True`` and
+        # another to ``False``, and instrumenting this line counted 464 booleans
+        # arriving in one suite run. What is true is that it changes no OUTCOME
+        # today, because ``True`` is 1 and ``False`` is 0 and the reserved range
+        # starts at 10, which is a fact about the range rather than about this
+        # line. ``test_a_boolean_is_not_an_integer_here`` asserts the answer
+        # directly, so the line is covered rather than merely reasoned about.
         if isinstance(node.value, bool) or not isinstance(node.value, int):
             return None
         return node.value
@@ -611,10 +661,14 @@ def resolve_int(
         if isinstance(node.op, ast.Mult):
             return left * right
         return None
-    # ``int(30)`` around a plain integer. Unobservable: the only ``int(...)`` a
-    # fixture writes is ``int(ExitCode.PRECONDITION)``, which ``status`` answers
-    # through its own conversion branch before this is reached. Defence in depth
-    # for the careful spelling, not a live path. See R-16.
+    # ``int(30)`` around a plain integer, and this is a LIVE path that round
+    # three called unreachable. ``process_status_literals`` resolves the
+    # argument of every single-argument call it walks, so ``sys.exit(int(code))``
+    # arrives here rather than at ``status``'s conversion branch, and
+    # instrumenting the line counted 25 arrivals in one suite run. Without it a
+    # module ending the process with ``sys.exit(int(PRECONDITION))`` resolves to
+    # nothing and the bare status guard goes quiet on a real bypass, which is
+    # what ``EVASION_A_STATUS_WITH_A_CONVERSION_ROUND_IT`` now drives.
     if isinstance(node, ast.Call) and _dotted(node.func) == "int" and len(node.args) == 1:
         return resolve_int(node.args[0], names, members, hops + 1)
     return None
@@ -643,24 +697,35 @@ class ReservedCodeTable:
     TWO SIDES HAVE TO BE RIGHT AT ONCE, and the first two versions of this guard
     got each of them wrong in a different direction.
 
-    WHAT COUNTS AS A KEY: a string somebody DECLARED to be a cause. Three
-    declarations count, and the union of them is what the caller passes in plus
-    what this file says about itself:
+    THE KEY AND THE VALUE ARE ONE RULE, not two, and the round before this one
+    treated them as two and over fired badly. It widened the key set from the
+    twenty two reserved causes to eighty two by adding the closed reason
+    registry, kept "a bare integer anywhere in the reserved range" as the value
+    rule, and certified the pair safe with fixtures whose every integer sat
+    OUTSIDE the range, so the certifying test passed with an empty key set.
+    Measured properly, twenty seven of twenty eight ordinary constructs keyed on
+    a registry slug were reported. The cause is structural rather than a tuning
+    miss: 10 to 59 is exactly the band ordinary timeouts, logging levels, column
+    widths, retry budgets, retention windows and schema versions live in, so no
+    number of extra keys can make a bare integer mean "status". Widening the
+    keys widened the false positives one for one.
 
-    * a cause in the reservation table;
-    * a cause the package-wide derivation found, so a module's table for its own
-      brand new causes is seen the moment the module declares them;
-    * a cause-shaped string this very source declares as an enum member value,
-      which is what catches a module whose exception has not been written yet.
+    So there are TWO TIERS, and which tier a key sits in decides what may prove
+    it:
 
-    The middle rule is why this and the completeness check now share one answer to
-    "what is a cause" rather than each having its own. Keying on the RESERVED set
-    alone was blind to the whole case the table exists for. Keying on the SHAPE
-    alone, which is what the round before this did, fired on any kebab string
-    mapped to a number in range: a logging level, a column width, a timeout, a
-    retention in days, a retry budget, a schema version, or any two-element tuple
-    of a label and a size. The tree holds 66 kebab-keyed pairs today and not one
-    of them is a reservation.
+    * ``causes`` may be reserved by ANY spelling, including a bare integer. That
+      is the reservation table's own causes, whatever the package-wide
+      derivation found, and any cause-shaped string THIS source declares as an
+      enum member value. All three are small, specific and hand maintained, and
+      a module writing one of them beside a number is writing about that
+      refusal.
+    * ``named_only_causes`` may be reserved only by a status this source cannot
+      have meant as anything else: an ``ExitCode`` member, in any import
+      spelling, or a conversion wrapped round one. That is where the closed
+      reason registry's sixty other slugs sit. ``{"config-unusable":
+      ExitCode.LIBRARY_UNAVAILABLE}`` is a second opinion and is reported;
+      ``{"config-unusable": 20}`` is a sort order, a percentage or a poll
+      interval as often as it is a code, and nothing in the source says which.
 
     WHAT COUNTS AS A CODE, and this is where a guard that fires on correct code
     gets itself switched off (P7). An ``ExitCode`` member is unambiguous. So is a
@@ -672,13 +737,20 @@ class ReservedCodeTable:
     rather than being repeated here. ``True`` and ``False`` are integers to
     ``isinstance`` and are never a status.
 
+    NOT NARROWED TO THE EIGHTEEN INTEGERS THE ENUM ACTUALLY USES, which was the
+    other candidate and is worse. The case this table exists for is a new module
+    deciding its OWN codes, and a module inventing 33 for a cause nobody reserved
+    is precisely that case; a guard that only knew today's values would be blind
+    to it while still firing on every logging level of 10, 20 and 30.
+
     THE RESIDUAL LIMIT, pinned by a fixture rather than left to be discovered: a
-    backoff of 30 seconds keyed by a slug that IS a declared cause is
-    indistinguishable from a reservation of 30 by shape alone, and this reports
-    it. That direction was chosen deliberately, because the alternative is
-    matching on the variable's name, and a guard a rename defeats is not a guard.
-    The narrowing above is what makes that residual small: it can only happen for
-    a string somebody already declared to be a refusal cause.
+    backoff of 30 seconds keyed by a slug in the FIRST tier is indistinguishable
+    from a reservation of 30 by shape alone, and this reports it. That direction
+    was chosen deliberately, because the alternative is matching on the
+    variable's name, and a guard a rename defeats is not a guard. The two tiers
+    are what keep that residual small: it can only happen for one of the twenty
+    two, for a cause the package itself raises, or for a cause the source
+    declared in its own enum.
     """
 
     def __init__(
@@ -687,19 +759,44 @@ class ReservedCodeTable:
         causes: frozenset[str],
         code_range: tuple[int, int],
         package: str | None = None,
+        named_only_causes: frozenset[str] = frozenset(),
     ) -> None:
         self.tree = tree
         self.low, self.high = code_range
         self.codes = ExitCodeImports(tree, package)
         self.constants = _module_level_literals(tree)
         self.members = _class_level_literals(tree)
+        #: Keys a BARE integer may reserve.
         self.causes = set(causes) | _declared_enum_values(tree)
+        #: Every key, including the ones only a NAMED code may reserve.
+        self.every_cause = self.causes | set(named_only_causes)
 
     def cause_key(self, node: ast.AST | None) -> str | None:
         """The cause slug a key names, or None when nobody declared it a cause."""
         if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
             return None
-        return node.value if node.value in self.causes else None
+        return node.value if node.value in self.every_cause else None
+
+    def names_a_status(self, node: ast.AST | None) -> bool:
+        """Whether this expression could not have been meant as anything but a status.
+
+        The narrow half of the value rule, and the only proof a
+        ``named_only_causes`` key accepts. An ``ExitCode`` member is the
+        vocabulary itself, whatever name the source bound it under, and a
+        conversion wrapped round one is still one. Nobody spells a poll interval
+        ``ExitCode.PRECONDITION``, which is why this tier can carry sixty extra
+        keys without reporting a single ordinary construct.
+        """
+        if node is None:
+            return False
+        if self.codes.names_a_code(node):
+            return True
+        if isinstance(node, ast.Call) and len(node.args) == 1:
+            wraps_a_code = _dotted(node.func) == "int" or self.codes.names_the_class(
+                node.func
+            )
+            return wraps_a_code and self.names_a_status(node.args[0])
+        return False
 
     def _as_int(
         self, node: ast.AST | None, extra: dict[str, ast.AST] | None = None
@@ -715,11 +812,14 @@ class ReservedCodeTable:
             return None
         if self.codes.names_a_code(node):
             return ast.unparse(node)
-        # The one-argument narrowing is unobservable: no fixture writes
-        # ``int(ExitCode.X, base)`` or any other two-argument spelling, so
-        # widening it kills nothing. It stays because ``ExitCode(30, "note")``
-        # is not a conversion and reading its first argument as one would be a
-        # false positive on somebody else's constructor. See R-16.
+        # THE ONE-ARGUMENT NARROWING IS WHAT KEEPS THIS OFF SOMEBODY ELSE'S
+        # CONSTRUCTOR. A two-argument call is not a conversion, so its first
+        # argument is not a status: ``ExitCode(30, "the note")`` is a
+        # constructor taking a code and a sentence, and reading the 30 out of it
+        # would report a module that reserved nothing. Round three's comment
+        # here claimed the narrowing was unreachable and that widening it killed
+        # nothing; both halves were wrong in the useful direction, and
+        # ``test_a_two_argument_call_is_not_a_conversion`` now drives it.
         if isinstance(node, ast.Call) and len(node.args) == 1:
             # ``int(ExitCode.X)`` and ``ExitCode(30)``: a code with a conversion
             # wrapped round it is still a code, and both spellings read as
@@ -898,6 +998,7 @@ def reserved_code_tables(
     causes: frozenset[str],
     code_range: tuple[int, int],
     package: str | None = None,
+    named_only_causes: frozenset[str] = frozenset(),
 ) -> list[str]:
     """Every place this source gives a refusal cause its own exit code.
 
@@ -915,8 +1016,16 @@ def reserved_code_tables(
     relative import be resolved rather than pattern matched. A caller scanning
     real files knows it and passes it; a caller holding a source string does not,
     and ``ExitCodeImports`` says what it falls back to.
+
+    ``named_only_causes`` DEFAULTS TO EMPTY, and the default is the conservative
+    one on purpose: the second tier only ever adds keys, so a caller that forgets
+    it loses coverage loudly rather than gaining false positives quietly. Round
+    three's over firing came from the opposite arrangement, where the permissive
+    reading was what you got by saying nothing.
     """
-    table = ReservedCodeTable(ast.parse(source), causes, code_range, package)
+    table = ReservedCodeTable(
+        ast.parse(source), causes, code_range, package, named_only_causes
+    )
     found: list[str] = []
     seen: set[tuple[int, str, str]] = set()
     for key, value, label in table.pairs():
@@ -927,6 +1036,12 @@ def reserved_code_tables(
         # that branch's own locals and they are out of scope here.
         status = label if label is not None else table.status(value)
         if status is None:
+            continue
+        # THE SECOND TIER, applied where both halves of the pair are known. A
+        # key that only the wide declaration reaches needs a value nobody could
+        # have meant as a duration, a level or a width, and a bare integer in
+        # the reserved range is exactly a value somebody could have.
+        if slug not in table.causes and not table.names_a_status(value):
             continue
         entry = (key.lineno, slug, status)
         if entry in seen:

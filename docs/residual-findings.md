@@ -561,11 +561,18 @@ a reservation of 30, because by shape alone it is one.
 
 The alternative is matching on the variable's name, and a guard a rename defeats
 is not a guard, so this direction was chosen. What keeps it small is the key
-rule: a key counts only when somebody DECLARED the string a refusal cause, in the
-reservation table, in the package-wide derivation, or as an enum member in the
-same file. The tree holds 66 kebab-keyed pairs across `cli/registry.py`,
+rule: a bare integer counts only when somebody DECLARED the string a refusal
+cause in the reservation table, in the package-wide derivation, or as an enum
+member in the same file, which is twenty two slugs plus whatever a source says
+about itself. The tree holds 66 kebab-keyed pairs across `cli/registry.py`,
 `core/binaries.py`, `core/cause.py` and `core/naming.py` and not one of them is a
 declared cause, so none of them can trip it.
+
+Amended in the fourth round: the third round widened that key set to eighty two
+by adding the closed reason registry while leaving the bare-integer rule alone,
+which turned this small residual into a general one. Measured over twenty eight
+ordinary constructs keyed on the added slugs, twenty seven were reported. R-19
+records the narrowing that put it back.
 
 **Closes when:** nothing has to close it. It is a stated limit with a fixture, and
 the escape for a module that genuinely needs it is `TABLE_OWNERS`, which is a
@@ -589,13 +596,14 @@ chosen over a rule a rename can flip.
 
 ---
 
-## R-15. One import walk was fixed and three copies of it still carry the defect
+## R-15. Two copies of one import walk still carry a relative-import defect
 
-**Found:** during U38's third review round, 2026-08-03. Driven and confirmed.
+**Found:** during U38's third review round, 2026-08-03. Corrected in the fourth
+round, 2026-08-03, because the third round's version of this entry was WRONG
+ABOUT ITS OWN FILE. Driven and confirmed both times.
 
-`tests/_source_guards.py` asks "does this source reach a named module" four times,
-in four classes, and every one of them used the same expression to recognize a
-relative import:
+`tests/_source_guards.py` asks "does this source reach a named module" in two
+classes, and both used the same expression to recognize a relative import:
 
     node.level > 0 and module.split(".")[-2:] == ["core", "<module>"]
 
@@ -608,20 +616,38 @@ inside `cratekit/core/` written as `from .exit_codes import ExitCode` with
 `CODES = {"rclone-missing": ExitCode.PRECONDITION}`, a fully reserved cause and
 the exact case the guard exists for, reported nothing.
 
-U38 fixed its own copy, `ExitCodeImports`, by resolving `node.level` against the
-importing file's package the way Python resolves it, and pinned all three
-relative spellings with fixtures.
+**What the third round got wrong.** It recorded the surviving copy in
+`ReviewImports` as living on `main`, as though this branch were not the file it
+was describing. Lines 85 to 90 of THIS branch's own committed
+`tests/_source_guards.py` were that same expression, and every question the
+review guards ask returns early when the walk says a source does not reach the
+module, so `from .review import offer` and `from . import review` were answered
+"no" rather than answered wrong. Driven twice and confirmed live. Recording a
+live defect as somebody else's is worse than not recording it, because the next
+reader checks the named place, finds nothing, and stops looking.
 
-The other three copies are untouched and each still carries it:
+**Fixed here, in the fourth round.** Both walks now call one `_import_targets`,
+which resolves `node.level` against the importing file's package the way
+CPython's `_resolve_name` does when the caller knows that package, and reads the
+tail when it does not. `node.module` being None for `from . import X` is handled
+as the package it is rather than coerced to an empty string. `ReviewImports`
+takes an optional `package`, threaded through `calls_review`, `offers_into`,
+`constructs_review` and `methods_on_review_construction`; no production caller
+knows a package today, so the fallback is the live path there and both paths are
+driven. `REVIEW_PACKAGE` and `EXIT_CODE_PACKAGE` are gone, derived from the
+module name rather than spelled twice.
 
-- `ReviewImports`, `tests/_source_guards.py` on `main`, lines 85 to 90. U38
-  propagated the expression from here rather than introducing it.
+Two copies remain, both on other branches:
+
 - `ImportsOf`, U12's generalization of `ReviewImports`, on U12's branch.
 - `SoftDeleteNames`, the conformance branch's third copy.
 
+Unifying the three is deliberately NOT attempted here: eight branches edit this
+file and the change is kept minimal and self contained on purpose.
+
 **The reason this is written down rather than left to the merge.** U38's own
-docstring already books the collapse of all four into `ImportsOf`. That collapse
-takes ONE implementation and deletes three, so if it takes `ImportsOf`'s relative
+docstring already books the collapse into `ImportsOf`. That collapse takes ONE
+implementation and deletes the others, so if it takes `ImportsOf`'s relative
 handling rather than the fixed one, the defect survives the deduplication and
 lands in the single place every guard then reads. A three-into-one merge that
 picks the wrong one is silent by construction: every call site keeps working and
@@ -635,66 +661,91 @@ green.
 
 ---
 
-## R-16. Six checks in this unit are correct, kept, and unobservable
+## R-16. One check in this unit is unreachable. The other five were reachable and are now driven
 
-**Found:** during U38's third review round, 2026-08-03. Each was reverted alone
-and killed zero tests, and each was then verified to be genuinely unreachable
-rather than merely undriven.
+**Found:** during U38's third review round, 2026-08-03, as "six checks, correct,
+kept, and unobservable". **Corrected in the fourth round, 2026-08-03**: that
+header said each had been "verified to be genuinely unreachable rather than
+merely undriven", and for five of the six that was false. Two of them run on
+every suite pass. Instrumenting the file and running the suite is what settled
+it, rather than reading the code and reasoning about it, which is how the wrong
+answer was reached the first time.
 
-Nothing here is a defect. They are recorded because a reader meeting a check with
-no test behind it has to work out which of the two it is, and doing that work
-again per reader is the cost this entry removes. Each now carries a comment
-saying so in place.
+A comment asserting unreachability for reachable code is worse than no comment.
+It tells the next reader not to look, and the reason it gives is checkable and
+wrong, so anybody who does look finds a file that argues with itself.
 
-1. `resolve_int`'s bool exclusion, `tests/_source_guards.py`. Nothing maps a
-   cause to `True` and the reserved range would reject `1` anyway. Kept because
-   the first version of this guard reported `'rekordbox-running' -> bare status
-   False`, which is the false positive that got it suppressed.
-2. `resolve_int`'s `int(...)` branch. The only `int(...)` any fixture writes is
-   `int(ExitCode.PRECONDITION)`, which `status` answers through its own
-   conversion branch first.
-3. `status`'s one-argument narrowing on a conversion. No fixture writes a
-   two-argument spelling, so widening it kills nothing. Kept because
-   `ExitCode(30, "note")` is somebody else's constructor and reading its first
-   argument as a status would be a false positive.
-4. `names_the_class`'s module-qualified branch. Reachable only through that same
-   conversion branch, and nothing spells a conversion that way today.
+What the instrumented run actually counted, per suite pass:
+
+1. `resolve_int`'s bool exclusion, `tests/_source_guards.py`. **464 arrivals.**
+   `CORRECT_A_RETRY_FLAG_PER_CAUSE` maps one cause to `True` and another to
+   `False`, so the comment's reason, that nothing in the tree or the fixtures
+   maps a cause to a boolean, was false against a fixture in the same file. It
+   changes no OUTCOME, because 1 and 0 are both below the reserved range, which
+   is a fact about the range. Now asserted directly by
+   `test_a_boolean_is_not_an_integer_here`.
+2. `resolve_int`'s `int(...)` branch. **25 arrivals.** `process_status_literals`
+   resolves the argument of every single-argument call it walks, so
+   `sys.exit(int(code))` arrives here rather than at `status`'s own conversion
+   branch. Not defence in depth: a LIVE bypass. Without it,
+   `sys.exit(int(PRECONDITION))` resolves to nothing and the bare status guard
+   goes quiet. Driven by
+   `test_a_status_with_a_conversion_round_it_still_reaches_the_shell`.
+3. `status`'s one-argument narrowing on a conversion. Not reached in the
+   discriminating case, because no fixture wrote a two-argument call. That is
+   UNDRIVEN, not unreachable: a two-argument call is ordinary Python.
+   `CORRECT_A_TWO_ARGUMENT_CALL_IS_NOT_A_CONVERSION` writes one now, and
+   dropping the narrowing reports it.
+4. `names_the_class`'s module-qualified branch. Same shape: undriven, not
+   unreachable. `exit_codes.ExitCode(30)` is what a module that imported the
+   vocabulary as a module writes.
+   `test_a_conversion_is_read_through_the_module_name_as_well_as_the_class_name`
+   drives it.
 5. `_index`'s band check and its `verb_producible` check,
-   `src/cratekit/cli/exit_codes.py`. The range check above them already excludes
-   every code either one could catch. Kept because each states a different rule
-   from the range: the range is a span of integers and these two are about what
-   the span means, so a band renumbered or a meaning changed to non-producible
-   fails by name rather than passing because the arithmetic still holds.
+   `src/cratekit/cli/exit_codes.py`. **THE ONE THAT IS GENUINELY UNREACHABLE.**
+   Every `ExitCode` member inside the reserved range sits in a reserved band and
+   is verb-producible, and the range check above rejects everything else, so no
+   member can reach either raise. Kept because each states a different rule from
+   the range: the range is a span of integers and these two are about what the
+   span means, so a band renumbered or a meaning changed to non-producible fails
+   by name rather than passing because the arithmetic still holds. Unchanged.
 6. `structured_refusal_causes`'s inner unimportable assertion,
-   `tests/test_reserved_causes.py`. Duplicated by
-   `test_every_module_in_the_package_imports_so_the_walk_can_see_it`. Kept so no
-   CALLER of the derivation can read a short answer as a complete one.
+   `tests/test_reserved_causes.py`. Executed on every call and never true, which
+   is a fact about the tree importing rather than about the code. Duplicated by
+   `test_every_module_in_the_package_imports_so_the_walk_can_see_it`, which is
+   why deleting it stayed green.
+   `test_the_derivation_refuses_to_answer_from_an_incomplete_walk` hands the
+   derivation a short answer and now kills it.
 
-The `setdefault` branch in `ReservedCodeTable.pairs` is the seventh and is a
-slightly different case: it is redundant rather than unreachable, because the
+The `setdefault` branch in `ReservedCodeTable.pairs` is the seventh and its
+comment was already accurate: redundant rather than unreachable, because the
 catch-all that crosses every call's arguments reaches `setdefault` too. It stays
 because it binds the key to ITS value by position instead of crossing them.
+Instrumenting counted 5 arrivals, which agrees with the comment.
 
 `MAX_HOPS` was on this list and is NOT any more. It was load bearing downward
 only, and the ceiling its own docstring claims, that a mutually recursive pair
 cannot hang the suite, is now driven by
 `test_a_mutually_recursive_pair_of_constants_resolves_to_nothing`.
 
-**Closes when:** nothing has to close it. It is a record of six deliberate
-retentions, so a later reader deleting one for being untested knows it was
-already looked at.
+**Closes when:** nothing has to close it. It is a record of ONE deliberate
+retention, plus the correction of a claim that was made about five others, so a
+later reader deleting the survivor for being untested knows it was already looked
+at and knows what "looked at" was worth the first time.
 
 ---
 
 ## R-17. Two refusal vocabularies stay outside the second-table guard's key set
 
-**Found:** during U38's third review round, 2026-08-03.
+**Found:** during U38's third review round, 2026-08-03. Amended in the fourth,
+2026-08-03, for the two tiers R-19 describes.
 
 The guard reports a second reservation only for a key somebody DECLARED to be a
-refusal cause. That set is now four declarations wide: the reservation table, the
-closed reason registry `core.cause.REASONS`, the package-wide derivation, and a
-source's own enums. The registry was the one the round before this left out, and
-it was the largest, sixty slugs. It is in now.
+refusal cause. That set is four declarations wide: the reservation table, the
+package-wide derivation and a source's own enums, all of which a bare integer can
+reserve, plus the closed reason registry `core.cause.REASONS`, whose sixty other
+slugs need the code spelled as a code. See R-19 for why the registry is carried
+on the narrower rule.
 
 Two vocabularies are still outside it, both deliberately:
 
@@ -750,3 +801,62 @@ the losslessness question is answered by R-14.2 and by the one line that closes
 it.
 
 **Closes when:** nothing has to close it. R-14.2 closes the live instance.
+
+---
+
+## R-19. A bare integer cannot carry a wide key set, so sixty keys need the code spelled as a code
+
+**Found:** during U38's third review round's verification, 2026-08-03. Fixed in
+the fourth round. Measured rather than argued.
+
+The third round widened the second-table guard's key set from the twenty two
+reserved causes to eighty two, by adding the sixty other slugs in the closed
+reason registry `core.cause.REASONS`, and left the value rule as it was: any
+expression resolving to an integer inside the reserved range, 10 to 59.
+
+**It over fired, and structurally rather than by a tuning miss.** Twenty seven of
+twenty eight ordinary constructs keyed on one of the added slugs were reported: a
+poll interval of 30 seconds keyed by `session-lock-held`, a display order of 10,
+20 and 30, a column width of 40, a schema version of 11, a retention of 30 days,
+a share of 50 percent. The reserved range IS the band ordinary small integers
+live in, which is not a coincidence and is not fixable by choosing better keys.
+Widening the key set widened the false positives one for one.
+
+**The test certifying the widening safe was vacuous.**
+`test_widening_the_key_set_to_the_registry_does_not_fire_on_ordinary_code` used a
+retry delay of 5, an attempt budget of 3 and a mapping of sentences. Every one of
+those is answered by the RANGE before the key set is consulted, so the test passed
+with an empty key set and measured nothing at all.
+
+**The fix is two tiers rather than more keys.**
+
+- `declared_causes()`, twenty two slugs plus what the package walk derived plus
+  what a source declares in its own enum: a bare integer in range reserves one of
+  these, exactly as before.
+- `registry_only_causes()`, the registry's other sixty: reserved only by a status
+  the source cannot have meant as anything else, an `ExitCode` member in any
+  import spelling or a conversion wrapped round one. Nobody writes
+  `RETRY_AFTER = {"session-lock-held": ExitCode.PRECONDITION}` and means seconds.
+
+`reserved_code_tables` takes the second tier as a parameter defaulting to EMPTY,
+so a caller that forgets it loses coverage loudly rather than gaining false
+positives quietly. Re-measured on the same twenty eight constructs: zero reported.
+
+**Not narrowed to the eighteen integers the enum actually uses**, which was the
+other candidate. The case the table exists for is a new module deciding its own
+codes, and a module inventing 33 for a cause nobody reserved is that case
+exactly; a guard that only knew today's values would be blind to it while still
+firing on every logging level of 10, 20 and 30.
+
+**The cost, stated rather than left to be met in a failing build.**
+`{"config-unusable": 22}` is a bare integer contradicting a live registry entry
+and is NOT reported any more. The fixture
+`RESIDUAL_A_BARE_CODE_FOR_A_REGISTRY_SLUG` and the test named after this cost pin
+it in both directions: the bare spelling silent, the same contradiction spelled
+as a code reported. That is the price of not reporting
+twenty seven of twenty eight ordinary constructs, and it is a price rather than
+an oversight.
+
+**Closes when:** nothing has to close it, unless a module lands that genuinely
+maps a registry slug to a bare integer, in which case the answer is a reservation
+in the table rather than a wider guard.

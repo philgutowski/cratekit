@@ -2005,32 +2005,77 @@ CODES = {"rclone-" "missing": 30}
 # ── A second opinion about a slug only the CLOSED REGISTRY reserves ─────────
 #
 # ``core.cause.REASONS`` gives a code to sixty one slugs and this table repeats
-# one of them, so sixty of the registry's reservations were outside the guard's
-# key set entirely. A module contradicting one of those is the same defect as a
-# module contradicting this table, and it read as correct code.
+# one of them, so sixty of the registry's reservations are outside the reserved
+# table entirely. A module contradicting one of those is the same defect as a
+# module contradicting this table.
+#
+# THE CODE IS SPELLED AS A CODE in both of these, and that is the second tier
+# rather than an accident of how the fixture was written. For these sixty keys a
+# bare integer proves nothing: 10 to 59 is the band a poll interval, a sort
+# order and a column width live in, and the round that accepted a bare integer
+# here reported twenty seven of twenty eight ordinary constructs.
 
-EVASION_A_CODE_FOR_A_REGISTRY_SLUG = """
+EVASION_A_NAMED_CODE_FOR_A_REGISTRY_SLUG = """
+from cratekit.core.exit_codes import ExitCode
+
+CODES = {"config-unusable": ExitCode.LIBRARY_UNAVAILABLE}
+"""
+
+EVASION_A_CONVERSION_ON_A_REGISTRY_SLUG = """
+from cratekit.core.exit_codes import ExitCode
+
+CODES = {"credential-missing": int(ExitCode.PRECONDITION)}
+"""
+
+# The cost of the second tier, pinned rather than left to be discovered. R-19.
+RESIDUAL_A_BARE_CODE_FOR_A_REGISTRY_SLUG = """
 CODES = {"config-unusable": 22}
 """
 
-EVASION_A_CODE_FOR_A_REGISTRY_SLUG_HELD_IN_A_NAME = """
-PRECONDITION = 30
-
-CODES = {"credential-missing": PRECONDITION}
-"""
+# ── Ordinary code keyed on a registry slug, with integers that MATTER ───────
+#
+# Round three's version of this fixture used 5, 3 and a mapping of sentences,
+# every one of them outside the reserved range, so the test built on it passed
+# with an empty key set. Every integer here sits INSIDE 10 to 59, which is the
+# only way the fixture can say anything about the key rule at all.
 
 CORRECT_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS = """
-RETRY_AFTER_MINUTES = {
-    "session-lock-held": 5,
-    "write-lock-held": 5,
+POLL_SECONDS = {"session-lock-held": 30, "write-lock-held": 15}
+
+DISPLAY_ORDER = {
+    "credential-missing": 10,
+    "config-unusable": 20,
+    "internal-error": 30,
 }
+
+COLUMN_WIDTHS = (("decision-required", 40), ("decision-stale", 24))
+
+SCHEMA_VERSIONS = {"job-schema-mismatch": 11, "review-schema-mismatch": 12}
+
+RETENTION_DAYS = {"backup-facts-unreadable": 30}
+
+SHARE_PERCENT = {"library-database-missing": 50}
+
+WEIGHTS = (("library-volume-unmounted", 30), ("cloud-sync-active", 20))
+
+DELAYS = {}
+DELAYS["cloud-sync-unreadable"] = 30
+DELAYS.setdefault("canary-read-failed", 15)
+
+SLOW = ("smoke-test-failed", "doctor-check-failed")
+SLOW_DELAYS = {name: 30 for name in SLOW}
 
 SENTENCES = {
     "internal-error": "report this as a defect",
     "credential-missing": "record the credential and try again",
 }
 
-ATTEMPTS = {"library-volume-unmounted": 3}
+
+def wait_for(cause):
+    if cause == "unavailable-transient":
+        seconds = 45
+        return seconds
+    return 0
 """
 
 # ── The relative import shapes, which is how a SIBLING reaches the vocabulary ──
@@ -2075,6 +2120,46 @@ MESSAGES = {"rclone-missing": "install rclone and run doctor"}
 
 def status(cause):
     return ExitCode.PRECONDITION if cause in MESSAGES else ExitCode.OK
+"""
+
+# A level Python refuses outright. Five dots from a three-element package walks
+# off the top of the tree, and the resolver has to say so, because the slice that
+# computes the base is NEGATIVE at that point and Python's slicing hands back a
+# shorter package rather than raising. See the test below for what that base
+# happens to be.
+
+EVASION_A_RELATIVE_IMPORT_THAT_WALKS_OFF_THE_TOP = """
+from .....exit_codes import ExitCode
+
+CODES = {"rclone-missing": ExitCode.PRECONDITION}
+"""
+
+# ── The conversion spellings R-16 called unreachable ────────────────────────
+#
+# Both of these are ordinary Python that no fixture happened to write, which is
+# not the same thing as unreachable, and round three's comments said the second
+# while meaning the first.
+
+EVASION_A_CONVERSION_THROUGH_THE_MODULE_NAME = """
+from cratekit.core import exit_codes
+
+CODES = {"rclone-missing": exit_codes.ExitCode(30)}
+"""
+
+CORRECT_A_TWO_ARGUMENT_CALL_IS_NOT_A_CONVERSION = """
+from cratekit.core.exit_codes import ExitCode
+
+CODES = {"rclone-missing": ExitCode(30, "the remote tool is missing")}
+"""
+
+EVASION_A_STATUS_WITH_A_CONVERSION_ROUND_IT = """
+import sys
+
+PRECONDITION = 30
+
+
+def refuse():
+    sys.exit(int(PRECONDITION))
 """
 
 # ── A branch table one indent deeper ────────────────────────────────────────
@@ -2438,7 +2523,149 @@ def test_a_relative_import_is_resolved_against_the_package_the_file_sits_in():
             EVASION_A_RELATIVE_IMPORT_TWO_LEVELS_UP, CAUSES, RANGE, "cratekit"
         )
         == []
-    ), "two dots from the top package walks off it, so Python imports nothing either"
+    ), (
+        "two dots from the top package walks off it, so Python imports nothing "
+        "either. This does NOT prove the off the top clause: with the clause "
+        "removed the negative slice leaves a base that matches nothing here "
+        "either, so it stays silent for the wrong reason. The test below is the "
+        "one that proves it"
+    )
+
+
+def test_a_relative_import_that_walks_off_the_top_names_nothing():
+    """The clause the assertion above was credited with covering, driven properly.
+
+    ``_relative_module`` computes its base as ``parts[:len(parts) - (level - 1)]``
+    and Python's slicing does not raise when that index goes negative: it hands
+    back a SHORTER package. With a file in ``cratekit.core.sub`` and five dots
+    the index is ``-1``, the base becomes ``cratekit.core``, and the walk would
+    resolve an import the interpreter refuses outright onto the exact module it
+    is hunting. Not silence, and not a stray extra line either: a REPORTED
+    offender in a module that cannot import.
+
+    Both halves are here because the unit answer and the end to end answer fail
+    differently. The resolver has to return None, and the guard built on it has
+    to stay quiet, and round three's version of this proof asserted neither.
+    """
+    off_the_top = [
+        ("cratekit.core.sub", 4),
+        ("cratekit.core.sub", 5),
+        ("cratekit.core", 3),
+        ("cratekit", 2),
+    ]
+    for package, level in off_the_top:
+        node = ast.ImportFrom(module="exit_codes", names=[], level=level)
+        assert _guards._relative_module(node, package) is None, (
+            f"{level} dots from {package} walks off the top of the tree, which "
+            f"Python refuses to import, so it names no module here either"
+        )
+
+    node = ast.ImportFrom(module="exit_codes", names=[], level=5)
+    parts = "cratekit.core.sub".split(".")
+    assert parts[: len(parts) - (node.level - 1)] == ["cratekit", "core"], (
+        "the negative slice is what makes this dangerous rather than merely "
+        "wrong, and if Python ever stops silently shortening the base here the "
+        "clause is no longer load bearing and this test should say so"
+    )
+    assert (
+        reserved_code_tables(
+            EVASION_A_RELATIVE_IMPORT_THAT_WALKS_OFF_THE_TOP,
+            CAUSES,
+            RANGE,
+            "cratekit.core.sub",
+        )
+        == []
+    ), (
+        "an import Python refuses resolved onto the vocabulary module, so the "
+        "guard reports a second reservation table in a module that cannot even "
+        "be imported"
+    )
+
+
+def test_a_boolean_is_not_an_integer_here():
+    """R-16's first entry, asserted rather than reasoned about.
+
+    ``isinstance(True, int)`` is True in this language, and the guards ask for
+    integers. Round three's comment said nothing in the tree or the fixtures maps
+    a cause to a boolean; ``CORRECT_A_RETRY_FLAG_PER_CAUSE`` maps one cause to
+    ``True`` and another to ``False``, and instrumenting the line counted 464
+    booleans arriving in a single suite run. What was true is that it changes no
+    outcome, because 1 and 0 are both below the reserved range, which is a fact
+    about the RANGE and not about this line. Asserted here so the line is covered
+    by something other than an argument about the range.
+    """
+    assert _guards.resolve_int(ast.parse("True").body[0].value, {}, {}) is None
+    assert _guards.resolve_int(ast.parse("False").body[0].value, {}, {}) is None
+    assert _guards.resolve_int(ast.parse("30").body[0].value, {}, {}) == 30
+    assert reserved_code_tables(CORRECT_A_RETRY_FLAG_PER_CAUSE, CAUSES, RANGE) == []
+
+
+def test_a_conversion_is_read_through_the_module_name_as_well_as_the_class_name():
+    """R-16's fourth entry, which was ordinary Python nobody had written down.
+
+    ``exit_codes.ExitCode(30)`` is the module-qualified spelling of the same
+    conversion as ``ExitCode(30)``, and a module that imported the vocabulary as
+    a module rather than a class writes it that way without thinking about it.
+    Without the module-qualified branch the call is not a conversion, the guard
+    falls through to resolving a ``Call`` as an integer, gets nothing, and says
+    nothing about a table that reserved 30 for a fully reserved cause.
+    """
+    assert reserved_code_tables(
+        EVASION_A_CONVERSION_THROUGH_THE_MODULE_NAME, CAUSES, RANGE
+    ) == ["line 4: 'rclone-missing' -> exit_codes.ExitCode(30)"]
+
+
+def test_a_two_argument_call_is_not_a_conversion():
+    """R-16's third entry: the narrowing that keeps this off somebody's constructor.
+
+    A conversion takes one argument. A call taking a code and a sentence is a
+    constructor, and reading its first argument as a status would report a module
+    that reserved nothing, which is the false positive that gets a guard switched
+    off for a whole file (P7). Round three called this narrowing unreachable and
+    said widening it killed nothing; both halves were wrong, and dropping the
+    ``len(node.args) == 1`` test reports this fixture.
+    """
+    assert (
+        reserved_code_tables(CORRECT_A_TWO_ARGUMENT_CALL_IS_NOT_A_CONVERSION, CAUSES, RANGE)
+        == []
+    )
+
+
+def test_a_status_with_a_conversion_round_it_still_reaches_the_shell():
+    """R-16's second entry, and the one that is a live bypass rather than a nicety.
+
+    ``sys.exit(int(PRECONDITION))`` ends the process with 30 exactly as
+    ``sys.exit(30)`` does. ``process_status_literals`` resolves the argument of
+    every single-argument call it walks, so the conversion arrives at
+    ``resolve_int`` rather than at the table guard's own conversion branch, and
+    without the ``int(...)`` clause there it resolves to nothing and the guard
+    goes quiet on a real bypass. Round three called that clause unreachable;
+    instrumenting it counted 25 arrivals in one suite run.
+    """
+    assert process_status_literals(EVASION_A_STATUS_WITH_A_CONVERSION_ROUND_IT) == [
+        "line 8: sys.exit(int(PRECONDITION)) (status 30)"
+    ]
+
+
+def test_the_derivation_refuses_to_answer_from_an_incomplete_walk(monkeypatch):
+    """R-16's sixth entry, driven by making the walk incomplete.
+
+    The assertion inside ``structured_refusal_causes`` is duplicated by
+    ``test_every_module_in_the_package_imports_so_the_walk_can_see_it``, so
+    deleting it kept the suite green, which is exactly why it read as decoration.
+    It is not decoration: it stops any CALLER of the derivation from reading a
+    short answer as a complete one, and the only way to show that is to hand the
+    caller a short answer.
+    """
+    monkeypatch.setitem(
+        globals(),
+        "imported_package_modules",
+        lambda: ([], {"cratekit.modules.tools.backup": "No module named 'boto3'"}),
+    )
+    with pytest.raises(AssertionError, match="invisible to the completeness"):
+        structured_refusal_causes()
+    monkeypatch.undo()
+    assert structured_refusal_causes(), "the walk did not come back after the swap"
 
 
 def test_the_guard_bites_through_the_derivation_when_the_file_declares_nothing():
@@ -2492,6 +2719,39 @@ def test_the_residual_is_pinned_rather_than_discovered():
     """
     hits = reserved_code_tables(RESIDUAL_A_BACKOFF_ON_A_REAL_CAUSE, CAUSES, RANGE)
     assert hits == ["line 2: 'rekordbox-running' -> status 30"]
+
+
+def test_the_cost_of_the_second_tier_is_pinned_rather_than_discovered():
+    """What the narrowing gave up, written down with the fixture that shows it.
+
+    ``{"config-unusable": 22}`` contradicts a live registry entry with a bare
+    integer and is NOT reported, because for a registry-only key the value has
+    to be spelled as a code. That is the price of not reporting twenty seven of
+    twenty eight ordinary constructs, and it is a price rather than an oversight.
+
+    Pinned in both directions. The bare spelling is silent; the same
+    contradiction written as a code is reported. A later round that decides the
+    price is too high will find this test rather than a comment. R-19.
+    """
+    named_only = registry_only_causes()
+    assert "config-unusable" in named_only
+    assert (
+        reserved_code_tables(
+            RESIDUAL_A_BARE_CODE_FOR_A_REGISTRY_SLUG,
+            declared_causes(),
+            RANGE,
+            None,
+            named_only,
+        )
+        == []
+    )
+    assert reserved_code_tables(
+        EVASION_A_NAMED_CODE_FOR_A_REGISTRY_SLUG,
+        declared_causes(),
+        RANGE,
+        None,
+        named_only,
+    ), "the same contradiction spelled as a code has to still be reported"
 
 
 @pytest.mark.parametrize(
@@ -2552,39 +2812,67 @@ def test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal(source)
 
 
 def declared_causes() -> frozenset[str]:
-    """Every string anybody in this package has declared to be a refusal cause.
+    """The causes a BARE integer beside them is read as a reservation of.
 
-    FOUR declarations, and the round before this enumerated three and called the
-    set complete. What it left out was the obvious one: ``core.cause.REASONS``,
-    which ``cli/exit_codes.py``'s own docstring calls "the other mapping in this
-    repository that gives a slug a code". Sixty of its sixty one slugs are
-    outside the reserved table, so a module writing ``{"config-unusable": 22}``
-    was a second opinion contradicting a live registry entry and the guard
-    returned empty over it. Round one's shape rule reported that module; round
-    two's declaration rule reported nothing, which is a coverage loss dressed as
-    a narrowing.
+    THE FIRST TIER, and it is deliberately small. Round three made this the union
+    of everything anybody had ever declared a cause, eighty two strings, and left
+    "a bare integer inside 10 to 59" as the only value rule. Measured afterwards,
+    twenty seven of twenty eight ordinary constructs keyed on one of the added
+    slugs were reported: a poll interval of 30, a sort order of 10 20 30, a
+    column width of 40, a schema version of 11. That was not a tuning miss. The
+    reserved range IS the band ordinary small integers live in, so a bare
+    integer cannot carry the weight of a wide key set no matter how the keys are
+    chosen.
+
+    Three declarations, and each is small, specific and written by hand:
 
     * the reservation table, which is what this file is about;
-    * the closed reason registry, which reserves a code for every CORE refusal;
     * what the completeness walk derived from the package, so a module's table
       for its own brand new causes is seen the moment the module declares them;
     * a cause-shaped string a source declares in its own enum, which
       ``ReservedCodeTable`` adds per file rather than here.
 
-    The middle two are why the guard and the derivation share one answer to "what
+    The middle one is why the guard and the derivation share one answer to "what
     is a cause". Keying on the reserved set alone was blind to the whole case the
     table exists for; keying on the SHAPE of a slug fired on every kebab-keyed
     integer in the tree.
 
-    WHAT IS STILL OUTSIDE, said rather than implied. ``preflight.MountState``
+    The closed reason registry's other sixty slugs are the SECOND tier and live
+    in ``registry_only_causes`` below.
+    """
+    derived = structured_refusal_causes()
+    return CAUSES | frozenset().union(*derived.values())
+
+
+def registry_only_causes() -> frozenset[str]:
+    """The causes only a NAMED code beside them is read as a reservation of.
+
+    THE SECOND TIER. ``core.cause.REASONS`` is what ``cli/exit_codes.py``'s own
+    docstring calls "the other mapping in this repository that gives a slug a
+    code", and sixty of its sixty one slugs are outside the reserved table, so a
+    module writing ``{"config-unusable": ExitCode.LIBRARY_UNAVAILABLE}`` is a
+    second opinion contradicting a live registry entry. Round two could not see
+    that module at all. Round three could, and paid for it by reporting every
+    ordinary mapping in the package that happens to be keyed on a core condition.
+
+    So these sixty keys are carried with a NARROWER value rule rather than
+    dropped: a status the source cannot have meant as anything else, which is an
+    ``ExitCode`` member in any import spelling or a conversion wrapped round one.
+    Nobody writes ``RETRY_AFTER = {"session-lock-held": ExitCode.PRECONDITION}``
+    and means seconds.
+
+    THE COST, measured rather than assumed: ``{"config-unusable": 22}``, a bare
+    integer contradicting the registry, is no longer reported. R-19 records that
+    with the fixture that pins it, because a limit nobody wrote down is a limit
+    the next reader has to rediscover.
+
+    WHAT IS OUTSIDE BOTH TIERS, said rather than implied. ``preflight.MountState``
     spells its seven states with underscores rather than this repository's
     hyphens, and ``core/session.py`` converts every one of them into a slug
     ``REASONS`` reserves before anything refuses. Adding them would put ``"ok"``
-    in the key set, which is a false positive waiting for the first module that
-    maps it to a number in range. R-17 records the gap and the reason.
+    in the key set. R-17 records the gap and the reason.
     """
-    derived = structured_refusal_causes()
-    return CAUSES | frozenset(REASONS) | frozenset().union(*derived.values())
+    return frozenset(REASONS) - declared_causes()
 
 
 def package_of(relative: str) -> str:
@@ -2639,11 +2927,16 @@ def test_no_module_in_the_package_keeps_a_second_reservation_table():
     duplicate taxonomy resolvers.
     """
     causes = declared_causes()
+    named_only = registry_only_causes()
     offenders = {
-        relative: reserved_code_tables(source, causes, RANGE, package_of(relative))
+        relative: reserved_code_tables(
+            source, causes, RANGE, package_of(relative), named_only
+        )
         for relative, source in package_sources()
         if relative not in TABLE_OWNERS
-        and reserved_code_tables(source, causes, RANGE, package_of(relative))
+        and reserved_code_tables(
+            source, causes, RANGE, package_of(relative), named_only
+        )
     }
     assert not offenders, f"a second reservation table: {offenders}"
 
@@ -2669,57 +2962,103 @@ def test_the_table_owner_escape_is_exactly_these_two_files():
         "which is the review this set never had"
     )
     causes = declared_causes()
+    named_only = registry_only_causes()
     sources = dict(package_sources())
     for owner in TABLE_OWNERS:
         assert owner in sources, f"{owner} is exempted and is not in the package"
-        assert reserved_code_tables(sources[owner], causes, RANGE, package_of(owner)), (
+        assert reserved_code_tables(
+            sources[owner], causes, RANGE, package_of(owner), named_only
+        ), (
             f"{owner} is exempted from the second-table guard and maps no cause "
             f"to a code, so the exemption covers nothing and the file it was "
             f"written for has moved"
         )
 
 
-def test_the_closed_reason_registry_is_part_of_the_guards_key_set():
-    """The declaration the round before this left out, pinned by the case it lets through.
+def test_the_closed_reason_registry_is_a_key_set_a_named_code_can_reserve():
+    """The second tier, driven by the case it catches and the case it lets through.
 
     ``config-unusable`` is reserved by ``core.cause.REASONS`` at ``PRECONDITION``
     and is one of the sixty slugs the reserved table does not repeat. A module
-    mapping it to a different code is the exact second opinion this guard exists
-    to report, and with the registry outside the key set the guard returned empty
-    over it.
+    giving it a DIFFERENT code is the exact second opinion this guard exists to
+    report, and round two, with the registry outside the key set entirely,
+    returned empty over it.
+
+    Round three put the registry in and kept "any bare integer in the reserved
+    range" as the value rule, which reported almost every ordinary mapping in
+    the package keyed on a core condition. The tier below is the narrowing: for
+    these sixty keys the code has to be spelled as a code.
+
+    NOT VACUOUS, and the way to check that is to empty the set rather than to
+    reason about it. Every assertion here is driven with the registry tier
+    present and again with it empty, and the two answers differ, which is what
+    round three's version could not have shown: its fixtures used 5, 3 and a
+    sentence, so the reserved range answered every question and an empty key set
+    passed it unchanged.
     """
     assert "config-unusable" in REASONS
-    assert "config-unusable" not in CAUSES, "pick a slug only the registry declares"
-    assert reserved_code_tables(EVASION_A_CODE_FOR_A_REGISTRY_SLUG, declared_causes(), RANGE) == [
-        "line 2: 'config-unusable' -> status 22"
-    ]
-    assert frozenset(REASONS) <= declared_causes(), (
-        "every slug the closed registry reserves is a cause somebody declared, "
-        "and a key set that omits them lets a module contradict the registry"
+    assert "config-unusable" not in declared_causes(), (
+        "pick a slug only the registry declares, or this proves nothing about "
+        "the second tier"
     )
-    assert reserved_code_tables(
-        EVASION_A_CODE_FOR_A_REGISTRY_SLUG_HELD_IN_A_NAME, declared_causes(), RANGE
-    ) == ["line 4: 'credential-missing' -> status 30 as PRECONDITION"]
+    named_only = registry_only_causes()
+    assert "config-unusable" in named_only
 
-
-def test_widening_the_key_set_to_the_registry_does_not_fire_on_ordinary_code():
-    """P7, run against the widening rather than after it.
-
-    Sixty slugs joined the key set at once, and the direction that gets a guard
-    switched off is the one where it starts reporting correct code. Every ordinary
-    thing a module does with a registry slug is here: a retry delay in minutes, a
-    sentence per cause, an attempt budget. None is a status and none is reported,
-    for the same reason the twenty fixtures above are silent, which is that the
-    only integers that can be a reservation are the ones inside the range.
-
-    Measured over the real tree as well: the widened key set finds ZERO offenders
-    across the package, so no file had to be exempted to make it green.
-    """
+    reported = reserved_code_tables(
+        EVASION_A_NAMED_CODE_FOR_A_REGISTRY_SLUG, declared_causes(), RANGE, None, named_only
+    )
+    assert reported == ["line 4: 'config-unusable' -> ExitCode.LIBRARY_UNAVAILABLE"]
     assert (
         reserved_code_tables(
-            CORRECT_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS, declared_causes(), RANGE
+            EVASION_A_NAMED_CODE_FOR_A_REGISTRY_SLUG,
+            declared_causes(),
+            RANGE,
+            None,
+            frozenset(),
         )
         == []
+    ), (
+        "the registry tier is what reports this, so emptying it has to silence "
+        "it. If it does not, the reservation was being found some other way and "
+        "this test is measuring nothing"
+    )
+    assert reserved_code_tables(
+        EVASION_A_CONVERSION_ON_A_REGISTRY_SLUG, declared_causes(), RANGE, None, named_only
+    ) == ["line 4: 'credential-missing' -> int(ExitCode.PRECONDITION)"]
+
+
+def test_the_registry_tier_does_not_fire_on_ordinary_code_inside_the_reserved_range():
+    """P7, run against the widening rather than after it, with integers that matter.
+
+    Round three's version of this test used a retry delay of 5, an attempt budget
+    of 3 and a mapping of sentences. Every one of those is answered by the
+    RANGE before the key set is ever consulted, so the test passed with an empty
+    key set and certified nothing. Measured with in-range integers instead,
+    twenty seven of twenty eight ordinary constructs were reported.
+
+    So every integer below is inside 10 to 59, and every key is a registry slug.
+    A poll interval, a sort order, a column width, a schema version, a
+    percentage, a progress weight, a branch that waits, a table filled a key at a
+    time: all of them ordinary, all of them silent, and silent because of the
+    tier rather than because of the range.
+    """
+    named_only = registry_only_causes()
+    hits = reserved_code_tables(
+        CORRECT_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS,
+        declared_causes(),
+        RANGE,
+        None,
+        named_only,
+    )
+    assert hits == [], f"ordinary code keyed on a registry slug is reported: {hits}"
+
+    everything = declared_causes() | named_only
+    assert reserved_code_tables(
+        CORRECT_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS, everything, RANGE
+    ), (
+        "the fixture's integers are outside the reserved range, so the range is "
+        "answering every question and this test would pass with no key set at "
+        "all, which is exactly how round three certified the widening safe"
     )
 
 
