@@ -362,8 +362,30 @@ def read_collection(rows: Iterable[Any], *, since: int) -> CollectionRead:
     return CollectionRead(active=tuple(active), removed=tuple(removed))
 
 
-def playlist_referenced(memberships: Iterable[Any]) -> frozenset[str]:
-    """Every content row a live playlist entry still points at.
+def _declared_membership_count(memberships: Any) -> int | None:
+    """How many membership rows the database says it holds, or None if it cannot say.
+
+    Asked BEFORE the walk and answered by the database rather than by the walk,
+    which is the whole point: a number the walk computes cannot contradict the
+    walk. A materialized sequence answers ``len``; the binding's query answers
+    ``count()``, which issues its own statement. A spent cursor answers neither,
+    and that is the shape this exists to catch.
+    """
+    try:
+        return len(memberships)
+    except TypeError:
+        pass
+    counter = getattr(memberships, "count", None)
+    if counter is None:
+        return None
+    try:
+        return int(counter())
+    except Exception:  # noqa: BLE001 - any failure to count is "it cannot say"
+        return None
+
+
+def playlist_referenced(memberships: Any) -> frozenset[str]:
+    """Every content row a live playlist entry still points at, PROVED COMPLETE.
 
     R37 names a candidate that resolves to a path an on-volume playlist still
     references as its own category, never as a deletion. The membership rows
@@ -374,12 +396,64 @@ def playlist_referenced(memberships: Iterable[Any]) -> frozenset[str]:
     A removed CONTENT row whose membership rows are still live is the real shape
     of this: the user dragged the track out of the collection and the playlist
     entry survived, so the file is still spoken for by something they can see.
+
+    **THIS SET IS THE ONLY THING PROTECTING A TRACK A PLAYLIST STILL POINTS AT,
+    AND IT USED TO BE THE ONE INPUT IN THIS MODULE WITH NO ASSERTION ON IT.**
+    ``candidates.assert_complete`` cannot cover it: that proof is over the ACTIVE
+    rows, and a removed content row is by definition absent from the active half,
+    so a playlist entry is the only surviving statement that anybody still points
+    at the file. A walk that answers nothing therefore reads as "no playlist
+    references anything", which is the permissive answer, and the file is trashed.
+    It is also the module's OWN named hazard, stated at the top of this file: the
+    SECOND walk of a database cursor returns nothing at all, and that defect has
+    already shipped in this repository once. It was guarded on the identity read
+    and on the update sequence and left off the one input that decides whether a
+    referenced file moves.
+
+    So the database is asked how many rows it holds and the walk has to reach
+    that number. A SHORT WALK REFUSES, and so does a database that cannot say,
+    for the reason every other refusal here gives: there is no safe default,
+    because the permissive reading of an unanswered question is the one that
+    moves somebody's music.
+
+    An honest ZERO is accepted, and only an honest one: a library whose playlists
+    are all empty declares zero and walks zero, and those agree. A spent cursor
+    declares nothing at all and is refused rather than read as that library.
     """
-    return frozenset(
-        str(row.ContentID)
-        for row in memberships
-        if not trees.soft_delete_marker(row)
-    )
+    declared = _declared_membership_count(memberships)
+    walked = 0
+    referenced: set[str] = set()
+    for row in memberships:
+        walked += 1
+        if not trees.soft_delete_marker(row):
+            referenced.add(str(row.ContentID))
+    if declared is None:
+        raise refuse(
+            "deletion-evidence-incomplete",
+            "the rekordbox database cannot say how many playlist memberships it "
+            "holds, so the walk that just returned "
+            f"{walked} of them cannot be shown to have seen all of them; a "
+            "membership this pass did not see is a playlist reference nothing "
+            "reports, and the file it protects would be offered for deletion",
+            remedy=Remedy.REPORT_DEFECT,
+            scope=Scope.RUN,
+            origin=("deletion.library",),
+            detail={"walked": walked},
+        )
+    if walked < declared:
+        raise refuse(
+            "deletion-evidence-incomplete",
+            f"the rekordbox database holds {declared} playlist memberships and "
+            f"this walk saw {walked} of them, so the set of files a playlist "
+            f"still points at is short by {declared - walked}; every file missing "
+            f"from it would be proved unreferenced against a question that was "
+            f"never fully asked",
+            remedy=Remedy.RUN_DOCTOR,
+            scope=Scope.RUN,
+            origin=("deletion.library",),
+            detail={"declared": declared, "walked": walked},
+        )
+    return frozenset(referenced)
 
 
 __all__ = [

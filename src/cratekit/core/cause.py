@@ -404,6 +404,17 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # the library on every run; guessing high marks the row handled and
         # nobody is ever asked about it.
         "removal-sequence-unreadable": ExitCode.LIBRARY_UNREADABLE,
+        # A walk this pass reads an ANSWER off came back short, so the answer is
+        # about the rows that happened to arrive rather than about the library.
+        # Two shapes reach it and both are the same fault: the playlist
+        # membership walk that could not be shown to have seen every membership
+        # row, and an anchor whose existence answer moved while the removals were
+        # being categorised. ONE SLUG for the reason the routing ledger and the
+        # tree registry each take one: what differs is the REMEDY, and the remedy
+        # travels on the remediation. Its own slug rather than the reference
+        # set's because that one is about ACTIVE ROWS and names them in its
+        # sentence, while neither of these is a statement about any row at all.
+        "deletion-evidence-incomplete": ExitCode.PRECONDITION,
     }
 )
 

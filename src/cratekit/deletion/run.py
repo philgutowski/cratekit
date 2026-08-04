@@ -83,7 +83,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from cratekit.cli.output import timestamp
 from cratekit.core import config, locations, preflight, rb_writer, review, session, tombstone
@@ -466,6 +466,97 @@ def _record_or_put_it_back(
         raise
 
 
+def _finished_business(
+    answered: Candidate, *, recorded: Callable[[library.RemovedRow], bool]
+) -> bool:
+    """Whether a CONFIRMED candidate that did not move may be retired.
+
+    **ABSENCE READ AS EVIDENCE OF ABSENCE, IN THE ONE PLACE IT COSTS A CONFIRMED
+    DELETION.** ``GONE`` is the single member of :data:`candidates.HANDLED`, so a
+    confirmed row whose file is not where the row named was retired by the
+    watermark and never offered again. Its docstring reasons about that as a
+    crash between the rename and the record, and it fires for an ordinary act: a
+    person confirms a deletion, moves or renames the file by hand before the
+    apply, and the run reports nothing trashed, writes no tombstone, and advances
+    the watermark straight over the row. The file's not being where it was is
+    read as the deletion having been completed.
+
+    The tombstone is what actually distinguishes the two, so it is what is asked.
+    A recorded deletion is finished; an unrecorded absence is not, and the row
+    holds the watermark at its own sequence until the file is back where the row
+    names it or the person withdraws the confirmation. That is the same bounded
+    cost a decline already pays, and it is paid loudly: the caller names the
+    remedy in the warning rather than leaving a person to find it.
+
+    ONLY FOR A CONFIRMED ROW. A removal nobody has answered for that is simply
+    gone is still retired, and it must be: a person who deletes music in the
+    Finder has not asked this pass for anything, so there is no promise to keep
+    and re-walking their whole removal history forever would be the refusal doing
+    more harm than the defect.
+    """
+    if not answered.handled:
+        return False
+    if answered.category is Category.GONE and not recorded(answered.row):
+        return False
+    return True
+
+
+def _warn_if_the_row_is_held_open(
+    answered: Candidate, *, recorded: Callable[[library.RemovedRow], bool]
+) -> None:
+    """Say out loud that a confirmed deletion is now holding the watermark, and why.
+
+    THE REFUSAL NAMES THE REMEDY, which is the half the sibling guard on the
+    resolved path was missing until this round. A row held open by
+    :func:`_finished_business` is not a transient: it stays held for as long as
+    the file is somewhere other than where the row records it, so a person who is
+    told only that nothing moved is told nothing they can act on. The two acts
+    that clear it are both theirs, and both are named.
+    """
+    if answered.category is not Category.GONE or recorded(answered.row):
+        return
+    logger.warning(
+        "confirmed removal %s is gone from %s and no tombstone records this "
+        "library ever deleting it, so it is NOT being treated as finished: "
+        "nothing was moved to the Trash and nothing was recorded. Put the file "
+        "back where the collection row names it and run this again, or clear the "
+        "review item to withdraw the confirmation; until one of those happens "
+        "this removal holds the deletion watermark at its own position",
+        answered.row.content_id,
+        answered.resolved or answered.row.recorded,
+    )
+
+
+def _reopen_for_the_path_it_now_resolves_to(
+    cfg: config.Config, item_id: str, *, actor: str
+) -> None:
+    """Withdraw a verdict that was made about a different file, so it is re-asked.
+
+    **THE GUARD BELOW IS RIGHT AND IT USED TO HAVE NO WAY OUT.** A verdict may
+    not travel to whatever the row resolves to at apply time, so a confirmed
+    removal whose resolved path no longer matches the path the person was shown
+    is refused. But ``review.offer`` leaves a RESOLVED item's payload alone, by
+    design, so the item kept the stale path forever: correct a volume prefix rule
+    after a remount, which is a legitimate repair and the exact case
+    ``core.tombstone`` says a person "would be asked again" after, and every
+    later apply compared the new path against the old one and refused again.
+    Nothing moved, ever, and the only way back was ``review.clear`` run out of
+    band by somebody who knew it existed.
+
+    Clearing the verdict here is what "asked again" means as an act. It discards
+    a decision, which is exactly right: the decision was about a file this row no
+    longer resolves to, and the whole reason for the guard is that such a
+    decision must not be honoured. The next ``present`` re-offers the item, and
+    because an OPEN item's payload is refreshed, it is offered under the path the
+    row resolves to now.
+
+    The row is NOT handled either way, so the watermark holds and the re-offer
+    reaches a person before anything moves.
+    """
+    with review.open_store(cfg) as store:
+        review.clear(store, item_id, actor=actor)
+
+
 def apply(
     cfg: config.Config,
     db: Any,
@@ -552,7 +643,16 @@ def apply(
         # cannot be read refuses here, where nothing has moved yet, rather than
         # after the first file is in the Trash. The declines store was already
         # read by the plan; this is its sibling.
-        stores.list_tombstones(cfg, include_revoked=True)
+        #
+        # IT IS THE SAME READ THAT ANSWERS THE GONE QUESTION, and merging the two
+        # is deliberate rather than a saving. The pre-flight used to be a bare
+        # ``list_tombstones`` beside a second read of the same store, and two
+        # statements that prove one thing are one statement plus a line nothing
+        # can be measured against: delete either and the other still refuses, so
+        # neither is pinned by anything. One EAGER read, taken here rather than
+        # where the answer is first wanted, is both the proof and the evidence,
+        # and making it lazy is a change a test can see.
+        recorded_now = stores.tombstone_predicate(cfg)
 
         decided = _verdicts(cfg)
         rules = _rules(cfg, prefix_map)
@@ -605,7 +705,8 @@ def apply(
                     item.problem,
                 )
                 refused.append(item)
-                handled.append((item.row.sequence, item.handled))
+                handled.append((item.row.sequence, _finished_business(item, recorded=recorded_now)))
+                _warn_if_the_row_is_held_open(item, recorded=recorded_now)
                 continue
 
             # RE-ASSERTED IMMEDIATELY BEFORE THE MOVE, through the same
@@ -630,7 +731,10 @@ def apply(
                     fresh.problem,
                 )
                 refused.append(fresh)
-                handled.append((item.row.sequence, fresh.handled))
+                handled.append(
+                    (item.row.sequence, _finished_business(fresh, recorded=recorded_now))
+                )
+                _warn_if_the_row_is_held_open(fresh, recorded=recorded_now)
                 continue
 
             # THE PATH THE PERSON WAS SHOWN IS PART OF WHAT THEY ANSWERED, even
@@ -643,14 +747,24 @@ def apply(
             # between the review and the apply and a DIFFERENT file is moved while
             # the one they looked at is still on disk. Comparing here keeps the
             # decision durable and keeps it bound to the file it was made about.
+            #
+            # AND A DECISION THAT CANNOT BE HONOURED IS WITHDRAWN RATHER THAN
+            # STOOD ON FOREVER. See ``_reopen_for_the_path_it_now_resolves_to``:
+            # an offer leaves a resolved item's payload alone, so without this
+            # the stale path is compared against the new one on every later run
+            # and a legitimately corrected prefix rule refuses the confirmed
+            # deletion permanently, with the only way out being a command
+            # nothing in this pass names.
             shown = str(verdict.payload.get("path") or "")
             if shown and locations.norm_for_compare(shown) != locations.norm_for_compare(
                 fresh.resolved
             ):
+                _reopen_for_the_path_it_now_resolves_to(cfg, _item_id(item), actor=actor)
                 logger.warning(
                     "confirmed removal %s was accepted for %s and now resolves to "
                     "%s, so nothing was moved: the decision was made about a "
-                    "different file",
+                    "different file. The confirmation has been withdrawn and this "
+                    "removal will be offered again for the path it resolves to now",
                     item.row.content_id,
                     shown,
                     fresh.resolved,

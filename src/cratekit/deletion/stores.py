@@ -124,6 +124,49 @@ def decline_predicate(cfg: config.Config) -> Callable[[RemovedRow], bool]:
     return declined
 
 
+def tombstone_predicate(cfg: config.Config) -> Callable[[RemovedRow], bool]:
+    """Whether a run has already RECORDED the deletion of this row's version.
+
+    **THE EVIDENCE THAT TELLS A RESUMED DELETION FROM A FILE SOMEBODY MOVED.**
+    ``candidates.GONE`` means "the file the row named is not there", and that
+    sentence carries two entirely different situations. One is a previous run of
+    this pass that trashed the file and recorded it, which is finished business
+    and is what makes an interrupted run resume rather than re-offer. The other
+    is a person who renamed the file in the Finder, which is not finished at all:
+    nothing moved, nothing was recorded, and retiring the row throws away a
+    deletion they had confirmed. Absence cannot tell those apart. The TOMBSTONE
+    can, because R36 makes it part of the deletion rather than a consequence of
+    it, so a deletion this product completed has one and nothing else does.
+
+    Built as a closure over ONE read, which is ``decline_predicate``'s own
+    argument and holds here for the same reason: a store consulted per row could
+    change underneath one pass, so two rows in one report would be judged against
+    two different sets of records.
+
+    REVOKED RECORDS COUNT. The question is "did a run record this deletion", not
+    "is this version suppressed today". Revoking a tombstone makes the version
+    acquirable again and says nothing about whether the file was moved, and
+    reading a revocation as "no deletion happened" would re-open the very row the
+    person had already dealt with.
+    """
+    held = frozenset(
+        record.suppression_id
+        for record in tombstones(cfg).suppressions(include_revoked=True)
+    )
+
+    def recorded(row: RemovedRow) -> bool:
+        try:
+            identity = version_of(row)
+        except Exception:  # noqa: BLE001 - a row with no identity has no tombstone
+            return False
+        return (
+            review.suppression_id_for(tombstone.STORE_KEY, tombstone.KIND_VERSION, identity)
+            in held
+        )
+
+    return recorded
+
+
 def record_decline(
     cfg: config.Config, row: RemovedRow, *, actor: str, resolved: str | None = None
 ) -> review.Suppression:
@@ -257,6 +300,7 @@ __all__ = [
     "row_identity",
     "summarize",
     "suppressed_version",
+    "tombstone_predicate",
     "tombstones",
     "version_of",
 ]

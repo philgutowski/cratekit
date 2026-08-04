@@ -159,6 +159,43 @@ class FakeQuery:
         return len(self._rows)
 
 
+class SpentQuery:
+    """A query whose rows can be WALKED once, which is what a raw cursor is.
+
+    ``count()`` keeps answering, because the database can always be asked the
+    question again; it is the walk that is spent. That asymmetry is the entire
+    shape of the defect this repository has already shipped once, and the fake
+    that shipped with U24 could not express it at all: ``FakeDb`` materialized a
+    fresh ``FakeQuery`` on every call, so a test that went near the membership
+    walk was testing a binding nobody has, and the one input that decides whether
+    a playlist-referenced file gets trashed had no guard and no way to write one.
+    """
+
+    def __init__(self, rows):
+        self._rows = list(rows)
+        self._declared = len(self._rows)
+        self._walked = False
+
+    def __iter__(self):
+        if self._walked:
+            return iter(())
+        self._walked = True
+        return iter(self._rows)
+
+    def count(self):
+        return self._declared
+
+
+class MuteQuery:
+    """A query that cannot say how many rows it holds. Neither ``len`` nor ``count``."""
+
+    def __init__(self, rows):
+        self._rows = list(rows)
+
+    def __iter__(self):
+        return iter(self._rows)
+
+
 class FakeDb:
     """A binding that answers the five questions the pass asks and nothing else.
 
@@ -167,18 +204,37 @@ class FakeDb:
     libraries to express ten categories would put the interesting part of each
     test behind fifty lines of schema. The real database appears once, below,
     for the claim only a real one can carry: that this pass writes nothing to it.
+
+    ``memberships_walk_once`` and ``memberships_cannot_count`` exist so the two
+    ways the membership read can come up short are reachable. They are OFF by
+    default, so every other test still describes the binding that behaves.
     """
 
-    def __init__(self, rows=(), memberships=(), *, usn=100, identity="db-identity-1"):
+    def __init__(
+        self,
+        rows=(),
+        memberships=(),
+        *,
+        usn=100,
+        identity="db-identity-1",
+        memberships_walk_once=False,
+        memberships_cannot_count=False,
+    ):
         self.rows = list(rows)
         self.memberships = list(memberships)
         self.usn = usn
         self.identity = identity
+        self.memberships_cannot_count = memberships_cannot_count
+        self._spent = SpentQuery(self.memberships) if memberships_walk_once else None
 
     def get_content(self):
         return FakeQuery(self.rows)
 
     def get_playlist_songs(self):
+        if self._spent is not None:
+            return self._spent
+        if self.memberships_cannot_count:
+            return MuteQuery(self.memberships)
         return FakeQuery(self.memberships)
 
     def get_local_usn(self):
@@ -186,6 +242,11 @@ class FakeDb:
 
     def get_property(self):
         return FakeQuery([FakeRow(DBID=self.identity)])
+
+
+def _membership(content_id, *, deleted=False):
+    """One playlist membership row, with only the two columns the reader touches."""
+    return FakeRow(ID=f"m{content_id}", ContentID=content_id, rb_local_deleted=1 if deleted else 0)
 
 
 def _content(cfg, name, content_id, *, deleted=False, usn=None, size=11, title=None, isrc=None):
@@ -1209,11 +1270,47 @@ def test_a_row_that_cannot_report_the_soft_delete_marker_refuses(cfg):
     assert excinfo.value.cause.code is ExitCode.LIBRARY_UNREADABLE
 
 
-def test_a_removed_row_with_no_update_sequence_refuses(cfg):
-    blind = FakeRow(ID="9", FolderPath="/x.flac", rb_local_deleted=1, rb_local_usn=None)
+@pytest.mark.parametrize("value", [None, True, False, "not a number"], ids=str)
+def test_a_removed_row_with_no_usable_update_sequence_refuses(cfg, value):
+    """A BOOLEAN is refused beside a missing value, and that is not fussiness.
+
+    ``int(True)`` is 1 and ``int(False)`` is 0, so a column answering a boolean
+    would be read as a real position in the library's sequence space, one it
+    never issued. Guessing low re-offers every removal in the library; guessing
+    high hides this one forever. Neither is a default this may take.
+    """
+    blind = FakeRow(ID="9", FolderPath="/x.flac", rb_local_deleted=1, rb_local_usn=value)
     with pytest.raises(CratekitError) as excinfo:
         library.read_collection([blind], since=0)
     assert excinfo.value.cause.reason == "removal-sequence-unreadable"
+
+
+@pytest.mark.parametrize("identity", ["", None], ids=["empty", "absent"])
+def test_a_database_that_names_no_identity_of_its_own_refuses(cfg, identity):
+    """An unbound watermark is the state where a rebuild reports nothing forever.
+
+    Without the refusal the identity is ``str(None)`` or the empty string, which
+    is a perfectly usable dictionary key and a completely wrong one: every
+    rebuilt library would share it, so a position measured in a sequence space
+    that no longer exists is inherited silently.
+    """
+    with pytest.raises(CratekitError) as excinfo:
+        library.database_identity(FakeDb([], identity=identity))
+    assert excinfo.value.cause.reason == "canary-read-failed"
+    assert excinfo.value.cause.detail["column"] == "DBID"
+
+
+def test_a_database_that_cannot_report_its_update_counter_refuses(cfg):
+    """The baseline's own input. Read as zero it re-offers a whole library's history."""
+
+    class Mute(FakeDb):
+        def get_local_usn(self):
+            raise RuntimeError("the counter could not be read")
+
+    with pytest.raises(CratekitError) as excinfo:
+        library.current_sequence(Mute([]))
+    assert excinfo.value.cause.reason == "canary-read-failed"
+    assert excinfo.value.cause.detail["column"] == "localUpdateCount"
 
 
 def test_the_apply_refuses_without_the_backup_acknowledgment(cfg, monkeypatch, tmp_path):
@@ -2922,3 +3019,472 @@ def test_an_interrupt_while_putting_the_file_back_still_names_both_paths(
     assert str(Path(cfg.library.root) / "Music" / ONE) in cause.message
     assert cause.detail["trashed_to"]
     assert cause.remediation.steps and "by hand" in cause.remediation.steps[0]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 9: round five, stage one. Data safety.
+#
+# Every finding below is a file that is lost or a removal that is silently
+# retired, which is why they are in their own stage and land before anything
+# about string matching. Each one is a reading of ABSENCE AS EVIDENCE OF
+# ABSENCE, in a place where the permissive answer moves somebody's music.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+# ── S1-A: the membership walk is the only thing protecting a referenced file ──
+
+
+def test_a_membership_walk_that_comes_back_short_refuses_rather_than_freeing_the_file(
+    cfg, gates_pass, tmp_path
+):
+    """The one input in this pass with no assertion on it, driven end to end.
+
+    ``assert_complete`` cannot cover a playlist reference: that proof is over the
+    ACTIVE rows and a removed content row is by definition absent from the active
+    half, so the membership walk is the only surviving statement that anybody
+    still points at the file. An empty answer reads as "no playlist references
+    anything", which is the permissive reading, and the file moves.
+
+    The walk here is spent, which is the module's own named hazard: the second
+    walk of a database cursor returns nothing at all, and that defect has already
+    shipped in this repository once.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    _music(cfg, ONE)
+    run.plan(cfg, FakeDb([], usn=40), actor="cli")
+    rows = [_content(cfg, ONE, "1", deleted=True, usn=50)]
+
+    # The plan's own walk answers, so the candidate is offered and confirmed
+    # exactly as it would be. It is the SECOND walk, the one ``apply`` makes
+    # immediately before the move, that comes back empty.
+    db = FakeDb(rows, [_membership("1")], usn=50, memberships_walk_once=True)
+    found = run.plan(cfg, db, actor="cli")
+    assert [item.category for item in found.candidates] == [
+        candidates.Category.STILL_REFERENCED
+    ], "the first walk saw the playlist entry, so the file is spoken for"
+
+    spent = FakeDb(rows, [_membership("1")], usn=50, memberships_walk_once=True)
+    for _ in spent.get_playlist_songs():
+        pass
+    with pytest.raises(CratekitError) as excinfo:
+        run.plan(cfg, spent, actor="cli")
+    assert excinfo.value.cause.reason == "deletion-evidence-incomplete"
+    assert (Path(cfg.library.root) / "Music" / ONE).exists()
+
+
+def test_a_binding_that_cannot_say_how_many_memberships_it_holds_refuses(cfg, gates_pass):
+    """There is no safe default, which is the rule this module already applies twice.
+
+    An unreadable identity refuses and an unreadable update sequence refuses. A
+    membership count that cannot be read was the third of the same shape and was
+    silently treated as "everything I saw is everything there is".
+    """
+    _music(cfg, ONE)
+    run.plan(cfg, FakeDb([], usn=40), actor="cli")
+    db = FakeDb(
+        [_content(cfg, ONE, "1", deleted=True, usn=50)],
+        [_membership("1")],
+        usn=50,
+        memberships_cannot_count=True,
+    )
+    with pytest.raises(CratekitError) as excinfo:
+        run.plan(cfg, db, actor="cli")
+    assert excinfo.value.cause.reason == "deletion-evidence-incomplete"
+
+
+def test_a_library_whose_playlists_are_all_empty_still_runs(cfg, gates_pass):
+    """An HONEST zero is accepted, and only an honest one.
+
+    The guard may not cost the feature to somebody who keeps no playlists. Zero
+    declared and zero walked agree; it is a walk that declares nothing at all
+    that is refused.
+    """
+    _music(cfg, ONE)
+    run.plan(cfg, FakeDb([], usn=40), actor="cli")
+    found = run.plan(cfg, FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50)], usn=50), actor="cli")
+    assert [item.category for item in found.candidates] == [candidates.Category.DELETABLE]
+
+
+def test_a_playlist_that_claims_the_file_between_the_review_and_the_move_stops_it(
+    cfg, gates_pass, tmp_path
+):
+    """STILL_REFERENCED through ``apply``, which nothing drove before this round.
+
+    The only test touching the category called ``categorize`` directly, so the
+    membership argument at the move site was never exercised at all: the re-check
+    could have been handed an empty set and the suite would have stayed green.
+    Here the person confirms a file no playlist claims, then puts it in a
+    playlist, and the move must not happen.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    db = _prepared(cfg)
+    found = run.plan(cfg, db, actor="cli")
+    offered = run.present(cfg, found)
+    _confirm(cfg, offered[0].item_id)
+
+    db.memberships.append(_membership("1"))
+    report = run.apply(cfg, db, actor="cli", home=home)
+
+    assert report.trashed == ()
+    assert [item.category for item in report.refused] == [candidates.Category.STILL_REFERENCED]
+    assert (Path(cfg.library.root) / "Music" / ONE).exists()
+    assert report.watermark.sequence == 40
+
+
+def test_a_membership_rekordbox_removed_is_not_a_reference(cfg):
+    """The marker is read on the membership row too, through the shared reader."""
+    live = library.playlist_referenced(FakeQuery([_membership("1"), _membership("2")]))
+    assert live == frozenset({"1", "2"})
+    lifted = library.playlist_referenced(
+        FakeQuery([_membership("1"), _membership("2", deleted=True)])
+    )
+    assert lifted == frozenset({"1"})
+
+
+# ── S1-B: the anchor cache in categorize is never re-asked ───────────────────
+
+
+def test_a_volume_that_goes_away_mid_categorization_refuses_rather_than_retiring(
+    cfg, tmp_path
+):
+    """The identical cache as the reference set's, and MORE at stake in this walk.
+
+    ``reference_set`` re-asks at the end and refuses on any anchor whose answer
+    moved, because "the half that wins is the wrong one". ``categorize`` had the
+    same cache and never asked, so ejecting a volume partway through left every
+    remaining row through that anchor reading ``GONE`` off a stale ``present``.
+    ``GONE`` is the single member of ``HANDLED``, so the watermark retires those
+    rows, nobody is ever asked, and remounting brings none of them back.
+    """
+    volume = tmp_path / "ejected-halfway"
+    volume.mkdir()
+    real = os.stat
+    asked = {"count": 0}
+
+    def ejects_after_the_first_look(path):
+        if path == str(volume):
+            asked["count"] += 1
+            if asked["count"] > 1:
+                raise FileNotFoundError(path)
+            return real(path)
+        raise FileNotFoundError(path)
+
+    rules = [locations.PrefixRule(RECORDED_ELSEWHERE, str(volume))]
+    rows = [
+        replace(
+            _removed(cfg, ONE, str(index)),
+            recorded=f"{RECORDED_ELSEWHERE}/Music/Track {index}.flac",
+        )
+        for index in range(3)
+    ]
+    with pytest.raises(CratekitError) as excinfo:
+        _categorize(
+            cfg, rows, _references(cfg, []), prefix_map=rules, stat=ejects_after_the_first_look
+        )
+    assert excinfo.value.cause.reason == "deletion-evidence-incomplete"
+    assert excinfo.value.cause.detail["unstable_anchors"] == [str(volume)]
+
+
+def test_a_volume_that_stays_put_categorizes_every_row(cfg, tmp_path):
+    """The half that pins the guard to a MOVING anchor rather than to any anchor.
+
+    An anchor asked twice and answering the same thing both times is the ordinary
+    run, and refusing there would take the feature away from everybody.
+    """
+    volume = tmp_path / "still-mounted"
+    volume.mkdir()
+    rules = [locations.PrefixRule(RECORDED_ELSEWHERE, str(volume))]
+    row = replace(
+        _removed(cfg, ONE, "1"), recorded=f"{RECORDED_ELSEWHERE}/Music/Track 0.flac"
+    )
+    answered = _categorize(cfg, [row], _references(cfg, []), prefix_map=rules)
+    assert answered[0].category is candidates.Category.GONE
+
+
+# ── S1-C: a hand-moved file must not retire a confirmed removal ──────────────
+
+
+def test_a_file_moved_by_hand_after_the_confirmation_does_not_retire_the_removal(
+    cfg, gates_pass, tmp_path, caplog
+):
+    """ABSENCE READ AS EVIDENCE OF ABSENCE, costing a confirmed deletion outright.
+
+    The person confirms, then renames the file in the Finder before the apply
+    runs. The file is not where the row names it, so the answer is ``GONE``,
+    ``GONE`` is the one member of ``HANDLED``, and the watermark walked straight
+    over the row: nothing trashed, no tombstone, and the removal never offered
+    again. The file not being where it was is not evidence that this library
+    deleted it, and the tombstone is what says whether it did.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    db = _prepared(cfg)
+    found = run.plan(cfg, db, actor="cli")
+    offered = run.present(cfg, found)
+    _confirm(cfg, offered[0].item_id)
+
+    music = Path(cfg.library.root) / "Music" / ONE
+    moved = Path(cfg.library.root) / "Music" / "Renamed By Hand.flac"
+    music.rename(moved)
+
+    with caplog.at_level(logging.WARNING):
+        report = run.apply(cfg, db, actor="cli", home=home)
+
+    assert report.trashed == ()
+    assert [item.category for item in report.refused] == [candidates.Category.GONE]
+    assert stores.list_tombstones(cfg, include_revoked=True) == ()
+    assert report.watermark.sequence == 40, (
+        "the confirmed removal was retired without the file being trashed and "
+        "without the tombstone R36 makes part of the deletion"
+    )
+    assert "holds the deletion watermark" in caplog.text, (
+        "a row held open forever with no named way to clear it is a wall"
+    )
+
+    # And the named remedy works: put the file back and the deletion completes.
+    moved.rename(music)
+    finished = run.apply(cfg, db, actor="cli", home=home)
+    assert len(finished.trashed) == 1
+    assert finished.watermark.sequence == 50
+
+
+def test_a_resumed_deletion_whose_tombstone_was_recorded_is_still_finished_business(
+    cfg, gates_pass, tmp_path
+):
+    """The half the tombstone test may not cost, driven through ``apply``.
+
+    A run that trashed the file, wrote the tombstone and then failed to advance
+    the watermark must RESUME rather than re-offer, and the row must retire. That
+    is the whole reason ``GONE`` is handled, and holding every gone row open
+    would have traded one defect for a pass that never finishes anything.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    db = _prepared(cfg)
+    found = run.plan(cfg, db, actor="cli")
+    _confirm(cfg, run.present(cfg, found)[0].item_id)
+    run.apply(cfg, db, actor="cli", home=home)
+
+    marks = watermark.WatermarkStore(cfg)
+    with marks._locked():
+        marks._write(replace(marks.read(), sequence=40))
+
+    report = run.apply(cfg, db, actor="cli", home=home)
+    assert report.trashed == ()
+    assert [item.category for item in report.refused] == [candidates.Category.GONE]
+    assert report.watermark.sequence == 50, (
+        "an interrupted run that had already recorded the deletion re-offered it "
+        "forever instead of resuming"
+    )
+
+
+# ── S1-D: three zero rows on the destructive path itself ─────────────────────
+
+
+def test_recover_refuses_to_overwrite_a_path_something_else_now_occupies(tmp_path):
+    """The UNDO of a half done deletion, and it was entirely untested.
+
+    ``recover`` is what puts a file back when the tombstone cannot be written, so
+    it runs at the one moment the library is already half changed. Overwriting a
+    file the person has since put back at that path would be data loss performed
+    by the recovery mechanism, which is the same sentence the Trash's own naming
+    rule is written for.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    source = tmp_path / "track.flac"
+    source.write_bytes(b"the deleted one")
+    layout = trash.assert_usable(source, home=home, platform="darwin")
+    target = trash.move_to_trash(source, layout=layout)
+
+    source.write_bytes(b"a different recording the person put back")
+    with pytest.raises(CratekitError) as excinfo:
+        trash.recover(target, source)
+
+    assert excinfo.value.cause.reason == "trash-unavailable"
+    assert excinfo.value.cause.scope is Scope.ITEM
+    assert source.read_bytes() == b"a different recording the person put back"
+    assert target.read_bytes() == b"the deleted one", "the trashed copy was consumed"
+
+
+@pytest.mark.parametrize(
+    "raising",
+    [OSError("read-only file system"), KeyboardInterrupt()],
+    ids=["an-exception", "an-interrupt"],
+)
+def test_a_move_that_fails_leaves_no_placeholder_wearing_the_track_s_name(
+    tmp_path, monkeypatch, raising
+):
+    """The placeholder cleanup, which round four cited as its own precedent untested.
+
+    A free name is claimed with an exclusive create before the rename, so a
+    failure between the two leaves an EMPTY file in the person's Trash wearing a
+    real track's name, which looks exactly like the file that was supposed to be
+    there. The handler takes ``BaseException`` because a Ctrl-C lands in that
+    window as readily as an error does.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    source = tmp_path / "track.flac"
+    source.write_bytes(b"audio")
+    layout = trash.assert_usable(source, home=home, platform="darwin")
+
+    def will_not_rename(a, b):
+        raise raising
+
+    monkeypatch.setattr(trash.os, "replace", will_not_rename)
+
+    # CAUGHT AND RE-RAISED, because an interrupt that escapes ENDS the pytest
+    # session rather than failing one test, and a suite that stopped early has
+    # measured nothing.
+    with pytest.raises(type(raising)):
+        trash.move_to_trash(source, layout=layout)
+
+    assert source.read_bytes() == b"audio"
+    assert list((home / ".Trash").iterdir()) == [], (
+        "an empty file with a real track's name was left in the Trash"
+    )
+
+
+def test_the_tombstone_store_is_proved_readable_before_any_file_is_touched(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """The pre-flight, pinned by what it PREVENTS rather than by the end state.
+
+    Its sibling asserted that the file is still on disk afterwards, which is true
+    with the pre-flight and true without it: the undo puts the file back and the
+    refusal is the same either way. What only the pre-flight buys is that nothing
+    was moved at all, so that is what is asserted, and a move here fails the test
+    rather than being quietly repaired.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    db = _prepared(cfg)
+    found = run.plan(cfg, db, actor="cli")
+    _confirm(cfg, run.present(cfg, found)[0].item_id)
+
+    def nothing_may_move(path, *, layout):
+        raise AssertionError(
+            f"{path} was moved to the Trash before the tombstone store was "
+            f"proved readable, so a store that refuses every write would leave "
+            f"the file trashed with nothing recording it"
+        )
+
+    monkeypatch.setattr(trash, "move_to_trash", nothing_may_move)
+    config.atomic_write_bytes(b"[]\n", config.state_path(tombstone.STORE_KEY, cfg))
+
+    with pytest.raises(CratekitError) as excinfo:
+        run.apply(cfg, db, actor="cli", home=home)
+    assert excinfo.value.cause.reason == "review-file-unusable"
+
+
+# ── S1-E: a corrected prefix rule must let the retry through ─────────────────
+
+
+def test_a_corrected_prefix_rule_lets_the_confirmed_deletion_through_on_the_retry(
+    cfg, gates_pass, tmp_path
+):
+    """The guard is right and it used to have no way out at all.
+
+    Review under one rule, correct the rule, and the verdict is refused for
+    naming a different file. That is correct once. But ``review.offer`` leaves a
+    RESOLVED item's payload alone, so the item kept the stale path forever and
+    every later apply compared the corrected path against it and refused again:
+    nothing moved, ever. This is the exact case ``core.tombstone`` says a person
+    "would be asked again" after, and they were not. Now the confirmation is
+    withdrawn, the item is re-offered under the path the row resolves to now, and
+    answering it once completes the deletion.
+    """
+    first = tmp_path / "volume-one"
+    second = tmp_path / "volume-two"
+    for volume in (first, second):
+        (volume / "Music").mkdir(parents=True)
+        (volume / "Music" / ONE).write_bytes(b"audio bytes")
+    to_first = [locations.PrefixRule(RECORDED_ELSEWHERE, str(first))]
+    to_second = [locations.PrefixRule(RECORDED_ELSEWHERE, str(second))]
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+
+    run.plan(cfg, FakeDb([], usn=40), actor="cli", prefix_map=to_first)
+    removed = FakeRow(
+        ID="1",
+        FolderPath=f"{RECORDED_ELSEWHERE}/Music/{ONE}",
+        FileSize=11,
+        rb_local_deleted=1,
+        rb_local_usn=50,
+        Title=Path(ONE).stem,
+        ArtistName=ARTIST,
+        ISRC=None,
+    )
+    db = FakeDb([removed], usn=50)
+
+    found = run.plan(cfg, db, actor="cli", prefix_map=to_first)
+    _confirm(cfg, run.present(cfg, found)[0].item_id)
+
+    stale = run.apply(cfg, db, actor="cli", home=home, prefix_map=to_second)
+    assert stale.trashed == () and stale.watermark.sequence == 40
+    assert (first / "Music" / ONE).exists() and (second / "Music" / ONE).exists()
+
+    again = run.plan(cfg, db, actor="cli", prefix_map=to_second)
+    reoffered = run.present(cfg, again)
+    assert len(reoffered) == 1
+    assert reoffered[0].verdict is None, (
+        "the item kept the confirmation made about the other file, so every "
+        "later apply refuses it again and the deletion can never complete"
+    )
+    assert reoffered[0].payload["path"] == str(second / "Music" / ONE)
+
+    _confirm(cfg, reoffered[0].item_id)
+    report = run.apply(cfg, db, actor="cli", home=home, prefix_map=to_second)
+    assert len(report.trashed) == 1
+    assert not (second / "Music" / ONE).exists()
+    assert (first / "Music" / ONE).exists(), "the file the person first saw was moved"
+    assert report.watermark.sequence == 50
+
+
+# ── S1-F: two more zero rows ─────────────────────────────────────────────────
+
+
+def test_a_recorded_value_that_merely_mentions_a_file_location_is_not_one(cfg):
+    """The scheme test is ANCHORED, and unanchored it refuses a run it must not.
+
+    A row that references no file is excused from the completeness proof, and
+    that excusal is the only thing keeping the destructive verb usable for
+    anybody who has ever streamed anything. A ``file://`` at the START of a value
+    names a real file this build cannot resolve, so it refuses; the same text
+    anywhere else in a value that is not a path at all is text.
+    """
+    for recorded in ("a note about file:// locations", "ripped from D:\\ by somebody"):
+        mentions = trees.ContentRow(content_id="9", recorded=recorded, deleted=False)
+        references = _references(cfg, [mentions])
+        assert references.not_a_path == ("9",), recorded
+        assert references.unnameable == () and references.complete, recorded
+        candidates.assert_complete(references)
+
+    for content_id, recorded in (
+        ("8", "file:///Volumes/Music/Track.flac"),
+        ("7", "D:\\Music\\Track.flac"),
+    ):
+        spelled = trees.ContentRow(content_id=content_id, recorded=recorded, deleted=False)
+        assert _references(cfg, [spelled]).unnameable == (content_id,), recorded
+
+
+def test_a_row_that_recorded_a_zero_size_can_never_be_proved(cfg):
+    """R37 proves the file is the file the row NAMED, and zero proves nothing.
+
+    "The row said nothing" and "the row said the file is empty" are kept apart as
+    values and are the same fact here: neither can satisfy the size assertion. A
+    zero read as a size would let a zero-byte file at the recorded path pass the
+    proof, and a zero-byte file at a music path is the shape a truncated copy or
+    a placeholder leaves behind.
+    """
+    empty = Path(cfg.library.root) / "Music" / ONE
+    empty.write_bytes(b"")
+    for recorded in (0, -1):
+        row = _content(cfg, ONE, "1", deleted=True, usn=50, size=recorded)
+        seen = library.read_collection(FakeQuery([row]), since=0)
+        assert seen.removed[0].size is None
+        answered = _categorize(cfg, [seen.removed[0]], _references(cfg, []))
+        assert answered[0].category is candidates.Category.SIZE_MISMATCH

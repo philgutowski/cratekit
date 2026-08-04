@@ -380,9 +380,18 @@ def _unnameable(recorded: str) -> bool:
     is the worst shape this unit has, and this is the half of it U24 can close
     from inside its own package, without taking the feature away from anybody who
     has ever streamed anything.
+
+    THE ANCHOR IS EXPRESSED ONCE, IN THE PATTERN, and it used to be expressed
+    twice. Both patterns carry a leading ``^`` and both were applied with
+    ``re.match``, which anchors at the start on its own, so the ``^`` was
+    unkillable: delete it and nothing anywhere behaves differently, which is a
+    guard that reads as load-bearing and is not. ``re.search`` under a pattern
+    that says ``^`` is the same operation with the rule stated in one place, and
+    a value that merely MENTIONS ``file://`` or a drive letter now costs a test
+    rather than nothing.
     """
     text = str(recorded).strip()
-    return bool(_DRIVE_LETTER.match(text)) or bool(_FILE_LOCATION.match(text))
+    return bool(_DRIVE_LETTER.search(text)) or bool(_FILE_LOCATION.search(text))
 
 
 def _anchor_text(value: str) -> str:
@@ -747,6 +756,20 @@ def categorize(
     makes EVERY removed row that goes through it look gone, so one wrong
     character would quietly mark a library's whole removal history as dealt with,
     and fixing the rule afterwards would not bring any of it back.
+
+    **AND THE CACHE IS RE-ASKED AT THE END, FOR THE SAME REASON AND WITH MORE AT
+    STAKE.** :class:`_Anchors` says which way its cache is unsafe: eject a volume
+    BEFORE its first row and every row through it refuses, which is right, but
+    eject it AFTER and the cached "present" stands. ``reference_set`` re-asks and
+    refuses on any anchor whose answer moved, because "the half that wins is the
+    wrong one". This walk had the identical cache and never asked, so ejecting a
+    volume partway through it left every remaining row through that anchor
+    reading ``GONE`` off a stale ``present``. ``GONE`` is the single member of
+    :data:`HANDLED`, so those rows are RETIRED: the watermark passes over them,
+    nobody is ever asked, and remounting the volume brings none of them back.
+    That is the paragraph above happening to a correct configuration, and an
+    external drive dropping mid-walk is an ordinary afternoon rather than a
+    curiosity.
     """
     out: list[Candidate] = []
     rules = list(prefix_map)
@@ -880,6 +903,24 @@ def categorize(
                 identity=identity,
                 observed_size=stats.st_size,
             )
+        )
+    moved = anchors.changed()
+    if moved:
+        raise refuse(
+            "deletion-evidence-incomplete",
+            f"the directory at {', '.join(moved)} was there for part of this walk "
+            f"and not for the rest, so the removals answered before it moved and "
+            f"the ones answered after describe two different filesystems; a row "
+            f"answered off the stale half reads as already deleted, which is "
+            f"finished business, and the watermark would retire it without "
+            f"anybody being asked",
+            steps=(
+                "leave the library volume and every mapped volume mounted, then "
+                "run this again",
+            ),
+            scope=Scope.RUN,
+            origin=("deletion.candidates",),
+            detail={"unstable_anchors": list(moved)},
         )
     return tuple(out)
 
