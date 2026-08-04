@@ -580,6 +580,134 @@ def test_the_one_spelling_a_provider_row_cannot_reach_is_named_rather_than_assum
     assert credited in spelled.suppression_spellings
 
 
+#: LISTINGS WHOSE CREDIT IS NOT WHERE ``_head_of`` LOOKS FOR IT, and the exact
+#: set of addresses each one may produce. A literal on both sides: deriving the
+#: expectation from ``Wanted.addresses`` would assert that the code agrees with
+#: itself, which is the shape that let this defect through three rounds.
+CREDIT_OUTSIDE_THE_SUFFIX: tuple[tuple[str, tuple[str, ...]], ...] = (
+    # The credit is printed AFTER the version group.
+    ("Sun Path (Live) (feat. Mira)", ("Sun Path (Live) (feat. Mira)",)),
+    # And the same shape with square brackets, which is a different branch.
+    ("Sun Path [Live] (feat. Mira)", ("Sun Path [Live] (feat. Mira)",)),
+    # The version arrives in more than one group, so there is no single suffix
+    # to take off. This is the one the third round made WORSE: it composed four
+    # credit-free addresses where the round before it composed one.
+    (
+        "Sun Path (feat. Mira) (Extended) (Remastered)",
+        ("Sun Path (feat. Mira) (Extended) (Remastered)",),
+    ),
+)
+
+
+@pytest.mark.parametrize("listed,addresses", CREDIT_OUTSIDE_THE_SUFFIX)
+def test_a_listing_whose_head_cannot_be_located_is_addressed_by_what_it_said(
+    listed, addresses
+):
+    """THE OVER-EAGER DIRECTION, WHICH THE DESIGN REJECTS AND THE CODE WAS DOING.
+
+    ``_head_of`` takes the version off the END of the spelling, and a featured
+    credit is not always last. Where it could not be located the composition fell
+    back to the MATCHING title, which has had its credits taken off, so every
+    address composed was the PLAIN record's: ``Sun Path (Extended) (Remastered)``,
+    a literal row in this file's own ``REKORDBOX_ROWS``, became an address of a
+    CREDITED recording. Deleting the plain row then resolved a list line naming
+    the credited one to SUPPRESSED, in none of the three arrays, at exit zero,
+    with acquisition skipping a track nobody had deleted.
+
+    THE SET IS ASSERTED WHOLE rather than by absence, because "the plain address
+    is gone" is also true of a composition that produces some other wrong string.
+    A listing whose head cannot be located is addressed by exactly what it said.
+    """
+    wanted = match.read_text_lines(f"Aurora Bloom - {listed}\n")[0]
+    assert wanted.addresses == addresses
+
+
+def test_a_deletion_of_the_plain_record_never_withholds_a_credit_spelled_late(
+    cfg, music, tmp_path
+):
+    """The same thing DRIVEN, because the cost is a track that never arrives.
+
+    ``test_a_deletion_of_the_plain_record_never_withholds_the_credited_one`` pins
+    the shape where the credit is the whole trailing group. This is the shape
+    where the version is spread over several groups, which the same round left
+    open while its docstring said it was closed.
+    """
+    review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
+        kind=match.TOMBSTONE_KIND,
+        identity=u24_records("Aurora Bloom", "Sun Path (Extended) (Remastered)"),
+        actor="deletion",
+    )
+    credited = write_list(
+        tmp_path, "Aurora Bloom - Sun Path (feat. Mira) (Extended) (Remastered)\n", "c.txt"
+    )
+    _code, envelope = drive(["match", "run", credited])
+    assert len(envelope["data"]["missing"]) == 1, (
+        "a deletion of the plain record silently withheld the credited one"
+    )
+
+    plain = write_list(tmp_path, "Aurora Bloom - Sun Path (Extended) (Remastered)\n", "p.txt")
+    _code, still = drive(["match", "run", plain])
+    assert still["data"]["missing"] == []
+    assert [w["code"] for w in still["warnings"]] == [match_cli.SUPPRESSED_WARNING]
+
+
+@pytest.mark.parametrize(
+    "listed,recorded_row",
+    [
+        ("Sun Path (feat. Mira) [Nightwave Remix]", "Sun Path (feat. Mira) (Nightwave Remix)"),
+        ("Sun Path (feat. Mira) (Nightwave Remix)", "Sun Path (feat. Mira) [Nightwave Remix]"),
+    ],
+    ids=["square-listed", "round-listed"],
+)
+def test_a_credited_listing_reaches_the_other_bracket_shape_of_its_own_version(
+    cfg, music, tmp_path, listed, recorded_row
+):
+    """WHAT ``_head_of`` IS ACTUALLY FOR, and the only thing that needs it.
+
+    For a listing with no credit, the head this composes from and the matching
+    title are the same string, so the whole function is indistinguishable from
+    its own fallback. It earns its keep on exactly one input: a credited listing
+    whose version IS a bracketed suffix, where it keeps the credit that
+    ``split_version`` took off and the fallback cannot. Lose either bracket shape
+    and the credited row spelled the other way becomes unreachable, and a
+    deletion of it is undone at exit zero.
+    """
+    recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
+        kind=match.TOMBSTONE_KIND,
+        identity=u24_records("Aurora Bloom", recorded_row),
+        actor="deletion",
+    )
+    path = write_list(tmp_path, f"Aurora Bloom - {listed}\n", "credited.txt")
+    code, envelope = drive(["match", "run", path])
+
+    assert code == int(ExitCode.OK)
+    assert envelope["data"]["missing"] == []
+    warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
+    assert [w["suppression"] for w in warnings] == [recorded.suppression_id]
+
+
+@pytest.mark.parametrize(
+    "listed,dashed",
+    [
+        ("Sun Path (Live)", "sun path - live"),
+        ("Sun Path [Instrumental]", "sun path - instrumental"),
+    ],
+)
+def test_the_dash_spelling_of_a_bare_one_word_version_is_not_composed(listed, dashed):
+    """THE READ-BACK GATE IS THE CONSERVATIVE READER, and it had been widened.
+
+    ``_spellings_of`` composes the dash form only when this module's own reader
+    reads it back as the same record. The third round let ``split_ambiguous``
+    satisfy that, and ``split_ambiguous`` reads a string back by DECLARING that
+    this module cannot tell whose record it names. So ``Sun Path - Live`` became
+    an address of the live cut of "Sun Path", and a deletion of a composition
+    genuinely called "Sun Path - Live" would have silently withheld it. Nothing
+    could observe the widening, because the listing that spells the dash form
+    already addresses itself.
+    """
+    assert (("artist", "aurora bloom"), ("title", dashed)) not in spellings_of(listed)
+
+
 def test_every_row_spelling_is_addressed_from_every_reader_or_is_a_named_gap():
     """THE DERIVATION CHECK THAT RUNS TODAY, while U24 is in another worktree.
 
@@ -2160,7 +2288,7 @@ def test_the_dash_spelling_of_a_public_playlist_resolves_the_same_as_the_provide
 
 
 @pytest.mark.parametrize("tail", ONE_WORD_TAILS)
-def test_a_one_word_version_tail_resolves_the_same_through_all_three_readers(
+def test_a_one_word_version_tail_is_asked_about_and_never_re_acquired(
     cfg, music, tail
 ):
     """THE WHOLE ONE-WORD CLASS, PINNED, and not one example of it.
@@ -2168,20 +2296,25 @@ def test_a_one_word_version_tail_resolves_the_same_through_all_three_readers(
     The second round refused to split a bare one-word tail, and the parity test
     that was supposed to catch that only ever exercised "Someone Remix", two
     words, so it stayed green while seven real qualifiers stopped converging.
-    With the library holding the file EXACTLY, the provider row resolved matched
-    and the identical public playlist row resolved missing with an acquisition
-    option for a track already on the shelf, at exit zero. "Live" was no better,
-    only quieter: 89.4 against a floor of 82 degraded it to a question about a
-    track the library holds exactly.
+    With the library holding the file EXACTLY, the public playlist row resolved
+    MISSING with an acquisition option for a track already on the shelf, at exit
+    zero. That is the failure this asserts is gone, and it is asserted as what it
+    is: the row is not missing and carries nothing to go and fetch.
 
-    ASSERTED AT RESOLUTION rather than at the reader, deliberately, because that
-    is where this class is decided. The readers cannot agree on the split from
-    the string alone and are not asked to; what has to agree is the state, the
-    reason and the identifier every consumer keys on.
+    WHAT IT NO LONGER ASSERTS IS THAT THE STATE CONVERGES, because the third
+    round bought that convergence by letting the library decide a parse and then
+    reporting the result as a MATCH. "Long - Live" is in this file's own list of
+    legitimate titles ending in a vocabulary word, so a library holding "Long
+    (Live)" made the run report ownership of a record nobody had checked. A
+    source that carries its version in a field of its own has said where the
+    boundary is; a source that spelled one string has not. So the provider row
+    matches and the two dash rows ask, once, and everything the STRING can settle
+    still converges: the two rows that spelled the same characters agree on the
+    state, the reason, the identifier and the item.
     """
     hold(music, f"08A - 124 - Aurora Bloom - Sun Path ({tail})")
     index = index_of(music)
-    resolved = [
+    provider, spotify, text = (
         resolve(read, index).matches[0]
         for read in (
             match.read_tidal_tracks(
@@ -2192,31 +2325,154 @@ def test_a_one_word_version_tail_resolves_the_same_through_all_three_readers(
             ),
             match.read_text_lines(f"Aurora Bloom - Sun Path - {tail}\n"),
         )
-    ]
-    assert [(found.state, found.why) for found in resolved] == [
-        (match.MatchState.MATCHED, match.Why.EXACT)
-    ] * 3
-    assert len({found.match_id for found in resolved}) == 1
-    assert len({found.question_identity["version"] for found in resolved}) == 1
+    )
+    # NOT ACQUIRED, for any of the three, which is the whole point of the class.
+    for found in (provider, spotify, text):
+        assert found.state is not match.MatchState.MISSING
+        assert found.acquisitions == ()
+    assert (provider.state, provider.why) == (match.MatchState.MATCHED, match.Why.EXACT)
+    for found in (spotify, text):
+        assert (found.state, found.why) == (
+            match.MatchState.NEEDS_REVIEW,
+            match.Why.READING_AMBIGUOUS,
+        )
+        assert [candidate.version for candidate in found.candidates] == [tail]
+    assert spotify.match_id == text.match_id
+    assert spotify.question_identity == text.question_identity
 
 
-def test_the_dashed_one_word_spelling_is_matched_rather_than_acquired(
+@pytest.mark.parametrize(
+    "held",
+    [
+        # The library holds the other reading, so there is something to ask about.
+        "08A - 124 - Aurora Bloom - Sun Path (Live)",
+        # And at a different key, so the CANDIDATE changes while the question
+        # does not. An identity that moved with the library would make these two
+        # runs two different questions.
+        "03A - 124 - Aurora Bloom - Sun Path (Live)",
+    ],
+    ids=["held", "held-at-another-key"],
+)
+def test_the_identifier_of_an_ambiguous_row_never_moves_with_the_library(
+    cfg, music, tmp_path, held
+):
+    """A MATCH IDENTIFIER IS A FUNCTION OF THE LIST, and it had become one of the disk.
+
+    ``_reading_the_library_confirms`` rewrote the wanted track, and every
+    identifier downstream is derived from what resolution carries, so one list
+    line produced ``mt_477c70a711c8071a`` on a machine holding "Sun Path (Live)"
+    and ``mt_dd324b5ffa6b8362`` on a machine holding nothing. ``review export``
+    and ``review import`` exist to move a decision BETWEEN machines and that
+    class could not travel: the importing machine looked up an identifier the
+    exporting one never wrote, found nothing, and asked again.
+
+    Worse on ONE machine, because renaming the confirming file flipped the
+    reading back, so the answer somebody had already given was looked up under an
+    identity nobody had ever been asked. It was not found, a fresh question was
+    offered, and the resolved item stayed in the store listed by nothing and
+    warned about by nothing. ``CANDIDATE_GONE`` is the state built for exactly
+    "the library changed under a recorded verdict" and it was unreachable,
+    because reaching it needs the item to be FOUND first.
+    """
+    empty = resolve(
+        match.read_text_lines("Aurora Bloom - Sun Path - Live\n"), index_of(music)
+    ).matches[0]
+    hold(music, held)
+    confirmed = resolve(
+        match.read_text_lines("Aurora Bloom - Sun Path - Live\n"), index_of(music)
+    ).matches[0]
+
+    assert empty.state is match.MatchState.MISSING
+    assert confirmed.state is match.MatchState.NEEDS_REVIEW
+    assert empty.match_id == confirmed.match_id
+    assert empty.question_identity == confirmed.question_identity
+    # The reported title is the one the LIST spelled, in both, because the
+    # identifier and the payload have to agree about which record this is.
+    assert (confirmed.wanted.title, confirmed.wanted.version) == ("Sun Path - Live", "")
+
+
+def test_a_verdict_survives_the_rename_that_flips_the_reading(
+    cfg, music, tmp_path
+):
+    """THE STRANDING, DRIVEN, and the state that was being bypassed.
+
+    A person answers the question, then the confirming file is re-tagged or
+    renamed so the library no longer holds that reading. With the identity
+    derived from the library, the second run asked a NEW question and the
+    answered item sat resolved and unreachable. With it derived from the list,
+    the same item is found, the candidate it named is no longer on offer, and the
+    run says so: CANDIDATE_GONE, under the original item identifier, which is a
+    row a person can act on.
+    """
+    first = hold(music, "08A - 124 - Aurora Bloom - Sun Path (Live)")
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path - Live\n", "flip.txt")
+    _code, asked = drive(["match", "run", path])
+    row = asked["data"]["needs_review"][0]
+    assert row["why"] == str(match.Why.READING_AMBIGUOUS)
+    item_id = row["review_item"]
+    drive(
+        ["review", "resolve", item_id, "--verdict", "accepted",
+         "--option", row["candidates"][0]["id"]]
+    )
+    _code, settled = drive(["match", "run", path])
+    assert settled["data"]["matched"][0]["why"] == str(match.Why.VERDICT_ACCEPTED)
+
+    first.rename(music / "11B - 124 - Aurora Bloom - Sun Path (Live).flac")
+    code, after = drive(["match", "run", path])
+    assert code == int(ExitCode.PENDING_HUMAN)
+    stalled = after["data"]["needs_review"][0]
+    assert stalled["why"] == str(match.Why.CANDIDATE_GONE)
+    assert stalled["review_item"] == item_id
+
+
+def test_the_dashed_one_word_spelling_is_asked_about_rather_than_acquired(
     cfg, music, tmp_path
 ):
     """Driven through the verb, where the regression actually cost.
 
     "Instrumental" is the sharpest of the class because it scores 76.4, below the
     approximate floor, so nothing rescued it: the run reported the track missing,
-    carried an acquisition option, warned about nothing and exited zero.
+    carried an acquisition option, warned about nothing and exited zero. The row
+    is a QUESTION now rather than a match, and the assertions that matter are the
+    negative ones: nothing is missing, nothing is offered to acquire, and the run
+    does not exit zero pretending it settled something.
     """
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Instrumental)")
     path = write_list(tmp_path, "Aurora Bloom - Sun Path - Instrumental\n", "oneword.txt")
     code, envelope = drive(["match", "run", path])
-    assert code == int(ExitCode.OK)
+    assert code == int(ExitCode.PENDING_HUMAN)
     assert envelope["data"]["missing"] == []
-    assert envelope["data"]["needs_review"] == []
-    assert envelope["data"]["matched"][0]["why"] == str(match.Why.EXACT)
-    assert envelope["data"]["matched"][0]["version"] == "Instrumental"
+    assert envelope["data"]["matched"] == []
+    row = envelope["data"]["needs_review"][0]
+    assert row["why"] == str(match.Why.READING_AMBIGUOUS)
+    assert row["acquisition"] == []
+    assert [candidate["version"] for candidate in row["candidates"]] == ["Instrumental"]
+
+
+def test_an_undecidable_parse_is_never_promoted_to_a_match(cfg, music):
+    """PROPERTY 2, APPLIED TO THE PARSE, which is where it was not being applied.
+
+    "Long - Live" is in this file's own list of legitimate titles whose last word
+    is a version word, and a library holding "Long (Live)" resolved it MATCHED,
+    why EXACT, pathing that file, at exit zero. If the list meant a composition
+    called "Long - Live" and the library holds a live cut of a different record
+    called "Long", the run reports ownership of a track the library does not
+    hold, which is the failure the whole unit exists to remove and the one a
+    person finds out about at the gig.
+
+    There is no evidence separating "Long - Live" from "Sun Path - Live", so this
+    is a rule about the class and not about one title, and the rule is the one
+    property 2 already states: a generous read costs one question, never one
+    wrong join.
+    """
+    hold(music, "08A - 124 - Long Player - Long (Live)")
+    found = resolve(
+        match.read_text_lines("Long Player - Long - Live\n"), index_of(music)
+    ).matches[0]
+    assert found.state is match.MatchState.NEEDS_REVIEW
+    assert found.why is match.Why.READING_AMBIGUOUS
+    assert found.paths == ()
+    assert found.wanted.title == "Long - Live"
 
 
 @pytest.mark.parametrize(
@@ -2248,13 +2504,43 @@ def test_an_ambiguous_reading_is_taken_only_when_the_library_confirms_it(
 
     The title stays whole, which is what a later reader and the acquisition query
     both read.
+
+    IT MUST NOT EVEN BECOME THE AMBIGUITY QUESTION, and asserting only that it is
+    not matched missed that. Weakening the bar from "holds the head at that
+    version" to "holds the head at all" left the reprise class resolving to
+    READING_AMBIGUOUS with an empty offer: not a match, not a version difference,
+    and so invisible to both of the assertions below it. A question with nothing
+    on it is a person being asked to choose from no answers about a record the
+    library plainly says nothing about.
     """
     hold(music, f"08A - 124 - {held}")
     found = resolve(match.read_text_lines(f"{line}\n"), index_of(music)).matches[0]
     assert found.wanted.title == expected_title
     assert found.wanted.version == ""
     assert found.why is not match.Why.VERSION_DIFFERS
+    assert found.why is not match.Why.READING_AMBIGUOUS
     assert found.state is not match.MatchState.MATCHED
+
+
+def test_the_ambiguity_offer_names_the_version_the_other_reading_means(cfg, music):
+    """THE OFFER IS AS NARROW AS THE EVIDENCE, and it was as wide as the head.
+
+    The evidence for reading "Sun Path - Live" as a version is that the library
+    holds "Sun Path" at exactly "Live". Offering the head's OTHER versions
+    alongside asks a person to accept a cut this list never mentioned, on the
+    strength of a parse they are being asked about in the same breath, and an
+    acceptance is what puts a file in the matched array with its path. Every
+    other test in this class holds the head at one version, where a candidate
+    list filtered to the confirming version and one that is not are the same
+    list.
+    """
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Live)")
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Extended Mix)")
+    found = resolve(
+        match.read_text_lines("Aurora Bloom - Sun Path - Live\n"), index_of(music)
+    ).matches[0]
+    assert found.why is match.Why.READING_AMBIGUOUS
+    assert [candidate.version for candidate in found.candidates] == ["Live"]
 
 
 def test_the_reading_the_list_actually_spelled_wins_when_the_library_holds_both(

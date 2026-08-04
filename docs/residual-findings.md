@@ -687,18 +687,48 @@ credit is dropped from the matching title as a PERFORMER and a source that never
 spelled it has nothing to put back.
 
 **Why it is not closed by widening.** The obvious widening is to compose from the
-matching title rather than from the spelling's own head, which is what the
-previous round did, and that consults `sun path` for a listing of `Sun Path (feat.
+matching title rather than from the spelling's own head, which is what an earlier
+round did, and that consults `sun path` for a listing of `Sun Path (feat.
 Mira)`. `tombstone_fold`'s own docstring settles the direction: a missed
 suppression re-acquires something and reports it, an over-eager one silently
 withholds music somebody wants, and those two costs are not comparable. So the
 miss is taken deliberately and named here rather than traded for a silent
 withhold.
 
+**THAT PARAGRAPH DESCRIBED A DECISION THE CODE HAD NOT IMPLEMENTED, and the
+fourth review is what found it.** The widening was rejected in the design and was
+LIVE in the code for three listing shapes, because `_head_of` located the version
+as a bracketed SUFFIX and a credit is not always last. `Sun Path (Live) (feat.
+Mira)`, `Sun Path [Live] (feat. Mira)` and `Sun Path (feat. Mira) (Extended)
+(Remastered)` each fell back to the matching title, which has had its credits
+taken off, so the addresses composed were the PLAIN record's. The last of those
+composed four of them, one being `Sun Path (Extended) (Remastered)`, a literal row
+in this repository's own `REKORDBOX_ROWS`. Deleting that plain row then resolved a
+list line naming the credited recording to SUPPRESSED: in none of the three
+arrays, at exit zero, with acquisition skipping a track nobody had deleted.
+
+**Fixed in the direction this entry always claimed.** `Wanted.addresses` composes
+nothing unless the head still carries every credit the listing spelled, so the
+promise is a checked precondition rather than a sentence in a docstring. Where the
+head cannot be located the listing is addressed by exactly what it said and by
+nothing else.
+
+**What that costs, which is the other half of this gap.** A listing whose credit
+sits after its version can no longer address the SAME version spelled the other
+way round: a list line `Sun Path (Live) (feat. Mira)` does not reach a tombstone
+recorded from the row `Sun Path (feat. Mira) (Live)`. That is a missed suppression,
+which re-acquires the version and reports it, and it is the cheaper of the two
+costs by the argument above. It is the same class this entry already names, from
+the other side: the provider row cannot put a credit back, and a credited listing
+cannot move one.
+
 **Pinned, not assumed.** `UNRECONCILED` in `tests/test_match_states.py` is the
 literal list of unreconciled derivations, checked over all seven row spellings and
 all three readers on every run. It going empty or growing fails a test rather than
-changing behaviour quietly.
+changing behaviour quietly. `CREDIT_OUTSIDE_THE_SUFFIX` in the same file pins the
+WHOLE address set for each of the three shapes above, as literals on both sides,
+because "the plain address is gone" is also true of a composition that produces
+some other wrong string.
 
 **Closes when:** either the provider readers carry the row's full title alongside
 its split fields, so the credit survives into `spelled`, or the deletion pass
@@ -758,14 +788,14 @@ what this unit's docstrings already say must happen.
 
 **Found:** by the third U16 review, 2026-08-03.
 
-**The asymmetry.** A LIST title whose dash tail is a bare one-word qualifier now
-carries both readings, and `resolve_one` takes the split one when the library
-holds the head at exactly that version. A LIBRARY FILE named the same way does
-not. `match._read_from_disk` calls `split_title` once, so a file named `08A - 124
-- Aurora Bloom - Sun Path - Instrumental.flac` is indexed under the recording `sun
-path instrumental` with no version, and a provider row carrying title `Sun Path`
-and version `Instrumental` cannot reach it: the row scores 76.4 against a floor of
-82 and reports missing.
+**The asymmetry.** A LIST title whose dash tail is a bare one-word qualifier
+carries both readings, and `resolve_one` offers the split one as a QUESTION when
+the library holds the head at exactly that version. A LIBRARY FILE named the same
+way carries one reading. `match._read_from_disk` calls `split_title` once, so a
+file named `08A - 124 - Aurora Bloom - Sun Path - Instrumental.flac` is indexed
+under the recording `sun path instrumental` with no version, and a provider row
+carrying title `Sun Path` and version `Instrumental` cannot reach it: the row
+scores 76.4 against a floor of 82 and reports missing.
 
 **Why it was not fixed with the list side.** The list side needed one extra
 reading on one object. The index side needs a file to be reachable under two
@@ -811,14 +841,23 @@ shape a library row happens to use therefore survives into the identity, and a
 consulter cannot assume one shape. It has to ENUMERATE them.
 
 **What this side enumerates, and where the edge is.** `Wanted.addresses` composes
-round parentheses, square brackets, the dash form when this module's own reader
-reads it back, and the multi-group split. Those cover every shape in
+round parentheses, square brackets, the dash form when this module's CONSERVATIVE
+reader reads it back, and the multi-group split. Those cover every shape in
 `REKORDBOX_ROWS`, which is why the derivation guard's only gap is R-20's featured
 credit. What is NOT covered is any other bracket shape, `Sun Path {Nightwave
 Remix}` being the pinned example, and any difference INSIDE the version string
 itself, such as a Title spelling `Nightwave RMX` against a provider version of
 `Nightwave Remix`. Both are recorded under one identity by U24 and consulted under
 another here, so the version reports missing and is re-acquired at exit zero.
+
+**The dash gate is the conservative reader and not the ambiguous one.** An earlier
+round let `split_ambiguous` satisfy the read-back, which reads a string back only
+by declaring that this module CANNOT tell whose record it names. Composing `Sun
+Path - Live` on the strength of that addresses a row that may be a composition
+genuinely called "Sun Path - Live", so a deletion of that composition would
+silently withhold the live cut of "Sun Path". It is the over-eager direction with
+extra steps, it was reachable by nothing, and it is gone.
+`test_the_dash_spelling_of_a_bare_one_word_version_is_not_composed` keeps it gone.
 
 **Not fixed by widening.** Adding shapes is cheap and adding the wrong one is not:
 every extra composed spelling is another string a deletion of somebody else's
@@ -837,3 +876,77 @@ addressing rule.
 verbatim one and this side consults that, which puts one shape on both sides of
 the seam and retires the enumeration. That is a decision for whoever owns the
 tombstone identity, which is the domain layer and not this unit.
+
+---
+
+## R-24. The one-word dash class cannot converge on state across the three readers
+
+**Found:** by the fourth U16 review, 2026-08-03, as two blocking findings that
+turn out to be one decision. Numbered after R-23, which the same unit added. If a
+concurrent unit claims R-24 first, renumber this entry at merge; the content is
+what matters.
+
+**The two findings.** First, the library decided how an ambiguous title parsed and
+`resolve_one` rewrote the wanted track, so every identifier downstream was a
+function of the disk: one list line produced two different `match_id` values on
+two machines, which is exactly what `crate review export` and `crate review
+import` exist to move a decision between, and on one machine renaming the
+confirming file flipped the reading, looked a resolved item up under an identity
+nobody had ever been asked, offered a fresh question, and left the answer
+somebody gave unreachable in the store with nothing reported. `CANDIDATE_GONE` is
+the state built for "the library changed under a recorded verdict" and it was
+bypassed, because reaching it needs the item to be FOUND first. Second, the
+rewritten reading was reported as MATCHED, so a parse this module declares
+undecidable resolved to confident: `Long - Live` against a library holding `Long
+(Live)` reported ownership, exit zero, and `Long - Live` is in this unit's own
+list of legitimate titles whose last word is a version word.
+
+**Why they are one decision.** Both come from letting the library's answer stand
+in for a parse. The identity is now derived from the reading the STRING yields
+and from nothing else, so it is the same on every machine, and the library's
+answer is used for the one thing it is evidence for: which file to OFFER with the
+question. `Why.READING_AMBIGUOUS` is that question.
+
+**The trilemma, stated because it is not going away.** For this class, three
+things cannot all hold. (1) One identifier per record across the three readers.
+(2) An identifier that does not move with the library. (3) An identifier that
+names one record. A source carrying its version in its own field has said where
+the boundary is; a source that spelled `Sun Path - Live` has not, and no rule over
+that string can. Converging the two anyway means either an identity that moves
+with the disk, which is finding one, or one identifier standing for both a
+composition called "Sun Path - Live" and a live cut of "Sun Path", which is an
+identity that is not unique to the thing it identifies. So (2) and (3) are kept
+and (1) is given up for this class alone.
+
+**What that costs, and what it does not.** The public playlist row and the pasted
+row spell the same characters, so they still agree on the state, the reason, the
+identifier and the item; only the provider row differs, and it differs by matching
+exactly and asking nothing. So the practical promise, that nobody answers the same
+question twice, is unaffected: there is no second question to answer. What is
+given up is the literal reading of property 4, that all three produce the same
+match result, for the bare one-word dash tail and for nothing else.
+
+**The regression this must not be.** The second round refused this class outright
+and a held file was reported MISSING with an acquisition option at exit zero. That
+is still gone and is asserted as such:
+`test_a_one_word_version_tail_is_asked_about_and_never_re_acquired` asserts no
+reader reports the row missing and no reader carries anything to go and fetch.
+
+**Pinned in four places.**
+`test_the_identifier_of_an_ambiguous_row_never_moves_with_the_library` drives one
+list line against a library holding nothing, holding the file, and holding it at
+another key, and asserts one identifier and one item identity across all of them.
+`test_a_verdict_survives_the_rename_that_flips_the_reading` answers the question,
+renames the confirming file, and asserts `CANDIDATE_GONE` under the ORIGINAL item
+identifier rather than a fresh question beside a stranded answer.
+`test_an_undecidable_parse_is_never_promoted_to_a_match` drives `Long - Live`
+against a library holding `Long (Live)`.
+`test_an_ambiguous_reading_is_taken_only_when_the_library_confirms_it` keeps the
+reprise class where it was.
+
+**Closes when:** the review store carries the listing's own spelling beside the
+identity, so an importing machine can re-derive whatever it needs against its own
+library, or a person decides the ambiguous class should carry a mark in the
+payload saying this module re-read their line. The first is the smaller change and
+belongs with whoever owns `review export`; the second is a surface decision and
+belongs on an issue.

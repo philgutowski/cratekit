@@ -38,9 +38,34 @@ FOUR PROPERTIES, and each one answers a specific way that failed.
    qualifier is either a version or the end of a title, and "Sun Path - Live"
    and "Ziggy Stardust - Reprise" are the same shape. Splitting always mangles
    the second; refusing always reports the first missing and re-acquires a file
-   the library holds. So both readings are carried and the LIBRARY settles it,
-   on the only evidence that bears on the question: see :func:`split_ambiguous`
-   and :func:`_reading_the_library_confirms`.
+   the library holds. So both readings are carried and the library is asked
+   which one it holds: see :func:`split_ambiguous`.
+
+   WHAT THE LIBRARY'S ANSWER IS ALLOWED TO DECIDE IS THE QUESTION, NOT THE
+   IDENTITY, and reading it as deciding both cost two defects at once. The
+   library used to REWRITE the wanted track, so the identifier a row carried was
+   a function of what happened to be on that machine's disk: one list produced
+   two different ``match_id`` values on two machines, which is exactly the pair
+   of verbs ``review export`` and ``review import`` exist to serve, and on one
+   machine renaming the confirming file flipped the reading, looked a resolved
+   item up under an identity nobody had ever been asked, and left the answer
+   somebody gave unreachable in the store with nothing reported.
+   :attr:`TrackMatch.match_id` and :meth:`Wanted.question` are now derived from
+   the reading the STRING yields and from nothing else, so they are the same on
+   every machine.
+
+   THE ONE CLASS WHERE THE THREE READERS CANNOT CONVERGE ON THE STATE, stated
+   rather than papered over. A source that carries its version in its own field
+   has told us where the boundary is; a source that spells "Sun Path - Live"
+   has not, and no rule over that string can. Converging the two anyway needs
+   either an identity that moves with the library, which is the defect above, or
+   one identifier standing for two different records, a composition called "Sun
+   Path - Live" and a live cut of "Sun Path". So the ambiguous class resolves to
+   NEEDS REVIEW with the held file offered, and property 2 governs: an
+   undecidable parse costs one question rather than one wrong join. What still
+   converges is everything the string CAN settle, and the practical promise
+   nobody is asked twice, because the provider row for the same record matches
+   exactly and asks nothing.
 
 **WHERE THE FETCH IS NOT.** Nothing here opens a socket. The readers take rows
 that somebody already has: a provider client's track objects, a public playlist
@@ -146,6 +171,12 @@ class Why(StrEnum):
     VERSION_DIFFERS = "version-differs"
     #: Only a scored, approximate hit on the recording. Discovery, never identity.
     TITLE_APPROXIMATE = "title-approximate"
+    #: The list spelled a title this module cannot parse one way, and the library
+    #: holds the OTHER reading of it exactly. Evidence, and the strongest there
+    #: is, but not a parse: "Sun Path - Live" and "Ziggy Stardust - Reprise" are
+    #: one shape, so promoting the library's answer to a MATCH reports ownership
+    #: of a record nobody checked. It costs one question instead.
+    READING_AMBIGUOUS = "reading-ambiguous"
     #: Same Camelot number, different letter: the relative major or minor. It
     #: looks like agreement to anything comparing wheel positions, which is why
     #: it gets a slug of its own rather than folding into the one below.
@@ -253,6 +284,19 @@ def fold(text: object) -> str:
     return _RUNS.sub(" ", _MARKS.sub(" ", stripped.casefold())).strip()
 
 
+def _is_a_credit(inside: str) -> bool:
+    """Whether a bracketed group names a PERFORMER rather than an edit.
+
+    ONE PLACE, because two callers ask it and a second copy would let them
+    disagree about what a credit is. :func:`split_version` drops these from the
+    version, and :func:`_credits_in` checks that a head this module composed from
+    still carries every one the listing spelled, which is a check that means
+    nothing if the two answer the question differently.
+    """
+    folded = fold(inside)
+    return any(folded.startswith(fold(prefix)) for prefix in _CREDIT_PREFIXES)
+
+
 def split_version(title: str) -> tuple[str, str]:
     """The BRACKETED half of the split, on its own. Not the reader's entry point.
 
@@ -275,8 +319,7 @@ def split_version(title: str) -> tuple[str, str]:
             break
         inside = found.group(1).strip()
         remaining = remaining[: found.start()].strip()
-        folded = fold(inside)
-        if any(folded.startswith(fold(prefix)) for prefix in _CREDIT_PREFIXES):
+        if _is_a_credit(inside):
             continue
         if inside:
             qualifiers.append(inside)
@@ -488,20 +531,52 @@ def _head_of(spelled: str, version: str) -> str:
     somebody wants, and a consult composed from the stripped title is the
     over-eager side of exactly that.
 
-    Returns ``""`` when the version is not a suffix of the spelling in any of the
-    three conventions, which is a spelling that carried its version in more than
-    one group. The caller falls back to the matching title there, and no credit
-    can be lost by that fallback that was not already lost by the split.
+    Returns ``""`` when the version is not a bracketed suffix of the spelling,
+    which is a spelling that carried its version in more than one group or put a
+    credit AFTER it. The caller falls back to the matching title there, and that
+    fallback is where the credit is lost, so it is a CHECKED fallback: see
+    :attr:`Wanted.addresses`, which refuses to compose from a head that dropped a
+    credit the listing spelled.
+
+    TWO SHAPES, NOT THREE, and the dash was removed because nothing could ever
+    observe it. A ``- version`` suffix is read that way only when
+    :func:`split_title` or :func:`split_ambiguous` already read it that way, and
+    both of those return the same head, so this branch and the caller's fallback
+    produced the identical string for every input either could be given. A guard
+    that no input can distinguish from its own fallback is not a guard, and
+    leaving it in makes a mutation sweep report a hole where there is none.
     """
     text = str(spelled).strip()
     qualifier = str(version).strip()
     if not qualifier:
         return text
-    for shape in ("({})", "[{}]", "- {}"):
+    for shape in ("({})", "[{}]"):
         suffix = shape.format(qualifier)
         if text.casefold().endswith(suffix.casefold()):
             return text[: len(text) - len(suffix)].strip()
     return ""
+
+
+#: A bracketed group ANYWHERE in a title, not only a trailing one. The trailing
+#: walk cannot answer the question :func:`_credits_in` asks, because a listing
+#: that spelled its version after a dash carries its credit in the middle: ``Sun
+#: Path (feat. Mira) - Live`` has no trailing group at all.
+_ANY_GROUP = re.compile(r"[(\[]([^()\[\]]*)[)\]]")
+
+
+def _credits_in(text: str) -> tuple[str, ...]:
+    """Every performer credit a spelling carries, folded, left to right.
+
+    Used to compare a composed head against the listing it came from. Folded
+    rather than verbatim, because ``(feat. Mira)`` and ``(Feat Mira)`` name the
+    same performer and a comparison that told them apart would refuse to compose
+    for a spelling that lost nothing.
+    """
+    return tuple(
+        fold(found.group(1))
+        for found in _ANY_GROUP.finditer(str(text))
+        if _is_a_credit(found.group(1))
+    )
 
 
 def _equivalent_versions(version: str) -> tuple[str, ...]:
@@ -532,6 +607,18 @@ def _spellings_of(head: str, version: str) -> tuple[str, ...]:
     composed under a name this module would itself read as somebody else's
     record.
 
+    THE READ-BACK IS :func:`split_title` AND NOT :func:`split_ambiguous`, and
+    accepting the second one was a widening in the direction this file rejects by
+    name. ``split_ambiguous`` reads a string back only by declaring that this
+    module CANNOT tell whose record it names, so composing ``Sun Path - Live`` on
+    the strength of it addresses a row that may well be a composition called "Sun
+    Path - Live", and a deletion of that composition would then silently withhold
+    the live cut of "Sun Path". :func:`tombstone_fold` settles the direction: a
+    missed suppression re-acquires something and reports it, an over-eager one
+    withholds music somebody wants, and those costs are not comparable. Nothing
+    could see it either way, because the listing that spells the dash form
+    already addresses itself through :attr:`Wanted.listed`.
+
     The two-group forms are here for the spelling that puts one version in
     several brackets, ``Sun Path (Extended) (Remastered)``. A source carrying its
     version in one field cannot know where the groups were, so every cut is
@@ -545,7 +632,7 @@ def _spellings_of(head: str, version: str) -> tuple[str, ...]:
     for cut in range(1, len(words)):
         built.append(f"{head} ({' '.join(words[:cut])}) ({' '.join(words[cut:])})")
     dashed = f"{head}{_DASH}{version}"
-    if split_title(dashed) == (head, version) or split_ambiguous(dashed) == (head, version):
+    if split_title(dashed) == (head, version):
         built.append(dashed)
     return tuple(built)
 
@@ -747,18 +834,36 @@ class Wanted:
         the title has two, because a tombstone recorded from ``Sun Path (Live)``
         must be reachable from a list line spelling it ``Sun Path - Live``
         whether or not the library still holds the file.
+
+        THE CREDIT IS A PRECONDITION OF COMPOSING AT ALL, and until this round it
+        was a sentence in a docstring while the code did the opposite for three
+        real shapes. ``_head_of`` locates the version as a bracketed SUFFIX, so a
+        listing that put its credit after the version, ``Sun Path (Live) (feat.
+        Mira)``, or split the version over several groups, ``Sun Path (feat.
+        Mira) (Extended) (Remastered)``, fell back to the matching title, which
+        has had its credits taken off. Every address then composed was the PLAIN
+        record's, so deleting the plain ``Sun Path (Live)`` silently withheld the
+        credited recording somebody had asked for, in none of the three arrays,
+        at exit zero. That is the over-eager suppression :func:`tombstone_fold`
+        rejects by name, and it is the more expensive of the two costs.
+
+        So the fallback is checked rather than trusted: composition happens only
+        when the head still carries every credit the listing spelled. When it
+        does not, the listing is addressed by exactly what it said and by nothing
+        else, which costs a missed suppression that gets reported.
         """
         found: list[str] = []
         for reading in self.readings:
-            head = _head_of(reading.listed, reading.version) or reading.title
-            for spelling in (
-                reading.listed,
-                *(
-                    composed
+            spelled = reading.listed
+            head = _head_of(spelled, reading.version) or reading.title
+            composed: tuple[str, ...] = ()
+            if _credits_in(head) == _credits_in(spelled):
+                composed = tuple(
+                    built
                     for text in _equivalent_versions(reading.version)
-                    for composed in _spellings_of(head, text)
-                ),
-            ):
+                    for built in _spellings_of(head, text)
+                )
+            for spelling in (spelled, *composed):
                 if spelling not in found:
                     found.append(spelling)
         return tuple(found)
@@ -787,7 +892,8 @@ class Wanted:
         tombstone over one remix can still never suppress another. What it will
         not do is widen INWARDS: nothing composed here drops a featured credit
         the listing spelled, because that would let a deletion of the plain
-        record withhold the credited one.
+        record withhold the credited one. That sentence was an assertion for
+        three rounds and is a checked precondition now: see :attr:`addresses`.
         """
         seen: list[dict[str, str]] = []
         for title in self.addresses:
@@ -1570,30 +1676,37 @@ def _held_exactly(wanted: Wanted, index: LibraryIndex) -> bool:
     )
 
 
-def _reading_the_library_confirms(wanted: Wanted, index: LibraryIndex) -> Wanted:
-    """Which way to read a title the string alone cannot settle.
+def _other_reading_the_library_holds(
+    wanted: Wanted, index: LibraryIndex
+) -> Wanted | None:
+    """The reading :func:`split_title` declined that the library holds EXACTLY.
 
-    THE CONSERVATIVE READING WINS UNLESS THE LIBRARY SAYS OTHERWISE, and the bar
-    for otherwise is deliberately the highest one there is: the library holds the
-    head at exactly that version. Anything weaker is not evidence about this
-    question. The library holding "Ziggy Stardust" says nothing about whether
+    THE BAR IS DELIBERATELY THE HIGHEST ONE THERE IS: the library holds the head
+    at exactly that version. Anything weaker is not evidence about this question
+    at all. The library holding "Ziggy Stardust" says nothing about whether
     "Reprise" is a version or the end of a title, so a rule that accepted a
     near-hit would reframe "the library holds nothing like this" into "the
     library holds this record as a different version", and a person accepting
     that reports ownership of a track the library does not hold.
 
-    A hold at the exact version IS evidence, and it is what makes the one-word
-    class converge: with "Sun Path (Instrumental)" on disk, the provider row and
-    the public playlist row "Sun Path - Instrumental" resolve to the same match
-    under the same identifier, instead of one matched and one missing with an
-    acquisition option for a file already on the shelf.
+    WHAT THE ANSWER SETTLES IS THE QUESTION, NOT THE PARSE, and the difference is
+    the whole correction. This used to RETURN a rewritten ``Wanted`` that the
+    rest of resolution then treated as the truth, which promoted an undecidable
+    parse straight to MATCHED on the strength of a coincidence: "Long - Live" is
+    in this module's own list of legitimate titles ending in a vocabulary word,
+    and a library holding "Long (Live)" made the run report ownership of a record
+    nobody had checked. It also made the identifier a function of the disk, so
+    one list produced two ``match_id`` values on two machines and renaming one
+    file stranded an answer somebody had already given.
+
+    So the caller keeps the reading the LIST spelled, and what this returns is
+    used for one thing: the candidate offered with the question. See
+    :func:`resolve_one`.
     """
-    if _held_exactly(wanted, index):
-        return wanted
     for reading in wanted.readings[1:]:
         if _held_exactly(reading, index):
             return reading
-    return wanted
+    return None
 
 
 def resolve_one(
@@ -1621,10 +1734,14 @@ def resolve_one(
     record, and the track was invisible to any consumer reading matched or
     missing.
 
-    BEFORE ANY OF THAT, a title the string alone cannot read one way is read the
-    way the library confirms. See :func:`_reading_the_library_confirms`.
+    THE READING THE LIST SPELLED IS THE ONE THAT TRAVELS. Everything identifying
+    on the way out, the match identifier, the review item identity and the
+    acquisition option, is derived from ``wanted`` exactly as the reader built
+    it, so it is a function of the LIST and not of this machine's disk. A title
+    the string cannot read one way is not re-read into something else: the other
+    reading is offered as a QUESTION, below, once nothing the list actually said
+    has matched. See :func:`_other_reading_the_library_holds`.
     """
-    wanted = _reading_the_library_confirms(wanted, index)
     owned = index.versions(wanted.recording)
     exact = [held for held in owned if held.version_key == wanted.version_key]
 
@@ -1661,6 +1778,37 @@ def resolve_one(
             state=MatchState.NEEDS_REVIEW,
             why=Why.VERSION_DIFFERS,
             candidates=_candidates_for(wanted, owned),
+        )
+
+    # THE OTHER READING, ASKED ABOUT RATHER THAN ASSUMED, and placed here for two
+    # reasons. It comes AFTER the two branches above so that a tie goes to the
+    # string the list actually spelled: a library holding a record called "Sun
+    # Path - Live" answers the row before anything is guessed about it. It comes
+    # BEFORE the approximate pass so the question is a precise one, naming the
+    # file and the reading, rather than a fuzzy hit whose score decides whether
+    # the class is a question at all; "Instrumental" scores 76.4 against a floor
+    # of 82 and "Live" scores 89.4, and the difference between them is not a
+    # difference in what the person needs to be asked.
+    confirming = _other_reading_the_library_holds(wanted, index)
+    if confirming is not None:
+        # ONLY THE FILES HELD AT THAT VERSION, not every version of the head. The
+        # evidence is that the library holds the head at exactly the version the
+        # other reading names, and offering the head's OTHER versions alongside
+        # would ask a person to accept a cut this list never mentioned, on the
+        # strength of a parse they are being asked about in the same breath.
+        held = [
+            row
+            for row in index.versions(confirming.recording)
+            if row.version_key == confirming.version_key
+        ]
+        return TrackMatch(
+            wanted=wanted,
+            state=MatchState.NEEDS_REVIEW,
+            why=Why.READING_AMBIGUOUS,
+            # SCORED AGAINST WHAT THE LIST SAID, which is what makes the offer
+            # honest: relative to the title this row spelled, the held file is a
+            # different recording, and that is precisely the thing being asked.
+            candidates=_candidates_for(wanted, held),
         )
 
     near = _approximate(wanted, index)
