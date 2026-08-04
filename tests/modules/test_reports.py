@@ -2118,46 +2118,146 @@ class _Namespace(NamedTuple):
     owner: str = ""
 
 
+class _Class(NamedTuple):
+    """ONE CLASS DEFINITION, as a thing a name can be BOUND to.
+
+    A class was a SPELLING before this, ``Keeper`` or ``Outer.Keeper``, computed
+    from the lexical path and used as the root of every attribute key the class
+    owns. A spelling is not an identity, and two of the three shapes this file
+    keeps failing on came straight out of that: two classes called ``Keeper`` in
+    two different factory functions shared one root, so one factory's class body
+    decided for the other's; and a parameter called ``Keeper`` could not take the
+    name back, because a name is only shadowed while it IS a name and an object
+    key spelled with a dot never was one.
+
+    So a class NAME is an ordinary lexical binding now, exactly like ``alias =
+    config``, and what it is bound to is this. The identity underneath is the
+    DEFINITION SITE, which is unique by construction and which two different
+    ``class Keeper`` statements cannot share.
+
+    ``bases`` is the identity of each class this one inherits, resolved through
+    the same table, and it is what makes ``class Row(Base)`` see what ``Base``
+    bound. A key landed on the class that DECLARED an attribute and never on the
+    class that REACHES it, so a base class, a mixin and an inherited class body
+    attribute were each two ordinary lines that wrote a file.
+
+    WHAT A RECEIVER KEY CAN BE BOUND TO is three things now: an admitted module
+    by its short name, an attribute mapping, or one of these. Two meanings in one
+    table is the defect this file keeps producing, so each of the two that are
+    not a module is a TYPE rather than a marked string, and every reader asks
+    ``isinstance`` for the kind it can use.
+    """
+
+    key: str = ""
+    bases: tuple[str, ...] = ()
+
+
+#: What any receiver key in the binding table can be bound to.
+_Bound = str | _Namespace | _Class
+
+
+#: What separates a class's NAME from its definition site in a class key.
+#:
+#: It is off the alphabet an identifier chain can produce, for the same reason
+#: ``_INSTANCE`` is: ``Keeper#412.mod`` is how one particular class's attribute is
+#: keyed, and no chain of names, dots and calls renders it. A subscript with that
+#: exact constant key can forge it, which is the same admitted shape ``_INSTANCE``
+#: has and is not a shape an ordinary refactor produces.
+_DEFINED = "#"
+
+
+def _class_key(node: ast.ClassDef) -> str:
+    """The identity of ONE class definition, which is where it is written.
+
+    A pure function of the node, because three callers have to agree on it and
+    they see the tree from different heights: the binding walk, the mutation walk
+    and the allowlist audit, which reads one top level statement at a time and
+    has no walk above it at all. Derived rather than passed, so they cannot drift.
+    """
+    return f"{node.name}{_DEFINED}{node.lineno}"
+
+
+def _mapping_operands(node: ast.AST | None):
+    """Every sub-expression an expression could carry a MAPPING out of.
+
+    A NAMESPACE IS A VALUE THAT PROPAGATES, which is what four rounds of
+    enumerating spellings kept missing. ``dict(vars(Path))`` and
+    ``{**vars(Path)}`` were written out one at a time, and then
+    ``Path.__dict__ | {}``, ``vars(Path).copy()`` and ``ChainMap(vars(Path))``
+    were each the same act one operator out, all three measured quiet and all
+    three executed to confirm they write a real file. ``collections`` is on the
+    allowlist, so the third needs no forbidden import either.
+
+    The rule underneath is not a list: a namespace is a mapping derived from a
+    type's ``__dict__``, and any expression that preserves mapping-ness preserves
+    the risk. So the OPERAND POSITIONS are what is named here rather than the
+    operations, and a namespace found in any of them comes back out.
+
+    A CALL carries one through its arguments, through its keywords, which is what
+    ``dict(**vars(Path))`` is, and through its RECEIVER, which is what
+    ``vars(Path).copy()`` is. A BINARY OPERATOR carries one through either side.
+    A dict literal carries one through a ``**`` spread, and through nothing else:
+    ``{"a": vars(Path)}`` is a mapping whose VALUE is a namespace, which is not
+    the same thing and is already read as an element binding.
+
+    What keeps this off ordinary code is unchanged and is the receiver: the
+    lookup still has to name a mutating method, and an expression with no
+    ``__dict__`` and no ``vars`` at its root is not a namespace however it is
+    combined.
+    """
+    if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Attribute):
+            yield node.func.value
+        yield from node.args
+        yield from (word.value for word in node.keywords)
+    elif isinstance(node, ast.BinOp):
+        yield node.left
+        yield node.right
+    elif isinstance(node, ast.Dict):
+        yield from (
+            value for key, value in zip(node.keys, node.values) if key is None
+        )
+
+
 def _namespace_of(
-    node: ast.AST | None, table: dict[str, str | _Namespace], instance: _Instance
+    node: ast.AST | None, table: dict[str, _Bound], instance: _Instance
 ) -> _Namespace | None:
-    """The attribute mapping one expression IS, written out inline, or None.
+    """The attribute mapping one expression IS, or None.
 
-    Four spellings hand back the same mappingproxy and every one of them was
-    measured quiet. ``Path.__dict__`` and ``vars(Path)`` are the two the rule was
-    written for; ``dict(vars(Path))`` and ``{**vars(Path)}`` are copies of one,
-    and a copy of a mapping of functions still holds the functions.
+    TWO ROOTS AND ONE PROPAGATION RULE, rather than a list of spellings. A type's
+    ``__dict__`` and the ``vars`` of one are the only two expressions that
+    ORIGINATE a namespace, and they are exact rather than heuristic: they are the
+    only two that hand back the function object itself. Everything else that has
+    ever been added here was a way of carrying one of those two along, and adding
+    them one at a time is a race the author reading this file wins.
 
-    The receiver is what keeps this narrow, and it is exact rather than
-    heuristic: a type's ``__dict__`` and the ``vars`` of one are the only two
-    spellings that hand back the function object itself. ``counts["rename"]``,
+    The receiver is what keeps this narrow. ``counts["rename"]``,
     ``row["truncate"]``, ``LABELS["touch"]`` and ``ACTIONS["mkdir"]`` are ordinary
     mappings and every one of them was a finding on the reading that left the
-    receiver out.
+    receiver out, and none of them has a ``__dict__`` or a ``vars`` anywhere
+    underneath it.
     """
     if isinstance(node, ast.Attribute) and node.attr == "__dict__":
         return _Namespace(_receiver_key(node.value, instance))
-    if isinstance(node, ast.Call) and len(node.args) == 1 and not node.keywords:
-        called = getattr(node.func, "id", "")
-        if called == "vars":
-            return _Namespace(_receiver_key(node.args[0], instance))
-        if called == "dict":
-            copied = _bound_value(node.args[0], table, instance)
-            return copied if isinstance(copied, _Namespace) else None
-    if isinstance(node, ast.Dict):
-        for key, value in zip(node.keys, node.values):
-            if key is None:
-                spread = _bound_value(value, table, instance)
-                if isinstance(spread, _Namespace):
-                    return spread
+    if (
+        isinstance(node, ast.Call)
+        and getattr(node.func, "id", "") == "vars"
+        and len(node.args) == 1
+        and not node.keywords
+    ):
+        return _Namespace(_receiver_key(node.args[0], instance))
+    for part in _mapping_operands(node):
+        carried = _bound_value(part, table, instance)
+        if isinstance(carried, _Namespace):
+            return carried
     return None
 
 
 def _bound_value(
     node: ast.AST | None,
-    table: dict[str, str | _Namespace],
+    table: dict[str, _Bound],
     instance: _Instance = _Instance(),
-) -> str | _Namespace:
+) -> _Bound:
     """What one expression evaluates to in the table, or the empty string.
 
     A CONDITIONAL is read through, because ``alias = config if flag else config``
@@ -2170,6 +2270,16 @@ def _bound_value(
     it about ``alias.save``, rule 5 asks it about ``table["write_text"]``, and a
     binding asks it about its own right hand side. While rule 5 read its receiver
     inline instead, ``table = vars(Path)`` was one line away from a written file.
+
+    AN ATTRIBUTE OF A CLASS IS READ THROUGH THE CLASS, in two hops rather than as
+    one flat spelling, and that is what lets a class be identified by its
+    definition site instead of by its name. ``Keeper.mod`` resolves ``Keeper``
+    first, and only a scope that can still see that name gets the attribute:
+    ``def go(Keeper)`` takes the name back and the parameter really is a different
+    object. ``Outer.Keeper.mod`` is the same two hops twice.
+
+    The FLAT key is still tried underneath, because ``Keeper.mod = config``
+    written from outside the class binds the spelling and nothing else.
     """
     if isinstance(node, ast.IfExp):
         return _bound_value(node.body, table, instance) or _bound_value(
@@ -2184,8 +2294,40 @@ def _bound_value(
     space = _namespace_of(node, table, instance)
     if space is not None:
         return space
+    if isinstance(node, ast.Attribute):
+        reached = _bound_value(node.value, table, instance)
+        if isinstance(reached, _Class):
+            found = table.get(f"{reached.key}.{node.attr}", "")
+            if found:
+                return found
     key = _receiver_key(node, instance)
     return table.get(key, "") if key else ""
+
+
+def _class_of(
+    node: ast.ClassDef, table: dict[str, _Bound], instance: _Instance
+) -> _Class:
+    """One class definition's identity, with its BASES resolved through the table.
+
+    A base is an ordinary expression evaluated where the ``class`` statement is
+    written, so it is resolved the way every other receiver is rather than read
+    off its own spelling. ``class Row(Base)`` in a file where ``Base`` was taken
+    back by something else inherits nothing, which is the correct answer and is
+    the same answer ``alias.save`` gets under a shadowed ``alias``.
+
+    A base this cannot resolve is dropped rather than guessed. ``class
+    Row(namedtuple("Row", "a"))`` and ``class Row(SomeImportedThing)`` are both
+    ordinary, neither names a class this file defines, and a guard that invented
+    an identity for them would be the second recurring defect one more time.
+    """
+    return _Class(
+        _class_key(node),
+        tuple(
+            found.key
+            for found in (_bound_value(one, table, instance) for one in node.bases)
+            if isinstance(found, _Class)
+        ),
+    )
 
 
 def _elements(value: ast.AST | None):
@@ -2196,6 +2338,15 @@ def _elements(value: ast.AST | None):
     matched against, and reading one would ask an ``ast.Name`` for a ``.value``
     it does not have. ``test_a_container_key_this_cannot_read_binds_nothing``
     drives it.
+
+    A LITERAL AND NOTHING ELSE, which is a standing limit rather than an
+    oversight: ``self.mods = [config for _ in range(1)]`` followed by
+    ``self.mods[0].save(cfg)`` is quiet, because a comprehension is a scope with
+    its own bindings and its element is an expression evaluated per iteration.
+    Filed as the residual finding titled "A container built by a comprehension
+    binds none of its elements", by TITLE rather than by number: this branch and
+    ``main`` have both appended to that file and five of this branch's residual
+    numbers name different findings there.
     """
     if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
         return list(enumerate(value.elts))
@@ -2211,9 +2362,9 @@ def _elements(value: ast.AST | None):
 def _element_bindings(
     target: str,
     value: ast.AST | None,
-    modules: dict[str, str | _Namespace],
+    modules: dict[str, _Bound],
     instance: _Instance,
-) -> dict[str, str | _Namespace]:
+) -> dict[str, _Bound]:
     """What a container literal binds, element by element and NESTED.
 
     ``MODS = [config]`` and ``MODS = {"c": config}`` are ordinary code, and
@@ -2223,7 +2374,7 @@ def _element_bindings(
     renders no receiver key, and the binding stopped there. The recursion costs
     one line and closes the whole family rather than its first member.
     """
-    found: dict[str, str | _Namespace] = {}
+    found: dict[str, _Bound] = {}
     for index, element in _elements(value):
         key = f"{target}[{index!r}]"
         owner = _bound_value(element, modules, instance)
@@ -2234,8 +2385,8 @@ def _element_bindings(
 
 
 def _iterated_values(
-    node: ast.AST, modules: dict[str, str | _Namespace], instance: _Instance
-) -> list[str | _Namespace]:
+    node: ast.AST, modules: dict[str, _Bound], instance: _Instance
+) -> list[_Bound]:
     """Every admitted module or namespace a loop could hand its target.
 
     A literal is read element by element; a name is read through whatever its
@@ -2252,8 +2403,8 @@ def _iterated_values(
 
 
 def _default_bindings(
-    args: ast.arguments, modules: dict[str, str | _Namespace], instance: _Instance
-) -> dict[str, str | _Namespace]:
+    args: ast.arguments, modules: dict[str, _Bound], instance: _Instance
+) -> dict[str, _Bound]:
     """Parameters whose DEFAULT is an admitted module or a namespace.
 
     ``def f(cfg, mod=config)`` binds ``mod`` inside the function while the
@@ -2261,7 +2412,7 @@ def _default_bindings(
     back after the shadowing rather than before it. The default EXPRESSION is
     resolved against the enclosing scope, because that is where it is evaluated.
     """
-    found: dict[str, str | _Namespace] = {}
+    found: dict[str, _Bound] = {}
     positional = [*args.posonlyargs, *args.args]
     supplied = positional[len(positional) - len(args.defaults) :]
     pairs = [*zip(supplied, args.defaults), *zip(args.kwonlyargs, args.kw_defaults)]
@@ -2273,8 +2424,8 @@ def _default_bindings(
 
 
 def _returned_value(
-    node: ast.AST, modules: dict[str, str | _Namespace], instance: _Instance
-) -> str | _Namespace:
+    node: ast.AST, modules: dict[str, _Bound], instance: _Instance
+) -> _Bound:
     """What a function hands back, so ``_mod().save(cfg)`` resolves.
 
     A namespace comes back on the same terms a module does, because ``def
@@ -2292,9 +2443,9 @@ def _returned_value(
 def _assigned(
     target: ast.AST,
     value: ast.AST | None,
-    modules: dict[str, str | _Namespace],
+    modules: dict[str, _Bound],
     instance: _Instance,
-) -> dict[str, str | _Namespace]:
+) -> dict[str, _Bound]:
     """The admitted modules one assignment target takes, keyed by receiver.
 
     PARALLEL UNPACKING is read element by element against the right hand side,
@@ -2320,7 +2471,7 @@ def _assigned(
         if isinstance(value, (ast.Tuple, ast.List)) and len(target.elts) == len(
             value.elts
         ):
-            found: dict[str, str | _Namespace] = {}
+            found: dict[str, _Bound] = {}
             for one, element in zip(target.elts, value.elts):
                 found.update(_assigned(one, element, modules, instance))
             return found
@@ -2334,8 +2485,8 @@ def _assigned(
 
 
 def _binds(
-    node: ast.AST, modules: dict[str, str | _Namespace], instance: _Instance
-) -> tuple[dict[str, str | _Namespace], frozenset[str]]:
+    node: ast.AST, modules: dict[str, _Bound], instance: _Instance
+) -> tuple[dict[str, _Bound], frozenset[str]]:
     """Every binding ONE statement makes, and the bare WRITER names it imports.
 
     None of these is an attack. ``alias = config`` is a plain refactor,
@@ -2352,7 +2503,7 @@ def _binds(
     could see that the two were about the same name in the same scope.
     """
     if isinstance(node, ast.Import):
-        found: dict[str, str | _Namespace] = {}
+        found: dict[str, _Bound] = {}
         for alias in node.names:
             short = alias.name.rsplit(".", 1)[-1]
             if short in _QUALIFYING_MODULES:
@@ -2387,8 +2538,8 @@ def _binds(
 
 
 def _scope_own_bindings(
-    scope: ast.AST, modules: dict[str, str | _Namespace], instance: _Instance
-) -> tuple[dict[str, str | _Namespace], frozenset[str]]:
+    scope: ast.AST, modules: dict[str, _Bound], instance: _Instance
+) -> tuple[dict[str, _Bound], frozenset[str]]:
     """What one scope binds for itself, resolved against what it can already see.
 
     A NAME is kept only when EVERY binding of it in this scope resolves to the
@@ -2399,14 +2550,21 @@ def _scope_own_bindings(
     it is an ordinary attribute read.
 
     EVERY binding means every one, including the ones ``_binds`` cannot read at
-    all. A ``with`` target, an ``except`` target, an augmented assignment, a
-    class statement and an import of something that is not an admitted module
-    each take a name and hand it a value this has no way to resolve, and each one
-    therefore records a FAILED attempt rather than nothing. Recording nothing was
-    the version before, and under it a file that imported ``config`` and then
-    wrote ``class config`` kept the import's answer for the whole scope: the
-    import resolved, the class statement said nothing, and nothing beats
-    something.
+    all. A ``with`` target, an ``except`` target, an augmented assignment and an
+    import of something that is not an admitted module each take a name and hand
+    it a value this has no way to resolve, and each one therefore records a
+    FAILED attempt rather than nothing. Recording nothing was the version before,
+    and under it a file that imported ``config`` and then rebound the name kept
+    the import's answer for the whole scope: the import resolved, the other
+    statement said nothing, and nothing beats something.
+
+    A NESTED DEFINITION is read for what it BINDS rather than only as a name this
+    cannot resolve. A ``def`` still binds something with no value in this table,
+    so it is a failed attempt; a ``class`` binds a ``_Class``, which is a value
+    like any other and which is what makes the class's own attributes reachable
+    through its name. Two ``class Keeper`` statements in one scope are one name
+    and the LAST one wins, which is what the interpreter does with them, and the
+    first one's attributes become unreachable exactly as they are at runtime.
 
     An OBJECT key, anything spelled with a dot, a bracket or a pair of
     parentheses, is not a name and is not treated as one. ``self.mod`` is a fact
@@ -2415,8 +2573,9 @@ def _scope_own_bindings(
     binding is only CREATED when its right hand side resolves in the scope doing
     the assigning, so ``self.config = config`` inside ``def __init__(self,
     config)`` binds nothing at all: there, ``config`` is the parameter. What makes
-    it UNIQUE is ``instance``: the key is ``Keeper::self.mod`` rather than
-    ``self.mod``, so the fact stays a fact about one class.
+    it UNIQUE is ``instance``: the key is ``Keeper#412::self.mod`` rather than
+    ``self.mod``, so the fact stays a fact about one class DEFINITION rather than
+    about every class anybody spelled that way.
 
     The loop is a FIXED POINT for the same reason the outer one is. ``alias =
     config`` followed by ``beta = alias`` needs two passes, and a pass count
@@ -2424,13 +2583,13 @@ def _scope_own_bindings(
     the table only ever grows and its keys come from the finite set of receiver
     expressions this scope spells.
     """
-    objects: dict[str, str | _Namespace] = {}
-    settled: dict[str, str | _Namespace] = {}
+    objects: dict[str, _Bound] = {}
+    settled: dict[str, _Bound] = {}
     direct: set[str] = set()
     while True:
         before = dict(objects), dict(settled)
         table = {**modules, **objects, **settled}
-        attempts: dict[str, list[str | _Namespace]] = {}
+        attempts: dict[str, list[_Bound]] = {}
         for child in _scope_nodes(scope):
             found, names = _binds(child, table, instance)
             direct |= names
@@ -2441,8 +2600,13 @@ def _scope_own_bindings(
                     objects[key] = owner
             for name in _bound_here(child) - set(found):
                 attempts.setdefault(name, []).append("")
+        made = {
+            nested.name: _class_of(nested, table, instance)
+            for nested in _nested_scopes(scope)
+            if isinstance(nested, ast.ClassDef)
+        }
         for name in _defined_here(scope):
-            attempts.setdefault(name, []).append("")
+            attempts.setdefault(name, []).append(made.get(name, ""))
         settled = {
             key: owners[0]
             for key, owners in attempts.items()
@@ -2454,10 +2618,10 @@ def _scope_own_bindings(
 
 def _visible_bindings(
     node: ast.AST,
-    modules: dict[str, str | _Namespace],
+    modules: dict[str, _Bound],
     direct: frozenset[str],
     instance: _Instance = _Instance(),
-) -> tuple[dict[str, str | _Namespace], frozenset[str], dict[str, str | _Namespace]]:
+) -> tuple[dict[str, _Bound], frozenset[str], dict[str, _Bound]]:
     """The bindings one scope really sees: inherited, shadowed, then its own.
 
     THIS IS THE WHOLE OF THE SCOPE FIX. The previous version removed PARAMETER
@@ -2515,31 +2679,79 @@ def _method_instance(node: ast.AST, owner: str) -> _Instance:
     return _Instance(positional[0].arg, f"{owner}{_INSTANCE}")
 
 
+def _attachments(scope: ast.AST) -> dict[str, str]:
+    """Every function one scope ATTACHES to a class it defines, by ``Row.go = _go``.
+
+    A method written outside its class and bound to it afterwards is ordinary
+    Python and is how a mixin gets assembled at runtime, how a monkeypatch is
+    spelled, and how a decorator's inner function ends up on a type. The function
+    is walked as a plain module level function otherwise, so its first parameter
+    is nobody's instance and ``self.mod.save(cfg)`` inside it resolves against
+    nothing at all.
+
+    Read off the ASSIGNMENT rather than off the function, because the assignment
+    is the only place the pairing is written. The class is named by its definition
+    site the same way every other class key is, so the two walks and the audit all
+    agree without any of them being told.
+    """
+    classes = {
+        nested.name: _class_key(nested)
+        for nested in _nested_scopes(scope)
+        if isinstance(nested, ast.ClassDef)
+    }
+    found: dict[str, str] = {}
+    for node in _scope_nodes(scope):
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Name):
+            continue
+        for target in node.targets:
+            if (
+                isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and target.value.id in classes
+            ):
+                found[node.value.id] = classes[target.value.id]
+    return found
+
+
 def _member_scope(
     scope: ast.AST, owner: str, instance: _Instance, nested: ast.AST
 ) -> tuple[str, _Instance]:
-    """The class path and instance one NESTED scope is read under.
+    """The class identity and instance one NESTED scope is read under.
 
-    Three cases and they are not the same. A class nested in a class extends the
-    path, because ``A.B.mod`` is how that attribute is spelled. A method of a
-    class gets a fresh instance from ``_method_instance``. Anything else INHERITS
-    the instance it was written inside, because a function nested in a method
-    reads ``self`` through the closure, and it loses it again if it binds that
-    name itself.
+    Four cases and they are not the same. A class is read under its own
+    DEFINITION SITE, whatever scope it was written in. A method of a class gets a
+    fresh instance from ``_method_instance``. A function ATTACHED to a class by a
+    later assignment is a method of that class wherever it was written. Anything
+    else INHERITS the instance it was written inside, because a function nested in
+    a method reads ``self`` through the closure, and it loses it again if it binds
+    that name itself.
 
-    A nested class's attribute key IS its outside spelling, which is what makes
-    the path the right identity rather than the class's bare name: two sibling
-    classes each holding a ``Keeper`` are ``A.Keeper`` and ``B.Keeper``. It is
-    also the one place a class key and an ordinary attribute chain can meet, since
-    ``A.B.mod`` is both, and the meeting is harmless: they name the same
-    expression, so one binding for both is the correct answer rather than a
-    collision.
+    WHAT THIS COSTS, measured rather than left implicit: a class REBOUND after
+    its own definition, ``Keeper = dataclass(Keeper)``, is no longer reachable by
+    name, because the assignment and the ``class`` statement are two bindings of
+    one name that do not agree. Round six kept it by keying the attribute as flat
+    TEXT, which is the same reading that made a parameter called ``Keeper``
+    unable to take the name back. Filed as the residual finding titled "A class
+    rebound after its own definition is no longer reachable by name", by TITLE
+    rather than by number.
+
+    THE DEFINITION SITE IS THE IDENTITY, and the lexical path was the version
+    before. A path is the class's outside SPELLING, which is a different thing
+    from what it names: a class in a class was ``A.Keeper`` and a class in a
+    FUNCTION was the bare ``Keeper``, so two factories each returning a ``Keeper``
+    shared one root and one factory's class body decided for the other's. That is
+    the second recurring defect, identity that is not unique, aimed at a class
+    whose enclosing scope does not name it. The outside spelling is not lost by
+    this: it is resolved through the table, where ``Keeper`` is a name bound to a
+    ``_Class`` and a parameter of that name can take it back.
     """
     if isinstance(nested, ast.ClassDef):
-        base = isinstance(scope, ast.ClassDef) and owner
-        return (f"{owner}.{nested.name}" if base else nested.name), instance
+        return _class_key(nested), instance
     if isinstance(scope, ast.ClassDef):
         return owner, _method_instance(nested, owner)
+    attached = _attachments(scope).get(getattr(nested, "name", ""), "")
+    if attached:
+        return attached, _method_instance(nested, attached)
     if instance.name and instance.name in _names_taken(nested):
         return owner, _Instance()
     return owner, instance
@@ -2563,19 +2775,33 @@ def _handed_to_members(scope: ast.AST, inside, outside):
 
 def _walk_bindings(
     scope: ast.AST,
-    inherited: dict[str, str | _Namespace],
+    inherited: dict[str, _Bound],
     reachable: frozenset[str],
-    objects: dict[str, str | _Namespace],
+    objects: dict[str, _Bound],
+    families: dict[str, tuple[str, ...]],
     owner: str = "",
     instance: _Instance = _Instance(),
-) -> tuple[dict[str, str | _Namespace], frozenset[str]]:
-    """One scoped pass over a tree, collecting every OBJECT binding it makes.
+) -> tuple[dict[str, _Bound], frozenset[str]]:
+    """One scoped pass over a tree, collecting every OBJECT binding it DECLARES.
 
     Names stay where they were written. Objects are carried out into one
     file-wide table, because ``self.mod`` set in a constructor is read in a
     sibling method and ``_mod()`` is a fact about a function rather than about
     the scope that calls it. Every object key carries its OWNER, so ``self.mod``
     in two classes is two facts rather than one.
+
+    ONLY THE SCOPE'S OWN bindings are carried out, and reading them off the
+    scope's whole VIEW was the version before. The two were the same answer while
+    everything in the view had come from this table in the first place. They stop
+    being the same answer the moment the table is also handed keys a class
+    REACHES through its bases: those are derived, not declared, and letting a
+    derived key back in as a declared one is how a fact about one class becomes a
+    fact about its siblings.
+
+    ``families`` is the other half of that, and it is recorded here because this
+    is the walk that knows which scope a ``class`` statement sits in. Who
+    inherits from whom is a fact about the file rather than about any one scope,
+    so it goes into one file-wide record and the closure is taken once, above.
 
     A CLASS BODY is where the two halves meet. What it binds for itself is an
     attribute, reachable as ``Keeper.mod`` from outside and as ``self.mod`` from
@@ -2587,7 +2813,7 @@ def _walk_bindings(
         scope, {**inherited, **objects}, reachable, instance
     )
     objects.update(
-        {key: value for key, value in visible.items() if not key.isidentifier()}
+        {key: value for key, value in own.items() if not key.isidentifier()}
     )
     if isinstance(scope, ast.ClassDef) and owner:
         for key, value in own.items():
@@ -2599,8 +2825,10 @@ def _walk_bindings(
     )
     for nested in _nested_scopes(scope):
         member, member_instance = _member_scope(scope, owner, instance, nested)
+        if isinstance(nested, ast.ClassDef):
+            families[member] = _class_of(nested, visible, instance).bases
         nested_visible, _ = _walk_bindings(
-            nested, handed, handed_direct, objects, member, member_instance
+            nested, handed, handed_direct, objects, families, member, member_instance
         )
         if isinstance(nested, (ast.FunctionDef, ast.AsyncFunctionDef)):
             returned = _returned_value(nested, nested_visible, member_instance)
@@ -2610,9 +2838,92 @@ def _walk_bindings(
     return visible, visible_direct
 
 
+def _related(
+    start: str, families: dict[str, tuple[str, ...]], *, upward: bool
+) -> list[str]:
+    """One class and the classes an attribute lookup on it can reach, NEAREST FIRST.
+
+    Two directions, and reading them as one is what would put this defect back.
+    UPWARD is inheritance: ``class Row(Base)`` sees everything ``Base`` bound,
+    because that is what attribute lookup does. DOWNWARD is the mixin: a method
+    written in ``WriterMixin`` is called with a ``Row`` as its ``self``, so what
+    ``Row`` binds is what that method can reach.
+
+    NEITHER DIRECTION CROSSES SIDEWAYS, which is the whole reason this is a walk
+    rather than a connected component. Two subclasses of one base are not each
+    other's business: an ``Injected`` that takes its module as a constructor
+    argument and a ``Holder`` that binds the real one are the pair this file
+    already has a test for, and reading the family as one component would hand
+    ``Holder``'s binding to ``Injected`` through their shared base.
+
+    Breadth first so the nearest relative is first, since an override is the
+    nearest one and the caller keeps the first answer it is given.
+    """
+    seen, order, queue = {start}, [start], [start]
+    while queue:
+        one = queue.pop(0)
+        if upward:
+            step: tuple[str, ...] = families.get(one, ())
+        else:
+            step = tuple(key for key, bases in families.items() if one in bases)
+        for other in step:
+            if other not in seen:
+                seen.add(other)
+                order.append(other)
+                queue.append(other)
+    return order
+
+
+def _inherited_attributes(
+    declared: dict[str, _Bound], families: dict[str, tuple[str, ...]]
+) -> dict[str, _Bound]:
+    """Every attribute key a class REACHES, from the keys its family DECLARED.
+
+    THE KEY LANDED ON THE CLASS THAT DECLARES rather than on the class that
+    reaches, which is the third round running that a fix on this unit landed on
+    the wrong object. ``class Row(Base)`` with ``self.mod = config`` in
+    ``Base.__init__`` had a key under ``Base`` and none under ``Row``, so the
+    subclass reached the writer with nothing bound anywhere it looked. A mixin and
+    an inherited class body attribute are the same fact from the same hole, and a
+    mixin is ordinary author code rather than evasion.
+
+    A CLASS ATTRIBUTE is resolved UPWARD only, because ``Row.mod`` is whatever the
+    nearest ancestor bound and a subclass's binding is no business of the base's.
+    An INSTANCE attribute is resolved upward AND downward, because ``self`` in a
+    base's method is an instance of that class or of anything under it, which is
+    exactly what a mixin relies on. The two are separated here rather than merged
+    because merging them is what would let one subclass see a sibling's binding.
+
+    Kept apart from the declared table rather than folded into it, so that a
+    derived key is never re-derived from. The caller merges with declared on top.
+    """
+    found: dict[str, _Bound] = {}
+    for one in families:
+        upward = _related(one, families, upward=True)
+        for other in upward:
+            _carry(found, declared, other, one, f"{other}.")
+        downward = [key for key in _related(one, families, upward=False)]
+        for other in upward + [key for key in downward if key not in upward]:
+            _carry(found, declared, other, one, f"{other}{_INSTANCE}.")
+    return found
+
+
+def _carry(
+    found: dict[str, _Bound],
+    declared: dict[str, _Bound],
+    source: str,
+    target: str,
+    prefix: str,
+) -> None:
+    """Copy one class's declared keys onto another class's root, nearest wins."""
+    for key, value in declared.items():
+        if key.startswith(prefix):
+            found.setdefault(f"{target}{key[len(source):]}", value)
+
+
 def _global_aliases(
-    modules: dict[str, str | _Namespace],
-) -> dict[str, str | _Namespace]:
+    modules: dict[str, _Bound],
+) -> dict[str, _Bound]:
     """``globals()["config"]``, which is the module reached without its name.
 
     A module level name IS an entry in the module's own globals mapping, so
@@ -2630,7 +2941,7 @@ def _global_aliases(
 
 def _writer_bindings(
     tree: ast.AST,
-) -> tuple[dict[str, str | _Namespace], frozenset[str]]:
+) -> tuple[dict[str, _Bound], frozenset[str]]:
     """Receivers bound to an admitted module, and names bound to a writer itself.
 
     Read off the import statements for the same reason ``_resolved_imports``
@@ -2658,17 +2969,36 @@ def _writer_bindings(
     from there on and is matched as one. A STAR import binds every one of them at
     once, with no name in the file to read, so it is expanded from the set.
 
+    DECLARED AND REACHED ARE TWO TABLES, and the closure between them is taken
+    here because inheritance is a fact about the whole file rather than about any
+    one scope. What a class body and a constructor bind is DECLARED; what a
+    subclass, a base and a mixin can therefore see is REACHED. They are kept apart
+    so a reached key is never re-derived from, which is what would carry one
+    subclass's binding sideways into a sibling through their shared base. Declared
+    wins on a collision, because a subclass that binds the name itself has
+    overridden what it inherited.
+
     The outer loop is a FIXED POINT rather than a pass count. An object binding
     made in one scope is read in another, and valid Python does not promise the
     two are in document order. Measured, a sixty hop chain written entirely use
-    before definition resolves, which a pass count of one would not.
+    before definition resolves, which a pass count of one would not. Inheritance
+    needs the same loop for the same reason: ``class Row(Base)`` may be written
+    above ``Base``, and a chain of three classes needs a pass per link.
     """
-    objects: dict[str, str | _Namespace] = {}
+    declared: dict[str, _Bound] = {}
+    families: dict[str, tuple[str, ...]] = {}
+    reached: dict[str, _Bound] = {}
     while True:
-        before = dict(objects)
-        names, direct = _walk_bindings(tree, {}, frozenset(), objects)
-        if objects == before:
-            return {**objects, **names, **_global_aliases(names)}, direct
+        before = dict(declared), dict(families)
+        names, direct = _walk_bindings(tree, reached, frozenset(), declared, families)
+        reached = _inherited_attributes(declared, families)
+        if (declared, families) == before:
+            return {
+                **reached,
+                **declared,
+                **names,
+                **_global_aliases(names),
+            }, direct
 
 
 def _imported_modules(tree: ast.AST) -> frozenset[str]:
@@ -2690,7 +3020,7 @@ def _imported_modules(tree: ast.AST) -> frozenset[str]:
 
 
 def _receiver_module(
-    node: ast.AST, modules: dict[str, str | _Namespace], instance: _Instance
+    node: ast.AST, modules: dict[str, _Bound], instance: _Instance
 ) -> str:
     """Which admitted module a receiver was BOUND to, or the empty string.
 
@@ -2729,7 +3059,7 @@ def _writer_names_of(dotted: str) -> frozenset[str]:
 def _namespace_reads(
     space: _Namespace,
     wanted: ast.AST | None,
-    modules: dict[str, str | _Namespace],
+    modules: dict[str, _Bound],
     instance: _Instance,
     *,
     reflection: bool,
@@ -2897,7 +3227,7 @@ def mutations_in(
     tree: ast.AST,
     *,
     reflection: bool = True,
-    modules: dict[str, str | _Namespace] | None = None,
+    modules: dict[str, _Bound] | None = None,
     direct: frozenset[str] = frozenset(),
     invoked: frozenset[int] | None = None,
     libraries: frozenset[str] | None = None,
@@ -3008,7 +3338,7 @@ def mutations_in(
 
 def _call_mutations(
     node: ast.Call,
-    resolved: dict[str, str | _Namespace],
+    resolved: dict[str, _Bound],
     *,
     reflection: bool,
     invoked: frozenset[int],
@@ -3023,15 +3353,32 @@ def _call_mutations(
     if isinstance(func, ast.Attribute):
         # RULE 5 ASKED RATHER THAN INDEXED. ``Path.__dict__.get("write_text")``
         # hands back the same function object the subscript does, and so does
-        # ``vars(obj).pop(...)``. Any method of a namespace handed a constant
-        # first argument is read on the same terms, because the narrowing that
-        # keeps this off ordinary code is the RECEIVER being a type's attribute
-        # mapping, not the list of method names somebody might use to reach into
-        # one.
+        # ``vars(obj).pop(...)``. Any method of a namespace is read on the same
+        # terms, because the narrowing that keeps this off ordinary code is the
+        # RECEIVER being a type's attribute mapping, not the list of method names
+        # somebody might use to reach into one.
+        #
+        # NO ARGUMENT IS A KEY THIS CANNOT READ, and requiring one was a hole
+        # shaped exactly like the ones this rule keeps growing: a method that
+        # takes nothing was invisible, so ``vars(Path).copy()`` walked past the
+        # branch on arity alone. It is the same answer the computed key gets and
+        # it is on the same switch, so inside the governed package a lookup this
+        # cannot read is the violation and everywhere else it is quiet.
+        #
+        # Its cost across the whole tree is ONE line, ``state.items()`` at
+        # ``core/rb_writer.py`` 1843, in a module that is neither governed nor
+        # admitted. Recorded as the residual finding titled "A namespace method
+        # with no argument is an unreadable lookup", by TITLE rather than by
+        # number, because this branch's residual numbers collide with different
+        # findings on ``main``.
         space = _bound_value(func.value, resolved, instance)
-        if isinstance(space, _Namespace) and node.args:
+        if isinstance(space, _Namespace):
             said = _namespace_reads(
-                space, node.args[0], resolved, instance, reflection=reflection
+                space,
+                node.args[0] if node.args else None,
+                resolved,
+                instance,
+                reflection=reflection,
             )
             if said is not None:
                 return [f"line {node.lineno}: {name}({said})"]
@@ -3414,6 +3761,11 @@ def _unnamed_writers(dotted: str, source: str) -> list[str]:
     # loop reads a statement at a time.
     invoked = _invoked_reads(tree)
     libraries = _imported_modules(tree)
+    # A FUNCTION ATTACHED TO A CLASS is a method of it, and the audit reads one
+    # top level statement at a time, so the pairing has to be read off the whole
+    # module before the loop starts. ``Row.go = _go`` puts a writer on a class
+    # with the writing method written nowhere near it.
+    attached = _attachments(tree)
     short = dotted.rsplit(".", 1)[-1]
     unnamed: list[str] = []
     loose: list[str] = []
@@ -3423,6 +3775,18 @@ def _unnamed_writers(dotted: str, source: str) -> list[str]:
             # would have to spell: the function, or the class it constructs
             # to get at a writing method or a context manager.
             named = node.name in FILESYSTEM_MUTATIONS or f"{short}.{node.name}" in QUALIFIED_MUTATIONS
+            # A CLASS IS ITS OWN OWNER here, because the audit reads one top
+            # level statement at a time and there is no walk above it to say so.
+            # Without it every method's ``self`` renders unqualified and the
+            # class body's attributes are keyed under nothing. It is keyed by
+            # DEFINITION SITE rather than by name, which is what the binding
+            # table above is keyed by, and deriving both from the node is what
+            # keeps the two from drifting.
+            owner = (
+                _class_key(node)
+                if isinstance(node, ast.ClassDef)
+                else attached.get(node.name, "")
+            )
             found = mutations_in(
                 node,
                 reflection=False,
@@ -3430,11 +3794,12 @@ def _unnamed_writers(dotted: str, source: str) -> list[str]:
                 direct=own,
                 invoked=invoked,
                 libraries=libraries,
-                # A CLASS IS ITS OWN OWNER here, because the audit reads one top
-                # level statement at a time and there is no walk above it to say
-                # so. Without it every method's ``self`` renders unqualified and
-                # the class body's attributes are keyed under nothing.
-                owner=node.name if isinstance(node, ast.ClassDef) else "",
+                owner=owner,
+                instance=(
+                    _Instance()
+                    if isinstance(node, ast.ClassDef)
+                    else _method_instance(node, owner)
+                ),
             )
             if found and not named:
                 unnamed.append(node.name)
@@ -4532,6 +4897,202 @@ def test_the_audit_names_a_class_that_reaches_a_writer_through_its_body():
     assert _unnamed_writers("cratekit.core.naming", injected) == []
 
 
+#: A KEY THAT LANDED ON THE CLASS THAT DECLARES IT rather than on the class that
+#: REACHES it. Every one of these is two or three lines appended to the real
+#: ``aging``, every one of them wrote the configuration file with both structural
+#: guards and the audit green, and not one of them is evasion: a base class, a
+#: mixin and a method attached after the fact are ordinary author code.
+#:
+#: The round before caught the shape one indent in, ``self.mod = config`` in a
+#: constructor and ``mod = config`` in a class body, and keyed both under the
+#: class that wrote the line. Python does not look an attribute up that way. A
+#: subclass sees what its bases bound, and a base's method is handed a subclass
+#: as its ``self``, so the key has to be resolved through the family rather than
+#: parked on one member of it.
+INHERITED_ATTRIBUTE_REACHES_A_WRITER = [
+    (
+        "a base class constructor's binding, read in a subclass",
+        "\n\nclass Base:\n    def __init__(self):\n        self.mod = config\n\n\n"
+        "class Row(Base):\n    def go(self, cfg):\n        self.mod.save(cfg)\n",
+    ),
+    (
+        "a MIXIN's writer over the binding its subclass makes",
+        "\n\nclass WriterMixin:\n    def go(self, cfg):\n        self.mod.save(cfg)\n\n\n"
+        "class Row(WriterMixin):\n    def __init__(self):\n        self.mod = config\n",
+    ),
+    (
+        "an inherited class body attribute, read through the instance",
+        "\n\nclass Base:\n    mod = config\n\n\n"
+        "class Row(Base):\n    def go(self, cfg):\n        self.mod.save(cfg)\n",
+    ),
+    (
+        "an inherited class body attribute, read through the subclass",
+        "\n\nclass Base:\n    mod = config\n\n\nclass Row(Base):\n    pass\n\n\n"
+        "def go(cfg):\n    Row.mod.save(cfg)\n",
+    ),
+    (
+        "three classes deep, with the middle one binding nothing",
+        "\n\nclass Base:\n    mod = config\n\n\nclass Middle(Base):\n    pass\n\n\n"
+        "class Row(Middle):\n    def go(self, cfg):\n        self.mod.save(cfg)\n",
+    ),
+    (
+        "a method attached to its class after the class was written",
+        "\n\ndef _go(self, cfg):\n    self.mod.save(cfg)\n\n\n"
+        "class Row:\n    def __init__(self):\n        self.mod = config\n\n\nRow.go = _go\n",
+    ),
+]
+
+#: The other direction, and the one a family-wide key would get wrong. Two
+#: subclasses of one base are not each other's business, a base does not borrow
+#: from its subclass through the CLASS spelling, and a class is identified by
+#: where it is written rather than by what it is called.
+INHERITANCE_STAYS_IN_THE_FAMILY = [
+    (
+        "a sibling subclass's binding is not this subclass's",
+        "\n\nclass Base:\n    pass\n\n\n"
+        "class Injected(Base):\n    def __init__(self, config):\n        self.config = config\n\n"
+        "    def go(self):\n        return self.config.load\n\n\n"
+        "class Holder(Base):\n    def __init__(self):\n        self.config = config\n",
+    ),
+    (
+        "a base does not reach its subclass's class attribute through the class",
+        "\n\nclass Base:\n    def go(self, cfg):\n        return Base.mod.load\n\n\n"
+        "class Row(Base):\n    mod = config\n",
+    ),
+    (
+        "two classes of one name in two factories",
+        "\n\ndef one():\n    class Keeper:\n        mod = config\n\n    return Keeper\n\n\n"
+        "def two(config):\n    class Keeper:\n        def __init__(self):\n            self.mod = config\n\n"
+        "        def go(self):\n            return self.mod.load\n\n    return Keeper\n",
+    ),
+    (
+        "a class name redefined at module level",
+        "\n\nclass Keeper:\n    mod = config\n\n\n"
+        "class Keeper:\n    def __init__(self, config):\n        self.mod = config\n\n"
+        "    def go(self):\n        return self.mod.load\n",
+    ),
+    (
+        "a parameter that shadows a class name",
+        "\n\nclass Keeper:\n    mod = config\n\n\ndef go(Keeper):\n    return Keeper.mod.load\n",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "shape,snippet",
+    INHERITED_ATTRIBUTE_REACHES_A_WRITER,
+    ids=[one[0] for one in INHERITED_ATTRIBUTE_REACHES_A_WRITER],
+)
+def test_a_module_bound_anywhere_in_a_class_family_is_still_that_module(shape, snippet):
+    """The key resolved through the family rather than parked on one member of it.
+
+    The round before this one had the right diagnosis for the wrong object twice
+    over and paid for it here: ``self.mod = config`` in ``Base.__init__`` created
+    a key under ``Base``, and ``Row(Base)`` reading the same attribute looked up
+    a key under ``Row`` that nothing had ever written. A mixin is the same hole
+    read the other way round, and a method attached by ``Row.go = _go`` is the
+    same hole with the class and the method in two different statements.
+    """
+    assert filesystem_mutations(AGING_SOURCE + snippet), shape
+
+
+@pytest.mark.parametrize(
+    "shape,snippet",
+    INHERITANCE_STAYS_IN_THE_FAMILY,
+    ids=[one[0] for one in INHERITANCE_STAYS_IN_THE_FAMILY],
+)
+def test_a_class_key_names_one_class_and_never_two(shape, snippet):
+    """The false positives a coarser key produces, which are ordinary code.
+
+    A family read as one connected component hands ``Holder``'s binding to
+    ``Injected`` through the base they share, which is the ``self.config``
+    collision this file already has a test for, one level out. A class keyed by
+    its NAME does the same to two factories that each return a ``Keeper`` and to
+    a module that defines the name twice, and it leaves a parameter of that name
+    unable to take it back, because a name is only shadowed while it is a name.
+    """
+    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
+
+
+def test_a_class_written_inside_a_factory_still_reaches_its_own_attribute():
+    """The write the unique key must not cost, beside the false positive it fixes.
+
+    Two factories each returning a ``Keeper`` must not share a binding, and the
+    ``Keeper`` inside one factory must still resolve to its own class body. A key
+    that answered nothing would pass the quiet assertions above on its own.
+    """
+    inside = """
+
+def build(cfg):
+    class Keeper:
+        mod = config
+
+        def go(self, cfg):
+            self.mod.save(cfg)
+
+    return Keeper
+"""
+    assert filesystem_mutations(AGING_SOURCE + inside)
+    through_the_class = """
+
+def build(cfg):
+    class Keeper:
+        mod = config
+
+    Keeper.mod.save(cfg)
+    return Keeper
+"""
+    assert filesystem_mutations(AGING_SOURCE + through_the_class)
+
+
+def test_the_audit_names_a_writer_attached_to_a_class_after_the_fact():
+    """``Row.go = _go`` through the audit, which reads one statement at a time.
+
+    The function is written at module level, so on its own its first parameter is
+    nobody's instance and ``self.mod`` resolves against nothing. The pairing is
+    written in a third statement, which is why the audit reads the whole module
+    for it before the loop starts rather than asking each statement about itself.
+    """
+    attached = (
+        "from cratekit.core import config\n\n\n"
+        "def _go(self, cfg):\n"
+        "    self.mod.save(cfg)\n\n\n"
+        "class Row:\n"
+        "    def __init__(self):\n"
+        "        self.mod = config\n\n\n"
+        "Row.go = _go\n"
+    )
+    assert _unnamed_writers("cratekit.core.naming", attached) == ["_go"]
+    unattached = (
+        "from cratekit.core import config\n\n\n"
+        "def _go(self, cfg):\n"
+        "    self.mod.save(cfg)\n\n\n"
+        "class Row:\n"
+        "    def __init__(self, mod):\n"
+        "        self.mod = mod\n"
+    )
+    assert _unnamed_writers("cratekit.core.naming", unattached) == []
+
+
+def test_the_audit_names_a_writer_a_subclass_reaches_through_its_base():
+    """The same family resolution through the audit, whose owner is one statement.
+
+    The audit keys a class by its DEFINITION SITE for the same reason the walk
+    does, and both derive it from the node so the two cannot drift. Read under the
+    class's NAME instead, the two would agree by accident for as long as no file
+    spelled one name twice.
+    """
+    inherited = (
+        "from cratekit.core import config\n\n\n"
+        "class Base:\n"
+        "    mod = config\n\n\n"
+        "class Row(Base):\n"
+        "    def go(self, cfg):\n"
+        "        self.mod.save(cfg)\n"
+    )
+    assert _unnamed_writers("cratekit.core.naming", inherited) == ["Row"]
+
+
 #: A TYPE'S ATTRIBUTE MAPPING, reached through a BINDING rather than inline.
 #: Round four caught ``vars(Path)["write_text"]`` with a receiver free rule that
 #: fired on ``counts["rename"]`` too. Round five gave the rule its receiver and
@@ -4597,6 +5158,29 @@ NAMESPACE_REACHES_A_WRITER = [
         "a generic writer named only by the module it belongs to",
         '\n\ndef go(cfg):\n    vars(config)["save"](cfg)\n',
     ),
+    # FOUR SPELLINGS ONE OPERATOR OUT FROM ONES ALREADY HELD, and the reason the
+    # rule stopped enumerating. ``dict(vars(Path))`` and ``{**vars(Path)}`` were
+    # each written out by hand; a dict union and a ``.copy()`` are the same act
+    # on the same object, they were measured quiet, and all three were executed
+    # to confirm they write a real file. The ``ChainMap`` needs no forbidden
+    # import either, because ``collections`` is on the allowlist.
+    (
+        "carried through a dict UNION",
+        '\n\ndef go(p, d):\n    (Path.__dict__ | {})["write_text"](p, d)\n',
+    ),
+    (
+        "carried through a COPY that takes no arguments",
+        '\n\ndef go(p, d):\n    vars(Path).copy()["write_text"](p, d)\n',
+    ),
+    (
+        "carried into a ChainMap",
+        "\nfrom collections import ChainMap\n\n\n"
+        'def go(p, d):\n    ChainMap(vars(Path))["write_text"](p, d)\n',
+    ),
+    (
+        "carried through a KEYWORD spread",
+        '\n\ndef go(p, d):\n    dict(**vars(Path))["write_text"](p, d)\n',
+    ),
 ]
 
 #: The same rule pointed at ordinary code, because a namespace binding that fires
@@ -4625,6 +5209,23 @@ ORDINARY_LOOKUPS_THROUGH_A_BINDING = [
     (
         "a generic name on a namespace nobody admits",
         '\n\ndef go(view):\n    return vars(view)["save"]\n',
+    ),
+    # THE SAME MAPPING OPERATIONS ON AN ORDINARY MAPPING. Propagation is what
+    # carries a namespace through a union, a copy and a constructor, and if it
+    # carried mapping-ness itself rather than the namespace it found, every one
+    # of these would be a finding on a dispatch table.
+    (
+        "an ordinary mapping through a union",
+        '\n\ndef go(counts):\n    return (counts | {})["rename"]\n',
+    ),
+    (
+        "an ordinary mapping copied",
+        '\n\ndef go(counts):\n    return counts.copy()["rename"]\n',
+    ),
+    (
+        "an ordinary mapping through a constructor",
+        "\nfrom collections import ChainMap\n\n\n"
+        'def go(counts):\n    return ChainMap(counts)["rename"]\n',
     ),
 ]
 
@@ -4676,6 +5277,39 @@ def test_a_namespace_key_this_cannot_read_is_a_finding_only_where_writing_is_ban
         )
         == []
     )
+
+
+def test_a_mapping_method_that_takes_no_argument_is_a_key_this_cannot_read():
+    """The ASKED branch with no argument to read, which is its own act.
+
+    A method of a namespace that takes nothing hands back something derived from
+    a type's attribute mapping and names no key at all, so there is nothing for
+    the key check to compare and the answer is the one every unreadable lookup
+    gets. Requiring an argument made the branch decidable on ARITY, which is how
+    ``vars(Path).copy()`` walked past it.
+
+    Asserted where the two mechanisms come apart rather than where they overlap.
+    A ``copy`` whose result is then subscripted is caught twice over, once here
+    and once by the propagation, so it says nothing about either. This one is
+    never subscripted, so only this branch can see it; and it is quiet in the
+    audit, because outside the governed package an unreadable lookup is ordinary.
+    """
+    unread = "\n\ndef go():\n    return vars(Path).popitem()\n"
+    assert filesystem_mutations(AGING_SOURCE + unread)
+    assert _unnamed_writers("cratekit.core.naming", "def go(spec):\n    return vars(spec).popitem()\n") == []
+
+
+def test_a_namespace_carried_through_a_copy_is_named_by_the_audit_too():
+    """The propagation with no help from the reflection switch, which is its own act.
+
+    The audit runs with the switch OFF, so an unreadable lookup says nothing
+    there and the ASKED branch cannot answer for this shape at all. What is left
+    is the key, which is named, reached through a mapping the propagation carried
+    from ``vars(Path)`` through a method call that took no arguments. Without the
+    receiver in ``_mapping_operands`` the audit is silent on a helper that writes.
+    """
+    copied = 'from pathlib import Path\n\n\ndef stash(p, d):\n    vars(Path).copy()["write_text"](p, d)\n'
+    assert _unnamed_writers("cratekit.core.naming", copied) == ["stash"]
 
 
 def test_a_module_reached_through_the_globals_mapping_is_still_that_module():
@@ -4803,6 +5437,32 @@ def test_every_shadow_this_table_claims_takes_the_name_back(shape, source):
     binding table.
     """
     assert filesystem_mutations(source) == [], shape
+
+
+def test_a_name_bound_twice_in_ONE_scope_settles_to_neither():
+    """The FAILED ATTEMPT, driven where shadowing alone cannot answer it.
+
+    Every shadow fixture above puts the import at module level and the rebinding
+    inside a function, and there the two mechanisms give the same answer: the
+    inner scope takes the name, so the inherited binding is removed before
+    anything has to disagree with it. The failed attempt is the only thing that
+    answers when both bindings are in the SAME scope, because there the import
+    resolves, the other statement says nothing, and nothing beats something.
+
+    A handle bound to a name a module also imports is the ordinary spelling of
+    that, and the write beside it is what stops this from passing on a table that
+    resolved nothing at all.
+    """
+    beside = (
+        "from cratekit.core import config\n\n\n"
+        'with open("defaults.json") as config:\n'
+        "    DEFAULTS = config.read()\n\n\n"
+        "def go(cfg):\n"
+        "    config.save(cfg)\n"
+    )
+    assert filesystem_mutations(beside) == []
+    alone = "from cratekit.core import config\n\n\ndef go(cfg):\n    config.save(cfg)\n"
+    assert filesystem_mutations(alone)
 
 
 @pytest.mark.parametrize(

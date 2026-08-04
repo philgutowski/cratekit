@@ -768,3 +768,151 @@ a fixture rather than rediscovering it.
 argument, which needs cross-module analysis this suite does not do, or the shape
 is accepted permanently. The natural owner is whichever unit next widens
 `filesystem_mutations`.
+
+---
+
+## R-22. A namespace method with no argument is an unreadable lookup
+
+**Found:** during the U34 round 7 fix, 2026-08-04.
+
+Rule 5's ASKED branch required a first argument to compare, so a method of a
+type's attribute mapping that takes none walked past it on ARITY alone.
+`vars(Path).copy()` was measured quiet on all four guards and executed to confirm
+it hands back a mapping that still holds `write_text`. The branch no longer
+requires an argument: no key to read is answered the way an unreadable key is
+answered, on the reflection switch, so inside the governed package it is a finding
+and everywhere else it is silent.
+
+**The cost is measured rather than asserted, and it is one line.** Across all 75
+files under `src` the whole tree contains exactly ONE namespace expression,
+`vars(obj)` at `src/cratekit/core/rb_writer.py` line 1840, and exactly one lookup
+through it, `state.items()` at line 1843. With the reflection switch ON that call
+is now reported as a key this cannot read. Nothing asks it that question today:
+`rb_writer` is neither one of the four governed report modules nor on the
+allowlist, and the audit runs with the switch off. The four governed modules
+contain no `vars` and no `__dict__` at all.
+
+**Not fixed here**, deliberately, because every narrowing available is worse.
+Naming the mapping methods that return a mapping is the enumeration this round
+exists to stop doing, and gating on the result being called would lose
+`vars(Path).popitem()` handed to something else. What is recorded is the one
+place in this repository where the rule would fire on correct code if the
+governed set widened.
+
+**Closes when:** either `cratekit.core.rb_writer` is proposed as a governed or
+admitted module, at which point line 1843 is the thing to decide about, or the
+ASKED branch learns to read what a mapping method hands back.
+
+---
+
+## R-23. Two reflection spellings stay quiet, and each needs a refused import
+
+**Found:** during the U34 round 7 fix, 2026-08-04.
+
+Three further spellings reach a writing method through a type's attribute
+mapping. One of them is now covered by the propagation rule and its own import is
+refused as well:
+
+```python
+MappingProxyType(vars(Path))["write_text"](path, decided)   # caught, and types is refused
+```
+
+Two are not covered, and neither is live:
+
+```python
+itemgetter("write_text")(vars(Path))(path, decided)         # operator.itemgetter is refused
+getattr_static(Path, "write_text")(path, decided)           # inspect.getattr_static is refused
+```
+
+Both were measured `[]` by `filesystem_mutations` and by `_unnamed_writers`, and
+both were measured as REFUSED by `forbidden_imports`: `operator.itemgetter` and
+`inspect.getattr_static` are not on `ALLOWED_IMPORTS`, so neither can be written
+inside the governed package at all. The structural import guard is what holds
+them, not rule 5.
+
+**Not fixed here**, deliberately. Covering `itemgetter` means reading which
+argument of an arbitrary callable is the mapping, and covering `getattr_static`
+means naming a third reflective reader whose import is already banned. Recording
+them means the next reader who widens `ALLOWED_IMPORTS` knows what widening costs.
+
+**Closes when:** either `operator` or `inspect` is proposed for the allowlist, at
+which point the corresponding spelling needs a rule and a fixture.
+
+---
+
+## R-24. A container built by a comprehension binds none of its elements
+
+**Found:** during the U34 round 5 verification, restated in round 7, 2026-08-04.
+
+`_elements` reads a list, tuple, set or dict LITERAL and reads nothing else, so a
+container built by a comprehension binds no element and a lookup through it
+resolves to nothing:
+
+```python
+class Row:
+    def __init__(self):
+        self.mods = [config for _ in range(1)]
+
+    def go(self, cfg):
+        self.mods[0].save(cfg)
+```
+
+Measured `[]` by all three guards, and identically quiet in round five, so this
+is a standing limit rather than a regression either round introduced.
+
+**Not fixed here**, deliberately. A comprehension is a scope with its own binding
+table and its element is an expression evaluated once per iteration, so reading
+one means resolving the comprehension's own target bindings and then deciding
+which iteration's value the subscript names. `MODS = [config]` and `MODS =
+[[config]]` are the shapes an ordinary refactor produces and both are covered.
+
+**Closes when:** whichever unit next widens the binding table decides a
+comprehension's elements are worth a scope walk of their own.
+
+---
+
+## R-25. A class rebound after its own definition is no longer reachable by name
+
+**Found:** during the U34 round 7 fix, 2026-08-04, and it is a coverage TRADE
+rather than a discovery: round six caught this shape and round seven does not.
+
+A class is identified by its DEFINITION SITE now, and its NAME is an ordinary
+lexical binding whose value is that identity. That is what lets a parameter
+called `Keeper` take the name back, which round six could not do, and what keeps
+two factories that each return a `Keeper` apart. It costs one shape, measured
+against the real `aging` on both sides:
+
+```python
+class Keeper:
+    mod = config
+
+
+Keeper = dataclass(Keeper)          # a decorator applied by hand
+
+
+def go(cfg):
+    Keeper.mod.save(cfg)            # FIRES at round 6, quiet at round 7
+```
+
+The `class` statement and the assignment are two bindings of one name that do
+not agree, so the name settles to neither. `dataclass` really does hand the same
+class back, so the write is real and is missed. Round six kept it only because it
+keyed the attribute as flat TEXT and a rebinding of the name was invisible to
+that reading, which is the same reading that reported `def go(Keeper)` as a write.
+
+Three neighbouring shapes were measured at the same time and go quiet CORRECTLY
+rather than being lost: reading `Keeper.mod` where a later `class Keeper` has
+taken the name (an `AttributeError` at runtime), reading a factory's local class
+from outside the factory (a `NameError`), and reading `Outer.Keeper.mod` where
+`Outer` is a parameter.
+
+**Not fixed here**, deliberately. Closing it means deciding whether an arbitrary
+callee hands its argument back, which is the same undecidable question the
+residual titled "One reflective call shape stays out of reach, and it is named"
+declines to answer for `map(getattr(p, n), items)`. The decorated spelling that
+an author actually writes, `@dataclass` above the class, is covered and has a
+fixture.
+
+**Closes when:** either a bounded reading of "this call returns its argument"
+exists, or the shape is accepted permanently. The natural owner is whichever unit
+next widens the binding table.

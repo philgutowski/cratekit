@@ -23,6 +23,303 @@ the revert in this table with its spelling written out. Round five deleted
 that basis and neither is checkable. Round six adopts the rule and adds no
 unrecorded deletion.
 
+**A ROW'S SPELLING IS PART OF ITS NUMBER.** Two rows in this file carry counts
+that do not reproduce, and in both cases the reason is that the revert's exact
+text was never written down, so a later round could only guess at it. Round seven
+writes every revert out verbatim in `docs/mutation/u34-round-7-reverts.py`, and where
+a re-measured count differs from the recorded one it says whether the difference
+is the round's new tests, a change in what the row means, or a spelling nobody
+can recover.
+
+## Round 7
+
+Sixty eight rows, every one a guard, constant, condition or assertion this round
+adds or changes, plus thirty seven of the earlier rounds' re-run against the new
+code. **No row killed zero.** Three rows measured zero on the first pass and each
+one was FIXED rather than argued: one by adopting the "revert" as the shipped
+reading, one by writing the driver the guard had never had, and one pair by
+finding the shape where two mechanisms that overlapped on every fixture come
+apart.
+
+Counts are scoped to `tests/modules/test_reports.py`, which nothing else in the
+suite imports.
+
+Baseline before the round: 3434 passed, 15 skipped, 3449 collected.
+Baseline after: 3458 passed, 15 skipped, 3473 collected. The file itself collects
+285, up from 261.
+
+Twenty four tests are added and none removed, verified by collecting node ids
+with a plugin and diffing them against `HEAD`. **Every one of the 24 is killed by
+at least one revert**, checked by taking the union of the failing ids across all
+68 rows and subtracting: 0 uncovered.
+
+### F1: the key landed on the class that DECLARES, not the class that REACHES
+
+Round six keyed a class attribute under the class whose body or constructor wrote
+the line. Python does not look an attribute up that way. A subclass sees what its
+bases bound, and a base's method is handed a subclass as its `self`, so three
+ordinary shapes were each two or three lines appended to the real `aging` that
+wrote the configuration file with both structural guards and the audit green: a
+base class constructor read from a subclass, a writer in a `WriterMixin` over a
+binding made in `class Row(WriterMixin).__init__`, and an inherited class body
+attribute. **Round five caught all three**, by keying `self.mod` file-wide, and
+round six traded that coverage for the `Injected` versus `Holder` fix. A fourth,
+`Row.go = _go`, was missed by both.
+
+A class is a value a name is bound to now, `_Class`, carrying its definition site
+and the identities of its bases. What a class family reaches is a closure taken
+once over the whole file, `_inherited_attributes`, kept in a table SEPARATE from
+what each class declared so a derived key is never re-derived from.
+
+| id | what was reverted | deaths |
+|-|-|-|
+| P01 | `_inherited_attributes` answers nothing, so no class reaches what its family declared | 6 |
+| P07 | `_class_of` stops resolving a class's BASES, so every class is its own family | 6 |
+| P17 | `_walk_bindings` stops recording who inherits from whom, so the closure has no family to take | 6 |
+| P15 | `_bound_value` stops resolving an attribute THROUGH a class, so `Keeper.mod` is only ever a flat spelling | 5 |
+| P04 | `_inherited_attributes` resolves an INSTANCE attribute downward only, so a subclass cannot see what its base's constructor bound | 4 |
+| P02 | `_inherited_attributes` stops resolving a CLASS attribute through the bases, so `Row.mod` never finds `Base.mod` | 1 |
+| P03 | `_inherited_attributes` resolves an INSTANCE attribute upward only, so a mixin's method cannot see what its subclass binds | 1 |
+| P05 | `_related` walks ONE HOP instead of transitively, so a grandparent is not a relative | 1 |
+| P08 | `_writer_bindings` folds REACHED back into DECLARED, so a derived key is re-derived from | 1 |
+| P09 | `_walk_bindings` carries out the scope's whole VIEW rather than its OWN bindings, which is what round six shipped | 1 |
+| P10 | `_member_scope` stops reading `_attachments`, so a method attached by `Row.go = _go` is nobody's method | 1 |
+| P11 | the audit stops reading `_attachments`, so an attached writer is read as a plain module level function | 1 |
+| P12 | the audit stops handing `mutations_in` an INSTANCE, so an attached function's first parameter is nobody's | 1 |
+
+`P06` belongs to the false positive direction and is in the next table, because
+what it reverts is the ONLY thing keeping the two directions apart.
+
+#### What this change now MISSES that round six caught, measured
+
+Round six keyed a class attribute as flat TEXT, so a rebinding of the class's
+name was invisible to it and every spelling of `Keeper.mod` in the file was one
+key. Round seven resolves the name first. Five shapes were run against the real
+`aging` on BOTH `HEAD` and this branch to find where the two answers differ.
+
+| shape | round 6 | round 7 | verdict |
+|-|-|-|-|
+| `Keeper = dataclass(Keeper)` after the class body, then `Keeper.mod.save(cfg)` | FIRES | quiet | **LOST, and it is a real write** |
+| the FIRST of two `class Keeper` at module level, then `Keeper.mod.save(cfg)` | FIRES | quiet | correct: the second class has no `mod`, so this is an `AttributeError` |
+| a factory's local `class Keeper` read from outside the factory | FIRES | quiet | correct: `NameError` |
+| `Outer.Keeper.mod.save(cfg)` where `Outer` is a PARAMETER | FIRES | quiet | correct: this is F4 exactly |
+| `@dataclass` written above the class (control) | FIRES | FIRES | held |
+
+**One genuine loss**, and it is filed rather than argued, under the residual
+title "A class rebound after its own definition is no longer reachable by name".
+Closing it means deciding whether an arbitrary callee hands its argument back,
+which is the question the residual titled "One reflective call shape stays out of
+reach, and it is named" already declines to answer for
+`map(getattr(p, n), items)`. The spelling an author actually writes, the
+decorator above the class, is covered and has a fixture in the control row.
+
+### F3 and F4: identity that is not unique, one level further out
+
+A class was a SPELLING in round six: `A.Keeper` for a class nested in a class and
+the bare `Keeper` for a class nested in a FUNCTION. Two factories each returning a
+`Keeper` therefore shared one root, so one factory's class body decided for the
+other's, and an ordinary method reading its own injected argument was reported as
+a write to the library. A module level redefinition of a class name was the same
+fact. And an object key spelled with a dot was never a NAME, so nothing could
+shadow it: `def go(Keeper)` could not take the name back, on a parameter that
+really is a different object.
+
+Both are closed by the same move. A class name is an ordinary lexical binding
+whose value is a `_Class`, so it shadows and is shadowed like every other name,
+and the identity underneath it is the DEFINITION SITE, which two `class Keeper`
+statements cannot share.
+
+| id | what was reverted | deaths |
+|-|-|-|
+| P14 | `_scope_own_bindings` stops recording a nested CLASS as a binding of its own name | 10 |
+| P13 | `_class_key` answers the class's NAME, which is round six's identity, so two `class Keeper` are one class | 3 |
+| P06 | `_related` reads a family as one CONNECTED COMPONENT, walking both directions at once, so one subclass sees its sibling's binding through their shared base | 2 |
+
+### F2: a namespace is a value that PROPAGATES
+
+`_namespace_of` read four literal spellings, and `_call_mutations`'s ASKED branch
+required arguments. Three more spellings passed `forbidden_imports`,
+`filesystem_mutations` AND `_unnamed_writers`, all `[]`, and **all three were
+executed and confirmed to write a real file**:
+
+    (Path.__dict__ | {})["write_text"](path, decided)     # dict union, zero imports
+    vars(Path).copy()["write_text"](path, decided)        # .copy() takes no args, so ASKED never fired
+    ChainMap(vars(Path))["write_text"](path, decided)     # "collections" IS in ALLOWED_IMPORTS
+
+`dict(vars(Path))` was R03 and `{**vars(Path)}` was R04, so the first two are the
+same act one operator out. Two ROOTS originate a namespace and one propagation
+rule carries it: `_mapping_operands` names the OPERAND POSITIONS a mapping can
+come out of rather than the operations that produce one.
+
+| id | what was reverted | deaths |
+|-|-|-|
+| R03 | `_mapping_operands` stops yielding a CALL's ARGUMENTS, so `dict(vars(Path))` and `ChainMap(vars(Path))` carry nothing | 2 |
+| R04 | `_mapping_operands` stops yielding a `**` SPREAD value in a dict literal | 1 |
+| R13 | `_mapping_operands` stops yielding a BINARY OPERATOR's operands, so a dict union of a type's `__dict__` carries nothing | 1 |
+| R14 | `_mapping_operands` stops yielding a method call's RECEIVER, so `vars(Path).copy()` carries nothing | 1 |
+| R15 | `_mapping_operands` stops yielding a call's KEYWORD values, so `dict(**vars(Path))` carries nothing | 1 |
+| R16 | `_call_mutations`'s namespace ASKED branch requires ARGUMENTS again, so a mapping method that takes none is invisible | 1 |
+
+**R14 and R16 both measured zero on the first pass, and for the same reason:**
+`vars(Path).copy()["write_text"]` is caught twice over, by the propagation through
+the subscript and by the ASKED branch reporting a key it cannot read, so neither
+revert alone changed the answer. They are two different acts and the drivers now
+say so. R14 is asserted through the AUDIT, where the reflection switch is off and
+the unreadable-key branch cannot answer at all, so only the propagation is left.
+R16 is asserted on `vars(Path).popitem()`, which is never subscripted, so only
+the ASKED branch can see it.
+
+### F5: R06's description named a rule it is not
+
+Round six's R06 row read "which is round four's receiver free rule". It is not.
+R06 drops the namespace REQUIREMENT while keeping `_namespace_reads`, so it still
+reads the owner and still reports a key it cannot read. Round four's rule kept
+neither: it compared `node.slice.value` against `FILESYSTEM_MUTATIONS` and
+nothing else. Both are measured here rather than argued.
+
+| id | what was reverted | round 6 recorded | round 7, round 6's tests only | round 7, all tests |
+|-|-|-|-|-|
+| R06 | rule 5 drops the namespace requirement, comparing every constant subscript key against the mutation set through `_namespace_reads` | 28 | 28 | 36 |
+| R06b | ROUND FOUR'S LITERAL RULE 5, lifted verbatim from `HEAD~2` lines 2185 to 2188: a constant key in `FILESYSTEM_MUTATIONS`, no receiver and no owner read | not measured | 10 | 13 |
+
+The author's own spelling reproduces its recorded 28 exactly. The attribution did
+not: under round four's literal spelling the number is 10, and three of round
+seven's 24 new tests survive it.
+
+### The earlier rounds' rows, re-run against round seven's code
+
+Every row is re-measured twice: once against the whole file, and once with
+exactly the 24 new node ids DESELECTED, so a count that rose can be told apart
+from a row that changed meaning.
+
+| id | what was reverted | recorded | 24 new deselected | all tests |
+|-|-|-|-|-|
+| N21 | `mutations_in` stops descending into NESTED SCOPES | 91 | 91 | 105 |
+| S16 | `_visible_bindings` adds the scope's own bindings BEFORE shadowing instead of after | 37 | 37 | 47 |
+| R06 | rule 5 drops the namespace requirement | 28 | 28 | 36 |
+| N12 | the ASSIGNMENT rebinding branch removed | 27 | 27 | 36 |
+| M35 | `write_text` dropped from `FILESYSTEM_MUTATIONS` | 25 | 25 | 29 |
+| Q06 | `ast.ClassDef` dropped from `_SCOPES` | 14 | 14 | 20 |
+| S01 | `_names_taken` reverted to PARAMETERS ONLY | 11 | 11 | 11 |
+| R02 | `_namespace_of` stops recognising `vars()` | 11 | 11 | 16 |
+| S09 | `_bound_here` stops reading a PARAMETER LIST | 10 | 10 | 14 |
+| C01 | `_called_keys` answers nothing | 8 | 8 | 8 |
+| R05 | rule 5 reads its receiver INLINE again | 8 | 8 | 8 |
+| Q01 | `_receiver_key` ignores the owning class | 7 | 7 | 12 |
+| R01 | `_namespace_of` stops recognising `__dict__` | 6 | 6 | 7 |
+| C05 | `_invoked_reads` stops reading a read BOUND TO A NAME the file calls | 6 | 6 | 6 |
+| C09 | `_invoked_reads` stops reading the INLINE spelling | 5 | 5 | 5 |
+| Q07 | `_walk_bindings` stops writing the `<Class>.<name>` attribute key | 4 | 4 | 6 |
+| Q08 | `_walk_bindings` stops writing the `<Class>::self.<name>` key | 4 | 4 | 8 |
+| U01 | `_invoked_reads` answers with EVERY reflective read | 4 | 4 | 4 |
+| S15 | `_scope_own_bindings` inner fixed point cut to ONE pass | 4 | 4 | 4 |
+| S14 | `_scope_own_bindings` accepts a name when ANY binding resolves | 3 | 3 | 4 |
+| R07 | `_namespace_reads` stops reporting a key it CANNOT READ | 2 | 2 | 3 |
+| R09 | `_call_mutations` drops the namespace ASKED branch | 2 | 2 | 3 |
+| B09 | a computed `__getattribute__` gated on the reflection switch | 2 | 2 | 2 |
+| R08 | `_namespace_reads` reports an unreadable key with the switch OFF too | 1 | 1 | 2 |
+| Q16 | the audit stops naming a `ClassDef` as its own owner | 1 | 1 | 2 |
+| R03 | `_mapping_operands` stops yielding a CALL's arguments (was: `_namespace_of` stops reading a `dict()` copy) | 1 | 1 | 2 |
+| Q02 Q03 Q04 Q09 Q13 Q14 Q15 R04 R10 R11 R12 T01 T02 S20 S21 S22 | unchanged, one death each | 1 | 1 | 1 |
+| S19 | `_walk_bindings` stops recording a function's RETURNED module | 2 | 4 | 4 |
+| S18 | `_walk_bindings` stops carrying OBJECT bindings out of the scope that made them | 3 | 6 | 10 |
+| Q11 | `_defined_here` stops reading a `ClassDef` | 1 | 4 | 11 |
+| N05 | the rebinding sweep removed, imports only | 31 | 32 | 42 |
+| N22 | `_receiver_module` answers an UNRESOLVED name with itself | 20 | 25 | 27 |
+
+The last five need saying out loud rather than leaving in a column.
+
+- **Q11 means more than it did.** `_defined_here`'s reading of a `ClassDef` now
+  does two jobs: it takes the class's own name back, which is what round six's
+  row named, and it is the loop through which a class's `_Class` binding is
+  recorded. Reverting it removes both, so three class-attribute shapes that Q12
+  used to hold fall to it as well. **Q12 is gone**, because the lexical class
+  path it reverted no longer exists; its two drivers are now held by nine rows
+  between them, P14 and P15 among them.
+- **S18 and S19 rose against round five's figures before this round.** Round six
+  did not re-run either. Applied to round six's own code and counted on round
+  six's own tests, they measure 6 and 4, the same as here, so the rise is not
+  this round's.
+- **N05 measures 32 and N22 measures 25 with the same spelling on round six's own
+  code and round six's own tests.** The recorded 31 and 20 do not reproduce. The
+  cause is not this round: round six recorded no verbatim revert text for either
+  row, so the exact spelling that produced those numbers cannot be recovered.
+  What is measurable, and is measured, is the DELTA: applying this round's
+  spelling to `HEAD` and to round seven gives the identical failing-id set on the
+  old tests for both rows, so neither is inflated by this round. Round four's
+  recorded N22 already did not reproduce against round four's own code, which
+  makes this the second unrecoverable number on that one row.
+
+### Three zero rows fixed rather than argued
+
+- **P16 was not a missing driver, it was a worse reading.** The proposed guard
+  recorded one attempt per `ClassDef` NODE, so two `class Keeper` statements in
+  one scope disagreed and the name settled to neither. That measured zero,
+  because the quiet direction it was written for is already quiet under the
+  simpler reading, and it LOSES a real write: the second `class Keeper` really
+  does bind the name, and the interpreter lets the last definition win. The
+  simpler reading is what shipped, and the redefinition case is held by P13.
+- **R14 and R16 overlapped on every fixture**, and the fix was to find where the
+  two mechanisms come apart rather than to keep one. Written out above.
+- **S21 had no driver at all and still does not, in round five's fixtures.**
+  Every shadow fixture in this file puts the import at module level and the
+  rebinding inside a function, and there `_names_taken` answers before the failed
+  attempt is consulted. The failed attempt is the only thing that answers when
+  both bindings are in the SAME scope, and
+  `test_a_name_bound_twice_in_ONE_scope_settles_to_neither` is that: a handle
+  bound to a name the module also imports, with the write that would otherwise be
+  found asserted beside it.
+
+### What was measured against the real tree, not against a fixture
+
+- Every shape in F1, F2, F3 and F4 is appended to the REAL
+  `src/cratekit/modules/reports/aging.py`, read from disk, and every one of the
+  six findings was both found and driven that way.
+- **75 files under `src`. ONE namespace expression in all of them**, `vars(obj)`
+  at `src/cratekit/core/rb_writer.py` line 1840, and ZERO names bound to a
+  namespace in any module level table. The one lookup through it is
+  `state.items()`.
+- **The no-argument ASKED branch costs exactly one finding across the whole
+  tree**, and it is that `state.items()`, reported only with the reflection
+  switch ON. `rb_writer` is neither a governed report module nor on the
+  allowlist, so nothing asks it that question today; the audit, which runs with
+  the switch off, is silent on it. The four governed modules contain no `vars`
+  and no `__dict__` at all. Recorded as a residual rather than left implicit,
+  under the title "A namespace method with no argument is an unreadable lookup".
+- Real tree today: **4 governed modules walked, 0 offenders, 0 forbidden
+  imports; 8 admitted modules, 7 audited with 0 unnamed writers**, the eighth
+  skipped by exact name equality with `SANCTIONED_PERSISTENCE`.
+- `MappingProxyType(vars(Path))["write_text"]` is now CAUGHT by the propagation,
+  and its import is refused as well. `itemgetter` and `getattr_static` stay
+  quiet, and each needs a module the allowlist refuses, so neither is live.
+- One limit is unchanged and is not this round's:
+  `self.mods = [config for _ in range(1)]` followed by `self.mods[0].save(cfg)`
+  is quiet, because `_elements` has never read comprehensions. Round five missed
+  it identically. Re-measured `[]` and recorded rather than chased.
+
+### The conflict surface against `main`
+
+Measured with `git merge-tree --write-tree main HEAD`, `main` at `183bea9`, which
+is well past U32. **Five content conflicts, not none:**
+
+| file | why |
+|-|-|
+| `docs/residual-findings.md` | append point registry, meant to conflict textually |
+| `src/cratekit/cli/registry.py` | append point registry |
+| `tests/_pending.py` | append point registry |
+| `tests/test_pending_units.py` | append point registry |
+| `src/cratekit/core/cause.py` | append point registry |
+
+All five are the registries `CLAUDE.md` says are meant to conflict, so the merge
+is resolvable, but "no conflict surface" was false and is corrected here.
+
+**RESIDUAL NUMBERS COLLIDE ACROSS THE MERGE.** This branch adds `R-16` through
+`R-21` to `docs/residual-findings.md`; `main` independently added `R-14` through
+`R-23`. Five of this branch's numbers, `R-16`, `R-17`, `R-19`, `R-20` and `R-21`,
+name entirely different findings on `main`. Every residual citation in this
+unit's source, docstrings and tests is therefore written as a TITLE and never as
+a number.
+
 ## Round 6
 
 Forty one rows, every one a guard, constant, condition or assertion this round
@@ -92,7 +389,7 @@ and rule 5 both ask it.
 | id | what was reverted | deaths |
 |-|-|-|
 | R05 | RULE 5 READS ITS RECEIVER INLINE AGAIN, which is what round five shipped: `_namespace_of` off the subscript's own `value`, table never asked | 8 |
-| R06 | rule 5 drops the namespace requirement, comparing every constant subscript key against the mutation set, which is round four's receiver free rule | 28 |
+| R06 | rule 5 drops the namespace requirement, comparing every constant subscript key against the mutation set THROUGH `_namespace_reads`, which still reads the owner and still reports a key it cannot read | 28 |
 | R01 | `_namespace_of` stops recognising `__dict__` | 6 |
 | R02 | `_namespace_of` stops recognising `vars()` | 11 |
 | R03 | `_namespace_of` stops reading through a `dict()` copy | 1 |
@@ -230,8 +527,8 @@ than re-derived, and attributed for that reason.
   constant key.
 - Real tree today: 4 governed modules walked, 0 offenders, 0 forbidden imports;
   7 admitted modules audited, 0 unnamed writers. The eighth admitted module is
-  `SANCTIONED_PERSISTENCE`, which R12 licenses to write and which the audit skips
-  by name.
+  `SANCTIONED_PERSISTENCE`, which the review-queue requirement licenses to write
+  and which the audit skips by name.
 
 ## Round 5
 
