@@ -716,3 +716,55 @@ report that writes through one still moves a byte or a modified time, and
 ordinary constant subscript, or the structural guards state in their own
 docstrings that subscript reach is out of scope. The natural owner is whichever
 unit next widens `filesystem_mutations`.
+
+**Closed in U34 round 5.** Round 4 covered both spellings and paid exactly the
+price this entry predicted: it compared every constant subscript key against
+`FILESYSTEM_MUTATIONS` with no receiver read at all, so `counts["rename"] +
+counts["unlink"]` in a report was two findings, and `row["truncate"]`,
+`LABELS["touch"]` and `ACTIONS["mkdir"]` were one each. The separation this entry
+asked for exists now and it is exact rather than heuristic: a type's `__dict__`
+and the `vars` of one are the only two spellings that hand back the function
+object itself, and `_namespace_owner` reads for those. A mapping is a mapping.
+Measured across all 75 files under `src`: zero hits, so the rule still costs
+nothing.
+
+---
+
+## R-21. One reflective call shape stays out of reach, and it is named
+
+**Found:** during the U34 round 5 fix, 2026-08-03.
+
+Rule 4's computed half fires when a reflective read's RESULT IS CALLED, and round
+5 moved that decision onto the binding table so it covers the indirect spellings:
+bound to a name and called, returned and called, stored in a container whose
+element is called, used as a decorator, handed to a factory invoked on the spot,
+bound at module level and called in another function, and the same through a
+conditional, a walrus and an annotated assignment. Eleven shapes, each with a
+fixture, each with a mutation row.
+
+One is not covered and will not be by this technique:
+
+```python
+map(getattr(path, name), items)
+```
+
+The read is handed to a callee that will invoke it, and whether a callee invokes
+its argument is a fact about the CALLEE, not about the file being read. A rule
+that assumed it would fire on `print(getattr(row, field))`, which is the P7 shape
+this whole guard is written around: a guard that reports correct code is a guard
+somebody routes around. Naming a set of builtins that invoke their first argument
+would cover `map` and `filter` and would be a list nothing keeps true.
+
+What IS read, and the distinction is the whole of it, is the factory invoked in
+place: `partial(getattr(p, n))(d)` is covered, because the invocation is written
+in this file where the checker can see it.
+
+**Not fixed here**, deliberately. This is an accepted boundary of a guard whose
+own docstring already says it is aimed at an ordinary author rather than at an
+author who has read it. Recording the shape here means the next reader adds it as
+a fixture rather than rediscovering it.
+
+**Closes when:** either a rule exists that reads whether a callee invokes its
+argument, which needs cross-module analysis this suite does not do, or the shape
+is accepted permanently. The natural owner is whichever unit next widens
+`filesystem_mutations`.

@@ -1748,13 +1748,24 @@ def filesystem_mutations(source: str) -> list[str]:
     """Every call in ``source`` that could change a file, with its line.
 
     WHAT THIS IS FOR, said once and plainly, because every round has been
-    tempted to claim more. It is a defence against an ORDINARY AUTHOR writing
-    ordinary code that happens to write: an alias, a container, a default
-    argument, a bound method, a helper reached through a module the allowlist
-    admits. It is NOT a defence against an author who has read this function and
-    means to get past it. A checker reading names cannot win that, and the four
-    dunder and subscript spellings below are named rather than left silent so
-    that nobody later reads silence as coverage.
+    tempted to claim more. It is aimed at an ORDINARY AUTHOR writing ordinary
+    code that happens to write: an alias, a container, a default argument, a
+    bound method, a helper reached through a module the allowlist admits. It is
+    NOT a defence against an author who has read this function and means to get
+    past it. A checker reading names cannot win that, and the four dunder and
+    subscript spellings below are named rather than left silent so that nobody
+    later reads silence as coverage.
+
+    THAT SENTENCE WAS AN AIM WRITTEN AS AN ACHIEVEMENT, and the round it was
+    written in falsified it in both directions at once. Ten shapes an ordinary
+    author writes were reported as writes to the library, including ``for config
+    in rows``, ``config = dict(raw)``, ``counts["rename"] + counts["unlink"]``
+    and a constructor taking a parameter called ``config``; three real writes
+    through a tuple, a conditional and a nested list were missed. The tree was
+    green throughout, because no governed module had yet been written in any of
+    the ten. Every one of them is now a fixture, and the ten quiet ones are
+    driven from the REAL ``aging`` rather than from a fixture of their own, since
+    that is where they were found.
 
     Five rules, and each of the last four is narrowed so it cannot fire on
     correct code, because a guard that does is a guard somebody routes around
@@ -1784,6 +1795,16 @@ def filesystem_mutations(source: str) -> list[str]:
        Narrowed rather than banned outright because ``open(path, "rb")`` is a
        perfectly correct read. A mode this cannot READ is a violation, since a
        computed mode is exactly how the check would be walked past.
+
+       WHICH ARGUMENT IS THE MODE depends on whether the receiver is the file.
+       ``Path(p).open("w")`` puts it first; the builtin and every module level
+       ``open`` put the file first and the mode second. Deciding that on "is
+       there an attribute" made ``io.open``, ``gzip.open``, ``codecs.open`` and
+       ``tarfile.open`` report their FILE as an unreadable mode, and
+       ``os.open(str(path), os.O_RDONLY)`` in ``cratekit/core/jobs.py``, a
+       directory opened read only for an fsync, was a live example in the tree.
+       ``os.open`` is read through its FLAGS, which is the one module level open
+       that takes no mode string at all.
     3. A ``replace`` call with exactly one positional argument and no keywords,
        which is ``Path.replace`` and ``os.replace`` and is never ``str.replace``.
        The arity is what separates them: the string method needs the old text and
@@ -1798,20 +1819,30 @@ def filesystem_mutations(source: str) -> list[str]:
        ``attr`` never appears anywhere, which is the same walk-past as the
        computed mode and gets the same answer. ``__getattribute__`` is what
        ``getattr`` calls and is reachable both bound and unbound, so it is read
-       on the same terms.
-    5. A SUBSCRIPT whose constant key names a mutating method.
-       ``Path.__dict__["write_text"](p, d)`` and ``vars(Path)["write_text"](p, d)``
-       reach the function object without an attribute access and without a callee
-       this can name. Nothing in this repository subscripts a constant that spells
-       a filesystem verb, so the rule costs nothing and is narrow enough that an
-       ordinary dispatch table keyed on anything else never sees it.
+       on the same terms for a LITERAL name; for a computed one it is read on
+       whether its result is called, because ``return super().__getattribute__(
+       name)`` is the ordinary spelling of the dunder and reporting it was
+       collateral this rule claimed not to have.
+    5. A SUBSCRIPT of a TYPE'S ATTRIBUTE MAPPING whose constant key names a
+       mutating method. ``Path.__dict__["write_text"](p, d)`` and
+       ``vars(Path)["write_text"](p, d)`` reach the function object without an
+       attribute access and without a callee this can name.
+
+       THE RECEIVER IS PART OF THIS RULE and leaving it out is what the old
+       comment here got wrong. It claimed an ordinary dispatch table keyed on
+       anything else never sees the rule, while comparing the key against
+       ``FILESYSTEM_MUTATIONS`` with no receiver read at all. ``touch``,
+       ``rename``, ``truncate``, ``mkdir`` and ``chmod`` are all plausible
+       mapping keys, and ``counts["rename"] + counts["unlink"]`` was two
+       findings. A ``__dict__`` and a ``vars`` are the only two spellings that
+       hand back the function object; a mapping is a mapping.
     """
     tree = ast.parse(source)
     modules, direct = _writer_bindings(tree)
     return mutations_in(tree, modules=modules, direct=direct)
 
 
-def _receiver_key(node: ast.AST) -> str:
+def _receiver_key(node: ast.AST | None) -> str:
     """A canonical spelling of one receiver EXPRESSION, or "" when it has none.
 
     The binding table below is keyed on this rather than on a bare name, because
@@ -1822,10 +1853,18 @@ def _receiver_key(node: ast.AST) -> str:
 
     A key is rendered only for a spelling that can be resolved back to ONE
     binding. ``Path(p)`` carries arguments, so it renders nothing: what it
-    returns depends on what it was handed. That is the point of the rewrite.
-    A receiver this cannot read is UNRESOLVED, and the previous version answered
+    returns depends on what it was handed. KEYWORD arguments are arguments, so
+    ``_mod(fallback=cfg)`` renders nothing either, and both halves of that
+    condition are driven by
+    ``test_a_receiver_key_is_only_rendered_for_a_call_that_takes_nothing``.
+    A receiver this cannot read is UNRESOLVED, and an earlier version answered
     unresolved with the variable's own name, which reported
     ``def f(config): return config.load`` as a write to the library.
+
+    ``None`` is what an ``x: int`` annotation has in place of a value, and it
+    falls through to the same "" every other unreadable expression gets. That is
+    why there is no separate guard for it: a guard that only restates the default
+    answer is a line no mutation can kill.
     """
     if isinstance(node, ast.Name):
         return node.id
@@ -1843,11 +1882,29 @@ def _receiver_key(node: ast.AST) -> str:
     return ""
 
 
-#: The node types that carry a PARAMETER LIST, which is the only thing that can
-#: take a name back from a module the file imported. A class body is not one:
-#: it binds nothing of its own, so it is walked as part of whatever encloses it
-#: and its methods are reached as the scopes they are.
-_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+#: The node types that OPEN A SCOPE, which is what makes the binding table below
+#: lexical rather than a flat sweep of the file.
+#:
+#: A comprehension is one of them, and leaving it out was not a simplification.
+#: ``[config.load for config in rows]`` binds ``config`` for the comprehension
+#: and for nothing else, so reading it as part of the enclosing function would
+#: either report that ordinary line as a write to the library or, once the target
+#: shadowed the whole function, lose a real ``config.save`` written after it.
+#:
+#: A CLASS BODY is deliberately not one. It binds nothing its methods can see, so
+#: it is walked as part of whatever encloses it and its methods are reached as the
+#: scopes they are. The cost is stated rather than hidden: a class attribute whose
+#: name collides with an imported module takes that name back for the enclosing
+#: scope too, which is the quiet direction.
+_SCOPES = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.Lambda,
+    ast.ListComp,
+    ast.SetComp,
+    ast.DictComp,
+    ast.GeneratorExp,
+)
 
 
 def _scope_nodes(node: ast.AST):
@@ -1860,7 +1917,7 @@ def _scope_nodes(node: ast.AST):
 
 
 def _nested_scopes(node: ast.AST):
-    """Every function, lambda and class body directly inside one scope."""
+    """Every function, lambda and comprehension directly inside one scope."""
     for child in ast.iter_child_nodes(node):
         if isinstance(child, _SCOPES):
             yield child
@@ -1868,33 +1925,149 @@ def _nested_scopes(node: ast.AST):
             yield from _nested_scopes(child)
 
 
-def _bound_module(node: ast.AST, modules: dict[str, str]) -> str:
-    """The admitted module one expression evaluates to, or the empty string."""
+def _target_names(targets) -> set[str]:
+    """Every BARE NAME an assignment target list binds, unpacking as it goes."""
+    found: set[str] = set()
+    for target in targets:
+        if isinstance(target, ast.Name):
+            found.add(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            found |= _target_names(target.elts)
+        elif isinstance(target, ast.Starred):
+            found |= _target_names([target.value])
+    return found
+
+
+def _bound_here(node: ast.AST) -> set[str]:
+    """The bare names ONE statement or expression binds in the scope it sits in.
+
+    Every spelling Python has for taking a name back is listed, because the
+    previous version listed exactly one of them. Only a PARAMETER could shadow, so
+    a loop target, a ``with`` target, an ``except`` target, a walrus, a
+    comprehension target, an unpacking target, an augmented assignment and a
+    plain assignment each left the file's import binding live underneath a name
+    that no longer meant it. Ten ordinary shapes were reported as writes to the
+    library on that reading, and the list below is the answer to all ten at once.
+    """
+    if isinstance(node, ast.arguments):
+        named = [*node.posonlyargs, *node.args, *node.kwonlyargs]
+        named += [one for one in (node.vararg, node.kwarg) if one is not None]
+        return {one.arg for one in named}
+    if isinstance(node, ast.Assign):
+        return _target_names(node.targets)
+    if isinstance(node, (ast.AugAssign, ast.AnnAssign, ast.NamedExpr)):
+        return _target_names([node.target])
+    if isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)):
+        return _target_names([node.target])
+    if isinstance(node, ast.withitem):
+        return _target_names([node.optional_vars]) if node.optional_vars else set()
+    if isinstance(node, ast.ExceptHandler):
+        return {node.name} if node.name else set()
+    if isinstance(node, (ast.Import, ast.ImportFrom)):
+        return {(one.asname or one.name).split(".", 1)[0] for one in node.names}
+    if isinstance(node, ast.ClassDef):
+        return {node.name}
+    return set()
+
+
+def _defined_here(node: ast.AST) -> frozenset[str]:
+    """The names nested DEFINITIONS bind in the scope that holds them.
+
+    Named once because two callers need the same fact and they must not disagree:
+    the scope that shadows on it and the scope that records it as a binding it
+    cannot resolve. ``_scope_nodes`` deliberately stops where a nested scope
+    begins, so a ``def`` inside a function is invisible from that side and has to
+    be read from this one.
+    """
+    return frozenset(
+        nested.name
+        for nested in _nested_scopes(node)
+        if isinstance(nested, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
+
+
+def _names_taken(node: ast.AST) -> frozenset[str]:
+    """Every bare name one scope binds to something of its OWN.
+
+    A NESTED DEFINITION is one of them. ``def config(): ...`` inside a function
+    that also imports a module of that name binds the name for the whole
+    function, and ``_scope_nodes`` deliberately stops at a nested scope, so the
+    name has to be picked up from the other side.
+
+    A ``global`` declaration is NOT subtracted, and an earlier version of this
+    subtracted it. The stated reason was that such a name is about the enclosing
+    scope, which is true and is not the question: ``global config`` followed by
+    ``config = dict(raw)`` really does take the name back, in this scope and in
+    the module, so treating it as taken is the correct read for the scope doing
+    it. What is not modelled is the write BACK, so a later scope still sees what
+    the import said. That is a stated limit rather than a claim.
+    """
+    taken = set(_defined_here(node))
+    for child in _scope_nodes(node):
+        taken |= _bound_here(child)
+    return frozenset(taken)
+
+
+def _bound_module(node: ast.AST | None, modules: dict[str, str]) -> str:
+    """The admitted module one expression evaluates to, or the empty string.
+
+    A CONDITIONAL is read through, because ``alias = config if flag else config``
+    and ``alias = config or fallback`` are both ordinary refactors that hand the
+    module on, and both rendered no receiver key at all: the whole expression is
+    not a name, a subscript or an attribute. Either branch resolving is enough,
+    since a receiver that is the module on one path can write on that path.
+    """
+    if isinstance(node, ast.IfExp):
+        return _bound_module(node.body, modules) or _bound_module(node.orelse, modules)
+    if isinstance(node, ast.BoolOp):
+        for one in node.values:
+            owner = _bound_module(one, modules)
+            if owner:
+                return owner
+        return ""
     key = _receiver_key(node)
     return modules.get(key, "") if key else ""
 
 
+def _elements(value: ast.AST | None):
+    """Every constant-addressed element of a container literal, index and node.
+
+    The CONSTANT KEY condition on a dict is what keeps this readable: a key that
+    is a name or an expression has no spelling a subscript receiver could be
+    matched against, and reading one would ask an ``ast.Name`` for a ``.value``
+    it does not have. ``test_a_container_key_this_cannot_read_binds_nothing``
+    drives it.
+    """
+    if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+        return list(enumerate(value.elts))
+    if isinstance(value, ast.Dict):
+        return [
+            (key.value, element)
+            for key, element in zip(value.keys, value.values)
+            if isinstance(key, ast.Constant)
+        ]
+    return []
+
+
 def _element_bindings(
-    target: str, value: ast.AST, modules: dict[str, str]
+    target: str, value: ast.AST | None, modules: dict[str, str]
 ) -> dict[str, str]:
-    """What a container literal binds, element by element.
+    """What a container literal binds, element by element and NESTED.
 
     ``MODS = [config]`` and ``MODS = {"c": config}`` are ordinary code, and
     ``MODS[0].save(cfg)`` and ``MODS["c"].load_from_path(p)`` reach the writer
-    through them. Reading the container is what stops a list literal being an
-    escape hatch that costs two characters.
+    through them. So is ``MODS = [[config]]``, and reading only the outer level
+    lost ``MODS[0][0].save(cfg)`` outright: the element was a list, a list
+    renders no receiver key, and the binding stopped there. The recursion costs
+    one line and closes the whole family rather than its first member.
     """
     found: dict[str, str] = {}
-    if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
-        for index, element in enumerate(value.elts):
-            owner = _bound_module(element, modules)
-            if owner:
-                found[f"{target}[{index!r}]"] = owner
-    elif isinstance(value, ast.Dict):
-        for key, element in zip(value.keys, value.values):
-            owner = _bound_module(element, modules)
-            if owner and isinstance(key, ast.Constant):
-                found[f"{target}[{key.value!r}]"] = owner
+    for index, element in _elements(value):
+        key = f"{target}[{index!r}]"
+        owner = _bound_module(element, modules)
+        if owner:
+            found[key] = owner
+        found.update(_element_bindings(key, element, modules))
     return found
 
 
@@ -1919,7 +2092,8 @@ def _default_bindings(args: ast.arguments, modules: dict[str, str]) -> dict[str,
 
     ``def f(cfg, mod=config)`` binds ``mod`` inside the function while the
     parameter list otherwise shadows everything it names, so this has to be read
-    back after the shadowing rather than before it.
+    back after the shadowing rather than before it. The default EXPRESSION is
+    resolved against the enclosing scope, because that is where it is evaluated.
     """
     found: dict[str, str] = {}
     positional = [*args.posonlyargs, *args.args]
@@ -1942,8 +2116,46 @@ def _returned_module(node: ast.AST, modules: dict[str, str]) -> str:
     return ""
 
 
-def _rebindings(node: ast.AST, modules: dict[str, str]) -> dict[str, str]:
-    """Every non-import spelling that puts an admitted module behind a new name.
+def _assigned(
+    target: ast.AST, value: ast.AST | None, modules: dict[str, str]
+) -> dict[str, str]:
+    """The admitted modules one assignment target takes, keyed by receiver.
+
+    PARALLEL UNPACKING is read element by element against the right hand side,
+    and the branch this replaces never fired for the shape it looked like it
+    handled. It asked ``_bound_module`` about the WHOLE right hand side, which
+    for ``alias, other = config, 1`` is a tuple and renders no receiver key, and
+    then asked ``_element_bindings`` to index each TARGET by position, which
+    produced the meaningless keys ``alias[0]`` and ``other[0]``. Reverting the
+    whole branch killed nothing, which is the measurement that found it.
+
+    Only what RESOLVED comes back. What a scope bound to something unreadable is
+    the caller's business, and it reads that from ``_bound_here`` rather than
+    from here: a name taken back by an unpacking this cannot follow is the same
+    fact as a name taken back by a ``with``, and one mechanism answering both is
+    one thing to keep true rather than two that can drift apart.
+    """
+    if isinstance(target, (ast.Tuple, ast.List)):
+        if isinstance(value, (ast.Tuple, ast.List)) and len(target.elts) == len(
+            value.elts
+        ):
+            found: dict[str, str] = {}
+            for one, element in zip(target.elts, value.elts):
+                found.update(_assigned(one, element, modules))
+            return found
+        return {}
+    key = _receiver_key(target)
+    if not key:
+        return {}
+    found = {key: _bound_module(value, modules)}
+    found.update(_element_bindings(key, value, modules))
+    return found
+
+
+def _binds(
+    node: ast.AST, modules: dict[str, str]
+) -> tuple[dict[str, str], frozenset[str]]:
+    """Every binding ONE statement makes, and the bare WRITER names it imports.
 
     None of these is an attack. ``alias = config`` is a plain refactor,
     ``self.mod = config`` is a constructor, and a default argument is how a
@@ -1951,39 +2163,172 @@ def _rebindings(node: ast.AST, modules: dict[str, str]) -> dict[str, str]:
     all the SAME act: the receiver a report finally writes through is no longer
     spelled with the module's name, and the guard is for the ordinary author who
     wrote one of them without meaning anything by it.
+
+    An IMPORT is one of them rather than a separate table, and that is what makes
+    the shadowing correct. While the imports were swept flat and the rebindings
+    layered on top, a module that imported ``config`` and then assigned that name
+    something else kept the import binding forever, because nothing in the sweep
+    could see that the two were about the same name in the same scope.
     """
-    found: dict[str, str] = {}
+    if isinstance(node, ast.Import):
+        found = {}
+        for alias in node.names:
+            short = alias.name.rsplit(".", 1)[-1]
+            if short in _QUALIFYING_MODULES:
+                found[alias.asname or alias.name] = short
+        return found, frozenset()
+    if isinstance(node, ast.ImportFrom):
+        found, direct = {}, set()
+        base = (node.module or "").rsplit(".", 1)[-1]
+        for alias in node.names:
+            if alias.name == "*":
+                direct |= _writer_names_of(node.module or "")
+            elif alias.name in _QUALIFYING_MODULES:
+                found[alias.asname or alias.name] = alias.name
+            elif f"{base}.{alias.name}" in QUALIFIED_MUTATIONS:
+                direct.add(alias.asname or alias.name)
+        return found, frozenset(direct)
     if isinstance(node, (ast.Assign, ast.AnnAssign)):
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-        if node.value is None:
-            return found
-        owner = _bound_module(node.value, modules)
+        found = {}
         for target in targets:
-            unpacked = (
-                target.elts if isinstance(target, (ast.Tuple, ast.List)) else [target]
-            )
-            for one in unpacked:
-                key = _receiver_key(one)
-                if not key:
-                    continue
-                if owner:
-                    found[key] = owner
-                found.update(_element_bindings(key, node.value, modules))
-    elif isinstance(node, ast.NamedExpr):
+            found.update(_assigned(target, node.value, modules))
+        return found, frozenset()
+    if isinstance(node, ast.NamedExpr):
+        return _assigned(node.target, node.value, modules), frozenset()
+    if isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)):
         key = _receiver_key(node.target)
-        owner = _bound_module(node.value, modules)
-        if key and owner:
-            found[key] = owner
-    elif isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)):
-        key = _receiver_key(node.target)
-        for owner in _iterated_modules(node.iter, modules) if key else []:
-            found[key] = owner
-    elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        found.update(_default_bindings(node.args, modules))
-        owner = _returned_module(node, modules)
-        if owner:
-            found[f"{node.name}()"] = owner
-    return found
+        if not key:
+            return {}, frozenset()
+        iterated = _iterated_modules(node.iter, modules)
+        return ({key: iterated[0]} if iterated else {}), frozenset()
+    return {}, frozenset()
+
+
+def _scope_own_bindings(
+    scope: ast.AST, modules: dict[str, str]
+) -> tuple[dict[str, str], frozenset[str]]:
+    """What one scope binds for itself, resolved against what it can already see.
+
+    A NAME is kept only when EVERY binding of it in this scope resolves to the
+    same module. That is what separates ``from cratekit.core import config`` in a
+    file that leaves the name alone from the same import in a file that later
+    writes ``config = dict(raw)``: the second has one binding that resolves and
+    one that does not, so the name is nobody's module and ``config.load`` under
+    it is an ordinary attribute read.
+
+    EVERY binding means every one, including the ones ``_binds`` cannot read at
+    all. A ``with`` target, an ``except`` target, an augmented assignment, a
+    class statement and an import of something that is not an admitted module
+    each take a name and hand it a value this has no way to resolve, and each one
+    therefore records a FAILED attempt rather than nothing. Recording nothing was
+    the version before, and under it a file that imported ``config`` and then
+    wrote ``class config`` kept the import's answer for the whole scope: the
+    import resolved, the class statement said nothing, and nothing beats
+    something.
+
+    An OBJECT key, anything spelled with a dot, a bracket or a pair of
+    parentheses, is not a name and is not treated as one. ``self.mod`` is a fact
+    about an object, it is set in one method and read in another, and lexical
+    scoping is the wrong shape for it. What makes that safe is that the object
+    binding is only CREATED when its right hand side resolves in the scope doing
+    the assigning, so ``self.config = config`` inside ``def __init__(self,
+    config)`` binds nothing at all: there, ``config`` is the parameter.
+
+    The loop is a FIXED POINT for the same reason the outer one is. ``alias =
+    config`` followed by ``beta = alias`` needs two passes, and a pass count
+    written as a number is a constant nothing can drive. It terminates because
+    the table only ever grows and its keys come from the finite set of receiver
+    expressions this scope spells.
+    """
+    objects: dict[str, str] = {}
+    settled: dict[str, str] = {}
+    direct: set[str] = set()
+    while True:
+        before = dict(objects), dict(settled)
+        table = {**modules, **objects, **settled}
+        attempts: dict[str, list[str]] = {}
+        for child in _scope_nodes(scope):
+            found, names = _binds(child, table)
+            direct |= names
+            for key, owner in found.items():
+                if key.isidentifier():
+                    attempts.setdefault(key, []).append(owner)
+                elif owner:
+                    objects[key] = owner
+            for name in _bound_here(child) - set(found):
+                attempts.setdefault(name, []).append("")
+        for name in _defined_here(scope):
+            attempts.setdefault(name, []).append("")
+        settled = {
+            key: owners[0]
+            for key, owners in attempts.items()
+            if all(owners) and len(set(owners)) == 1
+        }
+        if (objects, settled) == before:
+            return {**objects, **settled}, frozenset(direct)
+
+
+def _visible_bindings(
+    node: ast.AST, modules: dict[str, str], direct: frozenset[str]
+) -> tuple[dict[str, str], frozenset[str]]:
+    """The bindings one scope really sees: inherited, shadowed, then its own.
+
+    THIS IS THE WHOLE OF THE SCOPE FIX. The previous version removed PARAMETER
+    names from a table swept flat off the entire file, so a parameter was the only
+    thing in Python that could take a name back. Every other rebinding left the
+    stale import binding live: ``for config in rows``, ``config = dict(raw)``,
+    ``with handle as config``, ``except ValueError as config``, ``config, other =
+    pair``, a walrus, a comprehension target and a module-level assignment were
+    each reported as a write to the library, on a package whose only import of
+    that name is line 61 of ``aging``.
+
+    The order is shadow first, add second, and it has to be. A scope's own
+    ``alias = config`` binds a name the scope also takes, so removing everything
+    the scope binds and then putting back only what resolved is the one ordering
+    that gets both directions right.
+
+    DEFAULTS ARE READ AGAINST THE ENCLOSING TABLE, after the shadowing, because
+    ``def f(cfg, mod=config)`` evaluates that default where the ``def`` is written
+    while the parameter list otherwise shadows everything it names.
+    """
+    taken = _names_taken(node)
+    kept = {key: owner for key, owner in modules.items() if key not in taken}
+    reachable = frozenset(name for name in direct if name not in taken)
+    own, own_direct = _scope_own_bindings(node, kept)
+    kept.update(own)
+    args = getattr(node, "args", None)
+    if isinstance(args, ast.arguments):
+        kept.update(_default_bindings(args, modules))
+    return kept, reachable | own_direct
+
+
+def _walk_bindings(
+    scope: ast.AST,
+    inherited: dict[str, str],
+    reachable: frozenset[str],
+    objects: dict[str, str],
+) -> tuple[dict[str, str], frozenset[str]]:
+    """One scoped pass over a tree, collecting every OBJECT binding it makes.
+
+    Names stay where they were written. Objects are carried out into one
+    file-wide table, because ``self.mod`` set in a constructor is read in a
+    sibling method and ``_mod()`` is a fact about a function rather than about
+    the scope that calls it.
+    """
+    visible, visible_direct = _visible_bindings(
+        scope, {**inherited, **objects}, reachable
+    )
+    objects.update(
+        {key: owner for key, owner in visible.items() if not key.isidentifier()}
+    )
+    for nested in _nested_scopes(scope):
+        nested_visible, _ = _walk_bindings(nested, visible, visible_direct, objects)
+        if isinstance(nested, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            owner = _returned_module(nested, nested_visible)
+            if owner:
+                objects[f"{nested.name}()"] = owner
+    return visible, visible_direct
 
 
 def _writer_bindings(tree: ast.AST) -> tuple[dict[str, str], frozenset[str]]:
@@ -1997,84 +2342,51 @@ def _writer_bindings(tree: ast.AST) -> tuple[dict[str, str], frozenset[str]]:
     THE IMPORTS ARE NOT THE WHOLE BINDING TABLE, and an earlier version of this
     was only them. ``aging`` already spells ``from cratekit.core import config``,
     so two added lines, ``alias = config`` and ``alias.save(cfg)``, wrote the
-    configuration file with both structural guards green. Everything
-    ``_rebindings`` reads is one more spelling of that same two-line refactor,
-    and the receiver check is worth nothing until it follows them.
+    configuration file with both structural guards green. Everything ``_binds``
+    reads is one more spelling of that same two-line refactor, and the receiver
+    check is worth nothing until it follows them.
+
+    THE TABLE IS ALSO NOT FLAT, which is the other half and cost more. A file's
+    bindings are not a set of facts about the file, they are facts about scopes,
+    and sweeping them flat made the guard fire on ten ordinary shapes while
+    missing three real ones. The walk is by scope now, and what comes back is the
+    MODULE scope's names plus every object binding any scope made.
 
     The second half is the shape a receiver check would otherwise lose outright.
     ``from cratekit.core.config import save`` binds the writer to a bare local,
     and both halves of that import are permitted, so the bare name IS the writer
     from there on and is matched as one. A STAR import binds every one of them at
     once, with no name in the file to read, so it is expanded from the set.
+
+    The outer loop is a FIXED POINT rather than a pass count. An object binding
+    made in one scope is read in another, and valid Python does not promise the
+    two are in document order. Measured, a sixty hop chain written entirely use
+    before definition resolves, which a pass count of one would not.
     """
-    modules: dict[str, str] = {}
-    direct: set[str] = set()
+    objects: dict[str, str] = {}
+    while True:
+        before = dict(objects)
+        names, direct = _walk_bindings(tree, {}, frozenset(), objects)
+        if objects == before:
+            return {**objects, **names}, direct
+
+
+def _imported_modules(tree: ast.AST) -> frozenset[str]:
+    """Every name an ``import X`` statement binds to a MODULE.
+
+    Read for one reason, and it is a live one. ``open`` reached through a module
+    is a different function from ``open`` reached through a path: the module takes
+    the file first, and the path object IS the file and takes the mode first.
+    Without this, every module level ``open`` had its FILE argument read as its
+    mode, and ``os.open(str(path), os.O_RDONLY)`` at ``cratekit/core/jobs.py``
+    line 788, a pure read for an fsync, was a write.
+    """
+    found: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                short = alias.name.rsplit(".", 1)[-1]
-                if short in _QUALIFYING_MODULES:
-                    modules[alias.asname or alias.name] = short
-        elif isinstance(node, ast.ImportFrom):
-            base = (node.module or "").rsplit(".", 1)[-1]
-            for alias in node.names:
-                if alias.name == "*":
-                    direct |= _writer_names_of(node.module or "")
-                elif alias.name in _QUALIFYING_MODULES:
-                    modules[alias.asname or alias.name] = alias.name
-                elif f"{base}.{alias.name}" in QUALIFIED_MUTATIONS:
-                    direct.add(alias.asname or alias.name)
-    while True:
-        # A FIXED POINT rather than a pass count. A rebinding can name another
-        # rebinding, and a pass limit written as a number is a constant nothing
-        # can drive: measured, dropping it from four to one killed no test,
-        # because ``ast.walk`` visits breadth first in document order and valid
-        # Python defines a name before it uses one, so every shape this
-        # repository can spell settles on the first pass. Repeating until the
-        # table stops growing says the same thing without a magic number, and it
-        # terminates because the keys come from the finite set of receiver
-        # expressions the tree spells.
-        before = dict(modules)
-        for node in ast.walk(tree):
-            modules.update(_rebindings(node, modules))
-        if modules == before:
-            return modules, frozenset(direct)
-
-
-def _parameters_of(node: ast.AST) -> frozenset[str]:
-    """Every name one scope's parameter list binds to something of its own."""
-    args = getattr(node, "args", None)
-    if not isinstance(args, ast.arguments):
-        return frozenset()
-    named = [*args.posonlyargs, *args.args, *args.kwonlyargs]
-    named += [one for one in (args.vararg, args.kwarg) if one is not None]
-    return frozenset(one.arg for one in named)
-
-
-def _visible_bindings(
-    node: ast.AST, modules: dict[str, str], direct: frozenset[str]
-) -> tuple[dict[str, str], frozenset[str]]:
-    """The bindings a scope really sees, with the names its parameters take back.
-
-    A PARAMETER SHADOWS, and without this the fix for one false positive would
-    have installed another. ``aging`` spells ``from cratekit.core import
-    config`` at line 61, so a function there taking a parameter called ``config``
-    is talking about its argument, and every ``config.load`` inside it would be
-    reported as a write to the library.
-
-    A parameter takes back its OWN NAME and nothing further along. ``self.mod``
-    is a binding about an object rather than about the name ``self``, and every
-    method carries ``self`` in its parameter list, so shadowing the whole chain
-    would lose ``self.mod = config`` in a constructor to the guard's own rule.
-    That is a stated limit rather than a claim: two functions whose same-named
-    parameters are different objects would share the attribute binding.
-    """
-    shadowed = _parameters_of(node)
-    if not shadowed:
-        return modules, direct
-    kept = {key: owner for key, owner in modules.items() if key not in shadowed}
-    kept.update(_default_bindings(node.args, modules))
-    return kept, frozenset(name for name in direct if name not in shadowed)
+                found.add(alias.asname or alias.name.split(".", 1)[0])
+    return frozenset(found)
 
 
 def _receiver_module(node: ast.AST, modules: dict[str, str]) -> str:
@@ -2108,14 +2420,167 @@ def _writer_names_of(dotted: str) -> frozenset[str]:
     )
 
 
+def _namespace_owner(node: ast.AST) -> ast.AST | None:
+    """The object whose ATTRIBUTE MAPPING one expression is, or None.
+
+    Rule 5 exists for ``Path.__dict__["write_text"]`` and
+    ``vars(Path)["write_text"]``, which reach a writing function through a
+    subscript that no attribute rule and no call rule can read. It shipped
+    without this, comparing every constant subscript key against the mutation set
+    with NO RECEIVER READ AT ALL, and its own docstring claimed that an ordinary
+    dispatch table keyed on anything else never sees it. ``counts["rename"]``,
+    ``row["truncate"]``, ``LABELS["touch"]`` and ``ACTIONS["mkdir"]`` are all
+    ordinary, and every one of them was a finding.
+
+    The receiver is what separates them, and the separation is exact rather than
+    heuristic: a type's ``__dict__`` and the ``vars`` of one are the only two
+    spellings that hand back the function object itself. A mapping is a mapping.
+    """
+    if isinstance(node, ast.Attribute) and node.attr == "__dict__":
+        return node.value
+    if (
+        isinstance(node, ast.Call)
+        and getattr(node.func, "id", "") == "vars"
+        and len(node.args) == 1
+    ):
+        return node.args[0]
+    return None
+
+
+def _reflective_call(node: ast.AST) -> bool:
+    """Whether one call is a reflective attribute read, however it is spelled."""
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+    return name in _REFLECTIVE_READERS
+
+
+def _handed_over(node: ast.AST | None):
+    """Every reflective read one expression hands straight to whatever takes it."""
+    if _reflective_call(node):
+        yield node
+    elif isinstance(node, ast.IfExp):
+        yield from _handed_over(node.body)
+        yield from _handed_over(node.orelse)
+
+
+def _stored(node: ast.AST):
+    """Every (receiver key, value) pair one statement stores."""
+    if isinstance(node, ast.Assign):
+        return [
+            (_receiver_key(target), node.value)
+            for target in node.targets
+            if _receiver_key(target)
+        ]
+    if isinstance(node, (ast.AnnAssign, ast.NamedExpr)) and node.value is not None:
+        key = _receiver_key(node.target)
+        return [(key, node.value)] if key else []
+    return []
+
+
+def _called_keys(tree: ast.AST) -> frozenset[str]:
+    """Every receiver spelling this file CALLS, wherever in the file it calls it."""
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            key = _receiver_key(node.func)
+            if key:
+                found.add(key)
+        for decorator in getattr(node, "decorator_list", []):
+            key = _receiver_key(decorator)
+            if key:
+                found.add(key)
+    return frozenset(found)
+
+
+def _invoked_results(tree: ast.AST) -> frozenset[str]:
+    """Every callee whose RETURNED VALUE this file then calls, as in ``w(p)(d)``."""
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Call):
+            key = _receiver_key(node.func.func)
+            if key:
+                found.add(key)
+    return frozenset(found)
+
+
+def _invoked_reads(tree: ast.AST) -> frozenset[int]:
+    """Every reflective read in ``tree`` whose RESULT is called somewhere.
+
+    THE SWITCH WAS DECIDED SYNTACTICALLY AND LOCALLY, and that is what this
+    replaces. It read ``called`` off nothing but ``Call`` nodes whose ``func`` was
+    itself a ``Call``, so it saw ``getattr(path, name)(data)`` and nothing else.
+    Eight indirect spellings of the identical act walked past it, every one of
+    them a shape somebody writes on purpose: bind it and call the name, return it
+    and call the result, put it in a list and call the element, use it as a
+    decorator, hand it to a factory that is invoked on the spot.
+
+    The binding table is what closes them, which is why this waited for the table
+    to have scope. A read bound to a name that this file CALLS is the same act as
+    calling it inline, and so is a read stored in a container element that is
+    called, and so is a read returned by a function whose result is called.
+
+    ONE SHAPE IS OUT OF REACH AND IS NAMED RATHER THAN LEFT SILENT.
+    ``map(getattr(p, n), items)`` hands the read to a callee that will invoke it,
+    and whether a callee invokes its argument is a fact about the callee, not
+    about this file. A rule that assumed it would fire on
+    ``print(getattr(row, field))``, which is the P7 shape this guard is written
+    around. The one argument case that IS read is the factory invoked in place,
+    ``partial(getattr(p, n))(d)``, because there the invocation is written here.
+    """
+    keys = _called_keys(tree)
+    returned = _invoked_results(tree)
+    found: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            for read in _handed_over(node.func):
+                found.add(id(read))
+            if isinstance(node.func, ast.Call):
+                supplied = [
+                    *node.func.args,
+                    *(keyword.value for keyword in node.func.keywords),
+                ]
+                for argument in supplied:
+                    for read in _handed_over(argument):
+                        found.add(id(read))
+            if isinstance(node.func, ast.Subscript) and isinstance(
+                node.func.slice, ast.Constant
+            ):
+                for index, element in _elements(node.func.value):
+                    if index == node.func.slice.value:
+                        for read in _handed_over(element):
+                            found.add(id(read))
+        for decorator in getattr(node, "decorator_list", []):
+            for read in _handed_over(decorator):
+                found.add(id(read))
+        for key, value in _stored(node):
+            if key in keys:
+                for read in _handed_over(value):
+                    found.add(id(read))
+            for index, element in _elements(value):
+                if f"{key}[{index!r}]" in keys:
+                    for read in _handed_over(element):
+                        found.add(id(read))
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name in returned or f"{node.name}()" in keys:
+                for child in _scope_nodes(node):
+                    if isinstance(child, ast.Return):
+                        for read in _handed_over(child.value):
+                            found.add(id(read))
+    return frozenset(found)
+
+
 def mutations_in(
     tree: ast.AST,
     *,
     reflection: bool = True,
     modules: dict[str, str] | None = None,
     direct: frozenset[str] = frozenset(),
+    invoked: frozenset[int] | None = None,
+    libraries: frozenset[str] | None = None,
 ) -> list[str]:
-    """The four rules above, applied to any node rather than to a whole module.
+    """The five rules above, applied to any node rather than to a whole module.
 
     Split out so the allowlist audit below can ask the same question about ONE
     function. A second copy of these rules answering it would be the divergence
@@ -2125,110 +2590,156 @@ def mutations_in(
 
     ``modules`` and ``direct`` are what a bare node cannot read for itself: the
     bindings that say which receiver is an admitted module and which local name
-    is an admitted writer. The audit reads them off the whole module and hands
-    them down, because a function read on its own has no import statement in it.
+    is an admitted writer. ``invoked`` and ``libraries`` are the same thing for
+    two questions that are only answerable from the WHOLE file: whether a
+    reflective read's result is called somewhere else in it, and which names are
+    imported modules. The audit reads all four off the module and hands them
+    down, because a function read on its own has no import statement in it.
 
-    THE WALK IS BY SCOPE rather than flat, and that is not a refactor. A
-    parameter shadows, so a function in ``aging`` taking an argument called
-    ``config`` is talking about its argument even though the file imports the
-    module of that name, and a flat walk cannot tell the two apart.
+    THE WALK IS BY SCOPE rather than flat, and so is the binding table it walks
+    with. A parameter shadows, and so does a loop target, a ``with`` target, an
+    ``except`` target, a walrus, a comprehension target and a plain assignment,
+    and while only parameters shadowed, ten ordinary shapes in ``aging`` were
+    reported as writes to the library.
 
-    ``reflection`` turns off ONE HALF of rule 4, the COMPUTED attribute, and only
-    the audit does that. Rules 1 to 3 each describe an act that CHANGES A FILE;
-    the computed half describes an act this checker cannot read, which is a
-    violation inside a package that has promised not to write and is ordinary
-    everywhere else. Left on, it reported four reflective helpers in ``config``,
-    ``naming`` and ``taxonomy`` as writers, and an audit that cries wolf about
-    ``getattr(row, field)`` is an audit somebody switches off.
+    ``reflection`` turns off ONE HALF of rule 4, the COMPUTED attribute reached
+    through ``getattr``, and only the audit does that. Rules 1 to 3 and 5 each
+    describe an act that CHANGES A FILE; the computed half describes an act this
+    checker cannot read, which is a violation inside a package that has promised
+    not to write and is ordinary everywhere else. Left on, it reported six
+    reflective helpers in ``config``, ``naming`` and ``taxonomy`` as writers, and
+    an audit that cries wolf about ``getattr(row, field)`` is an audit somebody
+    switches off.
 
-    THE SWITCH IS ON THE RESULT BEING CALLED, not on literal versus computed, and
-    reading it the other way relocated the hole rather than closing it. Gating
-    the literal half was the first version and it lost
-    ``getattr(path, "write_text")(data)``; ungating only the literal half was the
-    second and it lost ``getattr(path, "write_" + "text")(data)``, which is the
-    same helper one token longer. What separates the four reflective READS from
-    both is that none of them calls what it got back: they end in ``return
-    getattr(spec, name)``. A reflective read whose result is CALLED is a call to
-    a method this checker cannot name, and inside a module the reports package
-    may import that is a writer nothing can be made to name.
+    THE SWITCH IS ON THE RESULT BEING CALLED, not on literal versus computed.
+    Gating the literal half was the first version and it lost ``getattr(path,
+    "write_text")(data)``; ungating only the literal half was the second and it
+    lost ``getattr(path, "write_" + "text")(data)``, the same helper one token
+    longer; deciding it on the local syntax of one expression was the third and
+    it lost eight indirect spellings, the same helper one LINE longer. It is
+    decided on the binding table now, which is the first version of it that is
+    not a token count.
     """
+    if invoked is None:
+        invoked = _invoked_reads(tree)
+    if libraries is None:
+        libraries = _imported_modules(tree)
     resolved, reachable = _visible_bindings(tree, dict(modules or {}), direct)
-    called = {
-        id(node.func)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Call)
-    }
     found: list[str] = []
     for node in _scope_nodes(tree):
         if isinstance(node, ast.Attribute):
             # The ATTRIBUTE rather than the call around it, so a bound method
             # captured now and called later is caught at the point it is
-            # reached. A called one lands here too and only here: the walk
-            # visits the enclosing Call first, where the branch below
-            # deliberately checks a bare name only, so nothing is reported
-            # twice.
+            # reached. A called one lands here too and only here, because the
+            # call branch below deliberately checks a bare name only.
             if node.attr in FILESYSTEM_MUTATIONS:
                 found.append(f"line {node.lineno}: {node.attr}")
             else:
                 owner = _receiver_module(node.value, resolved)
                 if owner and f"{owner}.{node.attr}" in QUALIFIED_MUTATIONS:
                     found.append(f"line {node.lineno}: {owner}.{node.attr}")
-            continue
-        if isinstance(node, ast.Subscript):
-            # Rule 5. ``Path.__dict__["write_text"](p, d)`` and
-            # ``vars(Path)["write_text"](p, d)`` both write, and neither spells
-            # the method as an attribute or as a callee this can name, so every
-            # rule above falls through and ``pathlib`` is allowlisted. Read the
-            # SUBSCRIPT, on the same terms rule 1 reads an attribute: a constant
-            # key naming a mutating method is reported whether it is called here
-            # or bound and called later.
+        elif isinstance(node, ast.Subscript):
+            # Rule 5, with the receiver read. ``Path.__dict__["write_text"]`` and
+            # ``vars(Path)["write_text"]`` reach the function object itself, and
+            # a subscript of anything else is a mapping lookup. Reported on the
+            # subscript rather than on a call around it, on the same terms rule 1
+            # reads an attribute: bound now and called later still writes.
             index = node.slice
-            if isinstance(index, ast.Constant) and index.value in FILESYSTEM_MUTATIONS:
-                found.append(f"line {node.lineno}: [{index.value!r}]")
-            continue
-        if isinstance(node, ast.Name) and node.id in reachable:
+            owner_node = _namespace_owner(node.value)
+            if owner_node is not None and isinstance(index, ast.Constant):
+                owner = _receiver_module(owner_node, resolved)
+                if index.value in FILESYSTEM_MUTATIONS or (
+                    owner and f"{owner}.{index.value}" in QUALIFIED_MUTATIONS
+                ):
+                    found.append(f"line {node.lineno}: [{index.value!r}]")
+        elif isinstance(node, ast.Name) and node.id in reachable:
             # A writer imported off an admitted module, or one of that module's
             # own, reached with no receiver to read. Bound rather than called is
             # the same answer rule 1 gives for the same reason.
             found.append(f"line {node.lineno}: {node.id}")
-            continue
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
-        if isinstance(func, ast.Name) and name in FILESYSTEM_MUTATIONS:
-            found.append(f"line {node.lineno}: {name}")
-        elif name == "open":
-            mode = _open_mode(node, bound=isinstance(func, ast.Attribute))
-            if mode is None or _WRITING_MODES & set(mode):
-                found.append(f"line {node.lineno}: open(mode={mode!r})")
-        elif name == "replace" and len(node.args) == 1 and not node.keywords:
-            found.append(f"line {node.lineno}: replace(one argument)")
-        elif name in _REFLECTIVE_READERS:
-            receiver, wanted = _reflective_arguments(node, name)
-            if wanted is None:
-                continue
-            if not isinstance(wanted, ast.Constant) or not isinstance(wanted.value, str):
-                if reflection or id(node) in called:
-                    found.append(f"line {node.lineno}: {name}(<computed attribute>)")
-                continue
-            owner = _receiver_module(receiver, resolved) if receiver is not None else ""
-            if wanted.value in FILESYSTEM_MUTATIONS or (
-                owner and f"{owner}.{wanted.value}" in QUALIFIED_MUTATIONS
-            ):
-                found.append(f"line {node.lineno}: {name}({wanted.value!r})")
+        elif isinstance(node, ast.Call):
+            found += _call_mutations(
+                node, resolved, reflection=reflection, invoked=invoked,
+                libraries=libraries,
+            )
     for nested in _nested_scopes(tree):
         found += mutations_in(
-            nested, reflection=reflection, modules=resolved, direct=reachable
+            nested,
+            reflection=reflection,
+            modules=resolved,
+            direct=reachable,
+            invoked=invoked,
+            libraries=libraries,
         )
     return found
+
+
+def _call_mutations(
+    node: ast.Call,
+    resolved: dict[str, str],
+    *,
+    reflection: bool,
+    invoked: frozenset[int],
+    libraries: frozenset[str],
+) -> list[str]:
+    """Rules 2, 3 and 4, which are the ones that read a CALL rather than a name."""
+    func = node.func
+    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+    if isinstance(func, ast.Name) and name in FILESYSTEM_MUTATIONS:
+        return [f"line {node.lineno}: {name}"]
+    if name == "open":
+        library = _library_receiver(func, libraries)
+        if library == "os":
+            return (
+                []
+                if _os_open_reads(node)
+                else [f"line {node.lineno}: os.open(flags this cannot read as a read)"]
+            )
+        mode = _open_mode(node, bound=not library and isinstance(func, ast.Attribute))
+        if mode is None or _WRITING_MODES & set(mode):
+            return [f"line {node.lineno}: open(mode={mode!r})"]
+        return []
+    if name == "replace" and len(node.args) == 1 and not node.keywords:
+        return [f"line {node.lineno}: replace(one argument)"]
+    if name not in _REFLECTIVE_READERS:
+        return []
+    receiver, wanted = _reflective_arguments(node, name)
+    if wanted is None:
+        return []
+    if not isinstance(wanted, ast.Constant) or not isinstance(wanted.value, str):
+        # The COMPUTED half. ``getattr`` is what an author reaches for, so inside
+        # the governed package a computed one is reported whether or not its
+        # result is called: there, an attribute this cannot read is the
+        # violation. ``__getattribute__`` is not that. Written out by hand its
+        # ordinary spelling is ``return super().__getattribute__(name)``, a
+        # delegation that forwards the name the interpreter already asked for and
+        # calls nothing, and reporting it was collateral the rule's own comment
+        # said it did not have. So the dunder is read on the RESULT BEING CALLED
+        # in both directions, which still catches
+        # ``object.__getattribute__(p, n)(d)``.
+        if id(node) in invoked or (reflection and name == "getattr"):
+            return [f"line {node.lineno}: {name}(<computed attribute>)"]
+        return []
+    owner = _receiver_module(receiver, resolved) if receiver is not None else ""
+    if wanted.value in FILESYSTEM_MUTATIONS or (
+        owner and f"{owner}.{wanted.value}" in QUALIFIED_MUTATIONS
+    ):
+        return [f"line {node.lineno}: {name}({wanted.value!r})"]
+    return []
 
 
 #: The builtin and the dunder that read an attribute by NAME. ``getattr`` is the
 #: one anybody writes; ``__getattribute__`` is what it calls, it is reachable in
 #: both a bound and an unbound spelling, and both of them write when they are
-#: handed ``"write_text"``. Naming the dunder costs one set member and closes a
-#: spelling that otherwise falls through every rule.
+#: handed ``"write_text"``.
+#:
+#: NAMING THE DUNDER IS NOT FREE, and an earlier comment here said it cost one
+#: set member and closed a spelling that otherwise falls through every rule. The
+#: first half was true. The second was not: the most ordinary thing anybody
+#: writes with the dunder is ``def __getattribute__(self, name): return
+#: super().__getattribute__(name)``, and with the computed half of rule 4 on,
+#: that delegation was a finding. Nothing in ``src`` spells it, so the suite was
+#: green, which is the only reason the claim survived being written.
 _REFLECTIVE_READERS = frozenset({"getattr", "__getattribute__"})
 
 
@@ -2249,6 +2760,61 @@ def _reflective_arguments(
     return None, None
 
 
+def _library_receiver(func: ast.AST, libraries: frozenset[str]) -> str:
+    """The imported MODULE an attribute call was reached through, or "".
+
+    ``io.open``, ``gzip.open``, ``codecs.open`` and ``tarfile.open`` are the
+    builtin's shape: the file first, the mode second. ``Path(p).open`` and
+    ``info.open`` are the other shape, because the receiver already IS the file.
+    Nothing separated them, so every module level ``open`` had its FILE read as
+    its mode and came back unreadable.
+    """
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        return func.value.id if func.value.id in libraries else ""
+    return ""
+
+
+#: The ``os.open`` flags that cannot change a file. ``os.open`` is the one module
+#: level ``open`` whose second argument is a FLAG SET rather than a mode string,
+#: so reading it as a mode gives an unreadable answer and an unreadable answer is
+#: a finding. ``cratekit/core/jobs.py`` line 788 opens a DIRECTORY read only to
+#: fsync it, and that is what was being reported as a write.
+#:
+#: Listed as what READS rather than as what writes, because a flag this does not
+#: know is answered the same way an unreadable mode is: reported.
+_READING_FLAGS = frozenset(
+    {
+        "O_RDONLY",
+        "O_CLOEXEC",
+        "O_DIRECTORY",
+        "O_NOCTTY",
+        "O_NOFOLLOW",
+        "O_NONBLOCK",
+    }
+)
+
+
+def _flag_names(node: ast.AST | None) -> list[str] | None:
+    """Every flag name one ``os.open`` flag expression ORs, or None if unreadable."""
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        left = _flag_names(node.left)
+        right = _flag_names(node.right)
+        return None if left is None or right is None else left + right
+    if isinstance(node, ast.Attribute):
+        return [node.attr]
+    return None
+
+
+def _os_open_reads(node: ast.Call) -> bool:
+    """Whether an ``os.open`` call's flags say read only, and say it readably."""
+    flags: ast.AST | None = node.args[1] if len(node.args) > 1 else None
+    for keyword in node.keywords:
+        if keyword.arg == "flags":
+            flags = keyword.value
+    names = _flag_names(flags)
+    return bool(names) and all(one in _READING_FLAGS for one in names)
+
+
 def _open_mode(node: ast.Call, *, bound: bool) -> str | None:
     """The literal mode an ``open`` call was given, or None when it is not literal.
 
@@ -2259,6 +2825,13 @@ def _open_mode(node: ast.Call, *, bound: bool) -> str | None:
     ``open(Path(p), "w")`` fixture was caught, so the idiomatic spelling was the
     one that got through, on a package that already reaches for ``Path`` and has
     ``pathlib`` on its allowlist.
+
+    IT IS NOT THE SAME QUESTION AS "IS THERE AN ATTRIBUTE", which is what it was
+    asked before. Every module level ``open`` is spelled as an attribute and
+    every one of them takes the file first, so ``io.open(p, "rb")``,
+    ``gzip.open(p, "rb")``, ``codecs.open(p, "r", "utf-8")`` and
+    ``tarfile.open(p, "r")`` all reported their FILE as an unreadable mode. The
+    caller reads the import table and answers the real question.
 
     An absent mode is the default, which reads, so it comes back as ``"r"``.
     """
@@ -2469,6 +3042,12 @@ def _unnamed_writers(dotted: str, source: str) -> list[str]:
     tree = ast.parse(source)
     imported, from_admitted = _writer_bindings(tree)
     own = _writer_names_of(dotted) | from_admitted
+    # THE WHOLE FILE ANSWERS BOTH OF THESE and one statement cannot. A reflective
+    # read in one function is bound to a module level name and called in another,
+    # and the import that says ``os`` is a module sits at the top of a file this
+    # loop reads a statement at a time.
+    invoked = _invoked_reads(tree)
+    libraries = _imported_modules(tree)
     short = dotted.rsplit(".", 1)[-1]
     unnamed: list[str] = []
     loose: list[str] = []
@@ -2478,14 +3057,28 @@ def _unnamed_writers(dotted: str, source: str) -> list[str]:
             # would have to spell: the function, or the class it constructs
             # to get at a writing method or a context manager.
             named = node.name in FILESYSTEM_MUTATIONS or f"{short}.{node.name}" in QUALIFIED_MUTATIONS
-            found = mutations_in(node, reflection=False, modules=imported, direct=own)
+            found = mutations_in(
+                node,
+                reflection=False,
+                modules=imported,
+                direct=own,
+                invoked=invoked,
+                libraries=libraries,
+            )
             if found and not named:
                 unnamed.append(node.name)
         else:
             # A write at module level has no name to guard at all, so
             # importing the module performs it. That is never acceptable on
             # the allowlist, whatever it is called.
-            loose += mutations_in(node, reflection=False, modules=imported, direct=own)
+            loose += mutations_in(
+                node,
+                reflection=False,
+                modules=imported,
+                direct=own,
+                invoked=invoked,
+                libraries=libraries,
+            )
     if loose:
         unnamed.append(f"<at import time> {sorted(set(loose))}")
     return unnamed
@@ -2799,6 +3392,627 @@ def test_a_package_on_the_allowlist_audits_every_module_underneath_it():
     assert _admitted_repository_modules({"cratekit.core.config"}) == [
         ("cratekit.core.config", SRC_ROOT / "cratekit" / "core" / "config.py")
     ]
+
+
+#: The REAL module every shape below is driven against. ``aging`` imports
+#: ``config`` at line 61 and ``taxonomy`` beside it, which is what makes it the
+#: right file: a false positive here is not a fixture's problem, it is a line
+#: somebody could write in this package tomorrow.
+#:
+#: Read from disk rather than pasted, because a pasted copy is a fixture again
+#: and the whole point of these two lists is that they were found against the
+#: module rather than against a fiction of it.
+AGING_SOURCE = (REPORTS_ROOT / "aging.py").read_text()
+
+#: Ten shapes an ORDINARY AUTHOR writes, each appended to the real ``aging`` and
+#: each a finding before this round. The defect they share is one defect: the
+#: binding table was swept FLAT off the whole file and only a PARAMETER could
+#: take a name back, so every other way of rebinding a name left the stale import
+#: binding live underneath it.
+#:
+#: The last one is the worst of them, and it is the most common spelling of the
+#: assignment it turns on. ``self.config = config`` inside ``def __init__(self,
+#: config)`` is constructor injection. Read flat, the right hand side was the
+#: MODULE, so ``self.config`` was bound to the library for the whole file and
+#: every ``self.config.load`` in every other method was a write.
+ORDINARY_SHAPES_IN_A_REPORT = [
+    (
+        "a loop target",
+        """
+
+def go(rows, out):
+    for config in rows:
+        out.append(config.load)
+    return out
+""",
+    ),
+    (
+        "a plain assignment",
+        """
+
+def go(raw):
+    config = dict(raw)
+    return config.load
+""",
+    ),
+    (
+        "a comprehension target",
+        """
+
+def go(rows):
+    return [config.load for config in rows]
+""",
+    ),
+    (
+        "a with target",
+        """
+
+def go(handle):
+    with handle as config:
+        return config.load
+""",
+    ),
+    (
+        "a walrus",
+        """
+
+def go(raw):
+    if (config := dict(raw)):
+        return config.load
+    return None
+""",
+    ),
+    (
+        "an except target",
+        """
+
+def go(fn):
+    try:
+        return fn()
+    except ValueError as config:
+        return config.load
+""",
+    ),
+    (
+        "an unpacking target",
+        """
+
+def go(pair):
+    config, other = pair
+    return config.load, other
+""",
+    ),
+    (
+        "a module level assignment",
+        """
+
+config = {"a": 1}
+
+
+def go():
+    return config.load
+""",
+    ),
+    (
+        "a local built by augmented assignment",
+        """
+from cratekit.core import naming
+
+
+def go(parts):
+    naming = ""
+    for part in parts:
+        naming += part
+    return naming.claim_target
+""",
+    ),
+    (
+        "constructor injection",
+        """
+
+class Row:
+    def __init__(self, config):
+        self.config = config
+
+    def go(self):
+        return self.config.load
+""",
+    ),
+]
+
+#: Four ordinary MAPPING LOOKUPS whose key happens to spell a filesystem verb.
+#: ``touch``, ``rename``, ``truncate``, ``mkdir`` and ``chmod`` are all plausible
+#: keys, and rule 5 compared every constant subscript against the mutation set
+#: with no receiver read at all while its own docstring claimed an ordinary
+#: dispatch table never sees it.
+ORDINARY_MAPPING_LOOKUPS = [
+    (
+        "a counter read twice",
+        """
+
+def go(counts):
+    return counts["rename"] + counts["unlink"]
+""",
+    ),
+    ("a row field", '\n\ndef go(row):\n    return row["truncate"]\n'),
+    (
+        "a label table",
+        '\n\nLABELS = {"touch": "Touched"}\n\n\ndef go():\n    return LABELS["touch"]\n',
+    ),
+    (
+        "an action table",
+        '\n\nACTIONS = {"mkdir": 1}\n\n\ndef go():\n    return ACTIONS["mkdir"]\n',
+    ),
+]
+
+#: The most ordinary thing anybody writes with the dunder rule 4 names. It
+#: forwards the name the interpreter already handed it and calls nothing.
+ORDINARY_DUNDER_DELEGATION = """
+
+class Row:
+    def __getattribute__(self, name):
+        return super().__getattribute__(name)
+"""
+
+#: Three REAL WRITES that were missed, all through the same flat table. The first
+#: two never rendered a receiver key at all: a tuple right hand side and a
+#: conditional are neither a name, a subscript nor an attribute. The third was
+#: read one container level deep and stopped.
+MISSED_WRITES_IN_A_REPORT = [
+    (
+        "a parallel unpacking",
+        """
+
+def go(cfg):
+    alias, other = config, 1
+    alias.save(cfg)
+    return other
+""",
+    ),
+    (
+        "a conditional",
+        """
+
+def go(cfg, flag):
+    alias = config if flag else config
+    alias.save(cfg)
+""",
+    ),
+    (
+        "a nested container",
+        """
+
+MODS = [[config]]
+
+
+def go(cfg):
+    MODS[0][0].save(cfg)
+""",
+    ),
+    (
+        "a boolean fallback",
+        """
+
+def go(cfg, override):
+    alias = override or config
+    alias.save(cfg)
+""",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "shape,snippet", ORDINARY_SHAPES_IN_A_REPORT, ids=[one[0] for one in ORDINARY_SHAPES_IN_A_REPORT]
+)
+def test_an_ordinary_rebinding_in_a_real_report_is_not_a_write(shape, snippet):
+    """The ten false positives, driven against the module they were found in.
+
+    Every one of these is two or three lines somebody adds to ``aging`` without
+    thinking about a guard, and every one of them failed
+    ``test_no_report_module_calls_a_filesystem_mutation`` before the binding table
+    had scope. The tree was green the whole time, and reading that zero as safety
+    is the mistake: it was green because no governed module had yet been written
+    in any of these ten shapes, not because the guard could tell them apart.
+    """
+    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
+
+
+@pytest.mark.parametrize(
+    "shape,snippet", MISSED_WRITES_IN_A_REPORT, ids=[one[0] for one in MISSED_WRITES_IN_A_REPORT]
+)
+def test_a_write_through_an_unread_binding_shape_is_still_a_write(shape, snippet):
+    """The other direction of the same defect, and the one that costs a file.
+
+    The unpacking branch it replaces never fired for the shape it looked like it
+    handled. It asked whether the WHOLE right hand side was a module, which for
+    ``alias, other = config, 1`` is a tuple and is not, and then indexed each
+    TARGET by position to invent ``alias[0]``. Reverting the branch outright
+    killed nothing, which is the measurement that found it.
+    """
+    assert filesystem_mutations(AGING_SOURCE + snippet), shape
+
+
+@pytest.mark.parametrize(
+    "shape,snippet", ORDINARY_MAPPING_LOOKUPS, ids=[one[0] for one in ORDINARY_MAPPING_LOOKUPS]
+)
+def test_a_mapping_keyed_on_a_filesystem_verb_is_not_a_write(shape, snippet):
+    """Rule 5 with its receiver, against the module the rule would have fired in.
+
+    ``counts["rename"] + counts["unlink"]`` was two findings, not one, which is
+    what a rule with no receiver does to code that reads a counter twice.
+    """
+    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
+
+
+def test_the_dunder_that_forwards_its_own_name_is_not_a_write():
+    """The collateral rule 4's own comment said naming the dunder did not have.
+
+    Nothing in ``src`` spells ``__getattribute__``, so the suite was green and
+    the claim survived being written. The rule is what changed rather than the
+    claim: for a COMPUTED name the dunder is read on whether its result is
+    called, which still catches ``object.__getattribute__(p, n)(d)`` and leaves
+    the delegation alone.
+    """
+    assert filesystem_mutations(AGING_SOURCE + ORDINARY_DUNDER_DELEGATION) == []
+    assert filesystem_mutations(
+        "def stash(p, n, d):\n    object.__getattribute__(p, n)(d)\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def go(*, config):\n    return config.load\n",
+        "def go(**config):\n    return config.load\n",
+        "def go(*config):\n    return config.load\n",
+    ],
+    ids=["keyword only", "keyword catch all", "positional catch all"],
+)
+def test_every_parameter_shape_takes_its_name_back(source):
+    """The three parameter kinds the shadow list carries and nothing drove.
+
+    ``def go(*, config)`` is ordinary keyword-only injection and the other two are
+    the catch-alls beside it. Each is a name the enclosing file may also import,
+    and a parameter list that only shadowed its plain arguments would report the
+    body of every one of them.
+    """
+    assert filesystem_mutations(
+        "from cratekit.core import config\n\n\n" + source
+    ) == []
+
+
+def test_a_receiver_key_is_only_rendered_for_a_call_that_takes_nothing():
+    """Both halves of the condition that decides whether a call has one answer.
+
+    ``_mod()`` resolves to whatever ``_mod`` returns, always. ``Path(p)`` and
+    ``_mod(fallback=cfg)`` resolve to whatever they were HANDED, and a keyword
+    argument is an argument. Rendering a key for either would make two different
+    expressions share one binding, which is this repository's second recurring
+    defect aimed at the table itself.
+    """
+    bare = ast.parse("_mod()").body[0].value
+    positional = ast.parse("_mod(cfg)").body[0].value
+    keyword = ast.parse("_mod(fallback=cfg)").body[0].value
+    assert _receiver_key(bare) == "_mod()"
+    assert _receiver_key(positional) == ""
+    assert _receiver_key(keyword) == ""
+
+
+def test_a_container_key_this_cannot_read_binds_nothing():
+    """The constant-key condition, which a dict with a computed key drives.
+
+    A key that is a name has no spelling a subscript receiver could be matched
+    against, and asking an ``ast.Name`` for the ``.value`` a constant has is not
+    a wrong answer, it is an exception. The constant-keyed sibling is asserted
+    beside it so this is a statement about the CONDITION rather than about
+    dictionaries.
+    """
+    computed = "from cratekit.core import config\n\nKEY = 'c'\nMODS = {KEY: config}\n"
+    assert filesystem_mutations(computed + "\n\ndef go(cfg):\n    MODS['c'].save(cfg)\n") == []
+    constant = "from cratekit.core import config\n\nMODS = {'c': config}\n"
+    assert filesystem_mutations(constant + "\n\ndef go(cfg):\n    MODS['c'].save(cfg)\n")
+
+
+#: Eight INDIRECT spellings of one act: a reflective read whose result is called.
+#: The switch that decides rule 4's computed half was read off nothing but a
+#: ``Call`` whose ``func`` was itself a ``Call``, so it saw the inline spelling
+#: and none of these. Every one of them is a wrapper somebody writes on purpose,
+#: and against the audit with reflection off every one of them returned nothing.
+INDIRECTLY_INVOKED_REFLECTIVE_READS = [
+    (
+        "bound to a name and called",
+        "def stash(path, name, data):\n    writer = getattr(path, name)\n    writer(data)\n",
+    ),
+    (
+        "returned and called by the caller",
+        "def stash(path, name):\n    return getattr(path, name)\n\n\n"
+        "def go(p, n, d):\n    stash(p, n)(d)\n",
+    ),
+    (
+        "put in a list and called by index",
+        "def stash(p, n, d):\n    fns = [getattr(p, n)]\n    fns[0](d)\n",
+    ),
+    (
+        "used as a decorator",
+        "def stash(p, n):\n    @getattr(p, n)\n    def inner():\n        return 1\n\n    return inner\n",
+    ),
+    (
+        "bound at module level and called in a function",
+        "WRITER = None\n\n\ndef stash(p, n):\n    global WRITER\n\n    WRITER = getattr(p, n)\n\n\n"
+        "def go(d):\n    WRITER(d)\n",
+    ),
+    (
+        "handed to a factory invoked on the spot",
+        "from functools import partial\n\n\ndef stash(p, n, d):\n    partial(getattr(p, n))(d)\n",
+    ),
+    (
+        "put in a tuple literal and called by index",
+        "def stash(p, n, d):\n    (getattr(p, n),)[0](d)\n",
+    ),
+    (
+        "reached through the unbound dunder",
+        "def stash(p, n, d):\n    object.__getattribute__(p, n)(d)\n",
+    ),
+    (
+        "bound through a conditional and called",
+        "def stash(p, n, d, flag):\n    writer = getattr(p, n) if flag else None\n    writer(d)\n",
+    ),
+    (
+        "bound by a walrus and called",
+        "def stash(p, n, d):\n    if (writer := getattr(p, n)):\n        writer(d)\n",
+    ),
+    (
+        "bound by an annotated assignment and called",
+        "from typing import Callable\n\n\n"
+        "def stash(p, n, d):\n    writer: Callable = getattr(p, n)\n    writer(d)\n",
+    ),
+    (
+        "bound to a name used only as a decorator",
+        "def stash(p, n):\n    writer = getattr(p, n)\n\n"
+        "    @writer\n    def inner():\n        return 1\n\n    return inner\n",
+    ),
+    (
+        "returned by a nested function the scope around it calls",
+        "def stash(p, n, d):\n    def inner():\n        return getattr(p, n)\n\n    inner()(d)\n",
+    ),
+    (
+        "returned by a nested function used as a decorator factory",
+        "def stash(p, n):\n    def inner():\n        return getattr(p, n)\n\n"
+        "    @inner()\n    def wrapped():\n        return 1\n\n    return wrapped\n",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "shape,source",
+    INDIRECTLY_INVOKED_REFLECTIVE_READS,
+    ids=[one[0] for one in INDIRECTLY_INVOKED_REFLECTIVE_READS],
+)
+def test_the_audit_names_a_writer_whose_reflective_read_is_called_indirectly(shape, source):
+    """The switch, decided on the binding table rather than on local syntax.
+
+    Round two lost the four token wrapper, round three lost it one TOKEN longer,
+    and round four lost it one LINE longer: it stated that a reflective read whose
+    result is called is a writer nothing can be made to name, and then decided
+    "is it called" by looking at one expression. Bind it and call the name, return
+    it and call the result, store it in a container and call the element, use it
+    as a decorator: eight wrappers, none of them exotic, all of them invisible.
+    """
+    assert _unnamed_writers("cratekit.core.naming", source) == ["stash"], shape
+
+
+def test_the_audit_stays_quiet_on_a_reflective_read_nothing_calls():
+    """The other side of the switch, which is why only one half is gated.
+
+    ``config``, ``naming`` and ``taxonomy`` between them spell six reflective
+    reads and not one of them calls its result. An audit that called them writers
+    is an audit somebody switches off, and the binding table has to be able to
+    say NO as well as yes or it is just the reflection switch again.
+    """
+    assert _unnamed_writers("cratekit.core.naming", ADMITTED_REFLECTIVE_READER) == []
+    assert (
+        _unnamed_writers(
+            "cratekit.core.naming",
+            "def declared(spec, flag, names):\n    return getattr(spec, flag) and flag not in names\n",
+        )
+        == []
+    )
+
+
+def test_a_module_level_open_does_not_have_its_file_read_as_its_mode():
+    """Finding 8, and the one live example of it in the tree.
+
+    ``cratekit/core/jobs.py`` line 788 opens a DIRECTORY read only so it can
+    fsync it, which is a pure read, and the audit called ``_fsync_directory`` a
+    writer. ``jobs`` is not on the allowlist today, so nothing failed, which is
+    exactly how it would still be there the day the allowlist widened.
+
+    The writing spellings are asserted beside it, because a rule that stopped
+    reporting every module level ``open`` would pass the first assertion on its
+    own.
+    """
+    jobs = SRC_ROOT / "cratekit" / "core" / "jobs.py"
+    assert "_fsync_directory" not in _unnamed_writers("cratekit.core.jobs", jobs.read_text())
+    quiet = [
+        'import io\n\n\ndef read(p):\n    return io.open(p, "rb")\n',
+        'import gzip\n\n\ndef read(p):\n    return gzip.open(p, "rb")\n',
+        'import codecs\n\n\ndef read(p):\n    return codecs.open(p, "r", "utf-8")\n',
+        'import tarfile\n\n\ndef read(p):\n    return tarfile.open(p, "r")\n',
+        "import os\n\n\ndef sync(p):\n    return os.open(str(p), os.O_RDONLY)\n",
+        "import os\n\n\ndef walk(p):\n    return os.open(p, os.O_RDONLY | os.O_DIRECTORY)\n",
+    ]
+    for source in quiet:
+        assert filesystem_mutations(source) == [], source
+    writing = [
+        'import io\n\n\ndef write(p):\n    return io.open(p, "w")\n',
+        "import os\n\n\ndef make(p):\n    return os.open(p, os.O_CREAT | os.O_EXCL)\n",
+        "import os\n\n\ndef make(p, flags):\n    return os.open(p, flags)\n",
+        "import io\n\n\ndef go(p, mode):\n    return io.open(p, mode)\n",
+    ]
+    for source in writing:
+        assert filesystem_mutations(source), source
+
+
+def test_the_binding_table_is_scoped_and_the_object_half_is_not():
+    """The one asymmetry in the table, asserted rather than described.
+
+    A NAME is lexical: bound in a scope, visible in that scope and the scopes
+    inside it, taken back by anything that rebinds it. An OBJECT key is not, and
+    cannot be, because ``self.mod`` is set in a constructor and read in a sibling
+    method. What keeps that safe is that the object binding is only created when
+    its right hand side resolves in the scope doing the assigning, so the miss
+    direction survives and the false positive does not.
+    """
+    injected = (
+        "from cratekit.core import config\n\n\n"
+        "class Row:\n"
+        "    def __init__(self, config):\n"
+        "        self.config = config\n\n"
+        "    def go(self, cfg):\n"
+        "        self.config.save(cfg)\n"
+    )
+    assert filesystem_mutations(injected) == []
+    stored = (
+        "from cratekit.core import config\n\n\n"
+        "class Row:\n"
+        "    def __init__(self):\n"
+        "        self.mod = config\n\n"
+        "    def go(self, cfg):\n"
+        "        self.mod.save(cfg)\n"
+    )
+    assert filesystem_mutations(stored)
+
+
+#: Six more ways a scope takes a name back, each one the ONLY thing driving a
+#: line of the shadow list. Some are odder than the ten above and they are
+#: written out rather than argued: a shadow that nothing exercises is a shadow
+#: somebody deletes, and this file has already shipped six of those.
+SHADOWS_IN_A_SCOPE = [
+    (
+        "an import of something else under the same name",
+        """from cratekit.core import config
+
+
+def go(raw):
+    import json as config
+
+    return config.load
+""",
+    ),
+    (
+        "a class of the same name",
+        """from cratekit.core import config
+
+
+class config:
+    pass
+
+
+def go():
+    return config.load
+""",
+    ),
+    (
+        "a nested definition of the same name",
+        """from cratekit.core import config
+
+
+def go(raw):
+    def config():
+        return dict(raw)
+
+    return config.load
+""",
+    ),
+    (
+        "a starred unpacking target",
+        """from cratekit.core import config
+
+
+def go(rows):
+    *config, last = rows
+    return config.load, last
+""",
+    ),
+    (
+        "a definition of the same name beside the import",
+        """from cratekit.core import config
+
+
+def config():
+    return {}
+
+
+def go():
+    return config.load
+""",
+    ),
+]
+
+#: The other direction of the same two lines: a scope that DOES still see the
+#: module, where a shadow read one level too wide would lose the write.
+WRITES_A_WIDER_SHADOW_WOULD_LOSE = [
+    (
+        "a comprehension target does not shadow the function around it",
+        """from cratekit.core import config
+
+
+def go(rows, cfg):
+    names = [config for config in rows]
+    config.save(cfg)
+    return names
+""",
+    ),
+    (
+        "an object binding fed by another object binding, written out of order",
+        """from cratekit.core import config
+
+
+class Row:
+    def load(self):
+        self.mod = _mod()
+
+    def use(self, cfg):
+        self.mod.save(cfg)
+
+
+def _mod():
+    return config
+""",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "shape,source", SHADOWS_IN_A_SCOPE, ids=[one[0] for one in SHADOWS_IN_A_SCOPE]
+)
+def test_every_shadow_this_table_claims_takes_the_name_back(shape, source):
+    """Four shadows nothing drove, which is four lines that read as coverage.
+
+    An import of something else under the same name is the ordinary one and the
+    other three are plainer than they look: each is a name meaning two things in
+    one file, which is this repository's second recurring defect pointed at the
+    binding table.
+    """
+    assert filesystem_mutations(source) == [], shape
+
+
+@pytest.mark.parametrize(
+    "shape,source",
+    WRITES_A_WIDER_SHADOW_WOULD_LOSE,
+    ids=[one[0] for one in WRITES_A_WIDER_SHADOW_WOULD_LOSE],
+)
+def test_a_shadow_read_too_wide_would_lose_a_real_write(shape, source):
+    """The cost of getting the scope boundaries wrong, in the expensive direction.
+
+    A comprehension binds its target for the comprehension. Reading it as part of
+    the enclosing function would make the first line quiet AND the second, which
+    is a real ``config.save`` lost to a fix for a false positive. The second case
+    is the outer fixed point: an object binding fed by another object binding,
+    with the feeding function written after the method that uses it, which one
+    pass cannot see.
+    """
+    assert filesystem_mutations(source), shape
 
 
 #: A module that hides its writer behind an alias, which is the shape that
