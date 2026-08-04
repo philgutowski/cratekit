@@ -440,7 +440,74 @@ The one nobody asked for: **the guard has live FALSE POSITIVES today.**
 unresolvable receiver falls back to being treated as a module named after the
 variable. A guard that fires on ordinary code is one the next author weakens.
 
-### What these three have in common
+### U24, the largest report of the wave
+
+32 of 78 mutations kill zero. Eleven findings. **The closed vocabulary round 4
+added cannot be repaired by adding words.** 24 of its 27 entries delete
+individually with the suite green, and emptying all 27 kills only 8 tests.
+`mix`, the commonest version word in the library, is unpinned because the tests
+needing it use `Extended Mix` and `extended` covers it, and the reverse.
+
+It fails in both directions at once. 56 of 75 genuine version designations read
+as NOT a version, including `Acappella` (the list carries only the misspelling
+`acapella`), `Vocal`, `Refix`, `Dubplate`, `Intro`, `Nightcore`, `Sped Up`,
+`12 Inch`, and every non English spelling: `Ao Vivo`, `Versión`, `Mezcla`,
+`ライブ`, `Живая`. Meanwhile 15 of 42 ordinary ID3 `TIT3` values read AS a
+version, including `Original Motion Picture Soundtrack`, which is the commonest
+real TIT3 value there is, plus the labels `Club Sweat` and `Toolroom Club` and
+the artists `Radio Slave` and `Cut Chemist`.
+
+**The error costs are asymmetric and the whitelist has them backwards.** A
+false negative leaves a bare title, so two versions collide onto one identity
+and deleting one suppresses the other, losing a track the user did not delete.
+A false positive writes a tombstone that matches no provider spelling and
+simply fails to suppress. The safe default is to believe the version column,
+not to whitelist it.
+
+Deeper than the vocabulary: **every tombstone written from `RemixerName` is
+unmatchable by the consulter, and the docstring already says so.** The column
+holds a bare artist name, so `Strobe` + `Michael Woods` records
+`strobe (michael woods)` while every provider spells it
+`strobe (michael woods remix)`. `tombstone.py:170-174` states this defect
+verbatim and closes it only for the branch where the title already carries the
+bracket. Every remix the user deletes gets re-downloaded.
+
+And five data safety findings that outrank all of the above, because this unit
+trashes files: a hand moved file retires the removal permanently with nothing
+trashed and no tombstone; `categorize` caches anchors and never asks
+`changed()`, so a volume ejecting mid walk marks a whole removal history as
+dealt with; the playlist membership read has no completeness assertion and is
+the only thing protecting a track a playlist still points at; and the refusal
+that stops `recover` overwriting a re-occupied original path is pinned by
+nothing.
+
+### U12, and a refinement to the technique
+
+`_PROBE_REAP_SECONDS` drops from 1.0 to 0.001 with the suite green, run 12
+times to rule out a flake. The verifier did not stop at the zero row. It built
+a child whose SIGTERM handler takes measurable time and showed the
+consequence: at a 50 ms unwind or longer, the millisecond budget SIGKILLs a
+child the one second budget unwinds cleanly.
+
+**Then it found why the mutation survives, and this is the generalizable
+part.** Both fixture children exit via `os._exit()` inside the signal handler.
+That is a zero millisecond unwind, so no fixture in the suite can express the
+difference between a one second budget and a one millisecond one.
+
+**When a constant survives mutation, the fault is often in the FIXTURE, not
+the guard.** Pinning the constant without fixing the fixture produces a green
+row that proves nothing. Add this to the method: for any zero death row on a
+timing or sizing constant, ask first whether any fixture could distinguish the
+two values at all.
+
+U12 also caught round 3 reproducing a defect it had itself diagnosed one
+function later. Its commit message diagnoses quiet degradation for
+`except OSError` at `pool.py:461`, and then the malformed cgroup line guard 40
+lines down does the same thing: reverting it turns a public function that
+promises a number into a `ValueError`, which `plan_pool` swallows into
+"this machine's memory is unreadable" and one worker.
+
+### What these findings have in common
 
 All three are the wave's two named patterns, again. U23 and U34 are IDENTITY
 THAT IS NOT UNIQUE. U23's lock hang, and U32's dangling symlink reading as a
