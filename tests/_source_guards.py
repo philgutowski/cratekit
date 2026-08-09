@@ -603,12 +603,23 @@ def _class_level_literals(tree: ast.AST) -> dict[str, dict[str, ast.AST]]:
     return found
 
 
-#: The names the standard library's ``enum`` module binds that a vocabulary is
-#: built on. ``Flag`` and ``IntFlag`` are in it and neither ends in ``Enum``,
-#: which is the whole reason this set exists beside the spelling rule below.
-ENUM_BASES = frozenset(
-    {"Enum", "StrEnum", "IntEnum", "IntFlag", "Flag", "ReprEnum"}
-)
+#: The names the standard library's ``enum`` module binds that a refusal
+#: vocabulary is built on. Read ONLY where a base was imported under another
+#: name, because the spelling clause in ``_declared_enum_values`` already answers
+#: every unaliased form.
+#:
+#: ``Flag`` and ``IntFlag`` are deliberately out. Their members are bit values,
+#: never cause slugs, and ``_declared_enum_values`` collects string members only,
+#: so an entry for either would be a key nothing can turn.
+#:
+#: WHAT IS UNDRIVEN HERE, said rather than left to be found: the suite aliases
+#: ``StrEnum`` and does not alias the other two, so narrowing this set to
+#: ``{"StrEnum"}`` kills nothing. They are kept because they are the other two
+#: spellings the ``enum`` module offers for a vocabulary, and a fixture for each
+#: would be a fixture for a spelling this repository does not write. Emptying the
+#: set kills the aliased-base fixture, which is the composite that says what the
+#: set as a whole holds.
+ENUM_BASES = frozenset({"Enum", "StrEnum", "IntEnum"})
 
 
 def _enum_bases(tree: ast.AST) -> set[str]:
@@ -621,22 +632,21 @@ def _enum_bases(tree: ast.AST) -> set[str]:
     failure this file reports in other people's code, so it is not one this file
     may keep.
 
-    ``import enum as e`` binds every base as ``e.<name>``, which is why the
-    module spelling is expanded here rather than special-cased at the use.
+    ONLY THE SYMBOL IMPORT IS READ HERE, and the module spelling deliberately is
+    not. ``import enum as e`` beside ``class Cause(e.StrEnum)`` is answered by the
+    SPELLING clause in ``_declared_enum_values`` without any of this, because
+    every base this set names ends in ``Enum`` and the spelling clause reads the
+    last dotted part. An arm for it was written and measured at ZERO deaths,
+    which is not a coverage gap but a branch that could not change an answer, so
+    it is gone rather than kept as something a reader would take for a rule.
     """
     found: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name == "enum":
-                    module = alias.asname or "enum"
-                    found.update(f"{module}.{base}" for base in ENUM_BASES)
-        elif isinstance(node, ast.ImportFrom):
-            if node.level or node.module != "enum":
-                continue
-            for alias in node.names:
-                if alias.name in ENUM_BASES:
-                    found.add(alias.asname or alias.name)
+        if not isinstance(node, ast.ImportFrom) or node.level or node.module != "enum":
+            continue
+        for alias in node.names:
+            if alias.name in ENUM_BASES:
+                found.add(alias.asname or alias.name)
     return found
 
 
@@ -664,11 +674,13 @@ def _declared_enum_values(tree: ast.AST) -> set[str]:
 
     So there are two clauses now and each has a fixture that only it answers:
 
-    * a name this source BOUND from the ``enum`` module, in any spelling, which
-      is the clause an aliased import needs and the clause ``Flag`` needs;
-    * a base whose spelling ends in ``Enum``, which is the clause a base defined
-      in ANOTHER of our modules needs, since no import of ``enum`` appears in the
-      subclassing file at all.
+    * a name this source BOUND from the ``enum`` module under another name,
+      which is the clause ``from enum import StrEnum as Vocabulary`` needs and
+      the only clause that can answer it;
+    * a base whose spelling ends in ``Enum``, which answers every unaliased form,
+      including the module-qualified ``enum.StrEnum``, and which is the clause a
+      base defined in ANOTHER of our modules needs, since no import of ``enum``
+      appears in the subclassing file at all.
 
     WHAT IS STILL NOT READ, said rather than left to be found: a base from
     another module whose name neither ends in ``Enum`` nor is one the ``enum``
@@ -1630,9 +1642,24 @@ class ProcessExits:
             return node.id in self.exits
         if isinstance(node, ast.Attribute):
             identity = self.module_identity(node.value)
-            if identity in EXIT_ATTRIBUTES and node.attr == EXIT_ATTRIBUTES[identity]:
-                return True
-            return (_dotted(node) or "") in self.exits
+            return bool(
+                identity in EXIT_ATTRIBUTES and node.attr == EXIT_ATTRIBUTES[identity]
+            )
+            # ``return (_dotted(node) or "") in self.exits`` stood here and could
+            # never be true. Every name in ``self.exits`` is BARE: ``_bind`` only
+            # records an ``ast.Name`` target and ``_bind_symbols`` only records an
+            # alias, while ``_dotted`` of an attribute always carries a dot. So it
+            # was dead code claiming to handle an exit held on an attribute, which
+            # is worse than no code, exactly as ``_bound_module_names`` was two
+            # rounds ago. Deleting it killed zero, which is how it was found.
+            #
+            # THE SHAPE IT CLAIMED IS GENUINELY NOT HANDLED and that is written
+            # down rather than implied: ``self.stop = sys.exit`` then
+            # ``self.stop(30)`` is not reported. Binding it means binding across
+            # scopes, since the assignment and the call sit in two different
+            # methods, and a binding that leaks across scopes is the defect
+            # ``_walk_scope`` exists to prevent. Measured on the tree: no module
+            # in the package holds an exit on an attribute.
         if isinstance(node, ast.Call):
             identity, attribute = self._fetched(node)
             return bool(
@@ -1645,9 +1672,13 @@ class ProcessExits:
         if isinstance(node, ast.Name):
             return node.id in self.statuses
         if isinstance(node, ast.Attribute):
-            if self.module_identity(node.value) == "builtins" and node.attr == "SystemExit":
-                return True
-            return (_dotted(node) or "") in self.statuses
+            # The dotted lookup that stood here was dead for the reason
+            # ``_is_exit`` records above: nothing ever puts a dotted name in
+            # ``self.statuses``.
+            return (
+                self.module_identity(node.value) == "builtins"
+                and node.attr == "SystemExit"
+            )
         if isinstance(node, ast.Call):
             identity, attribute = self._fetched(node)
             return identity == "builtins" and attribute == "SystemExit"

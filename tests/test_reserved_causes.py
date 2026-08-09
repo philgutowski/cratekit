@@ -2732,6 +2732,60 @@ def main(status):
 # by either of two one-line edits, and both were silent, because no fixture
 # anywhere wrote one.
 
+# ── Four binding shapes ProcessExits handles and no fixture drove ──────────
+#
+# Each of these was found by the eighth round's mutation table: the arm that
+# reads it could be deleted with ZERO deaths, so the shape was handled by code
+# nothing watched.
+
+#: The fixed point matters here and nowhere else in the suite. ``stop`` is bound
+#: to ``later`` BEFORE ``later`` is bound to the exit, so one pass over the
+#: assignments learns nothing about ``stop`` and a second pass is what settles
+#: it. Every other alias fixture is written in dependency order.
+EVASION_AN_EXIT_ALIASED_BEFORE_ITS_SOURCE_IS_BOUND = """
+import sys
+
+stop = later
+later = sys.exit
+
+def refuse():
+    stop(30)
+"""
+
+#: ``importlib.import_module`` held in a NAME, which the binding walk records as
+#: an importer. Only the inline spelling was driven.
+EVASION_AN_IMPORTER_HELD_IN_A_NAME = """
+import importlib
+
+load = importlib.import_module
+
+def refuse():
+    load("sys").exit(30)
+"""
+
+EVASION_THE_EXCEPTION_IMPORTED_FROM_BUILTINS = """
+from builtins import SystemExit as Stop
+
+def refuse():
+    raise Stop(30)
+"""
+
+EVASION_A_TRACKED_MODULE_IMPORTED_AS_A_SYMBOL = """
+from os import sys
+
+def refuse():
+    sys.exit(30)
+"""
+
+#: TWO ARGUMENTS IS NOT A STATUS, and this one is a correctness fixture rather
+#: than an evasion. ``SystemExit(30, "detail")`` sets ``code`` to the TUPLE, and
+#: a process raising it exits 1 with the tuple printed, so reporting it as
+#: "status 30" would name a status the program never returns.
+CORRECT_A_TWO_ARGUMENT_SYSTEMEXIT_IS_NOT_A_STATUS = """
+def refuse():
+    raise SystemExit(30, "the detail")
+"""
+
 EVASION_A_NEGATIVE_STATUS = """
 import sys
 
@@ -2903,7 +2957,11 @@ def test_an_enum_is_recognized_by_its_base_and_each_clause_has_its_own_case():
     )
     assert reserved_code_tables(
         DECLARES_ITS_CAUSES_THROUGH_THE_ENUM_MODULE, CAUSES, RANGE
-    ) == ["line 9: 'tagger-art-rejected' -> status 41"]
+    ) == ["line 9: 'tagger-art-rejected' -> status 41"], (
+        "the module-qualified spelling is answered by the SPELLING clause, "
+        "because the last dotted part of `vocabularies.StrEnum` ends in Enum. "
+        "It is here as the control that says so, not as the import clause's case"
+    )
     assert reserved_code_tables(
         CORRECT_A_PLAIN_CLASS_DECLARES_NOTHING, CAUSES, RANGE
     ) == [], (
@@ -3360,6 +3418,83 @@ BASE = 130
 CODES = {"config-unusable": BASE % 100}
 """
 
+#: SUBTRACTION AND MULTIPLICATION, in range. Both limbs shipped with nothing
+#: driving them: the only multiplication fixture was
+#: ``RESIDUAL_ARITHMETIC_OUT_OF_RANGE``, whose product is 70 and whose assertion
+#: expects SILENCE, so deleting the limb changed nothing there, and there was no
+#: subtraction fixture at all. A limb exercised only through an assertion that
+#: expects nothing cannot die.
+EVASION_A_CODE_REACHED_BY_SUBTRACTION = """
+BASE = 71
+CODES = {"config-unusable": BASE - 41}
+"""
+
+EVASION_A_CODE_REACHED_BY_MULTIPLICATION = """
+BASE = 15
+CODES = {"config-unusable": BASE * 2}
+"""
+
+#: A DIVISION THAT DOES NOT RUN. ``resolve_int``'s comment claims division by
+#: zero "is a source that does not run, so it resolves to nothing rather than
+#: raising inside a test", and nothing measured it: dropping the ``right != 0``
+#: term left the whole suite green, because no fixture divided by zero. Without
+#: the term this fixture raises ``ZeroDivisionError`` inside the walk.
+CORRECT_A_DIVISION_BY_ZERO_RESOLVES_TO_NOTHING = """
+BASE = 60
+CODES = {"config-unusable": BASE // 0}
+"""
+
+#: A CODE HELD IN AN ANNOTATED CONSTANT, which is the house style: this
+#: repository's own registry is written ``REASONS: Mapping[str, ExitCode] =
+#: MappingProxyType(``. Both literal collectors read an ``ast.AnnAssign`` and
+#: neither arm had a fixture, so both could be deleted in silence.
+EVASION_A_CODE_HELD_IN_AN_ANNOTATED_CONSTANT = """
+PRECONDITION: int = 30
+
+CODES = {"config-unusable": PRECONDITION}
+"""
+
+EVASION_A_CODE_HELD_ON_AN_ANNOTATED_CLASS_ATTRIBUTE = """
+class Status:
+    PRECONDITION: int = 30
+
+
+CODES = {"config-unusable": Status.PRECONDITION}
+"""
+
+#: AN ANNOTATED ENUM MEMBER, which the interpreter treats as a member exactly as
+#: the unannotated spelling does. ``_declared_enum_values`` reads one and nothing
+#: drove that arm either.
+EVASION_AN_ANNOTATED_ENUM_MEMBER_IS_A_DECLARATION = """
+from enum import StrEnum
+
+
+class Refusal(StrEnum):
+    ART_REJECTED: str = "tagger-art-rejected"
+
+
+CODES = {"tagger-art-rejected": 41}
+"""
+
+#: A KEY held three aliases deep. ``_through_names`` carries its own bound and
+#: ``resolve_int`` carries another; only the value side was ever driven at the
+#: boundary, so raising the key side's bound alone changed nothing.
+A_KEY_CHAIN_THE_HOP_BOUND_READS = """
+S0 = "config-unusable"
+S1 = S0
+
+CODES = {S1: 30}
+"""
+
+A_KEY_CHAIN_THE_HOP_BOUND_GIVES_UP = """
+S0 = "config-unusable"
+S1 = S0
+S2 = S1
+S3 = S2
+
+CODES = {S3: 30}
+"""
+
 #: A duplicate key inside a SECOND table. Python resolves it silently and the
 #: walk sees two pairs carrying the same line, slug and status, so without the
 #: dedupe the guard reports the same reservation twice and the count in the
@@ -3684,6 +3819,8 @@ def test_a_code_fetched_by_getattr_is_still_a_code():
     [
         (EVASION_A_CODE_REACHED_BY_FLOOR_DIVISION, "BASE // 2"),
         (EVASION_A_CODE_REACHED_BY_A_REMAINDER, "BASE % 100"),
+        (EVASION_A_CODE_REACHED_BY_SUBTRACTION, "BASE - 41"),
+        (EVASION_A_CODE_REACHED_BY_MULTIPLICATION, "BASE * 2"),
     ],
 )
 def test_the_arithmetic_the_resolver_reads_is_the_whole_set(source, spelled):
@@ -3691,11 +3828,78 @@ def test_the_arithmetic_the_resolver_reads_is_the_whole_set(source, spelled):
 
     A guard that reads ``BASE + 3`` and goes silent on ``BASE // 2`` is answering
     one question two ways, which is the defect this file reports in other
-    people's code. Both resolve to 30 and both are reported.
+    people's code. All five resolve to 30 and all five are reported.
+
+    FIVE LIMBS AND TWO OF THEM WERE UNDRIVEN, which the eighth round's mutation
+    table found: deleting the subtraction limb and deleting the multiplication
+    limb each killed ZERO. There was no subtraction fixture anywhere, and the
+    only multiplication fixture was ``RESIDUAL_ARITHMETIC_OUT_OF_RANGE``, whose
+    product is 70 and whose assertion expects silence. A limb exercised only
+    through an assertion that expects nothing cannot die, which is this file's
+    own recurring defect wearing a different hat.
     """
     assert reserved_code_tables(source, declared_causes(), RANGE) == [
         f"line 3: 'config-unusable' -> status 30 as {spelled}"
     ]
+
+
+def test_a_division_by_zero_resolves_to_nothing_rather_than_raising():
+    """The claim beside the ``right != 0`` term, which nothing measured.
+
+    ``resolve_int`` says division by zero "is a source that does not run, so it
+    resolves to nothing rather than raising inside a test". Dropping the term
+    left the suite green because no fixture divided by zero, so the sentence was
+    a claim about a path nothing took. Without the term this fixture raises
+    ``ZeroDivisionError`` out of the walk and into whatever called it.
+    """
+    assert reserved_code_tables(
+        CORRECT_A_DIVISION_BY_ZERO_RESOLVES_TO_NOTHING, declared_causes(), RANGE
+    ) == []
+
+
+def test_the_house_style_of_an_annotated_assignment_is_read_on_both_sides():
+    """``NAME: type = value``, which is how this repository writes a table.
+
+    ``core/cause.py`` declares its registry as
+    ``REASONS: Mapping[str, ExitCode] = MappingProxyType(``, so the annotated
+    spelling is the tree's own idiom rather than an invented one. Three arms read
+    one: the module-level literal collector, the class-level one, and the enum
+    declaration walk. All three could be deleted in silence, because every
+    fixture in this file wrote the unannotated spelling.
+    """
+    assert reserved_code_tables(
+        EVASION_A_CODE_HELD_IN_AN_ANNOTATED_CONSTANT, declared_causes(), RANGE
+    ) == ["line 4: 'config-unusable' -> status 30 as PRECONDITION"]
+    assert reserved_code_tables(
+        EVASION_A_CODE_HELD_ON_AN_ANNOTATED_CLASS_ATTRIBUTE, declared_causes(), RANGE
+    ) == ["line 6: 'config-unusable' -> status 30 as Status.PRECONDITION"]
+    assert reserved_code_tables(
+        EVASION_AN_ANNOTATED_ENUM_MEMBER_IS_A_DECLARATION, CAUSES, RANGE
+    ) == ["line 9: 'tagger-art-rejected' -> status 41"], (
+        "an annotated enum member IS a member to the interpreter, so a module "
+        "declaring its vocabulary that way declares its causes exactly as the "
+        "unannotated spelling does"
+    )
+
+
+def test_the_key_side_carries_its_own_hop_bound_and_this_is_where_it_stops():
+    """The boundary on the KEY side, which was never driven at its edge.
+
+    ``_through_names`` chases a key through at most ``MAX_HOPS`` names and
+    ``resolve_int`` chases a value through the same number by its own counter.
+    Only the value side was pinned at the boundary, so raising the key side's
+    bound alone changed nothing anywhere. Both sides read two aliases and give up
+    on three, and that has to be one answer rather than two.
+    """
+    assert reserved_code_tables(
+        A_KEY_CHAIN_THE_HOP_BOUND_READS, declared_causes(), RANGE
+    ) == ["line 5: 'config-unusable' -> status 30"]
+    assert reserved_code_tables(
+        A_KEY_CHAIN_THE_HOP_BOUND_GIVES_UP, declared_causes(), RANGE
+    ) == [], (
+        "the key side now reads three aliases, which is a different boundary "
+        "from the value side's. Say where the new one is and pin both"
+    )
 
 
 def test_a_duplicate_key_in_a_second_table_is_reported_once():
@@ -3756,6 +3960,7 @@ def test_the_hop_bound_is_a_coverage_dial_and_this_is_what_it_gives_up():
         CORRECT_A_PARAMETER_SHADOWS_AN_EXIT,
         CORRECT_A_PARAMETER_SHADOWS_A_CONSTANT,
         CORRECT_GETATTR_ON_SOMEBODY_ELSE,
+        CORRECT_A_TWO_ARGUMENT_SYSTEMEXIT_IS_NOT_A_STATUS,
     ],
 )
 def test_the_bare_status_guard_stays_silent_on_correct_code(source):
@@ -3786,6 +3991,10 @@ def test_the_bare_status_guard_stays_silent_on_correct_code(source):
         EVASION_THE_EXCEPTION_THROUGH_BUILTINS,
         EVASION_A_STATUS_HELD_IN_A_CONSTANT,
         EVASION_A_STATUS_ASSIGNED_THEN_EXITED,
+        EVASION_AN_EXIT_ALIASED_BEFORE_ITS_SOURCE_IS_BOUND,
+        EVASION_AN_IMPORTER_HELD_IN_A_NAME,
+        EVASION_THE_EXCEPTION_IMPORTED_FROM_BUILTINS,
+        EVASION_A_TRACKED_MODULE_IMPORTED_AS_A_SYMBOL,
     ],
 )
 def test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal(source):
