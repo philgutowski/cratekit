@@ -911,27 +911,56 @@ What did not change:
 * With the resolver ON and every kebab literal added, **190 keys**, still
   **ZERO** outside.
 
-What did change is the DISTANCE to an offender, and that is the number the key
-set measurement could not see:
+### The two halves of that comparison were measured on two different bases
 
-* **10 modules** hold a name the key side now resolves to a registry-declared
-  cause. **14** hold one once a source's own enum declarations are counted, which
-  is what `ReservedCodeTable` actually reads. **4 of those 14** also hold an
-  in-range integer literal, so one ordinary mapping in any of the four is what an
-  offender looks like.
-* `src/cratekit/core/exit_codes.py` is the sharpest: **6** names resolving to a
-  registry-declared cause, **36** more resolving through its own `Remedy` enum,
-  **28** in-range integer literal occurrences, and it is NOT in `TABLE_OWNERS`.
+**Found by the seventh round's verifier, 2026-08-09, and this is the correction.**
+The section below used to carry "10 and 14" for the named surface and "25 and 5"
+for the literal surface and set them against each other as one comparison. They
+were not one comparison. The named figures reproduce only over ALL 51 files, the
+two exempt table owners included, with every assignment anywhere counted, which
+is WIDER than the resolver that ships. The literal figures reproduce exactly over
+the 49 non-owners with the narrow rule. **The conclusion survives and the
+symmetry of the argument did not**, so both halves are re-measured here on one
+basis and every figure is now recomputed from the tree by
+`test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned` rather than
+carried in prose.
+
+**THE BASIS, once, for everything below.** The population is the **49 non-owner
+files** `package_sources()` returns, the two table owners excluded because the
+guard exempts them. The resolver is the shipped `ReservedCodeTable.cause_key`,
+asked of every `ast.Name` and `ast.Attribute` in the file, with the file's own
+package passed so a relative import resolves exactly as it does in the live scan.
+
+What the distance to an offender is, on that basis:
+
+* **8 modules** hold a name the key side resolves to a cause declared somewhere
+  ELSE, in the reservation table, the registry, or the package-wide derivation.
+* **13 modules** hold one once each file's own enum declarations are counted,
+  which is what `ReservedCodeTable` actually reads. The five that only the own
+  declarations reach are `acquire/download.py`, `core/exit_codes.py`,
+  `core/review.py`, `core/secrets.py` and `write/routing_pass.py`.
+* **4 of those 13** also hold an in-range integer literal, so one ordinary
+  mapping in any of the four is what an offender would look like:
+  `core/exit_codes.py`, `core/review.py`, `core/session.py` and
+  `modules/tools/mastering.py`.
+* `src/cratekit/core/exit_codes.py` is the sharpest, and its figures are counted
+  over DECLARATIONS rather than over uses, which is the distinction the old text
+  did not make: it declares **42** cause-shaped strings in its own `Remedy` enum,
+  **6** of which are also keys of the reserved table, it holds **28** in-range
+  integer literals, and it is NOT in `TABLE_OWNERS`.
 * `TrackOutcome` at `src/cratekit/acquire/adapter.py` is real, and
   `RETRY_SECONDS = {TrackOutcome.UNAVAILABLE_TRANSIENT: 30}` is reported.
 
-**The widening is kept**, and the argument is the comparison the round before did
-not make. The at-risk population under the OLD constant-only key rule was already
-**25 non-owner modules holding a cause literal, 5 of them also holding an
-in-range integer**. The named surface is SMALLER than the literal surface the
-tree has carried and accepted since the fifth round. Every one of those four
-constructs already fired in its inline spelling, so the widening added a second
-SPELLING to an accepted residual rather than a new class of false alarm.
+**The widening is kept**, and the comparison is now like for like. On the SAME 49
+files under the OLD constant-only key rule, **24 modules hold a cause literal and
+5 of them also hold an in-range integer**. So the named surface the widening
+added, 13, is smaller than the literal surface, 24, that the tree has carried and
+the suite has accepted since the fifth round. Every one of those four constructs
+already fired in its inline spelling, so the widening added a second SPELLING to
+an accepted residual rather than a new class of false alarm. That ordering is
+asserted rather than described: if the named surface ever exceeds the literal
+one, the pinning test fails and says to re-argue this paragraph or narrow the key
+side.
 
 Narrowing the key side instead was rejected on a measurement, not a preference. A
 narrowing that reads an inline string and not the name holding it puts one
@@ -963,6 +992,57 @@ thirteen silent" here and in its commit body, "sixteen, thirteen silent" in one
 test docstring and "drives fifteen" in another. Four spellings of one
 measurement, no two agreeing, and none matching it. Every copy says two and
 fourteen now.
+
+### Every number in this section is now recomputed from the tree
+
+**Found by the seventh round's verifier, 2026-08-09.** Six places in this section
+carried a population or headroom figure and NOT ONE of them was held by an
+assertion. The justification for keeping the key-side widening therefore decayed
+silently as the tree grew: a module landing next week could move any of these and
+nothing would say so, which is the same defect as a docstring claiming a property
+nothing measures, aimed at a document instead of at a function.
+
+`test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned` recomputes
+the key set sizes, the kebab literal population, the zero offender result under
+the widened key set, both at-risk populations and the `core/exit_codes.py`
+figures, and fails naming the number that moved. Its failure message says to
+update this section rather than to widen the assertion, because the number
+existing to trigger a review is the whole point of writing it down.
+
+### The enum classification was a spelling too, and measurement could not see it
+
+**Found by the seventh round's verifier, 2026-08-09.** `_declared_enum_values` is
+what decides that a module has DECLARED a string to be one of its causes, and
+everything downstream of that decision rests on how it recognizes an enum. It
+recognized one by the spelling of the base, `endswith("Enum")`, under a docstring
+that set the rule against a rename-defeatable one: "matched on the BASE being an
+enum, which is how Python spells an enum, not on what the class or the variable
+holding it was called."
+
+The rule was a spelling and the spelling was defeatable. `from enum import
+StrEnum as Vocabulary` binds the base to a name no suffix matches, which is the
+one `as` keyword this file complains about in other people's code. And the
+measurement could not tell the rule apart from an arbitrary one: **every enum
+base written anywhere in `tests/` was `Enum`, `StrEnum` or `IntEnum`**, so
+narrowing the suffix to exactly those three names **killed zero of 3379**.
+
+There are two clauses now, and each has a case only it answers. A base BOUND from
+the `enum` module in any spelling, which is what an aliased import needs. A base
+whose spelling ends in `Enum`, which is what a base defined in another of our own
+modules needs, since the subclassing file imports nothing from `enum` at all.
+`test_an_enum_is_recognized_by_its_base_and_each_clause_has_its_own_case` drives
+both plus the plain class that must stay silent, and
+`test_renaming_the_enum_or_the_name_holding_it_changes_nothing` drives the
+docstring's own claim across four renames instead of asserting it.
+
+**What is still not read is written down rather than left to be found**: a base
+from another module whose name neither ends in `Enum` nor is one the `enum`
+module exports. Reading that needs the base's OTHER file, which no question in
+`tests/_source_guards.py` opens.
+`test_the_static_enum_rule_agrees_with_the_interpreter_over_the_whole_package`
+measures the limit against the tree instead of assuming it: every class the
+package defines that IS an `enum.Enum` at runtime, 45 of them and 19 declaring a
+cause-shaped value, has to be one the static rule found.
 
 ### This section was also wrong about the rule it documented
 
@@ -1032,10 +1112,49 @@ reservation and belongs in the table, or the file joins `TABLE_OWNERS` with a
 reason beside it and `test_the_table_owner_escape_is_exactly_these_two_files`
 updated. That is the review a silenced guard never gets otherwise.
 `test_a_comment_cannot_silence_a_reservation` keeps the whole residual fixture
-carrying the old comments and asserts every hit still fires, and
-`test_the_guard_has_no_per_line_off_switch_at_all` asserts the token-stream
-helpers stay gone, so any per-line escape coming back fails rather than passing
-quietly.
+carrying the old comments and asserts every hit still fires.
+
+### The absence was pinned by the deleted hatch's FINGERPRINT, not by the property
+
+**Found by the seventh round's verifier, 2026-08-09, and it is a new and sharp
+form of "identity that is not unique to the thing it identifies".**
+`test_the_guard_has_no_per_line_off_switch_at_all` asserted that
+`_annotated_lines`, `_silenced_lines` and `NOT_A_RESERVATION` are absent and that
+`tokenize` is not in the module. Those are the names the DELETED implementation
+used. **A fresh per-line escape hatch with a different marker, no `tokenize` and
+none of those three names ships green, wired in exactly where the deleted one
+was.** Measured: it was written, wired in, and killed nothing.
+
+**Generalise it, because the replacement has to be the general one: a test that
+forbids a feature by naming the last implementation's symbols forbids that
+implementation, not the feature.**
+
+Three things replace it, and none of them knows a marker.
+
+* `test_a_comment_cannot_change_what_the_guard_reports_whatever_it_says` is the
+  PROPERTY. A comment cannot survive a round trip through the syntax tree, so
+  every source has a comment-free twin one `ast.unparse` away and the two answers
+  have to match whatever the comment said. Driven over the two table owners from
+  the real tree, 22 hits and 61, and over five plausible fresh markers appended
+  to every line of the residual fixture.
+* `test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text` is
+  the STRUCTURAL half, so a future hatch is impossible rather than merely
+  undetected. A comment can only reach a rule through the RAW TEXT, so the text
+  is followed from the `source: str` parameter that receives it through every
+  name it is assigned to and every function of the module it is passed to, and
+  the only thing it may touch is `ast.parse`. Both directions are driven: the
+  shipped module answers clean, and the same module with a fresh hatch wired in
+  answers with the hatch's own line.
+* `test_the_guard_module_imports_only_what_reading_a_syntax_tree_needs` closes
+  the other route by EXACT MEMBERSHIP rather than by naming `tokenize`. The
+  module may import `ast` and `re`. Anything that can see a comment costs one
+  line there and the review that line brings, which is the review the escape
+  hatch never got.
+
+`test_nobody_in_the_package_writes_the_marker_that_was_deleted` keeps the old
+fingerprint on purpose and is about PEOPLE rather than about the guard: somebody
+who remembers `# not-a-reservation:` and writes it would otherwise be ignored in
+silence.
 
 ### The residual, written down rather than narrowed away
 
@@ -1643,3 +1762,90 @@ subtraction anybody can re-run instead.
 
 **Closes when:** nothing has to close it. It is the record the next round
 compares against, row by row.
+
+---
+
+## R-21. A negative process status is reserved against in prose and was covered by nothing
+
+**Found:** by the seventh round's verifier, 2026-08-09. **Closed in the eighth
+round**, 2026-08-09, by the fixtures that can see it.
+
+`src/cratekit/cli/exit_codes.py` argues about negative statuses at length and
+its argument is the reason the reserved range is safe for two different readers.
+A shell reads `exit(-1)` as 255, which that file closes off by name as "what a
+status above a byte truncates to". The job engine re-invokes the command line
+through `subprocess` and reads `returncode`, where a negative integer is the
+SIGNAL that killed the child, never 128 plus it. So one module writing
+`sys.exit(-1)` produces a status that one reader calls the shell's own territory
+and the other calls a signal death, and neither is the refusal that was meant.
+
+The unit reasons about negatives in prose and **the only guard watching for a
+bare status could be blinded to every one of them by either of two one line
+edits, and both were silent**:
+
+* deleting `resolve_int`'s unary minus branch, after which every negative
+  resolves to nothing and a status the walk cannot evaluate stays silent;
+* widening `_scan_for_exits`'s `status == 0` to `status <= 0`, after which every
+  negative is read as success.
+
+Both together were silent too. No fixture anywhere in `tests/` wrote a negative
+status, in any spelling.
+
+`test_a_negative_status_is_a_bare_status_too` writes three: the literal, the
+signal number held in a name, which is the only fixture in the file that drives
+the unary minus THROUGH a name, and the raised exception. It also pins that
+negative zero is zero and reports nothing.
+
+**What stays open, and it is a decision rather than a gap.**
+`test_a_negative_is_outside_the_reserved_range_on_the_table_side` pins the other
+half: a second table mapping a cause to a negative integer is NOT reported,
+because the value rule for a bare integer is the reserved range and no negative
+is inside it. That is the same rule that keeps 5 and 70 out. It also means the
+unary minus branch changes no answer on the reservation side, which is why the
+two tests are written to be read together: the row that deletes the branch kills
+the bare status test and leaves the table test green.
+
+**Closes when:** nothing has to close it. The bypass is covered and the range
+decision is recorded.
+
+---
+
+## R-22. Six of this unit's own rules recognize a builtin by the text of its name
+
+**Found:** in the eighth round, 2026-08-09, by sweeping the unit's files for the
+shape the verifier found in the enum classification, which is this wave's second
+named pattern: identity that is not unique to the thing it identifies.
+
+`tests/_source_guards.py` binds the modules that end a process by IDENTITY, and
+its own comment says why: "a guard that matched the text `ExitCode` would be
+satisfied by anybody's class of that name and defeated by one `as` keyword". Six
+of its rules then match a BUILTIN by the text of its name:
+
+| where | the text it matches |
+| --- | --- |
+| `resolve_int` | `_dotted(node.func) == "int"` |
+| `ReservedCodeTable.status` | `_dotted(held.func) == "int"` |
+| `ReservedCodeTable.status` | `_dotted(held.func) == "getattr"` |
+| `ReservedCodeTable.pairs` | `_dotted(function) in {"dict", "OrderedDict"}` |
+| `ReservedCodeTable._zipped` | `_dotted(argument.func) == "zip"` |
+| `ProcessExits._fetched` | `node.func.id == "getattr"` |
+
+A module writing `from builtins import int as whole` and then
+`{"config-unusable": whole(30)}` is not reported. So is a module rebinding
+`getattr` or `zip`.
+
+**The cost is measured and it is zero today.** No module in the package rebinds
+or aliases `int`, `getattr`, `zip`, `dict` or `OrderedDict`, measured over the 51
+files `package_sources()` returns. The shape is real and the instance is not, so
+it is recorded here rather than fixed on a guess about which spelling matters.
+
+**It is not the same risk as the enum one, and the difference is worth writing
+down.** The enum base was aliased for a legitimate reason, readability, and
+`from enum import StrEnum as Vocabulary` is something a person writes without
+meaning to evade anything. Aliasing `int` is not. That is why one was closed and
+this one is carried.
+
+**Closes when:** either a package module aliases one of these five names, at
+which point the guard is silent about a real file and the rule has to bind by
+identity, or the six become one helper that resolves a builtin through the same
+import walk `ProcessExits` already runs.

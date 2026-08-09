@@ -603,6 +603,43 @@ def _class_level_literals(tree: ast.AST) -> dict[str, dict[str, ast.AST]]:
     return found
 
 
+#: The names the standard library's ``enum`` module binds that a vocabulary is
+#: built on. ``Flag`` and ``IntFlag`` are in it and neither ends in ``Enum``,
+#: which is the whole reason this set exists beside the spelling rule below.
+ENUM_BASES = frozenset(
+    {"Enum", "StrEnum", "IntEnum", "IntFlag", "Flag", "ReprEnum"}
+)
+
+
+def _enum_bases(tree: ast.AST) -> set[str]:
+    """Every local name in this source that IS a base out of the ``enum`` module.
+
+    Bound through the import graph, which is the rule every other question in
+    this file already follows: ``from enum import StrEnum as Vocabulary`` binds
+    the base to ``Vocabulary``, and a classification that read only the text of
+    the base would be defeated by that one ``as`` keyword. That is the exact
+    failure this file reports in other people's code, so it is not one this file
+    may keep.
+
+    ``import enum as e`` binds every base as ``e.<name>``, which is why the
+    module spelling is expanded here rather than special-cased at the use.
+    """
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "enum":
+                    module = alias.asname or "enum"
+                    found.update(f"{module}.{base}" for base in ENUM_BASES)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level or node.module != "enum":
+                continue
+            for alias in node.names:
+                if alias.name in ENUM_BASES:
+                    found.add(alias.asname or alias.name)
+    return found
+
+
 def _declared_enum_values(tree: ast.AST) -> set[str]:
     """Every cause-shaped string this source declares as an enum member value.
 
@@ -612,16 +649,44 @@ def _declared_enum_values(tree: ast.AST) -> set[str]:
     Mapping that same string to a status somewhere else in the same file is a
     reservation whoever wrote it, and no registry has to have heard of it.
 
-    Matched on the BASE being an enum, which is how Python spells an enum, not on
-    what the class or the variable holding it was called. A rename of either
-    changes nothing.
+    MATCHED ON THE BASE AND NEVER ON THE CLASS OR THE VARIABLE, so renaming
+    either changes nothing, and ``test_an_enum_is_read_by_its_base_and_not_by
+    _its_name`` drives both renames rather than asserting them.
+
+    THE BASE IS MATCHED TWO WAYS AND THE RECORD SAID ONE, which is the correction
+    this round makes. The rule was a SPELLING, ``endswith("Enum")``, described as
+    "how Python spells an enum" and set against a rename-defeatable rule while
+    being one: ``from enum import StrEnum as Vocabulary`` defeated it outright,
+    and ``Flag`` and ``IntFlag`` are enum bases whose spelling it never matched.
+    Worse, the spelling could not be TOLD APART from an exact list of the three
+    base names the suite happened to use: narrowing it to
+    ``{"Enum", "StrEnum", "IntEnum"}`` killed zero of 3379.
+
+    So there are two clauses now and each has a fixture that only it answers:
+
+    * a name this source BOUND from the ``enum`` module, in any spelling, which
+      is the clause an aliased import needs and the clause ``Flag`` needs;
+    * a base whose spelling ends in ``Enum``, which is the clause a base defined
+      in ANOTHER of our modules needs, since no import of ``enum`` appears in the
+      subclassing file at all.
+
+    WHAT IS STILL NOT READ, said rather than left to be found: a base from
+    another module whose name neither ends in ``Enum`` nor is one the ``enum``
+    module exports, ``class Cause(Vocabulary)`` against our own
+    ``class Vocabulary(StrEnum)`` next door. Reading that needs the base's OTHER
+    file, which no question in this file opens. The package holds no such base
+    today and ``test_no_module_declares_a_vocabulary_on_a_base_this_cannot_read``
+    measures that against the tree rather than assuming it.
     """
+    bound = _enum_bases(tree)
     found: set[str] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
             continue
         bases = [_dotted(base) or "" for base in node.bases]
-        if not any(base.split(".")[-1].endswith("Enum") for base in bases):
+        if not any(
+            base in bound or base.split(".")[-1].endswith("Enum") for base in bases
+        ):
             continue
         for statement in node.body:
             values = []
@@ -726,6 +791,14 @@ def resolve_int(
         owner = _dotted(node.value) or ""
         return resolve_int(members.get(owner, {}).get(node.attr), names, members, hops + 1)
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        # THE ONLY THING THAT READS A NEGATIVE, and for six rounds nothing drove
+        # it. Deleting this branch leaves ``sys.exit(-1)`` resolving to nothing,
+        # which is silence on the one bare status that reaches the shell as 255
+        # and reaches the job engine's ``returncode`` as a signal death. It
+        # changes no answer on the reservation side, where a negative is outside
+        # the reserved range either way, so the bare-status guard is the whole of
+        # what this branch is for. See the residual
+        # "A negative process status is reserved against in prose and was covered by nothing".
         inner = resolve_int(node.operand, names, members, hops + 1)
         return None if inner is None else -inner
     if isinstance(node, ast.BinOp):
@@ -749,7 +822,11 @@ def resolve_int(
             return left // right if isinstance(node.op, ast.FloorDiv) else left % right
         return None
     # ``int(30)`` around a plain integer, and this is a LIVE path that round
-    # three called unreachable. ``process_status_literals`` resolves the
+    # three called unreachable. The builtin is matched by the TEXT of its name
+    # here and in five other rules in this file, which is the shape this file
+    # forbids elsewhere; the residual
+    # "Six of this unit's own rules recognize a builtin by the text of its name"
+    # carries it with the measurement that no package module aliases one. ``process_status_literals`` resolves the
     # argument of every single-argument call it walks, so ``sys.exit(int(code))``
     # arrives here rather than at ``status``'s conversion branch, and
     # instrumenting the line counted 25 arrivals in one suite run. Without it a
@@ -1602,6 +1679,23 @@ def process_status_literals(source: str) -> list[str]:
     one: it is an integer only by accident of the language. A status this cannot
     evaluate stays silent: ``sys.exit(int(code_for(cause)))`` is the sanctioned
     path and reports nothing.
+
+    A NEGATIVE STATUS IS REPORTED, and until this round nothing in the suite
+    could see whether it was. ``sys.exit(-1)`` is the worst bare status a module
+    can write here rather than an odd one: the interpreter truncates it to 255 at
+    the shell, which ``cli/exit_codes.py`` reserves against by name as "what a
+    status above a byte truncates to", and the OTHER reader of these statuses is
+    the job engine, which reads ``subprocess.returncode`` where a negative
+    integer means KILLED BY THAT SIGNAL. So one module's ``exit(-1)`` arrives at
+    one reader as the shell's own territory and at the other as a signal death,
+    and neither reading is the refusal that was meant.
+
+    It was uncovered in both directions at once, which is why it is written down
+    here. Dropping ``resolve_int``'s unary-minus branch makes every negative
+    resolve to nothing, and widening the zero test to ``status <= 0`` makes every
+    negative a success; both were silent, and so was both together, because no
+    fixture anywhere wrote a negative status.
+    ``test_a_negative_status_is_a_bare_status_too`` writes three of them.
     """
     tree = ast.parse(source)
     found: list[str] = []

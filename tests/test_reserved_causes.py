@@ -1854,6 +1854,57 @@ class Refusal(StrEnum):
 
 """
 
+# ── HOW AN ENUM IS RECOGNIZED, in the two spellings that tell the rules apart ──
+#
+# Every enum base written anywhere in `tests/` was one of three, `Enum`,
+# `StrEnum` and `IntEnum`, so the shipped rule, "the base's spelling ends in
+# Enum", could not be told apart by measurement from an exact list of those
+# three: narrowing it to that list killed ZERO of 3379 while the docstring beside
+# it rejected exactly that kind of rule. These two fixtures are the disagreeing
+# cases, one for each clause, and each one is silent under the other clause
+# alone.
+
+DECLARES_ITS_CAUSES_ON_AN_ALIASED_BASE = """
+from enum import StrEnum as Vocabulary
+
+
+class Refusal(Vocabulary):
+    ART_REJECTED = "tagger-art-rejected"
+
+
+CODES = {"tagger-art-rejected": 41}
+"""
+
+DECLARES_ITS_CAUSES_ON_A_BASE_OF_OUR_OWN = """
+from cratekit.core.vocabulary import CratekitEnum
+
+
+class Refusal(CratekitEnum):
+    ART_REJECTED = "tagger-art-rejected"
+
+
+CODES = {"tagger-art-rejected": 41}
+"""
+
+DECLARES_ITS_CAUSES_THROUGH_THE_ENUM_MODULE = """
+import enum as vocabularies
+
+
+class Refusal(vocabularies.StrEnum):
+    ART_REJECTED = "tagger-art-rejected"
+
+
+CODES = {"tagger-art-rejected": 41}
+"""
+
+CORRECT_A_PLAIN_CLASS_DECLARES_NOTHING = """
+class Refusal:
+    ART_REJECTED = "tagger-art-rejected"
+
+
+CODES = {"tagger-art-rejected": 41}
+"""
+
 EVASION_A_NEW_MODULE_DECIDES_ITS_OWN_CODES = DECLARES_ITS_CAUSES + """
 from cratekit.core.exit_codes import ExitCode
 
@@ -2672,6 +2723,36 @@ def main(status):
     raise SystemExit(status)
 """
 
+# ── A NEGATIVE STATUS, which nothing in this suite could see until now ──────
+#
+# `cli/exit_codes.py` argues about negative statuses at length: the shell reader
+# and the job engine's `subprocess.returncode` reader disagree about what one
+# MEANS, and the module's answer is that nothing it reserves is ever negative.
+# The only guard watching for a bare status could be blinded to every negative
+# by either of two one-line edits, and both were silent, because no fixture
+# anywhere wrote one.
+
+EVASION_A_NEGATIVE_STATUS = """
+import sys
+
+def refuse():
+    sys.exit(-1)
+"""
+
+EVASION_A_NEGATIVE_STATUS_HELD_IN_A_CONSTANT = """
+import sys
+
+TERMINATED = 15
+
+def refuse():
+    sys.exit(-TERMINATED)
+"""
+
+EVASION_A_NEGATIVE_STATUS_RAISED = """
+def refuse():
+    raise SystemExit(-1)
+"""
+
 
 @pytest.mark.parametrize(
     "source",
@@ -2776,6 +2857,92 @@ def test_the_second_table_guard_bites_a_module_reserving_causes_of_its_own(sourc
     silent before.
     """
     assert reserved_code_tables(source, CAUSES, RANGE)
+
+
+def test_an_enum_is_recognized_by_its_base_and_each_clause_has_its_own_case():
+    """The rule that could not be told apart from a list of three names.
+
+    ``_declared_enum_values`` decides what a module has DECLARED to be a cause,
+    and everything downstream of that decision, the whole key set for a module
+    whose exception nobody has written yet, rests on how it recognizes an enum.
+    It recognized one by the SPELLING of the base, ``endswith("Enum")``, and its
+    docstring set that against a rule "a rename changes nothing" while being one:
+    an aliased import defeats a spelling. Measurement could not see the
+    difference either, because every enum base written anywhere in ``tests/`` was
+    ``Enum``, ``StrEnum`` or ``IntEnum``: narrowing the suffix to exactly those
+    three killed zero of 3379.
+
+    So there are two clauses and each one has the case only it answers.
+
+    * ``from enum import StrEnum as Vocabulary`` binds the base to a name no
+      spelling rule matches. Only the IMPORT clause answers it, and that clause
+      is what the rest of this file already does everywhere else: ask what the
+      source BOUND, never what it spelled.
+    * ``class Refusal(CratekitEnum)`` against a base defined in another of our
+      modules imports nothing from ``enum`` at all. Only the SPELLING clause
+      answers it, and it is the clause the three-name narrowing removed.
+
+    The plain class is the P7 direction. A class body full of string constants is
+    ordinary, it is what ``EVASION_A_KEY_HELD_ON_A_CLASS`` is built on, and
+    reading one as a declaration would let any module invent causes by writing
+    constants.
+    """
+    assert reserved_code_tables(
+        DECLARES_ITS_CAUSES_ON_AN_ALIASED_BASE, CAUSES, RANGE
+    ) == ["line 9: 'tagger-art-rejected' -> status 41"], (
+        "an enum whose base is imported under another name declares its causes "
+        "exactly as the unaliased spelling does, or one `as` keyword decides "
+        "whether the guard can see a module's whole vocabulary"
+    )
+    assert reserved_code_tables(
+        DECLARES_ITS_CAUSES_ON_A_BASE_OF_OUR_OWN, CAUSES, RANGE
+    ) == ["line 9: 'tagger-art-rejected' -> status 41"], (
+        "a base named in another of our modules is the shape the spelling clause "
+        "exists for, and narrowing that clause to the three names the enum "
+        "module exports silences it"
+    )
+    assert reserved_code_tables(
+        DECLARES_ITS_CAUSES_THROUGH_THE_ENUM_MODULE, CAUSES, RANGE
+    ) == ["line 9: 'tagger-art-rejected' -> status 41"]
+    assert reserved_code_tables(
+        CORRECT_A_PLAIN_CLASS_DECLARES_NOTHING, CAUSES, RANGE
+    ) == [], (
+        "a plain class holding strings is not a vocabulary, and reading one as a "
+        "declaration would let any module invent a cause by writing a constant"
+    )
+
+
+def test_renaming_the_enum_or_the_name_holding_it_changes_nothing():
+    """The docstring's own claim, driven rather than asserted.
+
+    ``_declared_enum_values`` claims it matches on the base and not on what the
+    class or the variable was called. Nothing measured that, and the claim is
+    exactly the kind this file's own record keeps finding to be false. Each
+    rename below is applied to a fixture whose ONLY route into the key set is its
+    own declaration, so a rename that broke the rule would take the hit with it.
+    """
+    original = reserved_code_tables(DECLARES_ITS_CAUSES_ON_AN_ALIASED_BASE, CAUSES, RANGE)
+    assert original, "the fixture stopped reporting, so the renames below prove nothing"
+
+    for before, after in (
+        ("class Refusal(", "class SomethingElseEntirely("),
+        ("CODES = {", "TABLE = {"),
+        ("ART_REJECTED", "WHATEVER"),
+        ("Vocabulary", "Anything"),
+    ):
+        renamed = DECLARES_ITS_CAUSES_ON_AN_ALIASED_BASE.replace(before, after)
+        assert renamed != DECLARES_ITS_CAUSES_ON_AN_ALIASED_BASE, (
+            f"{before!r} is not in the fixture any more, so this rename renamed "
+            f"nothing and the assertion below would pass over an unchanged source"
+        )
+        # The base alias is spelled twice, at the import and at the base, and
+        # renaming it means renaming BOTH or the fixture stops being valid
+        # Python. That is why the pair above is the bare name rather than the
+        # ``as`` clause: a substitution that renamed only the import would leave
+        # a base bound to nothing and would prove the wrong thing.
+        assert (
+            reserved_code_tables(renamed, CAUSES, RANGE) == original
+        ), f"renaming {before!r} changed what the guard reports"
 
 
 @pytest.mark.parametrize(
@@ -3633,6 +3800,63 @@ def test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal(source)
     assert process_status_literals(source)
 
 
+def test_a_negative_status_is_a_bare_status_too():
+    """A live, wholly uncovered bypass, and the two edits that opened it.
+
+    ``cli/exit_codes.py`` reasons about negative statuses in its own docstring:
+    the shell truncates ``exit(-1)`` to 255, which that file closes off by name,
+    and the job engine reads ``subprocess.returncode``, where a negative integer
+    is the SIGNAL that killed the child. So a module writing ``sys.exit(-1)``
+    produces a status that one reader calls the shell's own territory and the
+    other calls a signal death, and neither is the refusal that was meant. It is
+    the worst bare status in the file, and it was the one nothing wrote.
+
+    TWO EDITS BLIND THE GUARD TO EVERY NEGATIVE, and before this test both were
+    silent alone and silent together:
+
+    * deleting ``resolve_int``'s unary-minus branch, after which every negative
+      resolves to nothing and a status this cannot evaluate stays silent;
+    * widening ``_scan_for_exits``'s ``status == 0`` to ``status <= 0``, after
+      which every negative is read as success.
+
+    The three spellings below are the three shapes a real module reaches for: the
+    literal, the signal number held in a name, and the raised exception. The
+    middle one is the only fixture in this file that drives the unary minus
+    THROUGH a name, which is what makes the hop bound part of the answer too.
+    """
+    assert process_status_literals(EVASION_A_NEGATIVE_STATUS) == [
+        "line 5: sys.exit(-1)"
+    ]
+    assert process_status_literals(EVASION_A_NEGATIVE_STATUS_HELD_IN_A_CONSTANT) == [
+        "line 7: sys.exit(-TERMINATED) (status -15)"
+    ]
+    assert process_status_literals(EVASION_A_NEGATIVE_STATUS_RAISED) == [
+        "line 3: SystemExit(-1)"
+    ]
+
+    assert process_status_literals("import sys\nsys.exit(-0)\n") == [], (
+        "negative zero is zero, which is success spelled oddly and not a refusal"
+    )
+
+
+def test_a_negative_is_outside_the_reserved_range_on_the_table_side():
+    """The other half of the negative question, and its answer is the range.
+
+    Pinned beside the one above so the two are read together. A second table
+    mapping a cause to a negative integer is NOT reported, because the value rule
+    for a bare integer is the reserved range and no negative is inside it. That
+    is the same rule that keeps 5 and 70 out, and it is why the unary-minus
+    branch changes no answer here: with the branch deleted a negative resolves to
+    nothing, and with it a negative resolves outside the range, and both are
+    silence. The bare-status guard is the whole of what that branch is for, which
+    is a composite rather than a sentence: the row that deletes it kills the test
+    above and leaves this one green.
+    """
+    assert reserved_code_tables(
+        'CODES = {"config-unusable": -30}\n', declared_causes(), RANGE
+    ) == []
+
+
 def declared_causes() -> frozenset[str]:
     """Every string anybody in this repository has declared to be a refusal cause.
 
@@ -3729,6 +3953,8 @@ CITED_RESIDUALS = (
     "The tiers were bought with a number that does not exist",
     "The mutation table for this unit's guards, written into the repository",
     "The backup restore is not yet bound to the destructive-session gates",
+    "A negative process status is reserved against in prose and was covered by nothing",
+    "Six of this unit's own rules recognize a builtin by the text of its name",
 )
 
 #: WHAT A CITATION LOOKS LIKE, as a form rather than as a convention: the word
@@ -4014,6 +4240,254 @@ def test_the_package_scan_reaches_the_modules_it_claims_to():
     assert TABLE_OWNERS <= scanned, (
         "the guard exempts files the scan does not reach, which is an exemption "
         "for nothing and a scan that shrank"
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The at-risk population, measured on ONE basis and pinned
+#
+# THE BASIS, written out because the round before measured its two halves on two
+# different ones and compared them as if they were one. Every count below is
+# taken over the SAME population, the files `package_sources()` returns that are
+# not table owners, with the SAME resolver, the shipped `cause_key`, asked of
+# every `ast.Name` and `ast.Attribute` in the file. Nothing here counts a file
+# the guard exempts, and nothing here reads a key the shipped guard could not.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def population_under_measurement() -> list[tuple[str, str]]:
+    """The 49 non-owner files every count in this section is taken over."""
+    return [
+        (relative, source)
+        for relative, source in package_sources()
+        if relative not in TABLE_OWNERS
+    ]
+
+
+def modules_holding_a_named_cause(*, own_declarations: bool) -> dict[str, list[str]]:
+    """Modules where a NAME or a class attribute resolves to a declared cause.
+
+    ``own_declarations`` says whether the file's own enum declarations are in the
+    cause set, which is the difference between what the registry declares and
+    what ``ReservedCodeTable`` actually reads. Both are reported because the gap
+    between them IS the effect of the key-side widening.
+    """
+    causes = declared_causes()
+    found: dict[str, list[str]] = {}
+    for relative, source in population_under_measurement():
+        tree = ast.parse(source)
+        table = _guards.ReservedCodeTable(tree, causes, RANGE, package_of(relative))
+        if not own_declarations:
+            table.causes = set(causes)
+        hits = {
+            slug
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Name, ast.Attribute))
+            for slug in [table.cause_key(node)]
+            if slug
+        }
+        if hits:
+            found[relative] = sorted(hits)
+    return found
+
+
+def modules_holding_a_cause_literal() -> dict[str, list[str]]:
+    """The same population under the OLD constant-only key rule, for comparison."""
+    causes = declared_causes()
+    found: dict[str, list[str]] = {}
+    for relative, source in population_under_measurement():
+        hits = {
+            node.value
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value in causes
+        }
+        if hits:
+            found[relative] = sorted(hits)
+    return found
+
+
+def holds_an_in_range_integer(source: str) -> bool:
+    """Whether a source contains an integer literal inside the reserved range."""
+    low, high = RANGE
+    return any(
+        isinstance(node, ast.Constant)
+        and isinstance(node.value, int)
+        and not isinstance(node.value, bool)
+        and low <= node.value < high
+        for node in ast.walk(ast.parse(source))
+    )
+
+
+def kebab_shaped_literals() -> set[str]:
+    """Every cause-shaped string literal anywhere in the package."""
+    return {
+        node.value
+        for _, source in package_sources()
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and _guards.CAUSE_SLUG.match(node.value)
+    }
+
+
+def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
+    """The numbers the residual argues from, recomputed here rather than recalled.
+
+    Six places in the residual
+    "The tiers were bought with a number that does not exist"
+    carried a population figure and NO assertion held any of them. A justification
+    that decays silently as the tree grows is the same defect as a docstring
+    claiming a property nothing measures, and this unit has now filed that one
+    against itself twice. So every load-bearing number is computed from the tree
+    here, and a drift fails with the figure that moved.
+
+    WHEN THIS FAILS, the fix is to look and then to update BOTH this line and the
+    residual's prose, which is the review the numbers exist to trigger. It is not
+    to widen the assertion.
+
+    The comparison this pins is the whole argument for keeping the key-side
+    widening: the named surface, which the widening added, is SMALLER than the
+    literal surface the tree has carried and the suite has accepted since the
+    fifth round. Both halves are measured on the one basis described above, which
+    is the correction. The round before measured the named half over ALL files
+    with a resolver wider than the shipped one, and the literal half over
+    non-owners with the narrow one, then compared the two.
+    """
+    causes = declared_causes()
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (82, 60, 22)
+
+    literals = kebab_shaped_literals()
+    assert (len(literals), len(literals - set(causes))) == (189, 108), (
+        f"the kebab-literal population moved to {len(literals)} distinct with "
+        f"{len(literals - set(causes))} that are not keys"
+    )
+
+    widened = frozenset(set(causes) | literals)
+    assert {
+        relative: reserved_code_tables(source, widened, RANGE, package_of(relative))
+        for relative, source in population_under_measurement()
+        if reserved_code_tables(source, widened, RANGE, package_of(relative))
+    } == {}, (
+        "the wide rule has a headroom problem now: adding every kebab-shaped "
+        "literal in the package to the key set reports an offender, and the "
+        "argument for one key set rests on it reporting none"
+    )
+
+    without = modules_holding_a_named_cause(own_declarations=False)
+    with_own = modules_holding_a_named_cause(own_declarations=True)
+    literal_holders = modules_holding_a_cause_literal()
+    both = [
+        relative
+        for relative in with_own
+        if holds_an_in_range_integer(dict(package_sources())[relative])
+    ]
+    literal_both = [
+        relative
+        for relative in literal_holders
+        if holds_an_in_range_integer(dict(package_sources())[relative])
+    ]
+    assert (len(without), len(with_own), len(both)) == (8, 13, 4), (
+        f"the named at-risk population moved: {len(without)} modules hold a name "
+        f"resolving to a cause declared elsewhere, {len(with_own)} once each "
+        f"file's own enum declarations count, {len(both)} of those also hold an "
+        f"in-range integer. Update the residual"
+    )
+    assert (len(literal_holders), len(literal_both)) == (24, 5), (
+        f"the literal at-risk population moved to {len(literal_holders)} modules, "
+        f"{len(literal_both)} of them also holding an in-range integer"
+    )
+    assert len(with_own) < len(literal_holders), (
+        "the named surface the key widening added is now LARGER than the literal "
+        "surface that predates it, which is the comparison the decision to keep "
+        "the widening rests on. Re-argue it or narrow the key side"
+    )
+
+    sharpest = dict(package_sources())["core/exit_codes.py"]
+    declared_in_its_own_enum = _guards._declared_enum_values(ast.parse(sharpest))
+    low, high = RANGE
+    integers = [
+        node.value
+        for node in ast.walk(ast.parse(sharpest))
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, int)
+        and not isinstance(node.value, bool)
+        and low <= node.value < high
+    ]
+    assert (
+        len(declared_in_its_own_enum),
+        len(declared_in_its_own_enum & CAUSES),
+        len(integers),
+    ) == (42, 6, 28), (
+        "core/exit_codes.py is the sharpest case in the residual and its figures "
+        "moved. It declares cause-shaped strings in its own Remedy enum, some of "
+        "which are also reserved-table causes, and it holds in-range integers "
+        "while not being a table owner"
+    )
+
+
+def test_the_static_enum_rule_agrees_with_the_interpreter_over_the_whole_package():
+    """The classifier checked against the language, over the tree, not a fixture.
+
+    ``_declared_enum_values`` decides from the SOURCE whether a class is an enum,
+    and its two clauses are both readings of a base's NAME: one bound from the
+    ``enum`` module, one spelled with an ``Enum`` suffix. Neither can read a base
+    defined in another of our modules whose name is neither, and that limit is
+    written into the function's docstring. A limit nobody measures is a limit
+    that quietly becomes a hole as the tree grows.
+
+    So the interpreter is asked the same question. Every class the package
+    actually defines that IS an ``enum.Enum`` at runtime must be one the static
+    rule found, with its cause-shaped members. A future module writing
+    ``class Cause(Vocabulary)`` against a base of ours fails HERE, naming the
+    file, rather than silently dropping that module's whole vocabulary out of the
+    key set and making the guard quieter.
+
+    One direction only, deliberately. The static rule reading MORE than the
+    interpreter is the safe direction for a guard whose false alarm costs one
+    look, and the fixtures above pin what it may not read.
+    """
+    modules, unimportable = imported_package_modules()
+    assert not unimportable
+    static = {
+        relative: _guards._declared_enum_values(ast.parse(source))
+        for relative, source in package_sources()
+    }
+    missed: dict[str, list[str]] = {}
+    checked = 0
+    for module in modules:
+        source_file = getattr(module, "__file__", None)
+        if source_file is None:
+            continue
+        relative = Path(source_file).resolve().relative_to(PACKAGE_ROOT).as_posix()
+        if relative not in static:
+            continue
+        for value in vars(module).values():
+            if not (isinstance(value, type) and issubclass(value, enum.Enum)):
+                continue
+            if value.__module__ != module.__name__:
+                continue
+            declared = {
+                member.value
+                for member in value
+                if isinstance(member.value, str)
+                and _guards.CAUSE_SLUG.match(member.value)
+            }
+            if declared:
+                checked += 1
+            unseen = sorted(declared - static[relative])
+            if unseen:
+                missed[f"{relative}:{value.__name__}"] = unseen
+    assert checked >= 15, (
+        f"only {checked} enums declaring a cause-shaped value were reached at "
+        f"runtime, so the agreement below is being measured over almost nothing. "
+        f"The tree holds 45 enums and 19 of them declare one"
+    )
+    assert not missed, (
+        f"the interpreter says these are enums declaring cause-shaped values and "
+        f"the static rule did not see them, so every one of those causes is out "
+        f"of the key set for its own file: {missed}"
     )
 
 
@@ -4416,25 +4890,336 @@ def test_a_comment_cannot_silence_a_reservation():
     )
 
 
-def test_the_guard_has_no_per_line_off_switch_at_all():
-    """The absence, asserted over the real tree rather than over a fixture.
+#: The one call a source string is allowed to reach in the guard module.
+THE_ONLY_SINK = "ast.parse"
 
-    ``test_the_annotation_is_unused_in_the_package_today`` used to assert exact
-    membership of the empty set, which is the whitelist rule from the residual
-    "Two copies of one import walk still carry a relative-import defect". With the hatch
-    deleted there is no membership to pin, so what is pinned instead is that the
-    guard has no comment-shaped input at all: it is handed a source, and the only
-    thing it reads out of that source is the syntax tree. A helper that reads the
-    token stream is how the comment reached it, so a helper that reads the token
-    stream is what has to stay gone.
+
+def text_the_guard_module_reads(source: str) -> list[str]:
+    """Every place the guard module does anything with raw source text but parse it.
+
+    THE RULE, and it is about the shape of the module rather than about any
+    implementation of a hatch. A comment exists only in the TEXT of a program:
+    ``ast.parse`` throws every one of them away, so no rule built on a syntax
+    tree can be influenced by one. Therefore a guard that cannot touch the text
+    cannot have a per-line off switch, whatever anybody calls it.
+
+    The text is followed from where it enters. Each module-level function's
+    ``source: str`` parameter is a seed; a seed assigned to another name taints
+    that name; a seed passed to another function OF THIS MODULE taints the
+    parameter it lands on, so a helper cannot launder it. The only permitted use
+    of a tainted name is as the single argument of ``ast.parse``. An attribute
+    read, a subscript, a comparison, an f-string, or a call to anything outside
+    this module is reported with its line.
+
+    WHAT THIS DOES NOT COVER, said rather than implied. A function that opens a
+    file and reads text of its OWN is not seeded, because it takes no source
+    parameter. Nothing in the guard module can do that with the file under
+    analysis, since the questions are handed a string and never a path, and the
+    import whitelist in
+    ``test_the_guard_module_imports_only_what_reading_a_syntax_tree_needs``
+    closes the rest of that route.
     """
-    assert not hasattr(_guards, "_annotated_lines")
-    assert not hasattr(_guards, "_silenced_lines")
-    assert not hasattr(_guards, "NOT_A_RESERVATION")
-    assert "tokenize" not in dir(_guards), (
-        "the guard tokenizes again, which is how a comment reaches a rule that "
-        "should only be able to see the syntax tree"
+    tree = ast.parse(source)
+    functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+    def positional(function: ast.AST) -> list[str]:
+        arguments = function.args
+        return [
+            argument.arg
+            for argument in list(arguments.posonlyargs) + list(arguments.args)
+        ]
+
+    def seeds(function: ast.AST) -> set[str]:
+        arguments = function.args
+        every = (
+            list(arguments.posonlyargs)
+            + list(arguments.args)
+            + list(arguments.kwonlyargs)
+        )
+        return {
+            argument.arg
+            for argument in every
+            if argument.arg == "source"
+            and argument.annotation is not None
+            and "str" in ast.unparse(argument.annotation)
+        }
+
+    tainted = {name: seeds(function) for name, function in functions.items()}
+    if not any(tainted.values()):
+        return [
+            "no function takes a `source: str` parameter, so this rule is "
+            "seeded on nothing and proves nothing"
+        ]
+
+    changed = True
+    while changed:
+        changed = False
+        for name, function in functions.items():
+            for node in ast.walk(function):
+                if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
+                    if node.value.id in tainted[name]:
+                        for target in node.targets:
+                            if (
+                                isinstance(target, ast.Name)
+                                and target.id not in tainted[name]
+                            ):
+                                tainted[name].add(target.id)
+                                changed = True
+                if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+                    continue
+                callee = functions.get(node.func.id)
+                if callee is None:
+                    continue
+                landing = positional(callee)
+                for index, argument in enumerate(node.args):
+                    if not (
+                        isinstance(argument, ast.Name) and argument.id in tainted[name]
+                    ):
+                        continue
+                    if index < len(landing) and landing[index] not in tainted[node.func.id]:
+                        tainted[node.func.id].add(landing[index])
+                        changed = True
+                for keyword in node.keywords:
+                    if (
+                        keyword.arg
+                        and isinstance(keyword.value, ast.Name)
+                        and keyword.value.id in tainted[name]
+                        and keyword.arg not in tainted[node.func.id]
+                    ):
+                        tainted[node.func.id].add(keyword.arg)
+                        changed = True
+
+    found: list[str] = []
+    for name, function in functions.items():
+        parents: dict[ast.AST, ast.AST] = {}
+        for node in ast.walk(function):
+            for child in ast.iter_child_nodes(node):
+                parents[child] = node
+        for node in ast.walk(function):
+            if not (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)):
+                continue
+            if node.id not in tainted[name]:
+                continue
+            parent = parents.get(node)
+            if isinstance(parent, ast.Call):
+                if node is parent.func:
+                    found.append(f"{name}: line {node.lineno}: the source text is CALLED")
+                    continue
+                spelled = ast.unparse(parent.func)
+                if (
+                    spelled == THE_ONLY_SINK
+                    and len(parent.args) == 1
+                    and parent.args[0] is node
+                ):
+                    continue
+                if isinstance(parent.func, ast.Name) and parent.func.id in functions:
+                    continue
+                found.append(
+                    f"{name}: line {node.lineno}: the source text is handed to {spelled}"
+                )
+            elif isinstance(parent, ast.Assign) and parent.value is node:
+                continue
+            else:
+                found.append(
+                    f"{name}: line {node.lineno}: the source text reaches "
+                    f"{type(parent).__name__}"
+                )
+    return sorted(found)
+
+
+def _without_comments(source: str) -> str:
+    """The same program with every comment gone and nothing else changed.
+
+    A comment cannot survive a round trip through the syntax tree, so this is the
+    comment-free twin of any source, whatever the comment SAID. That is what
+    makes the property below independent of a marker: it does not have to know
+    what spelling a future escape hatch would use.
+    """
+    return ast.unparse(ast.parse(source))
+
+
+def _slugs_and_statuses(hits: list[str]) -> list[str]:
+    """A hit list with the line numbers dropped, because unparsing moves lines."""
+    return sorted(hit.split(": ", 1)[1] for hit in hits)
+
+
+#: Markers a FRESH per-line escape hatch would plausibly be spelled with. None of
+#: them is the one that was deleted, which is the point: the rule below must not
+#: depend on knowing the spelling.
+FRESH_ESCAPE_MARKERS = (
+    "# ordinary-data: seconds",
+    "# noqa: reservation",
+    "# cratekit: not-a-table",
+    "# pragma: no-reserve",
+    "# this is a timeout and not a code",
+)
+
+
+def _guard_module_source() -> str:
+    """The guard module's own text, read from the file the suite imported."""
+    return Path(_guards.__file__).read_text()
+
+
+def _with_a_fresh_hatch_wired_in(source: str) -> str:
+    """The guard module with a NEW per-line escape hatch, wired in where the old one was.
+
+    A different marker, no ``tokenize``, and none of the three names the deleted
+    hatch used. This is the source the rule below has to reject, and it is
+    constructed rather than described so the rejection is measured.
+    """
+    hatched = source.replace(
+        "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+        "    tree = ast.parse(source)\n"
+        "    quiet = _hushed(source)\n"
+        "    table = ReservedCodeTable(",
+    ).replace(
+        "def reserved_code_tables(",
+        "def _hushed(text: str) -> set[int]:\n"
+        "    marked = set()\n"
+        "    for number, line in enumerate(text.splitlines(), start=1):\n"
+        '        if "# ordinary-data" in line:\n'
+        "            marked.add(number)\n"
+        "    return marked\n"
+        "\n"
+        "\n"
+        "def reserved_code_tables(",
+        1,
     )
+    assert hatched != source and "_hushed" in hatched, (
+        "the hatch could not be wired in, so the assertion it exists for would "
+        "be measuring an unchanged file. The anchors moved: repair them"
+    )
+    return hatched
+
+
+def test_a_comment_cannot_change_what_the_guard_reports_whatever_it_says():
+    """THE PROPERTY, where the round before pinned the deleted hatch's fingerprint.
+
+    That test asserted ``_annotated_lines``, ``_silenced_lines`` and
+    ``NOT_A_RESERVATION`` are absent and that ``tokenize`` is not imported. Those
+    are the names the last implementation happened to use, so what they forbid is
+    that implementation and not the feature: a fresh per-line escape with a
+    different marker, no ``tokenize`` and none of those three names ships GREEN,
+    wired in exactly where the deleted one was. Generalised, and it is worth
+    carrying past this file: a test that forbids a feature by naming the last
+    implementation's symbols forbids that implementation, not the feature.
+
+    The property is that the guard's answer cannot depend on a comment at all.
+    Comments do not survive a round trip through the syntax tree, so the
+    comment-free twin of any source is one ``ast.unparse`` away, and the two
+    answers have to match whatever the comment says. No marker appears in the
+    rule.
+
+    DRIVEN OVER THE TREE AND NOT ONLY OVER A FIXTURE, because a fix justified by
+    a fixture somebody wrote beside it is this wave's fourth named defect. The
+    two table owners are the only files in the package that report anything at
+    all, 22 hits and 61, and both are compared against their own comment-free
+    twins.
+    """
+    causes = declared_causes()
+    for owner in sorted(TABLE_OWNERS):
+        source = dict(package_sources())[owner]
+        package = package_of(owner)
+        with_comments = reserved_code_tables(source, causes, RANGE, package)
+        assert len(with_comments) >= 22, (
+            f"{owner} reports {len(with_comments)} reservations, so the "
+            f"comparison below is being made over almost nothing"
+        )
+        assert _slugs_and_statuses(with_comments) == _slugs_and_statuses(
+            reserved_code_tables(_without_comments(source), causes, RANGE, package)
+        ), (
+            f"{owner} reports differently once its comments are gone, so a "
+            f"comment is an input to this guard and a per-line off switch is "
+            f"back, whatever it is called"
+        )
+
+    for marker in FRESH_ESCAPE_MARKERS:
+        marked = "\n".join(
+            f"{line}  {marker}" if line.strip() else line
+            for line in RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS.splitlines()
+        )
+        assert _slugs_and_statuses(
+            reserved_code_tables(marked, causes, RANGE)
+        ) == _slugs_and_statuses(
+            reserved_code_tables(
+                RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS, causes, RANGE
+            )
+        ), (
+            f"{marker!r} on every line changed what the guard reports, so a "
+            f"per-line escape exists under a name this test does not have to know"
+        )
+
+
+def test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text():
+    """The STRUCTURAL half, so a future hatch is impossible rather than undetected.
+
+    The behavioural property above is one measurement per comment somebody
+    thought of. This is the rule underneath it: a comment can only reach a guard
+    through the RAW TEXT of the source, because the syntax tree does not carry
+    one. So the text is followed from the parameter that receives it to
+    everything it touches, and the only thing it may touch is ``ast.parse``.
+
+    A source parameter flows into another function of the module by being passed
+    to it, and that function's parameter is tainted in turn, so a helper cannot
+    launder it. Anything else, an attribute read, a subscript, a comparison, a
+    call to something outside this module, is reported by line.
+
+    Both directions, because a rule that only ever answers "clean" is a rule
+    nobody has checked: the guard module as it ships answers clean, and the same
+    module with a fresh hatch wired in answers with the hatch's line.
+    """
+    source = _guard_module_source()
+    assert text_the_guard_module_reads(source) == [], (
+        "the guard module does something with its raw source text other than "
+        "parse it, which is the one way a comment can reach a rule that should "
+        "only be able to see the syntax tree"
+    )
+    reported = text_the_guard_module_reads(_with_a_fresh_hatch_wired_in(source))
+    assert reported, (
+        "a per-line escape hatch reading the source text was wired into the "
+        "guard module and this rule did not see it, so it is measuring nothing"
+    )
+    assert any("_hushed" in entry for entry in reported), reported
+
+
+def test_the_guard_module_imports_only_what_reading_a_syntax_tree_needs():
+    """EXACT MEMBERSHIP, which is the whitelist rule this unit already lives by.
+
+    The other route to a comment is a library that can see one: ``tokenize``,
+    ``io`` wrapped round the text, ``linecache``, a source-reading helper out of
+    ``inspect``. Naming those is the fingerprint mistake again, so what is pinned
+    is what the module MAY import. Two names, and each is here for a reason a
+    reader can check: ``ast`` is the syntax tree and ``re`` is the cause-slug
+    shape.
+
+    Adding an import is not forbidden. It costs one line here and the review that
+    line brings, which is exactly the review the deleted escape hatch never got.
+    """
+    imported: set[str] = set()
+    for node in ast.walk(ast.parse(_guard_module_source())):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            imported.add(node.module.split(".")[0])
+    assert imported == {"__future__", "ast", "re"}, (
+        f"the guard module imports {sorted(imported)}. Everything the guards ask "
+        f"is a question about a syntax tree, so an import beyond the tree and the "
+        f"slug shape is how something that can see a comment gets in"
+    )
+
+
+def test_nobody_in_the_package_writes_the_marker_that_was_deleted():
+    """A fingerprint on purpose, and it is about PEOPLE rather than the guard.
+
+    The property tests above cover the guard. This one covers the person who
+    remembers ``# not-a-reservation:`` from the round it shipped in, writes it,
+    and is silently ignored. It is deliberately the exact deleted spelling,
+    because that is the only spelling anybody could be expecting to work.
+    """
     marked = [
         relative
         for relative, source in package_sources()
