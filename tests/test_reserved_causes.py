@@ -4190,6 +4190,7 @@ CITED_RESIDUALS = (
     "The backup restore is not yet bound to the destructive-session gates",
     "A negative process status is reserved against in prose and was covered by nothing",
     "Six of this unit's own rules recognize a builtin by the text of its name",
+    "One entry in the not-a-cause whitelist covers an enum the walk never reaches",
 )
 
 #: WHAT A CITATION LOOKS LIKE, as a form rather than as a convention: the word

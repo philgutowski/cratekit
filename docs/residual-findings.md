@@ -1306,13 +1306,46 @@ back to citing by number. At merge time this table belongs appended to
 `docs/mutation-rows.md`, which carries the convention that a count with no row
 definition beside it is not evidence.
 
+### THE HEADLINE CLAIM BELOW WAS AN INSTRUMENT THAT COULD NOT FAIL, and the current table is elsewhere
+
+**Found by the seventh round's verifier, 2026-08-09.** The paragraph that follows
+this one closed with "Zero rows would be findings and there are none", over a 49
+row table. An independently derived 83 row table over the same tree found SEVEN
+unaccounted zero rows. The claim was not false about the rows it listed; it was
+a claim about a POPULATION, "every guard, assertion and constant this unit
+ships", made by a table that chose its own rows. A completeness claim whose
+population is the author's own list cannot fail, which is this session's most
+common defect in its own tooling.
+
+**What replaces it.** The eighth round's table is
+`docs/mutation/u38-round-8.md`, with the exact substitution and the dying node
+ids for every row in `docs/mutation/u38-round-8-reverts.json` beside it. It states
+its population as a countable thing rather than as a claim: **162 rows**, derived
+mechanically from this unit's diff against the merge base, covering every guard
+clause, whitelist entry and constant in `tests/_source_guards.py`,
+`src/cratekit/cli/exit_codes.py` and the derivations in
+`tests/test_reserved_causes.py`. It reports **fifteen zero rows and accounts for
+every one of them**, either as half of a composite pair or as a term measured to
+be redundant with another. Sixteen zero rows were found on its first sweep and
+eleven were CLOSED by fixtures rather than explained.
+
+**It does not claim to be complete, and that is the correction.** Nothing about
+162 rows proves no 163rd row exists. What the file states is what was measured,
+over what, and how, so the next person can re-derive it and find the rows this
+one missed, which is what the seventh round's verifier did to the table below.
+
+**The table below is the SEVENTH round's and its numbers are stale.** It was
+measured at `171e058` and this branch has three commits since, adding 26 node
+ids. It is kept as the record the eighth round compared against, row by row, and
+nine of its rows reproduce exactly. Read it as history and read
+`docs/mutation/u38-round-8.md` as the current state.
+
 Every guard, assertion and constant this unit ships, reverted ALONE, full suite,
 deaths counted from a pytest plugin's report objects rather than from parsing the
 `FAILED` lines, which cannot be split on `" - "` here because that string appears
 inside parametrized ids. Baseline: **3364 passed, 15 skipped**, measured on
 `unit/u38-reserved-exit-code-registry-for-module-r` after the sixth round's two
-commits. Every number below was measured against THAT tree in that session. Zero
-rows would be findings and there are none.
+commits. Every number below was measured against THAT tree in that session.
 
 A row NAME does not identify a mutation, so each row has its exact revert written
 out below the table. Rows are ONE substitution in ONE file unless stated. Revert
@@ -1761,7 +1794,9 @@ recorded above the table, with this round's decomposition written as a
 subtraction anybody can re-run instead.
 
 **Closes when:** nothing has to close it. It is the record the next round
-compares against, row by row.
+compares against, row by row. The eighth round did exactly that and its own table
+lives in `docs/mutation/`, which is where this one belongs at merge and where
+every later round's belongs from the start.
 
 ---
 
@@ -1849,3 +1884,48 @@ this one is carried.
 which point the guard is silent about a real file and the rule has to bind by
 identity, or the six become one helper that resolves a builtin through the same
 import walk `ProcessExits` already runs.
+
+---
+
+## R-23. One entry in the not-a-cause whitelist covers an enum the walk never reaches
+
+**Found:** in the eighth round, 2026-08-09, by the mutation table. It is the same
+shape this branch has already paid for once: a guard whitelist that can be
+widened for free.
+
+`NOT_A_CAUSE` classifies eleven package enums as carrying CONTEXT rather than a
+refusal cause, and the completeness walk consults it at exactly one place, where
+a declared enum appears in an exception constructor's annotations. Removing the
+`cratekit.core.routing.Decline` entry kills **zero** tests, because no exception
+in the package annotates a `Decline`.
+
+Measured on the same mapping, so the number means something:
+
+| the revert | deaths |
+| --- | --- |
+| the `cratekit.core.routing.Decline` entry removed | **0** |
+| the `cratekit.core.cause.Scope` entry removed | 6 |
+| the whole mapping emptied | 10 |
+
+The mapping is load bearing and that one entry is an exemption for nothing.
+
+**Why it matters rather than being tidy-up.** An entry nothing reaches is how a
+whitelist grows a line that later switches a guard off for free. `TABLE_OWNERS`
+did exactly that on this branch: adding `core/session.py` to it left the whole
+suite green, and only exact membership caught the widening. `NOT_A_CAUSE` has no
+equivalent check. `test_every_enum_declared_not_a_cause_exists` proves each entry
+names a real enum and says nothing about whether the walk ever asks about it, so
+an entry can be correct, reviewed, and inert.
+
+**Why it is not closed here.** The two ways to close it are both decisions rather
+than repairs. Deleting the entry discards a classification somebody made
+deliberately, and the cost of being wrong is a loud failure the next time an
+exception annotates a `Decline`, which is the designed behaviour. Asserting that
+every entry is load bearing, by removing each one and requiring the derived set
+to change, makes this suite fail whenever an unrelated unit stops annotating an
+enum, which is a test that fails for a reason nobody reading it would guess.
+
+**Closes when:** either the entry is deleted with the reasoning above recorded
+beside the deletion, or a positive control is added that asserts each entry is
+REACHED by the walk rather than merely real, and the failure message explains
+what a person is supposed to do about it.
