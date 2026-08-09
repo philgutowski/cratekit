@@ -115,20 +115,51 @@ def spellings_earlier_builds_wrote(row: RemovedRow) -> tuple[dict[str, str], ...
     providers use, and widening the consult would suppress candidates under a
     spelling this build has decided is wrong.
 
-    TWO SPELLINGS PRECEDE THIS BUILD AND BOTH COLLAPSE TO ONE STRING. Before the
-    remixer column was spelled at all, the value was composed verbatim. After it
-    was spelled but while the test was :func:`tombstone.reads_as_version`, a
-    remixer whose name merely CONTAINED a version word was also composed
-    verbatim, which is the defect this round closed. Verbatim composition is
-    therefore the whole of the history, and it is returned only when it differs
-    from what this build writes.
+    THREE SPELLINGS PRECEDE THIS BUILD. Before the remixer column was spelled at
+    all, the value was composed verbatim. After it was spelled but while the test
+    was :func:`tombstone.reads_as_version`, a remixer whose name merely CONTAINED
+    a version word was also composed verbatim. Those two collapse to one string.
+    The third is the whole of the previous build: the current rule, but composing
+    the column's value UNTIDIED.
+
+    **AND THE HISTORY IS RECONSTRUCTED BY FROZEN FUNCTIONS, NOT BY CALLING THE
+    LIVE COMPOSER, WHICH IS THE DEFECT THAT MADE THIS PARAGRAPH NECESSARY.** This
+    function used to build the verbatim spelling with ``tombstone.version_title``
+    itself. That is correct exactly until the composer changes, and then the
+    reconstruction of what earlier builds wrote moves to what THIS build writes,
+    so the records it exists to find are the records it stops naming.
+
+    The failure was silent rather than loud, and that is the part worth keeping.
+    When the composer changed, BOTH sides of the comparison below moved together,
+    so ``verbatim == version_of(row)`` became true and this function returned the
+    EMPTY TUPLE: not a wrong earlier spelling, but no earlier spelling at all,
+    reported as "there is no history to worry about here". Measured over eight
+    version column shapes at the previous commit, six orphaned the record the
+    parent build would have written.
+
+    A spelling is offered only where it differs from what this build writes, and
+    duplicates are dropped, so an ordinary row with no stray typing still costs
+    one comparison and offers nothing.
     """
     if not row.version:
         return ()
-    verbatim = tombstone.version_identity(
-        artist=row.artist, title=tombstone.version_title(row.title, row.version)
+    if row.version_kind == VERSION_IS_AN_ARTIST:
+        untidied = tombstone.remixer_title_before_the_value_was_tidied(row.title, row.version)
+    else:
+        untidied = tombstone.version_title_before_the_value_was_tidied(row.title, row.version)
+    historical = (
+        tombstone.version_identity(
+            artist=row.artist,
+            title=tombstone.version_title_before_the_value_was_tidied(row.title, row.version),
+        ),
+        tombstone.version_identity(artist=row.artist, title=untidied),
     )
-    return () if verbatim == version_of(row) else (verbatim,)
+    current = version_of(row)
+    offered: list[dict[str, str]] = []
+    for identity in historical:
+        if identity != current and identity not in offered:
+            offered.append(identity)
+    return tuple(offered)
 
 
 def ambiguous_versions(rows: Any) -> frozenset[str]:

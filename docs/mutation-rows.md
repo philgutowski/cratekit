@@ -927,3 +927,70 @@ removing punctuation cannot merge two well formed codes, but folding away a
 non-ASCII alphanumeric can, and a merged code stops the collision guard firing
 and lets a deletion take out a version the person never deleted. The row is the
 assertion that the fold was widened in the safe direction only.
+
+## Round 9, U24 track deletion and tombstones
+
+**Baseline: 3468 passed, 15 skipped, 3483 collected.** Measured on branch
+`unit/u24-track-deletion-and-tombstones` with round nine applied to the working
+tree, 2026-08-09, whole suite per row. Restoration is from text snapshotted in
+memory before the first mutation, because round nine was measured uncommitted
+and `git show HEAD:<path>` would have named the round eight tree. The driver
+never invokes git.
+
+**What round nine is.** The round eight adversarial verification returned
+BLOCKING with three findings, and the first is round eight's own doing.
+`stores.spellings_earlier_builds_wrote` reconstructed the spelling earlier
+builds wrote by calling the LIVE `tombstone.version_title`. Round eight changed
+that composer, so the reconstruction of history moved to what this build writes.
+
+**THE FAILURE WAS SILENT RATHER THAN WRONG, AND THAT IS THE PART TO REMEMBER.**
+Both sides of the comparison moved together, so `verbatim == version_of(row)`
+became true and the function returned the EMPTY TUPLE: not a wrong earlier
+spelling but no earlier spelling at all, reported as "there is no history here".
+Measured at the round eight tip over eight version column shapes, six orphaned
+the record the parent build would have written, and the cost is the one that
+function's own docstring names: the row is held open forever and the person is
+told to put back a file that is already in the Trash where they put it.
+
+Round nine adds two FROZEN historical composers, reconstructs from those, and
+offers three preceding spellings rather than one.
+
+| deaths | passed | collected | row |
+|---|---|---|---|
+| 7 | 3461 | 3483 | F1: reconstruct history with the LIVE composer, round 8's body |
+| 2 | 3466 | 3483 | F1: offer the oldest verbatim spelling only |
+| 2 | 3466 | 3483 | F1: offer the previous build's spelling only |
+| 1 | 3467 | 3483 | F1: drop the differs-from-current filter, offer everything |
+| 2 | 3466 | 3483 | F1: drop the `version_kind` branch in the reconstruction |
+| 8 | 3460 | 3483 | frozen: `version_title_before...` composes the tidied value |
+| 3 | 3465 | 3483 | frozen: `remixer_title_before...` calls the live composer |
+| 1 | 3467 | 3483 | F3: the FOLDING limb of the tidy, removed ALONE |
+
+**Zero death rows: none.** Eight rows, eight non-zero. Every row reconciles,
+`passed + deaths` equals 3468 and `collected` holds at 3483.
+
+**THE FIRST RUN OF THIS TABLE HAD TWO ZERO DEATH ROWS AND THEY ARE WHY THE
+SUITE GAINED A CASE.** Offering the oldest spelling only, and dropping the
+`version_kind` branch, both killed nothing. The cause was one property of the
+test set: every remixer in it already ended in `Remix`, so
+`already_spelled_as_a_remix` fired, the designation was not appended, and the
+plain composer and the remixer composer produced the SAME string. The two
+historical spellings coincided on every row, so neither the second tuple entry
+nor the branch that chooses it was exercised anywhere.
+
+**AND THE FIRST ATTEMPT TO SEPARATE THEM WAS WRONG, WHICH IS THE MORE USEFUL
+RECORD.** A remixer differing only in WHITESPACE does not separate them.
+`'Michael Woods '` composes `Strobe (Michael Woods  Remix)` with a doubled
+space, and `fold` collapses interior runs one step later, so the previous build
+and this build write the SAME identity and there is no orphan to find. That is
+`version_title`'s own docstring claim holding: the interior collapse changes no
+identity that was not already broken. What DOES survive folding is a bracket
+character and a stripped end, so `'[Michael Woods]'` is the separating shape and
+it yields three distinct identities. The literals were MEASURED before they were
+written into the test, after the reasoned guess failed.
+
+**F3 IS CLOSED AND THE ROW PROVES IT.** Round eight's table mutated the tidy
+through the composition limb twice and never removed the FOLDING limb alone,
+which killed zero of 3458. Removed alone it now kills 1, on the reachable path
+where a title that already names its version stops being recognised as naming
+it and a second bracket is composed onto a title that already says everything.

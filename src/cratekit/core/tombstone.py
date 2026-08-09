@@ -642,6 +642,63 @@ def version_title(title: str, version: str) -> str:
     return f"{title} ({tidied})" if title else tidied
 
 
+# ── The frozen historical compositions ───────────────────────────────────────
+#
+# **A STORE ON A USER'S DISK WAS WRITTEN BY THE BUILD THAT WROTE IT, AND NO
+# LATER EDIT TO THIS MODULE CAN REACH BACK AND CHANGE IT.** The two functions
+# below reproduce what earlier builds composed. They exist because
+# ``stores.spellings_earlier_builds_wrote`` used to reconstruct history by
+# calling the LIVE composer, so the moment the live composer changed, the
+# reconstruction changed with it and stopped naming what is actually on disk.
+# Worse than a mismatch: the caller returns nothing at all when the
+# reconstruction equals the current spelling, so a build that moved BOTH sides
+# together silently offered no earlier spelling whatsoever.
+#
+# **THEY ARE FROZEN. DO NOT KEEP THEM IN SYNC WITH THE LIVE RULE.** If a future
+# round changes how a version is composed, it does not edit these; it ADDS
+# another one and appends it to the tuple in
+# ``stores.spellings_earlier_builds_wrote``. Editing one of these to match a new
+# live rule is precisely the defect they were added to close.
+#
+# They call ``fold``, ``_already_carries`` and ``already_spelled_as_a_remix``,
+# which are themselves live and could drift the same way. Freezing the limb that
+# changed is what this round can guarantee structurally. What guards the rest is
+# that every historical spelling is pinned in the suite to a LITERAL string
+# rather than to a value this module computes, so any future change that moves
+# one of them goes red instead of going quiet.
+
+
+def version_title_before_the_value_was_tidied(title: str, version: str) -> str:
+    """FROZEN. What :func:`version_title` composed before the value was tidied.
+
+    The difference is the tidy and nothing else: the raw column value went inside
+    the bracket and was folded raw, so a leading space, a trailing space, an
+    interior whitespace run, or brackets the value carried itself all survived
+    into the stored identity. Those spellings are on disk in every store written
+    before that change and this is the only thing that still names them.
+    """
+    folded_version = fold(version)
+    if not folded_version or _already_carries(title, folded_version):
+        return title
+    return f"{title} ({version})" if title else version
+
+
+def remixer_title_before_the_value_was_tidied(title: str, remixer: str) -> str:
+    """FROZEN. What :func:`remixer_title` composed before the value was tidied.
+
+    Identical to :func:`remixer_title` except that it composes through the frozen
+    :func:`version_title_before_the_value_was_tidied`. A remixer column carrying
+    its own spacing reached the store through this path, and there are more such
+    columns than through the plain path, since this is the branch a rekordbox
+    ``RemixerName`` takes.
+    """
+    folded = fold(remixer)
+    if not folded or _already_carries(title, folded):
+        return title
+    spelled = remixer if already_spelled_as_a_remix(remixer) else f"{remixer} {REMIX_DESIGNATION}"
+    return version_title_before_the_value_was_tidied(title, spelled)
+
+
 def version_identity(*, artist: str, title: str) -> dict[str, str]:
     """The identity of one version of one recording.
 
