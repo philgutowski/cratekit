@@ -233,6 +233,15 @@ def intake_groupings(
     A TREE WITH NO SUCH FOLDER REFUSES. Returning nothing would answer "your
     intake is clear" to a report that never found the intake flow, and those are
     the two facts ``export`` refuses to render identically one module below.
+
+    THE THIRD FACT IS NOT ASKED ABOUT HERE, and that is deliberate rather than
+    missed. "The flow is here and I could not read what is in it" was rendering
+    as the clean answer, and the check below could not catch it: nodes whose kind
+    was unreadable were classified as folders, so the misread intake groupings
+    put their own paths into ``view.folders`` and SATISFIED this guard. A second
+    check here would be one more site to keep in step; the kind is decided once,
+    positively, where the document becomes a view, and no view reaching this
+    function can hold a node whose kind was a question.
     """
     wanted = intake.display
     if not view.has_folder(wanted):

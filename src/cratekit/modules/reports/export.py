@@ -38,7 +38,26 @@ that fails a check is refused with the structure named:
    two rows sharing one identifier produce two options a person cannot tell
    apart, and an ACCEPTED verdict naming that option says nothing about which
    copy survives. The deletion surface would then be licensed by an ambiguous
-   answer, which is worse than no answer.
+   answer, which is worse than no answer;
+8. and every node in the playlist tree says which KIND it is. A node whose
+   ``Type`` this build cannot read is the same shape as everything above it, and
+   it hid behind the fact that the tree was split in two: the classification ran
+   "a playlist, or else a folder", so a node whose kind was a question was
+   answered FOLDER. Driven on this suite's own export, retyping the playlists
+   dropped seven playlists to none, put all twelve nodes into ``folders``, and
+   the intake report then rendered a clean queue. WORSE, THE MISREAD NODES
+   SATISFIED THE GUARD WRITTEN TO CATCH THEIR LOSS: ``has_folder`` asks whether
+   the intake display appears among the folders, and the misread intake
+   groupings put their own paths there. The duplicate audit lost every placement
+   in the same run and still reported the group, so a person was shown two
+   copies of one recording and nothing about where either one lives.
+
+That last one is why the kind is a THREE valued question, decided once by
+``rbxml.node_kind`` and refused here, rather than a boolean each report guards
+for itself. Site by site guarding is what this repository has already paid for
+three times: the state "it is here and I could not read what is in it" has to be
+representable, or a caller ends up choosing which of the two readable answers to
+report it as.
 
 Layer note: MODULES. It reads bytes a caller hands it and reaches nothing.
 """
@@ -127,6 +146,14 @@ class LibraryView:
     and a report that only had the playlists could not tell an intake flow that
     has been emptied from one that was never exported. Both would render as a
     clean report with nothing to do, and only one of them is true.
+
+    THERE IS NO THIRD TUPLE FOR THE NODES WHOSE KIND COULD NOT BE READ, and that
+    is the point rather than an omission. A view holding them would make every
+    consumer decide what to do about them, which is the site by site guarding
+    that failed: the two tuples above were already a guard against a structure
+    going missing, and misread nodes satisfied it by putting their own paths into
+    ``folders``. ``read_export`` refuses before a view exists, so this type can
+    only ever describe a tree whose every node said what it was.
     """
 
     entries: tuple[CollectionEntry, ...]
@@ -236,7 +263,15 @@ def read_export(content: bytes) -> LibraryView:
     if root is None:
         raise _unusable("its PLAYLISTS section has no root node")
 
-    playlists, folders = _read_nodes(content, root)
+    playlists, folders, unreadable = _read_nodes(content, root)
+    if unreadable:
+        raise _unusable(
+            "its PLAYLISTS section carries a node whose kind it does not declare",
+            detail={
+                "nodes": [" / ".join(path) for path, _ in unreadable],
+                "found": sorted({found for _, found in unreadable}),
+            },
+        )
     return LibraryView(
         entries=_read_entries(content, tracks, playlists),
         playlists=playlists,
@@ -271,23 +306,43 @@ def _declared_entry_count(content: bytes, collection: tuple[int, int]) -> int:
 
 def _read_nodes(
     content: bytes, root: rbxml.NodeSpan
-) -> tuple[tuple[Playlist, ...], tuple[tuple[str, ...], ...]]:
+) -> tuple[
+    tuple[Playlist, ...],
+    tuple[tuple[str, ...], ...],
+    tuple[tuple[tuple[str, ...], str], ...],
+]:
     """Every node under the root, split by kind, each with its display path.
 
-    The two kinds are returned SEPARATELY rather than as one list a consumer has
-    to re-ask about. A folder holds nodes rather than tracks, so it has no
+    The kinds are returned SEPARATELY rather than as one list a consumer has to
+    re-ask about. A folder holds nodes rather than tracks, so it has no
     membership to report and never becomes a ``Playlist``; what it does carry is
     the fact that it EXISTS, which is the only way to tell a structure that is
     absent from one that is present and empty.
+
+    THERE ARE THREE KINDS AND NOT TWO, and the split used to be an ``else``. A
+    node is a playlist, a folder, or a node this build could not read, and the
+    third one arrives here as the ``Type`` value that produced it so the refusal
+    can name what it saw. The third kind is carried out rather than decided here
+    because this function's job is to say what is in the tree; whether an
+    unreadable node is fatal is ``read_export``'s question, asked once for both
+    reports.
+
+    The root itself is not classified, and that is not the same hole. It is
+    located by POSITION rather than by its kind, nothing downstream asks what
+    kind it is, and it is not in the walk this iterates.
     """
     playlists: list[Playlist] = []
     folders: list[tuple[str, ...]] = []
+    unreadable: list[tuple[tuple[str, ...], str]] = []
     for path, node in rbxml.walk_nodes(content, root):
-        if node.node_type == rbxml.PLAYLIST_TYPE:
+        kind = rbxml.node_kind(node.node_type)
+        if kind == rbxml.KIND_PLAYLIST:
             playlists.append(Playlist(path=path, track_ids=rbxml.track_keys(content, node)))
-        else:
+        elif kind == rbxml.KIND_FOLDER:
             folders.append(path)
-    return tuple(playlists), tuple(folders)
+        else:
+            unreadable.append((path, node.node_type))
+    return tuple(playlists), tuple(folders), tuple(unreadable)
 
 
 def _read_entries(

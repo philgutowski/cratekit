@@ -1071,3 +1071,51 @@ side, since the delete and the read are ordered within one method.
 **Closes when:** whichever unit next widens the binding table gives a method body
 an ordering rather than a set. All three shapes have a spelling above, so a later
 round can drive them without re-deriving them.
+
+## R-27. Two write-path enumerations still read an unreadable node as an absent one
+
+**Found:** during the U34 round 10 fix, 2026-08-09, while looking for the same
+shape as this round's classification defect one file over. Both instances are in
+`cratekit.write`, on the WRITE path, which this read-only unit does not own.
+
+The reports side is fixed at the classification: `rbxml.node_kind` has three
+answers, and `reports.export` refuses a document carrying a node whose kind it
+could not read rather than filing it as a folder. Two enumerations in the write
+path still ask the question as a positive filter, so a node whose kind is
+unreadable simply is not there. Both are measured rather than argued.
+
+**One, and it is the one that decides where a write lands.** `rbxml._tree_node`
+infers the enclosing tree when a caller names none, and it refuses when the
+playlist root holds more than one folder because the answer would be a guess.
+Driven on a document with two root folders:
+
+```
+healthy:                      the enclosing tree was not named and the playlist
+                              root holds 2 folders, so it cannot be inferred
+one root folder unreadable:   BY GENRE + ENERGY
+```
+
+Making one of the two unreadable does not make the inference harder, it makes it
+succeed. The ambiguity the refusal exists for is invisible, so the write proceeds
+into the folder that happened to stay readable.
+
+**Two.** `trees._tree_folders` enumerates a tree's genre folders by the same
+positive filter. Driven on a three-folder tree with one folder's `Type`
+unreadable, the enumeration returns two of the three, so a sweep over "every
+genre folder" walks past one and reports that it changed nothing there, and the
+duplicate-name check that follows cannot see the folder it did not enumerate.
+
+**Not fixed here**, and the reason is scope rather than difficulty. Both sites
+are one call to `rbxml.node_kind` away from being able to tell the third state,
+and neither can be given a REFUSAL from this unit: `_tree_node` and
+`_tree_folders` are reached by the tree writers, the vocal sweep and the label
+tree builder, all of which belong to other units, and a new refusal on a write
+path is exactly where this project has already over-corrected once. The cost is
+also asymmetric with the reports one: a report that renders clean over a library
+it could not read is a wrong answer nobody can see, while these two produce a
+write that lands somewhere defensible and an enumeration that is short.
+
+**Closes when:** whichever unit next touches the tree writers gives both
+enumerations the three-valued kind, and decides per site whether an unreadable
+node is a refusal or a reported skip. The two probes above reproduce both in a
+dozen lines against `tests/xml_fixtures.py`.

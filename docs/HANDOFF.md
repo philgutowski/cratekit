@@ -531,3 +531,28 @@ delimiters. The definitions are assignments and are not delimiter lines, while t
 reader honours a delimiter found there exactly as it does anywhere else. An
 unclosed marker plus a citation went green in the one file the pair was told not
 to look at.
+
+**A classifier with two answers reports the state it could not read as whichever
+one it defaults to.** U34's export reader split the playlist tree with "a
+playlist, or else a folder". Driven on its own fixture with the `Type` attributes
+made unreadable, seven playlists became folders, the intake report rendered a
+clean queue over a library it could not read, and the duplicate audit reported a
+pair with every placement gone. THE MISREAD NODES SATISFIED THE GUARD WRITTEN TO
+CATCH THEIR LOSS, because that guard asks whether the intake folder is present and
+the misread nodes are what filled the folder tuple. Give the question its third
+answer, decide it once and positively where the document becomes a value, and
+refuse there; a second check inside each report is one more site to keep in step
+with the first.
+
+**A floor that names files covers the files it names and nothing else.** The same
+unit's coverage list was derived from git and floored by nine typed names, so a
+narrowing of the derivation was refused on nine files and silent on the other
+eight, one of which was the file the same commit created. Check the derivation
+against a SECOND derivation composed of different commands, and keep the typed
+names only for the failure the two share, which here is one merge base.
+
+**A guard that pins a range has to pin the edge that moves.** The assertion
+holding that unit's residual ban list checked that the document still defined 16
+and 25 while the range ran to 26, so the top could be narrowed by one with the
+suite green. Read the endpoints from the thing the constant describes, in both
+directions, rather than writing two numbers next to it.

@@ -385,6 +385,48 @@ def test_a_writer_refuses_to_replace_a_node_of_the_other_type():
     assert bytes(content) == base, "a folder was replaced by a flat playlist"
 
 
+def test_a_node_kind_is_read_positively_and_has_a_third_answer():
+    """Three answers rather than two, and the third is not a default.
+
+    A rule spelled "a playlist, or else a folder" reports a node whose kind it
+    could not read as a folder, and the caller never learns there was a question.
+    Both declared values are recognised positively here and everything else comes
+    back unreadable, including the empty string ``node_at`` substitutes for a
+    ``Type`` attribute that is absent.
+    """
+    assert rbxml.node_kind(rbxml.FOLDER_TYPE) == rbxml.KIND_FOLDER
+    assert rbxml.node_kind(rbxml.PLAYLIST_TYPE) == rbxml.KIND_PLAYLIST
+    for unreadable in ("", " ", "2", "01", "1 ", "folder", "-1"):
+        assert rbxml.node_kind(unreadable) == rbxml.KIND_UNREADABLE, unreadable
+
+
+def test_a_node_whose_kind_is_unreadable_is_never_described_as_a_playlist():
+    """The kind in the sentence a person acts on, which is where a guess costs.
+
+    "A playlist named 'Loud Room' is already there" is a statement of fact when
+    the node says it is a playlist and a guess when the node says nothing this
+    build understands, and the person deletes or renames something either way.
+    The refusal itself is unchanged: the writer still refuses and still writes
+    nothing, because a node whose kind is unknown is even less safe to replace
+    than one of the other declared kind.
+    """
+    base = _xml_doc(
+        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
+        root_children=[
+            '      <NODE Name="Shelf" Type="0" Count="1">',
+            '        <NODE Name="Loud Room" Type="7" Count="0">',
+            "        </NODE>",
+            "      </NODE>",
+        ],
+    )
+    content = bytearray(base)
+    warning = rbxml.insert_intake_playlist(content, "Loud Room", [9])
+    assert warning is not None
+    assert "node of an unreadable kind named 'Loud Room' is already there" in warning
+    assert "playlist named 'Loud Room'" not in warning
+    assert bytes(content) == base, "a node of an unknown kind was written into"
+
+
 # ── whole-folder lifecycle ───────────────────────────────────────────────────
 
 _SUBS = ["Low", "Med", "High", "Candy", "Unsorted", "with vox"]

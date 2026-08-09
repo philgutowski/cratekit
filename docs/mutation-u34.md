@@ -31,6 +31,155 @@ a re-measured count differs from the recorded one it says whether the difference
 is the round's new tests, a change in what the row means, or a spelling nobody
 can recover.
 
+## Round 10
+
+Thirty rows, all of them this round's, every one measured against the WHOLE suite
+rather than against one file. Round nine scoped its counts to
+`tests/modules/test_reports.py` on the grounds that nothing else imported it, and
+that stopped being true here: the classification this round fixes lives in
+`src/cratekit/write/rbxml.py`, which the write suites drive too, so a row scoped
+to one file would have reported a guard as unheld while another file was holding
+it. Two rows die only in `tests/test_rbxml.py`, which a scoped run would have
+recorded as zero.
+
+Every revert is written out verbatim in `docs/mutation/u34-round-10-reverts.py`.
+
+Baseline before the round: 3508 passed, 15 skipped. Baseline after: **3522
+passed, 15 skipped, 3537 collected**, measured twice, before and after an amend
+that removed one clause. The collected count is 3537 on both baselines and on
+every one of the thirty rows, so no row took a file out of collection. Fourteen tests added, none removed, and **every one of the
+fourteen is killed by at least one revert**, checked by taking the union of the
+failing node ids across the whole table.
+
+**FOUR ROWS KILLED ZERO and each one is answered with a composite rather than a
+paragraph.** Three of them attack the UNTRACKED half of the coverage derivation,
+which a clean committed tree gives nothing to find, so they were re-measured with
+one untracked file present in the tree. The fourth is a value in a test's own loop
+that a stronger driver already holds.
+
+### The classification, which is the round's finding
+
+| id | what was reverted | deaths |
+|-|-|-|
+| K01 | `node_kind` answers FOLDER for a kind it could not read, which is the classification that shipped | 7 |
+| K02 | `node_kind` answers PLAYLIST for a kind it could not read, the same defect pointed the other way | 7 |
+| K03 | `node_kind` stops recognising the FOLDER value positively, so a real folder is unreadable | 39, of which 23 are collection-time errors in fixtures that build a tree |
+| K04 | `node_kind` stops recognising the PLAYLIST value positively | 38, 23 of them errors |
+| K30 | `node_kind` treats an ABSENT `Type` as a folder while still refusing every other unknown value, which is the shipped defect narrowed to the one spelling a real document produces | 3 |
+| K05 | `_type_name` calls an unreadable kind a playlist again, so a refusal a person acts on states as fact something the writer could not read | 1 |
+| K06 | `_read_nodes` classifies with an `else` again, so the third state stops existing | 3 |
+| K07 | `read_export` walks past the unreadable nodes without refusing | 3 |
+| K08 | the refusal loses the PATHS it found, so nobody is told which node to look at | 3 |
+| K09 | the refusal is reworded to describe a truncated file instead of an unreadable kind | 3 |
+| K10 | the misread nodes are filed as PLAYLISTS rather than folders in the guard-satisfaction drive, which is the mechanism claim inverted | 2 |
+
+K01 and K02 are the two ways a two valued rule can be spelled and they cost the
+same seven tests, which is the point: the defect is the missing answer rather than
+the direction of the default.
+
+### The mark an instance write has to clear
+
+| id | what was reverted | deaths |
+|-|-|-|
+| K11 | `_record` stops clearing the mark a weak write left, so an unresolved instance write takes back a resolved one and a real configuration write goes unreported | 2 |
+| K12 | `_record` clears the mark on the WEAK path too, so a class body's instance spelling is indistinguishable from an instance scope's own | 2 |
+| K31 | `_record` stops letting a RESOLVED write overwrite an unresolved one, which is the other half of the same rule | 4 |
+
+K11 was the finding: `faint.discard` killed zero for a whole round while being
+load bearing. It kills the two fixtures whose resolved write comes FIRST and not
+the one whose resolved write comes second, which is why all three orders are in
+the suite; the third order is held by K31 and by nothing else.
+
+### A coverage list that can be narrowed on any of its files
+
+| id | what was reverted | deaths |
+|-|-|-|
+| K13 | `_files_this_branch_writes` quietly stops covering a report module, the narrowing the named floor already caught | 3 |
+| K14 | it quietly stops covering the reverts file this very commit adds, which the floor did not name until this round and which was silent | 3 |
+| K16 | the property check is removed from `_covered_files`, leaving the named floor alone, which is what shipped | 1 |
+| K17 | the named floor is removed from `_covered_files`, which killed zero the round before | 1 |
+| K19 | the second route stops reading the COMMITTED diff | 1 |
+| K15 | `_files_this_branch_writes` stops reading the UNTRACKED files | **0** on a clean tree, **3** with one untracked file present |
+| K18 | the second route stops reading the working tree's STATUS | **0**, and see the composite |
+| K20 | the second route stops asking `status` for UNTRACKED files | **0**, and see the composite |
+
+**The composite for K15, K18 and K20**, run with one untracked file created in
+`docs/` and removed in a `finally`, with the tree verified clean afterwards:
+
+    C0  no revert,      untracked file present    0
+    C1  K15 alone,      untracked file present    3
+    C2  K18 alone,      untracked file present    0
+    C3  K20 alone,      untracked file present    0
+    C4  K15 and K18,    untracked file present    0
+    C5  K15 and K20,    untracked file present    0
+
+C1 against C4 and C5 is the whole answer. K15's narrowing is caught by the second
+route's untracked half, and blinding that half at the same time makes the
+narrowing silent again, so what K18 and K20 hold is precisely K15's three deaths.
+Neither can die alone, because a route that names FEWER files than the shipped one
+weakens the floor rather than violating it. **K15's own zero is a fact about the
+tree the measurement was taken on, not about the guard**: the round was committed
+before it was measured, so that the restores could be verified against
+`git show HEAD:<path>`, and a committed tree has no untracked files at all.
+
+### A ban list that can be narrowed at either edge
+
+| id | what was reverted | deaths |
+|-|-|-|
+| K21 | the ban list is narrowed at its TOP edge, dropping the last residual this branch filed, which is the exact narrowing the assertion that shipped could not see | 2 |
+| K22 | the ban list is narrowed at its BOTTOM edge | 2 |
+| K23 | the ban list is WIDENED past what this branch filed, banning another unit's address | 2 |
+| K24 | the coverage half of `_banned_addresses` is removed | 1 |
+| K25 | the other half is removed | 1 |
+| K26 | the endpoints are read from the residual DOCUMENT rather than from the diff, which is the assertion that shipped one level up | 2 |
+
+K26 is worth reading as the row that pins the shape rather than the instance.
+Reading the endpoints from the document is exactly what the assertion this round
+replaced did, and it cannot work: every number the document defines is a number
+some unit filed, so a narrowed range still finds its own endpoint defined.
+
+### The round's own documents
+
+| id | what was reverted | deaths |
+|-|-|-|
+| K28 | the collision passage's OPENING marker removed from this file, so the passage that spells this unit's numbers is no longer exempt and no longer delimited | 2 |
+| K29 | the kind assertion in the rbxml suite stops checking the EMPTY string, which is the value `node_at` substitutes for an absent attribute | **0** |
+
+**The composite for K29** is K30, above. The empty string is driven end to end by
+the reports parametrization and by the rbxml unit loop, and K30 shows what holds
+it: a `node_kind` that accepts an absent attribute as a folder, which is the
+realistic narrow version of the defect, kills three, two of them the end to end
+cases. So K29's zero says the loop ENTRY is redundant with a stronger driver, not
+that the spelling is unheld. The entry stays because the loop is where somebody
+reads what the third kind covers.
+
+### One clause added and removed inside this round, with its measurement
+
+There is no `K27`. It reverted an intersection of the residual headings this
+branch ADDS with the headings the document still CARRIES, and it killed zero of
+3522. The reason is structural rather than a missing fixture: the diff is taken
+against the WORKING TREE, so every added line the pattern can match is a line of
+the file the second set is read from, and the two sets cannot differ on any input.
+The clause was removed rather than shipped with a zero beside it. It is recorded
+here and in the reverts file because a clause added and removed inside one round
+is otherwise invisible at `HEAD~1`, which is the failure this table already has
+two of.
+
+### What was measured against the real tree, not against a fixture
+
+- The classification defect is driven end to end on `library_export()`, the
+  fixture the rest of the reports suite already uses, with its `Type` attributes
+  substituted. The healthy half of every one of those rows asserts the report the
+  real fixture produces: one expired grouping and two stale ones.
+- The duplicate audit's cost was measured on the same document rather than
+  argued: the audit still reports its one group, and every placement on both
+  members is empty, so a person is shown two copies of one recording and nothing
+  about where either one lives.
+- The two write path instances of the same shape were driven against
+  `tests/xml_fixtures.py` before being filed as a residual: an unreadable root
+  folder turns a refusal to infer an ambiguous tree into a successful inference,
+  and an unreadable genre folder drops out of a tree's folder enumeration.
+
 ## Round 9
 
 Thirty nine rows: twenty this round adds, four of round eight's RE-SPELLED because
@@ -808,10 +957,15 @@ is resolvable, but "no conflict surface" was false and is corrected here.
 [[collision-set]]
 **RESIDUAL NUMBERS COLLIDE ACROSS THE MERGE, AND THE SET IS SEVEN.** Measured
 against `git merge-base main HEAD`, `af1d7d2`: this branch adds `R-16` through
-`R-25` to `docs/residual-findings.md`, and `main` independently added `R-14`
-through `R-17` and `R-19` through `R-23`. **Seven** of this branch's numbers name
+`R-27` to `docs/residual-findings.md`, rounds nine and ten adding `R-26` and
+`R-27` after this paragraph was first written, and `main` independently added
+`R-14` through `R-17` and `R-19` through `R-23`. **Seven** of this branch's numbers name
 entirely different findings on `main`: `R-16`, `R-17`, `R-19`, `R-20`, `R-21`,
 `R-22` and `R-23`. `R-18`, `R-24` and `R-25` do not collide today.
+
+The seven is unchanged by the two later additions: `R-26` and `R-27` do not
+collide today, which is exactly the state `R-18`, `R-24` and `R-25` are in and
+exactly as durable.
 
 **Two of the seven were created by the round that wrote the warning.** Round
 seven added `R-22`, `R-23`, `R-24` and `R-25`, and `main` already carried `R-22`

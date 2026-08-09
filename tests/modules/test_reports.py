@@ -463,6 +463,147 @@ def test_the_reader_returns_playlists_and_never_folders(view):
     assert TREE.display not in displays and "Deep House" not in displays
 
 
+#: THE THREE SPELLINGS OF A KIND THIS BUILD CANNOT READ, applied to the export
+#: every other test in this file drives rather than to a document written for the
+#: occasion. ``Type="2"`` is a value the format does not define, the attribute
+#: removed is the one a truncated or hand-edited export produces, and ``Type=""``
+#: is the attribute present and saying nothing. All three reach the classifier as
+#: something that is neither declared type, and no fixture in this repository
+#: built one of them before, which is why nothing could see the defect.
+#:
+#: THE SUBSTITUTION IS APPLIED TO THE PLAYLISTS, not to the folders, because that
+#: is the direction with the cost: a folder misread as a folder changes nothing,
+#: and a playlist misread as a folder takes its groupings and its memberships out
+#: of the report while leaving its path in the tuple the guard consults.
+UNREADABLE_KINDS = [
+    ("a Type value the format does not define", b'Type="1"', b'Type="2"'),
+    ("no Type attribute at all", b' Type="1"', b""),
+    ("a Type attribute whose value is empty", b'Type="1"', b'Type=""'),
+]
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [(spelling, replacement) for _, spelling, replacement in UNREADABLE_KINDS],
+    ids=[shape for shape, _, _ in UNREADABLE_KINDS],
+)
+def test_a_node_whose_kind_cannot_be_read_refuses_rather_than_reading_as_a_folder(
+    old, new, cfg
+):
+    """The two answers side by side, which is the whole finding.
+
+    The same tree twice: once as it ships, where the intake report names one
+    expired grouping and two stale ones, and once with the kinds unreadable,
+    where the classification that shipped answered FOLDER to every node, found no
+    playlists at all, and rendered a clean queue over a library it could not read.
+
+    The healthy half is asserted here rather than left to the other tests
+    because a refusal that also refuses the correct document is worthless (P7),
+    and because the pair is what makes the cost legible: the difference between
+    the two runs is one attribute value, and the report's answer went from "act
+    on these three" to "there is nothing to do".
+    """
+    healthy = export.read_export(library_export())
+    report = aging.intake_aging(
+        healthy, intake=INTAKE, thresholds=aging.thresholds_from(cfg), today=TODAY
+    )
+    assert (len(report.expired), len(report.stale)) == (1, 2)
+
+    content = library_export().replace(old, new)
+    assert content != library_export(), "the substitution changed nothing"
+    with pytest.raises(CratekitError) as raised:
+        export.read_export(content)
+    assert raised.value.cause.reason == "library-export-unusable"
+    assert "kind it does not declare" in raised.value.cause.message
+    assert f"{INTAKE.display} / phil_07_01_2026" in raised.value.cause.detail["nodes"]
+
+
+def _paths_the_shipped_classification_called_folders(content: bytes) -> tuple:
+    """Every node a "playlist, or else a folder" rule would have filed as a folder.
+
+    Derived from the real document rather than typed, so the view below holds
+    exactly what the classification that shipped would have put in it.
+    """
+    root = rbxml.root_node(content)
+    assert root is not None
+    return tuple(
+        path
+        for path, node in rbxml.walk_nodes(content, root)
+        if rbxml.node_kind(node.node_type) != rbxml.KIND_PLAYLIST
+    )
+
+
+@pytest.mark.parametrize(
+    "substitutions, intake_kind",
+    [
+        ([(b'Type="1"', b'Type="2"')], rbxml.KIND_FOLDER),
+        (
+            [(b'Type="1"', b'Type="2"'), (b'Type="0"', b'Type="2"')],
+            rbxml.KIND_UNREADABLE,
+        ),
+    ],
+    ids=["only the playlists are unreadable", "every node is unreadable"],
+)
+def test_the_misread_nodes_satisfy_the_very_guard_written_to_catch_their_loss(
+    substitutions, intake_kind
+):
+    """Why one more check inside the aging report could not have closed this.
+
+    ``has_folder`` exists so that "the intake flow is not in this tree" and "it is
+    here and it is empty" cannot render identically. It is satisfied on both
+    routes, and neither one is a folder the report can trust:
+
+    * with only the playlists unreadable, the intake folder is still a real
+      folder, so the guard answers yes on a structure that is genuinely there and
+      every grouping under it has silently stopped existing;
+    * with every node unreadable, the intake folder is misread too, and the path
+      it pushes into ``folders`` as a misread node is what satisfies the guard.
+
+    Driven rather than argued, through the still-live aging code, which renders
+    both as a clear queue and refuses nothing. That is the third state, and no
+    guard downstream of the classification can tell it from the second.
+    """
+    content = library_export()
+    for old, new in substitutions:
+        assert old in content, "the substitution matched nothing"
+        content = content.replace(old, new)
+
+    root = rbxml.root_node(content)
+    assert root is not None
+    kinds = {
+        path[-1]: rbxml.node_kind(node.node_type)
+        for path, node in rbxml.walk_nodes(content, root)
+    }
+    assert kinds[INTAKE.display] == intake_kind
+    assert kinds["phil_07_01_2026"] == rbxml.KIND_UNREADABLE
+
+    as_folders = export.LibraryView(
+        entries=(),
+        playlists=(),
+        folders=_paths_the_shipped_classification_called_folders(content),
+    )
+    assert len(as_folders.folders) == 12, "every node was filed as a folder"
+    assert as_folders.has_folder(INTAKE.display)
+    assert aging.intake_groupings(as_folders, intake=INTAKE, today=TODAY) == ()
+
+
+def test_every_node_in_a_healthy_export_declares_a_kind_the_reader_knows():
+    """The other side of the same classification, so it cannot be vacuous.
+
+    A three valued kind whose third value is never reached on a real document is
+    worth nothing, and a third value the healthy document reaches would refuse
+    every export this product writes. Both halves are asserted against the tree
+    the writers actually emit.
+    """
+    content = library_export()
+    root = rbxml.root_node(content)
+    assert root is not None
+    kinds = {
+        rbxml.node_kind(node.node_type) for _, node in rbxml.walk_nodes(content, root)
+    }
+    assert kinds == {rbxml.KIND_FOLDER, rbxml.KIND_PLAYLIST}
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Scenario 3: duplicates across two folders, not only within one playlist
 # ═══════════════════════════════════════════════════════════════════════════
@@ -4091,12 +4232,9 @@ def test_the_guard_literals_have_no_element_written_twice(name):
     assert not repeated, f"written twice and collapsed at parse time: {repeated}"
 
 
-#: Where a residual finding is DEFINED, and the only file allowed to spell one of
-#: this unit's numbers.
-RESIDUAL_FINDINGS = REPO_ROOT / "docs" / "residual-findings.md"
-
-#: The name of the file above, as git spells it, so the derivation below can take
-#: it out of its own coverage without spelling the path twice.
+#: Where a residual finding is DEFINED, as git spells it, so it is one string for
+#: the derivation that must not police it and for the diff that names what this
+#: branch added to it.
 RESIDUAL_FINDINGS_NAME = "docs/residual-findings.md"
 
 #: The files this unit is KNOWN to write. A FLOOR rather than the list, because a
@@ -4112,21 +4250,44 @@ RESIDUAL_FINDINGS_NAME = "docs/residual-findings.md"
 #: smaller set than it covers is this repository's fourth recurring defect, and
 #: the answer to it is a check rather than a more careful reading.
 #:
-#: What the floor is FOR, now that the list is derived: a derivation can be
-#: narrowed silently. Dropping a report module out of `_files_this_branch_writes`
-#: leaves the suite green unless something names it, so the floor is what the
-#: narrowing has to get past.
+#: What the floor is FOR, now that the list is derived AND checked against a
+#: second derivation: the two routes below share one merge base, so a base that
+#: resolved to the wrong commit would empty BOTH of them and they would agree
+#: about almost nothing. The floor is what that shared failure has to get past. It
+#: is NOT what a narrowing of one derivation has to get past, which is what it was
+#: and which made it a list that covered only what it enumerated: eight of the
+#: eighteen files could be dropped silently, including the reverts file the same
+#: commit created.
 CITED_FLOOR = (
     "tests/modules/test_reports.py",
+    "tests/test_rbxml.py",
     "src/cratekit/modules/reports/__init__.py",
     "src/cratekit/modules/reports/aging.py",
     "src/cratekit/modules/reports/duplicates.py",
     "src/cratekit/modules/reports/export.py",
+    "src/cratekit/write/rbxml.py",
     "docs/mutation-u34.md",
     "docs/mutation/u34-round-7-reverts.py",
     "docs/mutation/u34-round-8-reverts.py",
+    "docs/mutation/u34-round-9-reverts.py",
+    "docs/mutation/u34-round-10-reverts.py",
     "docs/HANDOFF.md",
 )
+
+
+def _git(*argv: str) -> str:
+    """One git read, from the repository root, for the derivations below."""
+    return subprocess.run(
+        ["git", *argv], cwd=REPO_ROOT, capture_output=True, text=True, check=True
+    ).stdout
+
+
+def _merge_base() -> str:
+    return _git("merge-base", "origin/main", "HEAD").strip()
+
+
+def _existing(named: set[str]) -> tuple[str, ...]:
+    return tuple(sorted(one for one in named if (REPO_ROOT / one).is_file()))
 
 
 def _files_this_branch_writes() -> tuple[str, ...]:
@@ -4143,36 +4304,135 @@ def _files_this_branch_writes() -> tuple[str, ...]:
     added for the same reason: a mutation row that adds a document should be
     covered by the guard the moment it exists.
     """
-    base = subprocess.run(
-        ["git", "merge-base", "origin/main", "HEAD"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
     named: set[str] = set()
-    for argv in (["diff", "--name-only", base], ["ls-files", "--others", "--exclude-standard"]):
-        done = subprocess.run(
-            ["git", *argv], cwd=REPO_ROOT, capture_output=True, text=True, check=True
-        )
-        named |= set(done.stdout.split())
-    return tuple(sorted(one for one in named if (REPO_ROOT / one).is_file()))
+    for argv in (
+        ["diff", "--name-only", _merge_base()],
+        ["ls-files", "--others", "--exclude-standard"],
+    ):
+        named |= set(_git(*argv).split())
+    return _existing(named)
+
+
+def _files_this_branch_writes_by_a_second_route() -> tuple[str, ...]:
+    """The same question, asked with different plumbing, so a narrowing has to
+    happen twice to stay silent.
+
+    A DERIVATION CAN BE NARROWED, which is what the named floor above could not
+    see: it only ever caught a narrowing that removed a file somebody had thought
+    to name, so eight of this branch's eighteen files could be dropped out of the
+    coverage with the suite green, and one of them was the reverts file the same
+    commit added. A floor that covers what it enumerates is not a property, it is
+    the identity of the files it lists.
+
+    The two routes are composed differently on purpose. The one above diffs the
+    WORKING TREE against the base and asks `ls-files` for the untracked; this one
+    diffs the base against the COMMIT and asks `status` for everything the working
+    tree has done since, which is a different command reading a different index
+    and reporting renames with both paths. A filter added to either one shows up
+    as a file the other still names.
+
+    It is a FLOOR and not an equality. The two answers can legitimately differ by
+    a file committed on this branch and then reverted in the working tree, which
+    this route reports and the other does not, and coverage that is WIDER than
+    required is not a defect. Narrower is.
+    """
+    named = set(_git("diff", "--name-only", _merge_base(), "HEAD").split())
+    entries = [one for one in _git("status", "--porcelain", "-uall", "-z").split("\0") if one]
+    index = 0
+    while index < len(entries):
+        status, path = entries[index][:2], entries[index][3:]
+        named.add(path)
+        index += 1
+        if status[0] in "RC" and index < len(entries):
+            # In -z mode the path a rename or copy CAME FROM is its own field.
+            named.add(entries[index])
+            index += 1
+    return _existing(named)
+
+
+def _covered_files(written: tuple[str, ...], *, expected: tuple[str, ...]) -> tuple[str, ...]:
+    """The derived list, checked against what it must cover, minus one file.
+
+    TWO CHECKS, and they answer different failures. The first is the property:
+    every file the second route names is covered, so narrowing the derivation by
+    any one of the eighteen is refused rather than by the nine somebody typed. The
+    second is the floor, which is what remains when BOTH routes narrow together,
+    since both rest on one merge base.
+
+    Both are arguments rather than reads, so each one can be driven with a
+    narrowing that reaches it and neither can be removed quietly.
+    """
+    missing = sorted(set(expected) - set(written))
+    assert missing == [], f"the derivation stopped covering files this unit writes: {missing}"
+    unnamed = sorted(set(CITED_FLOOR) - set(written))
+    assert unnamed == [], f"both derivations stopped covering named files: {unnamed}"
+    return tuple(one for one in written if one != RESIDUAL_FINDINGS_NAME)
 
 
 def _citing_files() -> tuple[str, ...]:
     """The derived list, minus the one file whose subject IS the numbers."""
-    written = _files_this_branch_writes()
-    missing = sorted(set(CITED_FLOOR) - set(written))
-    assert missing == [], f"the derivation stopped covering files this unit writes: {missing}"
-    return tuple(one for one in written if one != RESIDUAL_FINDINGS_NAME)
+    return _covered_files(
+        _files_this_branch_writes(),
+        expected=_files_this_branch_writes_by_a_second_route(),
+    )
+
 
 #: The residual numbers THIS BRANCH introduced. Every one of them names a
 #: different finding on `main`, or will as soon as `main` reaches it, because both
 #: sides append to one file from the same counter. That is what makes a number an
 #: unstable address and a title a stable one.
-UNIT_RESIDUALS = tuple(f"R-{number}" for number in range(16, 27))
+#:
+#: A RANGE CAN BE NARROWED AT EITHER EDGE, and the assertion written to prevent
+#: exactly that named the wrong number: it checked that the residual document
+#: still defined 16 and 25 while the range ran to 26, so the ban list could stop
+#: covering the last residual this branch filed and the suite stayed green. The
+#: endpoints are checked against the residuals this branch ADDS to the document
+#: now, read out of the diff, so both edges and both directions are pinned.
+UNIT_RESIDUALS = tuple(f"R-{number}" for number in range(16, 28))
 
 _CITATION = re.compile(r"\bR-(\d+)\b")
+
+#: A residual HEADING this branch adds, which is what DEFINES a number rather than
+#: merely mentioning one.
+_ADDED_RESIDUAL = re.compile(r"^\+## R-(\d+)\.", re.MULTILINE)
+
+
+def _residual_numbers_this_branch_defines() -> frozenset[str]:
+    """Every residual heading this branch adds to the shared document.
+
+    The diff is read rather than the file, because the file holds every unit's
+    residuals and the question here is which ones are THIS branch's to keep
+    citable by title. A heading somebody else wrote is somebody else's address,
+    and banning it would be a guard the next author deletes.
+
+    THE DIFF IS AGAINST THE WORKING TREE, which is what makes a second check
+    against the document unnecessary rather than merely redundant. An intersection
+    with the headings the file still carries was written here and then removed:
+    every added line in a working tree diff IS a line of the working tree, so the
+    two sets cannot differ, and the clause measured zero for a reason that says
+    nothing about coverage. Its revert is in this round's table with that count,
+    because a clause added and removed inside one round is otherwise invisible to
+    review.
+    """
+    return frozenset(
+        _ADDED_RESIDUAL.findall(_git("diff", _merge_base(), "--", RESIDUAL_FINDINGS_NAME))
+    )
+
+
+def _banned_addresses(numbers: tuple[str, ...], *, defined: frozenset[str]) -> tuple[str, ...]:
+    """The ban list, held to the residuals this branch actually defines.
+
+    Both directions, because a range is wrong in two ways. Too small and a
+    residual this branch filed can be cited by number with nothing to catch it;
+    too large and it bans an address belonging to another unit, which is a guard
+    somebody deletes rather than a guard that holds.
+    """
+    listed = {one.removeprefix("R-") for one in numbers}
+    uncovered = sorted(defined - listed, key=int)
+    assert uncovered == [], f"the ban list stopped covering this branch's residuals: {uncovered}"
+    invented = sorted(listed - defined, key=int)
+    assert invented == [], f"the ban list names residuals this branch never filed: {invented}"
+    return numbers
 
 #: The ONE passage whose subject is the numbers themselves, delimited rather than
 #: guessed at. A statement that says which numbers collide has to spell them, and
@@ -4213,17 +4473,16 @@ def test_this_units_residuals_are_cited_by_title_and_never_by_number():
     somebody else's address to keep stable, and a guard that failed on it would be
     a guard somebody deletes.
 
-    The floor of the range is checked against the residual file itself, so the
-    constant cannot quietly stop describing what this branch added.
+    Both edges of the range are checked against the residual headings this branch
+    ADDS, so the constant cannot quietly stop describing what this branch filed.
     """
-    defined = set(_CITATION.findall(RESIDUAL_FINDINGS.read_text()))
-    assert {"16", "25"} <= defined, "the residual file no longer defines this unit's range"
+    banned = set(_banned_addresses(UNIT_RESIDUALS, defined=_residual_numbers_this_branch_defines()))
     # THE COVERAGE IS DERIVED AND THEN ASSERTED, not left to be inferred from a
     # typed list. The claim this replaces was true of source, docstrings and tests
     # and false of `docs/`, and the list that replaced THAT was true of nine files
     # and silent about eight more the same branch writes. `_citing_files` reads
-    # git, so a file this branch adds is covered the moment it exists, and
-    # `CITED_FLOOR` is what a silent narrowing of the derivation has to get past.
+    # git twice by two routes, so a file this branch adds is covered the moment it
+    # exists and a narrowing of either derivation is refused by the other.
     covered = _citing_files()
     assert RESIDUAL_FINDINGS_NAME not in covered, "the file that DEFINES them is not policed"
     offenders: list[str] = []
@@ -4231,9 +4490,63 @@ def test_this_units_residuals_are_cited_by_title_and_never_by_number():
         path = REPO_ROOT / name
         for number, line in _citing_lines(path.read_text()):
             hits = {f"R-{one}" for one in _CITATION.findall(line)}
-            if hits & set(UNIT_RESIDUALS):
+            if hits & banned:
                 offenders.append(f"{name}:{number}: {line.strip()}")
     assert offenders == [], offenders
+
+
+def test_a_coverage_list_narrowed_by_one_file_is_refused_whichever_file_it_is():
+    """The property, over the derived list rather than over a typed subset.
+
+    The check this replaces was a floor of nine names, so eight of the eighteen
+    files this branch writes could be dropped out of the coverage in silence,
+    including the reverts file the same commit created. Every file the second
+    route names is dropped here, one at a time, and every one of them has to be
+    refused. A floor cannot pass this: it would only refuse the nine.
+    """
+    written = _files_this_branch_writes()
+    expected = _files_this_branch_writes_by_a_second_route()
+    assert set(expected) <= set(written), sorted(set(expected) - set(written))
+    assert len(expected) > len(CITED_FLOOR), "the two would be indistinguishable"
+    for dropped in expected:
+        narrowed = tuple(one for one in written if one != dropped)
+        with pytest.raises(AssertionError):
+            _covered_files(narrowed, expected=expected)
+
+
+def test_the_named_floor_still_bites_when_both_derivations_narrow_together():
+    """What the floor is for now, driven, because both routes share one base.
+
+    A merge base that resolved to the wrong commit narrows both derivations at
+    once, and the property above compares them to each other, so it would agree
+    with itself about a coverage list holding almost nothing. Each named file is
+    dropped from BOTH sides here and the floor has to refuse anyway.
+    """
+    written = _files_this_branch_writes()
+    for named in CITED_FLOOR:
+        narrowed = tuple(one for one in written if one != named)
+        with pytest.raises(AssertionError):
+            _covered_files(narrowed, expected=narrowed)
+
+
+def test_the_ban_list_is_narrowed_at_neither_edge_and_names_nothing_extra():
+    """The endpoints, pinned to the document rather than to a number typed once.
+
+    The assertion this replaces checked that the residual document still defined
+    16 and 25 while the range ran to 26. It could not see the edge it was written
+    to hold: narrowing the range by one dropped the last residual this branch
+    filed, and the document still defined 25, so the suite stayed green and the
+    ban list stopped covering an address a citation could then use.
+    """
+    defined = _residual_numbers_this_branch_defines()
+    assert defined, "no residual heading on this branch is a diff this reads"
+    assert _banned_addresses(UNIT_RESIDUALS, defined=defined) == UNIT_RESIDUALS
+    for narrowed in (UNIT_RESIDUALS[1:], UNIT_RESIDUALS[:-1]):
+        with pytest.raises(AssertionError):
+            _banned_addresses(narrowed, defined=defined)
+    for widened in ((*UNIT_RESIDUALS, "R-99"), ("R-1", *UNIT_RESIDUALS)):
+        with pytest.raises(AssertionError):
+            _banned_addresses(widened, defined=defined)
 
 
 def test_the_collision_passage_is_the_only_exemption_and_it_is_delimited():
@@ -5998,6 +6311,74 @@ def test_the_faint_tier_does_not_depend_on_which_scope_the_walk_reached_first():
     that no rule should rest on.
     """
     assert filesystem_mutations(AGING_SOURCE + CLASS_BODY_WRITTEN_AFTER_THE_CONSTRUCTOR) == []
+
+
+#: TWO INSTANCE WRITES TO ONE ATTRIBUTE, one resolved and one not, under a class
+#: body that binds the same name. ``_record``'s rule is that a key which RESOLVED
+#: is never taken back by one that did not, and the class body's mark is what
+#: would let it happen anyway: a mark admits an unresolved write, so the write
+#: that resolved the key has to clear it on the way out.
+#:
+#: The write is real. On the path where ``forget`` has not been called,
+#: ``self.mod`` is the module and ``go`` writes the configuration file, which is
+#: the same "reachable on one path is reachable" rule the rest of this table
+#: rests on. Losing it is silent: the guard reports nothing and the file is
+#: written.
+#:
+#: BOTH ORDERS, because the walk's order is an implementation detail. Only one of
+#: the two is the order that costs something, and a fixture written in the other
+#: order alone would report the guard as covered while the hole stayed open.
+A_RESOLVED_INSTANCE_WRITE_BEFORE_AN_UNRESOLVED_ONE = (
+    "\n\nclass Keeper:\n    mod = config\n\n"
+    "    def __init__(self, raw):\n        self.mod = config\n\n"
+    "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
+    "    def go(self, cfg):\n        return self.mod.save(cfg)\n"
+)
+
+A_RESOLVED_INSTANCE_WRITE_AFTER_AN_UNRESOLVED_ONE = (
+    "\n\nclass Keeper:\n    mod = config\n\n"
+    "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
+    "    def __init__(self, raw):\n        self.mod = config\n\n"
+    "    def go(self, cfg):\n        return self.mod.save(cfg)\n"
+)
+
+#: The same pair with the class body binding something that is NOT the module,
+#: which is the shape that separates the mark from the value under it. ``mod =
+#: None`` still takes the attribute for the class, so the mark is still written,
+#: and the resolved instance write is still the strongest fact about the key.
+A_CLASS_BODY_THAT_BOUND_NOTHING_UNDER_TWO_INSTANCE_WRITES = (
+    "\n\nclass Keeper:\n    mod = None\n\n"
+    "    def __init__(self, raw):\n        self.mod = config\n\n"
+    "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
+    "    def go(self, cfg):\n        return self.mod.save(cfg)\n"
+)
+
+
+@pytest.mark.parametrize(
+    "snippet",
+    [
+        A_RESOLVED_INSTANCE_WRITE_BEFORE_AN_UNRESOLVED_ONE,
+        A_RESOLVED_INSTANCE_WRITE_AFTER_AN_UNRESOLVED_ONE,
+        A_CLASS_BODY_THAT_BOUND_NOTHING_UNDER_TWO_INSTANCE_WRITES,
+    ],
+    ids=["resolved first", "resolved second", "the class body bound nothing"],
+)
+def test_an_unresolved_instance_write_never_takes_back_a_resolved_one(snippet):
+    """The half of ``_record`` that clears the mark, which nothing drove.
+
+    The rule is stated in both directions and only one of them had a fixture. A
+    key that did not resolve is admitted while the key is marked, so a class body
+    that marks ``self.mod`` and a constructor that resolves it leave a key that is
+    resolved and still marked, and the next unresolved write to it wins. The
+    module binding is then gone from the table, ``self.mod.save(cfg)`` resolves to
+    nothing, and a real configuration write goes unreported.
+
+    Dropping ``faint.discard`` from ``_record`` makes the first and third of these
+    quiet. The second stays green on its own, which is why it is here: it is the
+    order in which the hole costs nothing, and it was the only order this suite
+    had.
+    """
+    assert filesystem_mutations(AGING_SOURCE + snippet)
 
 
 #: ``del`` PUTS THE CLASS ATTRIBUTE BACK, which is a real write and was quiet.
