@@ -167,6 +167,18 @@ _SPACING = re.compile(r"\s+")
 #: matched on its own anyway.
 _BRACKETED = re.compile(r"\(([^()]*)\)|\[([^\[\]]*)\]")
 
+#: Everything that is not a letter or a digit, for :func:`fold_code`. ``[\W_]``
+#: rather than ``[^0-9a-z]`` so that a non-ASCII alphanumeric survives as itself:
+#: dropping it would merge two values that are genuinely different, and merging
+#: two codes is the over-suppression direction.
+_NOT_A_CODE_CHARACTER = re.compile(r"[\W_]+", re.UNICODE)
+
+#: The bracket characters, for the value that is about to be put INSIDE a bracket.
+#: A delimiter appearing in its own content is not a delimiter, so they are
+#: replaced with a space rather than deleted, and the whitespace collapse behind
+#: them closes the gap.
+_BRACKET_CHARACTERS = re.compile(r"[()\[\]]+")
+
 #: The words that make a value a VERSION DESIGNATION rather than a note about the
 #: track. A closed, explicit list rather than a shape test, because "does this
 #: read as a mix name" has no syntax to test: ``Extended Mix`` and ``Anjunadeep``
@@ -315,13 +327,21 @@ def already_spelled_as_a_remix(value: str) -> bool:
     that asymmetry the right rule is the one that never errs on an artist name,
     whatever it costs on designations.
 
-    **WHY A TEST AT ALL RATHER THAN APPENDING UNCONDITIONALLY.** The two differ
-    on exactly the values whose last word is already ``Remix``, measured: two of
-    the 65. There the unconditional rule writes ``(Michael Woods Remix Remix)``
-    and this writes ``(Michael Woods Remix)``, which is what a provider spells
-    when Michael Woods is the remixer. So this dominates the unconditional rule
-    pointwise, is never worse, and needs no claim about how often anything
-    happens.
+    **WHY A TEST AT ALL RATHER THAN APPENDING UNCONDITIONALLY.** The two rules
+    differ on exactly the values whose last word is already ``Remix`` and agree
+    everywhere else, which is structural rather than sampled: the test IS "is the
+    last word ``Remix``", so where it answers no both rules append the same word to
+    the same value. Where it answers yes the unconditional rule writes ``(Michael
+    Woods Remix Remix)`` and this writes ``(Michael Woods Remix)``, which is what a
+    provider spells when Michael Woods is the remixer. So this dominates the
+    unconditional rule POINTWISE, is never worse on any value whatsoever, and
+    needs no claim about how often anything happens.
+
+    **A COUNT OF THE DIFFERING VALUES IS NOT EVIDENCE FOR THAT AND IS NOT GIVEN.**
+    An earlier draft cited "two of the 65", which is simply how many ``Remix``
+    tailed values the set happens to contain, so it measures the set rather than
+    the rule and would move if a value were added. The pointwise claim above holds
+    at any size of set, and it is the claim.
 
     **AND IT CANNOT MANUFACTURE THE CONVERGENCE THE VOCABULARY RULE DID.** The
     verbatim branch fires only on a value that already ENDS in ``Remix``. A
@@ -376,8 +396,55 @@ def fold(value: str) -> str:
 
     It is NOT a display transformation and nothing renders its output. A person
     is shown the payload, which keeps the original spelling.
+
+    **IT IS FOR FREE TEXT AND IT IS NOT THE FOLDING FOR A STRUCTURED CODE.** It
+    keeps punctuation, because punctuation is part of what a title says, and a
+    caller comparing two spellings of an identifier whose punctuation is
+    presentational wants :func:`fold_code` instead.
     """
     return _SPACING.sub(" ", unicodedata.normalize("NFC", str(value)).casefold()).strip()
+
+
+def fold_code(value: str) -> str:
+    """One spelling of a STRUCTURED IDENTIFIER, for comparison only.
+
+    **A FREE-TEXT FOLD READ ONE ISO 3901 CODE AS TWO RECORDINGS, AND THAT WEDGED
+    THE QUEUE.** :func:`fold` is NFC, then case, then whitespace runs, and it
+    keeps punctuation. An ISRC's punctuation is presentational: ISO 3901 defines
+    the code as twelve alphanumeric characters and the hyphenated
+    ``GB-AYA-15-00001`` is the DISPLAY FORM of the same code ``GBAYA1500001``.
+    Compared under the free-text fold those are two strings, so two rows of ONE
+    recording read as two recordings, ``stores.ambiguous_versions`` returned both
+    content ids, and ``candidates.Category.AMBIGUOUS_VERSION`` is not in
+    ``candidates.HANDLED``, so the watermark held at those rows forever with the
+    pass never offering them and therefore never able to clear them. Nothing was
+    deleted and nothing was suppressed, so the direction was safe; the cost was
+    availability, which is the same "one row wedges the whole queue" failure
+    ``run._settle_a_confirmed_absence`` exists to prevent.
+
+    THREE DIFFERENCES FROM :func:`fold`, EACH FOR A MEASURED SPELLING.
+
+    * Non-alphanumerics are REMOVED rather than collapsed, so the display form's
+      hyphens, a typed space, and a non-breaking space all disappear instead of
+      surviving as a separator the raw code does not have.
+    * NFKC rather than NFC, so a fullwidth ``ＧBAYA1500001`` pasted out of a web
+      page is the same code as its ASCII spelling. NFC leaves fullwidth forms
+      alone and read that as a second recording.
+    * Nothing is collapsed to empty and then compared as equal by accident: a
+      value that folds to nothing is an ABSENT code to every caller here, and an
+      absent code is read as agreement rather than as a collision.
+
+    **WHAT IT DELIBERATELY DOES NOT DO IS TRANSLITERATE.** Characters outside
+    ASCII that ARE alphanumeric survive as themselves, so a Cyrillic ``А`` typed
+    for a Latin ``A`` stays a different code. Dropping it would silently merge two
+    values that are genuinely different, and merging is the OVER-suppression
+    direction: the collision guard would stop firing and a deletion would take out
+    a version the person never deleted. Removing punctuation cannot do that,
+    because no two well-formed codes differ only in punctuation.
+    """
+    return _NOT_A_CODE_CHARACTER.sub(
+        "", unicodedata.normalize("NFKC", str(value)).casefold()
+    )
 
 
 def _already_carries(title: str, folded_version: str) -> bool:
@@ -514,6 +581,15 @@ def remixer_title(title: str, remixer: str) -> str:
     return version_title(title, spelled)
 
 
+def _as_a_bracketed_value(version: str) -> str:
+    """A column's value as it may appear inside a bracket a provider would spell.
+
+    Surrounding whitespace goes, interior whitespace runs collapse, and bracket
+    characters become spaces. See :func:`version_title` for what each one closes.
+    """
+    return _SPACING.sub(" ", _BRACKET_CHARACTERS.sub(" ", str(version))).strip()
+
+
 def version_title(title: str, version: str) -> str:
     """The title with the version in it, for a producer that holds the two apart.
 
@@ -540,11 +616,30 @@ def version_title(title: str, version: str) -> str:
     consulter never calls this, it simply passes the title it was handed, and the
     two meet only if the composed string is spelled the way titles are spelled in
     the wild.
+
+    **THE VALUE IS TIDIED BEFORE IT GOES INSIDE THE BRACKET, AND UNTIL IT WAS,
+    THE COLUMN'S OWN TYPING SURVIVED INTO THE IDENTITY.** :func:`fold` strips the
+    ends of the WHOLE composed string and the closing bracket sits outside the
+    value, so ``'Michael Woods Remix   '`` composed ``strobe (michael woods
+    remix )`` and ``' Michael Woods Remix'`` composed ``strobe ( michael woods
+    remix)``. Both match no provider spelling and neither matches the identity the
+    same value produces without the spaces, so one trailing space in one rekordbox
+    column is a version that cannot be suppressed and, worse, a second identity
+    for a version that already has one. A value carrying its own brackets was the
+    same defect with a different character: ``'Michael Woods (Remix)'`` composed
+    ``Strobe (Michael Woods (Remix))``, and ``_BRACKETED`` is non-nesting by
+    design, so nothing reads that as a version group either.
+
+    Tidying is the ends and the brackets and NOTHING ELSE. The interior is the
+    person's own text and this module does not get to rewrite it; the whitespace
+    collapse that runs with it is the same collapse :func:`fold` already applies
+    one step later, so it changes no identity that was not already broken.
     """
-    folded_version = fold(version)
+    tidied = _as_a_bracketed_value(version)
+    folded_version = fold(tidied)
     if not folded_version or _already_carries(title, folded_version):
         return title
-    return f"{title} ({version})" if title else version
+    return f"{title} ({tidied})" if title else tidied
 
 
 def version_identity(*, artist: str, title: str) -> dict[str, str]:
@@ -617,8 +712,23 @@ def removed_file_identity(*, content_id: str, recorded: str) -> dict[str, str]:
     is a decision nobody can revoke. Stripping is only for the TEST: what is
     returned is the value as given, because the identifier belongs to the
     collection row and this module does not get to rewrite it.
+
+    **AND ``False`` IS THE SAME DEFECT A THIRD TIME.** ``str(False)`` is
+    ``'False'``, which is truthy and strips to itself, so a boolean in the
+    identifier column addressed the review item, the decline and the playlist
+    membership test as the literal string ``'False'``, exactly as ``None``
+    addressed them as ``'None'``. It is tested for by TYPE rather than by
+    truthiness, because ``not False`` is true and ``not True`` is not, so a
+    falsiness test would refuse one boolean and accept the other. ``0`` and
+    ``'0'`` are unaffected and stay addressable, which is why the type test is
+    ``isinstance`` and not a comparison: ``0 == False`` in Python and comparing
+    would take the legitimate numeric identifier down with the boolean.
+    ``library._sequence_of`` already refuses booleans in its own column for the
+    same reason. Reachability through the real collection reader is near zero,
+    since ``_text`` returns strings; this is the guard being true rather than
+    nearly true.
     """
-    if content_id is None or not str(content_id).strip():
+    if content_id is None or isinstance(content_id, bool) or not str(content_id).strip():
         raise refuse(
             "review-selection-invalid",
             "a removed row has to be identified by its collection row; without "

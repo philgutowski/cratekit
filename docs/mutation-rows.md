@@ -842,3 +842,88 @@ Every other confirm row above uses the round six definition unchanged.
 
     -    spelled = remixer if already_spelled_as_a_remix(remixer) else f"{remixer} {REMIX_DESIGNATION}"
     +    spelled = f"{remixer} {REMIX_DESIGNATION}"
+
+## Round 8, U24 track deletion and tombstones
+
+**Baseline: 3458 passed, 15 skipped, 3473 collected.** Measured on branch
+`unit/u24-track-deletion-and-tombstones` with round eight applied to the working
+tree, 2026-08-09, whole suite per row. Every number in this section was
+measured. None is derived and none is carried over from an earlier round.
+
+**What round eight is.** Round seven's ISRC discriminator folded the code with
+`tombstone.fold`, the FREE TEXT folding, which keeps punctuation on purpose.
+ISO 3901 defines an ISRC as twelve alphanumeric characters, so the display form
+`GB-AYA-15-00001` and the raw `GBAYA1500001` are one code and compared under
+`fold` they are two strings. One recording filed twice therefore reported
+AMBIGUOUS_VERSION, and since `candidates.Category.AMBIGUOUS_VERSION` is not in
+`candidates.HANDLED`, the watermark never passes over the row, the pass never
+offers it, and nothing can ever clear it. Nothing is deleted and nothing is
+suppressed, so the direction is safe; the cost is availability and it is
+permanent. Round eight adds `tombstone.fold_code` and wires it in, and carries
+two collateral fixes at the same site: a version value is tidied before it is
+composed into a bracket, and a boolean is refused as a collection identifier.
+
+**How the rows were run, and how this DIFFERS from round seven.** Round seven
+restored each file from `git show HEAD:<path>`, which was exact because its fix
+commit was made BEFORE any row was applied. **That method is not available to
+this round and was not used.** Round eight was measured while UNCOMMITTED, so
+`HEAD` is the round seven tree and restoring from it would have silently
+discarded the whole round. Restoration is instead the file TEXT snapshotted in
+memory once, before the first mutation, and the driver asserts the restored text
+equals that snapshot after every row and re-runs the whole suite at the end to
+confirm the baseline reproduces. The driver never invokes git for any purpose.
+Rows ran synchronously in the foreground under `PYTHONDONTWRITEBYTECODE=1`.
+
+**AN INSTRUMENT DEFECT WAS CAUGHT AND THE FIRST RESULT SET WAS RE-MEASURED
+RATHER THAN CORRECTED.** The first driver took its collected count from
+`pytest --co -q`. `pyproject.toml` already sets `addopts = "-q"`, so that became
+`-qq`, which suppresses the node listing entirely, and every row reported
+`collected=0` including the baseline. A column whose value is a constant cannot
+detect the thing it exists to detect. This is the standing "never pass `-q`"
+rule broken by the driver whose own docstring states it. The count now comes
+from the `N tests collected` line of `--collect-only` and is cross checked
+against the number of node id lines. The whole table was re-run; no row from the
+first attempt is reported here.
+
+**THE RECONCILIATION IS THE CHECK THAT THE DEATHS ARE REAL.** On every row
+`passed + deaths` equals the baseline 3458 exactly, and `collected` holds at
+3473. A mutation that made a test file fail to COLLECT would take its tests with
+it, and pytest counts a collection error in the same summary position as a
+failure, so a row could report deaths that are not test failures at all. Both
+columns are here so that cannot pass unnoticed.
+
+| deaths | passed | collected | row |
+|---|---|---|---|
+| 2 | 3456 | 3473 | wire: `fold_code` back to `fold` at the ISRC comparison |
+| 1 | 3457 | 3473 | `fold_code`: NFKC back to NFC |
+| 16 | 3442 | 3473 | `fold_code`: drop the non-alphanumeric strip entirely |
+| 1 | 3457 | 3473 | `fold_code`: `[\W_]+` widened to `[^0-9a-z]+` |
+| 6 | 3452 | 3473 | `version_title`: do not tidy before folding |
+| 6 | 3452 | 3473 | `version_title`: tidy the fold but compose the raw value |
+| 2 | 3456 | 3473 | `_as_a_bracketed_value`: stop replacing bracket characters |
+| 5 | 3453 | 3473 | `_as_a_bracketed_value`: stop stripping the ends |
+| 2 | 3456 | 3473 | `removed_file_identity`: drop the boolean guard |
+| 1 | 3457 | 3473 | `removed_file_identity`: boolean guard by truthiness, not by type |
+
+**Zero death rows: none.** Ten rows, ten non-zero.
+
+**THREE ROWS KILL EXACTLY ONE TEST AND THAT IS BY CONSTRUCTION, NOT BY
+ACCIDENT.** Each names a behaviour only one case can express, and the row is
+reported at 1 rather than padded. `NFKC back to NFC` is killed only by the
+fullwidth spelling, since NFC leaves fullwidth forms alone and every other
+spelling in the set is already ASCII. `[\W_]+` widened to `[^0-9a-z]+` is killed
+only by the Cyrillic case, because that widening is exactly transliteration and
+nothing else in the set contains a non-ASCII alphanumeric. `boolean guard by
+truthiness` is killed only by the `True` parameter, because `content_id is
+False` still refuses `False` and differs from the shipped guard on `True` alone.
+A row at 1 whose single killing test is the only test that COULD kill it is
+covered; a row at 1 that happens to have one test is not, and these are the
+former.
+
+**THE TWO WIDENING ROWS ARE THE ONES THAT MATTER FOR SAFETY.** Dropping the
+strip entirely kills 16, which is the fix doing its work. Widening `[\W_]+` to
+`[^0-9a-z]+` kills 1, and that row exists to pin the OVER-suppression direction:
+removing punctuation cannot merge two well formed codes, but folding away a
+non-ASCII alphanumeric can, and a merged code stops the collision guard firing
+and lets a deletion take out a version the person never deleted. The row is the
+assertion that the fold was widened in the safe direction only.

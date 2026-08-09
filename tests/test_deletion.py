@@ -4894,8 +4894,14 @@ def test_two_spellings_of_one_isrc_are_one_recording(cfg):
     read it as a positive statement that two rows are two recordings, so a
     legitimate convergence was refused as ambiguous. The direction was safe and
     the discriminator was still firing on a difference in spelling rather than on
-    the thing it names. ``tombstone.fold`` is the folding both halves of every
-    identity in this package already agree on.
+    the thing it names.
+
+    **THE FOLDING THIS TEST ORIGINALLY NAMED WAS THE WRONG ONE.** It said
+    ``tombstone.fold`` is the folding both halves of every identity in this
+    package already agree on, and it passed, because case is the one difference
+    ``fold`` does close. It went green over a function that still read the DISPLAY
+    FORM of this same code as a second recording. See
+    :func:`test_the_display_form_of_one_isrc_is_not_two_recordings`.
     """
     one = replace(_removed(cfg, ONE, "1"), title="Strobe", isrc="gbaya1500001")
     other = replace(_removed(cfg, TWO, "2"), title="Strobe", isrc="GBAYA1500001")
@@ -4908,3 +4914,134 @@ def test_two_spellings_of_one_isrc_are_one_recording(cfg):
     assert stores.ambiguous_versions([one, third]) == frozenset({"1", "3"}), (
         "folding may not cost the discriminator the collision it exists for"
     )
+
+
+# ── Round 8: three values whose own typing survived into an identity ─────────
+
+
+def test_the_display_form_of_one_isrc_is_not_two_recordings(cfg):
+    """Round 8: the case fix went green over a wider defect at the same site.
+
+    ISO 3901 defines an ISRC as twelve alphanumeric characters, and
+    ``GB-AYA-15-00001`` is the DISPLAY FORM of ``GBAYA1500001``, not another code.
+    Compared under the free-text ``tombstone.fold``, which keeps punctuation on
+    purpose, those are two strings, so ONE recording filed twice was reported
+    AMBIGUOUS_VERSION.
+
+    That is not merely a refused deletion. ``candidates.Category.AMBIGUOUS_VERSION``
+    is not in ``candidates.HANDLED``, so the watermark does not pass over the row,
+    the pass never offers it, and nothing can ever clear it: the queue wedges at
+    those rows permanently. Safe direction, permanent cost.
+    """
+    one = replace(_removed(cfg, ONE, "1"), title="Strobe", isrc="GBAYA1500001")
+    other = replace(_removed(cfg, TWO, "2"), title="Strobe", isrc="GB-AYA-15-00001")
+    assert stores.version_of(one) == stores.version_of(other)
+    assert stores.ambiguous_versions([one, other]) == frozenset(), (
+        "the display form of a code is the same code, and reading it as a second "
+        "recording wedges the queue at that row forever"
+    )
+
+
+def test_a_placeholder_in_the_isrc_column_is_an_absent_code(cfg):
+    """A separator is not a code, and silence is read as agreement.
+
+    A column holding ``-`` is a person's placeholder for "no code". It folds to
+    nothing, is discarded before the count, and so leaves the identity's own claim
+    standing rather than contradicting a real code on the other row.
+    """
+    real = replace(_removed(cfg, ONE, "1"), title="Strobe", isrc="GBAYA1500001")
+    placeholder = replace(_removed(cfg, TWO, "2"), title="Strobe", isrc="-")
+    assert stores.ambiguous_versions([real, placeholder]) == frozenset(), (
+        "a placeholder is an absent code, not a code that disagrees"
+    )
+
+
+def test_folding_the_code_does_not_cost_the_collision_it_exists_for(cfg):
+    """The half a wider fold could cost: two real codes must still disagree.
+
+    Stated at the call site as well as at the unit, because a fold that erased the
+    value entirely would also make this function return the empty set and every
+    unit test of the folding would still pass.
+    """
+    one = replace(_removed(cfg, ONE, "1"), title="Strobe", isrc="GB-AYA-15-00001")
+    third = replace(_removed(cfg, ACCENTED, "3"), title="Strobe", isrc="US-RC1-76-07839")
+    assert stores.ambiguous_versions([one, third]) == frozenset({"1", "3"}), (
+        "two different recordings in display form must still read as a collision"
+    )
+
+
+@pytest.mark.parametrize(
+    "version, expected",
+    [
+        pytest.param(
+            "Michael Woods Remix   ", "Strobe (Michael Woods Remix)", id="trailing-space"
+        ),
+        pytest.param(
+            " Michael Woods Remix", "Strobe (Michael Woods Remix)", id="leading-space"
+        ),
+        pytest.param(
+            "Michael  Woods  Remix", "Strobe (Michael Woods Remix)", id="interior-run"
+        ),
+        pytest.param(
+            "Michael Woods (Remix)", "Strobe (Michael Woods Remix)", id="own-brackets"
+        ),
+        pytest.param(
+            "[Michael Woods Remix]", "Strobe (Michael Woods Remix)", id="own-square-brackets"
+        ),
+    ],
+)
+def test_a_columns_own_typing_does_not_become_a_second_identity(version, expected):
+    """Round 8: the value is tidied BEFORE it goes inside the bracket.
+
+    ``fold`` strips the ends of the WHOLE composed string, and the closing bracket
+    sits outside the value, so a trailing space in one rekordbox column composed
+    ``strobe (michael woods remix )``. That matches no provider spelling AND
+    differs from the identity the same value produces without the space, so one
+    stray keystroke is both a version that cannot be suppressed and a second
+    identity for a version that already has one.
+
+    A value carrying its own brackets is the same defect with a different
+    character: ``Strobe (Michael Woods (Remix))``, which ``tombstone._BRACKETED``
+    is non-nesting by design and so reads as no version group at all.
+    """
+    assert tombstone.version_title("Strobe", version) == expected
+
+
+def test_tidying_the_value_does_not_rewrite_the_persons_own_text():
+    """The bound on the tidy: the ends and the brackets and NOTHING else.
+
+    Interior punctuation, case and the words themselves are the person's text and
+    this module does not get to normalise them. Only the characters that broke the
+    composition are touched.
+    """
+    assert (
+        tombstone.version_title("Strobe", "  Michael Woods' 12\" Re-Edit  ")
+        == "Strobe (Michael Woods' 12\" Re-Edit)"
+    )
+
+
+@pytest.mark.parametrize("boolean", [True, False])
+def test_a_boolean_identifier_is_refused_rather_than_addressed_as_its_repr(boolean):
+    """Round 8: ``str(False)`` is ``'False'``, truthy, and strips to itself.
+
+    So a boolean in the identifier column addressed the review item, the decline
+    and the playlist membership test as the literal string ``'False'``, exactly as
+    ``None`` addressed them as ``'None'`` before the guard above it. Tested by TYPE
+    and not by truthiness, because ``not False`` is true while ``not True`` is not,
+    so a falsiness test would refuse one boolean and accept the other.
+    """
+    with pytest.raises(CratekitError) as excinfo:
+        tombstone.removed_file_identity(content_id=boolean, recorded="/x.flac")
+    assert excinfo.value.cause.reason == "review-selection-invalid"
+
+
+def test_refusing_booleans_does_not_take_the_numeric_identifier_with_it():
+    """Why the guard is ``isinstance`` and not a comparison.
+
+    ``0 == False`` in Python, so a guard written as a comparison against ``False``
+    would refuse the legitimate row whose collection identifier is ``0``, which
+    :func:`test_a_numeric_identifier_is_still_addressable` says must stay
+    addressable. This is the pair of that test on the other side of the new guard.
+    """
+    assert tombstone.removed_file_identity(content_id=0, recorded="/x.flac")["content_id"] == "0"
+    assert tombstone.removed_file_identity(content_id=1, recorded="/x.flac")["content_id"] == "1"

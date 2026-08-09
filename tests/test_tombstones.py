@@ -257,3 +257,88 @@ def test_the_two_kinds_never_collide_even_on_one_identity(cfg):
     assert review.suppression_id_for(
         tombstone.DECLINE_STORE_KEY, tombstone.KIND_REMOVED_FILE, same
     ) != review.suppression_id_for(tombstone.STORE_KEY, tombstone.KIND_REMOVED_FILE, same)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# fold_code: the folding for a STRUCTURED IDENTIFIER, which fold is not
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: The ISO 3901 example code, in the raw form and in the punctuated display form
+#: of the same twelve characters.
+_RAW_CODE = "GBAYA1500001"
+_DISPLAY_CODE = "GB-AYA-15-00001"
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        pytest.param(_DISPLAY_CODE, id="display-form"),
+        pytest.param(_RAW_CODE.lower(), id="lowered"),
+        pytest.param(_DISPLAY_CODE.lower(), id="lowered-display-form"),
+        pytest.param("GB AYA 15 00001", id="spaces"),
+        pytest.param("GB\u00a0AYA\u00a015\u00a000001", id="non-breaking-spaces"),
+        pytest.param("GB.AYA.15.00001", id="dots"),
+        pytest.param("GB_AYA_15_00001", id="underscores"),
+        pytest.param(
+            "\uff27\uff22\uff21\uff39\uff21\uff11\uff15\uff10\uff10\uff10\uff10\uff11",
+            id="fullwidth",
+        ),
+    ],
+)
+def test_every_spelling_of_one_code_folds_to_one_value(spelling):
+    """The defect, at the unit: each of these is ONE recording's code, not two.
+
+    Each row is a spelling a real column carries. The display form is what a
+    provider prints, the lowered form is what a person types, the spaced and
+    non-breaking-space forms are what a paste out of a PDF leaves behind, and the
+    fullwidth form is what a paste out of a Japanese web page leaves behind. Under
+    ``fold`` every one of them is a different string from the raw code, and a
+    difference between two rows of one recording is what wedges the queue.
+    """
+    assert tombstone.fold_code(spelling) == tombstone.fold_code(_RAW_CODE)
+
+
+def test_fold_is_not_fold_code_and_that_is_the_whole_finding():
+    """Stated as the inequality rather than described, so it cannot quietly stop being true.
+
+    If someone later makes ``fold`` strip punctuation, this goes red and they are
+    sent to :func:`test_punctuation_is_not_folded`, which is the test saying why
+    ``fold`` must NOT: over-eager title folding silently withholds music. The two
+    foldings have opposite correct answers on the same input and that is precisely
+    why the code needed its own.
+    """
+    assert tombstone.fold(_DISPLAY_CODE) != tombstone.fold(_RAW_CODE)
+    assert tombstone.fold_code(_DISPLAY_CODE) == tombstone.fold_code(_RAW_CODE)
+
+
+def test_two_genuinely_different_codes_stay_different():
+    """The half the folding may not cost: removing punctuation may not merge codes.
+
+    No two well-formed ISRCs differ only in punctuation, so this is the assertion
+    that the fold is doing the safe operation and not simply erasing the value.
+    """
+    assert tombstone.fold_code("USRC17607839") != tombstone.fold_code(_RAW_CODE)
+
+
+def test_a_non_ascii_alphanumeric_is_not_transliterated():
+    """The deliberate non-feature, and the over-suppression direction is the reason.
+
+    A Cyrillic ``А`` typed for a Latin ``A`` stays a DIFFERENT code. Folding it
+    away would merge two values that are genuinely different, the collision guard
+    would stop firing, and a deletion would take out a version the person never
+    deleted. Removing punctuation cannot do that; transliterating can.
+    """
+    cyrillic = "А" + _RAW_CODE[1:]
+    assert tombstone.fold_code(cyrillic) != tombstone.fold_code(_RAW_CODE)
+    assert tombstone.fold_code(cyrillic) == cyrillic.casefold()
+
+
+@pytest.mark.parametrize("empty", ["", "   ", "-", "--", "\u00a0", "()", "_", "- - -"])
+def test_a_value_carrying_no_code_folds_to_nothing(empty):
+    """Punctuation-only is an ABSENT code, and absence is read as agreement.
+
+    ``ambiguous_versions`` discards the empty string before counting, so this is
+    what keeps a row whose ISRC column holds a placeholder dash from being read as
+    a code that disagrees with a real one. A separator is not a code.
+    """
+    assert tombstone.fold_code(empty) == ""

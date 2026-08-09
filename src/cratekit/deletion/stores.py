@@ -161,9 +161,27 @@ def ambiguous_versions(rows: Any) -> frozenset[str]:
     recording whose two rows were typed in different cases. The direction was
     safe, since refusing leaves both rows deletable-by-nobody rather than
     suppressing something, but a discriminator that fires on a difference in
-    spelling is not discriminating on the thing it names. ``tombstone.fold`` is
-    the folding both halves of every identity in this package already agree on,
-    so it is the one used here rather than a second one invented locally.
+    spelling is not discriminating on the thing it names.
+
+    **AND THE FOLDING IS ``tombstone.fold_code``, NOT ``tombstone.fold``, WHICH
+    IS A CORRECTION TO WHAT THIS DOCSTRING USED TO ARGUE.** It used to say that
+    ``fold`` is the folding both halves of every identity in this package already
+    agree on, so it is the one to use here rather than a second one invented
+    locally. That is a good rule for a TITLE and it is the wrong rule for a CODE.
+    ``fold`` deliberately keeps punctuation, because punctuation is part of what a
+    title says, and ISO 3901 defines an ISRC as twelve alphanumeric characters
+    whose hyphenated ``GB-AYA-15-00001`` is the DISPLAY FORM of the same code
+    ``GBAYA1500001``. Under ``fold`` those are two strings, so the display form
+    and the raw form of ONE code read as two recordings and this function returned
+    both content ids.
+
+    That is worse than the case defect it replaced, because
+    ``candidates.Category.AMBIGUOUS_VERSION`` is not in ``candidates.HANDLED``:
+    the watermark does not pass over such a row, the pass never offers it, and so
+    nothing can ever clear it. Still nothing deleted and nothing suppressed, so
+    still the safe direction, but the cost is availability and it is permanent.
+    Reusing the shared folding was the general rule applied to the one value in
+    this module that is not free text.
 
     IT IS INCONCLUSIVE WHERE A CODE IS ABSENT, AND SILENCE IS READ AS AGREEMENT.
     A convergence where one row has no code, or neither has one, is left
@@ -188,7 +206,7 @@ def ambiguous_versions(rows: Any) -> frozenset[str]:
         grouped.setdefault(tuple(sorted(identity.items())), []).append(row)
     ambiguous: set[str] = set()
     for sharing in grouped.values():
-        codes = {tombstone.fold(row.isrc or "") for row in sharing}
+        codes = {tombstone.fold_code(row.isrc or "") for row in sharing}
         codes.discard("")
         if len(codes) > 1:
             ambiguous.update(row.content_id for row in sharing)
