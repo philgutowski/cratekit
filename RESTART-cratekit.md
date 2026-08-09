@@ -69,6 +69,26 @@ trailers, do not touch U30's board state, U20, U29, R-9, A1 or A2.
    needs a 25 run timing measurement, a mounted FAT image and a real read only
    volume image.
 
+## The unit branches are now on the remote, which changes the merge step
+
+As of 2026-08-09 every branch is pushed to origin, including the parked
+conformance branch. They were local-only until then, 91 commits of verification
+work living on one machine.
+
+**So deleting a merged branch now means deleting it in both places:**
+
+    git branch -d unit/uNN-...
+    git push origin --delete unit/uNN-...
+
+Still no pull requests. A pushed branch is a backup, not a proposal, and GitHub
+offering a "compare and pull request" banner is not an instruction.
+
+**`git push origin --all` fails on this connection** with `RPC failed; HTTP 400`
+and an unexpected disconnect, because the combined payload is too large for it.
+Push one branch at a time. `http.postBuffer` is already set to 524288000 in this
+repo's local config, and even with that the batched push fails while individual
+pushes succeed.
+
 ## Two things that will bite you again
 
 **Give every parallel agent its own scratch directory, named for its unit.** A
