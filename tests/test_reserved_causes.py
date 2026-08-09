@@ -1937,6 +1937,17 @@ STATUSES = (30, 41)
 CODES = dict(zip(SLUGS, STATUSES))
 """
 
+#: A ZIP THAT IS NOT A PAIR OF SEQUENCES. ``_zipped`` refuses any call whose
+#: argument count is not two, and nothing drove it: dropping the refusal left the
+#: suite green while this source raises ``IndexError`` out of the walk, because
+#: the second argument it then reads is not there. ``zip`` of one iterable is
+#: ordinary Python and a source somebody writes.
+CORRECT_A_ZIP_OF_ONE_SEQUENCE = DECLARES_ITS_CAUSES + """
+SLUGS = ("tagger-art-rejected", "tagger-source-unreadable")
+
+CODES = dict(zip(SLUGS))
+"""
+
 EVASION_FILLED_A_KEY_AT_A_TIME = DECLARES_ITS_CAUSES + """
 CODES = {}
 CODES["tagger-art-rejected"] = 30
@@ -2738,15 +2749,20 @@ def main(status):
 # reads it could be deleted with ZERO deaths, so the shape was handled by code
 # nothing watched.
 
-#: The fixed point matters here and nowhere else in the suite. ``stop`` is bound
-#: to ``later`` BEFORE ``later`` is bound to the exit, so one pass over the
-#: assignments learns nothing about ``stop`` and a second pass is what settles
-#: it. Every other alias fixture is written in dependency order.
-EVASION_AN_EXIT_ALIASED_BEFORE_ITS_SOURCE_IS_BOUND = """
+#: The fixed point matters here and nowhere else in the suite, and WHICH
+#: spelling needs it is the opposite of the obvious one. ``_walk_scope`` pops its
+#: stack, so it yields a scope's statements in REVERSE source order, and the
+#: assignments arrive at the binder backwards. A chain written in dependency
+#: order, ``later = sys.exit`` and then ``stop = later``, therefore reaches the
+#: binder as ``stop`` first, learns nothing about it on the first pass, and needs
+#: the second. The version of this fixture written the other way round, which
+#: looks like the one that needs a fixed point, is settled in a single pass and
+#: measured ZERO deaths.
+EVASION_AN_EXIT_ALIASED_A_SECOND_TIME = """
 import sys
 
-stop = later
 later = sys.exit
+stop = later
 
 def refuse():
     stop(30)
@@ -3843,6 +3859,16 @@ def test_the_arithmetic_the_resolver_reads_is_the_whole_set(source, spelled):
     ]
 
 
+def test_a_zip_of_one_sequence_is_not_a_pair_of_sequences():
+    """The argument-count refusal in ``_zipped``, which nothing drove.
+
+    ``dict(zip(SLUGS))`` is ordinary Python. Without the refusal the walk reads a
+    second argument that is not there and raises ``IndexError`` into whatever
+    called it, which for the tree-wide scan is every file at once.
+    """
+    assert reserved_code_tables(CORRECT_A_ZIP_OF_ONE_SEQUENCE, CAUSES, RANGE) == []
+
+
 def test_a_division_by_zero_resolves_to_nothing_rather_than_raising():
     """The claim beside the ``right != 0`` term, which nothing measured.
 
@@ -3991,7 +4017,7 @@ def test_the_bare_status_guard_stays_silent_on_correct_code(source):
         EVASION_THE_EXCEPTION_THROUGH_BUILTINS,
         EVASION_A_STATUS_HELD_IN_A_CONSTANT,
         EVASION_A_STATUS_ASSIGNED_THEN_EXITED,
-        EVASION_AN_EXIT_ALIASED_BEFORE_ITS_SOURCE_IS_BOUND,
+        EVASION_AN_EXIT_ALIASED_A_SECOND_TIME,
         EVASION_AN_IMPORTER_HELD_IN_A_NAME,
         EVASION_THE_EXCEPTION_IMPORTED_FROM_BUILTINS,
         EVASION_A_TRACKED_MODULE_IMPORTED_AS_A_SYMBOL,
