@@ -69,6 +69,15 @@ existed to warn against it. Never write a closing keyword next to an issue
 number, even to quote one; backticks do not defuse it. Run the scan as a GATE
 that stops the push, not as a line printed beside it.
 
+**A unit's issue number does NOT reliably match its unit number.** CLAUDE.md says
+it does. It holds for U24, U32 and U34 and it does not for U38, whose unit issue
+is 51 while issue 38 is the residual R-1. A trailer written on that assumption
+closed the wrong issue on 2026-08-10. **Look the number up before writing any
+trailer:**
+
+    gh issue list --repo philgutowski/cratekit --state all --limit 200 \
+      --json number,title --jq '.[]|select(.title|test("^U38:"))|"#\(.number) \(.title)"'
+
 **Every agent gets its own worktree, its own venv and its own scratch directory
 named for its unit.** Never symlink a venv. Build venvs with
 `/opt/homebrew/bin/python3.12`; the default `python3` is 3.14 and the project
