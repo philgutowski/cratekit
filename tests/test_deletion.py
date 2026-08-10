@@ -4252,12 +4252,20 @@ def test_a_tombstone_an_earlier_build_wrote_is_still_recognised(cfg, gates_pass,
     # test plants moved with the build, the test stayed green, and the spelling
     # on real disks did not move at all. A test whose expected value is computed
     # by the code under test cannot see the code under test change.
+    #
+    # AND THE PAYLOAD IS THE ONE THAT BUILD REALLY WROTE, which round ten
+    # corrected. It planted ``payload={}`` here, and no build of this pass has
+    # ever written a tombstone that does not say which row it was about, so the
+    # fixture described a store nobody has.
     earlier = tombstone.version_identity(artist=removed.artist, title="Strobe (Michael Woods)")
     assert earlier != stores.version_of(removed), (
         "this row no longer exercises the spelling change it was written for"
     )
     stores.tombstones(cfg).record(
-        kind=tombstone.KIND_VERSION, identity=earlier, payload={}, actor="cli"
+        kind=tombstone.KIND_VERSION,
+        identity=earlier,
+        payload={"content_id": removed.content_id, "recorded": removed.recorded},
+        actor="cli",
     )
     assert stores.tombstone_predicate(cfg)(removed), (
         "a deletion an earlier build recorded is not recognised, so the row is "
@@ -5052,128 +5060,19 @@ def test_refusing_booleans_does_not_take_the_numeric_identifier_with_it():
     assert tombstone.removed_file_identity(content_id=1, recorded="/x.flac")["content_id"] == "1"
 
 
-# ── Round 9: history is reconstructed by frozen functions, pinned to literals ─
-
-
-@pytest.mark.parametrize(
-    "title, subtitle, remixer, historical",
-    [
-        pytest.param(
-            "Strobe", "", "Michael Woods Remix ", "Strobe (Michael Woods Remix )",
-            id="remixer-trailing-space",
-        ),
-        pytest.param(
-            "Strobe", "", " Michael Woods Remix", "Strobe ( Michael Woods Remix)",
-            id="remixer-leading-space",
-        ),
-        pytest.param(
-            "Strobe", "", "Michael Woods (Remix)", "Strobe (Michael Woods (Remix))",
-            id="remixer-own-brackets",
-        ),
-        pytest.param(
-            "Strobe", "Extended Mix ", "", "Strobe (Extended Mix )",
-            id="subtitle-trailing-space",
-        ),
-        pytest.param(
-            "Strobe", "[Extended Mix]", "", "Strobe ([Extended Mix])",
-            id="subtitle-own-brackets",
-        ),
-        # THE CASE THAT SEPARATES THE TWO HISTORICAL SPELLINGS, and without it
-        # two guards in the reconstruction are covered by nothing. Every other
-        # remixer here already ends in "Remix", so the plain composer and the
-        # remixer composer produce the SAME string and the two spellings
-        # coincide.
-        #
-        # A remixer differing only in WHITESPACE does not work either, and that
-        # is worth recording. "Michael Woods " composes "Strobe (Michael Woods
-        # Remix)" with a doubled space, which `fold` collapses one step later, so
-        # the previous build and this build write the SAME identity and there is
-        # no orphan to find. Only a difference that survives folding orphans a
-        # record, and brackets survive it where whitespace runs do not.
-        pytest.param(
-            "Strobe", "", "[Michael Woods]", "Strobe ([Michael Woods] Remix)",
-            id="remixer-needing-the-designation-appended",
-        ),
-    ],
-)
-def test_a_tombstone_the_previous_build_wrote_is_still_recognised(
-    cfg, gates_pass, title, subtitle, remixer, historical
-):
-    """Round 9, and the defect is round 8's own.
-
-    ``spellings_earlier_builds_wrote`` reconstructed history by calling the LIVE
-    ``version_title``. Round 8 tidied that composer, so the reconstruction of what
-    earlier builds wrote moved to what THIS build writes, and the records the
-    function exists to find became the records it stopped naming.
-
-    **THE FAILURE WAS SILENT, NOT WRONG.** Both sides of the comparison moved
-    together, so the reconstruction equalled the current spelling and the function
-    returned the EMPTY TUPLE: no earlier spelling at all, reported as "no history
-    here". The person is then held open forever and told to put back a file
-    already in the Trash where they put it.
-
-    **EVERY EXPECTED SPELLING HERE IS A LITERAL.** That is the whole point. These
-    strings are what is on a user's disk, and no edit to this module can reach
-    back and change them, so nothing this module computes may be used to state
-    them. If a future round changes the composer again, this goes red, which is
-    the signal to ADD a frozen historical function rather than to edit one.
-    """
-    _music(cfg, ONE)
-    run.plan(cfg, FakeDb([], usn=40), actor="cli")
-    row = _versioned(cfg, ONE, "1", usn=50, title=title, isrc="AAAA11111111",
-                     subtitle=subtitle, remixer=remixer)
-    removed = library.read_collection(FakeQuery([row])).removed[0]
-
-    earlier = tombstone.version_identity(artist=removed.artist, title=historical)
-    assert earlier != stores.version_of(removed), (
-        "this shape no longer differs from what this build writes, so it cannot "
-        "exercise the history path at all"
-    )
-    assert earlier in stores.spellings_earlier_builds_wrote(removed), (
-        "the spelling the previous build actually wrote to disk is not offered"
-    )
-
-    stores.tombstones(cfg).record(
-        kind=tombstone.KIND_VERSION, identity=earlier, payload={}, actor="cli"
-    )
-    assert stores.tombstone_predicate(cfg)(removed), (
-        "a deletion the previous build recorded is orphaned, so the row is held "
-        "open forever and the person is told to put back a file that is already "
-        "in the Trash where they put it"
-    )
-
-
-def test_an_ordinary_row_offers_no_earlier_spelling(cfg, gates_pass):
-    """The bound on the widening: history is offered only where it differs.
-
-    A column with no stray typing composes the same string under every rule this
-    pass has ever used, so nothing is offered and the recognition question is not
-    widened by a single identity. Without this, a fix for the orphaning above
-    could simply offer everything always and still pass every test around it.
-    """
-    _music(cfg, ONE)
-    run.plan(cfg, FakeDb([], usn=40), actor="cli")
-    row = _versioned(cfg, ONE, "1", usn=50, title="Strobe", isrc="AAAA11111111",
-                     remixer="Michael Woods Remix")
-    removed = library.read_collection(FakeQuery([row])).removed[0]
-    assert stores.spellings_earlier_builds_wrote(removed) == ()
-
-
-def test_the_frozen_history_does_not_move_when_the_live_composer_does(cfg):
-    """Stated as the inequality, which is the only durable form of this claim.
-
-    The frozen functions must differ from the live ones on exactly the values the
-    tidy touches. An assertion that they AGREE somewhere would be satisfied by
-    them being the same function, which is the state this round exists to leave.
-    """
-    assert tombstone.version_title_before_the_value_was_tidied("Strobe", " Extended Mix ") == (
-        "Strobe ( Extended Mix )"
-    )
-    assert tombstone.version_title("Strobe", " Extended Mix ") == "Strobe (Extended Mix)"
-    assert tombstone.remixer_title_before_the_value_was_tidied("Strobe", " Michael Woods ") == (
-        "Strobe ( Michael Woods  Remix)"
-    )
-    assert tombstone.remixer_title("Strobe", " Michael Woods ") == "Strobe (Michael Woods Remix)"
+# ── Round 10: the era is stamped in the record, so history is a LOOKUP ───────
+#
+# Four rounds answered "was this deletion already recorded" by recomputing what
+# an earlier build would have composed for this row, and every one of them was
+# correct on the day it was written. The reconstruction is made of live
+# functions, so it moves with the build; when it moves in step with the current
+# composer the two agree and the caller reports that there is no history at all.
+# Freezing the composer does not fix it, because a frozen composer calls ``fold``,
+# ``_already_carries`` and ``already_spelled_as_a_remix``, and those are live.
+#
+# Nothing below asks what a former build would have composed. The record says
+# which rules composed it, and a record composed by other rules is matched on the
+# ROW it names.
 
 
 def test_the_folding_limb_of_the_tidy_is_covered_on_its_own(cfg):
@@ -5185,6 +5084,9 @@ def test_the_folding_limb_of_the_tidy_is_covered_on_its_own(cfg):
     of 3458. The limb is load bearing on a reachable path: without it, a title
     that already names the version stops being recognised as naming it, and a
     second bracket is composed onto a title that already says everything.
+
+    It is about the LIVE composer rather than about history, and it sits here
+    because round ten deleted the history block it happened to be filed inside.
     """
     assert tombstone.version_title(
         "Strobe (Michael Woods Remix)", "[Michael Woods Remix]"
@@ -5192,41 +5094,351 @@ def test_the_folding_limb_of_the_tidy_is_covered_on_its_own(cfg):
     assert tombstone.version_title("Strobe", "()") == "Strobe"
 
 
-def test_both_preceding_spellings_are_offered_where_they_differ(cfg, gates_pass):
-    """The completeness half, and two zero death rows in round 9 are why it exists.
+def _record_an_earlier_build_wrote(cfg, row, *, title, stamp=None):
+    """Plant the record a build with OTHER composition rules left on this disk.
 
-    A remixer column that does NOT already end in ``Remix`` and whose difference
-    SURVIVES FOLDING is the only shape that separates the two historical
-    spellings. The oldest builds composed the column verbatim, ``Strobe
-    ([Michael Woods])``. The previous build appended the designation first,
-    ``Strobe ([Michael Woods] Remix)``. A store on disk may hold EITHER, depending
-    on which build wrote it, so both have to be offered.
+    Written with the payload ``record_tombstone`` has carried since the first
+    commit of this pass, measured across all eleven commits on this branch, so
+    the only things that differ from a record this build would write are the
+    identity spelling and the stamp.
 
-    Round 9's first table dropped the second spelling and killed nothing, and
-    dropped the ``version_kind`` branch and killed nothing, because every row in
-    the history set used a remixer already ending in ``Remix``, where both
-    composers produce one string and the two spellings coincide.
-
-    **A WHITESPACE ONLY REMIXER DOES NOT SEPARATE THEM AND THAT IS NOT AN
-    OVERSIGHT.** ``"Michael Woods "`` composes a doubled space that ``fold``
-    collapses one step later, so the previous build and this build write the same
-    identity and there is no orphan. Brackets survive folding; whitespace runs do
-    not.
+    **PLANTING AN EMPTY PAYLOAD IS WHAT THE ROUND 9 TESTS DID AND IT MEASURED THE
+    FIXTURE.** No build of this pass has ever written a tombstone without the row
+    it was about; a fixture that omits it describes a store nobody has.
     """
+    payload = {
+        "artist": row.artist,
+        "title": row.title,
+        "version": row.version,
+        "version_unbelieved": row.version_unbelieved,
+        "isrc": row.isrc or "",
+        "content_id": row.content_id,
+        "recorded": row.recorded,
+        "trashed_to": "",
+    }
+    if stamp is not None:
+        payload[stores.IDENTITY_SCHEME_FIELD] = stamp
+    return stores.tombstones(cfg).record(
+        kind=tombstone.KIND_VERSION,
+        identity=tombstone.version_identity(artist=row.artist, title=title),
+        payload=payload,
+        actor="cli",
+    )
+
+
+def _one_removed_row(cfg, *, title, subtitle="", remixer="", content_id="1"):
     _music(cfg, ONE)
     run.plan(cfg, FakeDb([], usn=40), actor="cli")
-    row = _versioned(cfg, ONE, "1", usn=50, title="Strobe", isrc="AAAA11111111",
-                     remixer="[Michael Woods]")
-    removed = library.read_collection(FakeQuery([row])).removed[0]
+    row = _versioned(cfg, ONE, content_id, usn=50, title=title, isrc="AAAA11111111",
+                     subtitle=subtitle, remixer=remixer)
+    return library.read_collection(FakeQuery([row])).removed[0]
 
-    offered = stores.spellings_earlier_builds_wrote(removed)
-    oldest = tombstone.version_identity(artist=removed.artist, title="Strobe ([Michael Woods])")
-    previous = tombstone.version_identity(
-        artist=removed.artist, title="Strobe ([Michael Woods] Remix)"
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        pytest.param("Strobe (Michael Woods)", id="before-the-remixer-was-spelled"),
+        pytest.param("Strobe ( Michael Woods  Remix)", id="before-the-value-was-tidied"),
+        pytest.param("Strobe", id="before-anything-was-composed"),
+        pytest.param("Strobe (Michael Woods Rework)", id="a-designation-nobody-uses"),
+        # THE ROW THIS TEST EXISTS FOR. Every spelling above is one a build of
+        # this pass really did write, so an implementation that reconstructs the
+        # eras it knows about passes all four. This one is a rule nobody has
+        # written, which is the only honest stand-in for the rule the NEXT round
+        # invents, and no reconstruction can produce it. It is what pins the
+        # design rather than the era list.
+        pytest.param("a rule this build has never heard of", id="a-rule-nobody-has-written"),
+    ],
+)
+def test_a_tombstone_is_recognised_whatever_rule_composed_its_identity(
+    cfg, gates_pass, spelling
+):
+    """The recognition question no longer depends on the spelling at all.
+
+    A store on a user's disk was written by the build that wrote it, and the only
+    thing every build agrees on is WHICH ROW the deletion was about. That pair,
+    the collection identifier and the path the row recorded, has ridden in the
+    payload since the first commit of this pass and is written down raw, so
+    matching on it consults no composition rule and no composition rule can move
+    it.
+    """
+    removed = _one_removed_row(cfg, title="Strobe", remixer="Michael Woods")
+    planted = _record_an_earlier_build_wrote(cfg, removed, title=spelling)
+
+    assert planted.identity != stores.version_of(removed), (
+        "this spelling is what this build writes, so it exercises no history"
     )
-    assert oldest in offered, "a store written by the oldest builds is orphaned"
-    assert previous in offered, "a store written by the previous build is orphaned"
-    assert stores.version_of(removed) not in offered, (
-        "the current spelling is not history and offering it widens the "
-        "recognition question for every ordinary row"
+    assert stores.tombstone_predicate(cfg)(removed), (
+        "a deletion an earlier build recorded is not recognised, so the row is "
+        "held open forever and the person is told to put back a file that is "
+        "already in the Trash where they put it"
     )
+
+    # AND THE CONSULT IS NOT WIDENED WITH IT. A consulter holds a provider's
+    # title and is answered under the one spelling providers use; a record
+    # written under a spelling this build has decided is wrong stays unmatched
+    # there, and the store is what has to be rewritten for that, not the
+    # question.
+    assert not stores.suppressed_version(
+        cfg, artist=ARTIST, title="Strobe (Michael Woods Remix)"
+    )
+
+
+def test_the_ordinary_row_whose_history_was_reported_as_absent(cfg, gates_pass):
+    """B2 from the round 9 verification, and it needed no unusual column at all.
+
+    ``Strobe Extended Mix`` with the ``Subtitle`` ``Extended Mix`` is a row a
+    rekordbox library holds by the thousand. Before ``_already_carries`` became a
+    bracketed test it was a plain substring test, ``"extended mix" in "strobe
+    extended mix"`` is true, so the build of the day composed NOTHING and wrote
+    the bare title. The round 9 reconstruction asked the LIVE ``_already_carries``,
+    which answers no, so it reconstructed the same string this build writes,
+    found no difference, and returned the empty tuple: not a wrong earlier
+    spelling but no earlier spelling at all, reported as "there is no history
+    here".
+    """
+    removed = _one_removed_row(cfg, title="Strobe Extended Mix", subtitle="Extended Mix")
+    assert stores.version_of(removed)["title"] == "strobe extended mix (extended mix)"
+
+    _record_an_earlier_build_wrote(cfg, removed, title="Strobe Extended Mix")
+    assert stores.tombstone_predicate(cfg)(removed), (
+        "the record the substring-test build wrote for an ordinary row is "
+        "orphaned, so that row holds the watermark and every removal above it"
+    )
+
+
+def test_an_earlier_builds_record_retires_the_row_through_the_whole_pass(
+    cfg, gates_pass, tmp_path, caplog
+):
+    """The same thing driven end to end, which is where the cost is paid.
+
+    The person confirmed the removal, an earlier build trashed the file and wrote
+    the tombstone, and the watermark never advanced. Unrecognised, the row is
+    refused forever and every removal above it waits behind it, because the
+    watermark is contiguous. Recognised, it retires and no second record is
+    written for a deletion that already has one.
+    """
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    db = _prepared(cfg)
+    found = run.plan(cfg, db, actor="cli")
+    _confirm(cfg, run.present(cfg, found)[0].item_id)
+
+    removed = found.candidates[0].row
+    _record_an_earlier_build_wrote(cfg, removed, title="whatever that build composed")
+    (Path(cfg.library.root) / "Music" / ONE).unlink()
+
+    with caplog.at_level(logging.WARNING):
+        report = run.apply(cfg, db, actor="cli", home=home)
+
+    assert [item.category for item in report.refused] == [candidates.Category.GONE]
+    assert report.watermark.sequence == 50, (
+        "the row was held open, so every removal after it is held too"
+    )
+    assert len(stores.list_tombstones(cfg, include_revoked=True)) == 1, (
+        "a second tombstone was written for a deletion that already had one"
+    )
+
+
+def test_a_record_this_build_wrote_says_which_rules_composed_it(cfg, gates_pass):
+    """The stamp is written, is the measured value, and reaches the listing.
+
+    A record outlives the build that wrote it, so the record is what has to carry
+    the era. Every attempt to work it out afterwards has been a recomputation
+    that drifts.
+    """
+    removed = _one_removed_row(cfg, title="Strobe", remixer="Michael Woods")
+    record = stores.record_tombstone(cfg, removed, actor="cli", trashed_to="/x")
+
+    assert record.payload[stores.IDENTITY_SCHEME_FIELD] == stores.identity_scheme()
+    assert stores.summarize(record)[stores.IDENTITY_SCHEME_FIELD] == stores.identity_scheme()
+
+    # THE SHAPE IS PINNED SEPARATELY FROM THE VALUE, because the equalities above
+    # take their expected value from the code under test and would be satisfied
+    # by a stamp that is always the empty string. A digest that is prefixed and
+    # long enough not to collide is the property, and the value itself may move
+    # freely, which is exactly what it is for.
+    stamp = stores.identity_scheme()
+    assert stamp.startswith("is1_") and len(stamp) == len("is1_") + 16
+
+    # AND IT IS ON THE DISK, not only on the object the writer returned.
+    assert stamp in stores.tombstones(cfg).path.read_text()
+
+
+@pytest.mark.parametrize(
+    "module_name, attribute, replacement",
+    [
+        pytest.param("tombstone", "_is_a_credit", lambda group: False, id="is-a-credit"),
+        pytest.param(
+            "tombstone", "_CREDIT_MARKERS", frozenset(), id="credit-markers"
+        ),
+        pytest.param(
+            "tombstone", "_already_carries",
+            lambda title, folded: folded in tombstone.fold(title),
+            id="already-carries",
+        ),
+        pytest.param(
+            "tombstone", "already_spelled_as_a_remix", lambda value: False,
+            id="already-spelled-as-a-remix",
+        ),
+        pytest.param("tombstone", "REMIX_DESIGNATION", "Rework", id="remix-designation"),
+        pytest.param(
+            "tombstone", "_as_a_bracketed_value", lambda version: str(version),
+            id="the-tidy",
+        ),
+        pytest.param(
+            "tombstone", "fold", lambda value: " ".join(str(value).split()),
+            id="the-fold",
+        ),
+        pytest.param(
+            "tombstone", "VERSION_WORDS", frozenset({"remix"}), id="the-vocabulary",
+        ),
+        pytest.param(
+            "library", "_VERSION_COLUMNS",
+            (("Subtitle", library.VERSION_IS_A_DESIGNATION),
+             ("RemixerName", library.VERSION_IS_AN_ARTIST)),
+            id="the-column-order",
+        ),
+    ],
+)
+def test_the_stamp_moves_when_any_rule_below_it_moves(
+    monkeypatch, module_name, attribute, replacement
+):
+    """B1 GENERALISED, which is the whole reason this round exists.
+
+    Freezing one node of a call tree does not freeze the reconstruction: any
+    helper below it can drift, and the round 9 frozen composers drifted through
+    ``_already_carries`` within one commit of being written. The stamp is a
+    MEASUREMENT of the rules rather than a number somebody remembers to bump, so
+    a change anywhere from the column the reader believes down to the bracket
+    pattern the composer uses comes out as a different value.
+
+    ``_VERSION_COLUMNS`` and ``VERSION_WORDS`` are in this list on purpose. They
+    live one file over, in the READER, and they change the identity a rekordbox
+    row produces with every composition function untouched. A stamp taken over
+    the composer alone would still match, and the recogniser would still trust an
+    identity that had moved: the same defect one file over, which is the fifth
+    pattern.
+    """
+    before = stores.identity_scheme()
+    monkeypatch.setattr(
+        {"tombstone": tombstone, "library": library}[module_name], attribute, replacement
+    )
+    assert stores.identity_scheme() != before, (
+        f"{module_name}.{attribute} changed what a row composes to and the stamp "
+        f"did not move, so a build with this change would read its predecessor's "
+        f"records as its own and miss them"
+    )
+
+
+def test_this_builds_own_record_is_matched_on_its_version_not_on_its_row(cfg, gates_pass):
+    """What the stamp DECIDES, which is the only thing it decides.
+
+    A record carrying this build's stamp was composed by rules this build has, so
+    the identity is trustworthy and stays the question. Widening every record to
+    its row would retire a row whose version column has been edited since the
+    deletion was recorded, against a record naming a version the row no longer
+    claims, and the listing would never gain the second spelling.
+    """
+    removed = _one_removed_row(cfg, title="Strobe", subtitle="Extended Mix")
+    stores.record_tombstone(cfg, removed, actor="cli", trashed_to="/x")
+    assert stores.tombstone_predicate(cfg)(removed)
+
+    edited = replace(removed, version="Club Mix")
+    assert stores.version_of(edited) != stores.version_of(removed)
+    assert not stores.tombstone_predicate(cfg)(edited), (
+        "a row whose version column changed after the deletion was recorded is "
+        "read as already recorded, so the tombstone naming the version it claims "
+        "now is never written"
+    )
+
+
+def test_reading_a_store_from_before_the_stamp_migrates_it_and_writes_nothing(
+    cfg, gates_pass
+):
+    """The migration path, and it is that there is nothing to migrate.
+
+    A record written before the stamp existed cannot carry this build's stamp, so
+    it falls to the row lookup by the same rule that will catch an era nobody has
+    written yet. Nothing rewrites the file to make that true, because a read that
+    repairs is a read that can fail while a person is only asking a question.
+    """
+    removed = _one_removed_row(cfg, title="Strobe", remixer="Michael Woods")
+    planted = _record_an_earlier_build_wrote(cfg, removed, title="Strobe (Michael Woods)")
+    assert stores.IDENTITY_SCHEME_FIELD not in planted.payload
+
+    path = stores.tombstones(cfg).path
+    before = path.read_bytes()
+    assert stores.tombstone_predicate(cfg)(removed)
+    assert path.read_bytes() == before, (
+        "asking a question rewrote the store, so a question can now fail in a "
+        "way that loses somebody's decisions"
+    )
+    assert stores.summarize(stores.list_tombstones(cfg)[0])[
+        stores.IDENTITY_SCHEME_FIELD
+    ] == "", "an era before the stamp is a fact about the record, not a missing field"
+
+
+def test_a_record_that_names_no_row_matches_no_row(cfg, gates_pass):
+    """The row lookup is a lookup on a NAME, and an absent name is not a name.
+
+    Without this the coordinates of a record naming nothing would be a real key
+    in the set, and every row that also names nothing would match it. That is the
+    empty-identity collapse ``version_identity`` refuses one module down, arriving
+    through a different door: one record would retire every unnameable row in the
+    library, permanently, and it would look exactly like the feature working.
+    """
+    removed = _one_removed_row(cfg, title="Strobe", remixer="Michael Woods")
+    nameless = replace(removed, content_id="")
+    stores.tombstones(cfg).record(
+        kind=tombstone.KIND_VERSION,
+        identity=tombstone.version_identity(artist=removed.artist, title="Strobe (Woods)"),
+        payload={"content_id": "", "recorded": removed.recorded},
+        actor="cli",
+    )
+    assert not stores.tombstone_predicate(cfg)(nameless)
+
+
+def test_a_row_that_cannot_be_identified_is_not_read_as_already_recorded(cfg, gates_pass):
+    """B4 from the round 9 verification, carried and closed.
+
+    ``recorded`` answers a question whose True retires a confirmed removal
+    without moving anything, so True on a row nobody can identify would throw
+    away a deletion somebody confirmed for a file they had merely renamed. False
+    re-offers the row, which costs one question.
+
+    **ITS FIELD REACHABILITY, MEASURED RATHER THAN ASSUMED.** Both callers in
+    ``run`` ask this only of a row whose category is ``GONE``, and
+    ``candidates.categorize`` asks ``identifiable`` FIRST, so a row that cannot
+    be identified is answered ``UNIDENTIFIABLE`` and never reaches ``GONE``. The
+    guard is therefore unreachable through the pass and reachable through the
+    module's own exported predicate, which is what this test asks it as.
+    """
+    removed = _one_removed_row(cfg, title="Strobe", remixer="Michael Woods")
+    stores.record_tombstone(cfg, removed, actor="cli", trashed_to="/x")
+
+    anonymous = replace(removed, artist="", title="", version="", content_id="9")
+    with pytest.raises(CratekitError):
+        stores.version_of(anonymous)
+    assert not stores.tombstone_predicate(cfg)(anonymous), (
+        "a row nobody can identify reads as already recorded, so a confirmed "
+        "removal is retired for a file somebody merely renamed"
+    )
+
+
+def test_nothing_reconstructs_a_former_builds_composition_any_more(cfg):
+    """The claim stated structurally, so it cannot quietly come back.
+
+    Every previous round closed this class by adding another reconstruction, and
+    the reconstruction is the class. A function whose name says it reproduces
+    what an earlier build wrote is the shape to refuse, whatever it is called.
+    """
+    for module in (tombstone, stores):
+        offenders = [
+            name for name in dir(module)
+            if "before_the" in name or "earlier_builds" in name or "historical" in name
+        ]
+        assert offenders == [], (
+            f"{module.__name__} reconstructs a former build's composition again: "
+            f"{offenders}"
+        )

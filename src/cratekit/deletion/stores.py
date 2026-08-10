@@ -36,10 +36,18 @@ into two spellings of one identity.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import unicodedata
 from typing import Any, Callable, Mapping
 
 from cratekit.core import config, review, tombstone
-from cratekit.deletion.library import VERSION_IS_AN_ARTIST, RemovedRow
+from cratekit.deletion import library
+from cratekit.deletion.library import (
+    VERSION_IS_A_DESIGNATION,
+    VERSION_IS_AN_ARTIST,
+    RemovedRow,
+)
 
 
 def declines(cfg: config.Config) -> review.DecisionStore:
@@ -94,72 +102,160 @@ def version_of(row: RemovedRow) -> dict[str, str]:
     return tombstone.version_identity(artist=row.artist, title=title)
 
 
-def spellings_earlier_builds_wrote(row: RemovedRow) -> tuple[dict[str, str], ...]:
-    """Every identity a PREVIOUS build of this pass would have written for this row.
+#: The payload field carrying the composition rules a tombstone's identity was
+#: written under. Named once, because the writer and the reader are two functions
+#: in this file and a field spelled twice is a stamp that stops being read.
+IDENTITY_SCHEME_FIELD = "identity_scheme"
 
-    **A STORE WRITTEN BY AN EARLIER BUILD IS EVERY EXISTING USER, AND TWO
-    COMMITS CHANGED THE SPELLING WITH NOTHING RECORDING THAT THEY INTERACT.** One
-    commit made :func:`tombstone_predicate` the test for whether a confirmed
-    removal whose file is absent may be retired. Another changed how a
-    ``RemixerName`` is spelled into the identity, from the column's own value to
-    the value with ``Remix`` appended. Separately each is right. Together they
-    say that a deletion an earlier build COMPLETED, correctly, with the file in
-    the Trash and the tombstone written, is no longer recognised: the predicate
-    computes ``strobe (michael woods remix)``, the store holds ``strobe (michael
-    woods)``, and the row is held open forever while the person is told to put
-    back a file that is already in the Trash where they put it.
+#: Prefix on the stamp, so a value read out of a payload is recognisable as one
+#: of these rather than as an arbitrary string somebody put in the field.
+_SCHEME_PREFIX = "is1_"
 
-    So the recognition question asks the earlier spellings too. It is asked ONLY
-    by the recognition question, never by :func:`suppressed_version`: a consulter
-    holds a provider's title and must be answered under the one spelling
-    providers use, and widening the consult would suppress candidates under a
-    spelling this build has decided is wrong.
+class _SchemeProbe:
+    """A collection row, shaped exactly as far as the version reader touches one.
 
-    THREE SPELLINGS PRECEDE THIS BUILD. Before the remixer column was spelled at
-    all, the value was composed verbatim. After it was spelled but while the test
-    was :func:`tombstone.reads_as_version`, a remixer whose name merely CONTAINED
-    a version word was also composed verbatim. Those two collapse to one string.
-    The third is the whole of the previous build: the current rule, but composing
-    the column's value UNTIDIED.
-
-    **AND THE HISTORY IS RECONSTRUCTED BY FROZEN FUNCTIONS, NOT BY CALLING THE
-    LIVE COMPOSER, WHICH IS THE DEFECT THAT MADE THIS PARAGRAPH NECESSARY.** This
-    function used to build the verbatim spelling with ``tombstone.version_title``
-    itself. That is correct exactly until the composer changes, and then the
-    reconstruction of what earlier builds wrote moves to what THIS build writes,
-    so the records it exists to find are the records it stops naming.
-
-    The failure was silent rather than loud, and that is the part worth keeping.
-    When the composer changed, BOTH sides of the comparison below moved together,
-    so ``verbatim == version_of(row)`` became true and this function returned the
-    EMPTY TUPLE: not a wrong earlier spelling, but no earlier spelling at all,
-    reported as "there is no history to worry about here". Measured over eight
-    version column shapes at the previous commit, six orphaned the record the
-    parent build would have written.
-
-    A spelling is offered only where it differs from what this build writes, and
-    duplicates are dropped, so an ordinary row with no stray typing still costs
-    one comparison and offers nothing.
+    The columns are spelled the way rekordbox spells them because
+    ``library._version_of`` reads them by those names. A column the reader starts
+    reading that this does not carry answers empty through ``library._text``, so
+    the probe degrades to a narrower measurement rather than raising, and the
+    suite is where that is caught.
     """
-    if not row.version:
-        return ()
-    if row.version_kind == VERSION_IS_AN_ARTIST:
-        untidied = tombstone.remixer_title_before_the_value_was_tidied(row.title, row.version)
-    else:
-        untidied = tombstone.version_title_before_the_value_was_tidied(row.title, row.version)
-    historical = (
-        tombstone.version_identity(
-            artist=row.artist,
-            title=tombstone.version_title_before_the_value_was_tidied(row.title, row.version),
-        ),
-        tombstone.version_identity(artist=row.artist, title=untidied),
-    )
-    current = version_of(row)
-    offered: list[dict[str, str]] = []
-    for identity in historical:
-        if identity != current and identity not in offered:
-            offered.append(identity)
-    return tuple(offered)
+
+    __slots__ = ("RemixerName", "Subtitle")
+
+    def __init__(self, remixer: str, subtitle: str) -> None:
+        self.RemixerName = remixer
+        self.Subtitle = subtitle
+
+
+#: The collection rows :func:`identity_scheme` reads and composes, as raw column
+#: values rather than as a version somebody has already decided.
+#:
+#: **THEY ARE FROZEN AND THEY ARE NOT A TEST FIXTURE.** Each one exists to make a
+#: branch observable in the stamp. Through the READER: an absent version column,
+#: a ``RemixerName`` believed on sight, a ``Subtitle`` the vocabulary believes,
+#: one it does not, and both columns filled at once, which is the only thing that
+#: pins their order. Through the COMPOSER: a version the title already carries
+#: bare, one it carries in round brackets and one in square, a value needing the
+#: whitespace tidy, a value carrying its own brackets, a value that tidies away
+#: to nothing, a featured-credit group, a version word inside a longer word, a
+#: remixer needing the designation appended, one that already ends in it, one
+#: whose last word is a vocabulary word, one the title already names, and the
+#: case, spacing and composition-form limbs of the fold. An empty artist and an
+#: empty title appear singly, because the identity refuses only when BOTH are
+#: empty and each single-empty branch is reachable.
+#:
+#: EDITING THIS TUPLE CHANGES THE STAMP, AND THAT IS THE SAFE DIRECTION. A build
+#: whose stamp differs from the one in a record treats that record as written
+#: under other rules and recognises it by the row it names, which is a lookup and
+#: cannot be wrong. A build whose stamp wrongly MATCHES is the failure, so the
+#: bias is toward moving the stamp too often rather than too rarely.
+_SCHEME_PROBES: tuple[tuple[str, str, str, str], ...] = (
+    # artist, title, RemixerName, Subtitle
+    ("deadmau5", "Strobe", "", ""),
+    ("deadmau5", "Strobe", "", "Extended Mix"),
+    ("deadmau5", "Strobe Extended Mix", "", "Extended Mix"),
+    ("deadmau5", "Strobe (Extended Mix)", "", "Extended Mix"),
+    ("deadmau5", "Strobe [Extended Mix]", "", "Extended Mix"),
+    ("deadmau5", "Strobe", "", " Extended  Mix "),
+    ("deadmau5", "Strobe", "", "[Extended Mix]"),
+    ("deadmau5", "Strobe", "", "(Mix)"),
+    ("deadmau5", "Strobe", "", "Anjunadeep"),
+    ("deadmau5", "Strobe", "Michael Woods", "Extended Mix"),
+    ("Fisher", "Losing It (feat. Anna)", "Anna", ""),
+    ("Fisher", "Losing It (Live with Strings)", "", "Live"),
+    ("Bob Marley", "Lively Up", "", "Live"),
+    ("deadmau5", "Strobe", "Michael Woods", ""),
+    ("deadmau5", "Strobe", "Michael Woods Remix", ""),
+    ("deadmau5", "Strobe", "The Cut", ""),
+    ("deadmau5", "Strobe", " Michael Woods ", ""),
+    ("deadmau5", "Strobe", "[Michael Woods]", ""),
+    ("deadmau5", "Strobe (Michael Woods Remix)", "Michael Woods", ""),
+    ("DEADMAU5", "  Strobe   Mix  ", "", ""),
+    ("deadmau5", "Ströbe", "", ""),
+    ("", "Strobe", "", "Extended Mix"),
+    ("deadmau5", "", "", "Extended Mix"),
+)
+
+
+def identity_scheme() -> str:
+    """What THIS build turns a collection row into, as one comparable value.
+
+    **IT IS A MEASUREMENT OF THE RULES, NOT A NUMBER SOMEBODY REMEMBERS TO
+    BUMP.** A hand-set version constant is the same instrument as the frozen
+    composers this replaced: correct on the day it is written and silently wrong
+    the first time a helper below it changes and nobody thinks to touch it. This
+    runs the frozen probes through the whole path from a collection row to an
+    identity and digests what comes out, so the value moves when the OUTPUT
+    moves, wherever in the call tree the change was made.
+
+    **THE READING IS INSIDE IT AND NOT ONLY THE COMPOSING, WHICH IS THE SAME
+    DEFECT ONE FILE OVER.** ``library._version_of`` decides which column is
+    believed, and ``tombstone.VERSION_WORDS`` decides whether a ``Subtitle`` is a
+    version at all. Change either and one rekordbox row starts producing a
+    different identity with every composition function untouched, so a stamp
+    taken over the composer alone would still match and the recogniser would
+    still trust an identity that had moved. What was NOT believed is digested
+    too, so the vocabulary is observable even on a row whose composed identity it
+    does not change.
+
+    IT IS COMPUTED ON DEMAND RATHER THAN AT IMPORT, which is what makes any of
+    that true: a constant frozen at import is a snapshot of one process, and the
+    question this answers is whether the build that wrote a record reads and
+    composes the way this one does.
+
+    **WHAT IT IS NOT.** It is not part of any identity, so it never reaches a
+    hash a suppression is addressed by, and a build whose stamp differs
+    suppresses and consults exactly what it did before. It only tells the
+    recogniser in :func:`tombstone_predicate` which question to ask of a stored
+    record.
+    """
+    digest = hashlib.sha256()
+    for artist, title, remixer, subtitle in _SCHEME_PROBES:
+        version, kind, unbelieved = library._version_of(_SchemeProbe(remixer, subtitle))
+        composed = version_of(
+            RemovedRow(
+                content_id="probe",
+                recorded="",
+                sequence=0,
+                size=None,
+                artist=artist,
+                title=title,
+                version=version,
+                version_kind=kind or VERSION_IS_A_DESIGNATION,
+                version_unbelieved=unbelieved,
+            )
+        )
+        digest.update(
+            json.dumps(
+                [composed, version, kind, unbelieved], sort_keys=True, ensure_ascii=False
+            ).encode("utf-8")
+        )
+        digest.update(b"\x1e")
+    return f"{_SCHEME_PREFIX}{digest.hexdigest()[:16]}"
+
+
+def _row_coordinates(content_id: Any, recorded: Any) -> tuple[str, str] | None:
+    """Which ROW a record names, or None where it names none.
+
+    The row rather than the version, and raw rather than composed: this is the
+    pair of values a tombstone's payload has carried since the first commit of
+    this pass, taken from the collection row and written down untouched. Nothing
+    in the composition vocabulary is consulted, so nothing in it can move this.
+
+    ``recorded`` is composed to NFC because
+    :func:`tombstone.removed_file_identity` already fixes that as the rule for
+    this exact field, and two rules for one field is how the two come to
+    disagree. Both sides of every comparison here run through this one function
+    in one build, which is the whole difference from the composition case: there,
+    one side was a string frozen on a disk and the other was live.
+    """
+    if content_id is None or isinstance(content_id, bool):
+        return None
+    named = str(content_id)
+    if not named.strip():
+        return None
+    return (named, unicodedata.normalize("NFC", str(recorded if recorded is not None else "")))
 
 
 def ambiguous_versions(rows: Any) -> frozenset[str]:
@@ -319,27 +415,71 @@ def tombstone_predicate(cfg: config.Config) -> Callable[[RemovedRow], bool]:
     reading a revocation as "no deletion happened" would re-open the very row the
     person had already dealt with.
 
-    **AND A RECORD AN EARLIER BUILD WROTE COUNTS TOO.** See
-    :func:`spellings_earlier_builds_wrote`. This question is about history, so it
-    has to be asked in the spellings history was written in; asking only in this
-    build's spelling made a completed deletion unrecognisable to the build that
-    followed it, which held the row open forever and told the person to put back
-    a file that was already in the Trash.
+    **AND A RECORD AN EARLIER BUILD WROTE COUNTS TOO, WHICH IS ANSWERED BY
+    READING THE STORE RATHER THAN BY REBUILDING THE PAST.** This question is
+    about history, and four rounds tried to answer it by recomputing what a
+    former build would have composed for this row. Every one of them was correct
+    on the day it was written: the reconstruction is made of live functions, so
+    it moves with the build, and when it moves in step with the current composer
+    the two agree and the caller reports that there is no history to worry about.
+    A frozen composer does not fix that, because a frozen composer calls
+    ``fold``, ``_already_carries`` and ``already_spelled_as_a_remix`` and those
+    are live. Freezing one node of a call tree does not freeze the tree.
+
+    **SO THE ERA IS A STAMP IN THE RECORD AND THE MATCH IS A LOOKUP.**
+    :func:`record_tombstone` writes :data:`IDENTITY_SCHEME_FIELD` beside the
+    identity, naming the rules that composed it. A record carrying THIS build's
+    stamp is matched on its identity, exactly as before. A record carrying any
+    other stamp, or none at all, was composed by rules this build does not have
+    and must not guess at, so it is matched on the ROW IT NAMES: the
+    ``content_id`` and ``recorded`` its payload has carried, raw, since the first
+    commit of this pass. That comparison consults no composition rule, so no
+    change to any composition rule can break it, and it stays right for a build
+    that has not been written yet.
+
+    **AN UNSTAMPED RECORD IS THE MIGRATION PATH AND IT NEEDS NO MIGRATION.** A
+    record written before the stamp existed cannot be carrying this build's
+    stamp, so it falls to the row lookup by the same rule that catches a future
+    era, and nothing rewrites anybody's file to make that true. A read that
+    repairs is a read that can fail while a person is only asking a question.
+
+    WHAT THE STAMP BUYS OVER MATCHING EVERY RECORD ON ITS ROW, stated because it
+    is the only thing it decides. This build's own records keep being recognised
+    by their VERSION, so a row whose version column was edited after its deletion
+    was recorded is not read as already recorded, and the tombstone naming the
+    version the row now claims still gets written. Widening the question for
+    every record would retire that row against a record naming a version it no
+    longer has, and the listing would never gain the second spelling.
     """
-    held = frozenset(
-        record.suppression_id
-        for record in tombstones(cfg).suppressions(include_revoked=True)
+    scheme = identity_scheme()
+    records = tombstones(cfg).suppressions(include_revoked=True)
+    held = frozenset(record.suppression_id for record in records)
+    rows_recorded_under_other_rules = frozenset(
+        coordinates
+        for record in records
+        if record.kind == tombstone.KIND_VERSION
+        and str(record.payload.get(IDENTITY_SCHEME_FIELD) or "") != scheme
+        for coordinates in (
+            _row_coordinates(record.payload.get("content_id"), record.payload.get("recorded")),
+        )
+        if coordinates is not None
     )
 
     def recorded(row: RemovedRow) -> bool:
+        if _row_coordinates(row.content_id, row.recorded) in rows_recorded_under_other_rules:
+            return True
         try:
-            identities = (version_of(row), *spellings_earlier_builds_wrote(row))
+            identity = version_of(row)
         except Exception:  # noqa: BLE001 - a row with no identity has no tombstone
+            # FALSE RATHER THAN TRUE, and the direction is the whole of it. This
+            # answer retires a confirmed removal without moving anything, so
+            # True on a row nobody can identify would throw away a deletion
+            # somebody confirmed for a file they had merely renamed. False
+            # re-offers it, which costs one question.
             return False
-        return any(
+        return (
             review.suppression_id_for(tombstone.STORE_KEY, tombstone.KIND_VERSION, identity)
             in held
-            for identity in identities
         )
 
     return recorded
@@ -379,6 +519,12 @@ def record_tombstone(
     the consulter always have, and a provider candidate frequently has no code at
     all, so a code in the identity would make the suppression silently miss the
     very sweeps it exists to stop.
+
+    **AND THE RULES THAT COMPOSED THE IDENTITY RIDE WITH IT.** A record on a
+    disk outlives the build that wrote it, and every attempt to work out
+    afterwards which rules composed it has been a recomputation that drifts. The
+    record says so itself instead. See :func:`identity_scheme` for what the value
+    measures and :func:`tombstone_predicate` for the one question it decides.
     """
     store = tombstones(cfg)
     return store.record(
@@ -408,6 +554,12 @@ def record_tombstone(
             "isrc": row.isrc or "",
             "content_id": row.content_id,
             "recorded": row.recorded,
+            # THE ERA THIS IDENTITY WAS COMPOSED IN, so no later build has to
+            # guess. Written beside the row coordinates deliberately: the two
+            # are what a build with different composition rules reads, one to
+            # know that it must not trust the identity and the other to know
+            # which row the record is about.
+            IDENTITY_SCHEME_FIELD: identity_scheme(),
             # EMPTY WHERE THIS PASS MOVED NOTHING, which is the settled-absence
             # case, and ``summarize`` emits it for exactly that reason: a person
             # listing suppressions has to be able to tell a deletion this tool
@@ -496,6 +648,12 @@ def summarize(record: review.Suppression) -> Mapping[str, Any]:
         "version": record.payload.get("version", ""),
         "version_unbelieved": record.payload.get("version_unbelieved", ""),
         "isrc": record.payload.get("isrc", ""),
+        # EMPTY MEANS AN ERA BEFORE THE STAMP EXISTED, which is a fact about the
+        # record and not a missing field. It is emitted because "why did this
+        # tombstone miss" is the only question this listing exists to answer that
+        # the identity line cannot, and "it was composed by rules this build does
+        # not have" is one of the answers.
+        IDENTITY_SCHEME_FIELD: record.payload.get(IDENTITY_SCHEME_FIELD, ""),
         # EMPTY MEANS THIS PASS MOVED NOTHING. Not absent, not omitted: a key
         # that disappears when the value is empty is a key a reader cannot tell
         # from one the build never wrote.
@@ -507,17 +665,18 @@ def summarize(record: review.Suppression) -> Mapping[str, Any]:
 
 
 __all__ = [
+    "IDENTITY_SCHEME_FIELD",
     "ambiguous_versions",
     "decline_predicate",
     "declines",
     "identifiable",
+    "identity_scheme",
     "list_tombstones",
     "record_decline",
     "record_tombstone",
     "revoke_decline",
     "revoke_tombstone",
     "row_identity",
-    "spellings_earlier_builds_wrote",
     "summarize",
     "suppressed_version",
     "tombstone_predicate",
