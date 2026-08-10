@@ -209,10 +209,17 @@ own venv:
 
   **The `git log -1` form of this check is insufficient and it failed on
   2026-08-10.** U24's merge commit deliberately carried no trailer and passed
-  that check, and issue #24 closed anyway on the push, because two commits from
-  much earlier in the branch contain the strings `CLOSES #24 IS NOT SAFE` and
-  `a Closes #24 trailer would`. Both were written to explain why a trailer must
-  not be used here, and both fired it.
+  that check, and its issue closed anyway on the push, because two commits from
+  much earlier in the branch spell a closing keyword immediately before that
+  unit's issue number, inside prose written to explain why a trailer must not be
+  used here. The explanation fired the thing it was explaining.
+
+  **NEVER WRITE A CLOSING KEYWORD ADJACENT TO AN ISSUE NUMBER, even to quote
+  one, even inside backticks, even to say it is unsafe.** GitHub reads the text
+  and not the intent, and backticks do not defuse it. Put words between the
+  keyword and the number, or name the unit instead of its number. A commit
+  written on 2026-08-10 to document this failure quoted the offending strings
+  and closed the issue a second time.
 
   A branch already carrying such a string in its history cannot be made safe by
   the merge commit. Either rewrite those commit bodies before merging, or expect
