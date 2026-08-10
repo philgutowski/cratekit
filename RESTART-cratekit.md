@@ -1,101 +1,89 @@
 # Restart: Cratekit parallel wave
 
-**Last session 2026-08-10.** It changed the merge bar, cut the method out of the
-narrative record, verified U24 round 9, and landed fix rounds on U34 and U38.
-Nothing merged.
+**Last session 2026-08-10 evening.** It merged U34, U24 and U38, merged the
+mutation driver, and named the defect class that produced four blockers.
 
 ## Do this first
 
-1. **`docs/METHOD.md`.** This is the operating instruction and it is the only
-   file you need to read before working. Eighty lines, fixed size. It carries
-   the merge bar, the workspace rules, the mutation table method, the driver
-   rules, the four defect patterns, the battery and the merge constraints.
-2. **`docs/wave-state-2026-08-10.md`** for what happened last session and what
+1. **`docs/METHOD.md`.** The operating instruction and the only file you need
+   before working: the merge bar, the workspace rules, the mutation table
+   method, the driver rules, the four defect patterns, the battery, the merge
+   constraints and the cost rules.
+2. **`docs/wave-state-2026-08-10-evening.md`** for what happened last and what
    to do next.
 3. `CLAUDE.md` is the session contract.
 
-The older `wave-state-2026-08-04.md` and `wave-state-2026-08-09.md` are history.
-Read one when you need the reasoning behind a rule. **Do not read them to find
-out how to work.** Every rule they carry is already in METHOD.md.
-
-## The bar changed on 2026-08-10, and this is the headline
-
-**A finding blocks a merge only if it was driven end to end and has a named user
-facing cost.** Everything else is a residual. Behind that sits a hard cap of two
-more fix rounds per unit, after which the unit merges and open findings become
-residuals.
-
-Twenty consecutive blocking verdicts measured the problem: the previous bar,
-that the verifier found nothing, is not a reachable state, because a mutation
-table over a suite this size always finds a zero death row. This reverses the
-2026-08-09 decision on evidence gathered since.
+Older `wave-state-*.md` files are history. Read one for the reasoning behind a
+rule, never to find out how to work.
 
 ## Main, verify before trusting it
 
-    git log --oneline -1                        # 24b58d1
+    git log --oneline -1                        # 63e11da
     git status --porcelain                      # empty
-    .venv/bin/pytest --tb=no                    # 3422 passed, 17 skipped
+    .venv/bin/pytest --tb=no                    # 4410 passed, 14 skipped
     .venv/bin/python scripts/board.py audit     # exit 0
 
-**U32 is still the only unit ever to clear the merge bar.**
+**Four units have now cleared the merge bar: U32, U34, U24 and U38.**
 
 ## The branches, all clean, all pushed, none merged
 
 | unit | tip | round | state |
 |---|---|---|---|
 | u12 | `fc73b82` | 6 | never verified. Needs a 25 run timing measurement. |
-| u16 | `3262bc8` | 7 | never verified. Merges AFTER U24. |
+| u16 | `3262bc8` | 7 | never verified. **Its blocker U24 has merged, so it is next in line.** |
 | u23 | `6f8db39` | 8 | never verified. Needs a mounted FAT image. |
-| u24 | `b5a4e86` | 9 | verified BLOCKING, 4 findings. Needs round 10. |
-| u27 | `44ced7e` | 8 | never verified. Needs a read only volume image. |
-| u34 | `1a7cdf7` | 10 | fixed, UNVERIFIED. Light pass next. |
-| u38 | `c2fda57` | 8 | fixed, UNVERIFIED. Light pass next. |
+| u27 | `44ced7e` | 8 | never verified. Needs a read only volume image. Merges WITHOUT a closing trailer. |
+| u32 | `cf333dd` | 7 | already merged; the branch was never deleted. |
 | conformance | `897ef12` | parked | its `write/metadata.py:195` defect is live on main. |
+| fixtures | no commits | | empty worktree with its own venv, ready for the harness build. |
 
 ## What to do next, in order
 
-1. **U24 round 10.** Record the identity scheme version in the store at write
-   time, so history reconstruction is a lookup and not a recomputation. Round 9
-   froze the composer and not what the composer calls, which is why this is the
-   fourth consecutive "correct fix, hole still open" on that branch. Stores
-   written by unmerged branch tips are OUT of scope; nothing has shipped.
-2. **Verify U34 round 10 and U38 round 8**, light pass, scoped per METHOD.md.
-   Both are author written, and an author's table is a draft.
-3. **Apply the severity floor to those verdicts.** On the evidence so far both
-   units are close to merging.
-4. **U12, U23 and U27 need hardware fixtures.** Building them once as a reusable
-   harness is now cheaper than deferring them a fourth session.
+1. **Build the hardware fixture harness.** Approved 2026-08-10 and not built. One
+   reusable set: a repeat count timing runner reporting a pass rate, a FAT image
+   created and mounted with hdiutil and torn down, and a real read only volume.
+   It unblocks U12, U23 and U27, deferred four sessions. **Calibrate the timing
+   fixture on a quiet machine**, not while other agents are running.
+2. **U16**, ready now that U24 has merged.
+3. `docs/mutation-rows.md` still documents the hand rolled driver and disagrees
+   with METHOD. Retire it or point it at `scripts/mutate.py`.
 
 ## Standing decisions
 
-- **U24 and U27 merge WITHOUT closing trailers.** Scan every merge body first;
-  the command is in METHOD.md. GitHub matches a closing keyword anywhere in a
-  body, not only in trailer position.
-- **Residual numbers are APPEND ONLY**, decided 2026-08-10, reversing the
-  sequential renumber. `main`'s numbers never move; the incoming branch's
-  residuals get fresh numbers above `main`'s highest. The renumber was certified
-  on a sweep of `src`, `tests` and `scripts` that missed GitHub issue titles,
-  which carry the number in their text.
-- **Do not touch** U30's board state, U20, U29, R-9, A1, A2.
+- **Residual numbers are APPEND ONLY.** Main's numbers never move; an incoming
+  branch's residuals take fresh numbers above main's highest. GitHub issue
+  titles carry the number in their text, which the renumber silently repointed.
+- **Use `scripts/mutate.py`.** Do not hand roll a driver. 2 tool calls against 26
+  on five rows, and it runs a null control that invalidates a bad batch.
+- **A finding blocks only if its input is REACHABLE and you drove the producer.**
+- **U24 and U27 merge WITHOUT closing trailers**, and U24's issue is
+  deliberately open because the register still owes it a module.
+- **Do not touch** U30's board state, U20, U29, A1, A2.
 - **Two or three units per session.** Do not relaunch a seven agent wave.
 
-## Two things that will bite you
+## Four things that will bite you
+
+**Scan the whole pushed RANGE for closing keywords, not the merge commit.**
+GitHub reads every commit in a push. U24's issue closed twice on prose that
+existed to warn against it. Never write a closing keyword next to an issue
+number, even to quote one; backticks do not defuse it. Run the scan as a GATE
+that stops the push, not as a line printed beside it.
 
 **Every agent gets its own worktree, its own venv and its own scratch directory
-named for its unit.** Three concurrent agents ran clean on 2026-08-10, the first
-time since the failure was named. Do not regress it.
+named for its unit.** Never symlink a venv. Build venvs with
+`/opt/homebrew/bin/python3.12`; the default `python3` is 3.14 and the project
+refuses it.
 
-**Never let git restore a file mid measurement, by driver OR by hand.**
-`git checkout` and `git checkout-index` silently discard uncommitted edits. Third
-instance on 2026-08-10, by hand that time. Snapshot and rewrite file text, and
-verify restores against `git show HEAD:<path>`.
+**Never let git restore a file mid measurement, by driver or by hand.** Snapshot
+and rewrite text, and verify against `git show HEAD:<path>`.
 
-**Never pass `-q` to pytest**, including a collection run. `pyproject.toml` sets
-it and a second one becomes `-qq`, which suppresses the summary line.
+**Reconcile collected counts by identifier under one collation.** `comm` needs
+`LC_ALL=C` on both sides; mixing Python's sort with the shell's invents
+differences that are not there.
 
 ## The remote
 
-Every branch is on origin. Merging a unit now means deleting it in both places:
+Every branch is on origin. Merging means deleting it in both places:
 
     git branch -d unit/uNN-...
     git push origin --delete unit/uNN-...
