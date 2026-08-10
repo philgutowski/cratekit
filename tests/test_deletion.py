@@ -5490,6 +5490,53 @@ def test_the_stamp_field_is_spelled_on_disk_and_not_only_in_this_build(cfg):
     assert stores.IDENTITY_SCHEME_FIELD == "identity_scheme"
 
 
+def test_the_stamp_this_build_writes_is_pinned_to_a_literal():
+    """The VALUE is a wire format too, and a literal is the only way to see it move.
+
+    This string is written into stores on people's disks and is what every future
+    build compares against to decide whether it composes the way this one did. A
+    change to any rule the stamp measures moves it, and so does a change to the
+    probe set, and both of those are exactly the events somebody should have to
+    look at.
+
+    **GOING RED HERE IS NOT A FAILURE, IT IS THE SIGNAL.** It says the identity
+    scheme moved. Confirm that the move was intended, then update the literal. It
+    is the opposite of the round 9 literals, which pinned what FORMER builds
+    wrote and therefore had to be right about the past; this pins what THIS build
+    writes, so it is checkable against the build in front of you.
+
+    The suite has no other way to see the value at all. Every other assertion
+    about the stamp is an inequality under a monkeypatch, and an inequality
+    survives any change that moves both sides together, which is the shape that
+    made four rounds of this defect silent.
+    """
+    assert stores.identity_scheme() == "is1_898ad13cd09eeffd"
+
+
+def test_a_record_of_another_kind_does_not_answer_the_tombstone_question(cfg, gates_pass):
+    """The kind is recognised POSITIVELY, so a record of another kind decides nothing.
+
+    ``DecisionStore.record`` takes whatever kind it is handed, so a record of the
+    wrong kind in this store is a thing a future caller or a hand edit can put
+    there. A decline is about one library ROW and a tombstone is about a
+    RECORDING, which is why they are two stores and two kinds; letting a
+    row-shaped record answer "has this deletion been recorded" would retire a
+    confirmed removal off a decision that said only "leave this file where it
+    is".
+    """
+    removed = _one_removed_row(cfg, title="Strobe", remixer="Michael Woods")
+    stores.tombstones(cfg).record(
+        kind=tombstone.KIND_REMOVED_FILE,
+        identity=stores.row_identity(removed),
+        payload={"content_id": removed.content_id, "recorded": removed.recorded},
+        actor="cli",
+    )
+    assert not stores.tombstone_predicate(cfg)(removed), (
+        "a record that is not a tombstone answered the tombstone question, so a "
+        "confirmed removal is retired against a decision nobody made about it"
+    )
+
+
 def test_a_row_that_cannot_be_identified_is_not_read_as_already_recorded(cfg, gates_pass):
     """B4 from the round 9 verification, carried and closed.
 
