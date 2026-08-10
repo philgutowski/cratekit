@@ -3,7 +3,8 @@
 Written 2026-08-01 so a session with no memory of the build can pick it up.
 Revised the same day, twice: once after the three pending branches merged and
 the U7 hardening landed, and again after U8 and U17. Revised 2026-08-02 after
-U18, again the same day after U11 and U19 landed together, and again after U21.
+U18, again the same day after U11 and U19 landed together, and again after U21
+and U24.
 
 ## The work is tracked on a board now
 
@@ -17,12 +18,289 @@ which blocks which. Read BOARD.md for what to update when a merge lands.
 
 ## State
 
-`main` carries U1 to U8, U10, U11, U13, U14, U15, U17, U18, U19, U21, U31 and
-U35, plus the W1 through W6 hardening, the A4 whitelist addition, and U9's
-verdicts. Pushed to the private remote. **3164 passed, 16 skipped**, ruff clean,
-`scan_repo` clean.
+`main` carries U1 to U8, U10, U11, U13, U14, U15, U17, U18, U19, U21, U24, U31,
+U34 and U35, plus the W1 through W6 hardening, the A4 whitelist addition, and
+U9's verdicts. Pushed to the private remote. Measured after the U24 merge:
+**4131 passed, 15 skipped** out of 4146 collected, ruff clean, `scan_repo`
+clean. Quote the PASS count here, never the collected total: they differ by the
+skips, and an earlier line in this file and one commit trailer both quoted the
+collected number as if it were passes.
 
-**There are no unmerged branches and no worktrees.**
+`main` has since moved to `c114afa` with **3278 passed, 17 skipped**. A trial
+merge of that into this branch was run on 2026-08-03 for evidence and then
+deleted. Five files conflicted, `docs/HANDOFF.md`,
+`docs/residual-findings.md`, `src/cratekit/cli/registry.py`,
+`src/cratekit/core/cause.py` and `tests/test_cli_contract.py`, and every one was
+two sides appending to the same region rather than two sides changing one thing.
+
+**ONE OF THOSE APPENDS IS A COLLISION AND NOT A CONFLICT, and the real merge has
+to settle it by hand.** `main` carries its own `R-16` and `R-17` in
+`docs/residual-findings.md`, from U36 and U32, and this branch carries `R-16`,
+`R-17`, `R-18`, `R-19` and `R-20`. Keeping both sides, which is what every one of
+these five conflicts wants, leaves the merged file with TWO `R-16` headings and
+TWO `R-17` headings naming four different findings. Git cannot see that, because
+neither side edited the other's line. Whoever merges renumbers this branch's
+entries to follow `main`'s highest, and fixes the references to them in
+`docs/HANDOFF.md`, `src/cratekit/deletion/candidates.py` and
+`tests/test_deletion.py`, which name `R-19` and `R-20` in prose.
+
+**THE MERGED NUMBERS RECORDED HERE AFTER ROUND 3 WERE MEASURED ON THE ROUND 2
+TIP, and are corrected rather than adjusted.** They read 3395 passed, 16 skipped
+out of 3411 collected, which is exactly nineteen short of the merge of the round
+3 tip, nineteen being the number of assertions round 3 added. The merge had been
+run before round 3 was committed, so it described a tree that no longer existed
+by the time the line was written. The conflict set of five files and the ruff and
+`scan_repo` results were and are correct.
+
+MERGED BATTERY, measured on the merge of `c114afa` into the ROUND 4 tip
+`49f3c13`, taken after the conflicts above were resolved by keeping both sides:
+**3440 passed, 16 skipped** out of 3456 collected, ruff clean, `scan_repo` clean.
+The branch was created, measured, reset and deleted, and `main` was not touched.
+Re-measure after any further round, since every added assertion moves it, and
+measure it on a COMMITTED tip: a merge run before its own round is committed
+measures the round before it, which is exactly what went wrong above.
+
+## What U24 changed
+
+**Track deletion and tombstones, plus one verb.** `src/cratekit/deletion/` is seven
+modules and the split is by what each one can be WRONG about: `library` reads the
+collection and writes nothing (KTD15); `candidates` decides from the filesystem
+rather than from a string comparison whether a removed row's file is genuinely
+unreferenced (R37); `trash` performs the only destructive act R18 permits on a
+music file and refuses when the volume has no Trash rather than falling back to
+an unlink; `stores` records declines and tombstones on U11's revocable decision
+stores; `watermark` remembers how far this library has been read, bound to the
+database identity it was measured against; `run` is the order those are used in,
+which is the unit; and `tombstone_cli` is `crate tombstone list`, the one verb of
+this feature a person can reach.
+
+**The proof is the point.** A candidate is deletable only when its device and
+inode match no active row's resolved file AND its size matches the size the
+removed row recorded. That covers a case-only difference, a composition-form
+difference, a hard link, a symbolic link and a path later reclaimed by a
+different track, without knowing about any of them. The reference set must be
+COMPLETE before any of it means anything: an active row that will not resolve or
+will not stat contributes no inode, so the proof would pass on absence of
+evidence, and the run refuses instead of offering a smaller set.
+
+**`cratekit.core.tombstone` is a new domain module, in a slot the layering rules
+had already reserved.** It owns the version identity both halves of R36 need: the
+deletion pass records a suppression, an acquisition pass consults it, and neither
+may import the other because deletion is a toggleable module and a slim install
+without it still has to be able to ask. The ISRC is deliberately NOT in the
+identity, because a row usually has one and a provider candidate usually does
+not, and an identity may only contain fields both sides always have.
+
+**HALF THE CLI LANDED, and the half that did not is one wall rather than two.**
+`tombstone.list` ships as `cratekit.deletion.tombstone_cli`. It declares no gate,
+writes no surface, is not destructive and opens no database, so nothing about the
+conformance wall was ever in front of it; it was withheld only because it shared
+a module with its sibling. R36 says a tombstone is listable AND revocable, both
+words are about a person, and until this verb existed the feature shipped with no
+surface for either.
+
+`delete.review` genuinely cannot land yet, **and the reason written here on
+2026-08-02 is stale.** That note said the wall was R34 and conformance 3: an
+explicit gate is answerable only by a separate recorded act, conformance 3 drove
+the inline answer and then required exit `OK`, so no explicitly gated verb could
+land. It also asserted that a missing database was NOT the problem. Main's
+`3269ab1` rewrote conformance 3, and the gate wall is **down**.
+
+Driven rather than argued. On 2026-08-03 the verb was built on a throwaway merge
+of `main` and driven through all four acts: it refuses at `delete.review.confirm`
+and reports the run resumable; an inline `-d` answer on the same run is refused
+and is **not** recorded, which is R34 honoured; `run decide` records it with its
+actor; and the resumed invocation carries the answer forward and proceeds past
+the gate. Everything R34 asks for works now.
+
+It stops one step later, at exit **22**, `library-directory-missing`. Reading the
+collection is what this verb IS, so it cannot exit `OK` on a machine with no
+rekordbox database, and the conformance fixture is exactly such a machine. That
+is **R-13's original database wall**, unchanged, which closes on a disposable
+fixture on the `CRATEKIT_TEST_DB` convention and whose natural owner is U27. The
+stale note replaced one wrong reason with another and denied the true one.
+
+`cratekit.deletion.cli` is registered in `tests/_pending.py` against **U24**,
+which is where it belongs; an earlier re-point to U27 is reverted, because U27
+ships no deletion domain and closes in this same wave, so the re-point moved a
+contradiction rather than resolving one. **That entry is what makes a
+`Closes #24` trailer return `board.py audit` exit 2 permanently**, and it is a
+decision about who owns the database fixture rather than a repair. See R-13 and
+R-16 in `docs/residual-findings.md`.
+
+U24's other countdown is DISCHARGED: the guard that declines and tombstones go
+through the revocable stores is armed and now runs over the whole package.
+
+**THE FIX ROUNDS CHANGED THREE THINGS THAT MOVE FILES OR LOSE DECISIONS.** A
+prefix rule whose target directory does not exist used to make every active row
+answer "the file is missing", which left the reference set empty, `complete`
+true, and every removed row proved unreferenced against nothing at all: omitting
+a rule refused loudly and adding a wrong one proceeded silently. The split is now
+at the ANCHOR, the library root or the rule's target, and a row under an anchor
+that is not there refuses and names the directory. Separately, a declined row
+used to report `handled`, so the watermark passed its sequence and R35's
+revocability clause was dead on arrival: `HANDLED` is `{GONE}` alone now, and
+revoking a decline also clears the review item that carried the rejection.
+
+The second round found the third. Revoking wrote the STORE first and the QUEUE
+second, with no transaction across them and no compensation, so a queue write
+that failed for any reason left the decline lifted with the rejection that
+re-creates it still armed, and the very next apply put the decline straight back.
+The order is inverted now, deliberately, because one of the four intermediate
+states is going to be reachable and only one of them is safe to be interrupted
+in: queue first leaves the decline standing, which is exactly what the person
+asked for last time, and re-running the revoke finishes it. A review item that is
+simply not there is treated as already reopened rather than as a refusal, since a
+revoke that finds nothing holding the file shut has succeeded.
+
+**WHAT THE ANCHOR SPLIT DOES NOT DO** is check that an anchor is RIGHT, only that
+it is THERE, so a rule aimed at an existing but wrong directory still reproduces
+the original defect. That is recorded as R-16 Open 4 with its reproduction, and
+what ships against it is `ReferenceSet.suspect_anchors` plus a per anchor
+WARNING, because every refusal rule for it needs a threshold and every threshold
+also refuses libraries that are fine. R-16 Open 5 records the availability this
+cost: a mapped volume that is not plugged in now refuses the whole pass, which is
+a library that used to run.
+
+**ROUND THREE CLOSED A DATA INTEGRITY DEFECT AND AN IDENTITY THAT NAMED TWO
+VERSIONS AT ONCE.** Both had been green through two fix rounds.
+
+A file could reach the Trash with **no tombstone** and stay there forever,
+silently. The pre-flight proves the suppression store READABLE, which is not
+writable, so a full disk or a volume gone read only reaches the one window where
+failing has already destroyed something: the move succeeded and the record did
+not. The exception left the gates block with the watermark un-advanced, which
+looks safe and is not, because the next run finds the file absent, answers `GONE`,
+`GONE` is the one member of `HANDLED`, and the watermark passes over the row. R36
+says every completed deletion writes a tombstone and that state made the sentence
+false with no trace anywhere. The move is UNDONE now: `run._record_or_put_it_back`
+renames the file back, the store's own refusal propagates carrying its remedy, and
+re-running completes the deletion. When the undo fails too the refusal is replaced
+rather than chained quietly and names both paths, because a store that will not
+write is an errand and a file in the Trash with no way back is a fact about
+somebody's music.
+
+`version_identity` keyed on artist and title alone while the reader mapped only
+`ArtistName` and `Title`, so two remixes of one recording produced **one**
+identity whenever rekordbox filed the mix name in its dedicated `RemixerName` or
+`Subtitle` column. Deleting the remix reported the ORIGINAL suppressed and never
+re-acquired it. The module docstring asserted "the title is what carries the
+version", which the schema contradicts by having a Remixer column. The reader
+takes the mix name from either column now and `tombstone.version_title` composes
+it into the title, so the claim is true rather than assumed, and it keeps the
+two-field identity the ISRC argument depends on. **Round 4 narrowed the safety
+claim that came with it**, which read "composition can only split one identity
+into two, never merge two into one": composing produces a title, and a title is a
+string another row may already hold, so `("Everything", "I Do")` and
+`("Everything (I Do)", "")` land on one identity. It is true when the second
+field really is a mix name, and what keeps it one is the producer, below.
+
+Four smaller ones, each an absence read as evidence. `apply`'s re-check took no
+`declined` predicate, so the function whose docstring says it re-runs EVERY
+assertion ran one fewer. The revoke read `review-item-unknown` as "the queue does
+not hold it" when a wrong derivation produces the same reason, so the derivation
+inputs are asserted positively first. `MAX_NAME_ATTEMPTS` could be raised to
+`10**9` with the suite green. And a recorded location that is not an absolute path
+was excused from the completeness proof on an argument that covers streamed
+pseudo-locations only: a drive-letter path or a `file://` location is excused by
+the same branch, which on Windows empties the reference set entirely and proves
+every removed row unreferenced against nothing. `candidates._unnameable` refuses
+those two spellings and NOTHING ELSE, which is round 4's correction: round 3
+recognised them with `locations.looks_like_location`, which is `"://" in value`,
+so `tidal://`, `spotify://`, `beatport://` and `https://` rows were refused too
+and the whole destructive verb went off for any library holding one streamed row
+spelled as a URL. Both directions are pinned now. See **R-18** for the half that
+belongs to `core.locations` and **R-17** for a folding collision that is recorded
+rather than fixed.
+
+**ROUND FOUR FIXED A REGRESSION ROUND THREE INTRODUCED, WIDENED THE UNDO TO THE
+INTERRUPTS THAT MISS IT, AND SETTLED WHAT AN IDENTITY IS.** Five blocking
+findings and nine more, all driven end to end by an independent verifier.
+
+The regression is the one above: narrowing which excused rows count against the
+proof was right, and recognising them by `"://" in value` refused every streamed
+row that carries a scheme. That is a destructive verb turning itself off
+permanently with a step nobody can perform. Only `file://` names a file, so only
+`file://` and a drive letter refuse, and the four other schemes are asserted
+excused.
+
+`run._record_or_put_it_back` caught `Exception`, and the failure most likely to
+land in that window is not one. The store write takes a sibling lock, which is
+the slowest part of the pass, so a Ctrl-C lands there: `KeyboardInterrupt` and
+the `SystemExit` a SIGTERM handler raises are both `BaseException` and both
+walked past the undo, leaving the file in the Trash with no tombstone and the
+next run retiring the row through `GONE`. `trash.move_to_trash` had used
+`except BaseException` for the identical window one file over since it shipped.
+Both handlers take it now. **`Category.GONE`'s safety argument is corrected
+rather than repeated**: no handler catches a SIGKILL or a power loss, so the
+guarantee is "every failure this process can observe" and the rest is bounded by
+the file being in the Trash rather than unlinked, and by what is lost being the
+suppression rather than the music. Recorded as **R-20** with the write-ahead
+intent that would actually close it.
+
+**Three findings that were one question: what is an identity.**
+`version_title`'s containment short circuit was a plain substring test, so a
+version appearing anywhere in the title was dropped from the identity and `Live`
+counted as carried by `Lively Up`. Two rows of one recording then shared one
+identity and deleting either suppressed both, which is the over-suppression
+direction and the exact defect round 3 claimed to close. A version is carried now
+only when a BRACKETED group of the title names it at word boundaries, which keeps
+`Strobe (Michael Woods Remix)` from composing a second time even though
+`RemixerName` holds the bare artist name `Michael Woods`.
+
+And `Subtitle` is not `RemixerName`. `RemixerName` is an association proxy into
+`djmdArtist`, so rekordbox's schema says a non-empty value is a remixer, and it
+is believed on sight. `Subtitle` is free text mapping to ID3 `TIT3` and holds a
+label, a featured credit or a note as readily as a mix name, so believing it on
+sight wrote an ordinary track's tombstone under `atlas (anjunadeep)` while the
+consulter, which is handed a provider's `Atlas`, answered NOT SUPPRESSED. It is
+believed now only when the value reads as a version against a closed vocabulary,
+and both directions are pinned. That is also what makes the narrowed composition
+claim true in practice: composition is safe because of what is fed to it, not
+because of what it does.
+
+Smaller: the `unnameable` tally and the payload's own spelling of the mix name
+are pinned rather than merely present, the dead first half of the version guard
+is live again under the bracketed test, and R-17's Turkish sentence is deleted
+because `str.lower` and `str.casefold` behave identically for the dotless and
+dotted i. The Greek final sigma reason is real and the re-keying reason is
+decisive on its own, so R-17's decline stands. **R-19** records a square-bracketed
+mix name never matching the parenthesised spelling a provider uses.
+
+**ON "THE STALE SENTENCE IS CORRECTED IN ALL FIVE PLACES", written in round 3's
+commit body: it is corrected in the four places that can be corrected.** Those
+are this file, `src/cratekit/cli/registry.py`, `tests/_pending.py` and
+`src/cratekit/deletion/__init__.py`, and each states the reason that is true. The
+fifth is `c4f97fb`'s commit body, and a commit body cannot be amended once it is
+in the history, so it carries the stale reason and always will. A claim that a
+repository has been made uniformly true has to exclude the parts of it that are
+immutable, and pointing at the superseding record is the whole of what can be
+done about them.
+
+**One rule that had two producers now has one implementation.**
+`trees.soft_delete_marker` is the single read of rekordbox's soft-delete marker,
+beside the field whose missing default it defends. The routing pass and the
+deletion pass ask opposite questions of that column, and one of the two
+directions they could disagree in trashes a live file.
+
+**THIS WAVE HAS TEN OTHER WORKTREES OPEN, and the earlier claim here that there
+were none was wrong when it was written.** `git worktree list` shows branches for
+U12, U16, U23, U24, U27, U32, U34, U36, U38 and `fix/conformance-3-and-soft-delete-reader`,
+all landing together. Three of them matter to this unit:
+
+- `fix/conformance-3-and-soft-delete-reader` is correcting the conformance 3
+  assertion that makes an explicitly gated verb unlandable, and is shipping the
+  source guard for the third permissive `rb_local_deleted` reader in
+  `write/metadata.py`. Neither is touched here.
+- U16 is changing `acquire/match.py` to delegate to `core.tombstone`, which is
+  the settled resolution of the two incompatible `version_identity`
+  implementations. U24's placement wins because `core/tombstone.py` sits below
+  both deletion and acquisition, and both are toggleable modules, so an identity
+  inside either is absent exactly when the other needs it.
+- U27 lands doctor, which is where `deletion.trash.probe` is owed a check. That
+  obligation was appended inside the `cratekit.cli.doctor` register entry, which
+  the countdown forces this same wave to delete. It has been moved onto the
+  long-lived `cratekit.deletion.cli` key so it outlives tonight.
 
 ## What U21 changed
 
@@ -383,18 +661,16 @@ all wait behind it.
 |---|---|---|
 | U16 | Three-state match and missing review | Unblocked by U11. Gates U22, U26 and U37. U11 registered a countdown against it: the needs-review state becomes queue items, and matched and missing stay a plain match result. |
 | U23 | Library adoption | Unblocked by U11. U11 registered the adoption surface against it. |
-| U24 | Track deletion and tombstones | Unblocked by U11. U11 registered the declines and tombstones countdown against it. |
 | U34 | Read-only library reports | Unblocked by U11. |
 | U36 | Tree rebuild and convergence check | Still unblocked, still unwritten. Must exist before the first cutover. |
-| U21 | Metadata writers | Rescoped by A4: the writer may never author a key value. |
-| U27 | Setup wizard and doctor | Closes R-1, R-4 and R-7, and unblocks U28. |
+| U27 | Setup wizard and doctor | Closes R-1, R-4 and R-7, and unblocks U28. It now also owes the deletion CLI shell and, underneath it, R-13's conformance-3 wall. |
 | U30 | DJ_tools overlap changes | Owns moving the old system's lock, which is the real half of AE19. |
 | U32 | Restore, retention, reconciliation | U8 registered three items against it, and R-12 proposes a fourth. |
 
 U12 was already unblocked by the job engine and still is.
 
-Still blocked: U20 on U30 and U36; U22 on U16; U25 on U12; U26 on U16, U22 and
-U24; U28 on U27; U33 on U21 and U24; U37 on U16.
+Still blocked: U20 on U30 and U36; U22 on U16; U25 on U12; U28 on U27; U37 on
+U16. **U24 unblocked U26 and U33**, and U26 still waits on U16 and U22.
 
 **U19 is now the first production caller of `write/trees.py`, and U26 will be the
 second.** Two contracts are worth knowing before you write against it: the bridge
@@ -424,9 +700,9 @@ number.
 | U16 | `cratekit.acquire.match_cli` | the needs-review state becomes queue items; matched and missing stay a plain match result |
 | U20 | `cratekit.write.routing_cli` | the routing CLI, plus closing through `close_run` and converging after a rename. See R-13: U20 is an inference, not a decision |
 | U23 | `cratekit.adopt` | the adoption review surface |
-| U24 | `cratekit.deletion.cli` | declines and tombstones go through the revocable decision store |
 | U27 | `cratekit.cli.doctor` | a database acknowledged outside the library root is reported every run |
 | U27 | `cratekit.cli.reports` | the four report verbs, and the two report engines two of them still have none of. See the residual titled "Four report verbs were owed by a unit that was about to close, and named a module nobody could build": U27 is a judgement, not a decision |
+| U24 | `cratekit.deletion.cli` | the deletion CLI shell. The re-point to U27 is REVERTED, so this row now agrees with `tests/_pending.py`. The wall is R-13's database fixture, not the explicit gate, which main's conformance 3 rewrite took down. It is what makes `Closes #24` return audit exit 2 |
 | U28 | `path:skills` | the shipped skills tree |
 | U32 | `cratekit.core.restore` | the restore verb, and the three obligations U8 registered against it |
 | U37 | `cratekit.intake`, `cratekit.intake.collection_xml` | record routing intents at the decision, close through `close_run`, and never emit a `<TEMPO>` element |

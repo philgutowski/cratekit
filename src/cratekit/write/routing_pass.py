@@ -660,12 +660,6 @@ def acknowledge(
 # ---------------------------------------------------------------------------
 
 
-#: What "the row could not answer" looks like, distinct from every value the
-#: column can legitimately hold. A plain default would be the permissive answer
-#: wearing a sentinel's clothes.
-_MARKER_ABSENT = object()
-
-
 def content_rows(db: Any) -> Iterator[trees.ContentRow]:
     """Every collection row, as the three columns the matcher compares.
 
@@ -686,27 +680,19 @@ def content_rows(db: Any) -> Iterator[trees.ContentRow]:
     ``getattr`` re-introduced exactly what U18 refused, and the cost is concrete:
     against a real database with one row genuinely soft-deleted, a binding that
     stops exposing the column makes the pass place the deleted track, mark it
-    routed, and close the run over it. ``None`` is refused alongside a missing
-    attribute because ``bool(None)`` is the same permissive answer.
+    routed, and close the run over it.
+
+    THE READ ITSELF MOVED to :func:`cratekit.write.trees.soft_delete_marker`,
+    beside the field whose missing default it defends, when U24 added a second
+    producer that asks the opposite question of the same column. Two copies of
+    this rule would agree today and disagree eventually, and one of the two
+    directions it can disagree in trashes a live file.
     """
     for row in db.get_content():
-        marker = getattr(row, "rb_local_deleted", _MARKER_ABSENT)
-        if marker is _MARKER_ABSENT or marker is None:
-            raise refuse(
-                "soft-delete-marker-unreadable",
-                f"the collection row {getattr(row, 'ID', '?')!r} cannot say "
-                f"whether it is a tombstone, and treating that as 'not deleted' "
-                f"would place a track somebody removed from their library on "
-                f"purpose and then report the run as finished",
-                remedy=Remedy.RUN_DOCTOR,
-                scope=Scope.RUN,
-                origin=("routing_pass",),
-                detail={"content_id": str(getattr(row, "ID", "")), "column": "rb_local_deleted"},
-            )
         yield trees.ContentRow(
             content_id=str(row.ID),
             recorded=str(getattr(row, "FolderPath", "") or ""),
-            deleted=bool(marker),
+            deleted=trees.soft_delete_marker(row),
         )
 
 

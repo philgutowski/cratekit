@@ -1227,6 +1227,45 @@ ENTRIES: tuple[Entry, ...] = (
         ),
         planned_in="U23",
     ),
+    # ── Deletion: one surface, TWO MODULES, and the split is the decision ────
+    #
+    # The two verbs named one module and moved together, and the pair was
+    # re-pointed away from U24 on the argument that neither could land. Half of
+    # that argument was wrong. ``tombstone.list`` declares no gate, writes
+    # nothing, is not destructive, and emits a review set, so conformance 3's
+    # loop over its gates never executes a single iteration for it: nothing about
+    # R-13's wall touches it, and R36 asks for tombstones to be LISTABLE and
+    # revocable, which is a sentence the engine alone cannot satisfy because a
+    # person cannot reach the engine.
+    #
+    # ``delete.review`` genuinely cannot land yet, AND THE REASON RECORDED HERE
+    # ON 2026-08-02 IS NO LONGER THE REASON. That note said the wall was the
+    # explicit gate: R34 makes an explicit gate answerable only by a separate
+    # recorded act, conformance 3 drove the inline answer and then required exit
+    # OK, so no explicitly gated verb could land. Main's 3269ab1 rewrote
+    # conformance 3 and that wall is DOWN. Driven rather than argued, against a
+    # real build of this verb on a throwaway merge of main, 2026-08-03: the verb
+    # refuses at ``delete.review.confirm`` and reports it resumable; an inline
+    # ``-d`` answer on the same run is REFUSED and is not recorded, which is R34
+    # honoured; ``run decide`` records it with its actor; and the resumed
+    # invocation carries the answer forward and proceeds past the gate.
+    #
+    # It stops at the NEXT step, which is the wall the old note explicitly denied:
+    # exit 22, ``library-directory-missing``. Reading the collection is what this
+    # verb IS, so it cannot exit OK on a machine with no rekordbox database, and
+    # the conformance fixture is exactly such a machine. That is R-13's original
+    # database wall, unchanged, whose closing condition is a disposable fixture on
+    # the ``CRATEKIT_TEST_DB`` convention and whose natural owner is U27.
+    #
+    # Recorded at this length because the correction is the same fault twice: a
+    # wrong reason outliving the decision it was written for. The 2026-08-02 note
+    # replaced a wrong reason with another wrong one, and asserted the true wall
+    # was not a wall.
+    #
+    # Splitting the module is what lets the landable half land. It costs one file
+    # and it buys the only user-facing surface this feature has, which is the
+    # trade the earlier note weighed the other way when it believed neither half
+    # could ship.
     Entry(
         name="delete.review",
         summary="review tracks removed from the collection and trash the confirmed files",
@@ -1257,14 +1296,13 @@ ENTRIES: tuple[Entry, ...] = (
     Entry(
         name="tombstone.list",
         summary="list and revoke tombstones so a suppressed version is visible",
-        module="cratekit.deletion.cli",
+        module="cratekit.deletion.tombstone_cli",
         builder="build_tombstones",
         handler_key="tombstone.list",
         feature_rows=(37,),
         module_id="deletion",
         emits=frozenset({"review_set"}),
         output_schema="review_set/1",
-        planned_in="U24",
     ),
     Entry(
         name="export.playlist",

@@ -1388,6 +1388,33 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="deletion_watermark_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="deletion_watermark.lock",
+        why=(
+            "The sibling lock for the watermark above, which is a read then a "
+            "write over one document exactly as the decision stores are. "
+            "``atomic_write_bytes`` makes the RENAME atomic and does nothing for "
+            "the cycle around it, so two passes finishing at once both read the "
+            "same watermark, both advance it from what they read, and the second "
+            "rename discards the first one's advance while the call that lost "
+            "reports success. What that loses is not a number: the watermark is "
+            "what makes a removal HANDLED, so a dropped advance re-offers files "
+            "somebody already answered for, and a dropped RE-BASELINE offers a "
+            "whole library's historical removals at once. Library-scoped for the "
+            "reason the watermark is: a lock in a per-installation directory is "
+            "invisible to a second machine, so both would advance one library's "
+            "watermark at once."
+            " NEVER_RESTORED for the inode reason every lock here shares, and it "
+            "is a sibling rather than a lock beside the document because the "
+            "watermark is COUPLED: a restore replaces the directory holding it, "
+            "and a lock inside that directory would have its inode swapped under "
+            "every process holding it."
+        ),
+    ),
+    StateFile(
         key="backup_ack",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.LIBRARY,

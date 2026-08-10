@@ -240,3 +240,779 @@ slug is right. What was wrong was the arithmetic offered for them, which is its
 own kind of defect: a reader who trusts a wrong count trusts it in both
 directions, and a row reported as killing 4 when it kills 1 hides three tests
 that were never written.
+
+---
+
+## Round 6, U24 track deletion and tombstones
+
+**Baseline: 3408 passed, 15 skipped.** Measured on branch
+`unit/u24-track-deletion-and-tombstones` at the round six stage one commit,
+2026-08-04, whole suite per row. **Every number in this section was measured.**
+None is derived and none is carried over from an earlier round's report.
+
+**How the rows were run.** A private driver under this unit's own scratch
+directory, one row at a time, checkpointed to disk after each row, with the
+worktree verified against the git object database before AND after every row.
+Failing node ids came from a pytest plugin's `pytest_runtest_logreport` objects,
+never from splitting the `FAILED` line on `" - "`, which appears inside
+parametrized ids in this suite.
+
+**Restore was `git checkout --` rather than a snapshot, which is safe HERE and
+is not safe in general.** The note at the top of this file is right: a fix
+round's own edits are usually uncommitted while rows are being measured, and a
+checkout throws them away with the mutation. It was safe here only because the
+fix commit was made BEFORE any row was applied, so there was nothing uncommitted
+for a checkout to discard.
+
+**The interrupted-driver failure happened again and was caught the same way.** A
+driver process was orphaned when its parent shell was killed, kept running, and
+applied a mutation to a file while a second driver was measuring a different
+one. It was caught by comparing the worktree against git rather than against any
+snapshot, both mutations were restored, and the affected rows were re-measured.
+That is the second occurrence of the same failure in this build. The lesson
+stands: checkpoint per row, and verify against git.
+
+**A ROW NAME DOES NOT IDENTIFY A MUTATION.** The confirm rows below carry names
+from earlier rounds, and every one of them is DEFINED here by its exact
+substitution rather than by its name. Where a count differs from the count
+reported for that name in an earlier round, the difference is called out and
+attributed, or is explicitly left unattributed.
+
+### Round six findings
+
+| id | file | measured kills |
+| --- | --- | --- |
+| `R6-F1-remixer` | `core/tombstone.py` | 6 |
+| `R6-F1-tail` | `core/tombstone.py` | 6 |
+| `R6-F9-isrc` | `deletion/stores.py` | 3 |
+| `R6-F9-wiring` | `deletion/run.py` | 2 as reported, MEASURED 3, see round seven |
+| `R6-F9-recheck` | `deletion/run.py` | 0, and the argument was then deleted |
+| `R6-F2-hold` | `deletion/run.py` | 2 |
+| `R6-F2-retire` | `deletion/run.py` | 2 |
+| `R6-F3-warn` | `deletion/run.py` | 1 |
+| `R6-F4-migration` | `deletion/stores.py` | 1 |
+| `R6-F5-floor` | `deletion/watermark.py` | 1 |
+| `R6-F6-plan` | `deletion/run.py` | 2 |
+| `R6-F6-recheck` | `deletion/run.py` | 0, and the argument was then deleted |
+| `R6-F7-guard` | `core/tombstone.py` | 1 |
+| `R6-F7-reader` | `deletion/library.py` | 2 |
+| `R6-F10-count` | `deletion/library.py` | 1 |
+| `R6-F10-walk` | `deletion/library.py` | 1 |
+| `R6-F10-unaddressable` | `deletion/library.py` | 1 |
+| `R6-X02-attempts` | `deletion/trash.py` | 1 |
+| `R6-Z-trash-access` | `deletion/trash.py` | 1 |
+| `R6-Z-trash-errno` | `deletion/trash.py` | 1 |
+
+### Confirm rows, re-measured against this round's code and this round's suite
+
+| id | file | measured now | reported earlier | same mutation |
+| --- | --- | --- | --- | --- |
+| `S2-E1` | `core/tombstone.py` | 5 | 5 | yes |
+| `C05b-anchor` | `deletion/candidates.py` | 5 | 5 as `C05b` | yes |
+| `C05-anchor` | `deletion/candidates.py` | 1 | 1 as `C05` | yes |
+| `C05b-blank` | `deletion/candidates.py` | 3 | not comparable | NO, see below |
+| `G05` | `core/tombstone.py` | 4 | 4 | yes |
+| `V-wide` | `core/tombstone.py` | 4 | 4 | yes |
+| `G01` | `deletion/library.py` | 2 | 2 | yes |
+| `G07` | `deletion/library.py` | 2 | 2 | yes |
+| `X09b` | `deletion/trash.py` | 2 | 2 | yes |
+| `S2-D1` | `deletion/stores.py` | 12 | 3 | yes, suite grew |
+| `S2-D2` | `core/tombstone.py` | 7 | 3 | subject yes, code changed |
+| `T01` | `core/tombstone.py` | 3 | 2 | yes, suite grew |
+| `S1-A3` | `deletion/library.py` | 3 | 2 | yes, suite grew |
+| `Z-wm-contig` | `deletion/watermark.py` | 12 | 13 | unverifiable, see below |
+| `T01alt-nofold` | `core/tombstone.py` | 30 | 19 | unverifiable, see below |
+
+**Every confirm row still dies.** The smallest is 2 and there is no zero among
+them.
+
+**Where a number moved, and whether the move is attributed.**
+
+* `S2-D1`, `T01` and `S1-A3` rose because round six ADDED tests that the same
+  mutation also kills: six parametrized false-positive rows and a spelling table
+  for `S2-D1`, an unidentifiable-row test for `T01`, and an undercount test for
+  `S1-A3`. The substitution is unchanged. Measured, attributed.
+* `S2-D2` was reported as rising because the line it substitutes had itself been
+  rewritten, "so the numbers are not two measurements of one thing". **That
+  attribution is wrong and is corrected in the round seven section, where it is
+  re-measured.** The mutation's end state is `spelled = f"{remixer}
+  {REMIX_DESIGNATION}"` in every round, so the numbers ARE two measurements of
+  one thing, and with the later suite's new node ids deselected it kills 3,
+  identical to the first report. The rise is entirely suite growth.
+* `C05b-blank` is MY row and is not the earlier `C05b`. I defined it as blanking
+  the drive-letter pattern; the earlier row removed its `^` anchor. Blanking
+  kills 3, removing the anchor kills 5. `C05b-anchor` above is the earlier row,
+  re-measured, and it reproduces exactly. This is the verifier's point about row
+  names, demonstrated on a row I got wrong myself.
+* `Z-wm-contig` at 12 against 13, and `T01alt-nofold` at 30 against 19: reported
+  here as unattributable, because neither was defined anywhere I could read and I
+  would not name a mechanism I had not reproduced. **The refusal was right and it
+  was applied to evidence I had not gone and got.** Both are answerable by
+  restoring the previous round's `tests/test_deletion.py` and re-running, which
+  an independent verifier then did: `Z-wm-contig` kills 13 against the round five
+  suite, the thirteenth being the test round six deleted, and 0 new, so
+  `13 - 1 + 0 = 12`; `T01alt-nofold` kills 19 against the round five suite,
+  matching exactly, and 12 new, so `19 - 1 + 12 = 30`. Same mutations, both. The
+  standard is: do not guess a mechanism, AND go and get the evidence when it can
+  be got. Round seven uses the technique throughout.
+
+### The round six row definitions
+
+Every row is ONE textual substitution unless it says otherwise. The left column
+is the string in the committed source; the right column is what it was replaced
+with for the measurement.
+
+**`R6-F1-remixer`.** `core/tombstone.py`, in `remixer_title`. The round five
+spelling test, restored:
+
+    -    spelled = remixer if ends_as_a_designation(remixer) else f"{remixer} {REMIX_DESIGNATION}"
+    +    spelled = remixer if reads_as_version(remixer) else f"{remixer} {REMIX_DESIGNATION}"
+
+**`R6-F1-tail`.** `core/tombstone.py`, in `ends_as_a_designation`. The position
+test widened back to "anywhere", which is what `reads_as_version` asks:
+
+    -    return bool(words) and words[-1] in VERSION_WORDS
+    +    return bool(words) and any(word in VERSION_WORDS for word in words)
+
+**`R6-F9-isrc`.** `deletion/stores.py`, in `ambiguous_versions`. The
+discriminator neutralised, so no convergence is ever refused:
+
+    -        if len(codes) > 1:
+    +        if False:
+
+**`R6-F9-wiring`.** `deletion/run.py`, in `plan`. The predicate unwired from the
+categoriser, so `categorize` falls back to its "nothing is ambiguous" default:
+
+    -        identifiable=stores.identifiable,
+    -        ambiguous=lambda row: row.content_id in ambiguous,
+    +        identifiable=stores.identifiable,
+
+**`R6-F9-recheck` and `R6-F6-recheck`.** `deletion/run.py`, in `apply`, the
+`ambiguous` and the `identifiable` argument to `candidate_rules.recheck`
+respectively, each deleted. **Both measured 0, and both arguments were then
+DELETED from the source rather than left in place.** Neither can ever measure
+otherwise: both answers are functions of the rebuilt plan `apply` has just
+computed, `apply` skips any candidate that plan did not call deletable, and a
+row that failed either predicate is `UNIDENTIFIABLE` or `AMBIGUOUS_VERSION` and
+therefore not deletable. So the re-check could never see a row for which either
+answer differed. That is one rule written twice with one copy unreachable, which
+is the shape round five deleted the `read_collection` `since` parameter for. The
+row is recorded rather than dropped, because a zero that led to a deletion is
+evidence and a zero nobody writes down is a row somebody re-measures next round.
+
+**`R6-F2-hold`.** `deletion/run.py`, in `_settle_a_confirmed_absence`. The round
+five behaviour restored: a confirmed removal whose file is absent with no
+tombstone is HELD rather than settled, which holds every removal above it too.
+
+    -    if recorded(answered.row):
+    -        return True
+    +    return recorded(answered.row)
+
+**`R6-F2-retire`.** `deletion/run.py`, same function. The round four behaviour
+restored: the row is retired silently, with no tombstone and R36 quietly false.
+
+    -    if answered.category is not Category.GONE:
+    +    if answered.category is not Category.GONE or True:
+
+**`R6-F3-warn`.** `deletion/run.py`, in `apply`. The one line telling a person
+that an unanswered removal was retired with its file somewhere else, deleted:
+
+    -                _warn_that_an_unanswered_removal_is_being_retired(item, recorded=recorded_now)
+
+**`R6-F4-migration`.** `deletion/stores.py`, in
+`spellings_earlier_builds_wrote`. The migration made to answer "no earlier
+spelling", so a tombstone an earlier build wrote stops being recognised:
+
+    -    if not row.version:
+    +    if True:
+
+**`R6-F5-floor`.** `deletion/watermark.py`, in `contiguous_sequence`. The
+never-move-backwards clamp removed:
+
+    -        reached = max(reached, sequence)
+    +        reached = sequence
+
+**`R6-F6-plan`.** `deletion/run.py`, in `plan`. The identifiable predicate
+unwired, so `UNIDENTIFIABLE` is unreachable at review time and a row that can
+never be deleted is offered as deletable:
+
+    -        identifiable=stores.identifiable,
+    -        ambiguous=lambda row: row.content_id in ambiguous,
+    +        ambiguous=lambda row: row.content_id in ambiguous,
+
+**`R6-F7-guard`.** `core/tombstone.py`, in `removed_file_identity`. The guard
+returned to the shape where `str(None)` is `'None'` and therefore truthy:
+
+    -    if content_id is None or not str(content_id):
+    +    if not str(content_id):
+
+**`R6-F7-reader`.** `deletion/library.py`, in `_identifier`. The reader returned
+to manufacturing the string `'None'` for a row with no identifier:
+
+    -    value = getattr(row, attribute, None)
+    -    return "" if value is None else str(value)
+    +    return str(getattr(row, attribute, None))
+
+**`R6-F10-count`.** `deletion/library.py`, in `playlist_referenced`. The
+completeness comparison returned to a one-sided floor, which any undercounting
+source satisfies in silence:
+
+    -    if walked != declared:
+    +    if walked < declared:
+
+**`R6-F10-walk`.** `deletion/library.py`, in `playlist_referenced`. The handler
+around the walk narrowed so a failing walk escapes as a raw exception:
+
+    -    except Exception as exc:  # noqa: BLE001 - any failure to walk is one refusal
+    +    except ZeroDivisionError as exc:  # noqa: BLE001 - any failure to walk is one refusal
+
+**`R6-F10-unaddressable`.** `deletion/library.py`, in `playlist_referenced`. The
+refusal for a live membership that names no collection row, neutralised:
+
+    -    if "" in referenced:
+    +    if False:
+
+**`R6-X02-attempts`.** `deletion/trash.py`. The bound moved by one, which is the
+mutation the previous round's assertion could not see because it read the
+constant under test:
+
+    -MAX_NAME_ATTEMPTS = 1000
+    +MAX_NAME_ATTEMPTS = 999
+
+**`R6-Z-trash-access`.** `deletion/trash.py`, in `probe`. The writability check
+neutralised, so a Trash this account cannot write to reports usable:
+
+    -    if not os.access(target, os.W_OK | os.X_OK):
+    +    if False and not os.access(target, os.W_OK | os.X_OK):
+
+**`R6-Z-trash-errno`.** `deletion/trash.py`. `errno.EINVAL` deleted from
+`_NAME_REFUSED_BY_FILESYSTEM`, so a name the filesystem calls invalid stops the
+run instead of costing one file:
+
+    -        errno.EINVAL,
+
+### The confirm row definitions
+
+**`S2-E1`.** `core/tombstone.py`, in `_already_carries`. Credit groups readmitted
+as version groups:
+
+    -        if group is not None and not _is_a_credit(group)
+    +        if group is not None
+
+**`C05b-anchor`.** `deletion/candidates.py`. The drive-letter pattern's anchor
+removed, so a drive letter ANYWHERE in a recorded value excuses the row:
+
+    -_DRIVE_LETTER = re.compile(r"^[A-Za-z]:[\\/]")
+    +_DRIVE_LETTER = re.compile(r"[A-Za-z]:[\\/]")
+
+**`C05-anchor`.** `deletion/candidates.py`. The same, for the location pattern:
+
+    -_FILE_LOCATION = re.compile(r"^file://", re.IGNORECASE)
+    +_FILE_LOCATION = re.compile(r"file://", re.IGNORECASE)
+
+**`C05b-blank`.** `deletion/candidates.py`. The drive-letter pattern replaced
+with one that matches nothing. Recorded because it is the row I defined wrongly
+and its number is what exposed that a name is not a mutation:
+
+    -_DRIVE_LETTER = re.compile(r"^[A-Za-z]:[\\/]")
+    +_DRIVE_LETTER = re.compile(r"(?!x)x")
+
+**`G05`.** `core/tombstone.py`. The word split narrowed from non-word to
+whitespace, so `Re-Edit` stops reading as two words:
+
+    -_WORD_SPLIT = re.compile(r"\W+", re.UNICODE)
+    +_WORD_SPLIT = re.compile(r"\s+", re.UNICODE)
+
+**`V-wide`.** `core/tombstone.py`. One word added to `VERSION_WORDS`:
+
+    +        "anjunadeep",
+
+**`S2-D1`.** `deletion/stores.py`, in `version_of`. The remixer branch bypassed,
+so the artist name is composed verbatim:
+
+    -        title = tombstone.remixer_title(row.title, row.version)
+    +        title = tombstone.version_title(row.title, row.version)
+
+**`S2-D2`.** `core/tombstone.py`, in `remixer_title`. The already-a-designation
+test dropped entirely, so `Michael Woods Remix` doubles:
+
+    -    spelled = remixer if ends_as_a_designation(remixer) else f"{remixer} {REMIX_DESIGNATION}"
+    +    spelled = f"{remixer} {REMIX_DESIGNATION}"
+
+**`G01`.** `deletion/library.py`, in `database_identity`. The empty-DBID refusal
+neutralised, so an absent identity becomes the string `'None'`:
+
+    -    if not identity:
+    +    if False:
+
+**`G07`.** `deletion/library.py`, in `_sequence_of`. The boolean rejection
+dropped, so `True` is accepted as the update sequence 1:
+
+    -    if value is None or isinstance(value, bool):
+    +    if value is None:
+
+**`T01`.** `core/tombstone.py`, in `version_identity`. The empty-identity refusal
+neutralised, so every unnamed candidate collides onto one suppression:
+
+    -    if not folded_artist and not folded_title:
+    +    if False:
+
+**`T01alt-nofold`.** `core/tombstone.py`, in `version_identity`. The folding
+dropped from the returned identity:
+
+    -    return {"artist": folded_artist, "title": folded_title}
+    +    return {"artist": str(artist), "title": str(title)}
+
+**`X09b`.** `deletion/trash.py`, in `move_to_trash`. The placeholder cleanup
+deleted, so a failed rename leaves an empty file wearing a real track's name in
+the user's Trash:
+
+    -        try:
+    -            target.unlink()
+    -        except OSError:  # pragma: no cover - the placeholder was already gone
+    -            pass
+             raise
+
+**`S1-A3`.** `deletion/library.py`, in `playlist_referenced`. TWO substitutions
+in one row, which is why it is named as a pair: both membership refusals
+neutralised, back to the unguarded comprehension.
+
+    -    if declared is None:
+    +    if False:
+
+    -    if walked != declared:
+    +    if False:
+
+**`Z-wm-contig`.** `deletion/watermark.py`, in `contiguous_sequence`. The stop at
+the first outstanding sequence removed, so the watermark advances over rows
+nobody has answered for:
+
+    -        if outstanding and sequence >= outstanding[0]:
+    +        if False:
+
+---
+
+## Round 7, U24 track deletion and tombstones
+
+**Baseline: 3427 passed, 15 skipped, 3442 collected.** Measured on branch
+`unit/u24-track-deletion-and-tombstones` at the round seven fix commit,
+2026-08-04, whole suite per row. **Every number in this section was measured.**
+None is derived and none is carried over from an earlier round's report.
+
+**How the rows were run.** A private driver under this unit's own scratch
+directory, one row at a time, checkpointed to disk after each row, with every
+file the table touches verified against `git show HEAD:<path>` BEFORE and AFTER
+every row. Restoration was `git show HEAD:<path>` written back, never a snapshot
+and never `git checkout` of a directory. Failing node ids came from a pytest
+plugin's `pytest_runtest_logreport` objects. The fix commit was made BEFORE any
+row was applied, so `HEAD` is the unmutated state and the comparison is exact.
+
+**One harness defect was caught and every affected row was discarded.** The first
+attempt wrote the driver's own report file into the worktree, where
+`tests/test_portability.py::test_the_repository_itself_is_clean` saw it and
+failed on every row. That is a harness artifact inflating every count by one, and
+the whole result set from that attempt was thrown away rather than corrected. The
+harness was then re-baselined on its own: with no mutation applied it reports
+3427 passed, 15 skipped, 0 failed, which is the check that says the driver adds
+nothing.
+
+**WHERE A COUNT MOVED IT IS ATTRIBUTED BY MEASUREMENT, NOT BY EXPLANATION.** The
+technique is the one the round six report should have used: re-run the row with
+this round's 25 NEW node ids deselected, so what is left is the round six suite
+answering the round six question. Round seven added 25 node ids and removed 6,
+for a net of 19, and the removed 6 are the reason two of the arithmetics below
+do not simply subtract 25.
+
+### Round seven findings
+
+| id | file | measured kills |
+| --- | --- | --- |
+| `R7-F1-signal` | `deletion/run.py` | 2 |
+| `R7-F1-settle` | `deletion/run.py` | 1 |
+| `R7-F1-retire` | `deletion/run.py` | 1 |
+| `R7-F1-carry` | `deletion/candidates.py` | 2 |
+| `R7-F1-present` | `deletion/candidates.py` | 3 |
+| `R7-F4-round6` | `core/tombstone.py` | 7 whole suite, 0 deselected |
+| `R7-F4-uncond` | `core/tombstone.py` | 7 whole suite, 3 deselected |
+| `R7-F3-trashed` | `deletion/stores.py` | 2 |
+| `R7-F3-version` | `deletion/stores.py` | 2 |
+| `R7-F8-strip` | `core/tombstone.py` | 4 |
+| `R7-F9-fold` | `deletion/stores.py` | 1 |
+
+### The round seven row definitions
+
+**`R7-F1-signal`.** `deletion/run.py`, in `_the_anchor_proved_nothing`. The whole
+repair switched off, so an anchor that indexed nothing never refuses anything:
+
+    -    return answered.anchor is not None and answered.anchor in references.suspect_anchors
+    +    return False
+
+Kills 2, both new: the stale empty mount point writes twenty tombstones again,
+and the unanswered rows are retired again. This is the row for the finding.
+
+**`R7-F1-settle`.** `deletion/run.py`, in `_settle_a_confirmed_absence`. Only the
+CONFIRMED half switched off:
+
+    -    if _the_anchor_proved_nothing(answered, references):
+    -        logger.warning(
+    +    if False:
+    +        logger.warning(
+
+Kills 1, `test_a_stale_empty_mount_point_writes_no_tombstone_and_retires_no_row`.
+Separate from the row above because the two halves are separate decisions and a
+single row could not show that either one alone is load bearing.
+
+**`R7-F1-retire`.** `deletion/run.py`, in `apply`, the unanswered half only:
+
+    -                handled.append((item.row.sequence, item.handled and not held))
+    +                handled.append((item.row.sequence, item.handled))
+
+Kills 1,
+`test_an_unanswered_removal_under_a_stale_mount_point_is_not_retired_either`. A
+retirement is permanent whether or not a tombstone rides with it, which is why
+this half exists at all.
+
+**`R7-F1-carry`.** `deletion/candidates.py`, in `categorize`. The anchor no
+longer carried out on a `GONE` answer, so the caller has nothing to ask about:
+
+    -                        category=Category.GONE,
+    -                        resolved=resolved.path,
+    -                        anchor=anchor,
+    +                        category=Category.GONE,
+    +                        resolved=resolved.path,
+
+Kills 2, the same pair as `R7-F1-signal`. Recorded separately because the signal
+and its delivery are in two modules and a reader looking at either one alone
+should find the row that pins it.
+
+**`R7-F1-present`.** `deletion/candidates.py`, in `categorize`. The anchor
+existence test forced true, so a GENUINE unmount also reads as a deletion:
+
+    -            if anchors.present(anchor):
+    -                out.append(
+    +            if True:
+    +                out.append(
+
+Kills 3, one of them new: the genuine unmount now answers `GONE` on all twenty
+rows instead of `UNRESOLVED`. This is the row that pins the half round seven must
+not regress, and it is a different branch from the three rows above, which is
+exactly why the repair had to be additional rather than a change to this test.
+
+**`R7-F4-round6`.** `core/tombstone.py`, in `already_spelled_as_a_remix`. Round
+six's rule restored, so the closed vocabulary decides the spelling again:
+
+    -    return bool(words) and words[-1] == fold(REMIX_DESIGNATION)
+    +    return bool(words) and words[-1] in VERSION_WORDS
+
+Kills 7 whole suite and 0 with this round's new node ids deselected, and the
+zero is the point rather than a hole: round six's rule is what round six's suite
+pinned, so the only tests that can see it restored are the ones written this
+round. Of the 7, four are the parametrized spelling rows for `The Cut`, `Todd
+Terry Live`, `Michael Woods Dub` and `Extended Mix`, and three are the 65 value
+measurement, the dominance measurement and the two-identity test.
+
+**`R7-F4-uncond`.** `core/tombstone.py`, in `remixer_title`. The test dropped
+entirely, so `Michael Woods Remix` doubles:
+
+    -    spelled = remixer if already_spelled_as_a_remix(remixer) else f"{remixer} {REMIX_DESIGNATION}"
+    +    spelled = f"{remixer} {REMIX_DESIGNATION}"
+
+Kills 7 whole suite and 3 deselected. **This is `S2-D2` at this round's tip: the
+end state is character for character the same string.** See the confirm section
+for what the 3 settles.
+
+**`R7-F3-trashed`.** `deletion/stores.py`, in `summarize`. The one field that
+says whether this pass moved anything, dropped:
+
+    -        "trashed_to": record.payload.get("trashed_to", ""),
+
+Kills 2, both new.
+
+**`R7-F3-version`.** `deletion/stores.py`, in `summarize`. The three payload
+fields the record's own comments claim an auditor can see, dropped:
+
+    -        "version": record.payload.get("version", ""),
+    -        "version_unbelieved": record.payload.get("version_unbelieved", ""),
+    -        "isrc": record.payload.get("isrc", ""),
+
+Kills 2, both new.
+
+**`R7-F8-strip`.** `core/tombstone.py`, in `removed_file_identity`. The emptiness
+test back on the unstripped value, so `'   '` is an identifier again:
+
+    -    if content_id is None or not str(content_id).strip():
+    +    if content_id is None or not str(content_id):
+
+Kills 4, the four whitespace parametrizations. The numeric case has its own test
+and does NOT die here, which is the half the strip may not cost.
+
+**`R7-F9-fold`.** `deletion/stores.py`, in `ambiguous_versions`. The ISRC
+comparison back to raw text, so case decides whether two rows are two recordings:
+
+    -        codes = {tombstone.fold(row.isrc or "") for row in sharing}
+    +        codes = {(row.isrc or "").strip() for row in sharing}
+
+Kills 1, `test_two_spellings_of_one_isrc_are_one_recording`.
+
+### Confirm rows, re-measured against this round's code and this round's suite
+
+| id | file | measured now | deselected | reported earlier | same mutation |
+| --- | --- | --- | --- | --- | --- |
+| `T01alt-nofold` | `core/tombstone.py` | 34 | 24 | 30 | yes, arithmetic below |
+| `S2-D1` | `deletion/stores.py` | 19 | 10 | 12 | yes, arithmetic below |
+| `Z-wm-contig` | `deletion/watermark.py` | 14 | 12 | 12 | yes, exact |
+| `S2-D2` | `core/tombstone.py` | 7 | 3 | 7 | yes, same end state |
+| `R6-F1-remixer` | `core/tombstone.py` | 15 | 6 | 6 | yes, same end state |
+| `R6-F1-tail` | `core/tombstone.py` | RETIRED | | 6 | NO, subject deleted |
+| `S2-E1` | `core/tombstone.py` | 5 | | 5 | yes, exact |
+| `C05b-anchor` | `deletion/candidates.py` | 5 | | 5 | yes, exact |
+| `G05` | `core/tombstone.py` | 4 | | 4 | yes, exact |
+| `V-wide` | `core/tombstone.py` | 5 | 4 | 4 | yes, exact deselected |
+| `R6-F9-isrc` | `deletion/stores.py` | 4 | 3 | 3 | yes, exact deselected |
+| `T01` | `core/tombstone.py` | 3 | | 3 | yes, exact |
+| `C05b-blank` | `deletion/candidates.py` | 3 | | 3 | yes, exact |
+| `S1-A3` | `deletion/library.py` | 3 | | 3 | yes, exact |
+| `R6-F9-wiring` | `deletion/run.py` | 3 | | 2, corrected to 3 | yes, exact |
+| `R6-F6-plan` | `deletion/run.py` | 2 | | 2 | yes, exact |
+
+**Every confirm row still dies whole suite.** The smallest is 2 and there is no
+zero among them.
+
+**THE TWO ROWS ROUND SIX LEFT UNATTRIBUTED ARE BOTH ATTRIBUTED, BY ARITHMETIC
+THAT CLOSES.**
+
+* `Z-wm-contig`, 12 at round six and 14 now. Deselected it kills 12, identical.
+  The two extra are this round's apply-level mount point tests, which assert the
+  watermark position and therefore die when the contiguity stop is removed.
+* `T01alt-nofold`, 30 at round six and 34 now. Deselected it kills 24, and
+  `30 - 6 + 10 = 34`: the 6 are the parametrized spelling rows this round
+  renamed out of existence, all of which died under it, and the 10 are the
+  replacements plus the new spelling tests that also die. Every term is measured.
+* `S2-D1`, 12 at round six and 19 now. Deselected it kills 10, and `12 - 2 = 10`:
+  exactly 2 of the 6 removed parametrized rows died under it at round six, since
+  bypassing the composition leaves the value verbatim and four of those six
+  expected a verbatim result. The whole suite adds 9 new deaths for 19.
+
+**`S2-D2`'S ATTRIBUTION IS CORRECTED, AND THE CORRECTION IS RE-MEASURED HERE.**
+Round six reported the rise from 3 to 7 as caused by the substituted line having
+been rewritten, "so the numbers are not two measurements of one thing". That is
+wrong. The mutation's end state is `spelled = f"{remixer} {REMIX_DESIGNATION}"`
+either way, which is the same string in all three rounds, and with this round's
+new node ids deselected it kills **3**, identical to the number first reported.
+The rise is entirely suite growth, exactly like `S2-D1`, `T01` and `S1-A3`.
+
+**`R6-F9-wiring` IS 3, NOT 2.** Measured here at 3, and the three node ids are
+character for character the three that `R6-F9-isrc` also kills:
+`test_a_confirmed_ambiguous_row_is_refused_at_move_time_too`,
+`test_the_collision_is_looked_for_across_the_whole_walk_not_the_offered_rows`
+and `test_two_recordings_that_land_on_one_identity_are_refused_rather_than_suppressed`.
+The 2 reported at round six is the count belonging to `R6-F6-plan`, which does
+kill 2 and kills a disjoint pair,
+`test_a_collection_row_with_no_id_reaches_the_pass_as_unidentifiable` and
+`test_a_row_that_could_never_carry_a_tombstone_is_not_offered_as_deletable`. Both
+re-measured here.
+
+**`R6-F1-tail` IS RETIRED RATHER THAN REPRODUCED, and saying so is the point of
+this file.** Its substitution was `words[-1] in VERSION_WORDS` replaced by an
+`any(...)` over all words, inside `ends_as_a_designation`. That function is
+DELETED this round, so the string on the left of that row does not exist in the
+source and the row cannot be applied at all. Its successor is `R7-F4-round6`,
+which restores round six's whole rule from the other direction and kills 7. A row
+whose subject is gone is not a row that measures 0; it is a row that no longer
+exists, and reporting the two as the same thing is how a deleted guard comes back
+looking measured.
+
+**`R6-F1-remixer` REPRODUCES EXACTLY.** Its left side also changed, since the
+predicate it substitutes is now `already_spelled_as_a_remix`, but its END STATE
+is `spelled = remixer if reads_as_version(remixer) else ...`, character for
+character what round six wrote. Deselected it kills 6, which is round six's
+number exactly.
+
+### The confirm row definitions
+
+Only the rows whose substitution differs from the round six section are restated.
+Every other confirm row above uses the round six definition unchanged.
+
+**`R6-F1-remixer`**, at this round's tip:
+
+    -    spelled = remixer if already_spelled_as_a_remix(remixer) else f"{remixer} {REMIX_DESIGNATION}"
+    +    spelled = remixer if reads_as_version(remixer) else f"{remixer} {REMIX_DESIGNATION}"
+
+**`S2-D2`**, at this round's tip, which is `R7-F4-uncond` above:
+
+    -    spelled = remixer if already_spelled_as_a_remix(remixer) else f"{remixer} {REMIX_DESIGNATION}"
+    +    spelled = f"{remixer} {REMIX_DESIGNATION}"
+
+## Round 8, U24 track deletion and tombstones
+
+**Baseline: 3458 passed, 15 skipped, 3473 collected.** Measured on branch
+`unit/u24-track-deletion-and-tombstones` with round eight applied to the working
+tree, 2026-08-09, whole suite per row. Every number in this section was
+measured. None is derived and none is carried over from an earlier round.
+
+**What round eight is.** Round seven's ISRC discriminator folded the code with
+`tombstone.fold`, the FREE TEXT folding, which keeps punctuation on purpose.
+ISO 3901 defines an ISRC as twelve alphanumeric characters, so the display form
+`GB-AYA-15-00001` and the raw `GBAYA1500001` are one code and compared under
+`fold` they are two strings. One recording filed twice therefore reported
+AMBIGUOUS_VERSION, and since `candidates.Category.AMBIGUOUS_VERSION` is not in
+`candidates.HANDLED`, the watermark never passes over the row, the pass never
+offers it, and nothing can ever clear it. Nothing is deleted and nothing is
+suppressed, so the direction is safe; the cost is availability and it is
+permanent. Round eight adds `tombstone.fold_code` and wires it in, and carries
+two collateral fixes at the same site: a version value is tidied before it is
+composed into a bracket, and a boolean is refused as a collection identifier.
+
+**How the rows were run, and how this DIFFERS from round seven.** Round seven
+restored each file from `git show HEAD:<path>`, which was exact because its fix
+commit was made BEFORE any row was applied. **That method is not available to
+this round and was not used.** Round eight was measured while UNCOMMITTED, so
+`HEAD` is the round seven tree and restoring from it would have silently
+discarded the whole round. Restoration is instead the file TEXT snapshotted in
+memory once, before the first mutation, and the driver asserts the restored text
+equals that snapshot after every row and re-runs the whole suite at the end to
+confirm the baseline reproduces. The driver never invokes git for any purpose.
+Rows ran synchronously in the foreground under `PYTHONDONTWRITEBYTECODE=1`.
+
+**AN INSTRUMENT DEFECT WAS CAUGHT AND THE FIRST RESULT SET WAS RE-MEASURED
+RATHER THAN CORRECTED.** The first driver took its collected count from
+`pytest --co -q`. `pyproject.toml` already sets `addopts = "-q"`, so that became
+`-qq`, which suppresses the node listing entirely, and every row reported
+`collected=0` including the baseline. A column whose value is a constant cannot
+detect the thing it exists to detect. This is the standing "never pass `-q`"
+rule broken by the driver whose own docstring states it. The count now comes
+from the `N tests collected` line of `--collect-only` and is cross checked
+against the number of node id lines. The whole table was re-run; no row from the
+first attempt is reported here.
+
+**THE RECONCILIATION IS THE CHECK THAT THE DEATHS ARE REAL.** On every row
+`passed + deaths` equals the baseline 3458 exactly, and `collected` holds at
+3473. A mutation that made a test file fail to COLLECT would take its tests with
+it, and pytest counts a collection error in the same summary position as a
+failure, so a row could report deaths that are not test failures at all. Both
+columns are here so that cannot pass unnoticed.
+
+| deaths | passed | collected | row |
+|---|---|---|---|
+| 2 | 3456 | 3473 | wire: `fold_code` back to `fold` at the ISRC comparison |
+| 1 | 3457 | 3473 | `fold_code`: NFKC back to NFC |
+| 16 | 3442 | 3473 | `fold_code`: drop the non-alphanumeric strip entirely |
+| 1 | 3457 | 3473 | `fold_code`: `[\W_]+` widened to `[^0-9a-z]+` |
+| 6 | 3452 | 3473 | `version_title`: do not tidy before folding |
+| 6 | 3452 | 3473 | `version_title`: tidy the fold but compose the raw value |
+| 2 | 3456 | 3473 | `_as_a_bracketed_value`: stop replacing bracket characters |
+| 5 | 3453 | 3473 | `_as_a_bracketed_value`: stop stripping the ends |
+| 2 | 3456 | 3473 | `removed_file_identity`: drop the boolean guard |
+| 1 | 3457 | 3473 | `removed_file_identity`: boolean guard by truthiness, not by type |
+
+**Zero death rows: none.** Ten rows, ten non-zero.
+
+**THREE ROWS KILL EXACTLY ONE TEST AND THAT IS BY CONSTRUCTION, NOT BY
+ACCIDENT.** Each names a behaviour only one case can express, and the row is
+reported at 1 rather than padded. `NFKC back to NFC` is killed only by the
+fullwidth spelling, since NFC leaves fullwidth forms alone and every other
+spelling in the set is already ASCII. `[\W_]+` widened to `[^0-9a-z]+` is killed
+only by the Cyrillic case, because that widening is exactly transliteration and
+nothing else in the set contains a non-ASCII alphanumeric. `boolean guard by
+truthiness` is killed only by the `True` parameter, because `content_id is
+False` still refuses `False` and differs from the shipped guard on `True` alone.
+A row at 1 whose single killing test is the only test that COULD kill it is
+covered; a row at 1 that happens to have one test is not, and these are the
+former.
+
+**THE TWO WIDENING ROWS ARE THE ONES THAT MATTER FOR SAFETY.** Dropping the
+strip entirely kills 16, which is the fix doing its work. Widening `[\W_]+` to
+`[^0-9a-z]+` kills 1, and that row exists to pin the OVER-suppression direction:
+removing punctuation cannot merge two well formed codes, but folding away a
+non-ASCII alphanumeric can, and a merged code stops the collision guard firing
+and lets a deletion take out a version the person never deleted. The row is the
+assertion that the fold was widened in the safe direction only.
+
+## Round 9, U24 track deletion and tombstones
+
+**Baseline: 3468 passed, 15 skipped, 3483 collected.** Measured on branch
+`unit/u24-track-deletion-and-tombstones` with round nine applied to the working
+tree, 2026-08-09, whole suite per row. Restoration is from text snapshotted in
+memory before the first mutation, because round nine was measured uncommitted
+and `git show HEAD:<path>` would have named the round eight tree. The driver
+never invokes git.
+
+**What round nine is.** The round eight adversarial verification returned
+BLOCKING with three findings, and the first is round eight's own doing.
+`stores.spellings_earlier_builds_wrote` reconstructed the spelling earlier
+builds wrote by calling the LIVE `tombstone.version_title`. Round eight changed
+that composer, so the reconstruction of history moved to what this build writes.
+
+**THE FAILURE WAS SILENT RATHER THAN WRONG, AND THAT IS THE PART TO REMEMBER.**
+Both sides of the comparison moved together, so `verbatim == version_of(row)`
+became true and the function returned the EMPTY TUPLE: not a wrong earlier
+spelling but no earlier spelling at all, reported as "there is no history here".
+Measured at the round eight tip over eight version column shapes, six orphaned
+the record the parent build would have written, and the cost is the one that
+function's own docstring names: the row is held open forever and the person is
+told to put back a file that is already in the Trash where they put it.
+
+Round nine adds two FROZEN historical composers, reconstructs from those, and
+offers three preceding spellings rather than one.
+
+| deaths | passed | collected | row |
+|---|---|---|---|
+| 7 | 3461 | 3483 | F1: reconstruct history with the LIVE composer, round 8's body |
+| 2 | 3466 | 3483 | F1: offer the oldest verbatim spelling only |
+| 2 | 3466 | 3483 | F1: offer the previous build's spelling only |
+| 1 | 3467 | 3483 | F1: drop the differs-from-current filter, offer everything |
+| 2 | 3466 | 3483 | F1: drop the `version_kind` branch in the reconstruction |
+| 8 | 3460 | 3483 | frozen: `version_title_before...` composes the tidied value |
+| 3 | 3465 | 3483 | frozen: `remixer_title_before...` calls the live composer |
+| 1 | 3467 | 3483 | F3: the FOLDING limb of the tidy, removed ALONE |
+
+**Zero death rows: none.** Eight rows, eight non-zero. Every row reconciles,
+`passed + deaths` equals 3468 and `collected` holds at 3483.
+
+**THE FIRST RUN OF THIS TABLE HAD TWO ZERO DEATH ROWS AND THEY ARE WHY THE
+SUITE GAINED A CASE.** Offering the oldest spelling only, and dropping the
+`version_kind` branch, both killed nothing. The cause was one property of the
+test set: every remixer in it already ended in `Remix`, so
+`already_spelled_as_a_remix` fired, the designation was not appended, and the
+plain composer and the remixer composer produced the SAME string. The two
+historical spellings coincided on every row, so neither the second tuple entry
+nor the branch that chooses it was exercised anywhere.
+
+**AND THE FIRST ATTEMPT TO SEPARATE THEM WAS WRONG, WHICH IS THE MORE USEFUL
+RECORD.** A remixer differing only in WHITESPACE does not separate them.
+`'Michael Woods '` composes `Strobe (Michael Woods  Remix)` with a doubled
+space, and `fold` collapses interior runs one step later, so the previous build
+and this build write the SAME identity and there is no orphan to find. That is
+`version_title`'s own docstring claim holding: the interior collapse changes no
+identity that was not already broken. What DOES survive folding is a bracket
+character and a stripped end, so `'[Michael Woods]'` is the separating shape and
+it yields three distinct identities. The literals were MEASURED before they were
+written into the test, after the reasoned guess failed.
+
+**F3 IS CLOSED AND THE ROW PROVES IT.** Round eight's table mutated the tidy
+through the composition limb twice and never removed the FOLDING limb alone,
+which killed zero of 3458. Removed alone it now kills 1, on the reachable path
+where a title that already names its version stops being recognised as naming
+it and a second bracket is composed onto a title that already says everything.
+
+## Round 10, U24 track deletion and tombstones
+
+**The table moved.** METHOD.md asks for the table under `docs/mutation/`, so
+round 10's 39 rows, their exact substitutions, their collected counts and the one
+zero row live in `docs/mutation/u24-round-10.md`. This file keeps rounds 6
+through 9 where earlier readers expect them; nothing was copied, because a second
+copy of a count is how the two come to disagree.
+
+Two things from round 10 that belong beside the instructions at the top of this
+file rather than in one round's table:
+
+* **A mutation that does not mutate reports a zero that reads exactly like an
+  unguarded line.** Round 10's first form of one row wrapped the value in
+  `(...) if False else (...)`, which evaluates to the original, and its first
+  form of another bypassed the function it meant to weaken. Both reported zero
+  deaths. Re-read every substitution as the interpreter will, not as the sentence
+  describing it reads.
+* **Restores are verified against a sha256 of `git show HEAD:<path>` taken
+  outside the driver**, with the fix committed first so that HEAD is the thing to
+  compare against. That satisfies both standing rules at once: no git inside the
+  driver, and no scratch copy certifying itself.

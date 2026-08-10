@@ -195,6 +195,46 @@ class ContentRow:
     deleted: bool
 
 
+#: What "the row could not answer" looks like, distinct from every value the
+#: column can legitimately hold. A plain default would be the permissive answer
+#: wearing a sentinel's clothes.
+_MARKER_ABSENT = object()
+
+
+def soft_delete_marker(row: Any) -> bool:
+    """Read rekordbox's soft-delete marker off one mapped row, or REFUSE.
+
+    THE ONE IMPLEMENTATION OF THE RULE ``ContentRow.deleted`` states above. Two
+    producers read this column now, the deferred-routing pass and the deletion
+    pass, and they ask opposite questions of it: routing wants the rows that are
+    alive, deletion wants the rows that are not. Two copies of the read would
+    agree today and disagree eventually, and the disagreement is invisible until
+    it has already placed a deleted track or trashed a live one.
+
+    A ROW THAT CANNOT REPORT IT REFUSES, in both directions. ``getattr(row,
+    "rb_local_deleted", False)`` supplies the permissive default U18 removed on
+    purpose, and the cost is concrete: a binding that stops exposing the column
+    hands every tombstone to the routing matcher as a live row, and hands the
+    deletion pass a library in which nothing was ever removed. ``None`` is
+    refused alongside a missing attribute because ``bool(None)`` is the same
+    permissive answer.
+    """
+    marker = getattr(row, "rb_local_deleted", _MARKER_ABSENT)
+    if marker is _MARKER_ABSENT or marker is None:
+        raise cause.refuse(
+            "soft-delete-marker-unreadable",
+            f"the collection row {getattr(row, 'ID', '?')!r} cannot say whether "
+            f"it is a tombstone, and treating that as 'not deleted' would place a "
+            f"track somebody removed from their library on purpose, or hide a "
+            f"removal from the pass that acts on removals",
+            remedy=Remedy.RUN_DOCTOR,
+            scope=cause.Scope.RUN,
+            origin=("trees",),
+            detail={"content_id": str(getattr(row, "ID", "")), "column": "rb_local_deleted"},
+        )
+    return bool(marker)
+
+
 @dataclass(frozen=True)
 class MembershipReport:
     """What one database membership session wrote, and what it skipped.
@@ -925,5 +965,6 @@ __all__ = [
     "insert_record_labels_tree",
     "match_active_rows",
     "match_indexed_rows",
+    "soft_delete_marker",
     "write_tree_membership",
 ]

@@ -1284,6 +1284,12 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # only when a tree is actually database-native, so it exits OK here with
         # no database on the machine.
         "converge": [],
+        # U24. A plain listing with no arguments, which is the state a fresh
+        # install is genuinely in: no version has been deleted, so no version is
+        # suppressed, and the verb must still emit a well-formed review set and
+        # exit OK rather than treating an empty store as a failure. Revoking is
+        # driven from the deletion suite, where a real tombstone exists to lift.
+        "tombstone.list": [],
     }[entry.name]
 
 

@@ -2088,3 +2088,738 @@ the tag matches. Nothing currently produces a tag where the two readings differ.
 
 **What closes it:** one commit tag containing a metacharacter whose two readings
 disagree, asserted.
+## R-44. Five findings the U24 review accepted, and the reason each stands
+
+**Found:** during the U24 adversarial reviews, 2026-08-02. Every one was
+reproduced end to end. Three are fixed here and named so the fix is findable;
+two are recorded and open.
+
+**Fixed here, listed because a reader of the review needs to know they are gone:**
+
+1. A prefix rule whose target directory does not exist made every active row
+   answer "the file is missing", which left the reference set EMPTY, `complete`
+   true, and every removed row proved unreferenced against nothing. Split at the
+   ANCHOR: a resolved path whose library root or prefix-rule target is not there
+   is `unanchored` and refuses, naming the directory.
+2. A declined row reported `handled`, so the watermark passed its sequence and
+   revoking the decline could never re-offer the file. `HANDLED` is now `{GONE}`
+   alone, and revoking a decline also clears the review item that carried the
+   rejection.
+3. A verdict travelled to whatever the row resolved to at apply time, so editing
+   the volume prefix map between the review and the apply moved a different file
+   while the one the person saw stayed on disk. The path the item was offered
+   with is now compared before the move.
+
+**Open 1: R38 asserts one volume and the pass can act on N.**
+`session.assert_volume_identity` checks `cfg.library.root` against
+`cfg.library.volume_id` and nothing else. A prefix rule can send a removed row
+onto any other mounted volume, and its file is trashed there with no identity
+assertion at all. Verified against a real second volume: the file moved and
+landed in that volume's own `.Trashes/501`. The module's own decoy-clone
+argument applies verbatim to a backup drive mounted at a map target, which is
+exactly the disk whose copies the recovery story depends on.
+
+**Closes when:** configuration can carry a volume identity per prefix rule, and
+the pass asserts the identity of every volume it is about to write to rather
+than only the one the library root sits on. That is a config shape change, so it
+belongs with a unit that owns the config surface.
+
+**Open 2: a permanently non-deletable candidate pins the watermark forever.**
+`present` offers only `DELETABLE`, so `COLLIDES_WITH_ACTIVE_ROW`,
+`STILL_REFERENCED`, `SIZE_MISMATCH`, `UNRESOLVED` and `UNIDENTIFIABLE` can never
+receive a verdict and none of them is handled. Measured over three consecutive
+runs with one permanent collision: 2, 3 and 4 candidates while the watermark
+stayed where it started. R24 degrades monotonically from the first one onward
+and nothing inside the product clears it.
+
+`DECLINED` now joins that set deliberately, which makes this reachable by an
+ordinary act rather than only by a rare one. It is the price of R35's
+revocability and it is paid knowingly: a declined row short-circuits at the top
+of the categoriser, before any path is resolved and before any file is touched,
+so the cost is one dictionary lookup per run rather than a filesystem call.
+
+**Closes when:** a person can retire a candidate the software cannot act on,
+through the review queue rather than through the watermark, so "I have seen this
+and there is nothing to do" is a recorded decision instead of a permanent pin.
+
+**Open 3: a crash between the exclusive create and the rename leaves a
+zero-byte file carrying the track's exact name in the Trash.** Verified. The
+placeholder is removed on every failure the process survives, including
+`BaseException`, so this needs a hard kill or a power loss. Nothing reclaims the
+orphan afterwards, and each one consumes one of `MAX_NAME_ATTEMPTS` permanently.
+It is worse than it sounds for one reason: the orphan looks exactly like the
+file that was supposed to be there.
+
+**Closes when:** the claim carries a marker that says it is a claim rather than
+a file, so a later run can tell an interrupted reservation from a real trashed
+track and reclaim it. Every shape of that costs a second name or a sidecar, and
+choosing one is a decision rather than a repair.
+
+**Open 4: the anchor check asks whether the anchor is THERE, never whether it is
+RIGHT.** Added 2026-08-03, after the second review round reproduced it end to
+end. One real file, one removed row on it, and one active row on the same file
+through a prefix rule whose target EXISTS but is the wrong directory: the
+reference set comes back empty, `complete` is true, `assert_complete` passes, the
+candidate is `DELETABLE`, and the only copy of the file moves to the Trash. With
+the rule correct the same library reports `COLLIDES_WITH_ACTIVE_ROW`. It is the
+original defect in full, reachable through a narrower door.
+
+**Why it is not fixed here.** Every rule that catches it needs a threshold on
+some missing fraction, and every threshold that catches it also refuses the
+ordinary case, which is a prefix rule that legitimately matches a handful of rows
+whose files the user moved by hand. The reproduction above has exactly ONE row
+through the rule, so any rule with a minimum row count misses it and any rule
+without one refuses libraries that are fine. Picking a number there is a product
+decision about how much availability to spend, not a repair.
+
+**What is delivered instead** is a signal with no threshold in it.
+`ReferenceSet.suspect_anchors` names every anchor that exists, indexed nothing at
+all, and had at least one row go missing under it, and the pass logs a WARNING
+per anchor naming the directory. That is per ANCHOR rather than per run, which
+is what the first version got wrong: it fired only when the whole reference set
+was empty, and one unrelated active row resolving anywhere in the library
+silenced it. The module docstring now states the limit rather than claiming the
+split closed it.
+
+**Closes when:** the pass can tell a rule target that is right from one that is
+merely present, which needs something on the volume to identify it, in the shape
+`R38`'s volume identity already has for the library root. That is the same
+config change Open 1 needs, and the two should land together.
+
+**Open 5: a mapped volume that is not plugged in refuses the WHOLE pass, and
+that is an availability regression this round introduced.** A two drive library
+with the archive volume deliberately detached: one root row indexed, three
+archive rows unanchored, refused, including for candidates that live entirely on
+the library root. Deleting the rule does not help, because those rows become
+`unmapped` and refuse too. There is no configuration in which a deletion runs
+while a mapped volume is detached.
+
+Before this round that library ran, and for root resident candidates its proof
+was in fact sound, because a file on an unmounted volume cannot share a
+`(dev, ino)` with a file on a mounted one.
+
+**Why the refusal is not scoped to the affected candidates.** `categorize`
+already scopes correctly per candidate, returning `UNRESOLVED` rather than
+`GONE`, and it was tempting to make `reference_set` do the same. It is not sound.
+A dead anchor means the mapping is broken, and the code cannot tell "the rule is
+right and the volume is out" from "the rule is wrong", which is Open 4 above. In
+the second case the row's file is not on any detached volume; it is somewhere
+this machine can reach, possibly under the library root, where it could be
+exactly the file a candidate is about to trash. Narrowing the refusal would
+assume the rule is correct, which is the assumption the whole anchor split exists
+to stop making.
+
+**Reduced rather than closed:** the refusal now carries a step naming the
+directory to mount or the rule to correct, so the person meeting it is one act
+from a run that works rather than reading "run doctor".
+
+**Closes when:** configuration can record that a mapped target is expected to be
+offline, so the user asserts once that those rows live on that volume and the
+pass may then scope the refusal to candidates resolving through it. That is a
+deliberate assertion by a named person, in the same class as the backup
+acknowledgment, and it is config surface rather than a repair.
+
+**Now pinned:** that step was the round 2 remediation and NOTHING asserted it.
+`grep '\.steps' tests/test_deletion.py` returned zero hits, so deleting the
+expression left the suite green and the person met the wall the step exists to
+remove. Both branches are asserted now, the one that names a directory and the
+one that must offer none, and the assertion goes through `render.render_cause`
+so it covers the step reaching a person rather than only existing.
+
+---
+
+## R-45. Case folding merges two different releases into one identity
+
+**Found:** during the U24 round 3 review, 2026-08-03. Verified in the
+interpreter against `cratekit.core.tombstone.fold`.
+
+`fold` calls `str.casefold`, which is the correct Unicode operation for
+case-insensitive comparison and which also performs full case folding. Full case
+folding is not a bijection: it maps several distinct characters onto one
+sequence. Three verified examples, each a pair that folds to one string and
+therefore produces ONE `version_identity`:
+
+- `Straße` and `Strasse` both fold to `strasse`
+- `Maße` and `MASSE` both fold to `masse`
+- `ﬁre`, spelled with the `fi` ligature, and `fire` both fold to `fire`
+
+So two different releases whose titles differ only in one of those ways address
+one tombstone, and deleting either reports the other suppressed. That is the
+over-suppression direction, which the module's own docstring names as the worse
+one: a missed suppression re-acquires something and REPORTS it, while an
+over-eager one silently withholds music the user wants.
+
+**Why it is not fixed here.** Every alternative is worse in a way that is not
+smaller. `str.lower` is not full case folding: it leaves the Greek final sigma
+`ς` alone where `casefold` maps it onto `σ`, so two spellings of one Greek title
+would stop matching, and `ς` is a real title character. It would also change the
+identity of every record already written, which is decisive on its own and would
+be decisive even if the Greek case did not exist. **The Turkish sentence that
+used to stand here was wrong and is removed:** `lower` and `casefold` behave
+IDENTICALLY for the dotless `ı` and the dotted `İ`, verified in the interpreter,
+so Turkish does not distinguish the two operations and never argued for either.
+Comparing the unfolded strings as well
+would make the identity carry two spellings of one field, so a recorder and a
+consulter that normalised differently would stop matching, which is exactly the
+property the two-field identity exists to guarantee. There is no folding here
+that is both case-insensitive and injective.
+
+**Frequency, stated so the cost is legible:** low. It needs two releases in one
+library whose titles differ only by an eszett, a ligature, or the equivalent, and
+one of them deleted. It is recorded rather than fixed because the fix costs a
+correctness property that is load-bearing every day, to close a collision that is
+rare, and that trade should be made deliberately rather than inside a fix round.
+
+**Closes when:** the identity can carry a discriminator that both a recorder and
+a consulter always have and that survives folding, or the product decides the Greek
+final sigma cost and the re-keying of every record already written are acceptable
+and moves to a narrower fold. Either one is a decision about the identity
+contract rather than a repair.
+
+---
+
+## R-46. A recorded location that is not an absolute path is excused from the completeness proof, and `locations` cannot tell two kinds apart
+
+**Found:** during the U24 round 3 review, 2026-08-03. **The file is
+`src/cratekit/core/locations.py`, which belongs to another unit and is not
+rewritten from inside U24.** Half of it is closed in U24's own consumer; this
+entry is the half that is not.
+
+`resolve_recorded_path` returns `NOT_A_PATH` for any recorded value that does not
+start with `/`, and `reference_set` EXCUSES those rows from the completeness
+proof rather than refusing. The excusal is sound for exactly one reason, which
+the module states: a streamed track has a pseudo-location rather than a file, so
+it cannot be the row that references a file, and counting it against completeness
+would refuse the whole feature for any library that has ever streamed anything.
+
+That argument covers rows referencing NO file. It does not cover a row that
+references a file perfectly well and is spelled in a form this build does not
+decode, and two such shapes exist:
+
+1. **Windows.** Every `C:\` row fails the leading-slash test, so on Windows every
+   active row is excused, the reference set comes back EMPTY, `complete` is true,
+   and every removed row is proved unreferenced against nothing at all. That is
+   the 144-file shape with a different door. `locations` already ships a Windows
+   separator seam in `_native_to_url_path`, so the platform is anticipated
+   elsewhere in the same module.
+2. **A percent-encoded `file://` location.** `locations.location_to_path` is the
+   decoder built for exactly the two spellings rekordbox has used, and
+   `deletion.library.read_collection` reads `FolderPath` raw and never routes it
+   through the decoder, so such a value is excused the same way.
+
+**What U24 closed from inside its own package.** `candidates._unnameable`
+inspects the recorded value of every row the resolver excused and splits it. It
+recognises exactly two spellings, and the list is exhaustive rather than
+illustrative:
+
+- a value matching `^[A-Za-z]:[\\/]`, a drive-letter path;
+- a value matching `^file://` case-insensitively, the one URL scheme that names
+  a file.
+
+Both are `unnameable` and REFUSE through `assert_complete`. **Everything else
+stays `not_a_path` and still runs, and that is a decision rather than an
+omission.** `tidal://track/123`, `spotify://track/abc`, `beatport://12345` and
+`https://api.tidal.com/v1/tracks/123` all reference NO file, which is the entire
+argument for excusing them, so all four are excused and all four are pinned as
+such. The round 3 recogniser asked `locations.looks_like_location`, which is
+`"://" in value` and therefore true of every one of them, and that turned the
+whole destructive verb off for any library holding one streamed row spelled as a
+URL, with a remedy no such row can ever satisfy. It is fixed and both directions
+are asserted.
+
+**What is still open, and why it is not U24's to close.** The recogniser is a
+list of known shapes rather than a decision the resolver makes, so a spelling
+nobody has met yet is still excused silently. One is already known and stays
+open: a Windows DRIVE-RELATIVE path, `C:Music/Track.flac` with no separator after
+the colon, is a real path that names a file relative to the current directory of
+drive C, and `_DRIVE_LETTER` requires the separator, so that row is excused. Two
+of the three Windows spellings are closed and this is the third. It is left with
+the rest of R-18 rather than patched into the regular expression, because
+widening the pattern to `^[A-Za-z]:` would also catch a pseudo-location of the
+form `x:something`, and choosing between those two on a per-shape basis is
+exactly the guessing the resolver should be doing instead.
+
+The real repair is in `locations`: `resolve_recorded_path` should distinguish
+"this is not a path" from "this is a path this build cannot name", and
+`read_collection` should route recorded values through `location_to_path` so the
+decoder that already exists is actually used. Both are edits to another unit's
+file, and a deletion pass reaching into the resolver to fix the resolver is how
+two decoders end up in one tree, which is the fault that cost 144 files.
+
+**Closes when:** `core.locations` returns the two answers separately and the
+library reader decodes through it, at which point U24's consumer drops its
+recogniser and reads the resolver's own answer.
+
+---
+
+## R-47. A square-bracketed mix name never matches the provider spelling of the same version
+
+**Found:** during the U24 round 4 review, 2026-08-03. Verified against
+`cratekit.deletion.stores` with a recorded tombstone.
+
+`core.tombstone.fold` folds case, surrounding space, internal runs of space and
+Unicode composition form, and nothing else. Punctuation stays, so `Track (Live)`
+and `Track [Live]` are deliberately two identities. That is the module's stated
+conservatism and it is right in general, but it has one consequence worth naming
+concretely:
+
+    row:       title "Sun Path [Nightwave Remix]", version "Nightwave Remix"
+    identity:  {"artist": "...", "title": "sun path [nightwave remix]"}
+    consulted: suppressed_version(artist, "Sun Path (Nightwave Remix)") -> False
+
+The row already carries its mix name, so `version_title` correctly does not
+compose a second one, and the brackets survive into the identity. Every provider
+this product will ask spells that version with parentheses, so the tombstone is
+written, is listable, is revocable, and answers NOT SUPPRESSED to the only
+question ever asked of it.
+
+**Direction:** under-suppression. The version is re-acquired and the acquisition
+reports what it acquired, which this package calls the milder of the two
+failures. The over-suppression direction is what the conservatism buys, and it is
+the one that silently withholds music.
+
+**Pre-existing rather than introduced.** Round 3 put it inside U24's stated scope
+by making the recorder compose, so it is recorded here rather than left unsaid.
+
+**Why it is not fixed here.** Closing it means folding punctuation, which is a
+change to what an identity IS for every recorder and every consulter in the
+product, including ones outside deletion, and it would re-key every record
+already written. It also cannot be done halfway: normalising `[` to `(` on the
+recording side alone gives the recorder and the consulter two spellings of one
+rule, which is the exact fault `core.tombstone` exists to prevent.
+
+**Closes when:** the identity contract decides whether bracket style is part of a
+version, and both sides move together.
+
+---
+
+## R-48. A SIGKILL between the move and the tombstone still loses the record, and no handler can catch it
+
+**Found:** during the U24 round 4 review, 2026-08-03, as the honest half of the
+F2 fix.
+
+`run._record_or_put_it_back` closes the window where a file has reached the Trash
+and its tombstone has not been written. Round 3 caught `Exception`, which missed
+`KeyboardInterrupt` and the `SystemExit` a SIGTERM handler raises, and the store
+write takes a sibling lock, which is the slowest part of the pass and therefore
+where a Ctrl-C lands. Both are caught now, matching `trash.move_to_trash`, which
+already used `except BaseException` for the identical window.
+
+**What is left is what no in-process code can reach.** A SIGKILL, a power loss,
+or a kernel panic between the rename and the store write leaves the file in the
+Trash with no tombstone. On the next run the categoriser answers `GONE`, `GONE`
+is the one member of `HANDLED`, and the watermark retires the row. R36's "every
+completed deletion writes a tombstone" is then false for that row with nothing
+recording it.
+
+**What bounds the cost rather than removing it:** the window is one rename plus
+one store write per candidate; the file is in the TRASH rather than unlinked, so
+it is still the user's file; and what is lost is the suppression rather than the
+music, so the version becomes re-acquirable, which is the under-suppression
+direction. `Category.GONE`'s docstring states this as the partial guarantee it is
+rather than claiming the state is unreachable, which is what it claimed before.
+
+**NARROWED IN ROUND SIX, and the narrowing is worth stating because it changes
+what the entry is about.** The sentence above, "on the next run the categoriser
+answers `GONE` and the watermark retires the row", is no longer true for the only
+path that can reach this state. A file only ever moves after a person CONFIRMS
+its removal, and a verdict is durable, so what the next run finds is a confirmed
+row whose file is absent with no tombstone. `run._settle_a_confirmed_absence`
+now writes the record that deletion owes rather than retiring the row in silence,
+so the interrupted deletion COMPLETES on the next run and R36 becomes true for it
+again. What is left is the window itself: between the SIGKILL and that next run,
+the suppression does not exist, and if the person clears the review item in
+between, nothing will ever write it. The durable repair below is unchanged.
+
+**Closes when:** the tombstone is written as a PENDING intent before the rename
+and settled after it, so an interrupted deletion is discoverable from the store
+rather than from the absence of a file. That is a change to the decision store's
+contract, since `core.review` records settled decisions and has no pending state,
+and it belongs with whoever owns that contract rather than inside a fix round for
+one consumer.
+
+## R-49. The Subtitle vocabulary's false negatives collide, and the ISRC tells a collision from a convergence
+
+**Found:** during the U24 round 5 review, 2026-08-03. **Rewritten during round
+six, 2026-08-04, because two of its three claims were wrong and the third was a
+number nothing here can measure.**
+
+`tombstone.VERSION_WORDS` decides whether a rekordbox `Subtitle`, which is ID3
+`TIT3` and holds anything at all, names a version of the recording. Against 75
+genuine version designations a real library holds, 56 read as NOT a version:
+`Acappella`, `A Cappella`, `Vocal`, `Refix`, `Rerub`, `Redux`, `Dubplate`,
+`Rmx`, `Retouch`, `Reimagined`, `Revisited`, `Intro`, `Outro`, `Beats`,
+`Beatapella`, `Tool`, `Nightcore`, `Sped Up`, `Slowed`, `Slowed + Reverb`,
+`Mono`, `12 Inch`, `Bonus Track`, `Take 2`, `Unreleased`, `Orchestral`, and
+every non-English spelling including `Ao Vivo`, `En Vivo`, `Versão`, `Versión`,
+`Mezcla`, `Acústico`, `Livemitschnitt`, `ライブ` and `Живая`. Against 42 ordinary
+`TIT3` values, 15 read AS a version, among them `Original Motion Picture
+Soundtrack`, `Extended Play`, the labels `Club Sweat` and `Toolroom Club`, and
+the artists `Radio Slave`, `Dub Pistols`, `Cut Chemist` and `Mix Master Mike`.
+
+**WHAT THOSE TWO NUMBERS ARE AND WHAT THEY ARE NOT.** The 75 and the 42 are
+hand-authored ENUMERATIONS OF EXAMPLES. An error rate over a named list is
+checkable by anyone holding the list, and both rates above are. A FREQUENCY
+claim over a real column is not, because chosen examples carry no information
+about how often each kind occurs, and nothing in this repository samples one:
+those spellings appear in exactly two files, both as prose, and there is no
+corpus and no sampler. An earlier version of this entry justified a decision
+with "roughly half of all subtitled rows, since `TIT3` holds a label or a credit
+about as often as it holds a mix name". **That number was asserted, never
+measured, and it is deleted rather than restated.** The decision it was offered
+in support of may still be right; it is argued below without it.
+
+**The two directions do not cost the same.** A false negative leaves the row
+with a bare title, so two versions of one recording collide onto one identity
+and deleting either suppresses the other: the user loses a track they did not
+delete. A false positive composes an extra parenthetical, so the tombstone is
+written and listable and matches no provider spelling: the deletion fails to
+stick and the version becomes re-acquirable.
+
+**THE INDISTINGUISHABILITY CLAIM WAS FALSE AS STATED, AND THIS IS THE
+CORRECTION.** This entry used to say that telling the feared COLLISION from the
+legitimate CONVERGENCE "needs a signal neither the row nor the library carries
+today", and that the same shape flags an ordinary duplicate import so no local
+check could be built. `RemovedRow.isrc` is read from the `ISRC` column in
+`deletion.library.read_collection` and already rides in every tombstone's
+payload. It settles all three cases:
+
+* the legitimate convergence, `Strobe` with `Michael Woods` in the remixer
+  column against `Strobe (Michael Woods Remix)` with it filled in as well, is
+  ONE recording filed twice and carries ONE code;
+* the feared collision, two recordings whose designations the vocabulary did not
+  believe, both keeping a bare title, is TWO recordings and carries TWO codes;
+* the ordinary duplicate import, one row with a label subtitle and one without,
+  is one recording imported twice and carries the SAME code, which is the case
+  the entry cited as the reason not to build the check and is the case the check
+  resolves rather than trips over.
+
+`deletion.stores.ambiguous_versions` runs over the one collection walk
+`run.plan` already holds, and `candidates.Category.AMBIGUOUS_VERSION` refuses a
+convergence whose rows carry two codes that are both present and different. It
+is INCONCLUSIVE where a code is absent, and silence is read as agreement: an
+absent code is not evidence against the identity's own claim, and refusing on
+silence would refuse most of a library with thin metadata.
+
+**THE EXAMPLE WAS ALSO WRONG AND IS CORRECTED.** This entry said `Title='Sun'`
+with `Sun Path` in a version column composes onto the identity of a row
+genuinely titled `Sun (Sun Path)`. Measured on the current build, a `Sun Path`
+in `RemixerName` composes `sun (sun path remix)`, which does not collide with
+`sun (sun path)` at all. The collision it describes arises only for a FLIPPED
+`Subtitle` default, where the value is believed and composed verbatim, and it
+should have been stated as a consequence of the flip rather than as a property
+of the code as it stands.
+
+**THE BELIEF DEFAULT IS STILL NOT FLIPPED, AND HERE IS THE ARGUMENT WITH THE
+DISCRIMINATOR IN HAND.** The reason is no longer "nothing local can tell the two
+apart", which is now false.
+
+1. **The discriminator attacks the worse direction directly, so keeping the
+   default costs less than it did.** What the false negatives cause is the
+   collision, which is over-suppression and the direction that costs the user
+   music. That is exactly what `AMBIGUOUS_VERSION` refuses. The remaining cost of
+   a false negative is a row reported rather than deleted, which is a refusal a
+   person can see and act on.
+2. **Flipping trades a measured rate for an unmeasured one.** The false-positive
+   rate over the named list is 15 of 42; how often a real `TIT3` holds a label
+   rather than a mix name is the number this entry used to assert and cannot
+   measure. Flipping is a bet on that number, and there is nothing here to
+   settle it with.
+3. **The discriminator does not cover the shape a flip would introduce.** Its
+   evidence is the removed half of the collection walk. The row a composed title
+   would collide with, `Sun (Sun Path)`, can be an ACTIVE row, and the active
+   half is read as `trees.ContentRow`, whose `__dataclass_fields__` are exactly
+   `content_id`, `recorded` and `deleted`, with no artist, title or code at all;
+   `run.plan` feeds `stores.ambiguous_versions(seen.removed)` and nothing else.
+   So a flip would introduce a collision class the check STRUCTURALLY cannot see,
+   which is the opposite of the position it improves. **An earlier version of
+   this point said such a row is "very often" active. That is a frequency over a
+   real library, unmeasured and unmeasurable from this repository, which is the
+   standard applied to "roughly half" sixty lines above, and it is deleted rather
+   than restated.** The structure carries the argument without it: a class the
+   check cannot see at all is a hole whatever its size.
+
+**Closes when:** either a real `TIT3` column is sampled, so the frequency the
+flip depends on is measured rather than asserted, or the active half of the walk
+carries enough identity for the discriminator to answer for an active row, at
+which point the flip and the check cover the same ground and the trade can be
+made on numbers.
+
+## R-50. A designation filed in the remixer column is spelled unmatchably, deliberately
+
+**Found:** during the U24 round 6 fix, 2026-08-04. **Rewritten during round
+seven, 2026-08-04, because the rule it described was measurably worse than what
+it replaced and because its own safety claim was false.**
+
+`RemixerName` is an association proxy over `RemixerID` into `djmdArtist`, so it
+holds an ARTIST NAME, and composing it needs the provider's spelling, `Strobe
+(Michael Woods Remix)` rather than `Strobe (Michael Woods)`. The append is
+skipped only when it would say `Remix` twice, which is
+`tombstone.already_spelled_as_a_remix`, and that function consults no vocabulary
+at all.
+
+**WHY THE VOCABULARY WAS TAKEN OUT, MEASURED.** Two rounds asked a word list to
+classify this column: round five asked whether a version word appeared anywhere,
+round six asked whether it appeared last. Over 65 values in three classes, 40
+genuine designations and 25 artist names, misses were 25 of 25 on the artist
+classes for round five and 15 of 25 for round six. The shipped rule misses NONE
+of the 25 and misses 38 of the 40 designations. The totals, 33 and 35 against 38,
+are reported and are not the criterion: a total over a hand-authored set is a
+weighted average whose weights are how often this column holds a designation
+rather than an artist name, which is the same unmeasurable frequency R-21 deleted
+a claim about.
+
+**THE ROUND SIX SAFETY CLAIM WAS FALSE AND THAT IS WHY THE CLASSES ARE NOT
+INTERCHANGEABLE.** That entry said both error directions are under-suppression,
+because "composing only ever adds a bracket". Composing does, but leaving a value
+VERBATIM does not: `Strobe` with `The Cut` in `RemixerName`, an artist, and
+`Strobe` with `The Cut` in `Subtitle`, a designation, both composed `strobe (the
+cut)`. One identity, two versions, and deleting either suppresses the other,
+which is over-suppression. So an error on an artist name has both directions and
+an error on a designation has only the milder one, and the right rule is the one
+that never errs on an artist name whatever it costs on designations.
+
+**WHAT IS STILL SPELLED WRONGLY, WHICH IS THE RESIDUAL.** A column genuinely
+holding a designation that does not end in `Remix`, `Extended Mix` or `Michael
+Woods Refix`, gets `Remix` appended and composes `(Extended Mix Remix)`. That is
+38 of the 40 designations in the value set. It is the UNDER-suppression
+direction: the tombstone matches no provider spelling, so the deletion fails to
+stick and the version is re-acquirable. The second residual is an artist whose
+name's last word is literally `Remix`, which would be left verbatim; none is
+known and none is in the value set.
+
+**Closes when:** the recorder can ask what a provider actually spells for this
+version rather than deriving it, which needs a provider lookup at deletion time
+and is a dependency this pass deliberately does not have (R36: a deletion is a
+fact about this disk and nothing here touches a streaming service).
+
+## R-51. An anchor with no active rows through it can still settle a removal off an empty directory
+
+**Found:** during the U24 round 7 fix, 2026-08-04, while closing the empty mount
+point defect, and recorded rather than papered over.
+
+`candidates.categorize` answers `GONE` for a removed row whose file will not stat
+as long as the anchor DIRECTORY exists, and an empty directory standing where a
+volume mounts passes that. `run._the_anchor_proved_nothing` now refuses to settle
+or retire such a row when `references.suspect_anchors` names its anchor, which is
+an anchor that exists, indexed nothing, and had at least one ACTIVE row go
+missing under it.
+
+**The signal needs an active row to exist.** `missing_under` is only populated
+from the active half of the walk, so an anchor with NO active rows through it is
+never suspect, and a mapped volume holding only removed rows still settles off an
+empty mount point. On the library this pass is built for that case does not
+arise, since the volume carries thousands of active rows, but it is not excluded
+by anything in the code.
+
+**Why it is not closed here.** With no active row through that anchor there is no
+evidence either way, and the only local alternative is a threshold over how many
+REMOVED rows look gone at once. Every threshold that catches an unmounted volume
+also catches a person who deleted an album folder in the Finder, which is the
+all-or-nothing rule `suspect_anchors` was built to replace.
+
+**Closes when:** the pass can ask the operating system whether a path is a mount
+point and whether the volume mounted there is the one the prefix rule names,
+which is the same volume identity question `core.preflight` already answers for
+the library root and would need extending to every mapped target.
+
+## R-52. The active half of the collection walk carries no identity, so nothing can be proved about an active row's version
+
+**Found:** during the U24 round 6 fix, 2026-08-04, while building the ISRC
+discriminator.
+
+`library.read_collection` returns the active rows as `write.trees.ContentRow`,
+which carries a content id, a recorded path and a deleted flag. It carries no
+artist, no title, no version column and no ISRC. Every question this pass asks
+about an ACTIVE row is therefore a question about its file: is this the same
+inode, is it the same size, does a playlist point at it.
+
+That is enough for everything R37 asks for and it is not enough for one thing
+the tombstone side wants. `deletion.stores.ambiguous_versions` can see that two
+REMOVED rows compose onto one identity and carry two different ISRCs, so it can
+refuse that deletion. It cannot see that a removed row composes onto the identity
+of an ACTIVE row, which is the shape "The Subtitle vocabulary's false negatives
+collide, and the ISRC tells a collision from a convergence" names as the reason
+its belief default is not flipped: the user keeps one version and deletes the
+other, and it is the kept one whose identity the tombstone would collide with.
+
+**What bounds it today.** The vocabulary is a whitelist, so a `Subtitle` is
+believed only when it reads as a version, and the composed titles it produces are
+mix names rather than arbitrary text. The collision needs a composed title that
+another row holds bare, which is a coincidence rather than a routine shape while
+the default stands. Flipping the default is what would make it routine, and that
+is why the flip waits on this.
+
+**Closes when:** the active half carries enough of an identity for
+`ambiguous_versions` to answer for an active row. That is a widening of
+`ContentRow`, which the routing pass also reads, so it belongs with whoever owns
+that type rather than inside a deletion fix round.
+
+## Note. Round 5's mutation evidence, and the shared scratch directory it was measured through
+
+**Recorded:** 2026-08-03, because a measurement whose conditions are not written
+down is a number rather than evidence.
+
+Eight parallel agents were given one scratch directory. Another unit's mutation
+driver overwrote this unit's driver and its restore snapshot at 22:23, which is
+how it was noticed: a batch launched at that moment ran the foreign driver
+instead. Everything from that point used a private driver under a scratch
+directory belonging to this unit alone.
+
+**What was checked, and what was found.** The worktree was compared against the
+git object database rather than against any snapshot, since a snapshot that has
+been overwritten certifies itself. No leaked mutation was present. Commit
+`b4540ee` was inspected line by line for content this unit did not write,
+including every line it REMOVES, which is where a staged mutation would show; the
+one file it touches that other units also touch, `src/cratekit/core/cause.py`,
+carries a single appended reason slug and nothing else.
+
+**Every row measured before the switch was re-measured afterwards** and all
+eleven reproduced their counts exactly: S1-A1 1, S1-A2 1, S1-A3 2, S1-B 1, S1-C1
+1, S1-C2 1, S1-E 1, X08 1, X09a 1, X09b 2, G09 1. Two rows from that window,
+R08 and C05, had already been re-measured against changed code and are reported
+in the stage one commit under their final form.
+
+**One separate defect this exposed, worth keeping.** The driver used a full-suite
+run per row and one batch was killed by a timeout partway through, which left a
+mutation applied in the tree. It was caught by comparing against the snapshot and
+restored, but the failure mode is real: a mutation driver that is interrupted
+leaves the code it was measuring in place. Any future round should checkpoint per
+row, as this one's did after the incident, and verify the tree against git rather
+than against its own snapshot before trusting the next number.
+
+---
+
+## R-53. Three more stored decisions are addressed by a key a later build recomputes, and only the tombstone carries the row that would rescue it
+
+**Found:** the U24 round 10 pattern five sweep, 2026-08-10. The rule is that a fix
+round fixes the instance it was handed and reproduces the class one file over, so
+after every fix you go looking for the same shape elsewhere.
+
+**The shape.** A decision is written to disk under an identifier derived from an
+identity, and a later build re-derives that identifier from the row in order to
+find the record. If the derivation moves between the two builds, the record is
+orphaned. That is exactly what four rounds of the tombstone recognition question
+were about, and it is a property of the whole `review.DecisionStore` model rather
+than of the tombstone.
+
+**The three other instances, and what each costs if its derivation moves.**
+
+* `deletion.stores.decline_predicate` recomputes
+  `suppression_id_for(row_identity(row))` against the stored identifiers. A
+  declined file is offered again. The person answers once more, and the old
+  record is still listable and revocable.
+* `deletion.run._verdicts` recomputes `item_id_for` over the same row identity to
+  find the verdict a person gave. A confirmation is orphaned and the row is
+  offered again. Nothing moves.
+* `DecisionStore.suppresses`, which is what an acquisition sweep asks per
+  candidate, recomputes `version_identity`. This is the one with teeth, since a
+  suppression that stops being seen re-acquires a version somebody deleted on
+  purpose. It is out of this unit's reach: the consulter holds a provider's title
+  and no second field, so it composes nothing, and widening it is what the
+  recorder is obliged to do instead.
+
+**Why it is a residual and not a blocking finding.** Under the merge bar a
+finding blocks only if it was driven end to end AND has a named user facing cost.
+This one is not driven.
+
+**The measurement this entry used to rest on was imprecise, and here it is
+corrected rather than restated.** It said the row identity
+`removed_file_identity(content_id, recorded)` "was rebuilt at all eleven commits
+on this branch and evaluated on one probe row, and it produced a byte identical
+answer at every one of them". Re-measured in round 11 by parsing every commit's
+blob rather than by running one probe: over the branch's 20 commits the function
+takes FOUR distinct forms, changing at `c02a7b4`, `c087439` and `df945fb`. What
+is byte identical at all four is the RETURN EXPRESSION. Every change widened the
+REFUSAL GUARD:
+
+* through `5cb1ed3`: `not str(content_id)`
+* `c02a7b4`: `content_id is None or not str(content_id)`
+* `c087439`: adds `.strip()`
+* `df945fb`: adds `isinstance(content_id, bool)`
+
+So the conclusion survives for every input that produces an identity at all, and
+the set of inputs that produce one shrank three times. A probe row that produces
+an identity cannot see that, which is METHOD's fourth pattern: a number taken on
+a fixture rather than over the input space. The version identity, by contrast,
+moved four times in what it RETURNS, which is why the tombstone was the instance
+that bit.
+
+**What the narrowing could cost, and its reachability, measured.** A decline
+recorded by a pre-`c087439` build for a whitespace content identifier is now
+refused rather than composed, and `decline_predicate` has no handler for the
+refusal. Driven: unreachable through the pass, because `candidates.categorize`
+asks `identifiable` first and unconditionally and answers UNIDENTIFIABLE, so
+`decline_predicate` is never asked about such a row. The only store that could
+carry such a record is one written by an unmerged branch tip, and nothing has
+shipped.
+
+**What closes it, and the one thing that blocks the same repair.** The tombstone
+recognition question was repaired by matching a foreign era's record on the ROW
+it names, which works because a tombstone payload has carried `content_id` and
+`recorded` since the first commit of this pass, measured across all eleven. The
+decline payload carries `recorded` and NOT `content_id`, so the identical repair
+cannot be applied to it today. Adding `content_id` to the decline payload is the
+enabling change, and it is deliberately not made here: no decline derivation has
+drifted, so the change would be a store shape edit with no defect behind it.
+
+**Not fixed here** because the round was scoped to the recognition question, and
+because the measurement says the class is present while the instance is not.
+
+---
+
+## R-54. The row coordinate is unmeasurable by construction, and this round widened what reaches it
+
+**Found:** the U24 round 10 independent verification, 2026-08-10. Re-measured in
+round 11.
+
+`stores._row_coordinates` is applied to BOTH sides of its own comparison, which
+is what makes it correct and what makes it invisible. Four symmetric mutations
+kill zero on the full suite: a null path read as the literal word `None`, the
+path case-folded, the path dropped from the key, the identifier dropped from the
+key. Two composites against the thing it guards, a payload naming a different row
+and a payload recording no path, kill zero as well.
+
+**What round 11 changed about it.** The stamp now moves on every change to any
+composition rule, so many more records fall to the row lookup than before, and
+the lookup is reachable by more futures than the round 10 measurement allowed
+for. It is still not reachable today: it needs a record whose stamp is not this
+build's, which needs a store written by an earlier build, and nothing has
+shipped. The reachability of a future upgrade is unmeasured because there is no
+released build to upgrade from.
+
+**Partly closed here.** The guard half of it moved: `_row_coordinates` used to
+re-implement `tombstone.removed_file_identity`'s null, boolean and blank tests
+verbatim in another module with nothing asserting the two agreed, and it now
+delegates to that function. Those three layers are measured there at 4, 4 and 4
+deaths. What remains unmeasured is the KEY, which is the pair itself.
+
+**Closes when** a test writes a record under one build's rules and reads it under
+another's with the row coordinates deliberately perturbed on one side only, which
+needs a fixture that can produce a foreign stamp without planting one.
+
+---
+
+## R-55. Two document format versions are hand set and nothing measures the document against them
+
+**Found:** the U24 round 11 pattern five sweep, 2026-08-10. The sweep looked for
+the shape this round repaired, a digest computed over sampled OUTPUTS rather than
+over its INPUTS, and found no second instance of it. It found this instead, which
+is the instrument `identity_scheme` replaced rather than the defect it had.
+
+`deletion.watermark.WATERMARK_VERSION` and `review.DECISION_STORE_VERSION` are
+both `1`, both written into every document those modules persist, and both read
+back and compared on load, which is more than the export next door used to do.
+Neither is named in any test. Nothing pins the SHAPE of the document against the
+number, so adding a field to `Watermark.to_json` or to a stored suppression
+without bumping the constant leaves two builds writing different documents under
+one version, and the reader cannot tell.
+
+**Why it is a residual.** Both readers recognise positively field by field and
+refuse what they cannot recognise, so the failure direction is a refusal rather
+than a misread, and the U24 half was not driven. `DECISION_STORE_VERSION` is
+U11's and out of this unit's reach.
+
+**Closes when** each version constant is paired with a test that pins the exact
+key set of the document it stamps, so a field added without a bump goes red at
+the moment it is added rather than at the moment somebody upgrades.
