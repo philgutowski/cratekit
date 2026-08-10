@@ -4665,7 +4665,9 @@ def test_this_units_residuals_are_cited_by_title_and_never_by_number():
     """The citation rule, measured over `docs/` too rather than asserted about it.
 
     Only THIS UNIT'S numbers are banned, and only in the files this unit writes.
-    A citation of ``R-13`` written by another unit before this branch existed is
+    A citation of the residual titled "Four routing verbs name a CLI module no
+    unit's file list declares", written by another unit before this branch
+    existed, is
     somebody else's address to keep stable, and a guard that failed on it would be
     a guard somebody deletes.
 

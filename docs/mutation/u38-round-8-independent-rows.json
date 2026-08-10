@@ -1,0 +1,1859 @@
+{
+  "unit": "U38",
+  "round": 8,
+  "verifier": "independent",
+  "baseline": {
+    "passed": 3399,
+    "skipped": 15,
+    "collected": 3414
+  },
+  "rows": [
+    {
+      "id": "H0-authors-hatch-unguessed-marker",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "plain=3 marked=2 HATCH IS LIVE: the marker silenced a reservation",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(source)\n    quiet = _hushed(source)\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def reserved_code_tables(",
+          "new": "def _hushed(text: str) -> set[int]:\n    marked = set()\n    for number, line in enumerate(text.splitlines(), start=1):\n        if \"# u38v-quiet\" in line:\n            marked.add(number)\n    return marked\n\n\ndef reserved_code_tables(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        entry = (key.lineno, slug, status)",
+          "new": "        if key.lineno in quiet:\n            continue\n        entry = (key.lineno, slug, status)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "H1-starred-parameter-on-the-callee",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "plain=3 marked=2 HATCH IS LIVE: the marker silenced a reservation",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(source)\n    quiet = _hushed(source)\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def reserved_code_tables(",
+          "new": "def _hushed(*text) -> set[int]:\n    marked = set()\n    for number, line in enumerate(text[0].splitlines(), start=1):\n        if \"# u38v-quiet\" in line:\n            marked.add(number)\n    return marked\n\n\ndef reserved_code_tables(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        entry = (key.lineno, slug, status)",
+          "new": "        if key.lineno in quiet:\n            continue\n        entry = (key.lineno, slug, status)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "H2-double-starred-parameter-on-the-callee",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "plain=3 marked=2 HATCH IS LIVE: the marker silenced a reservation",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(source)\n    quiet = _hushed(body=source)\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def reserved_code_tables(",
+          "new": "def _hushed(**named) -> set[int]:\n    marked = set()\n    for number, line in enumerate(named[\"body\"].splitlines(), start=1):\n        if \"# u38v-quiet\" in line:\n            marked.add(number)\n    return marked\n\n\ndef reserved_code_tables(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        entry = (key.lineno, slug, status)",
+          "new": "        if key.lineno in quiet:\n            continue\n        entry = (key.lineno, slug, status)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "H3-entry-parameter-renamed-off-the-seed",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "plain=3 marked=2 HATCH IS LIVE: the marker silenced a reservation",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def reserved_code_tables(\n    source: str,",
+          "new": "def reserved_code_tables(\n    raw: str,",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(raw)\n    quiet = {\n        number\n        for number, line in enumerate(raw.splitlines(), start=1)\n        if \"# u38v-quiet\" in line\n    }\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        entry = (key.lineno, slug, status)",
+          "new": "        if key.lineno in quiet:\n            continue\n        entry = (key.lineno, slug, status)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "H4-entry-annotation-widened-to-object",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "plain=3 marked=2 HATCH IS LIVE: the marker silenced a reservation",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def reserved_code_tables(\n    source: str,",
+          "new": "def reserved_code_tables(\n    source: object,",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(source)\n    quiet = {\n        number\n        for number, line in enumerate(source.splitlines(), start=1)\n        if \"# u38v-quiet\" in line\n    }\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        entry = (key.lineno, slug, status)",
+          "new": "        if key.lineno in quiet:\n            continue\n        entry = (key.lineno, slug, status)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "H5-entry-parameter-unannotated",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "plain=3 marked=2 HATCH IS LIVE: the marker silenced a reservation",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def reserved_code_tables(\n    source: str,",
+          "new": "def reserved_code_tables(\n    source,",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(source)\n    quiet = {\n        number\n        for number, line in enumerate(source.splitlines(), start=1)\n        if \"# u38v-quiet\" in line\n    }\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        entry = (key.lineno, slug, status)",
+          "new": "        if key.lineno in quiet:\n            continue\n        entry = (key.lineno, slug, status)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "H6-control-inline-hatch-on-a-live-seed",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "plain=3 marked=2 HATCH IS LIVE: the marker silenced a reservation",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(source)\n    quiet = {\n        number\n        for number, line in enumerate(source.splitlines(), start=1)\n        if \"# u38v-quiet\" in line\n    }\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        entry = (key.lineno, slug, status)",
+          "new": "        if key.lineno in quiet:\n            continue\n        entry = (key.lineno, slug, status)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "H7-hatch-behind-a-class",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "plain=3 marked=2 HATCH IS LIVE: the marker silenced a reservation",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(source)\n    quiet = _Hush(source).marked\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def reserved_code_tables(",
+          "new": "class _Hush:\n    def __init__(self, text: str) -> None:\n        self.marked = {\n            number\n            for number, line in enumerate(text.splitlines(), start=1)\n            if \"# u38v-quiet\" in line\n        }\n\n\ndef reserved_code_tables(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        entry = (key.lineno, slug, status)",
+          "new": "        if key.lineno in quiet:\n            continue\n        entry = (key.lineno, slug, status)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "H8-hatch-in-a-nested-function",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "plain=3 marked=2 HATCH IS LIVE: the marker silenced a reservation",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(source)\n    def _hushed(*text) -> set[int]:\n        return {\n            number\n            for number, line in enumerate(text[0].splitlines(), start=1)\n            if \"# u38v-quiet\" in line\n        }\n    quiet = _hushed(source)\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        entry = (key.lineno, slug, status)",
+          "new": "        if key.lineno in quiet:\n            continue\n        entry = (key.lineno, slug, status)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "H9-hatch-in-a-decorator",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "plain=3 marked=2 HATCH IS LIVE: the marker silenced a reservation",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def reserved_code_tables(",
+          "new": "def _hushing(inner):\n    def wrapper(*passed, **named):\n        marked = set()\n        for number, line in enumerate(passed[0].splitlines(), start=1):\n            if \"# u38v-quiet\" in line:\n                marked.add(number)\n        return [\n            hit\n            for hit in inner(*passed, **named)\n            if int(hit.split(\" \")[1].rstrip(\":\")) not in marked\n        ]\n    return wrapper\n\n\n@_hushing\n\ndef reserved_code_tables(",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "H10-text-laundered-through-a-returning-helper",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "plain=3 marked=2 HATCH IS LIVE: the marker silenced a reservation",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(source)\n    quiet = _hushed(_same(source))\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def reserved_code_tables(",
+          "new": "def _same(*passed) -> str:\n    return passed[0]\n\n\ndef _hushed(*text) -> set[int]:\n    marked = set()\n    for number, line in enumerate(text[0].splitlines(), start=1):\n        if \"# u38v-quiet\" in line:\n            marked.add(number)\n    return marked\n\n\ndef reserved_code_tables(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        entry = (key.lineno, slug, status)",
+          "new": "        if key.lineno in quiet:\n            continue\n        entry = (key.lineno, slug, status)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "P0-control-inline-hatch-in-the-bare-status-guard",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "plain=2 marked=1 HATCH IS LIVE: the marker silenced a bare process status",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def process_status_literals(source: str) -> list[str]:",
+          "new": "def process_status_literals(source: str) -> list[str]:",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    found: list[str] = []",
+          "new": "    tree = ast.parse(source)\n    quiet = {\n        number\n        for number, line in enumerate(source.splitlines(), start=1)\n        if \"# u38v-quiet\" in line\n    }\n    found: list[str] = []",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "new": "    found = [\n        entry\n        for entry in found\n        if int(entry.split()[1].rstrip(\":\")) not in quiet\n    ]\n    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "P1-starred-callee-in-the-bare-status-guard",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "plain=2 marked=1 HATCH IS LIVE: the marker silenced a bare process status",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    found: list[str] = []",
+          "new": "    tree = ast.parse(source)\n    quiet = _hushed(source)\n    found: list[str] = []",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def process_status_literals(source: str) -> list[str]:",
+          "new": "def _hushed(*text) -> set[int]:\n    marked = set()\n    for number, line in enumerate(text[0].splitlines(), start=1):\n        if \"# u38v-quiet\" in line:\n            marked.add(number)\n    return marked\n\n\ndef process_status_literals(source: str) -> list[str]:",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "new": "    found = [\n        entry\n        for entry in found\n        if int(entry.split()[1].rstrip(\":\")) not in quiet\n    ]\n    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "P2-parameter-renamed-off-the-seed-anchor-intact",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "plain=2 marked=1 HATCH IS LIVE: the marker silenced a bare process status",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def process_status_literals(source: str) -> list[str]:",
+          "new": "def process_status_literals(raw: str) -> list[str]:",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    found: list[str] = []",
+          "new": "    tree = ast.parse(raw)\n    quiet = {\n        number\n        for number, line in enumerate(raw.splitlines(), start=1)\n        if \"# u38v-quiet\" in line\n    }\n    found: list[str] = []",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "new": "    found = [\n        entry\n        for entry in found\n        if int(entry.split()[1].rstrip(\":\")) not in quiet\n    ]\n    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "P3-parameter-unannotated-anchor-intact",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "plain=2 marked=1 HATCH IS LIVE: the marker silenced a bare process status",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def process_status_literals(source: str) -> list[str]:",
+          "new": "def process_status_literals(source) -> list[str]:",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    found: list[str] = []",
+          "new": "    tree = ast.parse(source)\n    quiet = {\n        number\n        for number, line in enumerate(source.splitlines(), start=1)\n        if \"# u38v-quiet\" in line\n    }\n    found: list[str] = []",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "new": "    found = [\n        entry\n        for entry in found\n        if int(entry.split()[1].rstrip(\":\")) not in quiet\n    ]\n    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "P4-annotation-widened-to-object-anchor-intact",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "plain=2 marked=1 HATCH IS LIVE: the marker silenced a bare process status",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def process_status_literals(source: str) -> list[str]:",
+          "new": "def process_status_literals(source: object) -> list[str]:",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    found: list[str] = []",
+          "new": "    tree = ast.parse(source)\n    quiet = {\n        number\n        for number, line in enumerate(source.splitlines(), start=1)\n        if \"# u38v-quiet\" in line\n    }\n    found: list[str] = []",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "new": "    found = [\n        entry\n        for entry in found\n        if int(entry.split()[1].rstrip(\":\")) not in quiet\n    ]\n    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "P5-decorator-on-the-bare-status-guard",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "plain=2 marked=1 HATCH IS LIVE: the marker silenced a bare process status",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def process_status_literals(source: str) -> list[str]:",
+          "new": "def _hushing(inner):\n    def wrapper(*passed, **named):\n        marked = set()\n        for number, line in enumerate(passed[0].splitlines(), start=1):\n            if \"# u38v-quiet\" in line:\n                marked.add(number)\n        return [\n            hit\n            for hit in inner(*passed, **named)\n            if int(hit.split()[1].rstrip(\":\")) not in marked\n        ]\n    return wrapper\n\n\n@_hushing\n\ndef process_status_literals(source: str) -> list[str]:",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "P6-hatch-behind-a-lambda",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "plain=2 marked=1 HATCH IS LIVE: the marker silenced a bare process status",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    found: list[str] = []",
+          "new": "    tree = ast.parse(source)\n    quiet = (lambda text: {number for number, line in enumerate(text.splitlines(), start=1) if \"# u38v-quiet\" in line})(source)\n    found: list[str] = []",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "new": "    found = [\n        entry\n        for entry in found\n        if int(entry.split()[1].rstrip(\":\")) not in quiet\n    ]\n    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "P7-laundered-through-a-returning-starred-helper",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "plain=2 marked=1 HATCH IS LIVE: the marker silenced a bare process status",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    found: list[str] = []",
+          "new": "    tree = ast.parse(source)\n    quiet = _hushed(_same(source))\n    found: list[str] = []",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def process_status_literals(source: str) -> list[str]:",
+          "new": "def _same(*passed) -> str:\n    return passed[0]\n\n\ndef _hushed(*text) -> set[int]:\n    marked = set()\n    for number, line in enumerate(text[0].splitlines(), start=1):\n        if \"# u38v-quiet\" in line:\n            marked.add(number)\n    return marked\n\n\ndef process_status_literals(source: str) -> list[str]:",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "new": "    found = [\n        entry\n        for entry in found\n        if int(entry.split()[1].rstrip(\":\")) not in quiet\n    ]\n    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "P1b-starred-callee-under-a-name-the-fixture-does-not-use",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "plain=2 marked=1 HATCH IS LIVE: the marker silenced a bare process status",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    found: list[str] = []",
+          "new": "    tree = ast.parse(source)\n    quiet = _muted(source)\n    found: list[str] = []",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def process_status_literals(source: str) -> list[str]:",
+          "new": "def _muted(*text) -> set[int]:\n    marked = set()\n    for number, line in enumerate(text[0].splitlines(), start=1):\n        if \"# u38v-quiet\" in line:\n            marked.add(number)\n    return marked\n\n\ndef process_status_literals(source: str) -> list[str]:",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "new": "    found = [\n        entry\n        for entry in found\n        if int(entry.split()[1].rstrip(\":\")) not in quiet\n    ]\n    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "P7b-laundered-through-a-returning-starred-helper-renamed",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "plain=2 marked=1 HATCH IS LIVE: the marker silenced a bare process status",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    found: list[str] = []",
+          "new": "    tree = ast.parse(source)\n    quiet = _muted(_echo(source))\n    found: list[str] = []",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def process_status_literals(source: str) -> list[str]:",
+          "new": "def _echo(*passed) -> str:\n    return passed[0]\n\n\ndef _muted(*text) -> set[int]:\n    marked = set()\n    for number, line in enumerate(text[0].splitlines(), start=1):\n        if \"# u38v-quiet\" in line:\n            marked.add(number)\n    return marked\n\n\ndef process_status_literals(source: str) -> list[str]:",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "new": "    found = [\n        entry\n        for entry in found\n        if int(entry.split()[1].rstrip(\":\")) not in quiet\n    ]\n    return sorted(found, key=lambda entry: (int(entry.split()[1].rstrip(\":\")), entry))",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "taint-seed-name-clause-dropped",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "        return {\n            argument.arg\n            for argument in every\n            if argument.arg == \"source\"\n            and argument.annotation is not None\n            and \"str\" in ast.unparse(argument.annotation)\n        }",
+          "new": "        return {\n            argument.arg\n            for argument in every\n            if argument.annotation is not None\n            and \"str\" in ast.unparse(argument.annotation)\n        }",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "taint-seed-annotation-clause-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "        return {\n            argument.arg\n            for argument in every\n            if argument.arg == \"source\"\n            and argument.annotation is not None\n            and \"str\" in ast.unparse(argument.annotation)\n        }",
+          "new": "        return {\n            argument.arg\n            for argument in every\n            if argument.arg == \"source\"\n        }",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "taint-seed-widened-to-any-text-parameter",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "        return {\n            argument.arg\n            for argument in every\n            if argument.arg == \"source\"\n            and argument.annotation is not None\n            and \"str\" in ast.unparse(argument.annotation)\n        }",
+          "new": "        return {\n            argument.arg\n            for argument in every\n            if argument.arg in {\"source\", \"text\", \"raw\"}\n            and argument.annotation is not None\n            and \"str\" in ast.unparse(argument.annotation)\n        }",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "taint-seed-keyword-only-arguments-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "        every = (\n            list(arguments.posonlyargs)\n            + list(arguments.args)\n            + list(arguments.kwonlyargs)\n        )",
+          "new": "        every = list(arguments.posonlyargs) + list(arguments.args)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "taint-anti-vacuity-check-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "    if not any(tainted.values()):\n        return [\n            \"no function takes a `source: str` parameter, so this rule is \"\n            \"seeded on nothing and proves nothing\"\n        ]",
+          "new": "    if False:\n        return []",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "taint-positional-propagation-dropped",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "                    if index < len(landing) and landing[index] not in tainted[node.func.id]:\n                        tainted[node.func.id].add(landing[index])\n                        changed = True",
+          "new": "                    if False:\n                        pass",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "taint-keyword-propagation-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "                for keyword in node.keywords:\n                    if (\n                        keyword.arg\n                        and isinstance(keyword.value, ast.Name)\n                        and keyword.value.id in tainted[name]\n                        and keyword.arg not in tainted[node.func.id]\n                    ):\n                        tainted[node.func.id].add(keyword.arg)\n                        changed = True",
+          "new": "                for keyword in node.keywords:\n                    if False:\n                        pass",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "taint-assignment-propagation-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "                if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):\n                    if node.value.id in tainted[name]:\n                        for target in node.targets:\n                            if (\n                                isinstance(target, ast.Name)\n                                and target.id not in tainted[name]\n                            ):\n                                tainted[name].add(target.id)\n                                changed = True",
+          "new": "                if False:\n                    pass",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "taint-fixed-point-runs-once",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "    changed = True\n    while changed:",
+          "new": "    changed = True\n    while False:",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "the-only-sink-respelled-to-ast-walk",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "THE_ONLY_SINK = \"ast.parse\"",
+          "new": "THE_ONLY_SINK = \"ast.walk\"",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "sink-single-argument-narrowing-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "                if (\n                    spelled == THE_ONLY_SINK\n                    and len(parent.args) == 1\n                    and parent.args[0] is node\n                ):",
+          "new": "                if spelled == THE_ONLY_SINK:",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "call-to-a-module-level-function-no-longer-permitted",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "                if isinstance(parent.func, ast.Name) and parent.func.id in functions:\n                    continue",
+          "new": "                if False:\n                    continue",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "assignment-of-the-source-text-no-longer-permitted",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "            elif isinstance(parent, ast.Assign) and parent.value is node:\n                continue",
+          "new": "            elif False:\n                continue",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "the-source-text-is-called-arm-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "                if node is parent.func:\n                    found.append(f\"{name}: line {node.lineno}: the source text is CALLED\")\n                    continue",
+          "new": "                if False:\n                    continue",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "taint-load-context-filter-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "            if not (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)):\n                continue",
+          "new": "            if not isinstance(node, ast.Name):\n                continue",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "async-functions-not-collected-as-functions",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "    tree = ast.parse(source)\n    functions = {\n        node.name: node\n        for node in tree.body\n        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))\n    }",
+          "new": "    tree = ast.parse(source)\n    functions = {\n        node.name: node\n        for node in tree.body\n        if isinstance(node, ast.FunctionDef)\n    }",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "positional-landing-drops-positional-only-parameters",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "        return [\n            argument.arg\n            for argument in list(arguments.posonlyargs) + list(arguments.args)\n        ]",
+          "new": "        return [argument.arg for argument in arguments.args]",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "without-comments-neutered-to-the-identity",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "    return ast.unparse(ast.parse(source))",
+          "new": "    return source",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "the-anti-vacuity-floor-of-twenty-two-raised-by-one",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_a_comment_cannot_change_what_the_guard_reports_whatever_it_says"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "        assert len(with_comments) >= 22, (",
+          "new": "        assert len(with_comments) >= 23, (",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "the-anti-vacuity-floor-of-twenty-two-dropped-to-zero",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "        assert len(with_comments) >= 22, (",
+          "new": "        assert len(with_comments) >= 0, (",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "fresh-escape-markers-narrowed-to-one",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "FRESH_ESCAPE_MARKERS = (\n    \"# ordinary-data: seconds\",\n    \"# noqa: reservation\",\n    \"# cratekit: not-a-table\",\n    \"# pragma: no-reserve\",\n    \"# this is a timeout and not a code\",\n)",
+          "new": "FRESH_ESCAPE_MARKERS = (\"# ordinary-data: seconds\",)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "fresh-escape-markers-emptied",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "FRESH_ESCAPE_MARKERS = (\n    \"# ordinary-data: seconds\",\n    \"# noqa: reservation\",\n    \"# cratekit: not-a-table\",\n    \"# pragma: no-reserve\",\n    \"# this is a timeout and not a code\",\n)",
+          "new": "FRESH_ESCAPE_MARKERS = ()",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "slugs-and-statuses-neutered-to-an-empty-list",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "    return sorted(hit.split(\": \", 1)[1] for hit in hits)",
+          "new": "    return []",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "whitelist-loses-the-future-entry",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_module_imports_only_what_reading_a_syntax_tree_needs"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "    assert imported == {\"__future__\", \"ast\", \"re\"}, (",
+          "new": "    assert imported == {\"ast\", \"re\"}, (",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "whitelist-relative-import-clause-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:",
+          "new": "        elif isinstance(node, ast.ImportFrom) and node.module:",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "whitelist-top-level-split-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "            imported.update(alias.name.split(\".\")[0] for alias in node.names)",
+          "new": "            imported.update(alias.name for alias in node.names)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "control-import-tokenize-plainly",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_module_imports_only_what_reading_a_syntax_tree_needs"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "import ast\nimport re",
+          "new": "import ast\nimport re\nimport tokenize",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "a-symbol-import-out-of-tokenize",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_module_imports_only_what_reading_a_syntax_tree_needs"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "import ast\nimport re",
+          "new": "import ast\nimport re\nfrom tokenize import generate_tokens",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "tokenize-imported-inside-a-function",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_module_imports_only_what_reading_a_syntax_tree_needs"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def process_status_literals(source: str) -> list[str]:",
+          "new": "def _peek():\n    import tokenize\n\n    return tokenize\n\n\ndef process_status_literals(source: str) -> list[str]:",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "a-relative-import-into-the-guard-module",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "import ast\nimport re",
+          "new": "import ast\nimport re\n\nfrom . import _pending",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "an-import-fetched-through-the-import-builtin",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "import ast\nimport re",
+          "new": "import ast\nimport re\n\ntokenize = __import__(\"tokenize\")",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "enum-import-level-check-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        if not isinstance(node, ast.ImportFrom) or node.level or node.module != \"enum\":",
+          "new": "        if not isinstance(node, ast.ImportFrom) or node.module != \"enum\":",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "enum-base-alias-ignored",
+      "deaths": 2,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_an_enum_is_recognized_by_its_base_and_each_clause_has_its_own_case",
+        "tests/test_reserved_causes.py::test_renaming_the_enum_or_the_name_holding_it_changes_nothing"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "                found.add(alias.asname or alias.name)",
+          "new": "                found.add(alias.name)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "enum-base-membership-check-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "            if alias.name in ENUM_BASES:\n                found.add(alias.asname or alias.name)",
+          "new": "            if True:\n                found.add(alias.asname or alias.name)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "enum-module-name-widened-to-a-suffix",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        if not isinstance(node, ast.ImportFrom) or node.level or node.module != \"enum\":",
+          "new": "        if not isinstance(node, ast.ImportFrom) or node.level or not node.module.endswith(\"enum\"):",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "enum-bases-narrowed-to-strenum-alone",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "ENUM_BASES = frozenset({\"Enum\", \"StrEnum\", \"IntEnum\"})",
+          "new": "ENUM_BASES = frozenset({\"StrEnum\"})",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "enum-bases-emptied",
+      "deaths": 2,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_an_enum_is_recognized_by_its_base_and_each_clause_has_its_own_case",
+        "tests/test_reserved_causes.py::test_renaming_the_enum_or_the_name_holding_it_changes_nothing"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "ENUM_BASES = frozenset({\"Enum\", \"StrEnum\", \"IntEnum\"})",
+          "new": "ENUM_BASES = frozenset()",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "enum-bound-clause-dropped",
+      "deaths": 2,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_an_enum_is_recognized_by_its_base_and_each_clause_has_its_own_case",
+        "tests/test_reserved_causes.py::test_renaming_the_enum_or_the_name_holding_it_changes_nothing"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        if not any(\n            base in bound or base.split(\".\")[-1].endswith(\"Enum\") for base in bases\n        ):",
+          "new": "        if not any(base.split(\".\")[-1].endswith(\"Enum\") for base in bases):",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "enum-spelling-clause-dropped",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_an_enum_is_recognized_by_its_base_and_each_clause_has_its_own_case"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        if not any(\n            base in bound or base.split(\".\")[-1].endswith(\"Enum\") for base in bases\n        ):",
+          "new": "        if not any(base in bound for base in bases):",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "enum-spelling-clause-loses-the-dotted-split",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        if not any(\n            base in bound or base.split(\".\")[-1].endswith(\"Enum\") for base in bases\n        ):",
+          "new": "        if not any(\n            base in bound or base.endswith(\"Enum\") for base in bases\n        ):",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "is-exit-attribute-name-check-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "            return bool(\n                identity in EXIT_ATTRIBUTES and node.attr == EXIT_ATTRIBUTES[identity]\n            )",
+          "new": "            return bool(identity in EXIT_ATTRIBUTES)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "is-exit-identity-check-dropped",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_bare_status_guard_stays_silent_on_correct_code[\\nclass Runner:\\n    def exit(self, code):\\n        return code\\n\\ndef drive(runner):\\n    runner.exit(21)\\n]"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "            return bool(\n                identity in EXIT_ATTRIBUTES and node.attr == EXIT_ATTRIBUTES[identity]\n            )",
+          "new": "            return bool(node.attr in {\"exit\", \"_exit\"})",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "is-status-builtins-identity-check-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "            return (\n                self.module_identity(node.value) == \"builtins\"\n                and node.attr == \"SystemExit\"\n            )",
+          "new": "            return node.attr == \"SystemExit\"",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "is-status-attribute-name-check-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "            return (\n                self.module_identity(node.value) == \"builtins\"\n                and node.attr == \"SystemExit\"\n            )",
+          "new": "            return self.module_identity(node.value) == \"builtins\"",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "unary-minus-branch-dropped",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_a_negative_status_is_a_bare_status_too"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        inner = resolve_int(node.operand, names, members, hops + 1)\n        return None if inner is None else -inner",
+          "new": "        return None",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "negatives-treated-as-success",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_a_negative_status_is_a_bare_status_too"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        if status is None or status == 0:",
+          "new": "        if status is None or status <= 0:",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "sample-review-walk-suffix-match",
+      "deaths": 6,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_review_queue.py::test_a_relative_import_is_resolved_against_the_package_the_file_sits_in[\\nfrom . import review\\n\\n\\ndef run(store, needing_review):\\n    for candidate in needing_review:\\n        review.offer(\\n            store, queue=review.Queue.VERSION_MATCH, identity=candidate.identity\\n        )\\n]",
+        "tests/test_review_queue.py::test_a_relative_import_is_resolved_against_the_package_the_file_sits_in[\\nfrom .review import Queue, offer\\n\\n\\ndef run(store, needing_review):\\n    for candidate in needing_review:\\n        offer(store, queue=Queue.VERSION_MATCH, identity=candidate.identity)\\n]",
+        "tests/test_review_queue.py::test_the_countdown_stays_quiet_on_correct_code_in_either_import_shape[\\nfrom cratekit.core import review\\n\\n\\ndef run(store, needing_review):\\n    for candidate in needing_review:\\n        review.offer(\\n            store,\\n            queue=review.Queue.VERSION_MATCH,\\n            kind=\"version-difference\",\\n            identity=candidate.identity,\\n            payload=candidate.payload,\\n        )\\n]",
+        "tests/test_review_queue.py::test_the_countdown_stays_quiet_on_correct_code_in_either_import_shape[\\nfrom cratekit.core.review import Queue, offer\\n\\nQUEUE = Queue.VERSION_MATCH\\n\\n\\ndef run(store, needing_review):\\n    for candidate in needing_review:\\n        offer(\\n            store,\\n            queue=QUEUE,\\n            kind=\"version-difference\",\\n            identity=candidate.identity,\\n            payload=candidate.payload,\\n        )\\n]",
+        "tests/test_review_queue.py::test_the_decision_store_countdown_stays_quiet_on_correct_code[\\nfrom cratekit.core import review\\n\\n\\nclass DeletionPass:\\n    def __init__(self, cfg):\\n        self.declines = review.DecisionStore(\"declines\", cfg)\\n\\n    def decline(self, identity):\\n        self.declines.record(kind=\"removed-file\", identity=identity, actor=\"cli\")\\n\\n    def undo(self, suppression_id):\\n        self.declines.revoke(suppression_id, actor=\"cli\")\\n]",
+        "tests/test_review_queue.py::test_the_decision_store_countdown_stays_quiet_on_correct_code[\\nfrom cratekit.core.review import DecisionStore\\n\\n\\ndef _tombstones(cfg):\\n    return DecisionStore(\"tombstones\", cfg)\\n\\n\\ndef run(cfg, identity, suppression_id):\\n    store = _tombstones(cfg)\\n    store.record(kind=\"version\", identity=identity, actor=\"cli\")\\n    store.revoke(suppression_id, actor=\"cli\")\\n]"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "REVIEW_MODULE = \"cratekit.core.review\"",
+          "new": "REVIEW_MODULE = \"core.review\"",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "sample-index-duplicate-check-dropped",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_index_refuses_a_duplicate_rather_than_letting_the_later_one_win"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "src/cratekit/cli/exit_codes.py",
+          "old": "        if reservation.cause in index:",
+          "new": "        if False:",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "sample-index-range-check-dropped",
+      "deaths": 3,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_a_code_the_vocabulary_has_but_the_range_excludes_cannot_be_reserved[0]",
+        "tests/test_reserved_causes.py::test_a_code_the_vocabulary_has_but_the_range_excludes_cannot_be_reserved[1]",
+        "tests/test_reserved_causes.py::test_a_code_the_vocabulary_has_but_the_range_excludes_cannot_be_reserved[2]"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "src/cratekit/cli/exit_codes.py",
+          "old": "        if not low <= value < high:",
+          "new": "        if False:",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "sample-reserved-range-narrowed-by-one",
+      "deaths": 2,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_every_reserved_code_sits_inside_the_reserved_range",
+        "tests/test_reserved_causes.py::test_the_range_is_pinned_where_the_reservations_are_checked_against_it"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "src/cratekit/cli/exit_codes.py",
+          "old": "RESERVED_RANGE: tuple[int, int] = (10, 60)",
+          "new": "RESERVED_RANGE: tuple[int, int] = (10, 59)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "sample-reserved-range-widened-to-the-growth-band",
+      "deaths": 5,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_every_reserved_code_sits_inside_the_reserved_range",
+        "tests/test_reserved_causes.py::test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned",
+        "tests/test_reserved_causes.py::test_the_growth_band_is_closed_at_both_ends_rather_than_merely_unused",
+        "tests/test_reserved_causes.py::test_the_permitted_bands_are_exactly_the_bands_the_range_spans",
+        "tests/test_reserved_causes.py::test_the_range_is_pinned_where_the_reservations_are_checked_against_it"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "src/cratekit/cli/exit_codes.py",
+          "old": "RESERVED_RANGE: tuple[int, int] = (10, 60)",
+          "new": "RESERVED_RANGE: tuple[int, int] = (10, 70)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "sample-seen-dedupe-dropped",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_a_duplicate_key_in_a_second_table_is_reported_once"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        if entry in seen:\n            continue\n        seen.add(entry)",
+          "new": "        seen.add(entry)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "sample-max-hops-at-4",
+      "deaths": 3,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_hop_bound_is_a_coverage_dial_and_this_is_what_it_gives_up",
+        "tests/test_reserved_causes.py::test_the_hop_bound_is_the_depth_of_the_deepest_spelling",
+        "tests/test_reserved_causes.py::test_the_key_side_carries_its_own_hop_bound_and_this_is_where_it_stops"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "MAX_HOPS = 3",
+          "new": "MAX_HOPS = 4",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "sample-bool-exclusion-dropped",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_a_boolean_is_not_an_integer_here"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        if isinstance(node.value, bool) or not isinstance(node.value, int):\n            return None",
+          "new": "        if not isinstance(node.value, int):\n            return None",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "C0-a-guessed-marker-hatch-as-it-ships",
+      "deaths": 2,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_a_comment_cannot_change_what_the_guard_reports_whatever_it_says",
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(source)\n    quiet = _hushed(source)\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def reserved_code_tables(",
+          "new": "def _hushed(text: str) -> set[int]:\n    marked = set()\n    for number, line in enumerate(text.splitlines(), start=1):\n        if \"# ordinary-data\" in line:\n            marked.add(number)\n    return marked\n\n\ndef reserved_code_tables(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        entry = (key.lineno, slug, status)",
+          "new": "        if key.lineno in quiet:\n            continue\n        entry = (key.lineno, slug, status)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "C1-a-guessed-marker-hatch-with-the-markers-emptied",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(source)\n    quiet = _hushed(source)\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def reserved_code_tables(",
+          "new": "def _hushed(text: str) -> set[int]:\n    marked = set()\n    for number, line in enumerate(text.splitlines(), start=1):\n        if \"# ordinary-data\" in line:\n            marked.add(number)\n    return marked\n\n\ndef reserved_code_tables(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        entry = (key.lineno, slug, status)",
+          "new": "        if key.lineno in quiet:\n            continue\n        entry = (key.lineno, slug, status)",
+          "count": 1
+        },
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "FRESH_ESCAPE_MARKERS = (\n    \"# ordinary-data: seconds\",\n    \"# noqa: reservation\",\n    \"# cratekit: not-a-table\",\n    \"# pragma: no-reserve\",\n    \"# this is a timeout and not a code\",\n)",
+          "new": "FRESH_ESCAPE_MARKERS = ()",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "C2-a-guessed-marker-hatch-with-the-markers-emptied-and-the-structural-rule-relaxed",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(source)\n    quiet = _hushed(source)\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def reserved_code_tables(",
+          "new": "def _hushed(text: str) -> set[int]:\n    marked = set()\n    for number, line in enumerate(text.splitlines(), start=1):\n        if \"# ordinary-data\" in line:\n            marked.add(number)\n    return marked\n\n\ndef reserved_code_tables(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        entry = (key.lineno, slug, status)",
+          "new": "        if key.lineno in quiet:\n            continue\n        entry = (key.lineno, slug, status)",
+          "count": 1
+        },
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "FRESH_ESCAPE_MARKERS = (\n    \"# ordinary-data: seconds\",\n    \"# noqa: reservation\",\n    \"# cratekit: not-a-table\",\n    \"# pragma: no-reserve\",\n    \"# this is a timeout and not a code\",\n)",
+          "new": "FRESH_ESCAPE_MARKERS = ()",
+          "count": 1
+        },
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "    source = _guard_module_source()\n    assert text_the_guard_module_reads(source) == [], (",
+          "new": "    source = _guard_module_source()\n    assert True or text_the_guard_module_reads(source) == [], (",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "C3-a-guessed-marker-hatch-with-the-comment-stripper-neutered",
+      "deaths": 2,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_a_comment_cannot_change_what_the_guard_reports_whatever_it_says",
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(source)\n    quiet = _hushed(source)\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "def reserved_code_tables(",
+          "new": "def _hushed(text: str) -> set[int]:\n    marked = set()\n    for number, line in enumerate(text.splitlines(), start=1):\n        if \"# ordinary-data\" in line:\n            marked.add(number)\n    return marked\n\n\ndef reserved_code_tables(",
+          "count": 1
+        },
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        entry = (key.lineno, slug, status)",
+          "new": "        if key.lineno in quiet:\n            continue\n        entry = (key.lineno, slug, status)",
+          "count": 1
+        },
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "    return ast.unparse(ast.parse(source))",
+          "new": "    return source",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "C4-the-deleted-marker-written-into-a-package-source",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_nobody_in_the_package_writes_the_marker_that_was_deleted"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "src/cratekit/cli/exit_codes.py",
+          "old": "RESERVED_RANGE: tuple[int, int] = (10, 60)",
+          "new": "# not-a-reservation: this line is ordinary data\nRESERVED_RANGE: tuple[int, int] = (10, 60)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "C5-enum-bases-walk-disabled",
+      "deaths": 2,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_an_enum_is_recognized_by_its_base_and_each_clause_has_its_own_case",
+        "tests/test_reserved_causes.py::test_renaming_the_enum_or_the_name_holding_it_changes_nothing"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "        if not isinstance(node, ast.ImportFrom) or node.level or node.module != \"enum\":\n            continue",
+          "new": "        if True:\n            continue",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "C6-attribute-exit-arm-removed-entirely",
+      "deaths": 12,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_a_negative_status_is_a_bare_status_too",
+        "tests/test_reserved_causes.py::test_a_status_with_a_conversion_round_it_still_reaches_the_shell",
+        "tests/test_reserved_causes.py::test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal[\\nfrom os import sys\\n\\ndef refuse():\\n    sys.exit(30)\\n]",
+        "tests/test_reserved_causes.py::test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal[\\nimport importlib\\n\\ndef refuse():\\n    importlib.import_module(\"sys\").exit(30)\\n]",
+        "tests/test_reserved_causes.py::test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal[\\nimport importlib\\n\\nload = importlib.import_module\\n\\ndef refuse():\\n    load(\"sys\").exit(30)\\n]",
+        "tests/test_reserved_causes.py::test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal[\\nimport os\\n\\ndef refuse():\\n    os.sys.exit(30)\\n]",
+        "tests/test_reserved_causes.py::test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal[\\nimport sys as system\\n\\ndef refuse():\\n    system.exit(21)\\n]",
+        "tests/test_reserved_causes.py::test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal[\\nimport sys\\n\\nPRECONDITION = 30\\n\\ndef refuse():\\n    sys.exit(PRECONDITION)\\n]",
+        "tests/test_reserved_causes.py::test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal[\\nimport sys\\n\\ndef refuse():\\n    code = 41\\n    sys.exit(code)\\n]",
+        "tests/test_reserved_causes.py::test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal[\\nimport sys\\n\\ndef refuse():\\n    stop = sys.exit\\n    stop(30)\\n]",
+        "tests/test_reserved_causes.py::test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal[\\nimport sys\\n\\nlater = sys.exit\\nstop = later\\n\\ndef refuse():\\n    stop(30)\\n]",
+        "tests/test_reserved_causes.py::test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal[\\nimport sys\\n\\nsystem = sys\\n\\ndef refuse():\\n    system.exit(30)\\n]"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "            return bool(\n                identity in EXIT_ATTRIBUTES and node.attr == EXIT_ATTRIBUTES[identity]\n            )",
+          "new": "            return False",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "C7-is-status-attribute-arm-removed-entirely",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal[\\nimport builtins\\n\\ndef refuse():\\n    raise builtins.SystemExit(30)\\n]"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "            return (\n                self.module_identity(node.value) == \"builtins\"\n                and node.attr == \"SystemExit\"\n            )",
+          "new": "            return False",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "C8-a-two-argument-parse-of-the-source-text",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    tree = ast.parse(source, \"<guard>\")\n    table = ReservedCodeTable(",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "C9-the-source-text-assigned-then-read-as-an-attribute",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    held = source\n    lines = held.splitlines()\n    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "C10-the-same-assignment-with-the-assignment-propagation-dropped",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/_source_guards.py",
+          "old": "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "new": "    held = source\n    lines = held.splitlines()\n    tree = ast.parse(source)\n    table = ReservedCodeTable(",
+          "count": 1
+        },
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "                if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):\n                    if node.value.id in tainted[name]:\n                        for target in node.targets:\n                            if (\n                                isinstance(target, ast.Name)\n                                and target.id not in tainted[name]\n                            ):\n                                tainted[name].add(target.id)\n                                changed = True",
+          "new": "                if False:\n                    pass",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "V1-the-marker-half-run-against-a-source-with-no-reservations",
+      "deaths": 0,
+      "scope": "full suite",
+      "collected": 3414,
+      "dying": [],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "    for marker in FRESH_ESCAPE_MARKERS:\n        marked = \"\\n\".join(\n            f\"{line}  {marker}\" if line.strip() else line\n            for line in RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS.splitlines()\n        )\n        assert _slugs_and_statuses(\n            reserved_code_tables(marked, causes, RANGE)\n        ) == _slugs_and_statuses(\n            reserved_code_tables(\n                RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS, causes, RANGE\n            )\n        ), (",
+          "new": "    probe = \"x = 1\\n\"\n    for marker in FRESH_ESCAPE_MARKERS:\n        marked = \"\\n\".join(\n            f\"{line}  {marker}\" if line.strip() else line\n            for line in probe.splitlines()\n        )\n        assert _slugs_and_statuses(\n            reserved_code_tables(marked, causes, RANGE)\n        ) == _slugs_and_statuses(\n            reserved_code_tables(\n                probe, causes, RANGE\n            )\n        ), (",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "V2-no-parameter-matches-the-seed-name",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "            if argument.arg == \"source\"",
+          "new": "            if argument.arg == \"sourcetext\"",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "V3-no-seed-with-the-anti-vacuity-check-dropped",
+      "deaths": 1,
+      "scope": "subset",
+      "collected": 3414,
+      "dying": [
+        "tests/test_reserved_causes.py::test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text"
+      ],
+      "proof": "",
+      "edits": [
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "            if argument.arg == \"source\"",
+          "new": "            if argument.arg == \"sourcetext\"",
+          "count": 1
+        },
+        {
+          "file": "tests/test_reserved_causes.py",
+          "old": "    if not any(tainted.values()):\n        return [\n            \"no function takes a `source: str` parameter, so this rule is \"\n            \"seeded on nothing and proves nothing\"\n        ]",
+          "new": "    if False:\n        return []",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

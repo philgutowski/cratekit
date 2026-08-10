@@ -38,7 +38,6 @@ from cratekit.core.naming import MarkerRule, NameTemplate
 from cratekit.core.taxonomy import default_taxonomy
 from cratekit.modules import tools
 from cratekit.modules.tools import backup, mastering, setbuilder
-from tests._pending import requires
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -60,7 +59,9 @@ def _open_gates():
 def open_gates():
     """The gates seam, injected wherever a test is asserting something else.
 
-    R-8 binds the library lock, the backup acknowledgment and the volume identity
+    The residual
+    "The backup restore is not yet bound to the destructive-session gates"
+    binds the library lock, the backup acknowledgment and the volume identity
     assertion to a restore. Those need a real volume identity and a person's
     recorded acknowledgment, neither of which belongs in a test about the ORDER
     the sidecars are cleared in. Injecting the seam here is what keeps this file
@@ -268,7 +269,11 @@ def test_every_declared_verb_is_in_the_static_registry():
 
 
 def test_the_destructive_verb_is_wired_to_the_destructive_session_gates():
-    """KTD24 and R38, armed now that the session boundary has landed (R-8).
+    """KTD24 and R38, armed now that the session boundary has landed.
+
+    The residual
+    "The backup restore is not yet bound to the destructive-session gates" is the
+    one this drives.
 
     A backup restore replaces a live database and its sidecars while writing no
     database row, so a rule binding the gates to database writes alone would
@@ -298,9 +303,12 @@ def test_the_destructive_verb_is_wired_to_the_destructive_session_gates():
     ), "the session module is imported but no gate is asserted"
 
 
-@requires("cratekit.cli.exit_codes")
 def test_every_refusal_cause_has_a_reserved_exit_code():
-    """S4 applied to this unit: a refusal with no reserved code is a bare status."""
+    """S4 applied to this unit: a refusal with no reserved code is a bare status.
+
+    ARMED by U38. The assertion body is the one that was ported and gated; only
+    the skip came off, which is what deleting the register entry is for.
+    """
     import cratekit.cli.exit_codes as exit_codes
 
     reserved = set(exit_codes.RESERVED_CAUSES)
