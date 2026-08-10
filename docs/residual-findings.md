@@ -1153,3 +1153,55 @@ restored, but the failure mode is real: a mutation driver that is interrupted
 leaves the code it was measuring in place. Any future round should checkpoint per
 row, as this one's did after the incident, and verify the tree against git rather
 than against its own snapshot before trusting the next number.
+
+---
+
+## R-27. Three more stored decisions are addressed by a key a later build recomputes, and only the tombstone carries the row that would rescue it
+
+**Found:** the U24 round 10 pattern five sweep, 2026-08-10. The rule is that a fix
+round fixes the instance it was handed and reproduces the class one file over, so
+after every fix you go looking for the same shape elsewhere.
+
+**The shape.** A decision is written to disk under an identifier derived from an
+identity, and a later build re-derives that identifier from the row in order to
+find the record. If the derivation moves between the two builds, the record is
+orphaned. That is exactly what four rounds of the tombstone recognition question
+were about, and it is a property of the whole `review.DecisionStore` model rather
+than of the tombstone.
+
+**The three other instances, and what each costs if its derivation moves.**
+
+* `deletion.stores.decline_predicate` recomputes
+  `suppression_id_for(row_identity(row))` against the stored identifiers. A
+  declined file is offered again. The person answers once more, and the old
+  record is still listable and revocable.
+* `deletion.run._verdicts` recomputes `item_id_for` over the same row identity to
+  find the verdict a person gave. A confirmation is orphaned and the row is
+  offered again. Nothing moves.
+* `DecisionStore.suppresses`, which is what an acquisition sweep asks per
+  candidate, recomputes `version_identity`. This is the one with teeth, since a
+  suppression that stops being seen re-acquires a version somebody deleted on
+  purpose. It is out of this unit's reach: the consulter holds a provider's title
+  and no second field, so it composes nothing, and widening it is what the
+  recorder is obliged to do instead.
+
+**Why it is a residual and not a blocking finding.** Under the merge bar a
+finding blocks only if it was driven end to end AND has a named user facing cost.
+This one is not driven, and the measurement is the reason: the ROW identity
+`removed_file_identity(content_id, recorded)` was rebuilt at all eleven commits on
+this branch and evaluated on one probe row, and it produced a byte identical
+answer at every one of them. Nothing has drifted. The version identity, by
+contrast, moved four times on the same branch, which is why the tombstone was the
+instance that bit.
+
+**What closes it, and the one thing that blocks the same repair.** The tombstone
+recognition question was repaired by matching a foreign era's record on the ROW
+it names, which works because a tombstone payload has carried `content_id` and
+`recorded` since the first commit of this pass, measured across all eleven. The
+decline payload carries `recorded` and NOT `content_id`, so the identical repair
+cannot be applied to it today. Adding `content_id` to the decline payload is the
+enabling change, and it is deliberately not made here: no decline derivation has
+drifted, so the change would be a store shape edit with no defect behind it.
+
+**Not fixed here** because the round was scoped to the recognition question, and
+because the measurement says the class is present while the instance is not.

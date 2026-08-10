@@ -994,3 +994,25 @@ through the composition limb twice and never removed the FOLDING limb alone,
 which killed zero of 3458. Removed alone it now kills 1, on the reachable path
 where a title that already names its version stops being recognised as naming
 it and a second bracket is composed onto a title that already says everything.
+
+## Round 10, U24 track deletion and tombstones
+
+**The table moved.** METHOD.md asks for the table under `docs/mutation/`, so
+round 10's 39 rows, their exact substitutions, their collected counts and the one
+zero row live in `docs/mutation/u24-round-10.md`. This file keeps rounds 6
+through 9 where earlier readers expect them; nothing was copied, because a second
+copy of a count is how the two come to disagree.
+
+Two things from round 10 that belong beside the instructions at the top of this
+file rather than in one round's table:
+
+* **A mutation that does not mutate reports a zero that reads exactly like an
+  unguarded line.** Round 10's first form of one row wrapped the value in
+  `(...) if False else (...)`, which evaluates to the original, and its first
+  form of another bypassed the function it meant to weaken. Both reported zero
+  deaths. Re-read every substitution as the interpreter will, not as the sentence
+  describing it reads.
+* **Restores are verified against a sha256 of `git show HEAD:<path>` taken
+  outside the driver**, with the fix committed first so that HEAD is the thing to
+  compare against. That satisfies both standing rules at once: no git inside the
+  driver, and no scratch copy certifying itself.
