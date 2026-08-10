@@ -164,12 +164,28 @@ own venv:
 
       git log -1 --format=%B | grep -inE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b[[:space:]]*#[0-9]+'
 
-- **Residuals renumber sequentially at each merge**, decided 2026-08-09. This is
-  now safe: measured on that date, zero numeric `R-NN` citations remain in
-  `src`, `tests` or `scripts` on any branch, so every citation is by title.
-  Verify a merge with:
+- **Residual numbers are APPEND ONLY. A number, once given, is that finding's
+  for life.** Decided 2026-08-10, reversing the sequential renumber decided
+  2026-08-09.
+
+  At a merge, the numbers already on `main` DO NOT MOVE. The incoming branch's
+  residuals are the ones that get fresh numbers, assigned above `main`'s current
+  highest. Gaps are fine and are not tidied. A branch whose residuals collide
+  with `main`'s is normal, because branches number independently, and the
+  collision is resolved by moving the INCOMING side only.
+
+  The renumber was certified safe on a sweep showing zero numeric `R-NN`
+  citations in `src`, `tests` or `scripts`. That sweep missed a second surface:
+  **GitHub issue titles carry the number in their text**, as in
+  `R-14: Analysis-file paths are share-relative`. A renumber silently repoints
+  every one of those at a different finding, and nothing in the repository can
+  see it. Same defect class as a rule verified against source while a second
+  surface carries the same coupling.
+
+  Verify a merge with both of these:
 
       grep "^## R-" docs/residual-findings.md | sort | uniq -d   # must be empty
+      git diff origin/main -- docs/residual-findings.md | grep '^-## R-'   # must be empty
 
 - **Use git's merge algorithm only.** `diff3 -m` silently produces a broken
   merge of `tests/_pending.py`. Use a scratch clone and a real `git merge`.

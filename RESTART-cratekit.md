@@ -71,9 +71,11 @@ table over a suite this size always finds a zero death row. This reverses the
 - **U24 and U27 merge WITHOUT closing trailers.** Scan every merge body first;
   the command is in METHOD.md. GitHub matches a closing keyword anywhere in a
   body, not only in trailer position.
-- **Residuals renumber sequentially at each merge**, decided 2026-08-10. Safe
-  now: zero numeric `R-NN` citations remain in `src`, `tests` or `scripts` on any
-  branch.
+- **Residual numbers are APPEND ONLY**, decided 2026-08-10, reversing the
+  sequential renumber. `main`'s numbers never move; the incoming branch's
+  residuals get fresh numbers above `main`'s highest. The renumber was certified
+  on a sweep of `src`, `tests` and `scripts` that missed GitHub issue titles,
+  which carry the number in their text.
 - **Do not touch** U30's board state, U20, U29, R-9, A1, A2.
 - **Two or three units per session.** Do not relaunch a seven agent wave.
 
