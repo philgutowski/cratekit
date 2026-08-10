@@ -13,25 +13,34 @@ four.
 
 ## VERDICT
 
-**BLOCKING**, on one finding. Everything else is a residual.
+**MERGE.** No open blocking finding.
 
-Finding 1 below is driven end to end through the live `read_export`,
-`intake_aging` and `duplicates.audit` on the reports suite's own export fixture,
-and it has two of the four user facing costs the merge bar names by hand: a
-person is told something false, and a person is shown a clean report over state
-the tool could not read.
+Finding 1 was written up as BLOCKING on the first pass and is **DOWNGRADED to a
+residual** by the reachability measurement in the section "Finding 1's producer,
+hunted" below. The defect is real and the cost is real, but the merge bar
+requires a user facing cost, and a cost over an input nothing produces is not
+one. Four candidate producers were driven and none of them emits the input.
+Decisively, two REAL rekordbox exports off the live volume, 56 MB and 28250
+playlist nodes each, are balanced, carry no raw bracket in any name, and declare
+counts that agree with the walk on every single node.
 
-Findings 2 through 8 are residuals. None of them costs a user anything: they are
-a typed constant that can be emptied in silence, three assertions that name less
-than they claim, and a documented count an independent table does not reproduce.
+What that measurement says precisely, and the distinction matters because it is
+`METHOD.md`'s first defect pattern: **I measured that four driven candidates do
+not produce it, not that nothing produces it.** One of the four, the predecessor
+system, carries a live mechanism that DOES emit an unbalanced document, driven
+and reproduced below, and what stops it is only that no writer in either tool
+emits the byte it needs. That is a residual with a named trigger rather than an
+absence.
 
-The verdict is one finding wide, not a rejection of the round. The round's own
-structural claim HELD under direct attack, and its four blocking answers all
-reproduce. See "What held" at the end.
+Everything else was already a residual. The round's own structural claim HELD
+under direct attack and its four blocking answers all reproduce. See "What held".
 
 ## Finding 1. An extra node close is accepted, and both reports render over a tree that was re-parented under them
 
-**BLOCKING.** Both floor conditions are met and each is addressed below.
+**RESIDUAL**, downgraded from blocking. The defect and both costs below were
+driven and stand exactly as measured. What changed is the second floor condition:
+see "Finding 1's producer, hunted" for the reachability measurement that
+withdraws the user facing cost.
 
 **What was driven.** The reports suite's own `library_export()` fixture, with ONE
 `</NODE>` inserted after the first intake grouping's close. Nothing else changed.
@@ -125,14 +134,219 @@ playlist, and none of it is read. The module's own standard already covers this
 class; the fix is the check it already wrote, applied to the section it did not
 apply it to.
 
-**What is UNMEASURED about this finding, named rather than glossed.** I did not
-measure a producer that emits an unbalanced close. rekordbox writes balanced XML.
-What I measured is that this module accepts one and reports over it. The module's
-stated contract is "a wrong document is never an empty library", and it enforces
-that contract on five other structures, so the input is in scope by the module's
-own standard rather than by mine. A reviewer who disagrees with that framing
-should read this as the strongest residual in the report rather than as a blocker,
-and the fix is the same either way.
+**Condition two was withdrawn on measurement.** The first pass named the producer
+as unmeasured. It has now been measured, and the section below is that
+measurement. Four candidates driven, none produces the input, so the cost is not
+reachable and this is a residual.
+
+**Closes when** the check in "The fix, measured" lands, which costs nothing on
+the suite and refuses both harmful spellings.
+
+# Finding 1's producer, hunted
+
+Four candidates, each driven, each reported separately. The question is narrow:
+what writes an export whose playlist tree carries an unbalanced node close.
+
+## Candidate 1. Cratekit's own write path. NOT FOUND, and here is what was driven
+
+Every real splicer in `cratekit.write` was run on the write suite's own fixtures,
+and after each call the playlist section was checked for balanced paired opens
+against closes, and every node's declared `Count` or `Entries` against what the
+walk finds under it.
+
+Happy paths, all balanced and all counts exact:
+
+    insert_intake_playlist, twice, and again for the idempotent replace
+    insert_root_playlist, twice, including the same name replace
+    insert_genre_folder, twice, then remove_folder_node on each
+    remove_folder_node on a SELF CLOSED folder
+    splice_into_subplaylist then remove_tracks_from_subplaylist
+    insert_empty_subplaylist
+    insert_catalog_folder into an absent tree, then a second time
+    trees.apply_playlist_changes and trees.apply_unplaced_changes
+
+Error and refusal paths, all balanced:
+
+    a playlist named with a quote, a bracket, an ampersand, a slash, and with
+      the literal close tag as its name
+    a splice whose folder is absent, with create_missing off and on
+    a removal of a track that is not there
+    a removal of a folder that is not there
+    a removal by a name that is a playlist rather than a folder
+    a splice into a document whose tree count is ALREADY wrong
+
+**No driven splicer, on any path, emitted an unbalanced tree.** The refusal paths
+are the reason: `insert_catalog_folder` mutates a buffer and returns a warning,
+and `trees.insert_record_labels_tree` raises on that warning BEFORE it persists
+anything, so a half spliced buffer never reaches a file.
+
+**One producer WAS found, and it is a count rather than a balance.** See finding 9.
+
+## Candidate 2. A partial or interrupted write. NOT POSSIBLE, and it is structural
+
+Every persist of an export in this product goes through
+`config.atomic_write_bytes`. Read: it creates the temp file with `mkstemp` in the
+TARGET's own directory so the rename is same filesystem, writes, flushes,
+`os.fsync`es, and then `os.replace`s. There is no in place write of an XML
+document anywhere in `src` outside the vendored tree. The only two writes in the
+whole product that do not go through it are a mastering listing and a set builder
+cache, neither of which is an export.
+
+A crash, a signal or a full disk therefore leaves either the previous document or
+the new one, never a half spliced one.
+
+## Candidate 3. The predecessor. MECHANISM FOUND AND DRIVEN, input not producible
+
+DJ_tools was imported read only. Nothing was written to it.
+
+`dj_tools.DJ_common.rbxml.remove_folder_node` bounds a node's open tag with
+`content.find(b">", node_start)` and then reads the byte before it to decide
+whether the node is self closed. That find is NOT quote aware. XML does not
+require a `>` to be escaped inside an attribute value, so a name carrying the
+literal two bytes `/>` makes the walk read a paired open tag as self closed,
+which makes the depth walk stop one close early, and the range deletion then
+removes an open without its close.
+
+**Driven, on a document built in the probe process:**
+
+| the document | after remove_folder_node |
+|-|-|
+| ordinary names, the control | 2 opens, 2 closes, balanced |
+| a raw bracket in a child's name | 2 opens, 2 closes, balanced |
+| the literal `/>` in a child's name | **2 opens, 3 closes, UNBALANCED** |
+| the literal `/>` in the target's own name | not found, no deletion, balanced |
+
+Cratekit's own `remove_folder_node` was run on the identical input and returned a
+balanced document, because its open tag regex is quote aware. The successor fixed
+the class; the predecessor still carries it.
+
+**And the input is not producible by either tool.** Both escapers were driven:
+
+    predecessor xml_escape_attr('w/>120')  ->  'w/&gt;120'
+    cratekit    xml_escape_attr('w/>120')  ->  'w/&gt;120'
+
+So the byte has to arrive from rekordbox or from a hand edit, which is candidate 4.
+
+## Candidate 4. rekordbox. MEASURED ON THE TREE, and it is the decisive one
+
+Two real rekordbox 7.2.17 collection exports were read off the live library
+volume, read only. The rekordbox database was not opened, named or copied, and
+nothing was written to the volume. Aggregates only below; no track, artist or
+playlist content is reproduced anywhere in this report.
+
+| | `8-2-18-54.xml` | `8-214-32.xml` |
+|-|-|-|
+| size | 56.3 MB | 56.2 MB |
+| paired opens in PLAYLISTS | 28189 | 28189 |
+| closes | 28189 | 28189 |
+| self closed nodes | 61 | 61 |
+| balanced | **yes** | **yes** |
+| names carrying a RAW `>` | **0** | **0** |
+| names carrying a RAW `<` | 0 | 0 |
+| names carrying an ESCAPED `&gt;` | 5 | 5 |
+| folders and playlists found by the walk | 74 and 28176 | 74 and 28176 |
+| distinct `Type` values in the tree | `0`, `1` | `0`, `1` |
+| folders whose `Count` disagrees with the walk | **0** | **0** |
+| playlists whose `Entries` disagrees with the walk | **0** | **0** |
+| `read_export` | ACCEPTED, 10070 entries | ACCEPTED, 10070 entries |
+
+Three things fall out of this table and each one matters.
+
+1. **rekordbox escapes the bracket.** Five real playlist names in this library
+   contain a `>`, and all five are written `&gt;`. Zero raw. So candidate 3's
+   mechanism has no input on a rekordbox authored document.
+2. **A real tree is balanced**, on 28250 nodes across two exports taken hours
+   apart.
+3. **rekordbox is NOT loose about `Count`.** Every one of 28250 nodes declares a
+   count that agrees exactly with what the walk finds under it. Reading the
+   declaration is therefore free on a real document, which is the question the
+   fix depended on.
+
+What is still UNMEASURED here: two exports from one library on one rekordbox
+version. I did not measure another version, another library, or a document
+somebody hand edited. A hand edit is a real thing in this workflow, and it is the
+one route to the predecessor's mechanism that these measurements do not close.
+
+## The fix, measured
+
+The probe mirrors the check `read_export` already runs on the COLLECTION section
+onto the playlist tree: every node's declared `Count` or `Entries` against what
+the walk finds under it.
+
+**Does it catch the document finding 1 is about, and does it refuse anything it
+should not:**
+
+| document | probe | wanted |
+|-|-|-|
+| the suite's own export, untouched | accept | accept |
+| one stray close inside the intake folder | **REFUSE**, ROOT declares 2 holds 6, INBOX declares 5 holds 1 | refuse |
+| one stray close at the top of the tree | **REFUSE**, the tree folder declares 2 holds 1 | refuse |
+| one stray close just before the section close | accept | accept |
+| the routing fixture, and with the collision bait | accept | accept |
+| a legitimately empty folder, SELF CLOSED | accept | accept |
+| a self closed empty PLAYLIST | accept | accept |
+| real export `8-2-18-54.xml`, 28250 nodes | accept | accept |
+| real export `8-214-32.xml`, 28250 nodes | accept | accept |
+
+**Zero false refusals on either real export.** The one harmless spelling, a stray
+close sitting outside the tree body, is correctly accepted, and so are both self
+closed shapes.
+
+**Suite cost: zero,** provided the check is ordered AFTER the unreadable kind
+refusal. Placed before it, three of this round's own parametrized cases fail,
+because they retype playlists and the count check then fires first and says the
+wrong thing. Placed after it: **3522 passed, 15 skipped, 3537 collected,
+identical to the baseline.**
+
+**Runtime cost, with its repeat count and range**, on the 56 MB export, 5 repeats:
+
+    read_export today          median 0.74s   range 0.74 to 0.75
+    the count check alone      median 0.69s   range 0.67 to 0.69
+
+So the check as probed roughly doubles the read of a real library. It is written
+as a second walk; folded into `_read_nodes`, which already visits every node and
+already has each `NodeSpan`, it costs close to nothing. Whoever lands it should
+fold it rather than append it.
+
+**One false refusal was found, and it is not the check's fault.** See finding 9.
+
+## Finding 9. A create path that does not bump the count it invalidates
+
+**RESIDUAL against U34. A finding against U18**, which is the unit that landed
+`src/cratekit/write/rbxml.py` and `src/cratekit/write/trees.py`
+(`feat(write): the tree writers, in both mediums`).
+
+Two writers create the same node and only one of them keeps the parent's count
+true.
+
+- `insert_empty_subplaylist` inserts the node and then calls
+  `_bump_count(content, folder, +1)`.
+- `splice_into_subplaylist`'s `create_missing` path inserts the node and **does
+  not bump anything.**
+
+**Driven**, on the write suite's own routing fixture:
+
+    after insert_genre_folder                     counts exact
+    after insert_empty_subplaylist                counts exact
+    after splice_into_subplaylist, existing sub   counts exact
+    after splice_into_subplaylist CREATE_MISSING  BY GENRE / Deep House
+                                                  declares 1, holds 2
+    after trees.apply_unplaced_changes            BY GENRE / Deep House
+                                                  declares 1, holds 2
+
+The last row is the one that makes it production rather than a test only path:
+`trees.apply_unplaced_changes` passes `create_missing=True`, so the unplaced
+routing pass is a live caller.
+
+The cost today is a document whose folder count understates its children.
+rekordbox trusts the count over the children it can see, which the module's own
+`remove_tracks_from_subplaylist` docstring states in as many words, so this is a
+real write path defect and not merely cosmetic. The cost tomorrow is that it is
+the ONE false refusal the finding 1 fix produces.
+
+**Both floor conditions against U34.** Driven: yes. User facing cost attributable
+to U34: none, this is not U34's file and U34 only reads. RESIDUAL here, and it
+should be filed against U18's surface with the reproduction above.
 
 ## Finding 2. The typed floor can be emptied with the whole suite green, and its own test then asserts nothing
 
@@ -358,10 +572,25 @@ restored by rewriting snapshotted text and then verified against
 
 ## Named as unmeasured
 
-- **A producer of an unbalanced node close.** Finding 1 measures that this module
-  accepts one and reports over it. It does not measure anything in this repository
-  or in rekordbox that emits one. That link is unmeasured and the finding is
-  written so the merge decision can be taken with it in view.
+- **Whether the fix should land on U34 at all.** My recommendation: **yes, the
+  read side check belongs here**, because `read_export` is U34's file, the check
+  is the one it already runs on the other section, it costs the suite nothing and
+  refuses nothing real. Finding 9, the write side producer, does NOT belong here
+  and should be filed against U18. The two are separable: the reader's job is to
+  refuse a document it cannot trust whatever wrote it, and the writer's job is to
+  keep the count true. Landing only the reader check would make U18's unplaced
+  routing pass produce documents U34 refuses, so the two want to land in that
+  order or together, and that ordering is the one thing a coordinator has to
+  decide rather than a verifier.
+- **rekordbox beyond one library on one version.** Two exports, both 7.2.17, both
+  from the same library, taken hours apart. Another version or another library is
+  unmeasured, and so is any hand edited export, which is the one live route to
+  the predecessor's mechanism.
+- **The predecessor's other five splice sites.** `remove_folder_node` in
+  `DJ_common/rbxml.py` was driven. `label_library.py`, `setid_lib.py`,
+  `sort_unplaced.py`, `create_vox_playlists.py` and `minimal_xml.py` also emit
+  node closes and were NOT driven. The class is present in the one I drove, so
+  the others are unmeasured rather than clean.
 - **The CLI surface.** `cratekit.cli.reports` does not exist yet; the registry
   names it as a module a later unit lands. Every drive in this report goes through
   the module API directly, because there is no verb to drive.
