@@ -1,0 +1,191 @@
+{
+  "name": "example-binaries-five-row",
+  "pass_kind": "light",
+  "branch": "tooling/mutation-driver",
+  "head": "81e0744",
+  "when": "2026-08-10 16:43 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 3483,
+  "baseline_exit": 0,
+  "pytest_runs": 8,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/binaries.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/binaries.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "a6a6c90ef68318e3",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 3483,
+    "baseline_collected": 3483,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_broken_override_falls_through",
+      "description": "find() returns a broken per-binary override as if it worked, instead of None. The guard exists so a set-but-broken override never falls through to a different binary.",
+      "file": "src/cratekit/core/binaries.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7e47634862528fc9",
+      "subset": [
+        "tests/test_binaries.py"
+      ],
+      "subset_reason": "test files importing cratekit.core.binaries",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_binaries.py::test_find_never_raises_because_doctor_reports_on_all_of_them"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return override if _executable(Path(override)) else None\n",
+      "new": "        return override\n"
+    },
+    {
+      "id": "B2_resolve_refuses_a_broken_override",
+      "description": "Delete resolve()'s explicit refusal for a set-but-broken override, so it falls through to the generic not-found path with the wrong remedy.",
+      "file": "src/cratekit/core/binaries.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7937b4ff7d9d5daf",
+      "subset": [
+        "tests/test_binaries.py"
+      ],
+      "subset_reason": "test files importing cratekit.core.binaries",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_binaries.py::test_the_binary_failures_carry_four_different_remedies"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if override and not _executable(Path(override)):\n        raise BinaryNotFound(\n            f\"{env_var(name)} is set to {override!r}, which is not an executable \"\n            f\"file. Fix or unset the override; falling through to PATH would run \"\n            f\"a different binary than the one you named.\",\n            binary=name,\n            remedy=Remedy.FIX_BINARY_OVERRIDE,\n        )\n",
+      "new": ""
+    },
+    {
+      "id": "B3_platform_binary_remedy",
+      "description": "A platform-provided binary reports INSTALL_BINARY instead of UNSUPPORTED_PLATFORM, so the CLI would tell a user to install something the operating system ships.",
+      "file": "src/cratekit/core/binaries.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "bef68a7d74d1633c",
+      "subset": [
+        "tests/test_binaries.py"
+      ],
+      "subset_reason": "test files importing cratekit.core.binaries",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_binaries.py::test_the_binary_failures_carry_four_different_remedies"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            remedy=Remedy.UNSUPPORTED_PLATFORM,\n",
+      "new": "            remedy=Remedy.INSTALL_BINARY,\n"
+    },
+    {
+      "id": "B4_unknown_source_remedy",
+      "description": "Collapse the two None-hint cases onto one remedy token, which is the exact distinction the docstring says must not live in a None-check on a second attribute.",
+      "file": "src/cratekit/core/binaries.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "a3875db2e701f883",
+      "subset": [
+        "tests/test_binaries.py"
+      ],
+      "subset_reason": "test files importing cratekit.core.binaries",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_binaries.py::test_the_binary_failures_carry_four_different_remedies"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        remedy=Remedy.INSTALL_BINARY if hint is not None else Remedy.INSTALL_BINARY_SOURCE_UNKNOWN,\n",
+      "new": "        remedy=Remedy.INSTALL_BINARY,\n"
+    },
+    {
+      "id": "B5_credential_strip",
+      "description": "subprocess_env() stops stripping Cratekit credentials, so every spawned third-party binary receives a copy and the credential reaches a process listing.",
+      "file": "src/cratekit/core/binaries.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "04adc538fff05f6d",
+      "subset": [
+        "tests/test_binaries.py"
+      ],
+      "subset_reason": "test files importing cratekit.core.binaries",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_binaries.py::test_a_spawned_process_does_not_inherit_an_opted_in_credential"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not key.startswith(secrets.ENV_CREDENTIAL_PREFIX)\n",
+      "new": "        if True\n"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "B6_fallback_dirs_order",
+      "description": "Reorder fallback_dirs() so PATH wins over the override.",
+      "reason": "ranked below the cap: same guard family as B1, which is measured"
+    }
+  ]
+}
