@@ -30,12 +30,16 @@ from __future__ import annotations
 import ast
 import errno
 import hashlib
+import inspect
 import io
 import json
 import logging
 import os
+import re
 import sqlite3
+import subprocess
 import sys
+import unicodedata
 from dataclasses import replace
 from pathlib import Path
 
@@ -5259,15 +5263,82 @@ def test_a_record_this_build_wrote_says_which_rules_composed_it(cfg, gates_pass)
     # long enough not to collide is the property, and the value itself may move
     # freely, which is exactly what it is for.
     stamp = stores.identity_scheme()
-    assert stamp.startswith("is1_") and len(stamp) == len("is1_") + 16
+    assert stamp.startswith("is2_") and len(stamp) == len("is2_") + 16
 
     # AND IT IS ON THE DISK, not only on the object the writer returned.
     assert stamp in stores.tombstones(cfg).path.read_text()
 
 
+def _fold_nfkc(value):
+    """``fold``, normalising NFKC rather than NFC. A real function, so it has source."""
+    return tombstone._SPACING.sub(
+        " ", unicodedata.normalize("NFKC", str(value)).casefold()
+    ).strip()
+
+
+def _fold_unnormalised(value):
+    """``fold`` with the normalisation step gone and everything else kept."""
+    return tombstone._SPACING.sub(" ", str(value).casefold()).strip()
+
+
 @pytest.mark.parametrize(
     "module_name, attribute, replacement",
     [
+        # ── ADDITIVE DRIFTS. Every parameter below this comment ADDS a rule that
+        # fires on an input no probe carries, which is the direction a real
+        # forward change to this code takes and the direction the round 10 stamp
+        # was blind to. Sixteen of them were measured moving a real rekordbox
+        # row's composed identity while that stamp sat still; the ten single
+        # words are ten of the spellings ``VERSION_WORDS``'s own docstring names
+        # as missing, so they are the change the code asks for in writing rather
+        # than a hypothetical. The subtractive parameters that follow are the
+        # round 10 set, kept because a stamp has to see both directions.
+        *(
+            pytest.param(
+                "tombstone", "VERSION_WORDS", tombstone.VERSION_WORDS | {word},
+                id=f"vocabulary-gains-{word}",
+            )
+            for word in (
+                "refix", "redux", "vocal", "acappella", "nightcore",
+                "slowed", "rmx", "dubplate", "versión", "bootie",
+            )
+        ),
+        pytest.param(
+            "tombstone", "_CREDIT_MARKERS", tombstone._CREDIT_MARKERS | {"vs"},
+            id="credit-markers-gains-vs",
+        ),
+        pytest.param(
+            "tombstone", "_CREDIT_MARKERS", tombstone._CREDIT_MARKERS | {"x"},
+            id="credit-markers-gains-x",
+        ),
+        pytest.param("tombstone", "fold", _fold_nfkc, id="the-fold-goes-nfkc"),
+        pytest.param(
+            "tombstone", "fold", _fold_unnormalised, id="the-fold-stops-normalising"
+        ),
+        pytest.param(
+            "tombstone", "_BRACKET_CHARACTERS", re.compile(r"[()\[\]{}]+"),
+            id="the-tidy-covers-braces",
+        ),
+        pytest.param(
+            "tombstone", "_BRACKETED",
+            re.compile(r"\(([^()]*)\)|\[([^\[\]]*)\]|\{([^{}]*)\}"),
+            id="the-carrying-test-covers-braces",
+        ),
+        pytest.param(
+            "tombstone", "REMIX_DESIGNATION", "Remix Edit", id="designation-gains-a-word",
+        ),
+        pytest.param(
+            "tombstone", "_WORD_SPLIT", re.compile(r"[^\w']+", re.UNICODE),
+            id="the-word-split-keeps-apostrophes",
+        ),
+        pytest.param(
+            "library", "_VERSION_COLUMNS",
+            (("RemixerName", library.VERSION_IS_AN_ARTIST),
+             ("Subtitle", library.VERSION_IS_A_DESIGNATION),
+             ("Comments", library.VERSION_IS_A_DESIGNATION)),
+            id="a-third-column-below-the-two",
+        ),
+        # ── SUBTRACTIVE DRIFTS, the round 10 set ──
         pytest.param("tombstone", "_is_a_credit", lambda group: False, id="is-a-credit"),
         pytest.param(
             "tombstone", "_CREDIT_MARKERS", frozenset(), id="credit-markers"
@@ -5319,6 +5390,15 @@ def test_the_stamp_moves_when_any_rule_below_it_moves(
     the composer alone would still match, and the recogniser would still trust an
     identity that had moved: the same defect one file over, which is the fifth
     pattern.
+
+    **THE ROUND 10 PARAMETERS WERE ALL SUBTRACTIONS AND THAT IS WHY THEY ALL
+    PASSED.** Every one of them destroyed behaviour the 23 output probes already
+    carried, so the probes saw the loss and the stamp moved. Not one ADDED a rule
+    that fires on an input no probe carries, and that is the direction a forward
+    change takes: a build gains a word, an existing row starts composing
+    differently, and a stamp taken over 23 fixed outputs has no way to see it.
+    Nineteen such changes were driven, sixteen moved a real row's identity
+    without moving the stamp, and the ten in front of you are ten of them.
     """
     before = stores.identity_scheme()
     monkeypatch.setattr(
@@ -5510,7 +5590,170 @@ def test_the_stamp_this_build_writes_is_pinned_to_a_literal():
     survives any change that moves both sides together, which is the shape that
     made four rounds of this defect silent.
     """
-    assert stores.identity_scheme() == "is1_898ad13cd09eeffd"
+    assert stores.identity_scheme() == "is2_5b356bbb451de9cc"
+
+
+def test_the_row_identity_composes_NFC_and_the_normal_form_is_pinned():
+    """The normal form is a WIRE FORMAT, so it is pinned to a literal like the stamp.
+
+    ``removed_file_identity`` is hashed into the suppression identifier a decline
+    is stored under, and into the item identifier a person's confirmation is
+    stored under, both of which outlive the process. So which normal form it
+    composes is a decision recorded on other people's disks.
+
+    **NOTHING PINNED IT AND THE MEASUREMENT IS WHY THIS EXISTS.** Composing NFD
+    rather than NFC killed zero tests on the full suite. It could not be caught by
+    an equality, because every existing test builds both sides in one run and both
+    sides move together, which is the shape that made four rounds of this branch's
+    defect silent. Only a literal can see it.
+
+    Both spellings of the same path still produce one identity, which is what the
+    normalisation is FOR, and that is asserted beside the literal so the pin
+    cannot be satisfied by a build that normalises nothing.
+    """
+    composed = "Café Track.flac"
+    decomposed = "Café Track.flac"
+    assert composed != decomposed
+
+    identity = tombstone.removed_file_identity(content_id="1", recorded=decomposed)
+    assert identity["recorded"] == composed, (
+        "the row identity is not composed to NFC, so a decline recorded under one "
+        "spelling of a path is orphaned when the collection reports the other"
+    )
+    assert tombstone.removed_file_identity(content_id="1", recorded=composed) == identity
+
+
+def test_the_stamp_is_the_same_value_in_a_process_that_is_not_this_one():
+    """It is written to a disk and compared by a LATER process, so it must not vary.
+
+    **A FROZENSET ITERATES IN AN ORDER THAT DEPENDS ON THE PROCESS HASH SEED**,
+    and two of the rules the stamp now measures, ``VERSION_WORDS`` and
+    ``_CREDIT_MARKERS``, are frozensets. Digesting either by iteration gives a
+    build whose stamp differs between two runs of itself, which is a build that
+    reads records it wrote a second ago as written under other rules. Nothing in
+    a single-process suite can see that, because one process has one seed.
+
+    Four seeds, in real children, because the property is about the interpreter's
+    own state rather than about this module.
+    """
+    seeds = ("0", "1", "12345", "99999")
+    answers = {
+        subprocess.run(
+            [sys.executable, "-c",
+             "from cratekit.deletion import stores; print(stores.identity_scheme())"],
+            capture_output=True, text=True, check=True,
+            env={**os.environ, "PYTHONHASHSEED": seed, "PYTHONPATH": str(SRC_ROOT)},
+        ).stdout.strip()
+        for seed in seeds
+    }
+    assert answers == {stores.identity_scheme()}, (
+        f"the stamp depends on the process hash seed: {answers}"
+    )
+
+
+def test_the_stamp_reaches_every_rule_by_walking_rather_than_by_a_list():
+    """The membership of what the stamp covers is COMPUTED, and this pins the result.
+
+    Five rounds of this branch each wrote down the things that mattered and each
+    list had a hole one level below it by the next change. The walk in
+    :func:`stores._composition_rules` starts at the two roots and follows what
+    the code actually references, so a helper factored out of a composer is
+    reached because it is called rather than because somebody remembered it.
+
+    What is asserted here is the RESULT of that walk, not the walk: every rule
+    the round 10 verification named as escaping, plus every function in the path
+    from a rekordbox row to an identity. A walk that stopped reaching one of them
+    would go red here rather than at the next silent miss.
+    """
+    reached = stores._composition_rules()
+
+    for name in (
+        "cratekit.core.tombstone.VERSION_WORDS",
+        "cratekit.core.tombstone._CREDIT_MARKERS",
+        "cratekit.core.tombstone.REMIX_DESIGNATION",
+        "cratekit.core.tombstone._SPACING",
+        "cratekit.core.tombstone._BRACKETED",
+        "cratekit.core.tombstone._BRACKET_CHARACTERS",
+        "cratekit.core.tombstone._WORD_SPLIT",
+        "cratekit.deletion.library._VERSION_COLUMNS",
+    ):
+        assert f"value:{name}" in reached, f"the walk stopped reaching {name}"
+
+    for name in (
+        "cratekit.core.tombstone.fold",
+        "cratekit.core.tombstone._already_carries",
+        "cratekit.core.tombstone._is_a_credit",
+        "cratekit.core.tombstone._as_a_bracketed_value",
+        "cratekit.core.tombstone.already_spelled_as_a_remix",
+        "cratekit.core.tombstone.reads_as_version",
+        "cratekit.core.tombstone.remixer_title",
+        "cratekit.core.tombstone.version_title",
+        "cratekit.core.tombstone.version_identity",
+        "cratekit.deletion.library._version_of",
+        "cratekit.deletion.library._text",
+        "cratekit.deletion.stores.version_of",
+    ):
+        assert f"code:{name}" in reached, f"the walk stopped reaching {name}"
+
+    # AND THE VOCABULARY IS IN THERE AS ITS MEMBERS rather than as a name, since
+    # a digest that recorded only "there is a frozenset here" would be exactly
+    # the round 10 defect wearing a new shape.
+    encoded = json.dumps(reached["value:cratekit.core.tombstone.VERSION_WORDS"])
+    assert "extended" in encoded and "remix" in encoded
+
+
+def test_the_walk_reads_what_is_composed_and_not_what_is_raised():
+    """The one narrowing in the walk, with the measurement that bought it.
+
+    ``version_identity`` refuses an empty identity through ``cause.refuse``, and
+    a walk that followed every name went from there into the whole error
+    catalogue: ``REASONS``, ``MEANINGS``, ``ExitCode``, ``Remediation``. Measured
+    over every commit in this repository that touches those two files, 18 of 19
+    moved that half of the digest and NOT ONE changed how any row composes. A
+    stamp that moves on every unit's error message never matches anything, and a
+    stamp that never matches has stopped being a stamp.
+
+    A raised value is never returned, so nothing built inside a ``raise`` can
+    reach an identity. WHETHER the refusal fires is a different question and is
+    still covered, because the guard and the ``raise`` are both inside the
+    normalised source of the function that holds them, which is digested.
+    """
+    reached = stores._composition_rules()
+    strayed = [name for name in reached if ".cause." in name or ".exit_codes." in name]
+    assert strayed == [], f"the walk read the refusal path: {strayed}"
+
+    composed = reached["code:cratekit.core.tombstone.version_identity"]
+    assert "raise" in composed and "if not folded_artist and (not folded_title):" in composed, (
+        "the refusal guard is not in the digested source, so a build that stopped "
+        "refusing an empty identity would carry its predecessor's stamp"
+    )
+
+
+def test_prose_is_not_a_rule_and_a_reordered_call_is():
+    """What the normalisation buys, driven on the two edits that bracket it.
+
+    The digest is taken over the PARSED code with the docstring dropped, so
+    rewording the paragraph above a composer does not move the stamp and
+    reordering two calls inside it does, even where the reordering changes no
+    output for any input. The second half is the important one: it is a change
+    the 23 output probes cannot see by construction, and the stamp sees it.
+
+    **WHAT THIS HAS SAVED SO FAR IS NOTHING, AND THAT IS RECORDED RATHER THAN
+    HIDDEN.** Over all 39 commits in this repository that touch the files the
+    walk reads, not one was prose only, so a raw text digest would have produced
+    the same values. This is insurance against an edit nobody has made yet.
+    """
+    source = inspect.getsource(tombstone.fold)
+    assert '"""' in source, "the fixture below assumes fold carries a docstring"
+
+    reworded = stores._normalised_source(tombstone.fold)
+    assert '"""' not in reworded and "NFC first, then case" not in reworded, (
+        "the docstring survived into the digested form, so rewording it moves "
+        "the stamp and every record ever written falls to the row lookup"
+    )
+    assert "casefold" in reworded and "normalize" in reworded, (
+        "the code did not survive into the digested form, so the stamp is vacuous"
+    )
 
 
 def test_a_record_of_another_kind_does_not_answer_the_tombstone_question(cfg, gates_pass):
@@ -5565,18 +5808,63 @@ def test_a_row_that_cannot_be_identified_is_not_read_as_already_recorded(cfg, ga
 
 
 def test_nothing_reconstructs_a_former_builds_composition_any_more(cfg):
-    """The claim stated structurally, so it cannot quietly come back.
+    """The claim stated as a SHAPE, because the round 10 version stated it as three names.
 
-    Every previous round closed this class by adding another reconstruction, and
-    the reconstruction is the class. A function whose name says it reproduces
-    what an earlier build wrote is the shape to refuse, whatever it is called.
+    **WHAT THIS USED TO BE AND WHY IT WAS WORTH NOTHING.** It refused any name in
+    ``tombstone`` or ``stores`` containing ``before_the``, ``earlier_builds`` or
+    ``historical``, and its docstring claimed to refuse the shape "whatever it is
+    called". Driven by the round 10 verification: a genuine reconstruction added
+    under the name ``legacy_version_title`` killed ZERO tests. It forbade round
+    9's three symbols, which is METHOD's "a test that forbids a feature by naming
+    the last implementation's symbols" exactly.
+
+    **AND THE CORRECTION IS NOT A LONGER LIST OF NAMES, IT IS A DIFFERENT
+    QUESTION.** A reconstruction sitting in a module and called by nobody is dead
+    code, not a defect; what cost four rounds was a reconstruction the RECOGNISER
+    CONSULTED. So the property is about reachability rather than about spelling:
+    the path that answers "was this recorded by a build with other rules" must
+    reach no composition rule at all. It cannot drift with the composers if it
+    cannot see them.
+
+    The two halves are the two doors. ``_row_coordinates`` is the whole history
+    answer and must reach nothing; ``tombstone_predicate`` may reach the
+    composers through exactly one name, ``version_of``, which is the CURRENT
+    era's question and is supposed to be live.
+
+    A reconstruction called from either place goes red here under any name,
+    including one nobody has thought of, which is what the previous docstring
+    claimed and this one does.
     """
-    for module in (tombstone, stores):
-        offenders = [
-            name for name in dir(module)
-            if "before_the" in name or "earlier_builds" in name or "historical" in name
-        ]
-        assert offenders == [], (
-            f"{module.__name__} reconstructs a former build's composition again: "
-            f"{offenders}"
-        )
+    # OUR rules, which is what can drift. A ``foreign:`` entry is a name in the
+    # standard library, and ``unicodedata.normalize`` is genuinely on both paths:
+    # the row coordinate composes NFC because the identity it delegates to does.
+    # A shared stdlib contract is not a rule of this repository and cannot move
+    # under anybody here, so intersecting on it would refuse the correct code.
+    composition = {
+        name for name in stores._composition_rules() if not name.startswith("foreign:")
+    }
+    assert len(composition) > 20, "the walk collapsed, so the assertions below are vacuous"
+
+    strayed = set(stores._rules_reachable_from(stores._row_coordinates)) & composition
+    assert strayed == set(), (
+        f"the history answer now reaches composition rules, so it drifts with "
+        f"them exactly as four rounds of reconstruction did: {sorted(strayed)}"
+    )
+
+    doors = set()
+    for path in stores._referenced_paths(stores.tombstone_predicate):
+        value = vars(stores).get(path[0])
+        for step in path[1:]:
+            value = getattr(value, step, None)
+        # FUNCTIONS ONLY. ``RemovedRow`` is reached too, as the row type in the
+        # predicate's own annotation, and naming a type is not consulting a rule.
+        if not inspect.isfunction(value):
+            continue
+        name = f"code:{value.__module__}.{value.__qualname__}"
+        if name in composition:
+            doors.add(name)
+    assert doors == {"code:cratekit.deletion.stores.version_of"}, (
+        f"the recogniser consults the composition rules through {sorted(doors)} "
+        f"rather than through version_of alone, so a second composer decides a "
+        f"question about history"
+    )

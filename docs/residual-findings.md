@@ -1187,12 +1187,38 @@ than of the tombstone.
 
 **Why it is a residual and not a blocking finding.** Under the merge bar a
 finding blocks only if it was driven end to end AND has a named user facing cost.
-This one is not driven, and the measurement is the reason: the ROW identity
-`removed_file_identity(content_id, recorded)` was rebuilt at all eleven commits on
-this branch and evaluated on one probe row, and it produced a byte identical
-answer at every one of them. Nothing has drifted. The version identity, by
-contrast, moved four times on the same branch, which is why the tombstone was the
-instance that bit.
+This one is not driven.
+
+**The measurement this entry used to rest on was imprecise, and here it is
+corrected rather than restated.** It said the row identity
+`removed_file_identity(content_id, recorded)` "was rebuilt at all eleven commits
+on this branch and evaluated on one probe row, and it produced a byte identical
+answer at every one of them". Re-measured in round 11 by parsing every commit's
+blob rather than by running one probe: over the branch's 20 commits the function
+takes FOUR distinct forms, changing at `c02a7b4`, `c087439` and `df945fb`. What
+is byte identical at all four is the RETURN EXPRESSION. Every change widened the
+REFUSAL GUARD:
+
+* through `5cb1ed3`: `not str(content_id)`
+* `c02a7b4`: `content_id is None or not str(content_id)`
+* `c087439`: adds `.strip()`
+* `df945fb`: adds `isinstance(content_id, bool)`
+
+So the conclusion survives for every input that produces an identity at all, and
+the set of inputs that produce one shrank three times. A probe row that produces
+an identity cannot see that, which is METHOD's fourth pattern: a number taken on
+a fixture rather than over the input space. The version identity, by contrast,
+moved four times in what it RETURNS, which is why the tombstone was the instance
+that bit.
+
+**What the narrowing could cost, and its reachability, measured.** A decline
+recorded by a pre-`c087439` build for a whitespace content identifier is now
+refused rather than composed, and `decline_predicate` has no handler for the
+refusal. Driven: unreachable through the pass, because `candidates.categorize`
+asks `identifiable` first and unconditionally and answers UNIDENTIFIABLE, so
+`decline_predicate` is never asked about such a row. The only store that could
+carry such a record is one written by an unmerged branch tip, and nothing has
+shipped.
 
 **What closes it, and the one thing that blocks the same repair.** The tombstone
 recognition question was repaired by matching a foreign era's record on the ROW
@@ -1205,3 +1231,61 @@ drifted, so the change would be a store shape edit with no defect behind it.
 
 **Not fixed here** because the round was scoped to the recognition question, and
 because the measurement says the class is present while the instance is not.
+
+---
+
+## R-28. The row coordinate is unmeasurable by construction, and this round widened what reaches it
+
+**Found:** the U24 round 10 independent verification, 2026-08-10. Re-measured in
+round 11.
+
+`stores._row_coordinates` is applied to BOTH sides of its own comparison, which
+is what makes it correct and what makes it invisible. Four symmetric mutations
+kill zero on the full suite: a null path read as the literal word `None`, the
+path case-folded, the path dropped from the key, the identifier dropped from the
+key. Two composites against the thing it guards, a payload naming a different row
+and a payload recording no path, kill zero as well.
+
+**What round 11 changed about it.** The stamp now moves on every change to any
+composition rule, so many more records fall to the row lookup than before, and
+the lookup is reachable by more futures than the round 10 measurement allowed
+for. It is still not reachable today: it needs a record whose stamp is not this
+build's, which needs a store written by an earlier build, and nothing has
+shipped. The reachability of a future upgrade is unmeasured because there is no
+released build to upgrade from.
+
+**Partly closed here.** The guard half of it moved: `_row_coordinates` used to
+re-implement `tombstone.removed_file_identity`'s null, boolean and blank tests
+verbatim in another module with nothing asserting the two agreed, and it now
+delegates to that function. Those three layers are measured there at 4, 4 and 4
+deaths. What remains unmeasured is the KEY, which is the pair itself.
+
+**Closes when** a test writes a record under one build's rules and reads it under
+another's with the row coordinates deliberately perturbed on one side only, which
+needs a fixture that can produce a foreign stamp without planting one.
+
+---
+
+## R-29. Two document format versions are hand set and nothing measures the document against them
+
+**Found:** the U24 round 11 pattern five sweep, 2026-08-10. The sweep looked for
+the shape this round repaired, a digest computed over sampled OUTPUTS rather than
+over its INPUTS, and found no second instance of it. It found this instead, which
+is the instrument `identity_scheme` replaced rather than the defect it had.
+
+`deletion.watermark.WATERMARK_VERSION` and `review.DECISION_STORE_VERSION` are
+both `1`, both written into every document those modules persist, and both read
+back and compared on load, which is more than the export next door used to do.
+Neither is named in any test. Nothing pins the SHAPE of the document against the
+number, so adding a field to `Watermark.to_json` or to a stored suppression
+without bumping the constant leaves two builds writing different documents under
+one version, and the reader cannot tell.
+
+**Why it is a residual.** Both readers recognise positively field by field and
+refuse what they cannot recognise, so the failure direction is a refusal rather
+than a misread, and the U24 half was not driven. `DECISION_STORE_VERSION` is
+U11's and out of this unit's reach.
+
+**Closes when** each version constant is paired with a test that pins the exact
+key set of the document it stamps, so a field added without a bump goes red at
+the moment it is added rather than at the moment somebody upgrades.

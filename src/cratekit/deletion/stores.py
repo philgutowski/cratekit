@@ -36,9 +36,15 @@ into two spellings of one identity.
 
 from __future__ import annotations
 
+import ast
+import enum
 import hashlib
+import inspect
 import json
-import unicodedata
+import re
+import textwrap
+import types
+import weakref
 from typing import Any, Callable, Mapping
 
 from cratekit.core import config, review, tombstone
@@ -109,7 +115,18 @@ IDENTITY_SCHEME_FIELD = "identity_scheme"
 
 #: Prefix on the stamp, so a value read out of a payload is recognisable as one
 #: of these rather than as an arbitrary string somebody put in the field.
-_SCHEME_PREFIX = "is1_"
+#:
+#: **IT IS ``is2_`` BECAUSE THE STAMP MEASURES A DIFFERENT THING THAN ``is1_``
+#: DID, AND A READER LOOKING AT A STORED VALUE HAS TO BE ABLE TO TELL.** An
+#: ``is1_`` stamp measured the OUTPUT of 23 frozen probe rows and nothing else,
+#: so a rule that fired on an input no probe carried moved a real row's identity
+#: and left the stamp exactly where it was. Sixteen such rules were measured, ten
+#: of them single words this repository's own docstring asks for by name. An
+#: ``is2_`` stamp measures the RULES THEMSELVES as well. Both are 16 hex digits
+#: and neither would ever equal the other in practice, so the prefix buys nothing
+#: mechanical; it buys a person reading a payload the ability to say which
+#: question the value was an answer to.
+_SCHEME_PREFIX = "is2_"
 
 class _SchemeProbe:
     """A collection row, shaped exactly as far as the version reader touches one.
@@ -178,26 +195,317 @@ _SCHEME_PROBES: tuple[tuple[str, str, str, str], ...] = (
 )
 
 
+#: The package the walk below follows into. A function outside it is named in the
+#: digest and not read, because its body is somebody else's contract and this is
+#: not the file that pins it.
+_OWN_PACKAGE = "cratekit"
+
+#: Parsed code, keyed by the function or class object it came from.
+#:
+#: KEYED BY THE OBJECT AND NOT BY ITS NAME, and the honest account of that is
+#: that the suite cannot tell the difference. Rebinding ``tombstone.fold`` puts a
+#: different object under the same name, so it misses this cache and is read
+#: afresh; a cache keyed by ``"cratekit.core.tombstone.fold"`` would answer with
+#: the old body. Measured: keying by name kills ZERO, over five full runs, because
+#: every replacement a test binds has its own qualified name and the two keys
+#: therefore differ anyway. The only shape that separates them is
+#: ``importlib.reload``, which nothing here does. So this is the cheaper key
+#: rather than a guard, and claiming it was a guard would be a claim with no
+#: measurement under it.
+#:
+#: Weak, so a replacement function a test binds for one assertion is not held for
+#: the life of the process. The measured cost it removes: 5.78 ms per call down to
+#: 0.49 ms, against 0.19 ms for the round 10 stamp, on a value written once per
+#: tombstone and read once per pass.
+_PARSED: weakref.WeakKeyDictionary[Any, tuple[str, list[list[str]]]] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _collect(node: ast.AST, paths: list[list[str]]) -> None:
+    """Every name this code mentions, except the ones it only ever RAISES with.
+
+    **THE RAISE IS SKIPPED AND THE MEASUREMENT IS WHY.** A walk that followed
+    every name reached ``cause.refuse`` through ``version_identity``'s refusal,
+    and from there the whole error catalogue: ``REASONS``, ``MEANINGS``,
+    ``ExitCode``, ``Remediation``. Measured over every commit in this
+    repository's history that touches those files, 18 of 19 moved that half of
+    the digest and NOT ONE of them changed how any row composes. A stamp that
+    moves on every unit's error message is a stamp that never matches, and a
+    stamp that never matches sends every record to the row lookup permanently,
+    which is safe and is also the stamp not doing its job.
+
+    It is a rule rather than a list of modules to skip, and the rule is sound
+    rather than convenient: a raised value is never returned, so nothing built
+    inside a ``raise`` can reach an identity. WHETHER the refusal fires still
+    moves the stamp, because the guard that decides it and the ``raise`` itself
+    are both in the normalised source of the function that holds them. Only the
+    body of what is constructed is left unread.
+
+    Both a chain and the name at its root are collected, because the chain finds
+    ``tombstone.version_title`` and the root finds ``VERSION_WORDS`` where the
+    reference is ``VERSION_WORDS.intersection``.
+    """
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, ast.Raise):
+            continue
+        if isinstance(child, ast.Attribute):
+            chain = _dotted(child)
+            if chain is not None:
+                paths.append(chain)
+        elif isinstance(child, ast.Name):
+            paths.append([child.id])
+        _collect(child, paths)
+
+
+def _read(obj: Any) -> tuple[str, list[list[str]]]:
+    """One function's normalised code and every global name it mentions, parsed once.
+
+    Both come out of one parse because both callers want the same tree, and the
+    parse is the cost: these docstrings are long and there are two dozen of them.
+    """
+    try:
+        return _PARSED[obj]
+    except (KeyError, TypeError):
+        pass
+    tree = ast.parse(textwrap.dedent(inspect.getsource(obj)))
+    node = tree.body[0]
+    body = getattr(node, "body", None)
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        del body[0]
+    paths: list[list[str]] = []
+    _collect(tree, paths)
+    parsed = (ast.unparse(tree), paths)
+    try:
+        _PARSED[obj] = parsed
+    except TypeError:  # noqa: S110 - an object that cannot be weakly held is read every time
+        pass
+    return parsed
+
+
+def _normalised_source(obj: Any) -> str:
+    """One function's or class's code, with its prose removed.
+
+    **THE DOCSTRING IS DROPPED SO THAT PROSE CANNOT MOVE THE STAMP, AND THE
+    HONEST ACCOUNT OF WHAT THAT HAS BOUGHT SO FAR IS NOTHING.** The property is
+    real and was driven: rewording one sentence of :func:`tombstone.fold`'s
+    docstring leaves the stamp exactly where it was, and reordering two calls
+    inside that same function moves it. But over all 39 commits in this
+    repository that touch the files this walk reads, NOT ONE was prose only, so
+    on the history that exists a raw text digest would have produced the same 7
+    distinct values this produces. It is insurance against an edit nobody has
+    made yet rather than a saving anybody has collected, and saying otherwise
+    would be the fourth defect pattern with a number attached.
+    ``docs/mutation/u24-round-11.md`` carries both tables.
+
+    ``ast.unparse`` rather than the code object, deliberately. Bytecode is not
+    stable across interpreter versions and moves for line movements that change
+    nothing, so a stamp taken over it would move when the person upgraded Python
+    and not when anybody changed a rule. Unparsed source is a normal form of what
+    was written. If a future interpreter unparses differently the value moves,
+    every record falls to the row lookup, and that is the safe direction rather
+    than a wrong answer.
+    """
+    return _read(obj)[0]
+
+
+def _stable_value(value: Any) -> Any:
+    """A module-level constant as something JSON can hold and two processes agree on.
+
+    EVERY CONTAINER IS ORDERED BEFORE IT IS ENCODED. A ``frozenset`` iterates in
+    an order that depends on the process hash seed, so encoding one by iteration
+    gives a stamp that differs between two runs of the same build, which is a
+    stamp that says every record was written under other rules including the ones
+    written a second ago. ``VERSION_WORDS`` and ``_CREDIT_MARKERS`` are both
+    frozensets and both are the reason this function exists.
+
+    A REPR CARRYING AN ADDRESS IS DROPPED RATHER THAN DIGESTED, for the same
+    reason: it would move every process. What is left is the type, which still
+    moves the stamp if the constant is replaced by a value of another type.
+    """
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return ["literal", type(value).__name__, value]
+    if isinstance(value, enum.Enum):
+        return ["enum", type(value).__module__, type(value).__qualname__, value.name]
+    if isinstance(value, re.Pattern):
+        return ["pattern", value.pattern, value.flags]
+    if isinstance(value, bytes):
+        return ["bytes", value.hex()]
+    if isinstance(value, (set, frozenset)):
+        return ["set", sorted(json.dumps(_stable_value(item), sort_keys=True) for item in value)]
+    if isinstance(value, (tuple, list)):
+        return ["sequence", [_stable_value(item) for item in value]]
+    if isinstance(value, Mapping):
+        return [
+            "mapping",
+            sorted(
+                [json.dumps(_stable_value(key), sort_keys=True), _stable_value(item)]
+                for key, item in value.items()
+            ),
+        ]
+    shown = repr(value)
+    if " at 0x" in shown or " object at " in shown:
+        return ["opaque", type(value).__module__, type(value).__qualname__]
+    return ["opaque", type(value).__module__, type(value).__qualname__, shown]
+
+
+def _dotted(node: ast.AST) -> list[str] | None:
+    """An attribute chain as its dotted parts, or None where its root is not a name."""
+    parts: list[str] = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if not isinstance(node, ast.Name):
+        return None
+    parts.append(node.id)
+    parts.reverse()
+    return parts
+
+
+def _referenced_paths(obj: Any) -> list[list[str]]:
+    """Every global name and attribute chain this code mentions.
+
+    Both the chain and its root are yielded, because ``ast.walk`` visits an
+    ``Attribute`` and the ``Name`` inside it, and both matter: the chain finds
+    ``tombstone.version_title`` and the root finds ``VERSION_WORDS`` where the
+    reference is ``VERSION_WORDS.intersection``.
+    """
+    return _read(obj)[1]
+
+
+def _composition_rules() -> dict[str, Any]:
+    """Everything reachable from the two composition roots.
+
+    ``library._version_of`` decides which column is BELIEVED and :func:`version_of`
+    decides what is COMPOSED, and between them they are the whole path from a
+    rekordbox row to an identity. See :func:`_rules_reachable_from` for the walk
+    and why it is a walk.
+    """
+    return _rules_reachable_from(library._version_of, version_of)
+
+
+def _rules_reachable_from(*roots: Any) -> dict[str, Any]:
+    """Everything reachable from these roots, keyed by where it is defined.
+
+    **THIS IS COMPUTED AND NOT ENUMERATED, AND THAT IS THE ENTIRE POINT.** Five
+    rounds of this branch each fixed the instance they were handed by writing
+    down the things that mattered, and each list was complete on the day it was
+    written and had a hole one level below it by the next change. A hand-written
+    list of "the rules the stamp covers" is that instrument again: the first
+    helper somebody factors out of :func:`tombstone.version_title` is a rule the
+    list does not name, and the stamp goes on matching while the identity moves.
+
+    So the roots are named and the rest is a walk. Read each root's code, resolve
+    every global it mentions, and follow the ones that are ours. A helper added
+    anywhere below a root is reached because it is called, and a vocabulary is
+    reached because it is read.
+
+    IT TAKES ITS ROOTS RATHER THAN NAMING THEM so that the same walk can answer
+    the opposite question: what does :func:`_row_coordinates` reach, which has to
+    be NOTHING in here, because the moment the history answer consults a
+    composition rule it is a reconstruction again.
+
+    THE WALK STOPS AT THE PACKAGE BOUNDARY. ``unicodedata.normalize`` and
+    ``re.escape`` are named in the digest and their bodies are not read: they are
+    a contract this repository does not own, and a caller that swapped one for
+    another would have had to edit the calling code, which the digest already
+    covers. Anything inside :data:`_OWN_PACKAGE` is read.
+
+    WHAT CANNOT BE RESOLVED IS SKIPPED, which is every local variable, argument
+    and builtin, and skipping them is right: a local has no value until the
+    function runs and a builtin is not a rule of this repository.
+    """
+    reached: dict[str, Any] = {}
+    queue: list[Any] = list(roots)
+    while queue:
+        obj = queue.pop()
+        key = f"code:{getattr(obj, '__module__', '?')}.{getattr(obj, '__qualname__', obj)}"
+        if key in reached:
+            continue
+        try:
+            reached[key] = _normalised_source(obj)
+        except Exception:  # noqa: BLE001 - a body nobody can read is still a node
+            reached[key] = ["source-unavailable", str(getattr(obj, "__qualname__", obj))]
+            continue
+        namespace = getattr(obj, "__globals__", None)
+        if namespace is None:
+            module = inspect.getmodule(obj)
+            namespace = vars(module) if module is not None else {}
+        for path in _referenced_paths(obj):
+            if path[0] not in namespace:
+                continue
+            root = namespace[path[0]]
+            value = root
+            resolved = True
+            for step in path[1:]:
+                try:
+                    value = getattr(value, step)
+                except Exception:  # noqa: BLE001 - an unresolvable chain names nothing
+                    resolved = False
+                    break
+            if not resolved or isinstance(value, types.ModuleType):
+                continue
+            # KEYED BY WHERE IT IS DEFINED RATHER THAN BY HOW IT WAS SPELLED, so
+            # ``VERSION_WORDS`` read from inside ``tombstone`` and
+            # ``tombstone.VERSION_WORDS`` read from here are one entry rather than
+            # two, and a rename in one caller cannot look like a new rule.
+            if isinstance(root, types.ModuleType):
+                named = f"{root.__name__}.{'.'.join(path[1:])}"
+            else:
+                named = f"{obj.__module__}.{'.'.join(path)}"
+            defined_in = getattr(value, "__module__", None)
+            if isinstance(value, (types.FunctionType, type)) and str(defined_in).startswith(
+                _OWN_PACKAGE
+            ):
+                queue.append(value)
+            elif callable(value) and not isinstance(value, (types.FunctionType, type)):
+                reached.setdefault(f"foreign:{named}", ["foreign-callable", named])
+            elif callable(value):
+                reached.setdefault(f"foreign:{named}", ["foreign", str(defined_in), named])
+            else:
+                reached.setdefault(f"value:{named}", _stable_value(value))
+    return reached
+
+
 def identity_scheme() -> str:
     """What THIS build turns a collection row into, as one comparable value.
 
     **IT IS A MEASUREMENT OF THE RULES, NOT A NUMBER SOMEBODY REMEMBERS TO
     BUMP.** A hand-set version constant is the same instrument as the frozen
     composers this replaced: correct on the day it is written and silently wrong
-    the first time a helper below it changes and nobody thinks to touch it. This
-    runs the frozen probes through the whole path from a collection row to an
-    identity and digests what comes out, so the value moves when the OUTPUT
-    moves, wherever in the call tree the change was made.
+    the first time a helper below it changes and nobody thinks to touch it.
 
-    **THE READING IS INSIDE IT AND NOT ONLY THE COMPOSING, WHICH IS THE SAME
-    DEFECT ONE FILE OVER.** ``library._version_of`` decides which column is
-    believed, and ``tombstone.VERSION_WORDS`` decides whether a ``Subtitle`` is a
-    version at all. Change either and one rekordbox row starts producing a
-    different identity with every composition function untouched, so a stamp
-    taken over the composer alone would still match and the recogniser would
-    still trust an identity that had moved. What was NOT believed is digested
-    too, so the vocabulary is observable even on a row whose composed identity it
-    does not change.
+    **IT MEASURES THE RULES THEMSELVES AND NOT ONLY WHAT THEY PRODUCE, AND THAT
+    IS THE ROUND 11 CORRECTION.** The previous stamp ran 23 frozen probe rows
+    through the whole path and digested the four values that came out, which
+    sounds like a measurement of the rules and is a measurement of the rules ON
+    23 INPUTS. A rule that fires on an input no probe carries moves a real row's
+    identity and leaves the stamp exactly where it was. That is not a corner:
+    ADDING A WORD TO :data:`tombstone.VERSION_WORDS` is the change the vocabulary's
+    own docstring asks for in writing, naming ``Refix``, ``Redux``, ``Rmx`` and
+    fifty-odd others as spellings it is missing, and every one of them was
+    invisible. Nineteen candidate rule changes were driven against the previous
+    stamp and sixteen moved a real row's composed identity without moving it.
+    ``docs/mutation/u24-round-11.md`` is the table.
+
+    The rules are digested first, through :func:`_composition_rules`, which WALKS
+    to them from the two roots rather than listing them. Then the probes run, and
+    they stay for the reason the verification named: a digest over code alone
+    could be vacuous, and 23 composed outputs are the check that the walk is
+    reaching the code that actually runs.
+
+    THE TWO HALVES FAIL IN OPPOSITE DIRECTIONS, WHICH IS WHY BOTH ARE HERE. The
+    walk can be too WIDE, since it reaches the refusal path
+    ``version_identity`` raises through, so an edit in ``core.cause`` moves the
+    stamp for no change in any identity. The probes can only be too NARROW. A
+    stamp that moves when nothing moved sends a record to the row lookup, which
+    is the drift-free path and is right; a stamp that fails to move lets a build
+    trust an identity composed by rules it does not have, which is the defect.
 
     IT IS COMPUTED ON DEMAND RATHER THAN AT IMPORT, which is what makes any of
     that true: a constant frozen at import is a snapshot of one process, and the
@@ -211,6 +519,11 @@ def identity_scheme() -> str:
     record.
     """
     digest = hashlib.sha256()
+    for name, encoded in sorted(_composition_rules().items()):
+        digest.update(
+            json.dumps([name, encoded], sort_keys=True, ensure_ascii=False).encode("utf-8")
+        )
+        digest.update(b"\x1e")
     for artist, title, remixer, subtitle in _SCHEME_PROBES:
         version, kind, unbelieved = library._version_of(_SchemeProbe(remixer, subtitle))
         composed = version_of(
@@ -243,19 +556,37 @@ def _row_coordinates(content_id: Any, recorded: Any) -> tuple[str, str] | None:
     this pass, taken from the collection row and written down untouched. Nothing
     in the composition vocabulary is consulted, so nothing in it can move this.
 
-    ``recorded`` is composed to NFC because
-    :func:`tombstone.removed_file_identity` already fixes that as the rule for
-    this exact field, and two rules for one field is how the two come to
-    disagree. Both sides of every comparison here run through this one function
-    in one build, which is the whole difference from the composition case: there,
-    one side was a string frozen on a disk and the other was live.
+    **IT ASKS :func:`tombstone.removed_file_identity` RATHER THAN RE-IMPLEMENTING
+    IT, WHICH IS THE ROUND 11 CORRECTION.** This docstring used to name that
+    function as the authority for the NFC rule, on the grounds that "two rules
+    for one field is how the two come to disagree", and then write the second
+    rule: the null test, the boolean test and the stripped-emptiness test were a
+    verbatim copy of that function's guard, in another module, with nothing
+    asserting the two agreed. They did agree, which is the only reason this was a
+    residual and not a defect. Now there is one rule and one implementation, and
+    a change to the refusal there reaches here by being the same code rather than
+    by somebody noticing.
+
+    THE ONE LOCAL DECISION LEFT IS THE NULL PATH, and it is one line so that it
+    can be read. A record whose ``recorded`` is missing entirely reads as the
+    EMPTY path here, where ``removed_file_identity`` would spell it ``'None'``:
+    that function's callers hand it a value out of a live collection row, and
+    this one reads whatever a JSON document on a disk happens to hold. ``'None'``
+    is the ``str(None)`` shape this package closed at four doors, and letting it
+    back in through the other half of the pair would make a record with no path
+    collide with a record whose path is literally the word.
+
+    A REFUSAL IS None RATHER THAN AN EXCEPTION, because the caller is building a
+    set out of whatever a store holds: a record that names no row is a record
+    that matches no row, which is an answer rather than an error.
     """
-    if content_id is None or isinstance(content_id, bool):
+    try:
+        identity = tombstone.removed_file_identity(
+            content_id=content_id, recorded="" if recorded is None else recorded
+        )
+    except Exception:  # noqa: BLE001 - a record naming no row matches no row
         return None
-    named = str(content_id)
-    if not named.strip():
-        return None
-    return (named, unicodedata.normalize("NFC", str(recorded if recorded is not None else "")))
+    return (identity["content_id"], identity["recorded"])
 
 
 def ambiguous_versions(rows: Any) -> frozenset[str]:
