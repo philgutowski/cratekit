@@ -4251,13 +4251,20 @@ RESIDUAL_FINDINGS_NAME = "docs/residual-findings.md"
 #: the answer to it is a check rather than a more careful reading.
 #:
 #: What the floor is FOR, now that the list is derived AND checked against a
-#: second derivation: the two routes below share one merge base, so a base that
-#: resolved to the wrong commit would empty BOTH of them and they would agree
-#: about almost nothing. The floor is what that shared failure has to get past. It
-#: is NOT what a narrowing of one derivation has to get past, which is what it was
+#: second derivation: the two routes below both read git, so a git derivation that
+#: answers emptily empties BOTH of them and they agree about almost nothing. That
+#: is measured rather than imagined. On a pushed main the merge base this module
+#: used to rest on resolves to HEAD, and every derivation here returned nothing at
+#: the same moment. The floor is what that shared failure has to get past. It is
+#: NOT what a narrowing of one derivation has to get past, which is what it was
 #: and which made it a list that covered only what it enumerated: eight of the
 #: eighteen files could be dropped silently, including the reverts file the same
 #: commit created.
+#:
+#: AND THE FLOOR HAS A FLOOR OF ITS OWN, `_files_this_unit_puts_on_disk`, because
+#: this constant could be emptied to `()` with the whole suite green. See the
+#: residual titled "The cited floor can be emptied with the whole suite green, and
+#: its own test then asserts nothing".
 CITED_FLOOR = (
     "tests/modules/test_reports.py",
     "tests/test_rbxml.py",
@@ -4271,8 +4278,34 @@ CITED_FLOOR = (
     "docs/mutation/u34-round-8-reverts.py",
     "docs/mutation/u34-round-9-reverts.py",
     "docs/mutation/u34-round-10-reverts.py",
+    "docs/mutation/u34-round-10-verification-table.md",
+    "docs/mutation/u34-round-11-reverts.py",
+    "docs/mutation/u34-round-11-table.md",
+    "docs/u34-round-10-verification.md",
     "docs/HANDOFF.md",
 )
+
+
+#: How a commit says which unit made it. Every commit this unit has ever written
+#: carries it in the subject line, and it is the one identifier of this unit's
+#: work that a MERGE does not move.
+#:
+#: THIS REPLACES A MERGE BASE, and the replacement is the whole point of this
+#: round. `merge-base(origin/main, HEAD)` answers "where did this branch leave
+#: main", which is a question with no answer left once the branch IS main. On a
+#: pushed, clean `main` the base resolves to HEAD itself, every diff taken against
+#: it is empty, and every derivation resting on it collapses to nothing while
+#: reporting no error of its own. Measured on a reproduction of this unit's real
+#: merge: with `origin/main` at the merge commit, FOUR tests in this module fail
+#: and a fifth passes over an empty loop. That is a guard that goes red on main
+#: after the merge that was supposed to land it, which is worse than a guard that
+#: never existed.
+#:
+#: A commit subject is immutable and a merge carries it across unchanged, so the
+#: same query answers the same way on the branch, on the merged tree, and on a
+#: pushed main afterwards. Measured: 13 of this branch's 13 commits carry the tag
+#: and none of `main`'s do.
+UNIT_COMMIT_TAG = "(U34)"
 
 
 def _git(*argv: str) -> str:
@@ -4282,38 +4315,63 @@ def _git(*argv: str) -> str:
     ).stdout
 
 
-def _merge_base() -> str:
-    return _git("merge-base", "origin/main", "HEAD").strip()
+def _unit_log(*argv: str) -> str:
+    """One `git log` restricted to the commits this unit made.
+
+    `-F` is not decoration. Without it the tag is a regular expression and its
+    parentheses are a group, so `(U34)` would match a subject saying `U34` with
+    no brackets at all, which is most of the prose in this repository.
+
+    THE CALLER'S ARGUMENTS GO LAST, and that ordering is paid for. Written the
+    other way round, a caller passing a pathspec put `--` before the selection
+    flags, git read `-F`, `--grep` and `HEAD` as PATHS, and the filter silently
+    stopped applying: the derivation then reported every residual in the document
+    as one this unit had filed, including thirteen belonging to other units.
+    """
+    return _git("log", "--format=", "-F", f"--grep={UNIT_COMMIT_TAG}", "HEAD", *argv)
+
+
+def _unit_commits() -> tuple[str, ...]:
+    return tuple(_git("log", "--format=%H", "-F", f"--grep={UNIT_COMMIT_TAG}", "HEAD").split())
 
 
 def _existing(named: set[str]) -> tuple[str, ...]:
     return tuple(sorted(one for one in named if (REPO_ROOT / one).is_file()))
 
 
-def _files_this_branch_writes() -> tuple[str, ...]:
-    """Every file this branch changes, read from git rather than kept by hand.
+def _files_this_unit_writes() -> tuple[str, ...]:
+    """Every file this unit changes, read from git rather than kept by hand.
 
     THE LIST IS DERIVED, and the version it replaces was typed. Both are answers
     to the question "which files can this unit keep true", and only one of them
-    stays right when the branch touches a file nobody remembered. Measured on this
+    stays right when the unit touches a file nobody remembered. Measured on this
     branch, the typed list named nine of seventeen, and two of the eight it missed
     carry residual citations that another unit wrote.
 
-    The working tree is read rather than the last commit, because a file edited
-    and not yet committed is a file this branch writes, and untracked files are
-    added for the same reason: a mutation row that adds a document should be
-    covered by the guard the moment it exists.
+    IT IS DERIVED FROM THIS UNIT'S OWN COMMITS AND NOT FROM A MERGE BASE. The
+    version this replaces diffed the working tree against
+    `merge-base(origin/main, HEAD)`, which names the right files on a feature
+    branch and names NOTHING once the branch has merged and main is pushed,
+    because the base is then HEAD. `UNIT_COMMIT_TAG` says why that matters and
+    what it was measured to cost. Asking the log which commits are this unit's
+    gives the same 23 files on the branch and on the merged tree, measured on
+    both.
+
+    The working tree is read as well as the commits, because a file edited and not
+    yet committed is a file this unit writes, and untracked files are added for
+    the same reason: a mutation row that adds a document should be covered by the
+    guard the moment it exists.
     """
-    named: set[str] = set()
+    named: set[str] = set(_unit_log("--name-only").split())
     for argv in (
-        ["diff", "--name-only", _merge_base()],
+        ["diff", "--name-only", "HEAD"],
         ["ls-files", "--others", "--exclude-standard"],
     ):
         named |= set(_git(*argv).split())
     return _existing(named)
 
 
-def _files_this_branch_writes_by_a_second_route() -> tuple[str, ...]:
+def _files_this_unit_writes_by_a_second_route() -> tuple[str, ...]:
     """The same question, asked with different plumbing, so a narrowing has to
     happen twice to stay silent.
 
@@ -4324,19 +4382,37 @@ def _files_this_branch_writes_by_a_second_route() -> tuple[str, ...]:
     commit added. A floor that covers what it enumerates is not a property, it is
     the identity of the files it lists.
 
-    The two routes are composed differently on purpose. The one above diffs the
-    WORKING TREE against the base and asks `ls-files` for the untracked; this one
-    diffs the base against the COMMIT and asks `status` for everything the working
-    tree has done since, which is a different command reading a different index
-    and reporting renames with both paths. A filter added to either one shows up
-    as a file the other still names.
+    The two routes are composed differently on purpose. The one above asks `log`
+    to list the names itself and reads the working tree with `diff` and
+    `ls-files`; this one walks the unit's commits and asks `diff-tree` for each
+    one separately, then asks `status` for everything the working tree has done
+    since, which is a different command reading a different index and reporting
+    renames with both paths. A filter added to either one shows up as a file the
+    other still names.
 
     It is a FLOOR and not an equality. The two answers can legitimately differ by
-    a file committed on this branch and then reverted in the working tree, which
+    a file committed by this unit and then reverted in the working tree, which
     this route reports and the other does not, and coverage that is WIDER than
     required is not a defect. Narrower is.
     """
-    named = set(_git("diff", "--name-only", _merge_base(), "HEAD").split())
+    named: set[str] = set()
+    for commit in _unit_commits():
+        fields = [
+            one
+            for one in _git(
+                "diff-tree", "--no-commit-id", "-r", "-z", "--name-status", commit
+            ).split("\0")
+            if one
+        ]
+        index = 0
+        while index + 1 < len(fields):
+            status = fields[index]
+            named.add(fields[index + 1])
+            index += 2
+            if status[0] in "RC" and index < len(fields):
+                # In -z mode the path a rename or copy went TO is its own field.
+                named.add(fields[index])
+                index += 1
     entries = [one for one in _git("status", "--porcelain", "-uall", "-z").split("\0") if one]
     index = 0
     while index < len(entries):
@@ -4372,67 +4448,187 @@ def _covered_files(written: tuple[str, ...], *, expected: tuple[str, ...]) -> tu
 def _citing_files() -> tuple[str, ...]:
     """The derived list, minus the one file whose subject IS the numbers."""
     return _covered_files(
-        _files_this_branch_writes(),
-        expected=_files_this_branch_writes_by_a_second_route(),
+        _files_this_unit_writes(),
+        expected=_files_this_unit_writes_by_a_second_route(),
     )
 
 
-#: The residual numbers THIS BRANCH introduced. Every one of them names a
-#: different finding on `main`, or will as soon as `main` reaches it, because both
-#: sides append to one file from the same counter. That is what makes a number an
-#: unstable address and a title a stable one.
+def _files_this_unit_puts_on_disk() -> tuple[str, ...]:
+    """What `CITED_FLOOR` cannot fall below, read off the filesystem.
+
+    THE FLOOR NEEDED A FLOOR, which is finding 2 of this unit's round ten
+    verification, filed as the residual titled "The cited floor can be emptied
+    with the whole suite green, and its own test then asserts nothing". `CITED_FLOOR` is the backstop for both git derivations
+    narrowing together, and it could itself be emptied to `()` with the whole
+    suite green, because the only test whose subject is that constant wraps its
+    body in `for named in CITED_FLOOR:` and a loop over an empty tuple asserts
+    nothing. Three full suite runs measured it at zero deaths. That is the exact
+    shape the round's own docstring names one level up, a floor that is the
+    identity of what it lists rather than a property, reproduced in the constant
+    written to backstop it.
+
+    So the floor is given a floor that is DERIVED and cannot go quiet. This reads
+    the filesystem and never git, which matters because the failure `CITED_FLOOR`
+    exists for is every git derivation in this module answering emptily at once.
+    It cannot return nothing while this module runs at all: the package it globs
+    is the package this module imports at line one, and its own path is always in
+    the answer.
+
+    IT IS THE FILES THIS UNIT OWNS BY NAME, not the files it touches. The package
+    and this module are the code; the documents are the ones whose names carry the
+    unit, which is a convention this unit has followed for every round. What it
+    deliberately does NOT reach is the files this unit shares with others,
+    `write/rbxml.py`, `tests/test_rbxml.py` and the handoff, because a floor that
+    claimed those would be claiming ownership it does not have.
+    """
+    named = {str(one.relative_to(REPO_ROOT)) for one in REPORTS_ROOT.rglob("*.py")}
+    named.add(str(Path(__file__).resolve().relative_to(REPO_ROOT)))
+    for pattern in ("docs/mutation-u34.*", "docs/u34-*", "docs/mutation/u34-*"):
+        named |= {str(one.relative_to(REPO_ROOT)) for one in REPO_ROOT.glob(pattern)}
+    return tuple(sorted(named))
+
+
+#: The residuals THIS UNIT filed, addressed by TITLE.
 #:
-#: A RANGE CAN BE NARROWED AT EITHER EDGE, and the assertion written to prevent
-#: exactly that named the wrong number: it checked that the residual document
-#: still defined 16 and 25 while the range ran to 26, so the ban list could stop
-#: covering the last residual this branch filed and the suite stayed green. The
-#: endpoints are checked against the residuals this branch ADDS to the document
-#: now, read out of the diff, so both edges and both directions are pinned.
-UNIT_RESIDUALS = tuple(f"R-{number}" for number in range(16, 28))
+#: A NUMBER IS NOT AN ADDRESS, and this constant used to be twelve of them. Both
+#: sides of a merge append to this one document from one counter, so the number a
+#: residual is FILED under is not the number it ends up with. Numbering is APPEND
+#: ONLY as of 2026-08-10, which means main's numbers never move and an incoming
+#: branch's residuals take fresh numbers above main's highest. That is kinder than
+#: the sequential renumber it replaces and it does not help a numeric ban list at
+#: all: this branch's residuals still land somewhere other than where they were
+#: filed. Measured on a reproduction of this unit's real merge, every one of the
+#: twelve moved, and two tests in this module failed on the merged tree with the
+#: ban list naming fifteen numbers it no longer covered.
+#:
+#: A TITLE DOES NOT MOVE, under either rule. Renumbering rewrites the number in a
+#: heading and leaves the sentence after it alone, and appending does not touch
+#: the heading at all, so these strings addressed the same twelve findings before
+#: the merge and after it. They are resolved to whatever numbers the document
+#: gives them TODAY, in `_banned_addresses`, so the guard is correct under both
+#: numbering rules without knowing which one is in force.
+#:
+#: TYPED HERE AND DERIVED FROM GIT IN `_residual_titles_this_unit_filed`, and the
+#: two hold each other in both directions. Emptying this tuple is refused by the
+#: derivation, and a derivation that stops matching is refused by this tuple.
+UNIT_RESIDUAL_TITLES = (
+    "Four report verbs were owed by a unit that was about to close, and named a module nobody could build",
+    "The review-queue countdown is satisfied by an offer that never runs",
+    "A third copy of the import-graph walk now lives in the reports suite",
+    "The option a person picks is addressed by an identifier a re-import changes",
+    "Two reflection spellings reach a writer past both structural guards",
+    "One reflective call shape stays out of reach, and it is named",
+    "A namespace method with no argument is an unreadable lookup",
+    "Two reflection spellings stay quiet, and each needs a refused import",
+    "A container built by a comprehension binds none of its elements",
+    "A class rebound after its own definition is no longer reachable by name",
+    "A base binding reachable only through a branch is read as unreachable",
+    "Two write-path enumerations still read an unreadable node as an absent one",
+)
+
+#: What the pair above cannot fall below when BOTH sides go quiet at once.
+#:
+#: The typed tuple and the derived one refuse each other's narrowing, so each
+#: catches the other. Neither catches both emptying together, and that is not a
+#: hypothetical here: on a pushed main every git derivation in this module
+#: returned nothing at the same moment, for one shared reason. A unit only ever
+#: files MORE residuals, so a lower bound is the one claim about this number that
+#: cannot go stale in the direction that would hide something.
+RESIDUALS_FILED_FLOOR = 12
 
 _CITATION = re.compile(r"\bR-(\d+)\b")
 
-#: A residual HEADING this branch adds, which is what DEFINES a number rather than
-#: merely mentioning one.
-_ADDED_RESIDUAL = re.compile(r"^\+## R-(\d+)\.", re.MULTILINE)
+#: A residual heading as the DOCUMENT writes it: the number it carries today, and
+#: the title, which is the part that survives a renumber.
+_DOCUMENT_HEADING = re.compile(r"^## R-(\d+)\. (.+?)[ \t]*$", re.MULTILINE)
+
+#: The same heading as a DIFF writes it when a commit adds one, which is what
+#: says the finding was FILED rather than merely mentioned.
+_FILED_HEADING = re.compile(r"^\+## R-(\d+)\. (.+?)[ \t]*$", re.MULTILINE)
 
 
-def _residual_numbers_this_branch_defines() -> frozenset[str]:
-    """Every residual heading this branch adds to the shared document.
+def _residual_titles_this_unit_filed() -> tuple[str, ...]:
+    """Every residual heading this unit's own commits added, by title.
 
-    The diff is read rather than the file, because the file holds every unit's
-    residuals and the question here is which ones are THIS branch's to keep
-    citable by title. A heading somebody else wrote is somebody else's address,
-    and banning it would be a guard the next author deletes.
+    The commits are read rather than a diff against a base, because the file holds
+    every unit's residuals and the question here is which ones are THIS UNIT'S to
+    keep citable by title. A heading somebody else wrote is somebody else's
+    address, and banning it would be a guard the next author deletes.
 
-    THE DIFF IS AGAINST THE WORKING TREE, which is what makes a second check
-    against the document unnecessary rather than merely redundant. An intersection
-    with the headings the file still carries was written here and then removed:
-    every added line in a working tree diff IS a line of the working tree, so the
-    two sets cannot differ, and the clause measured zero for a reason that says
-    nothing about coverage. Its revert is in this round's table with that count,
-    because a clause added and removed inside one round is otherwise invisible to
-    review.
+    THE TITLE IS TAKEN AND THE NUMBER IS DISCARDED. The number in a commit's diff
+    is the number the residual had WHEN IT WAS FILED, and the merge is exactly the
+    event that makes that number wrong, whether the document renumbers or appends.
+    The title in that same diff is the title it still has. Reading the stable half
+    of a heading out of an immutable commit is what makes this derivation give the
+    same twelve answers on the branch and on the merged tree, measured on both.
     """
-    return frozenset(
-        _ADDED_RESIDUAL.findall(_git("diff", _merge_base(), "--", RESIDUAL_FINDINGS_NAME))
+    diff = _unit_log("-p", "--", RESIDUAL_FINDINGS_NAME)
+    return tuple(dict.fromkeys(title for _, title in _FILED_HEADING.findall(diff)))
+
+
+def _residual_numbers_by_title(text: str | None = None) -> dict[str, str]:
+    """What the residual document calls each finding TODAY.
+
+    The file is read rather than a diff, because the number is the part that moves
+    and the current file is the only thing that says where it moved to.
+
+    A title carried by two headings is REFUSED rather than resolved. An ambiguous
+    address is not an address, and silently taking the first would ban one finding
+    while leaving the other citable by a number nothing checks.
+    """
+    found: dict[str, list[str]] = {}
+    if text is None:
+        text = (REPO_ROOT / RESIDUAL_FINDINGS_NAME).read_text()
+    for number, title in _DOCUMENT_HEADING.findall(text):
+        found.setdefault(title, []).append(number)
+    doubled = sorted(one for one, numbers in found.items() if len(numbers) > 1)
+    assert doubled == [], f"one title is the heading of more than one residual: {doubled}"
+    return {title: numbers[0] for title, numbers in found.items()}
+
+
+def _banned_addresses(
+    titles: tuple[str, ...],
+    *,
+    filed: tuple[str, ...],
+    numbers: dict[str, str] | None = None,
+) -> tuple[str, ...]:
+    """Today's numbers for this unit's residuals, resolved from their titles.
+
+    Four failures, and each one is a way this guard has already been wrong or
+    could quietly become wrong.
+
+    TOO FEW FILED. Both inputs can narrow, and they refuse each other, so what is
+    left is both narrowing at once. `RESIDUALS_FILED_FLOOR` is what that has to
+    get past, and it is checked first because it is the only one of the four that
+    is not vacuous when everything else is empty.
+
+    UNCOVERED. A residual this unit filed whose title is not typed in
+    `UNIT_RESIDUAL_TITLES` is an address a citation could use with nothing left to
+    catch it. The numeric range this replaces could not express this check at all
+    after a renumber, since every number in it had moved.
+
+    INVENTED. A title typed here that this unit never filed bans somebody else's
+    address, which is a guard the next author deletes rather than a guard that
+    holds.
+
+    UNRESOLVED. A title that no longer appears in the document is a residual that
+    was renamed or deleted. It has to be REFUSED rather than dropped: a ban list
+    that quietly shrinks when the document moves under it is the failure this
+    whole block exists to answer, one indirection along.
+    """
+    listed, actually = set(titles), set(filed)
+    assert len(actually) >= RESIDUALS_FILED_FLOOR, (
+        f"fewer residuals filed than this unit is known to have filed: {sorted(actually)}"
     )
-
-
-def _banned_addresses(numbers: tuple[str, ...], *, defined: frozenset[str]) -> tuple[str, ...]:
-    """The ban list, held to the residuals this branch actually defines.
-
-    Both directions, because a range is wrong in two ways. Too small and a
-    residual this branch filed can be cited by number with nothing to catch it;
-    too large and it bans an address belonging to another unit, which is a guard
-    somebody deletes rather than a guard that holds.
-    """
-    listed = {one.removeprefix("R-") for one in numbers}
-    uncovered = sorted(defined - listed, key=int)
-    assert uncovered == [], f"the ban list stopped covering this branch's residuals: {uncovered}"
-    invented = sorted(listed - defined, key=int)
-    assert invented == [], f"the ban list names residuals this branch never filed: {invented}"
-    return numbers
+    uncovered = sorted(actually - listed)
+    assert uncovered == [], f"the ban list stopped covering this unit's residuals: {uncovered}"
+    invented = sorted(listed - actually)
+    assert invented == [], f"the ban list names residuals this unit never filed: {invented}"
+    if numbers is None:
+        numbers = _residual_numbers_by_title()
+    unresolved = sorted(one for one in titles if one not in numbers)
+    assert unresolved == [], f"a residual this unit filed no longer answers to its title: {unresolved}"
+    return tuple(f"R-{numbers[one]}" for one in titles)
 
 #: The ONE passage whose subject is the numbers themselves, delimited rather than
 #: guessed at. A statement that says which numbers collide has to spell them, and
@@ -4473,10 +4669,12 @@ def test_this_units_residuals_are_cited_by_title_and_never_by_number():
     somebody else's address to keep stable, and a guard that failed on it would be
     a guard somebody deletes.
 
-    Both edges of the range are checked against the residual headings this branch
-    ADDS, so the constant cannot quietly stop describing what this branch filed.
+    The addresses are TITLES resolved to today's numbers, never a typed range, so
+    the ban list is the same twelve findings before a renumber and after one.
     """
-    banned = set(_banned_addresses(UNIT_RESIDUALS, defined=_residual_numbers_this_branch_defines()))
+    banned = set(
+        _banned_addresses(UNIT_RESIDUAL_TITLES, filed=_residual_titles_this_unit_filed())
+    )
     # THE COVERAGE IS DERIVED AND THEN ASSERTED, not left to be inferred from a
     # typed list. The claim this replaces was true of source, docstrings and tests
     # and false of `docs/`, and the list that replaced THAT was true of nine files
@@ -4504,8 +4702,8 @@ def test_a_coverage_list_narrowed_by_one_file_is_refused_whichever_file_it_is():
     route names is dropped here, one at a time, and every one of them has to be
     refused. A floor cannot pass this: it would only refuse the nine.
     """
-    written = _files_this_branch_writes()
-    expected = _files_this_branch_writes_by_a_second_route()
+    written = _files_this_unit_writes()
+    expected = _files_this_unit_writes_by_a_second_route()
     assert set(expected) <= set(written), sorted(set(expected) - set(written))
     assert len(expected) > len(CITED_FLOOR), "the two would be indistinguishable"
     for dropped in expected:
@@ -4515,38 +4713,120 @@ def test_a_coverage_list_narrowed_by_one_file_is_refused_whichever_file_it_is():
 
 
 def test_the_named_floor_still_bites_when_both_derivations_narrow_together():
-    """What the floor is for now, driven, because both routes share one base.
+    """What the floor is for, driven, because both routes rest on one git.
 
-    A merge base that resolved to the wrong commit narrows both derivations at
-    once, and the property above compares them to each other, so it would agree
-    with itself about a coverage list holding almost nothing. Each named file is
-    dropped from BOTH sides here and the floor has to refuse anyway.
+    A git derivation that answers emptily narrows both routes at once, and the
+    property above compares them to each other, so it would agree with itself
+    about a coverage list holding almost nothing. Each named file is dropped from
+    BOTH sides here and the floor has to refuse anyway.
+
+    THE LOOP IS GIVEN A BOUND IT CANNOT SATISFY VACUOUSLY, which closes finding 2
+    of the round ten verification, filed as the residual titled "The cited floor
+    can be emptied with the whole suite green, and its own test then asserts
+    nothing". The body of this test was the loop
+    alone, so emptying `CITED_FLOOR` to `()` left it iterating over nothing and
+    passing while asserting nothing, measured at zero deaths over three full suite
+    runs. The bound is `_files_this_unit_puts_on_disk`, which reads the filesystem
+    and never git, so the one failure `CITED_FLOOR` exists for cannot empty the
+    check on `CITED_FLOOR` at the same time.
     """
-    written = _files_this_branch_writes()
+    on_disk = _files_this_unit_puts_on_disk()
+    assert on_disk, "the bound is empty, so it bounds nothing"
+    uncovered = sorted(set(on_disk) - set(CITED_FLOOR))
+    assert uncovered == [], f"the floor stopped naming files this unit puts on disk: {uncovered}"
+    written = _files_this_unit_writes()
+    refused = 0
     for named in CITED_FLOOR:
         narrowed = tuple(one for one in written if one != named)
         with pytest.raises(AssertionError):
             _covered_files(narrowed, expected=narrowed)
+        refused += 1
+    assert refused == len(CITED_FLOOR)
 
 
-def test_the_ban_list_is_narrowed_at_neither_edge_and_names_nothing_extra():
-    """The endpoints, pinned to the document rather than to a number typed once.
+def test_the_ban_list_is_the_residuals_this_unit_filed_and_nothing_else():
+    """The ban list, pinned to what this unit filed rather than to a typed range.
 
-    The assertion this replaces checked that the residual document still defined
-    16 and 25 while the range ran to 26. It could not see the edge it was written
-    to hold: narrowing the range by one dropped the last residual this branch
-    filed, and the document still defined 25, so the suite stayed green and the
-    ban list stopped covering an address a citation could then use.
+    The assertion this replaces held a numeric range at both edges against the
+    residual numbers a merge base diff reported. Both halves of that broke on the
+    real merge: the range stopped describing anything after the renumber, and the
+    diff went empty once `origin/main` reached HEAD. Titles are checked here
+    instead, in both directions, and NOTHING ELSE IS BANNED, because a ban list
+    that reaches another unit's address is a guard the next author deletes.
     """
-    defined = _residual_numbers_this_branch_defines()
-    assert defined, "no residual heading on this branch is a diff this reads"
-    assert _banned_addresses(UNIT_RESIDUALS, defined=defined) == UNIT_RESIDUALS
-    for narrowed in (UNIT_RESIDUALS[1:], UNIT_RESIDUALS[:-1]):
+    filed = _residual_titles_this_unit_filed()
+    assert filed, "no residual heading in this unit's own commits is a diff this reads"
+    numbers = _residual_numbers_by_title()
+    banned = _banned_addresses(UNIT_RESIDUAL_TITLES, filed=filed)
+    assert banned == tuple(f"R-{numbers[one]}" for one in UNIT_RESIDUAL_TITLES)
+
+    # NOBODY ELSE'S ADDRESS. The intruder is read out of the document rather than
+    # typed, so this stays a property of the document and not of one spelling.
+    others = sorted(set(numbers) - set(filed))
+    assert others, "the document holds no residual another unit filed, so this proves nothing"
+    assert not {one.removeprefix("R-") for one in banned} & {numbers[one] for one in others}
+
+    for narrowed in (UNIT_RESIDUAL_TITLES[1:], UNIT_RESIDUAL_TITLES[:-1], ()):
         with pytest.raises(AssertionError):
-            _banned_addresses(narrowed, defined=defined)
-    for widened in ((*UNIT_RESIDUALS, "R-99"), ("R-1", *UNIT_RESIDUALS)):
+            _banned_addresses(narrowed, filed=filed)
+    for widened in ((*UNIT_RESIDUAL_TITLES, others[0]), (others[-1], *UNIT_RESIDUAL_TITLES)):
         with pytest.raises(AssertionError):
-            _banned_addresses(widened, defined=defined)
+            _banned_addresses(widened, filed=filed)
+
+
+def test_a_residual_the_document_renames_or_drops_is_refused_and_never_dropped():
+    """A title that stops resolving goes RED rather than banning a smaller set.
+
+    This is the failure a title-keyed ban list has that a numeric one did not: a
+    number is either in the range or out of it, while a title can simply stop
+    being in the document, and a lookup that skips what it cannot find would go on
+    passing over a ban list quietly missing an address. Every one of this unit's
+    residuals is renamed in a copy of the document here, one at a time, and every
+    one has to be refused by name.
+    """
+    filed = _residual_titles_this_unit_filed()
+    text = (REPO_ROOT / RESIDUAL_FINDINGS_NAME).read_text()
+    renamed = 0
+    for number, title in _DOCUMENT_HEADING.findall(text):
+        if title not in UNIT_RESIDUAL_TITLES:
+            continue
+        moved = text.replace(f"## R-{number}. {title}", f"## R-{number}. {title}, withdrawn")
+        assert moved != text, f"the rename changed no byte for R-{number}"
+        with pytest.raises(AssertionError):
+            _banned_addresses(
+                UNIT_RESIDUAL_TITLES, filed=filed, numbers=_residual_numbers_by_title(moved)
+            )
+        renamed += 1
+    assert renamed == len(UNIT_RESIDUAL_TITLES), "not every address this unit bans was driven"
+
+
+def test_a_renumber_moves_every_address_and_the_ban_list_follows_it():
+    """Every address moved, applied to the document and driven.
+
+    This is the defect that blocked the merge, held open so it cannot come back.
+    The ban list is rebuilt against a copy of the document in which every residual
+    carries a different number, and it has to name the twelve findings it named
+    before, at their new addresses. A typed range cannot pass this at all, which
+    is the point: the old constant failed on the real merged tree with fifteen
+    numbers it no longer covered.
+
+    A SHIFT IS THE WORST CASE AND IT IS DRIVEN DELIBERATELY. Numbering became
+    APPEND ONLY on 2026-08-10, so main's numbers now hold still and only the
+    incoming branch's move. Driving the harder rule here rather than the current
+    one means the guard does not have to be revisited if the decision moves again,
+    and a guard that survives every number changing survives some of them changing.
+    """
+    filed = _residual_titles_this_unit_filed()
+    text = (REPO_ROOT / RESIDUAL_FINDINGS_NAME).read_text()
+    shifted = _DOCUMENT_HEADING.sub(lambda one: f"## R-{int(one[1]) + 100}. {one[2]}", text)
+    assert shifted != text, "the renumber moved nothing, so this proves nothing"
+    before = _banned_addresses(UNIT_RESIDUAL_TITLES, filed=filed)
+    after = _banned_addresses(
+        UNIT_RESIDUAL_TITLES, filed=filed, numbers=_residual_numbers_by_title(shifted)
+    )
+    assert len(after) == len(before) == len(UNIT_RESIDUAL_TITLES)
+    assert set(after).isdisjoint(before), "the addresses did not move, so nothing was tested"
+    assert after == tuple(f"R-{int(one.removeprefix('R-')) + 100}" for one in before)
 
 
 def test_the_collision_passage_is_the_only_exemption_and_it_is_delimited():
