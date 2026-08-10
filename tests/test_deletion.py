@@ -5399,6 +5399,97 @@ def test_a_record_that_names_no_row_matches_no_row(cfg, gates_pass):
     assert not stores.tombstone_predicate(cfg)(nameless)
 
 
+@pytest.mark.parametrize(
+    "stored, spelled",
+    [
+        pytest.param(None, "None", id="json-null"),
+        pytest.param(True, "True", id="json-true"),
+        pytest.param(False, "False", id="json-false"),
+    ],
+)
+def test_a_record_naming_nothing_is_not_a_record_naming_the_string_of_nothing(
+    cfg, gates_pass, stored, spelled
+):
+    """``str(None)`` is ``'None'``, and this module has now fixed that at four doors.
+
+    The store is JSON, so ``null``, ``true`` and ``false`` are values a record can
+    carry in the field that names the row, whether a hand edit put them there or a
+    binding did. Stringified they are perfectly ordinary truthy names, and a row
+    whose own identifier is that same text would then be retired against a record
+    that names no row at all. ``removed_file_identity`` refuses each of the three
+    for exactly this reason; the row lookup is a second reader of the same field
+    and owes the same answer.
+    """
+    removed = _one_removed_row(cfg, title="Strobe", remixer="Michael Woods")
+    stores.tombstones(cfg).record(
+        kind=tombstone.KIND_VERSION,
+        identity=tombstone.version_identity(artist=removed.artist, title="Strobe (Woods)"),
+        payload={"content_id": stored, "recorded": removed.recorded},
+        actor="cli",
+    )
+    assert not stores.tombstone_predicate(cfg)(replace(removed, content_id=spelled)), (
+        "a record that names no row retired a row whose identifier happens to be "
+        "the text that value stringifies to"
+    )
+
+
+def test_the_row_lookup_reads_two_composition_forms_of_one_path_as_one_path(
+    cfg, gates_pass
+):
+    """macOS hands out NFD and rekordbox stores NFC, so this is the ordinary case.
+
+    ``removed_file_identity`` already composes this field to NFC, and the row
+    lookup is a second reader of the same field. Two rules for one field is how
+    the two come to disagree, and the disagreement costs the thing the whole round
+    is about: the record is not recognised, the row is held open forever, and the
+    watermark is contiguous so every removal above it is held too.
+    """
+    removed = _one_removed_row(cfg, title="Strobe", remixer="Michael Woods")
+    composed = "/Volumes/Music/Café Track.flac"
+    decomposed = "/Volumes/Music/Café Track.flac"
+    assert composed != decomposed
+
+    stores.tombstones(cfg).record(
+        kind=tombstone.KIND_VERSION,
+        identity=tombstone.version_identity(artist=removed.artist, title="Strobe (Woods)"),
+        payload={"content_id": removed.content_id, "recorded": decomposed},
+        actor="cli",
+    )
+    assert stores.tombstone_predicate(cfg)(replace(removed, recorded=composed)), (
+        "one path spelled two ways read as two rows, so a completed deletion is "
+        "unrecognisable and its row holds the whole queue"
+    )
+
+
+def test_a_revoked_tombstone_still_says_a_run_recorded_this_deletion(cfg, gates_pass):
+    """The question is "did a run record this", not "is this suppressed today".
+
+    Revoking makes the version acquirable again and says nothing about whether
+    the file was moved. Reading a revocation as "no deletion happened" re-opens
+    the very row the person already dealt with, and then a confirmed removal is
+    offered again with the file already in the Trash.
+    """
+    removed = _one_removed_row(cfg, title="Strobe", remixer="Michael Woods")
+    record = stores.record_tombstone(cfg, removed, actor="cli", trashed_to="/x")
+    stores.revoke_tombstone(cfg, record.suppression_id, actor="cli")
+
+    assert stores.list_tombstones(cfg) == (), "the revocation did not take"
+    assert stores.tombstone_predicate(cfg)(removed), (
+        "revoking a tombstone re-opened a removal that was finished business"
+    )
+
+
+def test_the_stamp_field_is_spelled_on_disk_and_not_only_in_this_build(cfg):
+    """A persisted field name is a wire format, so it is pinned to a literal.
+
+    Renaming the constant renames it consistently for every reader in this build
+    and silently orphans the stamp in every store the previous build wrote. The
+    direction is safe, since an unreadable stamp reads as another era and falls to
+    the row lookup, but a format nobody pinned is a format that moves.
+    """
+    assert stores.IDENTITY_SCHEME_FIELD == "identity_scheme"
+
+
 def test_a_row_that_cannot_be_identified_is_not_read_as_already_recorded(cfg, gates_pass):
     """B4 from the round 9 verification, carried and closed.
 
