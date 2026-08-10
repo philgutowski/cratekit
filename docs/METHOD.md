@@ -12,12 +12,22 @@ Do not read them to find out how to work. That is this file.
 
 A branch merges when it has no open BLOCKING finding.
 
-**A finding is BLOCKING only if both hold:**
+**A finding is BLOCKING only if all three hold:**
 
 1. It was driven end to end, not argued from reading the source.
 2. It has a named user facing cost. Someone loses data, is told something
    false, is blocked from a verb, or is shown a clean report over state the
    tool could not read.
+3. **Its input is reachable, and the producer was DRIVEN.** A cost over an
+   input nothing can produce is not a cost. Name the producer and drive it. If
+   you cannot, the finding is a RESIDUAL and the report says the reachability
+   is unmeasured. Say "N candidates were driven and none produces it", never
+   "nothing produces it", because those are different measurements.
+
+Condition 3 was added 2026-08-10 after a verifier returned BLOCKING on a
+document it had hand mutated, and a second pass then drove four candidate
+producers and found none. Establishing reachability inside the first pass costs
+almost nothing. A second trip to establish it cost 258k tokens.
 
 **Everything else is a RESIDUAL.** A docstring that overclaims, an assertion
 that names the wrong number, a guard that kills zero tests, a document whose
@@ -65,6 +75,18 @@ that kills zero tests is a finding.
 existing guards. An eighty row sweep of the whole unit on every round is where
 the budget goes and its yield is concentrated in the new code.
 
+**Hard row caps: 25 rows on a light pass, 45 on a full one.** Nominal scoping did
+not hold. Light passes ran 50 and 89 rows on 2026-08-10. When you hit the cap,
+stop and **log what you dropped and why you ranked it below the cap**, so a
+truncation is visible rather than read as coverage. One pass per unit per
+session.
+
+**Use `scripts/mutate.py`. Do not hand roll a driver.** It takes rows as data
+and returns the table, and it holds every driver rule below as a property rather
+than as an instruction you have to remember. Three of this project's recorded
+incidents were hand rolled driver mistakes. The rules are kept below because you
+still need to know what the script guarantees and why.
+
 **Confirm deaths on a subset, spend a full suite only on zero rows.** Select
 the subset as the test files importing the mutated module. A death on a subset
 is a real death. A zero on a subset is not yet a zero, so promote it to a full
@@ -76,13 +98,34 @@ created, because it mutates what it believes it changed. Measured gaps between
 an author's table and an independent one: 10 against 17, 39 against 49, 49
 against 83.
 
-**A zero death row is acceptable only when a composite shows what it does
-hold.** Pair it with a mutation of the thing it guards and report both counts.
-A prose argument is not evidence.
+**A zero death row on a guard with a USER FACING surface is acceptable only
+when a composite shows what it does hold.** Pair it with a mutation of the thing
+it guards and report both counts. A prose argument is not evidence.
+
+**A zero row on a maintainer facing guard gets one line, not a composite.** The
+severity floor says such a row can never block, so the composite buys
+documentation rather than a decision. Measured 2026-08-10: one verifier produced
+40 zero rows, another 14, another 11, and nearly every one was an assertion
+about this repository's own source. Record it and move on.
 
 **Write the table into the repository**, with full row descriptions and not
 only counts, under `docs/mutation/`. A table that lives only in a chat message
 is a claim. One was lost that way and a verifier could not check it.
+
+## Reading discipline, because context is what you are billed for
+
+Cost measured 2026-08-10 was a flat 2,400 tokens per tool call across four
+agents. Every tool result stays in context and is re-sent on every later call,
+so the bill is tool calls times context size. Thinking is cheap here. Reading is
+not.
+
+- **Never read a file over 400 lines whole.** Grep for the symbol, then read the
+  region around it.
+- **Every report opens with a verdict header under 60 lines**: the verdict, a
+  numbered finding table with each finding's classification, and the battery
+  numbers. A later agent reads the header and stops unless it needs a specific
+  finding's detail.
+- **Do not re-read a prior round's full mutation table.** Read its summary rows.
 
 ## Driver rules, every one of them paid for
 
