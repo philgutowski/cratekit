@@ -2006,6 +2006,36 @@ class BackupConfig:
     db_dest_root: str | None = None
 
 
+#: The intake ages the source system wrote into its own module as constants.
+#: Named HERE rather than only as field defaults, because ``slots=True`` replaces
+#: a dataclass field default with a descriptor on the class, so validation could
+#: not read them back off ``ReportsConfig`` and would have had to keep a second
+#: copy. Two copies of a default is how the file and the check come to disagree.
+DEFAULT_INTAKE_STALE_DAYS = 30
+DEFAULT_INTAKE_EXPIRED_DAYS = 90
+
+
+@dataclass(frozen=True, slots=True)
+class ReportsConfig:
+    """Policy the read-only reports age against (R5, feature row 20).
+
+    These are DAY COUNTS and they live here rather than in the report module for
+    the reason S3 gives everywhere else: the mechanism belongs to the module and
+    the values belong to the user. The system Cratekit replaces wrote both of
+    them into the module as constants, so the only way to hold intake for longer
+    was to edit the software.
+
+    Defaults reproduce the source convention exactly, thirty days and ninety, so
+    an existing user's report says what it used to say. A default here is
+    correct where one on ``AgingThresholds`` would not be: this is the file that
+    OWNS the answer, and the report module has no way to construct the value
+    without being handed both halves.
+    """
+
+    intake_stale_days: int = DEFAULT_INTAKE_STALE_DAYS
+    intake_expired_days: int = DEFAULT_INTAKE_EXPIRED_DAYS
+
+
 @dataclass(frozen=True, slots=True)
 class Config:
     """The whole validated configuration, frozen.
@@ -2028,6 +2058,11 @@ class Config:
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     rekordbox: RekordboxConfig = field(default_factory=RekordboxConfig)
     backup: BackupConfig = field(default_factory=BackupConfig)
+    # APPENDED rather than filed alphabetically, for the reason the verb registry
+    # and the pending register both give for the same choice: two fields inserted
+    # into the middle of one dataclass by two units auto-merge, and an append
+    # conflicts textually, which is a conflict somebody reads.
+    reports: ReportsConfig = field(default_factory=ReportsConfig)
 
     # -- derived views -----------------------------------------------------
 
@@ -2331,6 +2366,58 @@ def validate(data: Mapping) -> list[str]:
             f"available memory (KTD10). Found {jobs!r}."
         )
 
+    problems += _validate_aging_thresholds(data)
+
+    return problems
+
+
+def _validate_aging_thresholds(data: Mapping) -> list[str]:
+    """The two day counts the intake aging report bands against (feature row 20).
+
+    Checked HERE rather than only where the report builds its value, because a
+    wrong number in a file is a problem with a key name attached and a wrong
+    number reaching the report is a stack trace. The report's own value object
+    still refuses, since it is constructible from code that never touched a file,
+    and the two agree on the rule: both positive, and expiry no earlier than
+    staleness or the two bands overlap and a grouping is reported twice.
+
+    THE PAIR CHECK IS SKIPPED WHEN EITHER VALUE WAS SET AND REJECTED. A field the
+    user wrote and got wrong has already produced its own message naming the key;
+    substituting the DEFAULT for it and then reporting the pair would tell them
+    that a number they never wrote is in conflict with one they did, which sends
+    them to fix the wrong line. A field they left out genuinely does take its
+    default, and that case still reports, because it is the one that makes
+    changing only one of the two able to invert the pair.
+    """
+    problems: list[str] = []
+    read: dict[str, int] = {}
+    rejected: set[str] = set()
+    for field_name in ("intake_stale_days", "intake_expired_days"):
+        key = f"reports.{field_name}"
+        value = _dig(data, key)
+        if value is None:
+            continue
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            problems.append(
+                f"{key} must be a positive whole number of days, found {value!r}. "
+                f"Zero or a negative threshold does not report less, it reports "
+                f"every intake grouping as overdue on the day it is created."
+            )
+            rejected.add(field_name)
+            continue
+        read[field_name] = value
+
+    if read and not rejected:
+        stale = read.get("intake_stale_days", DEFAULT_INTAKE_STALE_DAYS)
+        expired = read.get("intake_expired_days", DEFAULT_INTAKE_EXPIRED_DAYS)
+        if expired < stale:
+            problems.append(
+                f"reports.intake_expired_days ({expired}) is earlier than "
+                f"reports.intake_stale_days ({stale}). The bands would overlap, "
+                f"so a grouping would be reported as both stale and expired. Note "
+                f"that a value left out takes its default, which is what makes "
+                f"changing only one of the two able to produce this."
+            )
     return problems
 
 
@@ -2536,6 +2623,7 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
         analysis=_build(AnalysisConfig, data.get("analysis") or {}),
         rekordbox=_build(RekordboxConfig, data.get("rekordbox") or {}),
         backup=_build(BackupConfig, data.get("backup") or {}),
+        reports=_build(ReportsConfig, data.get("reports") or {}),
     )
 
 

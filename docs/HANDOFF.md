@@ -412,7 +412,12 @@ here is the one check on the board's single unverified input.
 U11 cleared its own entry, which is the countdown firing as designed. Eleven
 entries remain, and the growth is the mechanism working rather than debt piling
 up: U11 and U19 between them added five, each one an obligation that used to live
-in a docstring.
+in a docstring. U34 then cleared its own and added one, because clearing the
+entry is the required act of landing and the four verbs it left behind had to
+land somewhere that a mechanism reads. See the residual titled "Four report verbs
+were owed by a unit that was about to close, and named a module nobody could
+build", cited by title because `main` carries a different finding under that
+number.
 
 | Unit | Target | Owes |
 |---|---|---|
@@ -421,9 +426,9 @@ in a docstring.
 | U23 | `cratekit.adopt` | the adoption review surface |
 | U24 | `cratekit.deletion.cli` | declines and tombstones go through the revocable decision store |
 | U27 | `cratekit.cli.doctor` | a database acknowledged outside the library root is reported every run |
+| U27 | `cratekit.cli.reports` | the four report verbs, and the two report engines two of them still have none of. See the residual titled "Four report verbs were owed by a unit that was about to close, and named a module nobody could build": U27 is a judgement, not a decision |
 | U28 | `path:skills` | the shipped skills tree |
 | U32 | `cratekit.core.restore` | the restore verb, and the three obligations U8 registered against it |
-| U34 | `cratekit.modules.reports` | the duplicates review surface |
 | U37 | `cratekit.intake`, `cratekit.intake.collection_xml` | record routing intents at the decision, close through `close_run`, and never emit a `<TEMPO>` element |
 | U38 | `cratekit.cli.exit_codes` | the reserved exit-code registry |
 
@@ -561,3 +566,53 @@ index was rebuilt per plan entry. Handed a list it was merely quadratic; handed 
 database cursor, which is the natural way to pass every content row, entry one
 consumed the whole thing and every entry after it reported its tracks absent while
 the run reported clean.
+
+**A rule's SCOPE is a claim, and a claim stated in prose is a claim nobody drove.**
+U34's binding table exempts a veto written inside a branch, because a run that
+skipped the branch never cast it. That is right for a NAME and was written as if
+it were right for the whole table. It is wrong for an ATTRIBUTE: `class Base`
+binds nothing by itself, so a subclass overriding `self.mod` inside an `if`
+without calling `super().__init__()` has no path on which the base's binding
+exists. Six ordinary branch spellings were reported as writes to the configuration
+file for six rounds, with a docstring in two places saying the rule was applied to
+the veto only. Drive the scope of a rule the same way you drive its result, on
+both halves of whatever the rule ranges over.
+
+**A guard whose coverage is a typed list is a guard that stops covering.** U34's
+citation guard named nine files while the branch changed seventeen, and deleting a
+report module from the list left the whole suite green. Two of the eight it never
+read carry residual citations another unit wrote. Derive the coverage from
+something that moves with the branch, and keep a named floor so a silent narrowing
+of the derivation has something to get past.
+
+**Do not exempt a guard's own file from that guard.** The same unit skipped the
+suite for the "no stray delimiter" check on the grounds that the suite DEFINES the
+delimiters. The definitions are assignments and are not delimiter lines, while the
+reader honours a delimiter found there exactly as it does anywhere else. An
+unclosed marker plus a citation went green in the one file the pair was told not
+to look at.
+
+**A classifier with two answers reports the state it could not read as whichever
+one it defaults to.** U34's export reader split the playlist tree with "a
+playlist, or else a folder". Driven on its own fixture with the `Type` attributes
+made unreadable, seven playlists became folders, the intake report rendered a
+clean queue over a library it could not read, and the duplicate audit reported a
+pair with every placement gone. THE MISREAD NODES SATISFIED THE GUARD WRITTEN TO
+CATCH THEIR LOSS, because that guard asks whether the intake folder is present and
+the misread nodes are what filled the folder tuple. Give the question its third
+answer, decide it once and positively where the document becomes a value, and
+refuse there; a second check inside each report is one more site to keep in step
+with the first.
+
+**A floor that names files covers the files it names and nothing else.** The same
+unit's coverage list was derived from git and floored by nine typed names, so a
+narrowing of the derivation was refused on nine files and silent on the other
+eight, one of which was the file the same commit created. Check the derivation
+against a SECOND derivation composed of different commands, and keep the typed
+names only for the failure the two share, which here is one merge base.
+
+**A guard that pins a range has to pin the edge that moves.** The assertion
+holding that unit's residual ban list checked that the document still defined 16
+and 25 while the range ran to 26, so the top could be narrowed by one with the
+suite green. Read the endpoints from the thing the constant describes, in both
+directions, rather than writing two numbers next to it.

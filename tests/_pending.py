@@ -67,16 +67,6 @@ PENDING: dict[str, tuple[str, str]] = {
         "asserted in a docstring because U11 settled the split and U16 is the "
         "first unit that can violate it (P5)",
     ),
-    "cratekit.modules.reports": (
-        "U34",
-        "that the duplicate audit's pairs become review items in the queue U11 "
-        "declared for them, which is half of R26. The source system's audit "
-        "prints and never records, so a pair somebody already judged an "
-        "intentional alternate is reported again on every run, and a private "
-        "ignore file beside the report would satisfy the brief and re-create the "
-        "defect. Registered here because U11 declared the surface and nothing "
-        "else forces it to exist (P5)",
-    ),
     "cratekit.adopt": (
         "U23",
         "that the adoption plan is presented as review items rather than as a "
@@ -257,6 +247,29 @@ PENDING: dict[str, tuple[str, str]] = {
     #   the moment both modules are present with the fallback still there. That is
     #   a countdown that needs no register key, so it cannot be orphaned by a unit
     #   closing.
+    # APPENDED, same reason as the entry above it.
+    "cratekit.cli.reports": (
+        "U27",
+        "the command-line surface for audit.coverage, audit.duplicates, "
+        "report.library and report.intake-aging, and the two report engines two "
+        "of them still have none of: nothing in the tree computes tree coverage "
+        "or library statistics. REGISTERED HERE RATHER THAN LEFT AS A planned_in "
+        "MARKER for the reason R-13 records and mechanizes against: scripts/"
+        "board.py reads this file and nothing else, test_cli_contract only fires "
+        "once the module APPEARS, and an obligation carried only by a marker on "
+        "a closing unit is owned by nobody the moment that unit closes (P5). "
+        "RE-POINTED FROM U34, whose declared file list is the reports package "
+        "and its test module and which landed exactly that, and whose four "
+        "markers would all have named a closed unit the instant #34 merged. The "
+        "module path moved too, from cratekit.reports.cli, which test_layering "
+        "ranks modules while the registry it must dispatch through ranks cli, so "
+        "it could not have been built as spelled; that is the same correction "
+        "U10 and U11 each made on landing. U27 is the owner because it is the "
+        "only open unit already landing modules in src/cratekit/cli/, because "
+        "three of the four verbs emit the diagnostic surface doctor owns, and "
+        "because it is unblocked today. The choice is a judgement and is left "
+        "legible so a human can move it again",
+    ),
 }
 
 

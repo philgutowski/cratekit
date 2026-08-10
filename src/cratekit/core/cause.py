@@ -452,6 +452,35 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # directory. PRECONDITION for the reason ``restore-step-failed`` is one:
         # it is a condition of the machine that a repeat clears.
         "restore-staging-occupied": ExitCode.PRECONDITION,
+        # ── U34's refusals, appended for the reason stated just above ───────
+        #
+        # The first version of this unit filed the export slug beside
+        # ``review-file-unusable``, in the middle of the literal, which is the
+        # convention this block exists to state. Confirmed with ``git
+        # merge-file``: two units appending both conflict textually and get
+        # read, while an insertion into a different half of the same mapping
+        # auto-merges, so a duplicate key would be resolved silently by
+        # whichever line happened to come last.
+        #
+        # A collection export that is not one, or is one and is truncated, or
+        # carries one ``TrackID`` twice. Its own slug rather than the review
+        # file's, because that file is something this product WROTE and this one
+        # is something rekordbox wrote: the remedy is to export again, and
+        # pointing a person at a queue export they never made would be a
+        # sentence about the wrong file. Same code, because the class of answer
+        # is the same, which is the whole reason a slug exists separately from a
+        # code.
+        "library-export-unusable": ExitCode.PRECONDITION,
+        # The declared intake flow does not appear anywhere in the exported
+        # tree. Reported rather than answered with an empty report, because the
+        # correct answer for an intake flow with nothing in it is ALSO nothing,
+        # so the two are indistinguishable to the person reading the output and
+        # only one of them means "you have nothing to do". It sits on the
+        # library-prerequisite code beside ``catalog-tree-undeclared`` for the
+        # same reason that one exists: the library lacks a structure the
+        # operation mirrors, and the remedy is a declaration or a folder rather
+        # than anything about this installation's configuration.
+        "intake-flow-absent": ExitCode.LIBRARY_PREREQUISITE,
     }
 )
 

@@ -119,6 +119,42 @@ TRACK_INDENT = indent_at(TREE_DEPTH + 1)
 FOLDER_TYPE = "0"
 PLAYLIST_TYPE = "1"
 
+#: WHAT A NODE'S KIND READS AS, IN THREE ANSWERS RATHER THAN TWO. The third is
+#: the one this repository loses: :func:`node_at` substitutes the empty string
+#: for a ``Type`` attribute that is absent or unreadable, so a classifier written
+#: as "a playlist, or else a folder" answers FOLDER for every node whose kind is
+#: a question, and the caller never learns a question was asked. Measured on the
+#: reports suite's own export, retyping the playlists made every one of them a
+#: folder, dropped seven playlists to zero, and left the intake report rendering
+#: a clean queue over a tree it could not read.
+#:
+#: Two answers cannot express that, whoever is asking, which is why the kind is
+#: named here beside the values rather than re-decided at each call site.
+KIND_FOLDER = "folder"
+KIND_PLAYLIST = "playlist"
+KIND_UNREADABLE = "unreadable"
+
+
+def node_kind(node_type: str) -> str:
+    """Which of the three kinds a node's ``Type`` value spells.
+
+    POSITIVE ON BOTH KNOWN VALUES, and unreadable on everything else. A rule that
+    recognises one value and defaults to the other reports a node it could not
+    read as the kind it happens to default to, which is this repository's first
+    recurring defect with the two branches written the other way round.
+
+    The unreadable answer covers three spellings that are one fact: a ``Type``
+    attribute that is not there at all, one whose value is empty, and one
+    carrying a value this format does not define. What they have in common is
+    that the kind is unknown, and a caller that must not guess needs them to
+    arrive as one answer rather than as three it has to enumerate.
+    """
+    if node_type == FOLDER_TYPE:
+        return KIND_FOLDER
+    if node_type == PLAYLIST_TYPE:
+        return KIND_PLAYLIST
+    return KIND_UNREADABLE
+
 #: The document sections. Named because both the locate scope and the failure
 #: message have to spell them the same way.
 PLAYLISTS_SECTION = "PLAYLISTS"
@@ -1009,8 +1045,16 @@ def _tree_node(content: bytes, tree: Tree | None) -> NodeSpan | str:
 
 
 def _type_name(node_type: str) -> str:
-    """How a node type is spelled in a refusal a person has to act on."""
-    return "folder" if node_type == FOLDER_TYPE else "playlist"
+    """How a node type is spelled in a refusal a person has to act on.
+
+    Read through :func:`node_kind` rather than tested against one value, because
+    the sentence below tells somebody what is standing in the way of a write.
+    "A playlist named 'Deep House' is already there" is a statement of fact when
+    the node says it is a playlist and a guess when the node says nothing this
+    build understands, and the person acts on it either way.
+    """
+    kind = node_kind(node_type)
+    return "node of an unreadable kind" if kind == KIND_UNREADABLE else kind
 
 
 def direct_child(
@@ -1690,6 +1734,9 @@ __all__ = [
     "FOLDER_TYPE",
     "INDENT_STEP",
     "INTAKE_DEPTH",
+    "KIND_FOLDER",
+    "KIND_PLAYLIST",
+    "KIND_UNREADABLE",
     "PLAYLISTS_SECTION",
     "PLAYLIST_TYPE",
     "ROOT_INDENT",
@@ -1728,6 +1775,7 @@ __all__ = [
     "name_marker",
     "node_at",
     "node_close",
+    "node_kind",
     "patch_attribute",
     "playlist_open",
     "playlists_span",

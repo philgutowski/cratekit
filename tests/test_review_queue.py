@@ -2133,10 +2133,18 @@ def test_the_decision_store_countdown_stays_quiet_on_correct_code(source):
 # ── The countdowns themselves ────────────────────────────────────────────────
 
 #: Every adjudication surface this unit declared with NO legacy file, and the
-#: pending key of the unit that owes it a producer. A ported surface has a file in
+#: import target of the thing that produces it. A ported surface has a file in
 #: the source tree that a porting unit must dispose of, and ``SURFACES`` already
 #: records that disposition. A NEW surface has nothing in the source tree at all,
 #: so a countdown is the only thing that makes it exist (P5).
+#:
+#: A TARGET HERE IS IN ONE OF TWO STATES, and the test below asserts a different
+#: thing in each. While it is in ``_pending.PENDING`` it is a countdown, and what
+#: is asserted is that the countdown exists. Once its unit lands the target and
+#: clears the register, the countdown is spent, and asserting its presence would
+#: mean the surface quietly stopped being covered by anything the moment it
+#: acquired a real producer. So a landed target is held to the stronger claim: it
+#: must actually offer into the queue it was registered against.
 NEW_SURFACE_OWED_BY: dict[str, str] = {
     review.Queue.DUPLICATES: "cratekit.modules.reports",
     review.Queue.DELETION: "cratekit.deletion.cli",
@@ -2152,6 +2160,13 @@ def test_every_new_adjudication_surface_is_owed_by_a_registered_unit():
     only in this module's own table. R26 named the duplicate audit and the
     adoption plan as review items, and both obligations lived in a ``why`` string
     until this test, which is the shape P5 forbids by name.
+
+    THE CHECK FOLLOWS THE TARGET THROUGH ITS OWN LANDING. It used to assert only
+    that each target sat in the pending register, which was correct while all
+    four were unwritten and would have gone quiet the moment one landed: clearing
+    a register entry is the required act of landing, so the assertion would have
+    had to be weakened by the very unit it governs. A landed target answers the
+    stronger question instead.
     """
     declared = {
         surface.queue
@@ -2164,10 +2179,92 @@ def test_every_new_adjudication_surface_is_owed_by_a_registered_unit():
         f"{sorted(set(NEW_SURFACE_OWED_BY) - declared)}"
     )
     for queue, key in NEW_SURFACE_OWED_BY.items():
-        assert key in _pending.PENDING, (
-            f"{queue} is owed by {key}, which is not in the pending register, so "
+        if key in _pending.PENDING:
+            continue
+        assert not _pending._is_absent(key), (
+            f"{queue} is produced by {key}, which is neither in the pending "
+            f"register nor present in this build, so nothing produces it and "
             f"nothing counts down to it"
         )
+        constant = f"Queue.{review.Queue(queue).name}"
+        assert _target_offers_into(key, constant), (
+            f"{key} has landed and cleared its countdown, and nothing in it "
+            f"offers into {constant}; the surface is declared with a producer "
+            f"that does not produce it"
+        )
+
+
+def _target_offers_into(target: str, queue: str) -> bool:
+    """Whether a landed import target offers into ``queue``, package or module.
+
+    Both shapes are accepted because both appear in the table above: two entries
+    name a package and two name a single module inside one. Handling only the
+    package shape would answer False for a correct module and turn this into a
+    guard that fires on correct code, which is how a guard gets routed around
+    (P7).
+    """
+    parts = target.split(".")
+    root = SRC_ROOT.joinpath(*parts)
+    if root.is_dir():
+        return any(offers_into(source, queue) for _name, source in package_modules(root))
+    single = SRC_ROOT.joinpath(*parts[:-1], f"{parts[-1]}.py")
+    return single.is_file() and offers_into(single.read_text(), queue)
+
+
+@pytest.mark.parametrize(
+    "target, expected",
+    [
+        # The package shape, both ways. One module inside it offers, so the
+        # package does; nothing inside cratekit.write does.
+        ("cratekit.modules.reports", True),
+        ("cratekit.write", False),
+        # The MODULE shape, both ways. This branch had never executed: every
+        # target in the table above that has landed happens to name a package,
+        # so the half of this helper written for the two that name a module was
+        # dead code the day it was written.
+        ("cratekit.modules.reports.duplicates", True),
+        ("cratekit.modules.reports.aging", False),
+        # And a target that is not there at all, which must be False rather than
+        # an exception, since the caller asks this only after establishing the
+        # thing has landed and a crash would read as a broken suite rather than
+        # as a broken table.
+        ("cratekit.modules.reports.no_such_producer", False),
+        ("cratekit.nowhere.at_all", False),
+    ],
+)
+def test_a_landed_target_that_does_not_produce_is_not_taken_for_one(target, expected):
+    """The helper the countdown's landed branch rests on, answered both ways.
+
+    Stubbing ``_target_offers_into`` to return True unconditionally killed no
+    test in the whole suite. Every entry in ``NEW_SURFACE_OWED_BY`` except one is
+    still a countdown and takes the early return above, and the one that has
+    landed is covered from the other side by
+    ``test_the_duplicate_audit_offers_its_pairs_into_the_duplicates_queue``,
+    which calls a different helper. So the assertion that a landed producer
+    really produces was carried by a function nothing could show was capable of
+    saying no.
+
+    It has to answer FALSE for a landed thing that does not produce, or the
+    branch is decoration: the whole reason the check follows a target through its
+    own landing is that clearing a register entry must not be able to switch the
+    obligation off.
+    """
+    assert _target_offers_into(target, "Queue.DUPLICATES") is expected
+
+
+def test_the_countdown_can_tell_a_landed_target_from_one_that_is_not_there():
+    """The premise the branch above is chosen on, which is a separate question.
+
+    ``_is_absent`` is what decides whether a table entry that has left the
+    pending register has landed or has simply never existed, and the second is
+    the case the assertion beside it exists for: a surface declared against a
+    producer that is neither counted down to nor present is owed by nothing at
+    all. No entry is in that state today, so the assertion itself cannot be made
+    to fail without inventing a table; the predicate it rests on is asserted
+    here instead, over the exact module family the table names.
+    """
+    assert not _pending._is_absent("cratekit.modules.reports")
+    assert _pending._is_absent("cratekit.modules.reports.no_such_producer")
 
 
 @requires("cratekit.acquire.match_cli")
@@ -2236,9 +2333,8 @@ def _package_offers_into(package: str, queue: str) -> bool:
     return any(offers_into(source, queue) for _name, source in package_modules(root))
 
 
-@requires("cratekit.modules.reports")
 def test_the_duplicate_audit_offers_its_pairs_into_the_duplicates_queue():
-    """U34's obligation, and half of R26.
+    """U34's obligation, and half of R26. ARMED: the register entry is cleared.
 
     The source system's duplicate audit prints and never records, so a pair
     somebody has already judged an intentional alternate is reported again on

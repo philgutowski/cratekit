@@ -1306,3 +1306,785 @@ staged.
 **What would close it.** Undoing the moves already made before re-raising, which
 is a rollback inside a rollback and needs its own failure story. Recorded as the
 residual race rather than attempted inside this unit.
+## R-24. Four report verbs were owed by a unit that was about to close, and named a module nobody could build
+
+**Found:** during the U34 review, 2026-08-02, by two independent reviewers.
+
+**Numbering note:** R-14 and R-15 are issues #52 and #53 and were never written
+up here, so the gap is a missing pair of entries rather than two that somebody
+deleted. Numbers are not reused, because a slug in a commit message outlives the
+file.
+
+`audit.coverage`, `audit.duplicates`, `report.library` and `report.intake-aging`
+were declared in the registry against module `cratekit.reports.cli` with
+`planned_in="U34"`. U34's declared file list is `src/cratekit/modules/reports/`
+and its test module, and that is exactly what it landed: the duplicate audit and
+the intake aging engines, no command-line surface. The unit also cleared its
+`tests/_pending.py` entry, which was the required act of landing, since keeping
+it would have made `board.py audit` report a contradiction and exit 2.
+
+The two together are R-13 verbatim, one wave later. After `Closes #34`, all four
+markers would have named a closed unit: `board.py audit` prints "The board
+matches the repository" and exits 0, `test_a_planned_verb_whose_module_has_landed_must_lose_its_marker`
+asserts the module is ABSENT so it passes forever and never fires, and
+`scripts/board.py` reads `tests/_pending.py` and nothing else. Four verbs owned
+by no mechanism at all.
+
+The module path was also unbuildable as spelled. `test_layering.layer_of` ranks
+`cratekit.reports.cli` as `modules` and `cratekit.cli.registry` as `cli`, so the
+module that must dispatch through the registry could not have imported it. U10
+and U11 each made the same correction on landing, and the comments above the job
+and review blocks in the registry record both.
+
+**Fixed here.** The four entries name `cratekit.cli.reports` and go through one
+`REPORTS_CLI_UNIT` constant, and that module is registered in `tests/_pending.py`
+against **U27**, which is the file the board audit actually reads.
+
+**Why U27, stated so a human can move it again.** It is the only open unit whose
+declared file list already lands modules in `src/cratekit/cli/`, `setup.py` and
+`doctor.py`, so `cli/reports.py` is the same act in the same directory rather
+than a new kind of work for a unit that does none of it. Three of the four verbs
+emit `diagnostic/1`, which is doctor's own output surface, and U27 owns the check
+registry that surface is rendered against. And U27 is unblocked today, so the
+obligation can be discharged next rather than parked behind a dependency chain.
+
+Two alternatives were weighed and rejected. **U29** is the only unit that
+structurally cannot close while these verbs are missing, since its test scenario
+generates a parity table from the verb inventory, but its declared files are
+`docs/cutover.md` and `README.md` and its execution note forbids batching: giving
+a code obligation to a documentation unit is the same "owned by nobody" failure
+one hop later. **U36** owns `converge`, which is the database-side sibling of a
+coverage report, but `audit.coverage` here reads an export rather than the
+database, and neither aging nor duplicates has anything to do with tree rebuild.
+
+**What U27 inherits with it, stated rather than hidden.** `audit.coverage` and
+`report.library` have no engine anywhere in the tree; nothing computes tree
+coverage or library statistics today. So that unit lands two report engines as
+well as the shell. `audit.duplicates` and `report.intake-aging` are thin over
+engines U34 landed.
+
+**Closes when:** `src/cratekit/cli/reports.py` exists with the four builders, the
+two missing engines land beside the two that exist, and the `tests/_pending.py`
+entry is deleted, which arms the conformance assertions over all four verbs.
+
+---
+
+## R-25. The review-queue countdown is satisfied by an offer that never runs
+
+**Found:** during the U34 review, 2026-08-02.
+
+`tests/_source_guards.offers_into` answers True when a source contains a
+`review.offer(queue=Queue.DUPLICATES, ...)` call, and it walks the syntax tree,
+so the call may sit in a function nothing calls or under `if False:`. The armed
+countdown in `tests/test_review_queue.py` that asserts a landed target genuinely
+produces into the queue it was registered against therefore has a floor it cannot
+see below: a package could satisfy it with an offer that never executes.
+
+**Not fixed here.** Reachability is not decidable from a syntax tree in general,
+and the cheap half, rejecting a call under a literally false branch, buys nothing
+against an author who wanted to pass rather than to produce. The honest fix is a
+behavioural assertion per registered producer, which is what
+`tests/modules/test_reports.py` already does for this one: the audit is driven and
+the item is read back out of a store opened in a second process. That is the
+shape to generalize, and generalizing it belongs with the file it lives in.
+
+**Narrowed in round 2.** Recording this finding turned out to have hidden a
+second one underneath it. The guard the finding describes the floor of,
+`_target_offers_into`, could be stubbed to `return True` with the entire suite
+still green: every table entry but one is still a countdown and takes the early
+return, and the one that has landed is covered from the other side by a test
+calling a different helper. Its module-shape branch had never executed at all. So
+the assertion that a landed producer really produces was carried by a function
+nothing could show was capable of saying no, which is a strictly worse problem
+than the reachability floor this entry names. The helper is now asserted in both
+shapes and both polarities. What remains open is only the original floor: a
+producer could still satisfy it with an offer in a function nothing calls.
+
+**Closes when:** each entry in `NEW_SURFACE_OWED_BY` is answered by driving its
+producer rather than by reading its source, once enough of them have landed for
+the shared harness to be worth writing. The natural owner is U26, which is the
+first unit to land a second producer into a declared surface.
+
+---
+
+## R-26. A third copy of the import-graph walk now lives in the reports suite
+
+**Found:** during the U34 review, 2026-08-02.
+
+`tests/_source_guards.py` exists because two files asked the same question with
+two copies of one walk and the copies diverged: one learned to recognize an
+aliased import and the other did not. `tests/modules/test_reports.py` adds a
+third copy, in `_resolved_imports`, and it has already diverged from the
+`tests/test_layering.py` copy over CapWords and dunder handling, which that file
+excludes from module expansion and this one does not.
+
+**Measured in round 2, corrected in round 3, and it changes no verdict today.**
+Both walks were run over all four modules of the reports package and their
+outputs compared. Round 2 recorded the divergence as one entry wide. It is
+THREE entries across TWO modules: `from typing import Sequence` in
+`duplicates.py` resolves to `typing.Sequence` here and to `typing` in
+`test_layering.py`, and `export.py` diverges the same way twice, on
+`collections.Counter` against `collections` and on `pathlib.Path` against
+`pathlib`. All three are the CapWords rule and nothing else. All six spellings
+are permitted by `_permitted`, because an allowlisted entry admits its dotted
+children, so the forbidden set is empty under either walk for every module. The
+conclusion survives the correction and the count does not: the divergence is
+real, it is three entries wide, and it is not currently capable of letting an
+import through or of failing a correct one.
+
+**Not fixed here**, deliberately. U12 is concurrently generalizing
+`_source_guards.ReviewImports` into a module-parameterized `ImportsOf`, which is
+where this walk belongs, and collapsing three copies into a shared helper in this
+round would put a large edit to a shared test module in front of that work and
+conflict with it. The copy here was widened rather than collapsed: it now
+resolves relative imports against a package read off the filesystem, expands a
+`from X import y` where X is a real package directory at any depth, and reads
+`__import__` as the import it is. Those three widenings are what the shared
+version will have to carry, so the divergence is recorded rather than deepened by
+accident.
+
+**Closes when:** `ImportsOf` lands from U12 and all three call sites read it,
+including the CapWords and dunder rule, which must be settled in one place rather
+than three. The natural owner is U12.
+
+---
+
+## R-27. The option a person picks is addressed by an identifier a re-import changes
+
+**Found:** during the U34 round 2 verification, 2026-08-03.
+
+`duplicates.DuplicateGroup.options` builds one `review.Option` per copy with
+`option_id=member.track_id`, and the track id is the rekordbox `TrackID` from the
+export. That identifier is unique WITHIN one document, which U34 now refuses over
+when it is not, and it is not stable ACROSS documents: re-importing a library
+gives every row a new one, and `test_a_renamed_or_re_imported_copy_keeps_the_decision`
+demonstrates exactly that, one line below the assertion that the item id survives.
+
+So the item survives a re-import and the answer inside it does not. An ACCEPTED
+verdict on a duplicate group names which copy is kept, and after a re-import that
+name points at whatever row now holds the number. `review.offer` leaves a resolved
+item's options alone by design, which is correct and is also what freezes the
+stale identifier in place. Nothing in this unit reads a verdict back, so nothing
+is wrong today; the surface that acts on it is the deletion pass R35 and R36
+declare, which is U24's.
+
+There is no stable per-copy identifier available in a collection export. The
+track id moves on re-import and the location moves on a rename, and the module
+promises that neither of those orphans a decision. That is why this is recorded
+rather than patched: choosing one of the two would trade a wrong answer in one
+direction for a wrong answer in the other, and the choice belongs with the unit
+that consumes it.
+
+What is available to the consumer is already carried: each option's `detail`
+holds the copy's location, and the payload holds every member's track id and
+location together.
+
+**Closes when:** the deletion surface either re-verifies a chosen option against
+the export it is acting on before deleting anything, or the pair agree on an
+identity that survives both a re-import and a rename. The natural owner is U24.
+
+---
+
+## R-28. Two reflection spellings reach a writer past both structural guards
+
+**Found:** during the U34 round 3 verification, 2026-08-03.
+
+Rule 4 of `filesystem_mutations` covers `getattr` and only `getattr`. The
+attribute dictionary reaches the same method by SUBSCRIPT, and a subscript is not
+a call, so neither the attribute rule nor the call rules have anything to read:
+
+```python
+Path.__dict__["write_text"](path, decided)
+vars(Path)["write_text"](path, decided)
+```
+
+Both write a file, and both were run to confirm it rather than reasoned about.
+The CLASS has to be named, not the instance's type: `Path("x")` is a `PosixPath`
+and `write_text` is defined on `Path`, so `type(obj).__dict__["write_text"]`
+raises `KeyError` on an inherited method. That is a detail worth writing down,
+because getting it wrong makes the escape look like it does not exist. `forbidden_imports` says nothing, because nothing is imported
+that is not already permitted. `filesystem_mutations` says nothing, because the
+mutating name appears only inside a string subscript and the outer call's `func`
+is itself a subscript expression. The allowlist audit says nothing for the same
+reason, so a helper spelled this way in an admitted module is never forced into
+`FILESYSTEM_MUTATIONS` either.
+
+**Not fixed here**, deliberately, and this is an accepted boundary rather than a
+deferred repair. Round 2 widened rule 4 to cover the reflective shape that a
+person actually writes; this pair is exotic in a way `getattr` is not, and it was
+equally uncovered before round 2, so recording it is a widening of what the
+guards claim rather than a regression they introduced. The cost of covering it is
+a rule that reports every constant string subscript whose value happens to name a
+method, which is the P7 shape this whole guard is written around: the first
+correct `mapping["write_text"]` in a report would fail it.
+
+Both spellings are written out above so the next person can add them as fixtures
+rather than rediscover them. The behavioural half is not blind to either: a
+report that writes through one still moves a byte or a modified time, and
+`_tree_digest` carries both.
+
+**Closes when:** a rule exists that separates a reflective method lookup from an
+ordinary constant subscript, or the structural guards state in their own
+docstrings that subscript reach is out of scope. The natural owner is whichever
+unit next widens `filesystem_mutations`.
+
+**Closed in U34 round 5.** Round 4 covered both spellings and paid exactly the
+price this entry predicted: it compared every constant subscript key against
+`FILESYSTEM_MUTATIONS` with no receiver read at all, so `counts["rename"] +
+counts["unlink"]` in a report was two findings, and `row["truncate"]`,
+`LABELS["touch"]` and `ACTIONS["mkdir"]` were one each. The separation this entry
+asked for exists now and it is exact rather than heuristic: a type's `__dict__`
+and the `vars` of one are the only two spellings that hand back the function
+object itself, and `_namespace_owner` reads for those. A mapping is a mapping.
+Measured across all 75 files under `src`: zero hits, so the rule still costs
+nothing.
+
+---
+
+## R-29. One reflective call shape stays out of reach, and it is named
+
+**Found:** during the U34 round 5 fix, 2026-08-03.
+
+Rule 4's computed half fires when a reflective read's RESULT IS CALLED, and round
+5 moved that decision onto the binding table so it covers the indirect spellings:
+bound to a name and called, returned and called, stored in a container whose
+element is called, used as a decorator, handed to a factory invoked on the spot,
+bound at module level and called in another function, and the same through a
+conditional, a walrus and an annotated assignment. Eleven shapes, each with a
+fixture, each with a mutation row.
+
+One is not covered and will not be by this technique:
+
+```python
+map(getattr(path, name), items)
+```
+
+The read is handed to a callee that will invoke it, and whether a callee invokes
+its argument is a fact about the CALLEE, not about the file being read. A rule
+that assumed it would fire on `print(getattr(row, field))`, which is the P7 shape
+this whole guard is written around: a guard that reports correct code is a guard
+somebody routes around. Naming a set of builtins that invoke their first argument
+would cover `map` and `filter` and would be a list nothing keeps true.
+
+What IS read, and the distinction is the whole of it, is the factory invoked in
+place: `partial(getattr(p, n))(d)` is covered, because the invocation is written
+in this file where the checker can see it.
+
+**Not fixed here**, deliberately. This is an accepted boundary of a guard whose
+own docstring already says it is aimed at an ordinary author rather than at an
+author who has read it. Recording the shape here means the next reader adds it as
+a fixture rather than rediscovering it.
+
+**Closes when:** either a rule exists that reads whether a callee invokes its
+argument, which needs cross-module analysis this suite does not do, or the shape
+is accepted permanently. The natural owner is whichever unit next widens
+`filesystem_mutations`.
+
+---
+
+## R-30. A namespace method with no argument is an unreadable lookup
+
+**Found:** during the U34 round 7 fix, 2026-08-04.
+
+Rule 5's ASKED branch required a first argument to compare, so a method of a
+type's attribute mapping that takes none walked past it on ARITY alone.
+`vars(Path).copy()` was measured quiet on all four guards and executed to confirm
+it hands back a mapping that still holds `write_text`. The branch no longer
+requires an argument: no key to read is answered the way an unreadable key is
+answered, on the reflection switch, so inside the governed package it is a finding
+and everywhere else it is silent.
+
+**The cost is measured rather than asserted, and it is one line.** Across all 75
+files under `src` the whole tree contains exactly ONE namespace expression,
+`vars(obj)` at `src/cratekit/core/rb_writer.py` line 1840, and exactly one lookup
+through it, `state.items()` at line 1843. With the reflection switch ON that call
+is now reported as a key this cannot read. Nothing asks it that question today:
+`rb_writer` is neither one of the four governed report modules nor on the
+allowlist, and the audit runs with the switch off. The four governed modules
+contain no `vars` and no `__dict__` at all.
+
+**Not fixed here**, deliberately, because every narrowing available is worse.
+Naming the mapping methods that return a mapping is the enumeration this round
+exists to stop doing, and gating on the result being called would lose
+`vars(Path).popitem()` handed to something else. What is recorded is the one
+place in this repository where the rule would fire on correct code if the
+governed set widened.
+
+**Closes when:** either `cratekit.core.rb_writer` is proposed as a governed or
+admitted module, at which point line 1843 is the thing to decide about, or the
+ASKED branch learns to read what a mapping method hands back.
+
+---
+
+## R-31. Two reflection spellings stay quiet, and each needs a refused import
+
+**Found:** during the U34 round 7 fix, 2026-08-04.
+
+Three further spellings reach a writing method through a type's attribute
+mapping. One of them is now covered by the propagation rule and its own import is
+refused as well:
+
+```python
+MappingProxyType(vars(Path))["write_text"](path, decided)   # caught, and types is refused
+```
+
+Two are not covered, and neither is live:
+
+```python
+itemgetter("write_text")(vars(Path))(path, decided)         # operator.itemgetter is refused
+getattr_static(Path, "write_text")(path, decided)           # inspect.getattr_static is refused
+```
+
+Both were measured `[]` by `filesystem_mutations` and by `_unnamed_writers`, and
+both were measured as REFUSED by `forbidden_imports`: `operator.itemgetter` and
+`inspect.getattr_static` are not on `ALLOWED_IMPORTS`, so neither can be written
+inside the governed package at all. The structural import guard is what holds
+them, not rule 5.
+
+**Not fixed here**, deliberately. Covering `itemgetter` means reading which
+argument of an arbitrary callable is the mapping, and covering `getattr_static`
+means naming a third reflective reader whose import is already banned. Recording
+them means the next reader who widens `ALLOWED_IMPORTS` knows what widening costs.
+
+**Closes when:** either `operator` or `inspect` is proposed for the allowlist, at
+which point the corresponding spelling needs a rule and a fixture.
+
+---
+
+## R-32. A container built by a comprehension binds none of its elements
+
+**Found:** during the U34 round 5 verification, restated in round 7, 2026-08-04.
+
+`_elements` reads a list, tuple, set or dict LITERAL and reads nothing else, so a
+container built by a comprehension binds no element and a lookup through it
+resolves to nothing:
+
+```python
+class Row:
+    def __init__(self):
+        self.mods = [config for _ in range(1)]
+
+    def go(self, cfg):
+        self.mods[0].save(cfg)
+```
+
+Measured `[]` by all three guards, and identically quiet in round five, so this
+is a standing limit rather than a regression either round introduced.
+
+**Not fixed here**, deliberately. A comprehension is a scope with its own binding
+table and its element is an expression evaluated once per iteration, so reading
+one means resolving the comprehension's own target bindings and then deciding
+which iteration's value the subscript names. `MODS = [config]` and `MODS =
+[[config]]` are the shapes an ordinary refactor produces and both are covered.
+
+**Closes when:** whichever unit next widens the binding table decides a
+comprehension's elements are worth a scope walk of their own.
+
+---
+
+## R-33. A class rebound after its own definition is no longer reachable by name
+
+**Found:** during the U34 round 7 fix, 2026-08-04, and it is a coverage TRADE
+rather than a discovery: round six caught this shape and round seven does not.
+
+A class is identified by its DEFINITION SITE now, and its NAME is an ordinary
+lexical binding whose value is that identity. That is what lets a parameter
+called `Keeper` take the name back, which round six could not do, and what keeps
+two factories that each return a `Keeper` apart. It costs one shape, measured
+against the real `aging` on both sides:
+
+```python
+class Keeper:
+    mod = config
+
+
+Keeper = dataclass(Keeper)          # a decorator applied by hand
+
+
+def go(cfg):
+    Keeper.mod.save(cfg)            # FIRES at round 6, quiet at round 7
+```
+
+The `class` statement and the assignment are two bindings of one name that do
+not agree, so the name settles to neither. `dataclass` really does hand the same
+class back, so the write is real and is missed. Round six kept it only because it
+keyed the attribute as flat TEXT and a rebinding of the name was invisible to
+that reading, which is the same reading that reported `def go(Keeper)` as a write.
+
+### What is still open, named one spelling at a time
+
+The wording above said "a class rebound after its own definition", which is a
+sentence three more spellings fall inside without being measured or named. Round
+eight drove all three against the real `aging`, executed each one to confirm
+`Keeper.mod is config` at runtime, and they are quiet:
+
+```python
+Keeper = type("Keeper", (Keeper,), {})   # a subclass built by hand
+Keeper = _wrap(True)(Keeper)             # a decorator factory applied by hand
+Keeper = dataclass(Keeper)               # the original, above
+```
+
+All three are the same undecidable question and all three are still open. Naming
+them is the point: a residual whose wording covers a shape nobody measured is a
+residual that cannot be checked.
+
+### What round eight closed, and why those two were never undecidable
+
+Two shapes were inside this finding's wording, or next to it, and neither needed
+a decision about what a callee hands back. Both are fixed and both have fixtures.
+
+```python
+if flag:                    # only ONE arm runs, so nothing took the name
+    class Keeper:
+        mod = config
+else:
+    class Keeper:
+        pass
+
+
+Keeper = Keeper             # both bindings ARE the same class
+```
+
+The conditional one was worse than a miss: **this finding said it went quiet
+correctly, and that judgement was transferred rather than measured.** The
+`AttributeError` reasoning below is true of two `class Keeper` statements in ONE
+statement list, where the first is genuinely unreachable. In two arms of a
+conditional only one arm runs, there is no `AttributeError`, and the write is
+real. The sentence naming that shape as correct is withdrawn.
+
+`Keeper = Keeper` needs no reading of a callee at all: a statement whose right
+hand side is the spelling of its own target cannot change what the target is
+bound to, whatever it was bound to.
+
+`if flag: Keeper = dataclass(Keeper)` is closed as well, and for a third reason
+again: a veto cast inside an arm a run can skip is not a veto that run cast, so
+the name is still the class on the path that skipped it. The UNCONDITIONAL
+spelling, the one at the top of this finding, is untouched.
+
+### What still goes quiet CORRECTLY
+
+Three neighbouring shapes were measured and are right to be silent: reading
+`Keeper.mod` where a later `class Keeper` in the SAME STATEMENT LIST has taken
+the name (an `AttributeError` at runtime), reading a factory's local class from
+outside the factory (a `NameError`), and reading `Outer.Keeper.mod` where `Outer`
+is a parameter.
+
+**Not fixed here** for the three wrapper spellings. Closing them means deciding
+whether an arbitrary callee hands its argument back, which is the same undecidable
+question the residual titled "One reflective call shape stays out of reach, and it
+is named" declines to answer for `map(getattr(p, n), items)`. The decorated
+spelling that an author actually writes, `@dataclass` above the class, is covered
+and has a fixture.
+
+**The word "only" was withdrawn, because it covered five shapes nobody had
+measured.** A residual whose wording covers a shape nobody measured is a residual
+that cannot be checked, which is this finding's own rule applied one level in.
+Five further spellings were quiet and none of them is a wrapper:
+
+```python
+Keeper = Keeper or None                  # FIXED, fires
+Keeper = Keeper if True else None        # FIXED, fires
+Keeper = (Keeper,)[0]                    # still quiet
+Keeper = [Keeper][0]                     # still quiet
+Keeper = getattr(_m, "Keeper", Keeper)   # still quiet
+```
+
+The first two are not undecidable by this finding's own standard. `_bound_value`
+already reads `or` and a conditional expression through, on the stated rule that a
+value reachable on one path is reachable, and a class object is always truthy
+besides. Executed, both leave `Keeper.mod is config` True. `_rebound_to_itself`
+reads the ALTERNATIVES of the right hand side now rather than one spelling of it,
+and both fire.
+
+**Three remain quiet and are named rather than covered by a word.** A container
+literal that is immediately subscripted at a constant index is decidable and is
+not read: `_bound_value` renders no key for `(Keeper,)[0]`, because the base of
+the subscript is a literal rather than a receiver. `getattr(_m, "Keeper", Keeper)`
+is a call, so it stays on the undecidable side of the line this finding already
+draws, even though the target's own spelling appears in it as the default.
+
+**Closes when:** either a bounded reading of "this call returns its argument"
+exists, or `_bound_value` learns a constant-indexed container literal, or the
+remaining spellings are accepted permanently. The natural owner is whichever unit
+next widens the binding table.
+
+---
+
+## R-34. A base binding reachable only through a branch is read as unreachable
+
+**Found:** during the U34 round 9 fix, 2026-08-04. It is the stated cost of the
+path model that closed round nine's first finding, chosen in the direction that
+misses rather than the direction that fires on ordinary code.
+
+An attribute set inside a base class's `__init__` is reachable from a subclass
+only when something on the running path actually runs that `__init__`. Round nine
+reads two suppliers: an UNCONDITIONAL chaining call in the scope doing the
+overriding, and an attribute the class body already binds. Three shapes fall
+outside both and go quiet.
+
+**One.** The chaining call lives in the other arm of the same conditional:
+
+```python
+class Row(Base):
+    def __init__(self, raw):
+        if raw:
+            self.mod = dict(raw)
+        else:
+            super().__init__()      # the module IS reachable on this arm
+
+    def go(self, cfg):
+        return self.mod.save(cfg)   # quiet, and it is a real write
+```
+
+**Two.** The base binds the attribute in a method the subclass calls by some name
+other than `__init__`:
+
+```python
+class Base:
+    def setup(self):
+        self.mod = config
+
+
+class Row(Base):
+    def __init__(self, raw):
+        super().setup()
+        if raw:
+            self.mod = dict(raw)
+```
+
+**Three.** A `del` of an instance attribute with nothing under it still reports
+whatever the constructor bound, because the restore is a FILL rather than an
+overwrite:
+
+```python
+class Deleter:
+    def __init__(self):
+        self.mod = config
+
+    def go(self, cfg):
+        del self.mod
+        return self.mod.save(cfg)   # AttributeError at runtime, reported anyway
+```
+
+The third is a false positive rather than a miss, and it is the pre-existing
+answer rather than one round nine introduced: the shape reported the same thing
+before `del` was read at all. It is named here rather than left silent because the
+`del` rule now sits beside it and a later reader would otherwise take the fill
+semantics for a judgement about this shape.
+
+**Not fixed here**, deliberately, for the first two. Both need PATH modelling
+inside a method rather than a fact about the method: which arm binds what, and
+which arm the read is reachable from. The unconditional reading is chosen because
+its error is a miss, and a guard that fires on ordinary code is not a lesser
+failure than one that misses. The third needs the same modelling from the other
+side, since the delete and the read are ordered within one method.
+
+**Closes when:** whichever unit next widens the binding table gives a method body
+an ordering rather than a set. All three shapes have a spelling above, so a later
+round can drive them without re-deriving them.
+
+## R-35. Two write-path enumerations still read an unreadable node as an absent one
+
+**Found:** during the U34 round 10 fix, 2026-08-09, while looking for the same
+shape as this round's classification defect one file over. Both instances are in
+`cratekit.write`, on the WRITE path, which this read-only unit does not own.
+
+The reports side is fixed at the classification: `rbxml.node_kind` has three
+answers, and `reports.export` refuses a document carrying a node whose kind it
+could not read rather than filing it as a folder. Two enumerations in the write
+path still ask the question as a positive filter, so a node whose kind is
+unreadable simply is not there. Both are measured rather than argued.
+
+**One, and it is the one that decides where a write lands.** `rbxml._tree_node`
+infers the enclosing tree when a caller names none, and it refuses when the
+playlist root holds more than one folder because the answer would be a guess.
+Driven on a document with two root folders:
+
+```
+healthy:                      the enclosing tree was not named and the playlist
+                              root holds 2 folders, so it cannot be inferred
+one root folder unreadable:   BY GENRE + ENERGY
+```
+
+Making one of the two unreadable does not make the inference harder, it makes it
+succeed. The ambiguity the refusal exists for is invisible, so the write proceeds
+into the folder that happened to stay readable.
+
+**Two.** `trees._tree_folders` enumerates a tree's genre folders by the same
+positive filter. Driven on a three-folder tree with one folder's `Type`
+unreadable, the enumeration returns two of the three, so a sweep over "every
+genre folder" walks past one and reports that it changed nothing there, and the
+duplicate-name check that follows cannot see the folder it did not enumerate.
+
+**Not fixed here**, and the reason is scope rather than difficulty. Both sites
+are one call to `rbxml.node_kind` away from being able to tell the third state,
+and neither can be given a REFUSAL from this unit: `_tree_node` and
+`_tree_folders` are reached by the tree writers, the vocal sweep and the label
+tree builder, all of which belong to other units, and a new refusal on a write
+path is exactly where this project has already over-corrected once. The cost is
+also asymmetric with the reports one: a report that renders clean over a library
+it could not read is a wrong answer nobody can see, while these two produce a
+write that lands somewhere defensible and an enumeration that is short.
+
+**Closes when:** whichever unit next touches the tree writers gives both
+enumerations the three-valued kind, and decides per site whether an unreadable
+node is a refusal or a reported skip. The two probes above reproduce both in a
+dozen lines against `tests/xml_fixtures.py`.
+
+## R-36. An extra node close is accepted, and both reports render over a re-parented tree
+
+**Found:** U34 round 10 independent verification, 2026-08-10. Full drive in
+`docs/u34-round-10-verification.md`, finding 1.
+
+`rbxml` never round trips through a tree serializer, by documented design, so no
+XML parser validates the playlist tree. `matching_close` counts depth forwards
+from a node's open tag, so one stray `</NODE>` lands a folder's close early and
+everything after it is re-attached to the root.
+
+**Measured cost, on the reports suite's own export with one close inserted.**
+`read_export` ACCEPTS the document. The document declares `ROOT Count="2"` while
+the walk finds 6, and `INBOX Count="5"` while the walk finds 1. Intake aging
+falls from 5 groupings, 3 of them expired, to 1 grouping. The duplicate audit
+reports two placements that exist nowhere in the library, and that audit feeds a
+queue whose accepted verdict licenses a deletion surface.
+
+**Why it is a residual and not a blocker.** The second floor condition is
+withdrawn on reachability. Four producer candidates were driven and none emits
+the input: every real splicer on the write path, every persist route, which is
+`config.atomic_write_bytes` with `mkstemp` then `fsync` then `os.replace` so a
+partial document cannot survive, and rekordbox itself, measured on two real
+7.2.17 exports of 56 MB each, both balanced at 28189 paired opens and closes,
+zero raw brackets in names, zero declared counts disagreeing across 28250 nodes.
+
+The predecessor's mechanism IS live and was reproduced: `DJ_common.rbxml.remove_folder_node`
+bounds an open tag with a `find(b">")` that is not quote aware, and on a child
+name carrying a literal `/>` it returns 2 opens against 3 closes. Cratekit's
+successor returns a balanced document on the identical input, and both escapers
+write the bracket escaped, so neither tool can create the byte.
+
+**Stated as METHOD's first pattern demands:** four driven candidates do not
+produce it, which is not the same as nothing produces it. A hand edited export
+is the one open route and it is UNMEASURED.
+
+**What closes it:** the check measured in the same report. `read_export` already
+runs the identical declared count check on the COLLECTION section. Reading the
+same declaration on playlist nodes refuses both stray shapes, costs the suite
+zero when ordered after the unreadable kind refusal, and produced zero false
+refusals across 28250 nodes on each real export. It cannot land alone: see the residual titled "A create path does not bump the count it invalidates".
+
+## R-37. Half of the new refusal's detail payload is asserted and half is not
+
+**Found:** U34 round 10 independent verification, 2026-08-10, finding 3.
+
+Dropping the `found` key from the refusal detail kills zero on the full suite,
+row V18. Its sibling V17, dropping `nodes`, kills 3. Half the payload the
+refusal emits is pinned and half is free to change or vanish.
+
+**Measured cost: none on the shipped branch.** No caller reads `found` yet.
+
+**What closes it:** one assertion over the key, or a wire format pin over the
+whole detail mapping.
+
+## R-38. The word a write refusal uses for a folder is not pinned
+
+**Found:** U34 round 10 independent verification, 2026-08-10, finding 4.
+
+`KIND_FOLDER`'s value reaches a write refusal and row V09 kills zero. The
+composite shows the sentence is load bearing: V39, rewording the whole sentence,
+kills 2; V13 kills 1; V10, the same mutation on `KIND_PLAYLIST`, kills 1. The two
+constants are symmetric in the code and asymmetric in coverage.
+
+**Measured cost: none directly.** A refusal message a user reads could change
+wording without a test noticing.
+
+**What closes it:** assert the folder spelling the way the playlist spelling is
+already asserted.
+
+## R-39. The new refusal has no fixture carrying exactly one unreadable node
+
+**Found:** U34 round 10 independent verification, 2026-08-10, finding 5.
+
+Row V50, narrowing the refusal to `if unreadable[:-1]:`, kills zero on the full
+suite. The composite V51, never refusing at all, kills 3. Every parametrized case
+uses `.replace(old, new)` with no count, so all seven playlists are retyped at
+once and the boundary at exactly one unreadable node is never exercised.
+
+**Measured cost: none observed.** The refusal does fire; only its boundary is
+unpinned.
+
+**What closes it:** one fixture that retypes a single node.
+
+## R-40. Two membership tests can be widened with the whole suite green
+
+**Found:** U34 round 10 independent verification, 2026-08-10, finding 6.
+
+`has_folder` matching anywhere in a path, row V22, and the grouping filter
+reading `path` rather than `path[:-1]`, row V28, both kill zero. The composites
+V40, V41 and V42 kill 23, 2 and 5, so both predicates are load bearing while
+neither boundary is pinned.
+
+**Measured cost: none observed on this branch.** A widened `has_folder` would
+match a folder nested under another of the same name.
+
+**What closes it:** a fixture with a same named nested folder, and one asserting
+the grouping filter's last path element.
+
+## R-41. The round's own table was thirty rows against an independent fifty
+
+**Found:** U34 round 10 independent verification, 2026-08-10, finding 7.
+
+The author's table carries 30 rows and 4 zero rows. The independent table carries
+50 distinct rows plus 4 untracked composites, and 11 zero rows. Eight of the
+eleven are guards the author's own round created and his table did not mutate.
+
+This is the fourth measured instance of the same gap on this project, after 10
+against 17, 39 against 49 and 49 against 83. It is recorded as evidence for the
+standing rule that an author's table is a draft, not as a defect in this branch.
+
+**Measured cost: none.** Documentary.
+
+## R-42. A create path does not bump the count it invalidates, and it is live on main
+
+**Found:** U34 round 10 independent verification, 2026-08-10, finding 9, while
+measuring false refusals for the R-35 fix. Belongs to U18's surface, not U34's:
+`f8ac564` landed `write/rbxml.py` and `write/trees.py`.
+
+`insert_empty_subplaylist` inserts a child and calls `_bump_count(folder, +1)`.
+`splice_into_subplaylist`'s `create_missing` path inserts the same child and
+bumps nothing, leaving the folder declaring one fewer child than it holds. Driven:
+`BY GENRE / Deep House` declares 1 while holding 2. `trees.apply_unplaced_changes`
+passes `create_missing=True`, so the unplaced routing pass is a live production
+caller and this is on `main` today.
+
+The module's own docstring states the rule it breaks: a folder's `Count` is
+advisory because rekordbox recounts children on import, and "the writers that add
+or remove a whole child do keep it accurate".
+
+**Measured cost to a user today: close to none**, on the docstring's claim that
+rekordbox recounts a folder's children. That claim is UNMEASURED here; what was
+measured is that rekordbox itself never emits a disagreeing count, 0 of 28250
+nodes on each of two real exports.
+
+**The cost that matters is a coupling.** The reader check described in the residual titled "An extra node close is accepted, and both reports render over a re-parented tree" refuses documents whose
+declared count disagrees with the walk, so landing it while this stands makes
+Cratekit refuse documents Cratekit itself wrote. The two land together, or the
+writer lands first.
+
+**What closes it:** bump the folder count on the `create_missing` path, then land
+the reader check.
+
+## R-43. Fixed string reading and regex reading are indistinguishable to the suite
+
+**Found:** U34 round 11, 2026-08-10, while measuring the round's own guard. Named
+by that round as unmeasured rather than discovered later.
+
+The `-F` flag on the guard's git read is not pinned. Rows C05 and C06 kill 5
+each, so no input in the suite distinguishes reading the tag as a fixed string
+from reading it as a regular expression.
+
+**Measured cost: none today.** The unit commit tag `(U34)` contains parentheses,
+which are regex metacharacters, so a switch to regex reading would change what
+the tag matches. Nothing currently produces a tag where the two readings differ.
+
+**What closes it:** one commit tag containing a metacharacter whose two readings
+disagree, asserted.

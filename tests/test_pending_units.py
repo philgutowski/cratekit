@@ -39,7 +39,6 @@ EXPECTED_PENDING = frozenset(
         "cratekit.intake.collection_xml",  # U37, the COLLECTION emitter
         "cratekit.acquire.match_cli",  # U16, R11's three states, split as U11 declared
         "cratekit.deletion.cli",  # U24, declines and tombstones through the decision stores
-        "cratekit.modules.reports",  # U34, R26's duplicate audit as review items
         "cratekit.adopt",  # U23, R26's adoption plan as review items
         "cratekit.intake",  # U37, path repair proposals as review items
         "cratekit.cli.doctor",  # U27, the health check
@@ -48,6 +47,7 @@ EXPECTED_PENDING = frozenset(
         "cratekit.write.routing_cli",  # U20, the route.* verbs and the gated close
         "cratekit.cli.rebuild",  # U20, the rebuild verb and its named disposition
         "cratekit.session.restore_cli",  # U27, the restore verbs and the one held session
+        "cratekit.cli.reports",  # U27, the four report verbs and two missing engines
     }
 )
 
