@@ -202,10 +202,22 @@ own venv:
 - **No em dashes, no en dashes, no double hyphens** in prose, comments, commit
   messages or issue bodies.
 - **U24 and U27 merge WITHOUT closing trailers.** GitHub matches a closing
-  keyword anywhere in a body, not only in trailer position. Before any merge
-  commit, confirm this returns nothing:
+  keyword anywhere in a body, not only in trailer position, and it scans **every
+  commit in the pushed range**, not only the merge commit. Scan the RANGE:
 
-      git log -1 --format=%B | grep -inE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b[[:space:]]*#[0-9]+'
+      git log origin/main..main --format=%B | grep -inE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b[[:space:]]*#[0-9]+'
+
+  **The `git log -1` form of this check is insufficient and it failed on
+  2026-08-10.** U24's merge commit deliberately carried no trailer and passed
+  that check, and issue #24 closed anyway on the push, because two commits from
+  much earlier in the branch contain the strings `CLOSES #24 IS NOT SAFE` and
+  `a Closes #24 trailer would`. Both were written to explain why a trailer must
+  not be used here, and both fired it.
+
+  A branch already carrying such a string in its history cannot be made safe by
+  the merge commit. Either rewrite those commit bodies before merging, or expect
+  the close and reopen the issue immediately after the push, which is what was
+  done on 2026-08-10.
 
 - **Residual numbers are APPEND ONLY. A number, once given, is that finding's
   for life.** Decided 2026-08-10, reversing the sequential renumber decided
