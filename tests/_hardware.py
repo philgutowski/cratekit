@@ -40,8 +40,11 @@ written by ``scripts/calibrate_timing.py`` on a QUIET machine, never while
 other agents run. A threshold for a timing verification is expressed as a
 multiple of the calibrated median through ``threshold_seconds``, so the number
 in a claim says how much slack it gets relative to the machine that measured
-it, not an absolute guess that breaks on the next machine. Recalibrate when
-the machine changes.
+it, not an absolute guess that breaks on the next machine. The calibration is
+BOUND to the machine that wrote it: loading it checks the stored interpreter
+and CPU facts against the running machine and refuses a mismatch, because a
+threshold derived from another machine's speed is a confident number about
+the wrong machine. Recalibrate when the machine changes.
 """
 
 from __future__ import annotations
@@ -63,6 +66,11 @@ from pathlib import Path
 
 CALIBRATION_PATH = Path(__file__).resolve().parent / "fixtures" / "timing_calibration.json"
 CALIBRATION_SCHEMA = 1
+
+# A calibration whose runs spread wider than this was not taken on a quiet
+# machine, and writing it would silently loosen every threshold derived from
+# it. The gate lives on the write path, not beside it.
+SPREAD_LIMIT = 0.25
 
 # newfs_msdos refuses FAT32 below roughly 33 MB. The probe on 2026-08-13 saw a
 # 8 MB request die inside hdiutil with a summary line blaming permissions, so
@@ -91,6 +99,16 @@ class TimingTable:
     threshold_seconds: float
     durations: tuple[float, ...]
 
+    def __post_init__(self) -> None:
+        # The runner cannot produce a mismatch, but this constructor is public,
+        # and a record whose headline count disagrees with its own evidence
+        # would be quotable as a row. The record holds the invariant itself.
+        if self.repeats < 1 or self.repeats != len(self.durations):
+            raise ValueError(
+                f"repeats is {self.repeats} but {len(self.durations)} durations were "
+                "recorded; a timing record carries exactly the runs it measured"
+            )
+
     @property
     def passes(self) -> int:
         return sum(1 for d in self.durations if d <= self.threshold_seconds)
@@ -110,7 +128,7 @@ class TimingTable:
     def row(self) -> str:
         """The one line a report quotes: count, threshold, rate, median, worst."""
         return (
-            f"{self.passes}/{self.repeats} under {self.threshold_seconds:.4f}s "
+            f"{self.passes}/{self.repeats} within {self.threshold_seconds:.4f}s "
             f"(pass rate {self.pass_rate:.2f}, median {self.median_seconds:.4f}s, "
             f"worst {self.worst_seconds:.4f}s)"
         )
@@ -205,13 +223,36 @@ class Calibration:
     repeats: int
     captured: str
     relative_spread: float
+    python_version: str
+    cpu_count: int
 
 
-def write_calibration(payload: dict, path: Path = CALIBRATION_PATH) -> None:
+def write_calibration(payload: dict, path: Path = CALIBRATION_PATH, *, force: bool = False) -> None:
+    """Store a calibration, refusing one whose spread says the machine was not quiet.
+
+    The refusal sits here rather than in the calling script because this is
+    the one function every calibration passes through on its way into the
+    tree. ``force`` exists for a human who has read the spread and decided to
+    keep it anyway, and for nothing else.
+    """
+    spread = float(payload["relative_spread"])
+    if spread > SPREAD_LIMIT and not force:
+        raise ValueError(
+            f"relative spread {spread:.3f} is over {SPREAD_LIMIT}, so this machine was "
+            "not quiet; rerun on a quiet machine, or force past this refusal knowingly"
+        )
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
 def load_calibration(path: Path = CALIBRATION_PATH) -> Calibration:
+    """Load a stored calibration, refusing one another machine wrote.
+
+    The payload records the interpreter version and CPU count at capture time.
+    Checking them here is what makes those fields identity rather than
+    decoration: a baseline from a faster or slower machine turns every derived
+    threshold into a confident number about the wrong machine, in whichever
+    direction it is wrong.
+    """
     data = json.loads(path.read_text())
     if data.get("schema") != CALIBRATION_SCHEMA:
         raise ValueError(
@@ -221,11 +262,25 @@ def load_calibration(path: Path = CALIBRATION_PATH) -> Calibration:
     median_seconds = float(data["seconds"]["median"])
     if median_seconds <= 0:
         raise ValueError(f"calibrated median {median_seconds} is not a duration")
+    stored_python = str(data["python"])
+    stored_cpus = int(data["cpu_count"])
+    running_python = platform.python_version()
+    running_cpus = os.cpu_count()
+    same_interpreter = stored_python.split(".")[:2] == running_python.split(".")[:2]
+    if not same_interpreter or stored_cpus != running_cpus:
+        raise ValueError(
+            f"this calibration was captured on python {stored_python} with "
+            f"{stored_cpus} CPUs and this machine runs python {running_python} with "
+            f"{running_cpus}; a baseline from a different machine sizes every "
+            "threshold wrongly, so re-run scripts/calibrate_timing.py here"
+        )
     return Calibration(
         median_seconds=median_seconds,
         repeats=int(data["repeats"]),
         captured=str(data["captured"]),
         relative_spread=float(data["relative_spread"]),
+        python_version=stored_python,
+        cpu_count=stored_cpus,
     )
 
 
@@ -268,12 +323,26 @@ def _mount_entry(mountpoint: Path) -> str:
     The path is resolved first because the temp root this module mounts under
     is reached through a symlink on macOS, and the mount table records the
     real path.
+
+    Each line reads ``device on path (attrs)``. The path is taken as
+    everything between the first `` on `` and the LAST attribute group, then
+    compared EXACTLY, never as a substring. macOS mounts a second volume with
+    a duplicated label at ``NAME (1)``, so a substring match asked about an
+    absent ``NAME`` would return the sibling's entry, which answers "is this
+    volume here" falsely, and a parenthesis inside the path would shear the
+    parse at the wrong bracket.
     """
     resolved = str(Path(mountpoint).resolve())
     for line in _run(["mount"]).stdout.splitlines():
-        marker = f" on {resolved} ("
-        if marker in line:
-            return line.split("(", 1)[1].rsplit(")", 1)[0]
+        if " on " not in line or not line.endswith(")"):
+            continue
+        rest = line.split(" on ", 1)[1]
+        attrs_at = rest.rfind(" (")
+        if attrs_at < 0:
+            continue
+        path = rest[:attrs_at]
+        if path == resolved:
+            return rest[attrs_at + 2 : -1]
     raise LookupError(f"nothing in the mount table is mounted at {resolved}")
 
 
@@ -296,7 +365,9 @@ def _detach(mountpoint: Path) -> None:
 
     A just used mount can hold a straggling reference for a moment, which
     makes the first detach report resource busy. Retries absorb that, and the
-    force is last because it is the option that can strand a dirty buffer.
+    force is last because it is the option that can strand a dirty buffer,
+    which is why ``read_only_volume`` verifies content after its remount
+    rather than trusting whichever path this took.
     """
     for _ in range(_DETACH_ATTEMPTS):
         try:
@@ -305,6 +376,41 @@ def _detach(mountpoint: Path) -> None:
         except RuntimeError:
             time.sleep(_DETACH_WAIT_SECONDS)
     _run(["hdiutil", "detach", str(mountpoint), "-force"])
+
+
+def _remove_workdir(workdir: Path, mountpoint: Path) -> None:
+    """Delete the fixture's scratch, but never through a live mount.
+
+    When every detach attempt failed, the volume is still attached, and an
+    rmtree from above would descend INTO it: it would delete the mounted
+    volume's contents, unlink the backing image out from under the kernel,
+    and then swallow the one error naming the mountpoint. Leaving the workdir
+    in place keeps the evidence a human needs to detach and diagnose.
+    """
+    if not os.path.ismount(mountpoint):
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+# Directories the platform writes onto a volume on its own. The manifest
+# ignores exactly these names at the top level, so it pins what ``populate``
+# declared without flagging the indexer's droppings.
+_PLATFORM_NOISE = frozenset(
+    {".fseventsd", ".Spotlight-V100", ".Trashes", ".TemporaryItems", ".DS_Store"}
+)
+
+
+def _content_manifest(root: Path) -> dict[str, str]:
+    """Every file under ``root`` mapped to its content digest, platform noise excluded."""
+    import hashlib
+
+    manifest: dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        if relative.parts[0] in _PLATFORM_NOISE:
+            continue
+        if path.is_file():
+            manifest[str(relative)] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return manifest
 
 
 @contextmanager
@@ -339,7 +445,7 @@ def fat_volume(*, size_mb: int = 64, label: str = "CKFAT") -> Iterator[Path]:
         finally:
             _detach(mountpoint)
     finally:
-        shutil.rmtree(workdir, ignore_errors=True)
+        _remove_workdir(workdir, mountpoint)
 
 
 @contextmanager
@@ -352,6 +458,12 @@ def read_only_volume(
     remounted with the readonly option. HFS plus is the image format because
     it mounts as a single volume with no container indirection, and what the
     consumers assert is mount level refusal, not filesystem flavor.
+
+    What ``populate`` wrote is fingerprinted before the writable detach and
+    verified after the readonly remount. The detach between the two mounts
+    can end on a forced path that strands unflushed data, and without this
+    check the fixture would serve a clean looking volume missing part of what
+    the caller declared, which is a measurement corrupted by its own fixture.
     """
     workdir = Path(tempfile.mkdtemp(prefix="cratekit-ro-"))
     image = workdir / "volume.dmg"
@@ -367,6 +479,8 @@ def read_only_volume(
         _run(["hdiutil", "attach", str(image), "-mountpoint", str(mountpoint), "-nobrowse", "-quiet"])
         try:
             populate(mountpoint)
+            declared = _content_manifest(mountpoint)
+            os.sync()
         finally:
             _detach(mountpoint)
         _run(
@@ -376,8 +490,18 @@ def read_only_volume(
             ]
         )
         try:
+            served = _content_manifest(mountpoint)
+            if served != declared:
+                missing = sorted(set(declared) - set(served))
+                changed = sorted(
+                    name for name in set(declared) & set(served) if declared[name] != served[name]
+                )
+                raise RuntimeError(
+                    "the readonly remount does not serve what populate declared; "
+                    f"missing: {missing or 'none'}; changed: {changed or 'none'}"
+                )
             yield mountpoint
         finally:
             _detach(mountpoint)
     finally:
-        shutil.rmtree(workdir, ignore_errors=True)
+        _remove_workdir(workdir, mountpoint)

@@ -10,9 +10,10 @@ spread in ``tests/fixtures/timing_calibration.json``, which is the baseline
 
 Calibrate on a QUIET machine, never while other agents or heavy jobs run: the
 baseline is meant to capture the machine, and a loaded machine writes a slow
-baseline that then quietly loosens every threshold derived from it. The
-relative spread is printed so an unquiet run is visible. Treat a spread over
-about 0.25 as a reason to rerun, not a number to commit.
+baseline that then quietly loosens every threshold derived from it. A spread
+over the limit REFUSES to write and exits nonzero; the refusal lives in
+write_calibration itself, and the flag that overrides it exists for a human
+who has read the spread and decided to keep it anyway.
 """
 
 from __future__ import annotations
@@ -32,6 +33,11 @@ def main(argv: list[str]) -> int:
         default=25,
         help="how many times to run the reference workload (default 25)",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="write even when the spread says the machine was not quiet",
+    )
     args = parser.parse_args(argv)
 
     sys.path.insert(0, str(REPO_ROOT))
@@ -44,9 +50,11 @@ def main(argv: list[str]) -> int:
     print(f"min seconds:     {seconds['min']:.4f}")
     print(f"max seconds:     {seconds['max']:.4f}")
     print(f"relative spread: {payload['relative_spread']:.3f}")
-    if payload["relative_spread"] > 0.25:
-        print("WARNING: spread over 0.25, the machine does not look quiet; rerun before committing")
-    write_calibration(payload, CALIBRATION_PATH)
+    try:
+        write_calibration(payload, CALIBRATION_PATH, force=args.force)
+    except ValueError as refusal:
+        print(f"REFUSED: {refusal}")
+        return 1
     print(f"wrote {CALIBRATION_PATH.relative_to(REPO_ROOT)}")
     return 0
 

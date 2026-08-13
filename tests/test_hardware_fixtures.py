@@ -22,6 +22,9 @@ from tests._hardware import (
     CALIBRATION_SCHEMA,
     FAT32_MIN_MB,
     TimingTable,
+    _content_manifest,
+    _detach,
+    _run,
     calibrate,
     fat_volume,
     filesystem_kind,
@@ -66,6 +69,16 @@ class ScriptedClock:
     def __call__(self) -> float:
         return next(self._readings)
 
+    def assert_exhausted(self) -> None:
+        """Fail if the runner read fewer instants than the script provided.
+
+        Without this, a test that scripts more durations than repeats passes
+        silently against a partial script and its assertions go quietly
+        vacuous for the tail.
+        """
+        leftover = list(self._readings)
+        assert not leftover, f"{len(leftover)} scripted clock readings were never consumed"
+
 
 # ---------------------------------------------------------------------------
 # Timing arithmetic, no hardware and no sleeping.
@@ -83,6 +96,7 @@ def test_pass_rate_counts_only_runs_under_threshold() -> None:
     assert table.pass_rate == pytest.approx(0.6)
     assert table.median_seconds == pytest.approx(0.75)
     assert table.worst_seconds == pytest.approx(1.25)
+    clock.assert_exhausted()
 
 
 def test_row_reports_count_rate_median_and_worst_together() -> None:
@@ -116,6 +130,14 @@ def test_timing_table_keeps_every_duration() -> None:
     table = time_repeated(lambda: None, repeats=3, threshold_seconds=1.0, clock=clock)
     assert table.durations == pytest.approx((0.1, 0.2, 0.3))
     assert isinstance(table, TimingTable)
+    clock.assert_exhausted()
+
+
+def test_a_record_whose_count_disagrees_with_its_evidence_is_refused() -> None:
+    with pytest.raises(ValueError, match="exactly the runs it measured"):
+        TimingTable(repeats=2, threshold_seconds=1.0, durations=(0.1, 0.2, 0.3))
+    with pytest.raises(ValueError, match="exactly the runs it measured"):
+        TimingTable(repeats=0, threshold_seconds=1.0, durations=())
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +165,26 @@ def test_unknown_calibration_schema_is_refused(tmp_path: Path) -> None:
 def test_nonpositive_multiplier_is_refused() -> None:
     with pytest.raises(ValueError, match="positive"):
         threshold_seconds(0.0)
+
+
+def test_a_calibration_from_another_machine_is_refused(tmp_path: Path) -> None:
+    payload = calibrate(repeats=2)
+    payload["cpu_count"] = int(payload["cpu_count"]) + 1
+    stored = tmp_path / "cal.json"
+    write_calibration(payload, stored)
+    with pytest.raises(ValueError, match="different machine"):
+        load_calibration(stored)
+
+
+def test_an_unquiet_calibration_refuses_to_write(tmp_path: Path) -> None:
+    payload = calibrate(repeats=2)
+    payload["relative_spread"] = 0.5
+    stored = tmp_path / "cal.json"
+    with pytest.raises(ValueError, match="not quiet"):
+        write_calibration(payload, stored)
+    assert not stored.exists()
+    write_calibration(payload, stored, force=True)
+    assert stored.exists()
 
 
 def test_committed_calibration_loads() -> None:
@@ -212,3 +254,46 @@ def test_teardown_runs_when_the_body_raises() -> None:
             seen.append(mount)
             raise Boom()
     assert seen and not seen[0].exists()
+
+
+def test_content_manifest_pins_content_and_ignores_platform_noise(tmp_path: Path) -> None:
+    root = tmp_path / "vol"
+    (root / "sub").mkdir(parents=True)
+    (root / "a.txt").write_text("one")
+    (root / "sub" / "b.txt").write_text("two")
+    (root / ".fseventsd").mkdir()
+    (root / ".fseventsd" / "log").write_text("indexer droppings")
+    before = _content_manifest(root)
+    assert set(before) == {"a.txt", "sub/b.txt"}
+    (root / "a.txt").write_text("changed")
+    after = _content_manifest(root)
+    assert before["sub/b.txt"] == after["sub/b.txt"]
+    assert before["a.txt"] != after["a.txt"]
+
+
+def test_mount_lookup_is_exact_never_a_prefix(tmp_path: Path) -> None:
+    """The mount table answer for NAME must not come from a sibling NAME (1).
+
+    macOS mounts a second volume with a duplicated label at ``NAME (1)``, the
+    shape every rekordbox stick labeled PIONEER produces. A substring lookup
+    asked about the absent ``NAME`` would return the sibling's entry and
+    answer "is this volume here" falsely, which for the doctor's consumers is
+    the exact question.
+    """
+    _require_hdiutil()
+    image = tmp_path / "probe.dmg"
+    mountpoint = tmp_path / "PROBE (1)"
+    mountpoint.mkdir()
+    _run(
+        [
+            "hdiutil", "create", "-size", "64m",
+            "-fs", "MS-DOS FAT32", "-volname", "CKPROBE", "-quiet", str(image),
+        ]
+    )
+    _run(["hdiutil", "attach", str(image), "-mountpoint", str(mountpoint), "-nobrowse", "-quiet"])
+    try:
+        assert filesystem_kind(mountpoint) == "msdos"
+        with pytest.raises(LookupError):
+            filesystem_kind(tmp_path / "PROBE")
+    finally:
+        _detach(mountpoint)
