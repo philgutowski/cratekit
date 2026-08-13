@@ -60,6 +60,41 @@ Re-measure after any further round, since every added assertion moves it, and
 measure it on a COMMITTED tip: a merge run before its own round is committed
 measures the round before it, which is exactly what went wrong above.
 
+## What U30 changed
+
+**The one unit that modifies the OTHER repository.** All of U30's production
+code lives in DJ_tools (branch `unit/u30-overlap-ratchet`, merged to its main),
+because the unit's whole point is that R31's ratchet is enforced on both
+writers: the old system's lock now resolves to the same library-scoped file
+this system flocks, and its XML emission refuses any tree the registry has
+flipped. This repository's half is one pinning test and this record.
+
+**What DJ_tools now pins, by path, without importing this package:**
+
+- `.cratekit` as the library state dirname, with `local` and `coupled` beneath
+  it. `tests/test_config.py` pins those three names here, because renaming any
+  of them before DJ_tools retires would send its overlap guard at paths this
+  system no longer uses and the ratchet would disarm silently.
+- `local/write.lock`, flocked EX|NB, opened `a+`, never unlinked, dirs 0700 and
+  file 0600. Both writers contend on this exact file now, which is the real
+  half of AE19.
+- `local/session.lock` and its holder JSON shape. A DJ_tools refusal names the
+  Cratekit holder from it, rendered the way `Holder.describe` renders it.
+- `coupled/tree_registry.json` at schema version 2, with this reader's exact
+  refusal semantics ported: absent is the empty registry and default-safe,
+  anything untrustworthy refuses, a record with no mode never defaults to xml.
+  Bumping the registry schema before DJ_tools retires makes the old system
+  REFUSE its governed emissions, by design; that is the safe failure direction,
+  not a bug.
+
+DJ_tools' guard maps display names to the stable tree ids `genre_energy`,
+`inbox` and `record_labels` in code. A new governed tree cut over in the future
+needs that mapping extended in DJ_tools' `DJ_common/tree_guard.py`, or the old
+system will not know to refuse it. Its intake guard also reads
+`CRATEKIT_DOWNLOAD_STAGING` and `CRATEKIT_CONFIG_DIR` from its own environment
+to refuse overlapping intake roots, so an override set only in this system's
+shell is invisible to it; the config file is the value both sides can see.
+
 ## What U24 changed
 
 **Track deletion and tombstones, plus one verb.** `src/cratekit/deletion/` is seven
