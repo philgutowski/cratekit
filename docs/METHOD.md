@@ -251,6 +251,17 @@ own venv:
 
 - **Use git's merge algorithm only.** `diff3 -m` silently produces a broken
   merge of `tests/_pending.py`. Use a scratch clone and a real `git merge`.
+
+- **A countdown entry is discharged in TWO halves, and one half alone is worse
+  than neither.** When the merge lands a module `tests/_pending.py` was waiting
+  for, delete the register entry AND remove the `@requires(...)` decorator from
+  the guard it gated, in the same edit. Deleting only the entry makes
+  `requires` raise `KeyError` at import, which takes the guard's whole FILE out
+  of collection: on the U16 merge that was 330 tests that stopped existing while
+  the run still reported green. Deleting only the decorator leaves the meta test
+  red. Find every site with `grep -rn 'requires("<key>")' tests/` before
+  deleting anything, and run the armed guard on purpose, because it has never
+  executed once.
 - **Reconcile the collected count by identifier, not by total.** A total only
   check shows a healthy rise and hides a collapse.
 - **Run `git log origin/main..main` before any push,** not only before a push
