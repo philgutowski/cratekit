@@ -1,0 +1,15 @@
+{
+  "captured": "2026-08-13",
+  "cpu_count": 11,
+  "python": "3.12.5",
+  "relative_spread": 0.09756864526729403,
+  "repeats": 25,
+  "schema": 1,
+  "seconds": {
+    "max": 0.07152174998191185,
+    "mean": 0.06778210327611305,
+    "median": 0.068019208003534,
+    "min": 0.06488520800485276
+  },
+  "workload": "reference_workload, fixed interpreter bound loop with periodic sha256"
+}
