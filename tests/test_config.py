@@ -2131,3 +2131,19 @@ def test_a_naming_budget_that_is_not_an_integer_is_named_at_load(library, key):
     """
     problems = config.validate(valid_data(library, naming={key: "250"}))
     assert any(key in p for p in problems), problems
+
+
+def test_the_overlap_contract_names_are_pinned_while_the_old_system_reads_them():
+    """U30 taught the old system to open this system's lock and registry by path.
+
+    DJ_tools cannot import this package, so it spells ".cratekit", "local" and
+    "coupled" as constants of its own. Renaming any of them here before the old
+    system retires would send its overlap guard at paths this system no longer
+    uses, and the ratchet would disarm silently: the old system refuses only on
+    a registry it can find. The pin is mechanical rather than documented because
+    a documented contract is a thing somebody has to remember to check.
+    """
+    default = config.LibraryConfig.__dataclass_fields__["state_dirname"].default
+    assert default == ".cratekit"
+    assert config._LIBRARY_SUBDIR_BY_ROLE[config.SnapshotRole.NEVER_RESTORED] == "local"
+    assert config._LIBRARY_SUBDIR_BY_ROLE[config.SnapshotRole.COUPLED] == "coupled"
