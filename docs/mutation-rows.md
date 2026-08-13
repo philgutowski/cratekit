@@ -1016,3 +1016,375 @@ file rather than in one round's table:
   outside the driver**, with the fix committed first so that HEAD is the thing to
   compare against. That satisfies both standing rules at once: no git inside the
   driver, and no scratch copy certifying itself.
+## U16 round 6
+
+**Baseline: 3480 passed, 16 skipped.** Measured on branch
+`unit/u16-three-state-match-and-missing-review` at `b5532b6`, 2026-08-04. The
+pre-round baseline was 3442 passed, 16 skipped. Every number below was measured
+by applying the substitution, running the WHOLE suite, reading the count off the
+summary line, and restoring the file, with the tree verified byte identical to
+the committed one between rows. None is derived and none is remembered.
+
+**THIS FILE IS AN ADD/ADD CONFLICT AT MERGE, and the commit that created it said
+otherwise.** `b1ee22d`'s message says the file was "seeded from main so the merge
+is an append rather than a conflict". The seeding claim is true and was checked:
+this branch's first 242 lines are byte identical to main's file, which is 242
+lines long in total, so the resolution really is "take ours" and nothing of
+main's is lost. What is false is the conclusion. The file is ABSENT at the merge
+base `af1d7d2`, so both sides added it, and `git merge-tree main
+unit/u16-three-state-match-and-missing-review` reports `CONFLICT (add/add):
+Merge conflict in docs/mutation-rows.md` over the whole file. Git will not auto
+merge it. Whoever merges resolves it by keeping this side and reads no further,
+but they have to be told to, which is what this paragraph is for.
+
+**Why this section exists at all.** Three earlier rounds of this unit reported
+mutation tables in a commit message and in a review reply, and a fourth round's
+rows were reported in neither. Their ids, `M1..M19`, `N1..N6`, `U1..U6` and a set
+of `X` ids from a verification sweep, cannot be re-run from the repository,
+because a row id with no substitution beside it is not an experiment. The `M`,
+`N` and `U` rows are written out below, reconstructed against the current tree
+from the commit messages that named their intent, so that from this point on they
+are re-runnable by anyone. **The `X` ids are not here and cannot be**: their
+substitutions exist in no commit message, no document and no branch in this
+repository, so their counts, 43, 14, 9, 8, 8, 7, 5, 4, 4, 3, 3, 3, 3 and 2,
+cannot be confirmed by anybody, including whoever produced them. That is the
+finding, not an excuse for skipping it.
+
+### This round's rows
+
+| id | what the substitution reverts | file | measured kills |
+| --- | --- | --- | --- |
+| `K1` | the key question and the version question are one item again | `acquire/match.py` | 11 |
+| `K2` | `KEY_QUESTIONS` loses `KEY_RELATIVE` | `acquire/match.py` | 4 |
+| `K3` | `question_identity`'s version field is empty | `acquire/match.py` | 2 |
+| `K4` | a why with no shape gets a default instead of a refusal | `acquire/match.py` | 7 |
+| `K5` | `APPROXIMATE_FLOOR` drops from 82 to 41 | `acquire/match.py` | 1 |
+| `K6` | `DIGEST_WIDTH` drops from 16 to 8, so 64 bits become 32 | `acquire/match.py` | 1 |
+| `K7` | the scorer's limit coefficient becomes `APPROXIMATE_LIMIT * 4` | `acquire/match.py` | 1 |
+| `K8` | `STALLED` loses `VERDICT_UNSPECIFIC` | `acquire/match.py` | 1 |
+| `K9` | `adjudicate` drops `or not held.resolved` | `acquire/match_cli.py` | 1 |
+| `K10` | a tombstone over the OFFERED file is not reported | `acquire/match_cli.py` | 1 |
+| `K11` | the vocabulary narrows back to this module's own 17 words | `acquire/match.py` | 12 |
+| `K12` | the pending summary and step stop counting the ungated questions | `acquire/match_cli.py` | 1 |
+
+No zero-kill row.
+
+### This round's row definitions
+
+**`K1`.** In `question_identity`, delete the fourth field:
+
+        "key": key_token(key),
+    -   "asks": question_shape(why),
+        }
+
+**`K2`.** `KEY_QUESTIONS: frozenset[Why] = frozenset({Why.KEY_RELATIVE, Why.KEY_DIFFERS})`
+becomes `frozenset({Why.KEY_DIFFERS})`.
+
+**`K3`.** In `question_identity`, `"version": version_token(version),` becomes
+`"version": "",`.
+
+**`K4`.** In `question_shape`, `shape = _QUESTION_SHAPES.get(why)` becomes
+`shape = _QUESTION_SHAPES.get(why, ASKS_ABOUT_VERSION)`, so the refusal is
+unreachable and every non-question gets an item identity.
+
+**`K5`.** `APPROXIMATE_FLOOR = 82` becomes `APPROXIMATE_FLOOR = 41`.
+
+**`K6`.** `DIGEST_WIDTH = 16` becomes `DIGEST_WIDTH = 8`.
+
+**`K7`.** In `_approximate`, `limit=APPROXIMATE_LIMIT,` becomes
+`limit=APPROXIMATE_LIMIT * 4,`. A COEFFICIENT rather than a constant, and it is
+the first of the two spends the constant's own comment argues for.
+
+**`K8`.** `STALLED: frozenset[Why] = frozenset({Why.CANDIDATE_GONE, Why.VERDICT_UNSPECIFIC})`
+becomes `frozenset({Why.CANDIDATE_GONE})`.
+
+**`K9`.** In `adjudicate`, `if held is None or not held.resolved:` becomes
+`if held is None:`.
+
+**`K10`.** In `_warnings`, `for candidate in track.candidates:` becomes
+`for candidate in ():`, which is the whole candidate loop switched off.
+
+**`K11`.** `_DASH_VERSIONS: frozenset[str] = VERSION_WORDS | _DASH_VERSION_HEADS`
+becomes the literal 17-word set this module carried before the domain
+vocabulary was taken: `acoustic, bootleg, demo, dub, edit, extended,
+instrumental, live, mix, remaster, remastered, remix, reprise, rerecorded,
+rework, version, vip`.
+
+**`K12`.** In `_pending`, the `ungated` comprehension becomes
+`ungated: set[str] = set()`, which silences both the summary clause and the step.
+
+### The earlier rounds' rows, made re-runnable
+
+Reconstructed against `b5532b6` from the intents recorded in this unit's commit
+messages.
+
+**THE SENTENCE THAT USED TO BE HERE WAS WRONG AND ROUND 7 MEASURED IT.** It said
+the counts differ from the numbers those messages reported and that "every
+difference is attributable to tests this round added rather than to a row
+changing meaning". Driven with exactly round 6's 38 new node ids deselected, a
+set independently validated because the deselected suite totals 3442, which is
+the recorded pre-round baseline:
+
+| id | round 5 recorded | round 6 whole suite | round 6 with its own 38 deselected |
+| --- | --- | --- | --- |
+| `M1` | 12 | 28 | **14** |
+| `M4` | 12 | 28 | **14** |
+| `M6` | 10 | 23 | **12** |
+| `M2` | 13 | 28 | 13 |
+| `N3` | 2 | 4 | 2 |
+| `N4` | 2 | 16 | 2 |
+| `N5` | 1 | 2 | 1 |
+| `N6` | 7 | 10 | 7 |
+| `U6` | 1 | 2 | 1 |
+
+Six of the eight rows reduce EXACTLY, so for those the old sentence was right.
+For `M1`, `M4` and `M6` it was not: with round 6's own additions taken out they
+still kill two more each than round 5 recorded, so **six kills across three rows
+come from PRE EXISTING node ids**. Either round 5's counts were wrong when they
+were reported, or the reconstructed substitution is not the one round 5 ran. Both
+are possible and neither can be settled, because round 5's rows were reported in a
+commit message with no substitution beside them, which is the whole reason this
+file exists. What is recorded here is the measurement, not the smoothing.
+
+| id | what the substitution reverts | file | round 5 | now |
+| --- | --- | --- | --- | --- |
+| `N2` | a declared version drops the row's own title, credits and all | `match.py` | 4 | 4 |
+| `N3` | the undecidable reading composes addresses again | `match.py` | 2 | 4 |
+| `N4` | the ambiguous class gates the run again | `match_cli.py` | 2 | 16 |
+| `N5` | the ungated class is not reported on the warning channel | `match_cli.py` | 1 | 2 |
+| `N6` | `UNGATED` widens to the version question as well | `match_cli.py` | 7 | 10 |
+| `U1` | the candidate grouping is re-sorted rather than kept in order | `match.py` | 1 | 1 |
+| `U2` | the truncated offer reports nothing withheld | `match.py` | 2 | 2 |
+| `U3` | an identity with neither an artist nor a title is allowed | `match.py` | 1 | 1 |
+| `U4` | the URL check is not applied to a stripped name | `match_cli.py` | 1 | 1 |
+| `U5` | a document row carrying a line break becomes two tracks | `match.py` | 1 | 1 |
+| `U6` | a rejection never consults the tombstone store | `match.py` | 1 | 2 |
+| `M1` | the ambiguity question is reported as an approximate hit | `match.py` | 12 | 28 |
+| `M2` | the confirmed reading is a MATCH again | `match.py` | 13 | 28 |
+| `M4` | the other reading is never consulted at all | `match.py` | 12 | 28 |
+| `M5` | the bar drops to holding the head at ANY version | `match.py` | 4 | 4 |
+| `M6` | the ambiguity branch loses to the approximate pass | `match.py` | 10 | 23 |
+| `M8` | composition no longer requires the head to keep the credits | `match.py` | 8 | 8 |
+| `M9` | a credit is looked for only in a TRAILING group | `match.py` | 9 | 9 |
+| `M12` | an unlocatable version falls back to the whole spelling | `match.py` | 8 | 8 |
+| `M14` | nothing is a performer credit | `match.py` | 8 | 8 |
+| `M15` | only the parenthesised composition is composed | `match.py` | 7 | 12 |
+| `M19` | a null qualifier has one spelling | `match.py` | 5 | 5 |
+
+`N1` from round 5 is GONE and is not a loss. It reverted
+`TrackMatch.question_identity` to take the key from whichever branch the library
+chose, and the field it needed no longer exists. `K1` and `K2` assert the
+opposite property in its place: the identity does not read the library at all,
+and it does read which question is being asked. `M18` from round 4 is likewise a
+swap rather than a loss and is recorded as such in that round's message.
+
+**`M15` is a WIDER revert than round 5's and its 12 is not comparable to that 7.**
+Round 5 removed one composed spelling; this substitution returns early from
+`_spellings_of` with only the parenthesised form, which drops the square-bracket
+form, the multi-group split and the dash form together. It is written down as
+what it is rather than filed under the old count.
+
+### The earlier rounds' row definitions
+
+**`N2`.** In `_from_row`, `spelled=listed_title(raw_title, declared) if declared
+else raw_title,` becomes `spelled="" if declared else raw_title,`.
+
+**`N3`.** In `Wanted.addresses`, the `composed` generator gains a
+`for reading in self.readings` clause and composes each reading's own head and
+version, which is the union this round's policy removed.
+
+**`N4`.** In `_pending`, the `open_questions` comprehension becomes
+`list(result.of(match.MatchState.NEEDS_REVIEW))`, so nothing is filtered out of
+the gate.
+
+**`N5`.** In `_warnings`, the ungated loop's `if track.why not in UNGATED:`
+becomes `if True:`, so every row of the class is skipped.
+
+**`N6`.** `UNGATED` gains `match.Why.VERSION_DIFFERS`.
+
+**`U1`.** In `_candidates_for`, `for recording, version_key, key in grouped:`
+becomes `... in sorted(grouped):`.
+
+**`U2`.** In `resolve_one`, `withheld=max(len(offered) - APPROXIMATE_LIMIT, 0),`
+becomes `withheld=0,`.
+
+**`U3`.** In `version_identity`, `if not folded_artist and not folded_title:`
+becomes `if False:`.
+
+**`U4`.** In `read_list`, `if _URL_SCHEME.match(name.strip()):` becomes
+`if _URL_SCHEME.match(name):`.
+
+**`U5`.** In `read_text_rows`, `if "\n" in text or "\r" in text:` becomes
+`if False:`.
+
+**`U6`.** In `apply_verdict`, the rejection branch's `standing =
+standing_tombstone(...)` becomes `standing = None`.
+
+**`M1`.** In `resolve_one`'s confirming branch, `why=Why.READING_AMBIGUOUS,`
+becomes `why=Why.TITLE_APPROXIMATE,`.
+
+**`M2`.** In the same branch, `state=MatchState.NEEDS_REVIEW,` becomes
+`state=MatchState.MATCHED,`.
+
+**`M4`.** `confirming = _other_reading_the_library_holds(wanted, index)` becomes
+`confirming = None`.
+
+**`M5`.** In `_other_reading_the_library_holds`, `if _held_exactly(reading,
+index):` becomes `if index.versions(reading.recording):`.
+
+**`M6`.** `if confirming is not None:` becomes `if confirming is not None and not
+_approximate(wanted, index):`, which is the observable equivalent of moving the
+branch below the approximate pass without moving the code.
+
+**`M8`.** In `Wanted.addresses`, `if _credits_in(head) == _credits_in(spelled):`
+becomes `if True:`.
+
+**`M9`.** `_ANY_GROUP` gains a `\s*$` anchor, so a credit is found only in a
+trailing group.
+
+**`M12`.** In `Wanted.addresses`, `head = _head_of(spelled, self.version) or
+self.title` becomes `... or spelled`.
+
+**`M14`.** `_CREDIT_PREFIXES` becomes the empty tuple.
+
+**`M15`.** `_spellings_of` returns `(f"{head} ({version})",)` before building the
+rest.
+
+**`M19`.** In `_equivalent_versions`, `return ("", *sorted(_NULL_VERSIONS))`
+becomes `return ("",)`.
+
+---
+
+## U16 round 7
+
+**Baseline: 3496 passed, 16 skipped.** Measured on branch
+`unit/u16-three-state-match-and-missing-review` at `b1ee22d` plus round 7's fixes,
+2026-08-04. The pre-round baseline at `b1ee22d` was 3480 passed, 16 skipped, so
+this round adds 16 node ids and renames one. Every number below was measured by
+applying the substitution, running the WHOLE suite, reading the count off the
+summary line, restoring the file and checksumming it against the pre-row bytes.
+Runs used `PYTHONDONTWRITEBYTECODE=1`, because two mutations of identical byte
+length written under a second apart make CPython reuse a stale `.pyc` and that
+produced a spurious result on a sibling branch.
+
+### This round's rows
+
+| id | what the substitution reverts | file | measured kills |
+| --- | --- | --- | --- |
+| `V1` | an unspecific acceptance is applied to whatever single candidate is on offer now | `acquire/match.py` | 2 |
+| `V2` | this file's imitation of U24's `version_title` goes back to a substring test | `tests/test_match_states.py` | 7 |
+| `V3` | the recorder's own composition on top of the dash form is not consulted | `acquire/match.py` | 3 |
+| `V4` | `DIGEST_WIDTH` 16 to 15 | `acquire/match.py` | 2 |
+| `V5` | `DIGEST_WIDTH` 16 to 17 | `acquire/match.py` | 2 |
+| `V6` | `DIGEST_WIDTH` 16 to 14 | `acquire/match.py` | 2 |
+| `V7` | `DIGEST_WIDTH` 16 to 18 | `acquire/match.py` | 2 |
+| `V8` | `APPROXIMATE_FLOOR` 82 to 77 | `acquire/match.py` | 1 |
+| `V9` | `APPROXIMATE_FLOOR` 82 to 81 | `acquire/match.py` | 1 |
+| `V10` | `APPROXIMATE_FLOOR` 82 to 83 | `acquire/match.py` | 1 |
+| `K5` re-measured | `APPROXIMATE_FLOOR` 82 to 41 | `acquire/match.py` | 2, was 1 |
+| `K6` re-measured | `DIGEST_WIDTH` 16 to 8 | `acquire/match.py` | 3, was 1 |
+
+No zero-kill row.
+
+**`V4` through `V10` are the free bands, closed.** Round 6 pinned `DIGEST_WIDTH`
+with the literal `assert match.DIGEST_WIDTH == 16` and a behavioural half that
+read `len(digest) == match.DIGEST_WIDTH`, which is derived from the constant and
+therefore passes at every width: the test asked the thing it verifies for its own
+expected value. `APPROXIMATE_FLOOR` was pinned only from the extremes, and 77, 81
+and 83 each killed nothing, so at least [77, 83] was free. Both are now asserted
+against computed expectations, and every neighbouring value dies.
+
+### This round's row definitions
+
+**`V1`.** In `apply_verdict`, the `option is None` branch loses the binding and
+goes back to taking whatever single candidate is on offer:
+
+    -        about = offered[0] if len(offered) == 1 else None
+    -        if about is None or len(found.candidates) != 1:
+    -            chosen = []
+    -            unresolved = Why.VERDICT_UNSPECIFIC
+    -        else:
+    -            chosen = [c for c in found.candidates if c.candidate_id == about]
+    -            unresolved = Why.CANDIDATE_GONE
+    +        chosen = list(found.candidates) if len(found.candidates) == 1 else []
+    +        unresolved = Why.VERDICT_UNSPECIFIC
+
+Kills both directions of
+`test_an_unspecific_yes_about_one_copy_does_not_settle_a_question_about_another`,
+which drives `crate match run` and `crate review resolve` for real: a list line
+asking for `Sun Path` at 03A against a library holding it at 08A is a key-differs
+question, accepted without naming the copy; the 08A file is replaced by an 03B
+one, the relative minor `Why.KEY_RELATIVE` exists to catch; and without the
+binding the run reports `matched / verdict-accepted` at exit zero with the 03B
+file in `paths`. The reverse direction, relative first and differs second, does
+the same. The two key whys are ONE item by design, four identities and not five,
+so the fix is on the answer and not on the identity.
+
+**`V2`.** In `u24_already_carries`, the bracketed test becomes the substring test
+U24 replaced three rounds ago:
+
+    -    delimited = re.compile(rf"(?<!\w){re.escape(folded_version)}(?!\w)")
+    -    return any(
+    -        delimited.search(group)
+    -        for found in U24_BRACKETED.finditer(u24_fold(title))
+    -        for group in found.groups()
+    -        if group is not None and not u24_is_a_credit(group)
+    -    )
+    +    return folded_version in u24_fold(title)
+
+Kills six of the eleven `U24_COMPOSITIONS` rows and
+`test_a_title_shape_outside_the_enumerated_ones_is_a_recorded_gap`. This is the
+row that could not be run before this round, because the imitation was pinned by
+nothing: the substring version was live and green.
+
+**`V3`.** In `_spellings_of`, drop the composition the recorder writes on top of
+the dash form:
+
+    -        built.append(f"{dashed} ({version})")
+    +        pass
+
+Kills `test_every_row_spelling_is_addressed_from_every_reader_or_is_a_named_gap`,
+which is the derivation guard: `missed` goes from R-69's one featured-credit entry
+to four, the three additions being `('Sun Path - Nightwave Remix', 'text')` and
+the same row through `spotify` and `tidal`. That is a tombstone U24 records which
+none of this side's readers could address.
+
+**`V4` to `V7`.** `DIGEST_WIDTH = 16` becomes 15, 17, 14 and 18 in turn.
+
+**`V8` to `V10`.** `APPROXIMATE_FLOOR = 82` becomes 77, 81 and 83 in turn.
+
+### Round 6's rows, confirmed
+
+Re-run at `b1ee22d` plus this round's fixes, with this round's 17 changed node ids
+deselected, which is 16 additions and one rename. The deselected suite is 3479
+passed, 16 skipped, which is the `b1ee22d` baseline of 3480 minus the test this
+round renamed. Every row below reverts exactly what its round 6 definition above
+says it reverts.
+
+| id | round 6 recorded | round 7 measured |
+| --- | --- | --- |
+| `M1` | 28 | 28 |
+| `M2` | 28 | 28 |
+| `M4` | 28 | 28 |
+| `M6` | 23 | 23 |
+| `N4` | 16 | 16 |
+| `K11` | 12 | 12 |
+| `M15` | 12 | 12 |
+| `N6` | 10 | 10 |
+| `M9` | 9 | 9 |
+| `M8` | 8 | 8 |
+| `M12` | 8 | 7, and explained below |
+| `M14` | 8 | 8 |
+| `K4` | 7 | 7 |
+| `M19` | 5 | 5 |
+| `K2` | 4 | 4 |
+| `N2` | 4 | 4 |
+| `N3` | 4 | 4 |
+| `M5` | 4 | 4 |
+
+**`M12` is a rename and not a coverage loss, measured rather than assumed.** Run
+against the whole suite with nothing deselected it kills 8, exactly as recorded,
+and the eighth is `test_the_only_doubled_address_is_the_one_the_recorder_actually_writes`.
+That test is this round's rename of `test_the_consulter_never_composes_over_an_already_composed_title`,
+so it sits in the deselected set as one of this round's changed ids. The same
+assertion still dies; only its node id moved.

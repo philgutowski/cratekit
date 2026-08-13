@@ -37,7 +37,6 @@ TESTS_DIR = Path(__file__).resolve().parent
 EXPECTED_PENDING = frozenset(
     {
         "cratekit.intake.collection_xml",  # U37, the COLLECTION emitter
-        "cratekit.acquire.match_cli",  # U16, R11's three states, split as U11 declared
         "cratekit.deletion.cli",  # U24, delete.review, behind the explicit-gate wall
         "cratekit.adopt",  # U23, R26's adoption plan as review items
         "cratekit.intake",  # U37, path repair proposals as review items

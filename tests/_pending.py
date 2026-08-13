@@ -58,15 +58,6 @@ PENDING: dict[str, tuple[str, str]] = {
         "cratekit.core.session.close_session, because the gate is opt-in and its "
         "bypass is the exported call",
     ),
-    "cratekit.acquire.match_cli": (
-        "U16",
-        "that R11's three states are split the way U11 declared them: the "
-        "NEEDS REVIEW state becomes persisted review items in the version-match "
-        "queue, while matched and missing stay a plain match result, and neither "
-        "of those two ever reaches the queue. Registered here rather than "
-        "asserted in a docstring because U11 settled the split and U16 is the "
-        "first unit that can violate it (P5)",
-    ),
     "cratekit.adopt": (
         "U23",
         "that the adoption plan is presented as review items rather than as a "
@@ -83,6 +74,21 @@ PENDING: dict[str, tuple[str, str]] = {
         "decision, and the decision is never read back out of a file somebody "
         "edited",
     ),
+    # U16 APPENDED A SECOND OBLIGATION HERE AND IT HAS BEEN REMOVED, which is
+    # worth a note because removing an obligation is normally the wrong move.
+    # It said a tombstone must be recorded under cratekit.acquire.match's kind
+    # and identity. Two things were wrong with it. It was FALSE ABOUT ITS OWN
+    # GUARD: this file's header defines the second element as one line saying
+    # what THE GUARD asserts, and the guard that arms on this key asserts store
+    # construction, record, revoke, the deletion queue and no CSV writer, and
+    # says nothing about a kind or an identity. And it pointed at the wrong
+    # module: the identity belongs below both the pass that records it and the
+    # pass that consults it, which is where U24 puts it as
+    # cratekit.core.tombstone, so an obligation aimed at this unit to match a
+    # feature module's spelling had the dependency backwards. What replaces it is
+    # a guard that is armed today rather than a countdown:
+    # test_the_tombstone_identity_is_u24s_algorithm_byte_for_byte pins the exact
+    # identifier, so the two copies cannot drift while both exist.
     "cratekit.deletion.cli": (
         "U24",
         "the command-line surface for delete.review, the one verb of this unit "

@@ -4608,14 +4608,21 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     causes = declared_causes()
     # Re-pinned on the U38 merge, 2026-08-10. U24 and U34 landed causes, so the
     # population grew from 82 to 100 and the non-reserved half from 60 to 78.
-    # The reserved half is UNCHANGED at 22, which is the half this pin exists
-    # to protect, and the comparison the docstring argues still holds.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (100, 78, 22)
+    # Re-pinned again on the U16 merge, 2026-08-13, which appends exactly one
+    # cause, intake-list-unusable, taking the population to 101 and the
+    # non-reserved half to 79. The reserved half is UNCHANGED at 22 across both
+    # re-pins, which is the half this pin exists to protect, so the comparison
+    # the docstring argues is undisturbed by either merge.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (101, 79, 22)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
     # U24 and U34 landed literals. 189 to 239 distinct, 108 to 140 non-keys.
-    assert (len(literals), len(literals - set(causes))) == (239, 140), (
+    # Re-pinned again on the U16 merge, 2026-08-13: 239 to 256 distinct and 140
+    # to 156 non-keys, which is the match and match_cli pair landing 17 kebab
+    # literals of which 16 are not causes. The headroom assertion below is what
+    # those numbers are spent on, and it still reports no offender.
+    assert (len(literals), len(literals - set(causes))) == (256, 156), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -4646,14 +4653,22 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     ]
     # Re-pinned on the U38 merge, 2026-08-10. Same cause as the two pins above:
     # U24 and U34 landed modules. The without-own half is UNCHANGED at 8.
-    assert (len(without), len(with_own), len(both)) == (8, 17, 9), (
+    # Re-pinned again on the U16 merge, 2026-08-13: acquire/match.py is the one
+    # module added, taking the with-own half from 17 to 18 and the also-holds-an
+    # -integer half from 9 to 10. The without-own half is STILL 8 across both
+    # re-pins, so nothing gained a name resolving to a cause declared elsewhere.
+    assert (len(without), len(with_own), len(both)) == (8, 18, 10), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "
         f"in-range integer. Update the residual"
     )
-    # Re-pinned on the U38 merge, 2026-08-10, same cause as the pins above.
-    assert (len(literal_holders), len(literal_both)) == (36, 11), (
+    # Re-pinned on the U38 merge, 2026-08-10, same cause as the pins above, and
+    # again on the U16 merge, 2026-08-13: 36 to 38 holders, 11 to 12 of them also
+    # holding an in-range integer. The literal side grew by two while the named
+    # side grew by one, so the comparison asserted just below widened rather than
+    # narrowed, which is the direction that keeps the decision it rests on intact.
+    assert (len(literal_holders), len(literal_both)) == (38, 12), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

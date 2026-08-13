@@ -1290,6 +1290,13 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # exit OK rather than treating an empty store as a failure. Revoking is
         # driven from the deletion suite, where a real tombstone exists to lift.
         "tombstone.list": [],
+        # U16. Same convention as the two file verbs above and for the same
+        # reason: a path under the CONFIGURED library rather than a literal, and
+        # one that is deliberately absent, so the verb must refuse with a code
+        # from the vocabulary rather than with a traceback. The happy path over a
+        # real list and a real library is driven in tests/test_match_states.py,
+        # which is where the fixtures for it live.
+        "match.run": [str(library / "no-such-list.txt")],
     }[entry.name]
 
 

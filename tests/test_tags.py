@@ -41,7 +41,6 @@ prevent: the proof that audio is never damaged, silently not running.
 from __future__ import annotations
 
 import hashlib
-import shutil
 import struct
 import subprocess
 from pathlib import Path
@@ -61,6 +60,7 @@ from cratekit.core.tags import (
     write_genre,
     write_tags,
 )
+from tests._containers import require_ffmpeg, synth_container
 
 # Every container the writer claims to handle. All six, not the four the plan's
 # scenario names: dropping .m4a drops the only test that MP4 never receives an
@@ -82,33 +82,12 @@ ALL_FIELDS = {
 }
 
 
-def _require_ffmpeg() -> str:
-    binary = shutil.which("ffmpeg")
-    if binary is None:
-        pytest.fail(
-            "ffmpeg is required to prove that a tag write leaves audio bytes "
-            "unchanged. Install it (the CI workflow does this in a dedicated "
-            "step). This fails rather than skips because a skipped audio-safety "
-            "proof is indistinguishable from a passing one in every summary "
-            "anybody reads."
-        )
-    return binary
-
-
-def _synth(tmp_path: Path, suffix: str) -> Path:
-    """One second of silence in the given container."""
-    _require_ffmpeg()
-    out = tmp_path / f"probe{suffix}"
-    proc = subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-         "-t", "1", str(out)],
-        capture_output=True, text=True,
-    )
-    assert proc.returncode == 0 and out.exists(), (
-        f"ffmpeg could not encode {suffix}, so this container's audio-safety "
-        f"proof cannot run: {proc.stderr[-400:]}"
-    )
-    return out
+# MOVED TO tests/_containers.py, and re-bound here rather than deleted so the
+# call sites below read as they always did. Another suite needs a real container
+# too, and it used to reach in and take this private name, which imported this
+# whole module as a side effect of an unrelated run.
+_require_ffmpeg = require_ffmpeg
+_synth = synth_container
 
 
 def _decoded_md5(path: Path) -> str:
