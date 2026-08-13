@@ -1,31 +1,32 @@
 # Mutation rows
 
-Each row below is ONE exact textual substitution in ONE file. Apply it, run the
-suite, count the failures, revert. A row is written down so that a later reader
-can re-run it by id and get the same number, which is the whole reason this file
-exists: two mutation tables have already been lost in this build because they
-were reported in a message and never written into the repository, and a verifier
-then had to reconstruct rows from prose before it could check a single count.
+**This file is an ARCHIVE. The method lives in `docs/METHOD.md` and the driver
+is `scripts/mutate.py`.** Everything below the horizontal rule is a historical
+round, kept because a count with no row definition beside it is not evidence:
+it is a claim about an experiment nobody else can perform. Two mutation tables
+were lost to chat messages before this file existed, and a verifier then had to
+reconstruct rows from prose before it could check a single count.
 
-**A count with no row definition beside it is not evidence.** It is a claim about
-an experiment nobody else can perform.
+Do not follow the procedure this file used to describe. It was written for a
+hand rolled driver, three of this project's recorded incidents were hand rolled
+driver mistakes, and two of its instructions are now wrong:
 
-## Running a row
+- It said to revert with a snapshot rather than `git checkout`, which is right,
+  but left the snapshot to whoever was typing. The driver holds that rule as a
+  property and verifies each restore against `git show HEAD:<path>`, because a
+  scratch copy that has been contaminated certifies itself.
+- It said rows are measured against the WHOLE suite unless the row says
+  otherwise. METHOD reversed that: confirm deaths on the subset of test files
+  importing the mutated module, and spend a full suite only on the rows that
+  came back zero. A death on a subset is a real death. A zero on a subset is
+  not yet a zero.
 
-`pyproject.toml` already sets `addopts = "-q"`, so a second `-q` on the command
-line becomes `-qq` and SUPPRESSES THE SUMMARY LINE ENTIRELY. Use:
+New rounds are written by the driver into `docs/mutation/<name>.md` and
+`<name>.json`, from a rows file supplied as data. Read the driver's docstring
+for the row format, and METHOD for the row caps, the composite rule, and what
+makes a finding blocking rather than residual.
 
-    .venv/bin/python -m pytest --tb=no          # counts
-    .venv/bin/python -m pytest --collect-only -o addopts=   # collected count
-
-Revert by restoring the file from a snapshot taken BEFORE the row was applied,
-not with `git checkout`, because a fix round's own edits are uncommitted while
-the rows are being measured and `git checkout` throws them away with the
-mutation. That mistake was made and caught during round 7.
-
-Rows are measured against the WHOLE suite unless the row says otherwise, because
-a row that kills only inside its own file is a row whose blast radius nobody
-looked at.
+    ./.venv/bin/python scripts/mutate.py rows.toml --name u16-round-9
 
 ---
 
