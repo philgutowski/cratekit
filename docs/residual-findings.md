@@ -5169,3 +5169,66 @@ is still reported, still counted, and still correct.
 **The closing condition.** One test that asserts the sentence as a literal
 rather than through the constant, chosen for the phrase a person would search
 for rather than for the whole string.
+
+## R-79. The quiet machine refusal gates an ordinary unit test, and nothing stops the next one walking into it
+
+**Found by** the countdown text session, 2026-08-14, by running the battery on
+`main`'s tree while an independent verifier ran its own suites on the same
+machine. Not found by any verifier, and specifically not by the harness's own
+independent review on 2026-08-13, which read the refusal as a checking path
+improvement and did not ask which callers sit behind it.
+
+**Measured cost, and it is a cost to the merge discipline rather than to a
+user.** `tests/test_hardware_fixtures.py::test_calibration_round_trips_and_threshold_is_a_multiple`
+called `calibrate(repeats=2)` and passed the live payload through
+`write_calibration`, whose quiet machine refusal raises when
+`relative_spread` exceeds 0.25. With two samples the spread is
+`(max - min) / median` over exactly two numbers, so one scheduling hiccup
+crosses it.
+
+Measured on this tree, with a verification subagent running concurrently:
+
+| context | repeats | pass | fail |
+|---|---|---|---|
+| the full suite, before the fix | 3 | 1 | 2 |
+| that test alone, before the fix | 10 | 10 | 0 |
+| `tests/test_hardware_fixtures.py` alone, after the fix | 15 | 15 | 0 |
+| the full suite, after the fix | 3 | 3 | 0 |
+
+Observed spreads on the two failures were 0.266 and 0.277, both just over the
+limit. The isolation column is why this was not caught earlier: the natural
+check after touching the harness is to run its own file, and its own file
+passes.
+
+METHOD's merge discipline is that nothing merges until all three parts of the
+battery are clean. A battery that goes red two runs in three for a reason
+unrelated to the change under review teaches a reader to discount a red
+battery, which is the one signal the discipline is built on. It also lands on
+whoever is merging rather than on whoever wrote the harness.
+
+**What was fixed.** Both tests that routed a live measured payload through the
+refusal now pin `relative_spread`, exactly as the neighbouring
+`test_an_unquiet_calibration_refuses_to_write` already pinned it to 0.5 to drive
+the refusal deterministically. The round trip test gained an assertion that the
+pinned value survives the round trip, which nothing checked before. The second
+site, `test_a_calibration_from_another_machine_is_refused`, had never fired and
+was found by looking for the shape one function over rather than by watching it
+fail, which is METHOD's fifth pattern.
+
+Every remaining live measured call into the refusal is
+`scripts/calibrate_timing.py`, which is the deliberate human act the refusal
+exists to gate. That is the correct and only caller for it.
+
+**Why this stays open as a residual.** The two instances are closed and the
+class is not. Nothing in the repository prevents the next test that needs a
+calibration payload from writing `calibrate(...)` followed by
+`write_calibration(...)` and reacquiring the flake, and the failure it produces
+names the machine rather than the test, so the next person to meet it will also
+start by suspecting their own change. The refusal is a gate on a deliberate act
+sitting in a path that ordinary tests share.
+
+**The closing condition.** A guard that fails when a test module calls
+`write_calibration` on a payload whose `relative_spread` it did not set, so the
+rule is enforced where it is broken rather than remembered. The existing
+`tests/test_pending_units.py` AST sweep over the suite is the nearest worked
+model for the shape.

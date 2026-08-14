@@ -147,11 +147,23 @@ def test_a_record_whose_count_disagrees_with_its_evidence_is_refused() -> None:
 
 def test_calibration_round_trips_and_threshold_is_a_multiple(tmp_path: Path) -> None:
     payload = calibrate(repeats=2)
+    # The spread is PINNED rather than measured, the same way
+    # test_an_unquiet_calibration_refuses_to_write pins it to 0.5, and for the
+    # mirror image of that test's reason. This test's subject is the round trip
+    # and the threshold arithmetic, neither of which is about how busy the
+    # machine is, but write_calibration's quiet machine refusal sits in its path
+    # and a live two sample spread crosses 0.25 under any concurrent load. Left
+    # measured it failed 2 of 3 full suite runs on 2026-08-14 while passing 10
+    # of 10 in isolation, which puts a red battery in front of a reader for a
+    # reason that has nothing to do with their change. The refusal itself is
+    # already covered deterministically by the test named above.
+    payload["relative_spread"] = 0.01
     stored = tmp_path / "cal.json"
     write_calibration(payload, stored)
     cal = load_calibration(stored)
     assert cal.median_seconds > 0
     assert cal.repeats == 2
+    assert cal.relative_spread == pytest.approx(0.01)
     assert threshold_seconds(3.0, cal) == pytest.approx(3.0 * cal.median_seconds)
 
 
@@ -170,6 +182,12 @@ def test_nonpositive_multiplier_is_refused() -> None:
 def test_a_calibration_from_another_machine_is_refused(tmp_path: Path) -> None:
     payload = calibrate(repeats=2)
     payload["cpu_count"] = int(payload["cpu_count"]) + 1
+    # Pinned for the reason the round trip test above gives at length. This one
+    # has not fired yet, and it is the same shape: a live two sample spread on
+    # its way through the quiet machine refusal, in a test whose subject is the
+    # machine identity check instead. Found by looking for the shape one
+    # function over rather than by watching it fail.
+    payload["relative_spread"] = 0.01
     stored = tmp_path / "cal.json"
     write_calibration(payload, stored)
     with pytest.raises(ValueError, match="different machine"):
