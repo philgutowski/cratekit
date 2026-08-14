@@ -6057,6 +6057,72 @@ def test_a_path_no_filesystem_can_represent_is_answered_rather_than_raised():
     )
 
 
+def test_the_write_probe_classifies_every_way_a_write_is_refused(tmp_path):
+    """What the WRITE CAPABLE handle buys, pinned, because nothing pinned it.
+
+    Measured 2026-08-14: forcing every probe to read only killed ZERO tests out
+    of 5044 collected. So the one behaviour that makes ``_probe_writable``
+    different from ``_probe_readable``, and the reason the reports allowlist
+    guard still names it, was not asserted anywhere. That is the worst state for
+    a decision to be taken in, because every candidate resolution changes this
+    behaviour and the suite would have stayed green through all of them.
+
+    These are the cases a write can be refused while a READ still succeeds, which
+    is exactly the set a read only probe cannot answer. The read only volume is
+    the one no file mode can imitate and it has its own test above; here it is
+    the file mode, the immutable flag and an ACL, driven rather than constructed.
+
+    THIS TEST PINS BEHAVIOUR AND TAKES NO SIDE ON R-80. If the write capable
+    handle is later replaced, this is the test that has to keep passing, and a
+    replacement that cannot hold all three rows is a replacement that changed
+    what the user is told.
+    """
+    import subprocess
+
+    from cratekit.core.cause import AccessKind, _probe_readable, _probe_writable
+
+    # 1. Readable and not writable by MODE. The commonest shape.
+    mode = tmp_path / "mode.db"
+    mode.write_bytes(b"x")
+    mode.chmod(0o444)
+    assert _probe_readable(str(mode)) is None, "the read probe cannot see this"
+    refused = _probe_writable(str(mode))
+    assert refused is not None and refused.kind is AccessKind.PERMISSION
+    assert refused.path == str(mode)
+
+    # 2. The immutable flag, which is what Finder's Locked checkbox writes. It
+    #    answers EPERM rather than EACCES and routes to a different act.
+    locked = tmp_path / "locked.db"
+    locked.write_bytes(b"x")
+    if subprocess.run(["chflags", "uchg", str(locked)]).returncode == 0:
+        try:
+            assert _probe_readable(str(locked)) is None
+            found = _probe_writable(str(locked))
+            assert found is not None and found.kind is AccessKind.LOCKED
+        finally:
+            subprocess.run(["chflags", "nouchg", str(locked)], check=False)
+
+    # 3. An ACL denying write while the mode still allows it, so the mode bits
+    #    and the answer disagree. Skipped where chmod cannot set one.
+    acl = tmp_path / "acl.db"
+    acl.write_bytes(b"x")
+    denied = subprocess.run(
+        ["chmod", "+a", "everyone deny write,append", str(acl)],
+        capture_output=True,
+    )
+    if denied.returncode == 0:
+        assert oct(acl.stat().st_mode)[-3:] == "644", "the mode still says writable"
+        assert _probe_readable(str(acl)) is None
+        found = _probe_writable(str(acl))
+        assert found is not None and found.kind is AccessKind.PERMISSION
+
+    # And the negative row, so the three above are not passing on a probe that
+    # refuses everything.
+    ordinary = tmp_path / "ordinary.db"
+    ordinary.write_bytes(b"x")
+    assert _probe_writable(str(ordinary)) is None
+
+
 def test_a_two_path_refusal_names_the_side_the_operating_system_refused(tmp_path):
     """F4. DESTINATION FIRST IS RIGHT FOR A RENAME AND WRONG FOR A LINK.
 
