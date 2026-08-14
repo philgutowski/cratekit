@@ -5381,6 +5381,81 @@ unrelated to it:
 Both are re-measure and re-pin work, per the standing rule never to widen. They
 are recorded here so the next session does not resolve this finding, see two
 unexplained reds, and read them as a second collision.
+
+### The fourth resolution was TAKEN, 2026-08-14, and this finding is now one function
+
+`unit/u27-setup-wizard-and-doctor` at `46e04ae`, two commits, pushed. `_probe`
+became `_probe_readable` and `_probe_writable`, each spelling its flags inline at
+its own call site, which is the only shape the guard can read. The duplication is
+forced by that and the reason sits in the source beside it, because folding them
+back into one helper taking `flags` is the obvious tidy up and silently restores
+the unreadable shape. `os.O_NONBLOCK` is spelled directly, the `getattr` fallback
+having been measured unreadable by the same guard.
+
+**Measured on a REAL merge**, not on the branch: a scratch clone, `git merge` of
+the branch into `main`, six conflicts, and `src/cratekit/core/cause.py` among the
+files that auto merged clean. Running the guard's own `_unnamed_writers` against
+the merged file, with `tests/modules/test_reports.py` byte identical to `main`'s:
+
+| tree | the guard reports |
+|---|---|
+| before | `['_probe']`, covering three call sites, two of which only ever read |
+| after | `['_probe_writable']`, one function, one call site |
+
+Two of the three probes are now certified as reads by the guard rather than
+argued to be. What remains genuinely does open a write capable handle, so the
+finding is honest and it is as small as it can be made without deciding the
+question below.
+
+### What the write capable handle buys, driven
+
+Six scenarios, comparing the current probe against the alternative that never
+opens write capable and infers from `os.statvfs` `ST_RDONLY`, the existing
+`_immutable` helper, and `os.access`:
+
+| scenario | write probe | read probe plus metadata |
+|---|---|---|
+| ordinary writable file | none | none |
+| `chmod 444` | permission | permission |
+| `chflags uchg`, Finder Locked | locked | locked |
+| ACL denying write, mode still 644 | permission | permission |
+| absent file | unclassified errno 2 | unclassified errno 2 |
+| real read only mounted volume | read-only | read-only |
+
+**Six were driven and all six agree.** Say it that way rather than "the handle
+buys nothing", because the class where they are KNOWN to diverge was not driven:
+a network mounted volume, where `os.access` and `statvfs` can answer from the
+client while the server is what refuses. No network share was available.
+
+**A reframing worth carrying, because it weakens the objection.** The write probe
+is reached only from `_from_database_error` for a driver error that is not
+`SQLITE_CANTOPEN`, which means `SQLITE_READONLY` or `SQLITE_PERM`. In those cases
+the driver has ALREADY established that a write was refused. The probe is
+disambiguating WHY, not predicting whether. Network staleness is a hazard for
+predicting a write outcome and much less of one for explaining a refusal that has
+already happened. That does not decide it, and it is the argument the next
+session should attack first.
+
+### The behaviour is now pinned, which it was not
+
+`test_the_write_probe_classifies_every_way_a_write_is_refused` in
+`tests/test_doctor.py`, on the branch. Three live rows, the mode, the immutable
+flag and the ACL, each verified to be biting rather than silently skipped, plus a
+negative row so they are not passing on a probe that refuses everything. Driven:
+with the write handle mutated to read only the test fails and the rest of its
+file passes. **The same mutation killed zero of 5044 before this test existed.**
+
+It takes no side. Whichever resolution is taken has to keep it passing, and one
+that cannot hold all three rows has changed what the user is told rather than how
+it was measured.
+
+### So what is still open
+
+Only this: whether `_probe_writable` keeps its write capable handle. If it does,
+the guard stays red on one function and U27 stays blocked on the battery rule. If
+it is replaced, the guard goes fully green and the reports' invariant becomes true
+again. The evidence above is what that decision now rests on, and it is a decision
+about a shipped classification path rather than about a merge.
 <!-- ------------------------------------------------------------------ -->
 
 ## The twenty findings below arrived with the U23 merge, 2026-08-14, and were renumbered

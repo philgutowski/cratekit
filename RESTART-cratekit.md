@@ -38,7 +38,7 @@ sessions that tried it left a stale identifier behind. Check the subject and
 
 | branch | tip | state |
 |---|---|---|
-| `unit/u27-setup-wizard-and-doctor` | `fb035fb` | VERIFIED MERGE and BLOCKED at the merge by R-80. Independent pass was clean: 42 rows, 25 deaths, no blocking finding. Merges WITHOUT a closing trailer. |
+| `unit/u27-setup-wizard-and-doctor` | `46e04ae` | Still blocked by R-80, but R-80 is now ONE FUNCTION rather than the whole probe. The probe was split per intent so its flags are readable at the call site, verified on a real merge: the guard went from reporting `_probe` to reporting `_probe_writable`. The write behaviour is now pinned by a test that bites. Branch battery green: 3435 passed, 14 skipped, 3449 collected. Merges WITHOUT a closing trailer. |
 | `merge/u27-attempt-2026-08-14` | `01eb6da` | **DO NOT MERGE.** The resolved U27 merge, kept so its work is not paid for twice. **Red on THREE guards, not one**, measured 2026-08-14: R-80, plus that branch's own un-re-pinned kebab literal population and a fixture the `grant-path-access` reservation moved. The other two are re-pin work, not a second collision. See R-80. |
 | `unit/u12-memory-derived-worker-sizing` | `fc73b82` | round 6, never verified. Needs a 25 run timing measurement, which the harness provides. |
 | `fix/conformance-3-and-soft-delete-reader` | `897ef12` | parked. Its `write/metadata.py:195` defect is live on main. |
@@ -47,18 +47,19 @@ All are pushed. The u23 branch and worktree are gone, deleted in both places.
 
 ## What to do next, in order
 
-1. **U27 needs a DECISION, not an ordinary fix round, and it is now between FOUR
-   resolutions.** It lands `_probe` in `core/cause.py`, which opens a write
-   capable handle. That module is on the read only reports allowlist because both
-   report modules import `Scope` and `refuse` from it. **Read R-80 first**; it
-   was substantially corrected on 2026-08-14 and now carries every measurement.
-   Three things there are not in any older summary: the guard's objection is
-   "I cannot read these flags", not "this writes", so an INLINE read only flag
-   expression passes and a fourth and smaller resolution exists; the first
-   resolution as written is achievable and fixes nothing, turning both structural
-   guards green with the reachability unchanged; and the write capable handle is
-   pinned by zero tests, so the suite cannot validate any resolution that changes
-   it. Do not widen `_os_open_reads`; it is correct.
+1. **U27 has ONE question left and it is small.** The probe was split per intent
+   on 2026-08-14, verified on a real merge, and the guard now reports
+   `_probe_writable` alone instead of the whole `_probe`. The remaining question
+   is whether that one function keeps its write capable handle. **Read R-80
+   first**; it carries the six driven scenarios comparing the handle against the
+   metadata alternative, which agreed on all six, the one divergence class that
+   was NOT driven (a network mounted volume), and a reframing that weakens the
+   objection: the probe only ever runs for a driver error that already
+   established a write was refused, so it is explaining a refusal rather than
+   predicting one. Attack that reframing first. The behaviour is now pinned by
+   `test_the_write_probe_classifies_every_way_a_write_is_refused`, so any
+   replacement has something to fail against. Do not widen `_os_open_reads`; it
+   is correct, and do not relocate the probe, which is R-102.
 2. **U12**, the last unverified unit, with
    `time_repeated(fn, repeats=25, threshold_seconds=threshold_seconds(multiplier))`.
 3. `docs/METHOD.md` is over 265 lines against the 80 it was written to be and

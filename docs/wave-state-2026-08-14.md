@@ -284,3 +284,59 @@ these were single line edits that felt too small to need `scripts/mutate.py`.
    Read R-80 first; it carries every measurement above.
 2. **U12**, still the last unverified unit, untouched by any of this.
 3. R-102 is open on `main` and is nobody's merge blocker.
+
+## The fourth resolution was taken, and R-80 is now one function
+
+Phillip chose the split. It landed on `unit/u27-setup-wizard-and-doctor` in two
+commits, `10b9fdc` and `46e04ae`, pushed.
+
+`_probe` became `_probe_readable` and `_probe_writable`, each spelling its flags
+INLINE at its own call site, because that is the only shape the guard can read.
+One call site can spell one expression, so the duplication is forced rather than
+sloppy, and the reason is recorded in the source next to it: folding them back
+into a shared helper taking `flags` is the obvious tidy up and silently restores
+the unreadable shape. The `getattr(os, "O_NONBLOCK", 0)` fallback was measured
+unreadable by the same guard and is now spelled directly.
+
+**Verified on a REAL merge rather than on the branch**, because `main` had
+touched `cause.py` since the branch point and only a merge answers what the guard
+will see. Scratch clone, `git merge`, six conflicts matching the preserved
+attempt, and `cause.py` among the files that auto merged clean:
+
+| tree | the guard reports |
+|---|---|
+| before | `['_probe']`, three call sites, two of which only ever read |
+| after | `['_probe_writable']`, one function, one call site |
+
+## What the write capable handle buys, and the honest shape of the answer
+
+Six scenarios driven against the alternative that never opens write capable and
+infers from `statvfs` `ST_RDONLY`, the existing `_immutable` helper and
+`os.access`. Ordinary file, `chmod 444`, `chflags uchg`, an ACL denying write
+with the mode still 644, an absent file, and a real read only mounted volume.
+**All six agree.**
+
+That is written as "six were driven and all six agree", never as "the handle buys
+nothing", because the class where they are known to diverge was not driven: a
+network mounted volume, where the client can answer while the server is what
+refuses.
+
+The reframing that weakens the objection, and the thing to attack first next
+time: the write probe is only ever reached for a driver error that is not
+`SQLITE_CANTOPEN`, so the driver has ALREADY established that a write was
+refused. The probe disambiguates why rather than predicting whether, and network
+staleness is a much smaller hazard for explaining a refusal than for predicting
+one.
+
+## The behaviour is pinned now, and it was pinned by nothing before
+
+`test_the_write_probe_classifies_every_way_a_write_is_refused`. Three live rows,
+each verified to bite rather than silently skip, plus a negative row so they are
+not passing on a probe that refuses everything. With the write handle mutated to
+read only the test fails and the other 251 tests in its file pass.
+
+**The same mutation killed zero of 5044 before it existed.** Every candidate
+resolution changes this behaviour, so the decision was about to be taken over a
+suite that could not see the difference. Pinning first was worth more than
+deciding fast, and it is the step that was available regardless of which way the
+decision goes.
