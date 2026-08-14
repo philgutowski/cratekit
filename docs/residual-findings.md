@@ -5232,3 +5232,72 @@ sitting in a path that ordinary tests share.
 rule is enforced where it is broken rather than remembered. The existing
 `tests/test_pending_units.py` AST sweep over the suite is the nearest worked
 model for the shape.
+
+## R-80. A write capable probe entered the refusal vocabulary that read only reports import, and the U27 merge cannot resolve it
+
+**Found by** the U27 merge attempt, 2026-08-14. Not found by U27's independent
+verification, which passed a full battery on the branch, and not visible on
+`main`, which also passes. It exists only on the merged tree, which is this
+repository's recurring shape: a rule verified on one surface while a second
+surface carries the same coupling.
+
+**The mechanism, driven rather than argued.**
+
+U27 lands `_probe` in `src/cratekit/core/cause.py`. It calls
+`os.open(path, os.O_RDWR | os.O_NONBLOCK)` and closes the handle, with no
+`O_CREAT` and no `O_TRUNC`, to ask the operating system whether a write would be
+permitted rather than guess from a driver level error. It therefore cannot
+change a file, and it does open a write capable handle.
+
+`tests/modules/test_reports.py` admits `cratekit.core.cause` on its reports
+allowlist, whose stated argument is that nothing it admits can touch a file
+except through `pathlib`. Both report modules import `Scope` and `refuse` from
+it: `src/cratekit/modules/reports/export.py:71` and
+`src/cratekit/modules/reports/aging.py:62`.
+
+`_os_open_reads` already models `os.open` read against write through its flags,
+and correctly declines to read `os.O_RDWR if writing else os.O_RDONLY` as a
+read, because one branch of it is not.
+
+**Both remedies the guard offers were driven to their end, and both fail.**
+
+The guard names exactly two: name the writer, or drop the module.
+
+*Name the writer.* The guard propagates a writer to its callers, so each round
+surfaces the next layer. The transitive closure over `core/cause.py` was
+computed with an AST walk in one pass rather than chased a layer at a time:
+eleven names, and it CONTAINS `refuse`, reached through `CratekitError.cause`
+calling `classified`. Naming `refuse` was then driven and fires the reports'
+own guard: *the reports package can change a file*, at
+`modules/reports/aging.py:248` and `modules/reports/export.py:195`.
+
+*Drop the module.* Both report modules import from it, so dropping it fails
+their imports.
+
+*The third option nobody offered*, teaching `_os_open_reads` to accept
+`O_RDWR`, is widening a guard that is behaving exactly as designed, and this
+repository's rule is that a guard is never widened to admit a finding.
+
+**Measured cost.** No user facing cost is claimed and none was found: `_probe`
+opens and closes, so no report mutates anything today, and the reports remain
+read only in fact. The cost is that a stated invariant is now false, and the one
+guard written to catch exactly that has no answer available to it. Under the
+merge bar this is a residual rather than a blocking finding, because there is no
+named user facing cost. It nevertheless stops the merge, because METHOD's
+battery rule is that nothing merges until all three parts are clean, and this
+one cannot be made clean without a decision.
+
+**What was preserved rather than discarded.** The merge attempt is committed on
+the branch `merge/u27-attempt-2026-08-14`, pushed, and MUST NOT BE MERGED. It
+carries the six resolved conflicts, the verified register discharge, the ten
+incoming residuals renumbered to R-80 through R-89 in that branch's own file,
+the `grant-path-access` reservation, and the re-pinned cause population. All of
+that is correct work and none of it should be paid for twice.
+
+**The closing condition, and it is a decision rather than a repair.** One of:
+`_probe` moves out of the refusal vocabulary into a module the reports allowlist
+does not admit, which is the honest structural answer; or `_probe` establishes
+write permission without opening a write capable handle, which changes U27's
+behaviour and needs its own driven round; or the reports stop importing from
+`cratekit.core.cause`. U27 has fix rounds left under the cap, so sending it back
+for one is within the process rather than an exception to it.
