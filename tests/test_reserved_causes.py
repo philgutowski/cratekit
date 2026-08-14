@@ -4613,7 +4613,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # non-reserved half to 79. The reserved half is UNCHANGED at 22 across both
     # re-pins, which is the half this pin exists to protect, so the comparison
     # the docstring argues is undisturbed by either merge.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (101, 79, 22)
+    #
+    # Re-pinned again on the U23 merge, 2026-08-14, which appends exactly two
+    # causes, adoption-ledger-unusable and adoption-file-unidentifiable, taking
+    # the population to 103 and the non-reserved half to 81. The reserved half
+    # is UNCHANGED at 22 across all three re-pins, so the comparison the
+    # docstring argues is still undisturbed.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (103, 81, 22)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4622,7 +4628,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # to 156 non-keys, which is the match and match_cli pair landing 17 kebab
     # literals of which 16 are not causes. The headroom assertion below is what
     # those numbers are spent on, and it still reports no offender.
-    assert (len(literals), len(literals - set(causes))) == (256, 156), (
+    # Re-pinned again on the U23 merge, 2026-08-14: 256 to 270 distinct and 156
+    # to 168 non-keys. The adoption package lands 14 kebab literals of which 12
+    # are not causes, the two that are being the pair re-pinned above. The
+    # headroom assertion below still reports no offender, which is what these
+    # numbers are bought for and the only reason moving them is safe.
+    assert (len(literals), len(literals - set(causes))) == (270, 168), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -4657,7 +4668,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # module added, taking the with-own half from 17 to 18 and the also-holds-an
     # -integer half from 9 to 10. The without-own half is STILL 8 across both
     # re-pins, so nothing gained a name resolving to a cause declared elsewhere.
-    assert (len(without), len(with_own), len(both)) == (8, 18, 10), (
+    # Re-pinned again on the U23 merge, 2026-08-14: the adoption package takes
+    # the with-own half from 18 to 20 and the also-holds-an-integer half from 10
+    # to 11. THE WITHOUT-OWN HALF IS STILL 8, now across four measurements and
+    # three merges. That is the half worth watching: it is the count of modules
+    # holding a name resolving to a cause declared somewhere else, which is the
+    # shape that would say the one key set had stopped holding, and no merge has
+    # ever moved it.
+    assert (len(without), len(with_own), len(both)) == (8, 20, 11), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "
@@ -4668,7 +4686,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # holding an in-range integer. The literal side grew by two while the named
     # side grew by one, so the comparison asserted just below widened rather than
     # narrowed, which is the direction that keeps the decision it rests on intact.
-    assert (len(literal_holders), len(literal_both)) == (38, 12), (
+    # Re-pinned again on the U23 merge, 2026-08-14: 38 to 42 holders, 12 to 13
+    # also holding an in-range integer. The literal side grew by four while the
+    # named side grew by two, so the comparison just below widened again rather
+    # than narrowed, which is the direction that keeps the decision intact. That
+    # comparison is the whole reason these four numbers are measured, and it has
+    # now widened at every one of the three merges that moved them.
+    assert (len(literal_holders), len(literal_both)) == (42, 13), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

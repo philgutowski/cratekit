@@ -53,7 +53,6 @@ EXPECTED_PENDING = frozenset(
     {
         "cratekit.intake.collection_xml",  # U37, the COLLECTION emitter
         "cratekit.deletion.cli",  # U24, delete.review, behind the explicit-gate wall
-        "cratekit.adopt",  # U23, R26's adoption plan as review items
         "cratekit.intake",  # U37, path repair proposals as review items
         "cratekit.cli.doctor",  # U27, the health check
         "path:skills",  # U28, the shipped operator skills
@@ -61,6 +60,12 @@ EXPECTED_PENDING = frozenset(
         "cratekit.cli.rebuild",  # U20, the rebuild verb and its named disposition
         "cratekit.session.restore_cli",  # U27, the restore verbs and the one held session
         "cratekit.cli.reports",  # U27, the four report verbs and two missing engines
+        # U27, the adopt.apply shell and the session the residual titled
+        # "adoption's tag write takes no destructive session and no library
+        # lock" records as missing.
+        # Its sibling adopt.scan is NOT here: it shared a module string with this
+        # verb, is not gated and not destructive, and has landed.
+        "cratekit.adopt.apply_cli",
     }
 )
 

@@ -386,6 +386,35 @@ REBUILD_CLI_UNIT = "U20"
 #: in ``tests/_pending.py`` against U27, which is the file the board audit reads
 #: (P5), and this constant is a convenience for the reader.
 REPORTS_CLI_UNIT = "U27"
+#: The unit that lands ``cratekit.adopt.apply_cli``, named ONCE for the same
+#: reason ``ROUTING_CLI_UNIT`` is, and carrying the judgement rather than only
+#: the answer.
+#:
+#: BOTH ADOPTION VERBS USED TO NAME ``cratekit.adoption.cli``, which is a package
+#: that does not exist and no unit's file list has ever declared. Every other
+#: authority says ``adopt``: issue #23's brief, ``docs/HANDOFF.md``, the pending
+#: register, and the landed ``src/cratekit/adopt/``. The typo was not merely
+#: cosmetic. ``test_a_planned_verb_whose_module_has_landed_must_lose_its_marker``
+#: probes with ``find_spec`` inside ``except ModuleNotFoundError``, and
+#: ``find_spec("cratekit.adoption.cli")`` raises on the MISSING PARENT
+#: ``cratekit.adoption``, which the probe caught and read as "not present yet".
+#: So the countdown could never fire, in this build or in any future one, and
+#: closing #23 would have left two verbs shipping with no conformance coverage
+#: and nothing on the board saying so. That is R-13's failure verbatim, and it is
+#: already live three times over.
+#:
+#: THE TWO VERBS THEN SPLIT, because they were never in the same position.
+#: ``adopt.scan`` declares no gate, writes nothing, and is not destructive, so
+#: conformance 3 is an empty loop for it and it lands here. Only ``adopt.apply``
+#: stays behind the wall, and it now names a module of its own so its countdown
+#: is about itself.
+#:
+#: THE MARKER IS NOT THE RECORD. ``scripts/board.py`` reads ``tests/_pending.py``
+#: and nothing else, so this constant is a convenience for the reader and the
+#: obligation itself is registered there, against the same unit (P5). What the
+#: wall actually is, which R-13 currently states wrongly, is written down in that
+#: entry rather than here.
+ADOPT_APPLY_CLI_UNIT = "U27"
 
 
 # ---------------------------------------------------------------------------
@@ -1184,8 +1213,11 @@ ENTRIES: tuple[Entry, ...] = (
     Entry(
         name="adopt.scan",
         summary="scan an existing library and propose a mapping into the taxonomy",
-        module="cratekit.adoption.cli",
-        builder="build_scan",
+        # LANDED. It shared a module string with its destructive sibling and was
+        # held behind that sibling's wall for no reason of its own; see
+        # ``ADOPT_APPLY_CLI_UNIT`` for the whole judgement.
+        module="cratekit.adopt.scan_cli",
+        builder="build",
         handler_key="adopt.scan",
         feature_rows=(34,),
         module_id="adoption",
@@ -1195,13 +1227,12 @@ ENTRIES: tuple[Entry, ...] = (
         output_schema="job_state/1",
         taxonomy_terms=("genre_energy",),
         doctor_checks=("library.mounted",),
-        planned_in="U23",
     ),
     Entry(
         name="adopt.apply",
         summary="apply an approved adoption plan, incrementally and resumably",
-        module="cratekit.adoption.cli",
-        builder="build_apply",
+        module="cratekit.adopt.apply_cli",
+        builder="build",
         handler_key="adopt.apply",
         feature_rows=(34,),
         module_id="adoption",
@@ -1224,7 +1255,7 @@ ENTRIES: tuple[Entry, ...] = (
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
-        planned_in="U23",
+        planned_in=ADOPT_APPLY_CLI_UNIT,
     ),
     # ── Deletion: one surface, TWO MODULES, and the split is the decision ────
     #

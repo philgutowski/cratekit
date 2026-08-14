@@ -541,6 +541,27 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # command line perfectly: the path was well formed and what it points at
         # is the problem.
         "intake-list-unusable": ExitCode.PRECONDITION,
+        # U23. One of adoption's two documents exists and cannot be understood:
+        # the record of which plan entries have already been applied, or the
+        # record of what each file's tag held before adoption overwrote it.
+        # Deliberately NOT collapsed into "no records", which is the reading that
+        # makes both of them dangerous rather than merely absent: an empty
+        # applied ledger re-applies a plan from its first entry, and an empty
+        # revert log reports that nothing can be undone about writes that are
+        # sitting in the user's files. One slug for both, on the same code as its
+        # two siblings above, because what differs between the ways either file
+        # can be wrong is the REMEDY, and the remedy travels on the remediation:
+        # a document from a newer build asks for an upgrade and a corrupt one
+        # asks for the doctor.
+        "adoption-ledger-unusable": ExitCode.PRECONDITION,
+        # U23. The file an adoption is about to write a tag into cannot be
+        # identified on this machine, so its ORIGINAL cannot be recorded first.
+        # A separate slug from the one above because it is about a file rather
+        # than about a document, and it is per ITEM: the shape that reaches it is
+        # a track that was in the census and was deleted before the apply got to
+        # it, which costs that entry and nothing else. PRECONDITION rather than a
+        # defect code, because the state of the library is what is wrong.
+        "adoption-file-unidentifiable": ExitCode.PRECONDITION,
     }
 )
 

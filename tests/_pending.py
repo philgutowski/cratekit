@@ -84,14 +84,6 @@ PENDING: dict[str, tuple[str, str]] = {
         "cratekit.core.session.close_session, because the gate is opt-in and its "
         "bypass is the exported call",
     ),
-    "cratekit.adopt": (
-        "U23",
-        "that the adoption plan is presented as review items rather than as a "
-        "plan file, which is the other half of R26. A plan approved 30 percent "
-        "through and resumed in a later session needs verdicts that outlive the "
-        "process that collected them, which is exactly what a file the user edits "
-        "cannot give it",
-    ),
     "cratekit.intake": (
         "U37",
         "that a path repair proposal is offered into the queue U11 declared for "
@@ -333,6 +325,42 @@ PENDING: dict[str, tuple[str, str]] = {
         "three of the four verbs emit the diagnostic surface doctor owns, and "
         "because it is unblocked today. The choice is a judgement and is left "
         "legible so a human can move it again",
+    ),
+    "cratekit.adopt.apply_cli": (
+        "U27",
+        "the command-line surface for adopt.apply, and with it the destructive "
+        "session and the library lock that apply_plan honestly says it does not "
+        "take (the residual titled 'adoption's tag write takes no destructive "
+        "session and no library lock'). R29 says one source per run, and the "
+        "loop is not "
+        "a run, so only the verb can open that session. REGISTERED HERE RATHER "
+        "THAN LEFT AS A planned_in MARKER because scripts/board.py reads this "
+        "file and nothing else, so an obligation carried only by a marker on a "
+        "closing unit is owned by nobody the moment that unit closes (P5). "
+        "U23's own board entry does not appear in board.pending_units at all, "
+        "so closing #23 produced no drift and no contradiction while two verbs "
+        "shipped with no conformance coverage; that is R-13's failure verbatim "
+        "and it is already live for U8, U15 and U35. "
+        "ONLY adopt.apply IS BEHIND THE WALL. adopt.scan shared this verb's "
+        "module string, declares no gate, writes nothing and is not destructive, "
+        "so conformance 3 is an empty loop for it. It has landed as "
+        "cratekit.adopt.scan_cli. "
+        "WHAT THE WALL ACTUALLY IS, because R-13 states a close condition that "
+        "will not close it. It is NOT the absence of a database, and that is "
+        "proven by elimination: removing explicit=True from both of "
+        "adopt.apply's gates still exits 10. It is two properties of "
+        "test_conformance_3 itself. ONE: it answers gates inline with -d, and "
+        "Gates.require correctly refuses an inline answer to an explicit=True "
+        "gate, which is R34 working rather than failing, so any verb with an "
+        "explicit gate cannot pass. TWO: it drives once per gate on a fresh run "
+        "answering only that gate, so a verb declaring TWO gates always exits "
+        "DECISION_REQUIRED on the other one. adopt.apply has both shapes at "
+        "once. THE OWNER IS U27 on the reasoning that it lands doctor, it is "
+        "the unit that makes a machine ready, and R-13 already names it as the "
+        "natural owner of the conformance-3 correction. The correction is in "
+        "flight on its own branch, so this entry may be spendable before U27 "
+        "reaches it; a human moving it should move ADOPT_APPLY_CLI_UNIT in "
+        "cratekit/cli/registry.py with it",
     ),
 }
 

@@ -1297,6 +1297,14 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # real list and a real library is driven in tests/test_match_states.py,
         # which is where the fixtures for it live.
         "match.run": [str(library / "no-such-list.txt")],
+        # U23. The census takes no positional argument at all: a taxonomy
+        # declares exactly one routing tree by stable identifier, so a flag
+        # naming one would be a second opinion about a value the template
+        # already holds (R19). It queues rather than scanning, which is
+        # conformance 5's property, and queueing needs no database, which is
+        # what lets the half of adoption that is ready land while its
+        # destructive sibling waits.
+        "adopt.scan": [],
     }[entry.name]
 
 

@@ -1,0 +1,102 @@
+{
+  "name": "u23-round-8-independent-composites",
+  "pass_kind": "full",
+  "branch": "unit/u23-library-adoption",
+  "head": "83ae047",
+  "when": "2026-08-14 14:21 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 3801,
+  "baseline_exit": 0,
+  "pytest_runs": 5,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/adopt/scan.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/adopt/scan.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d19db4d72955a608",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 3801,
+    "baseline_collected": 3801,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "X6_adoptable_widens_to_online_only__rerun",
+      "description": "The X6 row again, now that a guard test for it exists. Was zero against the branch as delivered.",
+      "file": "src/cratekit/adopt/scan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "581ffe613c256207",
+      "subset": [
+        "tests/test_adoption.py",
+        "tests/test_adoption_hardware.py"
+      ],
+      "subset_reason": "test files importing cratekit.adopt.scan",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 619,
+      "baseline_collected": 619,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption_hardware.py::test_a_cloud_backed_track_on_a_fat_volume_is_EXCLUDED_and_never_applicable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "ADOPTABLE: frozenset[Readability] = frozenset({Readability.READABLE})",
+      "new": "ADOPTABLE: frozenset[Readability] = frozenset(\n    {Readability.READABLE, Readability.ONLINE_ONLY}\n)"
+    },
+    {
+      "id": "X6_composite_excluded_becomes_routed",
+      "description": "What X6 holds: the EXCLUDED disposition itself, forced to ROUTE",
+      "file": "src/cratekit/adopt/scan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": "X6_adoptable_widens_to_online_only__rerun",
+      "fingerprint": "b0b6e6af506f6571",
+      "subset": [
+        "tests/test_adoption.py",
+        "tests/test_adoption_hardware.py"
+      ],
+      "subset_reason": "test files importing cratekit.adopt.scan",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 619,
+      "baseline_collected": 619,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_an_excluded_track_is_carried_in_the_plan_rather_than_dropped",
+        "tests/test_adoption.py::test_the_plan_carries_every_scanned_row_whatever_happened_to_it",
+        "tests/test_adoption_hardware.py::test_a_cloud_backed_track_on_a_fat_volume_is_EXCLUDED_and_never_applicable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if readability not in ADOPTABLE:\n            yield ScannedTrack(\n                content_id=row.content_id,\n                recorded=row.recorded,\n                path=path,\n                readability=readability,\n                disposition=Disposition.EXCLUDED,\n                genre=row.genre,\n            )\n            continue\n",
+      "new": "        if readability not in ADOPTABLE:\n            yield ScannedTrack(\n                content_id=row.content_id,\n                recorded=row.recorded,\n                path=path,\n                readability=readability,\n                disposition=Disposition.ROUTE,\n                genre=row.genre,\n            )\n            continue\n"
+    }
+  ],
+  "dropped": []
+}

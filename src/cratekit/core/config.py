@@ -489,6 +489,22 @@ class RollbackEffect(StrEnum):
     #: A file was moved to the Trash. Rolling the record back does not move it
     #: out, and the library then holds a row for a file nobody can open.
     TRASHED_FILE = "trashed-file"
+    #: A tag was written INTO a file on the music volume. Added at the U23 merge,
+    #: 2026-08-14, because adoption is the first feature whose coupled record
+    #: describes an edit to somebody else's bytes rather than a database row.
+    #:
+    #: Rolling the ledger back un-records that the entry was applied and does not
+    #: un-write the tag, so a restore leaves the library saying a file has not
+    #: been adopted while the file itself says it has. Declaring NONE here would
+    #: have been the exact failure this enum's docstring names: a real
+    #: out-of-band effect that is never reconciled, with the silence reading as
+    #: convergence.
+    #:
+    #: The original values are recoverable, and NOT from anything a rollback
+    #: restores. They live in the adoption tag revert log, which is
+    #: NEVER_RESTORED precisely so it outlives the rollback that would otherwise
+    #: erase the only record of what the tags held before.
+    WRITTEN_FILE_TAG = "written-file-tag"
 
 
 #: One subdirectory per role, so an entry's physical location is DERIVED from the
@@ -1613,6 +1629,80 @@ STATE_FILES: tuple[StateFile, ...] = (
             " NEVER_RESTORED for the inode reason every lock here shares, and "
             "trivially so: it is installation-scoped, and a library snapshot has "
             "no business reaching outside the library at all."
+        ),
+    ),
+    # APPENDED RATHER THAN FILED BESIDE A SIBLING, for the reason the verb
+    # registry and the pending register both give: two entries inserted into the
+    # middle of one literal by two units auto-merge into a table nobody read,
+    # while an append conflicts textually and a person resolves it.
+    StateFile(
+        key="adoption_ledger",
+        snapshot=SnapshotRole.COUPLED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="adoption_ledger.json",
+        # ADDED AT THE MERGE, 2026-08-14. U23 was cut before U32 landed the rule
+        # that every COUPLED entry names what its records caused outside the set
+        # a restore replaces, so neither branch alone could see this entry owed
+        # an answer. tests/test_restore.py parses the literal and refuses a
+        # coupled entry without one.
+        rollback_effects=(RollbackEffect.WRITTEN_FILE_TAG,),
+        why=(
+            "Which entries of an approved adoption plan have already been applied "
+            "to this library. R26 says a plan applies incrementally and resumably, "
+            "and resumably across SESSIONS, so the record has to outlive the "
+            "process that made it. Losing it to a reinstall re-applies a plan from "
+            "its first item against a library that already holds most of it."
+            " COUPLED: every record it holds names a playlist membership row a "
+            "restore rolls back. A ledger that survived a rollback would report "
+            "those entries applied while the rows were gone, and the resume would "
+            "then skip exactly the work the restore undid."
+        ),
+    ),
+    StateFile(
+        key="adoption_tag_revert_log",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="adoption_tag_revert.json",
+        why=(
+            "The only surviving copy of each file's tag value from before adoption "
+            "overwrote it on disk. A tag write is the one thing an adoption run "
+            "does that the XML re-import safety net never covered: re-importing an "
+            "export does not put a genre string back into a file. A reinstall that "
+            "loses this makes every on-disk write permanent."
+            " NEVER_RESTORED, and this is the third entry to carry that argument "
+            "for the same reason the two undo logs already here do: the writes it "
+            "reverses landed on FILES, a database restore does not undo a file "
+            "write, and discarding the log would make them permanent. Rolling this "
+            "back is not a stale record, it is data loss."
+            " ITS OWN ENTRY RATHER THAN THE ADOPTION LEDGER'S FIELD, because the "
+            "two answer to opposite snapshot roles and one file cannot be both."
+        ),
+    ),
+    StateFile(
+        key="adoption_locks",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.DIRECTORY,
+        relative="adoption_locks",
+        why=(
+            "One sibling lock per adoption document, serializing the read then "
+            "write each of them performs. An atomic rename makes the WRITE atomic "
+            "and does nothing for the cycle around it: two processes both read the "
+            "same set, both add their record, and the second rename discards the "
+            "first while the call that lost reports success. A dropped applied "
+            "record re-applies work, and a dropped revert record loses the only "
+            "copy of an overwritten tag. Library-scoped because the documents are: "
+            "a lock in a per-installation directory is invisible to the second "
+            "machine editing the same library."
+            " NEVER_RESTORED for the inode reason every lock here shares, and it "
+            "is why this is a directory of its own rather than a file beside each "
+            "document: the ledger is COUPLED, so a restore replaces the directory "
+            "holding it, and a lock inside that directory would have its inode "
+            "swapped under every process holding it."
+            " A DIRECTORY rather than one entry per document, so a third adoption "
+            "document cannot arrive without a lock."
         ),
     ),
 )

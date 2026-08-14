@@ -337,7 +337,320 @@ all landing together. Three of them matter to this unit:
   the countdown forces this same wave to delete. It has been moved onto the
   long-lived `cratekit.deletion.cli` key so it outlives tonight.
 
-## What U21 changed
+## What U23 costs to merge, counted rather than estimated
+
+Round 7 reported a "conflict surface" of 7. That figure is not reproducible, the
+term is defined nowhere in this repository, and no grouping of this branch's
+changes produces it. **Measured against `main` at merge base `4368171`: the branch
+touches 20 files, of which 11 already exist on `main` and 9 are new.** The count
+was 11 before round 7 and 11 after; round 7 itself touched 9 files, all of them
+already in that set or new.
+
+The 11 that exist on `main`, which is the whole of what a merge has to reconcile:
+`docs/HANDOFF.md`, `docs/residual-findings.md`, `src/cratekit/cli/registry.py`,
+`src/cratekit/core/cause.py`, `src/cratekit/core/config.py`,
+`src/cratekit/core/tags.py`, `tests/_pending.py`, `tests/test_cli_contract.py`,
+`tests/test_layering.py`, `tests/test_pending_units.py`,
+`tests/test_review_queue.py`.
+
+Reproduce it with:
+
+    for f in $(git diff --name-only 4368171 HEAD); do
+      git cat-file -e main:$f 2>/dev/null && echo "ON-MAIN $f" || echo "NEW $f"
+    done
+
+## What U23 changed
+
+**Library adoption: a census nothing falls out of, an approval nothing stands in
+for, and an undo that is exact.** `adopt/scan.py` classifies every collection row
+into one of six named categories and one of five dispositions, so an unreadable
+or cloud-backed file is a REPORTED fact rather than a row that quietly failed to
+appear (AE12). `adopt/plan.py` carries every scanned row, including the ones it
+will never touch, which is what makes "nothing was dropped" a set comparison
+instead of a count. `adopt/approval.py` refuses every blanket affirmative at
+runtime (R34). `adopt/apply.py` applies one entry at a time and resumes by entry
+IDENTIFIER rather than by position. `adopt/revert.py` is the undo log for the one
+write that sits outside the database snapshot entirely.
+
+**`adopt scan` ships as a command line; `adopt apply` does not.** The census
+verb queues its work through the job engine and reports a `job_state` envelope,
+which needs no database, so it lands and the conformance suite drives it. The
+apply verb is destructive, declares two gates, and stays behind the wall R-13
+describes. The two used to share one `module=` string, which is what held the
+census back.
+
+### What round 1 of the adversarial review fixed
+
+Eleven blocking defects. The four that mattered most:
+
+**The unit would have silently no-opped against a real library.** The census
+passed rekordbox's raw `Location` column to `resolve_recorded_path`, which
+correctly refuses anything that is not a path. A real `Location` is a
+percent-encoded file URL, so every row in a real library classified as
+`not-a-path` and was excluded, while `covers()` reported that nothing had fallen
+out of the plan. The arithmetic that was supposed to catch this compares content
+identifiers, so it is a proof about PRESENCE and says nothing about correctness.
+Every test around it built its rows from bare filesystem paths. The fix is one
+`location_to_path` call; what would have caught it is a test using the shape
+rekordbox actually writes, which now exists.
+
+**The revert ledger recorded a corrupted copy of the original.** `read_tag`
+strips whitespace, folds an empty value into absence, and returns the first of
+several values. For a router asking a file what genre it claims to be, all three
+are right. For an undo log they are three silent edits: a stripped value comes
+back stripped, a value the ledger recorded as absent comes back DELETED, and a
+second value comes back not at all. `core/tags.py` grows an EXACT pair,
+`read_tag_values` and `write_tag_values`, beside the convenient one rather than
+changing it, because the stripping is pre-existing behaviour four other callers
+depend on.
+
+**A gate refusal rewrote every file in the plan.** The tag write happened before
+the membership write and a refusal from the membership writer was caught per
+entry, so one systemic refusal inside the caller's destructive session produced
+one irreversible file write per entry with zero memberships landed. The
+recoverable write goes first now, which is the whole fix: a refusal costs no file
+write at all, so the loop can go on reporting it per entry the way U19 requires.
+Round 2 briefly also stopped the run on it, and see below for why that was wrong.
+
+**A revert issued during an apply lost the original permanently.** The lock
+covered each document's read-modify-write and nothing about apply against
+revert. `write_tag_with_record` holds one lock across the record and the write,
+and `revert_tags` holds the same lock across its whole pass.
+
+The rest: the census died mid-generator on a permission error or a null byte and
+took every later row with it; an unsupported container raised out of `apply_plan`
+so the plan could never complete; mutagen's default ID3v1 handling destroyed a
+legacy genre byte the ledger never recorded; the block-count probe called sparse
+files and whole FUSE mounts cloud-backed; a stale `.icloud` stub hid a readable
+file; the collision question was asked and nothing consumed the answer.
+
+### What round 2 fixed, which was mostly round 1's own damage
+
+**The flagship guard could not fail.** The 35-case exactness test defined its
+expectation by calling the reader it was verifying, so both sides of every
+assertion moved together. A mutant restoring all three of the losses the round
+exists to close left the whole suite green. The expectation is now the
+parametrised literal, cross-checked against an oracle that reads the container
+directly and shares no code with the reader. Verified: that mutant now kills 50
+cases across two test functions. `probe_readability`'s own totality wrapper had
+the same shape, covered only by a second catch downstream, and is now driven
+directly.
+
+**Two regressions round 1 introduced, both in code it rewrote.** Breaking the
+apply loop when a refusal's scope was wider than one item ended the pass on an
+ORDINARY per-track refusal, because `cause.refuse` defaults to `Scope.RUN` and
+nothing in `write/` declares `ITEM`. That is the per-track versus per-pass
+failure U19 paid for, so the break is gone: the ordering was always the whole
+fix. And decoding the recorded location made a NULL `Location` raise
+`AttributeError` out of the census generator, one line above the probe that had
+just been hardened against exactly that.
+
+**One over-correction.** The revert's size and mtime check refused three
+legitimate libraries: a later write of any other field this module owns, a
+byte-identical file whose mtime moved, and an interrupted revert pass retried.
+The record already carried direct evidence the guard was not consulting, so the
+field's own value is asked first and the stamp only decides when that is
+inconclusive. `revert_tags` gains `force`, because a heuristic over somebody
+else's file with no override is a heuristic that decides.
+
+**One smaller one.** Asking about the container after `place` meant an
+unsupported container got its membership, was failed, and could never reach
+applied, so every re-run placed it again. The question is now asked before
+anything happens for the entry.
+
+### What round 3 fixed, which was round 2's own over-correction
+
+**The loosened revert guard defeated itself in the likeliest case.** Round 2
+accepted "the field still holds what adoption wrote" as proof the file was
+adoption's own output. The value adoption writes is a taxonomy bucket's DISPLAY
+name, shared by most of the library, so a stranger's recording whose own genre is
+that bucket satisfied it exactly. Measured: the revert then wrote one file's genre
+onto another file's audio, destroyed the replacement's own genre with no record,
+and dropped the ledger record. The round 2 test that claimed the guard still bit
+had picked the one replacement genre that dodged the branch.
+
+The guard was rewritten around size and time unchanged, or a digest recorded at
+write time. The inode was measured and rejected, because `write_bytes` and `cp`
+both truncate in place and keep it. Each record is now dropped from the ledger as
+its own file is restored rather than at the end of the pass. The one remaining
+legitimate refusal, a later write of another field this product owns, is residual
+R-83 with the fix named.
+
+**And the same commit that took a per-track-versus-per-pass failure out of
+`apply_plan` put one into the undo log.** A record naming a field this build does
+not know made the whole revert raise before the lock released, so nothing settled
+and every retry died on the same record. The loop body is guarded per record now.
+
+Also: `force` takes a list of `(path, field)` pairs, because a refusal printed per
+record must not hand out a pass-wide override; a `Path`-valued `recorded` resolves
+instead of excluding the whole library; and the container list under test is
+derived from the writer's own table, which grew it from seven suffixes to eleven.
+
+### What round 4 fixed, which was round 3's own two over-claims
+
+**Round 3 recorded the digest and then never asked it.** Its acceptance order was
+"size and time unchanged" FIRST, returning before the digest was consulted, so
+the one piece of evidence a replacement cannot forge sat unread while the two it
+can forge decided the answer. `st_mtime_ns` is metadata: `os.utime`, `touch -r`,
+`cp -p`, `rsync -a`, `tar -x` and every tag editor with a preserve modification
+time option set it to whatever they are told. Measured: different audio written to
+the path, padded to the recorded size and stamped back to the recorded time,
+restored anyway, `restored: 1  failed: {}`, the replacement's genre destroyed and
+the record dropped. That is verbatim the harm the refusal message names, reached
+past definitive contrary evidence already in the record.
+
+Round 4 made the digest the answer whenever there was one, and left three states
+in which there was not one. Round 5 removed all three; see below.
+
+**And "the interrupted pass is eliminated structurally" is a stronger claim than
+the code makes.** Dropping each record as its file is restored narrows the window
+from the whole pass to one record; it does not close it. A run that dies between a
+restore landing and that record's drop reaching the disk strands exactly that
+record, refused on every retry. Written down as residual R-85 and pinned by a test,
+because the damage is bounded (forcing it writes the same original onto a file
+that already holds it) but the claim was not.
+
+Also: the deleted-file refusal now asserts its REASON rather than only its key,
+which is what made the existence check kill zero tests. Round 3's mutation table
+would have caught all three: the size-and-time acceptance, the cloud-eviction
+check and the existence check each killed zero tests out of 3705.
+
+### What round 5 fixed: the same shape, a fourth and fifth time
+
+The unit had one recurring defect and it appeared four times in one function:
+**taking something that is not identity for identity.** Round 3 took size and
+mtime. Round 4 fixed that and left three more doors, and all three were doors
+that stepped around the digest rather than reading it.
+
+**An unstamped record accepted any file at all, and an ordinary Ctrl C reached
+it.** `snapshot_before_write` persists the record, the mutagen tag write runs,
+and only then does the stamp go on. The whole tag write sits in that window and
+it is the slowest part of the operation. The guard returned "unchanged" from a
+record with no size, no time and no digest BEFORE consulting anything. Driven
+with no forgery and no I/O error: interrupt in the window, replace the track
+months later with a different recording of a different size, and the revert wrote
+the old genre onto the stranger's audio, destroyed the replacement's own genre
+and dropped the record. It now refuses and `force` spends it.
+
+The 115 parametrisations that died when that branch was mutated were not coverage
+of it. They all rode one fixture that took the record half and wrote the tag
+separately, so every one of them traversed the widest branch in the guard without
+being about it. They go through `write_tag_with_record` now, which is what
+`apply_plan` uses.
+
+**A failed stamping read silently downgraded the guard to forgeable metadata.**
+`digest_of` answered `""` on `OSError` and `_stamped` stored it without comment,
+producing a record indistinguishable on disk from a document predating digests.
+The two are not the same thing: one is a file this build wrote seconds earlier
+where the read could be retried. `DigestState` makes them three named states, the
+read is retried once, and a record that still cannot produce a digest refuses.
+
+**The eviction branch skipped the digest to avoid a download the accept path then
+performed one line later.** Driven with the real writer instead of the stub the
+old test used: `restore_tag` opens the file with mutagen and rewrites it, so the
+provider fetches it either way. The branch is gone. The cost that remains, a
+whole-file hash on the refusing path, is recorded honestly as R-86 rather than
+argued away as free.
+
+**Four zero-death guards, three of them round 4's own new code.** Round 4's
+report said "no zero-death guard remains", which was false. The eviction
+branch's `untouched` half, the two refusal constants it introduced ("named once
+so a report and a test cannot spell them apart", which nothing spelled), and
+`scan.DATALESS_FLAG` itself, which survived being set to `0x1`.
+
+**And the self-referential assertion that hid the last one.** Two tests set
+`st_flags = adopt_scan.DATALESS_FLAG` and then asserted the behaviour that
+constant produces. That reduces to X equals X: the flag could be `0x1` and both
+tests would pass while every file carrying `UF_NODUMP` took the eviction branch.
+Both fixtures now spell the literal `0x40000000` from `sys/stat.h`, and a test
+pins the constant to it. The same treatment is applied to every refusal message:
+the suite asserts the literal string in the report, never the constant the report
+is built from.
+
+**That last claim was half true and round 6 corrects it.** Three of the refusals
+were asserted by their LEADING CLAUSE only, so every word after it could be
+reworded and no test moved: `_THE_STAMP_NEVER_LANDED`, `_THE_STAMP_COULD_NOT_BE_READ`
+and `_NO_DIGEST_WAS_RECORDED`. Round 5's mutation table credited them one, two and
+one death, which is what a WHOLESALE replacement of the constant measures rather
+than a nearby rewording. Every message constant is now asserted in full.
+
+**Net:** one acceptance where there were three, and it is the recorded digest
+matching the file's bytes. Everything else refuses, names which of the four ways
+it is, and names the `(path, field)` pair that overrides it.
+
+**Round 6 found the guard was right and the IDENTITY was wrong, which is a layer
+below everything above.** A record was keyed on a digest of the PATH, so two
+recorded locations naming one file produced two identities and first-write-wins,
+which this module's own docstring calls load bearing, never engaged. The second
+record then stored the value adoption had just written as the "original". Three
+spellings reach it and none of them is exotic: a hardlink, a case varying
+spelling on a case insensitive volume (the APFS default), and a rename between
+two runs. Driven end to end, the revert restored the real genre through one
+record, refused the other because its own restore had changed the bytes, told the
+user their file's bytes were not adoption's, and handed them a `force` key that
+wrote `Adopted Bucket` on as the original. The user's genre was then in no file
+and no record.
+
+Identity is NOT a lowercased path: case insensitivity is a property of the volume
+rather than of the string, and folding two real files into one record is the same
+defect pointed the other way.
+
+**AND IT IS NOT `(st_dev, st_ino)` EITHER, which round 6 shipped and round 7 took
+out again.** That pair is not unique in either direction and both directions were
+measured on real filesystems rather than argued. An inode number is REUSED once
+the file holding it is deleted, reproduced on a real MS-DOS FAT image, which is
+the format of every rekordbox export drive: adopting the new file found the dead
+file's record, REFRESHED the record's path to the new file, stamped the new
+file's digest into it, and the revert then wrote the dead file's original onto
+the live file and reported the pass clean. The same pair also MOVES for a file
+nobody touched, three ways: a FAT remount renumbered the inode, an `os.replace`
+save on APFS moved it at the same path on the same volume, which is how every
+tagger and this repository's own atomic writer save, and remounting two volumes
+in the opposite order moved the device number.
+
+So a record now carries THREE claims about which file it is about, and
+`_record_for` requires them to converge: the volume and inode, the path, and a
+digest of the bytes adoption left. A disagreement the BYTES can settle is
+settled, which is what carries a rename, a remount and a legacy ledger through.
+Every other disagreement REFUSES with `RecordCannotBeMatched`, per entry, with
+the file untouched. **The recorded path is never rewritten to a different file's
+path**, because that one line is what destroyed the evidence. A ledger written by
+the old scheme is migrated on the next adoption rather than doubled, and the
+ledgers already on disk are covered from the other end too, where two records
+resolving to one file refuse as a group, computed over the WHOLE LEDGER rather
+than over the records one pass selected, and are deliberately offered no `force`.
+
+**And the guard blocked forever on a file whose bytes cannot be produced, holding
+that lock.** Removing the eviction branch left `digest_of` unbounded, and
+`revert_tags` holds the ledger's exclusive lock across its whole pass. Driven
+with a FIFO at the recorded path: `exists()` True, `stat()` instant, `open()`
+never returns, the revert still running at 6 seconds, and a concurrent
+`write_tag_with_record` on a different and perfectly readable file waiting behind
+it for its whole life. Three fixes, and the permissive choice for evicted files
+is kept: the mode is asked before any descriptor is opened, the read has a
+deadline that RAISES rather than folding into "unreadable" (`TimeoutError` is an
+`OSError`, which is the trap), and the read that would otherwise be a provider
+download happens BEFORE the lock is taken.
+
+**What round 7 changed about that last one.** The pre-lock answer used to be
+SPENT under the lock whenever `(st_dev, st_ino, st_size, st_mtime_ns)` had not
+moved. Those are the four values this module's own docstring says are not
+evidence about content, deciding whether evidence about content still applied.
+Measured on a real FAT image, whose modification time granularity is one second:
+an in-place rewrite of the same length inside one tick left all four identical
+while the digest had changed, and the restore ran on the replaced bytes. So the
+pre-lock pass now decides NOTHING. It reads to make a provider materialize the
+file with no lock held, and the read that decides is taken again under the lock.
+That is two reads per refused record and the cost is written down rather than
+rounded off. The residual about a revert hashing every file it considers is
+corrected rather than re-filed; the residual about inode recycling is CLOSED
+rather than accepted; two new ones record what a stalled mount can still do to a
+single `read` and what a digest-less record cannot survive.
+
+Round 7's mutation table is `docs/mutation-rows-u23.md`, with every row's exact
+substitution beside its count. Fold it into `docs/mutation-rows.md` at merge.
+
+
 
 **The per-field metadata policy, and the registration that inverts it.**
 `write/metadata.py` is the only place feature operation names appear. U17 had
@@ -744,10 +1057,15 @@ below say which: the entry, the mirrored key in `EXPECTED_PENDING`, and the
 `@requires` decorator on every guard the key gated. See
 `docs/solutions/workflow-issues/countdown-entry-discharge-drops-a-whole-test-file.md`.
 
+U23 cleared its own `cratekit.adopt` entry and added `cratekit.adopt.apply_cli`
+in its place, which is the same mechanism at a finer grain: the engine landed,
+so the engine's countdown expired, and the CLI obligation it left behind now has
+a target of its own instead of being owned by a `planned_in` marker on a closing
+issue. That last shape is R-13's failure and is live three times over already.
+
 | Unit | Target | Owes |
 |---|---|---|
 | U37 | `cratekit.intake.collection_xml` | the COLLECTION TRACK emitter that must never emit a `<TEMPO>` element, plus two obligations U19 parked here because U37 owns the pipeline: record each new track's routing intent at the moment the placement is decided, and close a run that deferred a placement through `routing_pass.close_run` rather than `core.session.close_session` |
-| U23 | `cratekit.adopt` | the adoption plan presented as review items rather than as a plan file, which is the other half of R26 |
 | U37 | `cratekit.intake` | a path repair proposal offered into the queue U11 declared for it, never applied, and never read back out of a file somebody edited |
 | U24 | `cratekit.deletion.cli` | the deletion CLI shell. The re-point to U27 is REVERTED, so this row agrees with `tests/_pending.py`. The wall is R-13's database fixture, not the explicit gate, which main's conformance 3 rewrite took down. It is why a trailer naming this unit's issue returns `board.py audit` exit 2, and its issue stays open by design |
 | U27 | `cratekit.cli.doctor` | a database acknowledged outside the library root is reported on every run, so a snapshot that is a copy rather than an atomic commit stays visible long after somebody accepted it |
@@ -756,6 +1074,7 @@ below say which: the entry, the mirrored key in `EXPECTED_PENDING`, and the
 | U20 | `cratekit.cli.rebuild` | the rebuild verb, whose operator disposition is an explicit logged act by a named person and never a flag that clears every tree, and which clears a tree's flag only through `write.rebuild.rebuild_tree` handed the convergence check's own difference list |
 | U27 | `cratekit.session.restore_cli` | the two restore verbs U32 could not land, and one session held across the whole restore through `core.restore.recovery_session`, passed in as `plan_restore`'s and `run_restore`'s gates, because the default shape takes the library lock twice |
 | U27 | `cratekit.cli.reports` | the four report verbs, and the two report engines two of them still have none of. See the residual titled "Four report verbs were owed by a unit that was about to close, and named a module nobody could build": U27 is a judgement, not a decision |
+| U27 | `cratekit.adopt.apply_cli` | the apply shell, and the destructive session and library lock `apply_plan` says it does not take. See R-81 for what the wall in front of it actually is, which is not what R-13 says |
 
 ## Open items that are not code
 
