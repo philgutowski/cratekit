@@ -173,3 +173,114 @@ table. Kill by PID, or by a pattern naming the unit.
    threshold_seconds=threshold_seconds(multiplier))`.
 3. `docs/METHOD.md` still wants its trim pass. The countdown lesson in it is now
    one line plus a pointer to the solutions document, not a section.
+
+<!-- ------------------------------------------------------------------ -->
+
+# Second session, 2026-08-14: the guard was asked what it saw, and said something else
+
+The session above ended by sending U27 back for a decision between three
+resolutions. This one went to take that decision and found the finding's recorded
+mechanism was wrong, which changes what the decision is between. Nothing was
+merged. `main` moved by two docs commits and is otherwise untouched.
+
+## The compound artifact from the previous session was sitting uncommitted
+
+`CONCEPTS.md` and
+`docs/solutions/workflow-issues/merge-falsifies-a-guard-invariant-and-every-remedy-breaks-something.md`
+were finished and unstaged. Every line reference in the document was resolved
+against the tree before committing, and all of them held. Committed as `1ac0cac`
+and pushed.
+
+## R-80's mechanism, corrected by driving it
+
+R-80 said `_os_open_reads` declines the probe's flags because one branch of
+`os.O_RDWR if writing else os.O_RDONLY` is not a read. The learning document
+written alongside it corrected that to unreadability, which is the right
+category, and then named the wrong unreadable shape, the conditional.
+
+**Both are wrong. The guard never sees the assignment.** It reads the call
+argument, and the call is `os.open(path, flags)` whose argument is a bare local
+name. Five rewrites of the assignment were driven and all five stayed red,
+including `flags = os.O_RDONLY` with no conditional and no `getattr`:
+
+| assignment, call left as `os.open(path, flags)` | guard |
+|---|---|
+| `os.O_RDONLY` | RED |
+| `os.O_RDONLY \| os.O_NONBLOCK` | RED |
+| `os.O_RDONLY \| getattr(os, "O_NONBLOCK", 0)` | RED |
+| `os.O_RDWR \| os.O_NONBLOCK` | RED |
+| `os.O_RDWR` | RED |
+| **inlined** `os.open(path, os.O_RDONLY \| os.O_NONBLOCK)` | **GREEN** |
+| **inlined** `os.open(path, os.O_RDWR \| os.O_NONBLOCK)` | RED |
+
+The guard is saying "I cannot tell what this opens", not "this writes", and on a
+readable shape it is exactly right in both directions. **Three accounts of a
+thirty line helper were written from reading it, by three readers including an
+independent verifier, and the first two were wrong in different ways.** It
+answers in under two seconds when asked. METHOD's driven-end-to-end rule applies
+to a finding's MECHANISM and not only to its existence, and that is the lesson
+worth more than the correction.
+
+The correction opens a fourth resolution nobody could see while the conditional
+was believed to be the problem: split the probe's two intents so the read only
+one spells its flags at the call site, leaving only `_from_database_error` to
+answer for.
+
+## The first closing condition is achievable and fixes nothing
+
+R-80's first resolution, and the one both it and the previous session called the
+honest structural answer, was driven. Moving the raw open into
+`cratekit.core.access_probe`, which the allowlist does not admit, and leaving
+`cause.py` calling it, turns the guard **green** with the chain from the reports
+package to a write capable handle untouched.
+
+`test_the_package_imports_downward_only` catches that relocation, because `cause`
+is FOUNDATION by explicit name and a new `cratekit.core.*` module defaults to
+INFRASTRUCTURE. **It is then satisfied by adding one name to one regex**, after
+which the suite is green apart from two unrelated pre-existing failures.
+
+Both structural guards, satisfied by a change that fixes nothing. Filed as
+**R-102**, because the hole is in the guard rather than in the merge: the audit
+walks only the modules the allowlist NAMES, so any admitted module can delegate
+its writing one hop out and be read as ordinary code. Sideways delegation, to a
+module at the same layer, evades the layering guard too.
+
+## The write capable handle is pinned by nothing
+
+Forcing the probe to `os.O_RDONLY` always killed **zero** tests: 3 failed, 5030
+passed, 11 skipped, 5044 collected, which is the baseline exactly. Three of
+R-80's four resolutions change this behaviour and the suite would not notice any
+of them. Whichever is taken brings its own evidence.
+
+## The preserved merge branch is red on THREE guards, and every record said one
+
+Measured on `merge/u27-attempt-2026-08-14` at `01eb6da`: 3 failed, 5030 passed,
+11 skipped, 5044 collected. R-80 is one. The other two are that branch's own
+unfinished re-pinning, and neither is a second collision:
+
+- the kebab literal pin holds `(256, 156)` against a tree measuring `(268, 163)`.
+  The branch re-pinned the cause population and not this one.
+- the refusal walk sees `grant-path-access`, the reservation that same branch
+  added, against a fixture expecting `{repair-backup-facts, upgrade-cratekit}`.
+
+Re-measure and re-pin work, never widen. Recorded so the next session does not
+resolve R-80, meet two unexplained reds, and start hunting a collision that is
+not there.
+
+## A driver bug, caught by its own output
+
+One batch of four rows was run through a shell function that never passed its
+argument to `python3 -c`, so no mutation was applied and all four reported the
+previous row's result. It was visible only because the traceback printed above
+each identical result line. The rows were discarded and re-run through a script
+file taking real arguments. **Four rows that would have read as a clean
+measurement.** METHOD's rule against hand rolled drivers earns itself again;
+these were single line edits that felt too small to need `scripts/mutate.py`.
+
+## What the next session does
+
+1. **U27 still needs the decision, now between four resolutions rather than
+   three**, with the fourth the smallest and none of them validated by the suite.
+   Read R-80 first; it carries every measurement above.
+2. **U12**, still the last unverified unit, untouched by any of this.
+3. R-102 is open on `main` and is nobody's merge blocker.

@@ -115,15 +115,35 @@ helper whose whole job is to decide whether an `os.open` call's flags say read
 only, by comparing every flag name against `_READING_FLAGS` (`:4070`) and
 answering true only when all of them read.
 
-**Be precise about WHY it declines, because the obvious reading is wrong and the
-canonical record carries the same imprecision.** It does not inspect the branches
-and conclude that one of them writes. Its flag reader handles a bitwise or, an
-attribute, and a name, and answers nothing at all for any other shape, including
-a conditional expression. So a conditional flag set is declined for being
-UNREADABLE to the guard, and an unreadable flag set is reported. It would decline
-`os.O_RDONLY if x else os.O_RDONLY` identically. The outcome is the one `O_RDWR`
-deserves and the mechanism is not the one it looks like. R-80 states this the
-looser way and is worth correcting when somebody is next in that file.
+**Be precise about WHY it declines, and get the precision by ASKING THE GUARD
+rather than by reading it.** Two accounts of this were written before anybody
+did, and both were wrong. R-80 said the guard inspects the conditional and
+concludes one branch writes. The first version of this document corrected that to
+unreadability, which is the right category, and then named the wrong unreadable
+shape: it said a conditional expression is what the flag reader cannot parse.
+
+**Driven 2026-08-14, the actual mechanism.** `_os_open_reads` reads the CALL
+ARGUMENT. The call is `os.open(path, flags)` and the argument is the bare local
+name `flags`, which the helper cannot resolve back to its assignment, so it
+answers "flags this cannot read as a read". **The assignment is never examined at
+all**, whatever shape it has. Five rewrites of it were driven and every one
+stayed red, including `flags = os.O_RDONLY` with no conditional and no `getattr`
+in it. Inlining the expression into the call is what the helper can read, and it
+then behaves exactly as designed: `os.open(path, os.O_RDONLY | os.O_NONBLOCK)`
+passes and `os.open(path, os.O_RDWR | os.O_NONBLOCK)` fails.
+
+So the guard's objection is "I cannot tell what this opens", and the thing it
+cannot see through is one level of local variable indirection. The finding stays
+real, because the handle genuinely is write capable. But the correction opens a
+resolution none of the three recorded ones name, which is the practical cost of
+having reasoned about the helper twice instead of running it once.
+
+**The general lesson is the one this repository keeps paying for.** Three
+accounts of a guard's behaviour were written from reading its source, by three
+readers, one of them an independent verifier, and the first two were wrong in
+different ways. The guard is thirty lines long and answers in under two seconds
+when asked directly. METHOD's rule that a finding must be driven end to end
+applies to the MECHANISM of a finding and not only to its existence.
 
 **This repository already has the same rule in a different scope, and the
 consistency is the argument.** `scripts/board.py audit` deliberately does not
@@ -298,10 +318,25 @@ genuinely have, and they are correct code.
 `src/cratekit/modules/reports/export.py:71` and
 `src/cratekit/modules/reports/aging.py:62`.
 
-**The third path, refused.** Adding `O_RDWR` to `_READING_FLAGS`, or special
-casing a conditional flag expression, would make the helper answer "this reads"
-about a handle that can write. The guard is behaving exactly as designed, so it
-was left alone.
+**The third path, refused.** Adding `O_RDWR` to `_READING_FLAGS`, or teaching the
+helper to chase a local variable back to an assignment it then has to evaluate,
+would make it answer "this reads" about a handle that can write. The guard is
+behaving exactly as designed, so it was left alone.
+
+**A fourth path, which only the corrected mechanism makes visible.** Because an
+INLINE read only flag expression passes, splitting the probe's two intents so the
+read only one spells its flags at the call site narrows the problem to the single
+write intent caller. It was not available while everyone believed the guard was
+objecting to the conditional. Recorded in R-80 rather than taken here.
+
+**A fifth path, driven and refused, and the reason it is worth writing down.**
+Moving the raw open into a module the allowlist does not admit, and leaving
+`cause.py` calling it, turns the guard GREEN with the reachability unchanged,
+because the audit walks only the modules the allowlist names. The layering guard
+catches that particular relocation, and is then satisfied by adding one name to
+one regex. Both structural guards can be satisfied by a change that fixes
+nothing. That is R-102, filed as a finding about the guard rather than about this
+merge.
 
 **What happened to the merge.** It did not proceed. `main` stayed green and
 untouched. R-80 was filed on `main` in commit `f2f8d5b` with the full
@@ -356,9 +391,15 @@ a chance to get one of them differently wrong.
   risk merge surface, and that claim is about a FILE and remains true: R-80 is
   not in the register and does not touch it. The merged TREE is a separate class
   of surface, and this is the entry for it.
-- `docs/residual-findings.md`, R-80 at line 5236: the canonical record of this
-  specific collision, with the mechanism, the measured cost, what was preserved,
-  and the three candidate resolutions.
+- `docs/residual-findings.md`, R-80: the canonical record of this specific
+  collision, with the corrected mechanism, the measured cost, what was preserved,
+  and the candidate resolutions. Cited without a line number on purpose, because
+  the entry has since grown and a line number into a file that gets appended to
+  is a citation with a shelf life.
+- `docs/residual-findings.md`, R-102: the hole the fifth path went through. The
+  allowlist audit reads only the modules the allowlist names, so an admitted
+  module can delegate its writing one hop out and be read as ordinary code. That
+  is a finding about the guard and outlives this merge entirely.
 - `docs/METHOD.md`, "The merge bar, decided 2026-08-09" at line 11, and "The
   battery" at line 185: the two rules this document insists on keeping apart.
 - `docs/METHOD.md:245`: the class this belongs to, named there as "a rule

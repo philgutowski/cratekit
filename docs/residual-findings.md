@@ -5256,8 +5256,41 @@ it: `src/cratekit/modules/reports/export.py:71` and
 `src/cratekit/modules/reports/aging.py:62`.
 
 `_os_open_reads` already models `os.open` read against write through its flags,
-and correctly declines to read `os.O_RDWR if writing else os.O_RDONLY` as a
-read, because one branch of it is not.
+and declines to read this call as a read.
+
+**THE MECHANISM ABOVE WAS WRONG AND IS CORRECTED HERE, 2026-08-14, by driving
+it.** This entry originally said the guard declines because one branch of
+`os.O_RDWR if writing else os.O_RDONLY` is not a read. **The guard never sees
+that expression.** `_os_open_reads` reads the CALL ARGUMENT, and the call is
+`os.open(path, flags)`, whose second argument is the bare local name `flags`.
+The helper cannot resolve a name back to its assignment, so it answers "flags
+this cannot read as a read" and the assignment's shape is irrelevant. Five
+rewrites of the assignment were driven and every one stayed red, including
+`flags = os.O_RDONLY` with no conditional and no `getattr` in it:
+
+| flag assignment, call left as `os.open(path, flags)` | guard |
+|---|---|
+| `os.O_RDONLY` | RED |
+| `os.O_RDONLY \| os.O_NONBLOCK` | RED |
+| `os.O_RDONLY \| getattr(os, "O_NONBLOCK", 0)` | RED |
+| `os.O_RDWR \| os.O_NONBLOCK` | RED |
+| `os.O_RDWR` | RED |
+
+Inlining the expression into the call is what the helper can actually read, and
+it then behaves exactly as designed:
+
+| inlined call | guard |
+|---|---|
+| `os.open(path, os.O_RDONLY \| os.O_NONBLOCK)` | **GREEN** |
+| `os.open(path, os.O_RDWR \| os.O_NONBLOCK)` | RED |
+
+So the guard's objection is **"I cannot tell what this opens"**, not "this
+writes". It accepts an inline read only open and rejects an inline write capable
+one. Both halves are correct behaviour. The finding is real either way, because
+the handle genuinely is write capable, but the reason matters: it opens a
+resolution the three below do not name. Recorded because the looser reading
+survived a full independent verification and a written learning before anybody
+asked the guard what it saw.
 
 **Both remedies the guard offers were driven to their end, and both fail.**
 
@@ -5301,6 +5334,53 @@ write permission without opening a write capable handle, which changes U27's
 behaviour and needs its own driven round; or the reports stop importing from
 `cratekit.core.cause`. U27 has fix rounds left under the cap, so sending it back
 for one is within the process rather than an exception to it.
+
+**THE FIRST CONDITION AS WRITTEN IS ACHIEVABLE AND FIXES NOTHING. Driven
+2026-08-14.** Moving the raw open into `cratekit.core.access_probe`, a module the
+allowlist does not admit, and leaving `cause.py` calling it, turns this guard
+GREEN while the chain reports to `cause` to `access_probe` to `O_RDWR` is
+untouched. The audit walks only the modules named on the allowlist, so a module
+it does not admit is never read. A second guard then catches it,
+`test_the_package_imports_downward_only`: `cause` is FOUNDATION by an explicit
+name in the layer table and a new `cratekit.core.*` module falls through to
+INFRASTRUCTURE, so foundation importing it is a KTD23 violation. **That guard is
+then satisfied by adding one name to one regex**, after which the full suite is
+green apart from the two pre-existing failures below and the reachability is
+still exactly as it was. Both structural guards can be satisfied by a relocation
+that changes nothing. Any resolution taking this route has to invert the
+dependency so `cause.py` does not call the probe at all, not merely move it.
+
+**A fourth resolution, opened by the corrected mechanism.** `_probe` serves two
+intents through one variable and one call. Splitting them so the read only
+intent calls `os.open` with an INLINE read only flag expression makes the guard
+certify it as a read, on the measurement above, leaving only the single write
+intent call site, `_from_database_error`, to answer for. It is the smallest of
+the four and it is still a decision, because of the next paragraph.
+
+**The write capable handle is pinned by NOTHING. Driven 2026-08-14.** Forcing
+the probe to `os.O_RDONLY` always, so no write capable handle is ever opened,
+killed **zero** tests: 3 failed, 5030 passed, 11 skipped, 5044 collected, which
+is the baseline exactly. So the suite would not notice any of resolutions two,
+three or four changing this behaviour, and none of them can be validated by
+running it. Whichever is taken needs its own driven evidence.
+
+**The preserved branch is red on THREE guards, not one, and this entry said
+one.** Measured on `merge/u27-attempt-2026-08-14` at `01eb6da`, full suite,
+2026-08-14: 3 failed, 5030 passed, 11 skipped, 5044 collected. This finding is
+one of them. The other two are the branch's own unfinished re-pinning and are
+unrelated to it:
+
+- `test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned` pins
+  `(256, 156)` kebab literals against a tree measuring `(268, 163)`. The branch
+  re-pinned the CAUSE population and did not re-pin this one.
+- `test_the_walk_sees_every_shape_a_refusal_is_actually_written_in[expected1]`
+  sees `grant-path-access`, which is the reservation that same branch added to
+  `src/cratekit/cli/exit_codes.py`, against a fixture expecting
+  `{repair-backup-facts, upgrade-cratekit}`.
+
+Both are re-measure and re-pin work, per the standing rule never to widen. They
+are recorded here so the next session does not resolve this finding, see two
+unexplained reds, and read them as a second collision.
 <!-- ------------------------------------------------------------------ -->
 
 ## The twenty findings below arrived with the U23 merge, 2026-08-14, and were renumbered
@@ -6285,3 +6365,70 @@ the result. That is how a merge acquires a defect nobody drove.
 the single module shape, with the nine call sites moved to it, and the removal
 driven by checking that the surviving helper still answers False for a target
 that offers into nothing.
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-102. The reports allowlist audit is one hop deep, so an admitted module can delegate the writing
+
+**Found:** 2026-08-14, while driving R-80's first closing condition. Not found by
+U34's own review, which built this guard, and not by U27's independent
+verification. It is a property of the guard rather than of any unit, and it is
+live on `main` right now.
+
+**The mechanism, driven rather than argued.**
+
+`test_the_allowlist_admits_no_writer_this_guard_cannot_name` walks the modules
+`ALLOWED_IMPORTS` names, through `_admitted_repository_modules`, and asserts that
+every writer they expose is a name `FILESYSTEM_MUTATIONS` or
+`QUALIFIED_MUTATIONS` carries. The stated argument it defends is that nothing the
+reports package can reach can touch a file except through `pathlib`.
+
+**The walk stops at one hop.** It reads the source of each admitted module and
+nothing that module imports. Nothing anywhere constrains what an admitted module
+may import. So an admitted module can hold a thin caller, put the actual write in
+a module the allowlist does not name, and the audit reads the caller as ordinary
+code because the callee is never opened.
+
+Driven end to end on `merge/u27-attempt-2026-08-14`, using R-80's own subject
+because it was already to hand. `cratekit.core.access_probe` was created holding
+the raw `os.open`, `cratekit.core.cause` was left importing and calling it, and
+this guard went from RED to **GREEN** with the reachability from the reports
+package to a write capable handle completely unchanged.
+
+`test_the_walk_is_bounded_to_the_package_and_the_allowlist_covers_the_boundary`
+looks like it covers this and does not. It closes the SIBLING hole, a module
+beside the reports package that the package could import and the walk would not
+scan. This is the hole one layer further out: a module beside an ADMITTED
+DEPENDENCY. The two have the same shape and only the first is asserted.
+
+**What partially covers it today, and why partially is the finding.**
+`test_the_package_imports_downward_only` caught the specific relocation above,
+because `cratekit.core.cause` is FOUNDATION by explicit name in the layer table
+while a new `cratekit.core.*` module falls through to INFRASTRUCTURE. That is a
+layering rule doing an allowlist's job by coincidence of where the code landed.
+**It was then defeated by adding one name to one regex**, after which the tree
+was green apart from two unrelated pre-existing failures. It also does not cover
+the general case at all: an admitted module delegating SIDEWAYS, to another
+module already at its own layer, violates no import direction and is invisible to
+both guards.
+
+**Measured cost.** No user facing cost, and nothing in the tree does this today.
+Under the merge bar this is a residual: the input is a future diff and no
+producer exists to drive. The cost is that the guard's argument is weaker than
+its comment claims in a way the comment does not disclose, and the comment is
+unusually careful about exactly this, since it already records an earlier version
+of itself being false. This is the same class again, one hop out.
+
+**Why it is worth having a number.** The guard is the load bearing one for R12,
+and its whole value is that the argument is falsifiable and gets rebuilt when
+falsified. A hole that a reasonable relocation walks through, while both
+structural guards report green, is the shape that gets introduced by somebody
+doing tidy up rather than by somebody evading a rule.
+
+**The closing condition.** The audit follows imports out of an admitted module
+into any first party module and audits those too, transitively, with the closure
+computed in one pass rather than a layer per run. The cheaper alternative, a
+guard asserting that an admitted module imports only from the allowlist itself,
+is stricter than the tree can currently satisfy and would need measuring first.
+Either way the fix is driven by planting the delegating module above and
+confirming the audit now reports it.

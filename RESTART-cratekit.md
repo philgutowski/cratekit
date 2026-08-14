@@ -1,9 +1,10 @@
 # Restart: Cratekit parallel wave
 
-**Last session 2026-08-14.** It corrected the countdown instruction text, found
-and closed a flake that was making the battery a coin flip, merged U23, and
-established that U27 cannot merge without a design decision. Seven units have now
-cleared the merge bar.
+**Last session 2026-08-14, the second that day.** It committed the previous
+session's finished compound artifact, then went to take U27's decision and found
+R-80's recorded mechanism was wrong, which changes what the decision is between.
+It filed R-102, corrected three documents, and merged nothing. Seven units have
+cleared the merge bar and `main` is unchanged apart from docs.
 
 ## Do this first
 
@@ -20,10 +21,16 @@ rule, never to find out how to work.
 
 ## Main, verify before trusting it
 
-    git log --oneline -1                        # 6bff237
+    git log --oneline -1                        # subject below, and pushed
     git status --porcelain                      # empty
     .venv/bin/pytest --tb=no                    # 5385 passed, 12 skipped
     .venv/bin/python scripts/board.py audit     # exit 0
+
+Main's tip is the commit subject `docs: R-80's mechanism was wrong three times`.
+**No hash is written here on purpose.** This file is itself part of the commit it
+would be naming, so every correction to the hash changes the hash, and the two
+sessions that tried it left a stale identifier behind. Check the subject and
+`git status -sb` for the ahead or behind count instead.
 
 **Seven units have cleared the merge bar: U32, U34, U24, U38, U30, U16 and U23.**
 
@@ -32,7 +39,7 @@ rule, never to find out how to work.
 | branch | tip | state |
 |---|---|---|
 | `unit/u27-setup-wizard-and-doctor` | `fb035fb` | VERIFIED MERGE and BLOCKED at the merge by R-80. Independent pass was clean: 42 rows, 25 deaths, no blocking finding. Merges WITHOUT a closing trailer. |
-| `merge/u27-attempt-2026-08-14` | `01eb6da` | **DO NOT MERGE.** The resolved U27 merge, kept so its work is not paid for twice. Red on one guard. |
+| `merge/u27-attempt-2026-08-14` | `01eb6da` | **DO NOT MERGE.** The resolved U27 merge, kept so its work is not paid for twice. **Red on THREE guards, not one**, measured 2026-08-14: R-80, plus that branch's own un-re-pinned kebab literal population and a fixture the `grant-path-access` reservation moved. The other two are re-pin work, not a second collision. See R-80. |
 | `unit/u12-memory-derived-worker-sizing` | `fc73b82` | round 6, never verified. Needs a 25 run timing measurement, which the harness provides. |
 | `fix/conformance-3-and-soft-delete-reader` | `897ef12` | parked. Its `write/metadata.py:195` defect is live on main. |
 
@@ -40,14 +47,18 @@ All are pushed. The u23 branch and worktree are gone, deleted in both places.
 
 ## What to do next, in order
 
-1. **U27 needs a DECISION, not an ordinary fix round.** It lands `_probe` in
-   `core/cause.py`, which opens a write capable handle with `os.O_RDWR`. That
-   module is on the read only reports allowlist because both report modules
-   import `Scope` and `refuse` from it, and the allowlist guard propagates a
-   writer to its callers until the closure reaches `refuse` itself. Both remedies
-   the guard offers were driven to their end and both fail. **Read R-80 first**,
-   then `merge/u27-attempt-2026-08-14`. Do not widen `_os_open_reads`; it is
-   correct.
+1. **U27 needs a DECISION, not an ordinary fix round, and it is now between FOUR
+   resolutions.** It lands `_probe` in `core/cause.py`, which opens a write
+   capable handle. That module is on the read only reports allowlist because both
+   report modules import `Scope` and `refuse` from it. **Read R-80 first**; it
+   was substantially corrected on 2026-08-14 and now carries every measurement.
+   Three things there are not in any older summary: the guard's objection is
+   "I cannot read these flags", not "this writes", so an INLINE read only flag
+   expression passes and a fourth and smaller resolution exists; the first
+   resolution as written is achievable and fixes nothing, turning both structural
+   guards green with the reachability unchanged; and the write capable handle is
+   pinned by zero tests, so the suite cannot validate any resolution that changes
+   it. Do not widen `_os_open_reads`; it is correct.
 2. **U12**, the last unverified unit, with
    `time_repeated(fn, repeats=25, threshold_seconds=threshold_seconds(multiplier))`.
 3. `docs/METHOD.md` is over 265 lines against the 80 it was written to be and
@@ -57,7 +68,7 @@ All are pushed. The u23 branch and worktree are gone, deleted in both places.
 
 - **Residual numbers are APPEND ONLY.** Main's numbers never move; an incoming
   branch's residuals take fresh numbers above main's highest. **Main's highest is
-  now R-101.**
+  now R-102.**
 - **A renumber is NOT finished inside `docs/residual-findings.md`.** A branch
   cites its own numbers in `docs/HANDOFF.md`, in its mutation tables and
   sometimes in source. Repoint only the lines that branch ADDED, because main's
@@ -70,7 +81,7 @@ All are pushed. The u23 branch and worktree are gone, deleted in both places.
 - **Do not touch** U30's board state, U20, U29, A1, A2.
 - **Two or three units per session.** Do not relaunch a seven agent wave.
 
-## Six things that will bite you
+## Eight things that will bite you
 
 **Scan the whole pushed RANGE for closing keywords, not the merge commit**, and
 run it as a GATE that stops the push. Never write a closing keyword next to an
@@ -107,6 +118,22 @@ check reads that as health. Expect pinned populations in
 `tests/test_reserved_causes.py` to move whenever a unit appends a cause slug:
 re-measure and re-pin, never widen, and append rather than rewrite the figures
 already there.
+
+**A FINDING'S MECHANISM HAS TO BE DRIVEN, NOT ONLY ITS EXISTENCE.** R-80's
+mechanism was written from reading a thirty line helper, by three readers
+including an independent verifier, and the first two accounts were wrong in
+different ways. The helper answers in under two seconds when asked directly.
+Before recording WHY a guard fires, run it and ask it. The same applies to a
+guard's offered remedies: R-80's first closing condition was called the honest
+answer by two documents and, when driven, turns every structural guard green
+while changing nothing.
+
+**Do not hand roll a driver for a row that feels too small for
+`scripts/mutate.py`.** One batch of four rows this session went through a shell
+function that never passed its argument to `python3 -c`. No mutation applied, and
+all four reported the previous row's result. It was caught only because a
+traceback printed above each identical result line. Four rows that would
+otherwise have read as a clean measurement.
 
 ## The remote
 
