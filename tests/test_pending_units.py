@@ -66,6 +66,7 @@ EXPECTED_PENDING = frozenset(
         # Its sibling adopt.scan is NOT here: it shared a module string with this
         # verb, is not gated and not destructive, and has landed.
         "cratekit.adopt.apply_cli",
+        "cratekit.analysis",  # U25, every pool there planned, run and provenanced here
     }
 )
 

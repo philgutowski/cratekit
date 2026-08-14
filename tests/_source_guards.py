@@ -1,10 +1,11 @@
-"""Source analysis shared by the guards that hold a LATER unit to what U11 settled.
+"""Source analysis shared by the guards that hold a LATER unit to what an earlier one settled.
 
-Two files ask these questions, ``tests/test_review_queue.py`` and
-``tests/test_cli_contract.py``, and they used to ask them with two copies of the
-same walk. One copy learned to recognize an aliased import and the other did not,
-which is the second opinion that eventually disagrees. There is one
-implementation now, and every fixture that proves it bites lives beside it.
+Three files ask these questions, ``tests/test_review_queue.py``,
+``tests/test_cli_contract.py`` and ``tests/test_pool_sizing.py``, and the first
+two used to ask them with two copies of the same walk. One copy learned to
+recognize an aliased import and the other did not, which is the second opinion
+that eventually disagrees. There is one implementation now, and every fixture
+that proves it bites lives beside it.
 
 WHY THESE WALK THE IMPORT GRAPH RATHER THAN MATCHING A NAME. A guard that looks
 for an attribute called ``offer`` is satisfied by any object in the language that
@@ -55,99 +56,252 @@ def _dotted(node: ast.AST) -> str | None:
     return None
 
 
-class ReviewImports:
-    """How one source file reaches the review module, if it reaches it at all.
+def _dotted_tail_of(candidate: str, path: str) -> bool:
+    """Whether ``candidate`` is a whole dotted tail of ``path``.
 
-    Three shapes are recognized, and they are the three this repository's own
-    modules use between them::
+    THE FALLBACK, AND ONLY THE FALLBACK. A relative import cannot be resolved to
+    an absolute module without knowing which package the importing file sits in,
+    so a caller that does not say gets its relative imports matched by tail
+    instead. That is a heuristic and it is wrong in one direction: a file in an
+    unrelated package writing ``from .pool import PoolPlan`` ends the same way as
+    the real one and fires. Callers that walk real files pass ``package`` and get
+    exact resolution instead. See :func:`package_of`.
+    """
+    if not candidate:
+        return False
+    wanted = candidate.split(".")
+    return path.split(".")[-len(wanted):] == wanted
+
+
+def _absolute_module(package: str | None, level: int, module: str) -> str | None:
+    """The module a relative import names, resolved against the importing package.
+
+    ``from . import pool`` inside ``cratekit.core`` names ``cratekit.core.pool``
+    and the identical line inside ``somewhere.else`` names ``somewhere.else.pool``,
+    which is a different module in a different distribution. One of them is the
+    thing a guard is looking for and the other is not, and the only thing that
+    tells them apart is where the importing file sits.
+
+    None means the import reaches nothing this walk can name: either there is no
+    package to resolve against, or the dots climb past the top of the package
+    tree, which is an import the interpreter itself refuses.
+    """
+    if level == 0:
+        return module or None
+    if package is None:
+        return None
+    parts = package.split(".")
+    if level - 1 > len(parts):
+        return None
+    base = parts[: len(parts) - (level - 1)]
+    if not base:
+        return None
+    return ".".join([*base, module]) if module else ".".join(base)
+
+
+def package_of(path, source_root) -> str | None:
+    """The dotted package a module sits in, or None when it is not inside one.
+
+    The one piece of information :class:`ImportsOf` needs and was never given.
+    Every walk in this repository already holds the ``Path`` and threw it away at
+    ``read_text()``, so the fix is to pass it on rather than to compute anything
+    new.
+    """
+    try:
+        relative = path.resolve().relative_to(source_root.resolve())
+    except ValueError:
+        return None
+    parts = relative.parts[:-1]
+    return ".".join(parts) if parts else None
+
+
+class ImportsOf:
+    """How one source file reaches ONE named module, if it reaches it at all.
+
+    Four shapes were recognized first, and they are the four this repository's
+    own modules use between them::
 
         import cratekit.core.review            # cratekit.core.review.offer(...)
         import cratekit.core.review as rv      # rv.offer(...)
         from cratekit.core import review       # review.offer(...)
         from cratekit.core.review import offer # offer(...)
 
-    A relative import is recognized too, and until the residual
-    "Two copies of one import walk still carry a relative-import defect" was fixed only ONE of
-    the three relative spellings was. The rule read ``node.level > 0`` beside a
-    two-element suffix match on ``node.module``, and ``node.module`` holds only
-    the TAIL: ``from .review import offer`` records ``review`` and ``from .
-    import review`` records nothing at all, so the two spellings a file sitting
-    BESIDE the review module would actually use were the two that matched
-    nothing. Every question in this file returns early when the source does not
-    reach the module, so those sources were answered no rather than answered
-    wrong, which is the silence a green suite cannot show you.
+    AN ANCESTOR PACKAGE REACHES THE MODULE TOO, which is five more shapes, and
+    the hole was live rather than theoretical. ``from cratekit import core``
+    followed by ``core.pool.PoolPlan(...)`` builds the very object the provenance
+    guard exists to forbid, and ``import cratekit.core`` does the same thing one
+    import shorter. Neither names the module, so a walk keyed on the module's own
+    dotted path saw nothing at all and the guard returned an empty list. That is
+    the same shape the pool construction guard in ``tests/test_pool_sizing.py``
+    had already closed for its own question, by deriving the import shapes rather
+    than listing them, and the two walks sat in one wave giving two different
+    answers to one question.
 
-    ``_import_targets`` answers it now, resolving ``node.level`` against the
-    importing file's package the way CPython's ``_resolve_name`` does when the
-    caller knows that package, and reading the tail when it does not. No caller
-    of this class knows it today, so the fallback is the live path here and the
-    resolved one is driven by U38's suite; the exit-code walk lower down passes
-    a real package on every file it scans.
+    A relative import is recognized too, INCLUDING THE BARE ``from . import
+    pool`` that a sibling inside the module's own package writes, which is the
+    package the sizing module lives in. That one was invisible in BOTH
+    directions, which is the more expensive half: the countdown could not see a
+    fabricated plan built that way, and it could not see a correct ``plan_pool``
+    call built that way either, so a correctly sized package would have been
+    reported as having no planner in it at all.
 
-    THE FIX SHIPPED WITH NOTHING WATCHING IT for one round. Reverting these four
-    lines to the suffix match killed no test at all, because no fixture anywhere
-    in ``tests/`` contained ``from .review import`` or ``from . import review``:
-    the whole exit-code half of the same unification was driven and the review
-    half was not, in the file whose thesis is that a guard answering "no"
-    instead of "wrong" is the defect. ``test_review_queue.py`` now drives every
-    relative spelling against both a resolving package and a non-resolving one.
+    PARAMETERIZED BY MODULE, because the review queue is no longer the only
+    obligation a countdown holds a later unit to. U12 asks the same question
+    about ``cratekit.core.pool``, and asking it with a second copy of this walk
+    is exactly the drift this file was created to end: the copy that learned to
+    recognize an aliased import and the copy that did not.
+
+    AND PARAMETERIZED BY THE IMPORTING FILE'S PACKAGE, which is what makes the
+    relative half exact rather than approximate. Given the package, a relative
+    import is RESOLVED: the dots are counted against the package's own parts and
+    the result is compared like any absolute name. Without one, it falls back to
+    matching by dotted tail, which fires on a file in an unrelated package
+    writing ``from .pool import PoolPlan``, ``from . import pool``,
+    ``from . import core``, ``from .core.pool import PoolPlan`` or
+    ``from .. import cratekit``. All five are silent once the package is passed,
+    and all five are demonstrated in ``tests/test_pool_sizing.py``. Any caller
+    walking real files has the package for free and should pass it.
     """
 
-    def __init__(self, tree: ast.AST, package: str | None = None) -> None:
-        #: Local names that ARE the module.
-        self.module_names: set[str] = set()
+    def __init__(self, tree: ast.AST, module: str, package: str | None = None) -> None:
+        self.module = module
+        self.package = package
+        parts = module.split(".")
+        #: Every dotted prefix of the module, mapped to the path still to be
+        #: walked from it. The module itself maps to the empty string. Derived
+        #: from the module's own name rather than listed, because a listed set of
+        #: shapes is a set somebody has to remember to extend.
+        ancestors = {
+            ".".join(parts[:size]): ".".join(parts[size:])
+            for size in range(1, len(parts) + 1)
+        }
+        #: Local name -> the path still to be walked from it to reach the module.
+        self.paths: dict[str, str] = {}
         #: Local name -> the module attribute it was imported as.
         self.symbols: dict[str, str] = {}
-        # DERIVED HERE RATHER THAN SPELLED AGAIN, and derived at USE rather than
-        # at import. That residual deleted the second spelling of the package
-        # and left the
-        # LEAF written out as ``"review"`` one line below the resolver, so moving
-        # ``REVIEW_MODULE`` moved the resolver and left the binding behind: the
-        # same one fact in two spellings, which is the drift it says it closed.
-        # Reading it inside the walk is what lets a test move the constant and
-        # watch BOTH halves follow.
-        leaf = REVIEW_MODULE.rpartition(".")[2]
+
+        def remainder(reached: str, *, by_tail: bool) -> str | None:
+            """What is left to walk from an imported name, or None if it misses."""
+            if reached in ancestors:
+                return ancestors[reached]
+            if not by_tail:
+                return None
+            # Longest first, so a name that is a tail of two ancestors is
+            # credited to the more specific one. REDUNDANT for the three modules
+            # this file is asked about, since no two ancestors of any of them
+            # share a dotted tail, so reversing the order kills nothing today.
+            # Kept because the ambiguity is a property of the module NAME rather
+            # than of this code, and the next module asked about may have it.
+            for path in sorted(ancestors, key=len, reverse=True):
+                if _dotted_tail_of(reached, path):
+                    return ancestors[path]
+            return None
+
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    if alias.name == REVIEW_MODULE:
-                        self.module_names.add(alias.asname or REVIEW_MODULE)
+                    if alias.name in ancestors:
+                        self.paths[alias.asname or alias.name] = ancestors[alias.name]
             elif isinstance(node, ast.ImportFrom):
-                names_the_module, names_the_package = _import_targets(
-                    node, REVIEW_MODULE, package
-                )
-                if names_the_module:
+                imported = node.module or ""
+                by_tail = False
+                if node.level:
+                    if package is None:
+                        # Nothing to resolve against, so fall back to the tail
+                        # heuristic and accept its one false direction.
+                        by_tail = True
+                    else:
+                        resolved = _absolute_module(package, node.level, imported)
+                        if resolved is None:
+                            continue
+                        imported = resolved
+                if imported == module or (by_tail and _dotted_tail_of(imported, module)):
                     for alias in node.names:
                         self.symbols[alias.asname or alias.name] = alias.name
-                elif names_the_package:
-                    for alias in node.names:
-                        if alias.name == leaf:
-                            self.module_names.add(alias.asname or leaf)
+                    continue
+                for alias in node.names:
+                    reached = f"{imported}.{alias.name}" if imported else alias.name
+                    rest = remainder(reached, by_tail=by_tail)
+                    if rest is not None:
+                        self.paths[alias.asname or alias.name] = rest
+        #: Local names that ARE the module, kept as its own set because that is
+        #: the question most of this file asks.
+        self.module_names: set[str] = {name for name, rest in self.paths.items() if not rest}
 
     @property
-    def reaches_review(self) -> bool:
-        """Whether this source imports the review module at all, in any shape."""
-        return bool(self.module_names or self.symbols)
+    def reaches(self) -> bool:
+        """Whether this source imports the module at all, in any shape."""
+        return bool(self.paths or self.symbols)
 
     def resolves(self, node: ast.AST, wanted: str) -> bool:
-        """Whether ``node`` names the review module's ``wanted`` attribute.
+        """Whether ``node`` names the module's ``wanted`` attribute.
 
         ``wanted`` may itself be dotted, so ``Queue.VERSION_MATCH`` is one
         question rather than two, and it is answered the same way whether the
-        source spelled the module, an alias for it, or imported ``Queue`` on its
-        own.
+        source spelled the module, an alias for it, an ancestor package of it, or
+        imported ``Queue`` on its own.
         """
         dotted = _dotted(node)
         if dotted is None:
             return False
-        for module_name in self.module_names:
-            if dotted == f"{module_name}.{wanted}":
+        for name, rest in self.paths.items():
+            reached = f"{name}.{rest}" if rest else name
+            if dotted == f"{reached}.{wanted}":
                 return True
-        head, _, rest = dotted.partition(".")
+        head, _, tail = dotted.partition(".")
         symbol = self.symbols.get(head)
         if symbol is None:
             return False
-        return (f"{symbol}.{rest}" if rest else symbol) == wanted
+        return (f"{symbol}.{tail}" if tail else symbol) == wanted
+
+
+class ReviewImports(ImportsOf):
+    """:class:`ImportsOf` fixed to the review module, which is what U11 declared.
+
+    Kept as its own name because the review questions below read better for it
+    and because the file's callers already spell it, but it is the general walk
+    with one argument filled in rather than a second implementation.
+
+    ``package`` IS FORWARDED AND WAS NOT, WHICH THIS MERGE HAD TO ADD. The
+    generalization arrived on one branch and the package argument that makes the
+    relative half exact arrived on another, and each is correct alone: the
+    subclass took only a tree, while every review caller on the other side was
+    already passing a package positionally. Dropping it raises nothing, because
+    the resolution falls back to matching by dotted tail, so the failure is a
+    guard answering about the wrong file rather than an error.
+
+    DRIVEN rather than reasoned about: with the forward removed, three tests in
+    ``test_review_queue.py`` fail, and the shape of the first is
+    ``assert {'record', 'revoke'} == set()``, a guard reporting offenders in a
+    source that has none. Both relative spellings a sibling of the review module
+    would write are among them.
+    """
+
+    def __init__(self, tree: ast.AST, package: str | None = None) -> None:
+        super().__init__(tree, REVIEW_MODULE, package)
+
+    @property
+    def reaches_review(self) -> bool:
+        """Whether this source imports the review module at all, in any shape."""
+        return self.reaches
+
+
+def calls_attribute(source: str, module: str, wanted: str, *, package: str | None = None) -> bool:
+    """Whether this source CALLS ``module``'s ``wanted`` function, in any import shape.
+
+    The general form of :func:`calls_review`. A call on something that merely has
+    a function of the same name is not an answer, which is the whole reason this
+    binds through the import graph. ``package`` is the package the source sits
+    in, and passing it is what makes a relative import resolve exactly.
+    """
+    tree = ast.parse(source)
+    imports = ImportsOf(tree, module, package)
+    if not imports.reaches:
+        return False
+    return any(
+        isinstance(node, ast.Call) and imports.resolves(node.func, wanted)
+        for node in ast.walk(tree)
+    )
 
 
 def _assignments(tree: ast.AST) -> list[tuple[str, ast.AST]]:

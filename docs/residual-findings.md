@@ -6507,3 +6507,524 @@ guard asserting that an admitted module imports only from the allowlist itself,
 is stricter than the tree can currently satisfy and would need measuring first.
 Either way the fix is driven by planting the delegating module above and
 confirming the audit now reports it.
+
+<!-- ------------------------------------------------------------------ -->
+
+## The twelve findings below arrived with the U12 merge, 2026-08-14, and seven were renumbered
+
+They are U12's. `main`'s numbers did not move; the incoming side's did, which is
+the rule.
+
+Branch R-14 through R-20 became R-108 through R-114, in order, a flat shift of
+ninety four. Six of the seven collided outright, because the branch was cut when
+`main`'s highest was R-13 and `main` has since filled R-14 onward with entirely
+different findings. **R-18 did NOT collide**, because `main` has a gap there, and
+it was moved with its siblings anyway: leaving one finding of a coherent block
+behind, seated between `main`'s unrelated R-17 and R-19, is how a number comes to
+read as belonging to a sequence it has nothing to do with. Gaps are not tidied
+and `main`'s R-18 gap stays open.
+
+R-103 through R-107 arrived from the independent verification and did NOT
+collide, `main`'s highest having been R-102, so they keep the numbers they were
+filed under.
+
+**Nothing inside the twelve cited any of the moved numbers**, checked rather than
+assumed, and no branch file outside this one cited them either. The one token
+that looks like a citation and is not is `R23` in R-108's successor, which is a
+plan REQUIREMENT identifier rather than a residual, as are R29, R31 and R34
+elsewhere in this file. A renumber that treated those as residuals would have
+repointed four requirements at findings.
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-103. The analysis countdown is silent on a plan widened without naming PoolPlan
+
+**Found:** during U12's first independent verification, 2026-08-14, driving the
+countdown rather than reading it.
+
+`analysis_sizing_violations` in `tests/test_pool_sizing.py` is the whole of R23's
+enforcement for the package U25 will ship. Its call-site half,
+`unplanned_map_workers`, accepts a plan that arrives as a parameter or off an
+attribute, and its docstring says why: "the guard above forbids any module in the
+shipped tree from having constructed one, which is what makes accepting it sound
+rather than generous."
+
+That premise is false for two shapes, and both were driven through the real
+function rather than argued. A two module fixture whose second module reads
+
+    wide = dataclasses.replace(plan, workers=9)
+    return pool.map_workers(wide, analyse, items)
+
+returns `[]`. So does one that reads
+
+    wide = type(plan)(9, plan.items, plan.bound, plan.worker_bytes, None, None)
+
+Neither names `PoolPlan`, so `pool_plan_constructions` never fires, and neither
+is a construction the walk can credit to the fabricated set, so
+`unplanned_map_workers` reads the argument as a plan that arrived from somewhere
+legitimate. The countdown reports the package as correctly sized while a pool of
+nine model loading children is handed to the runner, which is the exact kill U12
+exists to prevent.
+
+For contrast, the third fixture driven in the same run, a module reading the core
+count through a rebound alias, `counter = os.cpu_count`, IS caught, because the
+core count half of the countdown matches names used anywhere rather than an
+import graph.
+
+`dataclasses.replace` is not an exotic shape. `PoolPlan` is a frozen dataclass,
+and `replace` is the language's own way to derive one from another.
+
+**Why this is a residual and not blocking.** The producer does not exist. There
+is no `cratekit.analysis` package on this branch or on main, it is registered in
+`tests/_pending.py` against U25, and the guard is decorated `@requires` so it has
+never executed against a real tree. Zero candidate producers were available to
+drive, which is a different statement from "nothing produces it": the shape is
+reachable the moment U25 writes it, and that is precisely when a green countdown
+would be read as proof.
+
+**Closes when:** U25 lands, or sooner. The narrow fix is to treat any call whose
+callee resolves to `dataclasses.replace`, or to `type(...)` applied to a name the
+walk already knows is a plan, as a construction. The wider and better fix is to
+invert the premise: require that every plan reaching `map_workers` be traceable
+to a `plan_pool` call in the same module, rather than forbidding the
+constructions somebody thought of.
+
+---
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-104. The in-module deadlock guard sees only a bare constructor name
+
+**Found:** during U12's first independent verification, 2026-08-14, driving the
+guard's own walk against four spellings.
+
+`test_the_executor_constructor_is_never_written_with_a_recycle_counter` is the
+source half of the deadlock guard, and it is the only source level guard on the
+deadlock inside `src/cratekit/core/pool.py`, because the repository wide walk
+`test_no_module_outside_the_sizing_module_builds_a_process_pool` deliberately
+excludes the sizing module and `test_the_sizing_module_would_fail_its_own_guard`
+exists to say so out loud.
+
+The walk selects with `getattr(node.func, "id", "") != "ProcessPoolExecutor"`,
+which is a bare `ast.Name` and nothing else. Driven against four sources, each
+building an executor with `max_tasks_per_child=100`:
+
+| spelling | guard fires |
+| --- | --- |
+| `ProcessPoolExecutor(...)` | yes, line 2 |
+| `futures.ProcessPoolExecutor(...)` | no |
+| `process.ProcessPoolExecutor(...)` | no |
+| `PPE(...)` after `import ... as PPE` | no |
+
+This is the pattern of a test that forbids the last implementation rather than
+the feature. It forbids the way this module happens to spell the constructor
+today.
+
+The same shape one file over is the interesting half, and it is the reason this
+is worth recording rather than shrugging at. The guard's immediate neighbour,
+`test_every_context_this_module_builds_is_written_as_spawn_in_the_source`,
+derives its name from `node.func.attr` when the callee is an attribute and from
+`node.func.id` when it is not, so it does NOT have the hole. The repository wide
+`process_pool_constructions` derives its import shapes rather than listing them
+and does not have it either. One guard out of three, sitting between two that do
+it correctly.
+
+**Why this is a residual.** Maintainer facing. The runtime half,
+`test_no_plan_at_any_recycle_setting_hands_the_counter_to_an_executor`, still
+covers every executor built through `executor_arguments`, which is every executor
+this module builds today. What is unguarded is a SECOND executor written later
+with an attribute spelling and the counter set, which is a defect that has to be
+introduced before it can be missed.
+
+**Closes when:** the walk reads `node.func.attr` as well as `node.func.id`, or
+better, when it reuses the derived shapes `process_pool_constructions` already
+computes.
+
+---
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-105. The relative-import climb guard in the shared source walk kills no test
+
+**Found:** during U12's first independent verification, 2026-08-14, as the one
+genuine zero row in a 45 row table.
+
+`_absolute_module` in `tests/_source_guards.py` refuses a relative import whose
+dots climb past the top of the package tree with `if level - 1 > len(parts):
+return None`. Removing that line kills zero tests, confirmed on the full suite at
+3448 collected. Driven, the removal matters for exactly one band of inputs: at a
+package of `cratekit.analysis` and level 4, `parts[: 2 - 3]` slices negatively and
+returns `cratekit.pool` where the guard returns None. At level 3 and level 5 the
+existing `if not base` check catches it and both forms agree. Every input in the
+band is an import the interpreter itself refuses, so no importable file can
+produce one. Recorded rather than fixed.
+
+---
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-106. The reaping band's reference is a sleep, and the real release it stands in for is twenty four times cheaper
+
+**Found:** during U12's first independent verification, 2026-08-14, by measuring
+the thing the fixture stands in for.
+
+`_PROBE_REAP_SECONDS` is bounded by an exact band, `[2.0, 3.0]` times
+`_RELEASE_SECONDS`, and `_RELEASE_SECONDS = 0.4` is a `time.sleep` the test file
+chose. Round 6 made that literal honest in the only way it could from inside the
+file: `test_the_release_the_fixture_declares_is_what_the_ladder_was_timed_paying`
+times the terminate-to-exit leg and fails if the fixture stops paying what it
+declares. Independently confirmed here over 25 reaps, minimum 0.4025s, median
+0.4122s, maximum 0.4152s, and all five disjoint minima of five inside the stated
+[0.3600, 0.5000] window. That test does what it says.
+
+What nothing measures is whether 0.4 seconds resembles the thing it stands in
+for. The constant's own note says the fixture is "faithful in cost and not in
+kind" and that a real release is allocator and kernel work. It does not say what
+a real release costs, because nobody had measured one.
+
+Measured now, on this tree, on the shipped ladder. A spawned child allocates 300
+megabytes, touches every page so the pages are resident rather than promised,
+installs a SIGTERM handler that frees the allocation and exits with the same
+arbitrary code the suite's own cooperative child uses, and is reaped by
+`pool._reap` through the same `_WatchedChild` wrapper the tests use. Over 15
+reaps, all 15 exiting cleanly through the handler: terminate-to-exit leg minimum
+0.0119s, median 0.0168s, maximum 0.0189s.
+
+So the real release is 0.042 times the declared one. The shipped budget of one
+second is 2.48 real-fixture releases and 59 real-allocation releases.
+
+**What this does and does not mean.** The direction is safe: the fixture is
+twenty four times MORE expensive than the closest measurable real release, so
+the band demands a budget larger than the evidence requires and nothing is
+racing anything. A bytearray is also not a model, and a native runtime's teardown
+of memory-mapped weights, device contexts and worker threads can cost far more
+than an allocator free, so 0.4 may yet be the better estimate of a real model.
+What is established is narrower and still worth having: 0.4 was never measured
+against anything on this tree, the one thing on this tree that can be measured
+disagrees with it by a factor of twenty four, and the band's ceiling argument,
+that a budget above three releases is "a stall in front of a kill that was always
+going to land", is stated against a reference that may be twenty four times too
+large.
+
+**Why this is a residual.** No user facing cost was measured. The cost of being
+wrong in this direction is up to three seconds of reaping per abandoned probe,
+once per pool sizing, on a machine already declared too tight to run the pool it
+asked for. Nobody loses data and nobody is told anything false.
+
+**Closes when:** the first heavy pass lands and a real model loader exists to
+reap. At that point `_RELEASE_SECONDS` should be re-derived from a reap of the
+real thing, and this entry is the measurement to compare it against. Until then
+the honest record is that the band is exact arithmetic over a number nothing on
+this tree corroborates.
+
+---
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-107. Three wall clock assertions on this branch are absolute numbers
+
+**Found:** during U12's first independent verification, 2026-08-14.
+
+`tests/test_pool_sizing.py` asserts `elapsed < 60` at line 2201, `elapsed < 8` at
+line 2225 and `elapsed < 15` at line 2517. Each is a bare second count compared
+against a `time.monotonic` delta.
+
+`main` now carries `tests/_hardware.py`, whose `time_repeated` and
+`threshold_seconds` express a timing bound as a multiple of a calibrated
+reference workload, with a stored calibration at
+`tests/fixtures/timing_calibration.json`. This branch forked 156 commits before
+that landed and has neither file, which is why the three literals are literals
+rather than an oversight by their author.
+
+Measured rather than asserted: the 15 second literal was driven 25 times with
+`main`'s own harness and passed 25 of 25, median 0.0860s, worst 0.1205s, which is
+124 times under the bound. Expressed in the harness's units that literal is
+`threshold_seconds(220.5)` on this machine. None of the three is close to biting
+here.
+
+**Why this is a residual.** No failure was produced and the headroom is two
+orders of magnitude. What it costs is consistency: after the merge these will be
+the only timing assertions in the repository not written in the units the
+repository adopted for exactly this purpose, and the next person to see one will
+not know whether it was considered or missed.
+
+**Closes when:** the branch is merged and the three are rewritten as
+`time_repeated(..., threshold_seconds=threshold_seconds(m))`, which is a
+mechanical change once `tests/_hardware.py` is present in the tree.
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-108. A pool is sized once and then runs for as long as the work takes
+
+**Found:** during U12 round 2 verification, 2026-08-03.
+
+`plan_pool` takes one reading of available memory and one reading of pressure,
+and the plan it returns is spent by `map_workers` over every generation of the
+run. At the shipped defaults a ten thousand track folder is fifty generations,
+each one a fresh set of children and a fresh model load per child, and every one
+of them is built at the width decided before the first child started.
+
+The module's own first brake is described as the one that "adapts to what the
+machine is doing right now, which none of the others can see". That is true of
+the moment the plan is made and of no moment after it. A machine that had five
+gibibytes free when the run was planned and has half a gibibyte an hour later
+keeps building two model-loading children per generation, and nothing in the
+module looks again.
+
+**Not fixed here, deliberately.** Re-reading between generations is not a
+one-line change, it is a change to what a plan IS. Today a `PoolPlan` is the
+record of the decision that governed a run, and a width that moves mid-run makes
+it the record of the decision that started one. Both `PoolPlan.generations` and
+the deadlock reasoning that fixes a generation at `workers * max_tasks_per_child`
+are written against a fixed width. Doing this properly means a seam that returns
+a new plan per generation, and a caller that can say which plan a result came
+from.
+
+**Closes when:** the first heavy analysis pass lands in U25 and can say whether a
+run is long enough for the machine to have changed under it. If it is, the seam
+is a per-generation re-plan with the narrowing bounded so a transient reading
+cannot collapse a run to one worker.
+
+---
+
+*Filed on the U12 branch as R-14, renumbered to R-108 at the merge.*
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-109. The work items are the one thing map_workers does not refuse
+
+**Found:** during U12 round 2 verification, 2026-08-03.
+
+`map_workers` refuses a function, an initializer, and now an initializer
+argument that could not be sent to a child, on both paths, so that the same call
+does not mean two different things depending on how much memory the machine had.
+The ITEMS are not held to that rule. A plan of one worker calls
+`function(item)` on whatever object it was handed and a plan of two pickles every
+item to a child, so a run over unpicklable items still succeeds on a tight
+machine and fails on a roomy one, which is precisely the divergence the refusal
+exists to close.
+
+**Not fixed here, deliberately.** The refusal costs one pickle per value, which
+is nothing for a function and an initializer and is a full serialization pass
+over the whole workload for the items. The pooled path pays that pass anyway, so
+the cost falls entirely on the in-process path, which is the path a TIGHT machine
+takes. Paying a full pickle of every item on the machine with the least memory,
+to catch a shape nobody has written yet, is a fix aimed at the wrong machine.
+
+**Closes when:** U25 says what its items are. If they are paths and identifiers,
+this is unreachable and the entry closes as not applicable. If any pass wants to
+map over objects, the check goes in at that call site where the cost is known.
+
+---
+
+*Filed on the U12 branch as R-15, renumbered to R-109 at the merge.*
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-110. A probe child can outlive a parent that dies between start and reap
+
+**Found:** during U12 round 2 verification, 2026-08-03.
+
+`_spawned_probe` starts a real child, waits for its answer, and reaps it with an
+escalation that terminates and then kills. That covers every way the PROBE
+fails. It does not cover the parent itself being killed in the window between
+`Process.start()` and `_reap`, which leaves a child loading a model with nobody
+left to end it, on a machine that this module had already decided was tight.
+
+**Considered and rejected here:** marking the probe child a daemon, so the
+interpreter's own shutdown ends it. It closes this and it costs more than it
+buys: a daemonic process is not allowed to create children of its own, so a
+loader that spawns anything internally would fail inside the probe, and a probe
+failure returns the floor silently. Trading a rare orphan for a silent
+under-measurement of the exact case this module exists to size is the wrong
+trade, and it is the shape of a fix that is too restrictive rather than wrong.
+
+**Closes when:** a probe run is cheap enough to supervise from outside, or the
+first real loader is known well enough to say whether it spawns.
+
+---
+
+*Filed on the U12 branch as R-16, renumbered to R-110 at the merge.*
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-111. The import walk to keep, and the argument the collapse must carry
+
+**Found:** during U12 round 2 verification, 2026-08-03. Fixed in round 3, and
+recorded here because the DECISION outlives this unit.
+
+Three files ask the same question about how one source file reaches one module:
+`tests/_source_guards.py` holds `ImportsOf`, which `tests/test_review_queue.py`,
+`tests/test_cli_contract.py` and `tests/test_pool_sizing.py` all read, and two
+sibling copies of the same walk exist elsewhere, one on `main` under the name
+`ReviewImports` and one on another branch. Collapsing the three into one is
+booked as follow up work and is not done here.
+
+**The verdict, so the collapse does not have to re-derive it.** Keep
+`ImportsOf`. It was driven against 18 true positive shapes and 13 false positive
+probes and it handles all 18, including every shape the first version of this
+unit was blind to, with no false positive on any absolute shape. The reason is
+structural rather than lucky: it DERIVES the import shapes from the target
+module's own dotted name instead of listing them, so an ancestor package, an
+alias, a submodule under another name and a direct symbol import are all one
+rule. A listed set of shapes is a set somebody has to remember to extend, and
+the two sibling copies are listed.
+
+**The one thing that had to be fixed first, and now is.** The five false
+positives it did produce were all relative imports: a file in an UNRELATED
+package writing `from .pool import PoolPlan`, `from . import pool`,
+`from . import core`, `from .core.pool import PoolPlan` or
+`from .. import cratekit` all fired. The cause was inherent to the signature.
+`ImportsOf` was handed source TEXT and a target module NAME and nothing else, so
+it could not know which package the importing file sat in, and it matched a
+relative import by dotted tail. Harmless in this repository today, verified:
+there are zero relative imports anywhere under `src/cratekit`.
+
+The importing file's package is now an argument, and a relative import is
+RESOLVED against it rather than tail matched, which makes that half exact rather
+than heuristic. The data was already there: `repository_modules()` yields `Path`
+objects and every caller threw the path away at `read_text()`. All five shapes
+are silent with a package, all four that can genuinely reach the module still
+bite from the package that owns them, and the fifth cannot reach it from
+anywhere, because a relative import may not climb above the top of a package
+tree.
+
+**What the collapse must carry.** The `package` argument, at every call site
+that walks real files. Without it the walk falls back to the tail heuristic,
+which is deliberate so that inline fixtures with no package still work, and the
+five false positives come back in the single place every guard reads. That is
+strictly worse than three copies each wrong in its own corner, because one wrong
+answer would then be everybody's answer.
+
+**Closes when:** the three-way collapse lands. It should keep this walk, thread
+`package_of(path, root)` from every walk that holds a path, and carry the
+fixtures that prove both directions. The two sibling copies were deliberately
+not read while this was decided, so the collapse still owes them a comparison.
+
+---
+
+*Filed on the U12 branch as R-17, renumbered to R-111 at the merge.*
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-112. The cgroup mount point is read at an assumed location
+
+**Found:** during U12 round 3, 2026-08-03, while fixing the nested cgroup path.
+
+`cgroup_memory_headroom_bytes` now reads `/proc/self/cgroup` to find WHICH
+cgroup this process is in, and walks from there up to the mount, which closes
+the systemd case where a capped unit sits several levels below the root. What it
+still assumes is WHERE the hierarchy is mounted: `/sys/fs/cgroup` for version
+two and `/sys/fs/cgroup/memory` for version one.
+
+That is the documented location and it is right on every ordinary host. It is
+not guaranteed. The mount points are published in `/proc/self/mountinfo`, and a
+host that mounts the hierarchy somewhere else, or mounts only some controllers,
+reads as having no cap at all and falls back to the host's own memory reading.
+That is the same failure shape this unit exists to close, one layer further out.
+
+**Not fixed here, deliberately.** Reading `mountinfo` means parsing a fourth
+kernel format and deciding what to do when a controller is mounted more than
+once, which is a real case. The fallback when it goes wrong is the behaviour
+this module had before the container fix at all, so the cost of being wrong here
+is a pool sized as it was two commits ago rather than a pool sized against
+nothing. That is a much smaller hole than the one closed, and closing it
+properly is a unit rather than a line.
+
+**Closes when:** a real deployment target is known. If Cratekit ships in a
+container image with a fixed layout this closes as not applicable; if it ships
+onto hosts nobody controls, the mount points get read rather than assumed, with
+the same injection seam the two path constants already have.
+
+---
+
+*Filed on the U12 branch as R-18, renumbered to R-112 at the merge.*
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-113. The unlimited sentinel is a benign zero row, and the commit that said otherwise was wrong
+
+**Found:** during U12 round 4, 2026-08-03, correcting a claim rather than the code.
+
+`_CGROUP_UNLIMITED_ABOVE` is four exbibytes, and a published cap at least that
+large is read as the kernel saying "no limit". Round 3's commit message put it in
+a list of constants "pinned by consequence". It is not, and the measurement is
+unambiguous: moved to `1 << 47`, one hundred and twenty eight tebibytes, the
+whole suite stays green, and moved to `1 << 50`, one pebibyte, it stays green
+too.
+
+A previous version of this paragraph offered `1 << 62`, the shipped value
+itself, as the second of those two measurements. Moving a constant to the value
+it already has cannot kill anything, so that was a no-op restated as evidence,
+which is the exact defect this document exists to record rather than commit.
+The replacement above is a real move, and the bottom of the zero range is now
+bracketed as well.
+
+**Why it is not being fixed.** The constant cannot move far in either direction
+without dying, and the zero row sits in the middle of a range no machine can
+reach. Downward it is held tightly, and the edge is exact: `1 << 47` and
+`1 << 44` kill nothing and one test respectively, so the floor of the zero range
+sits between sixteen and one hundred and twenty eight tebibytes; below that
+`1 << 40` kills two and `1 << 35` kills five, because the suite drives real caps
+at thirty two gibibytes, a tebibyte and sixty four tebibytes and asserts every
+one of them is still a cap.
+Upward it is held by the version one unlimited literal: `1 << 63` kills two,
+because the number the older kernels actually write must read as no limit rather
+than as an absurd cap. What is left unpinned is the span between one hundred and
+twenty eight tebibytes and four exbibytes, and nothing publishes a cap in it. A
+cgroup limit is a number an administrator sets on hardware that exists, and the
+largest machine anybody sells is already covered by a live test.
+
+Writing a test whose only purpose is to kill a mutation in that span would be
+inventing a machine to justify a number. The honest record is that this row is
+zero, that it is zero for a reason, and that the claim of consequence in the
+round 3 commit was overstated.
+
+**Closes when:** it does not. This is recorded rather than fixed. It reopens as
+real work only if a kernel or a runtime starts publishing caps above one hundred
+and twenty eight tebibytes, at which point the sentinel needs a source rather
+than an estimate, and `/proc/self/mountinfo` in the entry titled "The cgroup
+mount point is read at an assumed location" is the same kind of answer: read
+what the kernel says instead of assuming a bound.
+
+---
+
+*Filed on the U12 branch as R-19, renumbered to R-113 at the merge.*
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-114. Containment in the cgroup walk is checked and then read, not read atomically
+
+**Found:** during U12 round 5, 2026-08-04, while closing the symlink escape.
+
+`_cgroup_directories` and `_headroom_in` now resolve every level and every limit
+file and keep only what lands inside the resolved mount, which is what closed a
+walk that returned a cap from a directory outside the mount entirely. The check
+and the read are still two operations. A component swapped from an inside target
+to an outside one between them is read, and nothing here holds a descriptor
+across the gap.
+
+**Not fixed here, deliberately.** Closing it properly means opening the mount
+once and walking down it with `openat` and `O_NOFOLLOW`, which is a different
+reader: `Path.read_text` cannot express it, so the whole file access layer that
+the pathological-input tests cover would be rewritten to close a window that
+requires an attacker who can already write inside the cgroup mount this process
+reads. A real cgroupfs permits no symlinks at all, so on every machine this ships
+to the window does not exist; it exists because the mount point is an injected
+argument, which is the same seam the entry titled "The cgroup mount point is read
+at an assumed location" records.
+
+**Closes when:** it does not, unless the mount point stops being injected and
+starts being read from `/proc/self/mountinfo` as that entry proposes, at which
+point the `openat` walk is the natural shape of that rewrite and this closes with
+it.
+
+**Cited by title, never by number.** Residual numbers are assigned per branch and
+six of them already collide across this wave with different subjects on each
+side, so a citation by number points at whatever entry ends up in that slot after
+a merge. Every reference this unit writes, in source, in tests and here, names
+the title instead.
+
+---
+
+*Filed on the U12 branch as R-20, renumbered to R-114 at the merge.*
