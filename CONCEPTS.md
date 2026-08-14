@@ -38,6 +38,23 @@ Guards exist to make a class of violation impossible to introduce silently, whic
 is why some are written before the code they govern: a guard that arrives after
 its subject can only confirm what already shipped.
 
+Some guards assert a BEHAVIOUR and some assert an ARGUMENT, and the second kind
+behaves differently enough to be worth separating. An argument asserting guard
+carries a claim in prose about what some part of the system can reach or do, and
+enforces that claim mechanically. Such a guard is more valuable than a behavioural
+one because the claim is falsifiable, and it is also the only kind that can be
+falsified by somebody who never read it: any change that gives a new capability
+to anything the claim covers can make the sentence untrue, from a different unit,
+in a different file, with every suite still green. That failure is a property of
+the combined tree rather than of either contributing change, so nothing short of
+the combination can observe it.
+
+When such a guard offers remedies for its own failure, the remedies are driven
+rather than reasoned about, and a remedy that makes the guard report MORE is
+propagating rather than converging. When every offered remedy terminates in
+breaking something else, that is a finding about the design and never a licence
+to widen the guard so it accepts what it was written to catch.
+
 ### Pending register
 The one declaration of guards whose subject does not exist yet. Each entry names
 the missing thing, the unit that will land it, and what the guard behind it
@@ -63,6 +80,13 @@ was run has a single unambiguous answer. An author running their own battery is
 not a review: every defect the adversarial reviews have found here passed a green
 suite written by the person who wrote the defect.
 
+The battery is unconditional and is a separate question from whether any
+particular finding blocks. Whether a finding blocks on its own merits is decided
+by the conditions under Blocking finding; whether a tree may merge at all is
+decided here, and nothing overrides it. The two are independent, so a finding can
+be a residual and still stop a merge, and the reason a merge stopped is stated
+alongside the finding's classification rather than inferred from it.
+
 ### Mutation table
 A measurement of whether the suite would notice the code breaking. Each row
 reverts one guard, runs the tests, and counts how many fail, and that count is the
@@ -78,9 +102,15 @@ coverage.
 ## Findings
 
 ### Residual finding
-A real defect, gap, or overclaim that is recorded rather than allowed to hold a
-merge. Recording it with its measured cost is the point; residuals are not
-deferred work items so much as the honest register of what is known and not fixed.
+A real defect, gap, or overclaim that is recorded rather than blocking a merge on
+its own merits. Recording it with its measured cost is the point; residuals are
+not deferred work items so much as the honest register of what is known and not
+fixed.
+
+"On its own merits" is the whole of the qualification and it is not the same as
+"never stops a merge". A residual whose account the battery is red on stops the
+merge through the battery, which answers a different question and admits no
+exceptions.
 
 Residual numbers are append only. A number, once given, belongs to that finding
 for life, and numbers already recorded never move when new ones arrive, because
@@ -106,3 +136,8 @@ produces it.
 - Discharging a pending register entry has been described as two halves, meaning
   the entry and the decorator. It is three edits, because the meta suite keeps its
   own mirrored copy of the key that must move with them.
+- "Residual" does not mean "does not stop a merge". It answers only whether a
+  finding blocks on its own merits. A residual with no cost to any person still
+  stops a merge whenever the battery is red on its account, and both halves are
+  said out loud, because a reader given only the classification will ask why the
+  merge stopped and a reader given only the outcome will assume it was blocking.
