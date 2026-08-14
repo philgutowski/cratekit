@@ -7028,3 +7028,49 @@ the title instead.
 ---
 
 *Filed on the U12 branch as R-20, renumbered to R-114 at the merge.*
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-115. CI cannot pass on main and has not, so a red CI carries no information
+
+**Found:** 2026-08-14, immediately after the U12 merge, by looking at the run
+list rather than at a run. Nothing to do with U12, and it is not a regression.
+
+**The measurement.** Every CI run on `main` in the visible history is a failure,
+back through `f2f8d5b`, `01eb6da`, `4b34a81`, `6bff237`, `b4c9b45`, `1ac0cac`,
+`4c432cd` and `be7b6e9`. Ten consecutive runs, spanning merges by different
+units on different days, while the local battery was clean for every one of them.
+
+**Why, and the reason it is not a bug in any unit.** The workflow runs Linux with
+Python 3.13. This product targets macOS and its proofs say so out loud:
+
+- `tests/test_hardware_fixtures.py` and `tests/test_adoption_hardware.py` require
+  `hdiutil` and **fail rather than skip** when it is absent, deliberately, because
+  "a skipped hardware proof is indistinguishable from a passing one in every
+  summary anybody reads". That decision is right and it is what makes these
+  tests unpassable off macOS.
+- `tests/test_hardware_fixtures.py::test_committed_calibration_loads` refuses a
+  calibration captured on a different machine, correctly: 11 CPUs and Python
+  3.12.5 against the runner's 2 CPUs and 3.13.15.
+- `tests/test_restore.py` needs `rclone`, absent on the runner.
+- One deletion test asserts on a path and receives `OS linux not supported!`.
+
+**Measured cost.** No user facing cost, and no correctness cost. The cost is that
+a signal exists, is consulted by nobody, and cannot change state: a run that is
+red when the tree is perfect is red when the tree is broken, so it distinguishes
+nothing. That is the same defect the countdown discharge and the flaky battery
+both had, in the shape this repository is least likely to notice, because the
+thing giving no information is OUTSIDE the battery rather than inside it. METHOD
+rests the entire merge discipline on three locally run commands and never
+mentions CI, which is why ten red runs went unremarked.
+
+**Not blocking anything**, and it is not a merge's work to fix.
+
+**The closing condition, and it is a choice rather than a repair.** One of: the
+workflow runs on a macOS runner, which is what the proofs were written for and
+costs runner minutes; or the hardware and calibration proofs are marked so the
+Linux job selects against them by name, which reintroduces exactly the "skipped
+reads as passing" hazard those tests were written to refuse unless the job also
+asserts that it deselected a known count; or the workflow is deleted, on the
+argument that a check nobody can read is worse than no check. Whichever is taken,
+say in METHOD what CI is for, because at the moment it is for nothing.

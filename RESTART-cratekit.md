@@ -1,10 +1,9 @@
 # Restart: Cratekit parallel wave
 
-**Last session 2026-08-14, the second that day.** It committed the previous
-session's finished compound artifact, then went to take U27's decision and found
-R-80's recorded mechanism was wrong, which changes what the decision is between.
-It filed R-102, corrected three documents, and merged nothing. Seven units have
-cleared the merge bar and `main` is unchanged apart from docs.
+**Last session 2026-08-14, the second that day.** It corrected R-80's recorded
+mechanism, which was wrong in three separate documents, narrowed that finding
+from a whole module to one function, and **merged U12**. It filed R-102, R-115
+and twelve incoming residuals. **Eight units have now cleared the merge bar.**
 
 ## Do this first
 
@@ -23,16 +22,17 @@ rule, never to find out how to work.
 
     git log --oneline -1                        # subject below, and pushed
     git status --porcelain                      # empty
-    .venv/bin/pytest --tb=no                    # 5385 passed, 12 skipped
+    .venv/bin/pytest --tb=no                    # 5652 passed, 13 skipped, 5665 collected
     .venv/bin/python scripts/board.py audit     # exit 0
 
-Main's tip is the commit subject `docs: R-80's mechanism was wrong three times`.
+Main's tip is the commit subject `Merge U12: memory derived worker sizing`.
 **No hash is written here on purpose.** This file is itself part of the commit it
 would be naming, so every correction to the hash changes the hash, and the two
 sessions that tried it left a stale identifier behind. Check the subject and
 `git status -sb` for the ahead or behind count instead.
 
-**Seven units have cleared the merge bar: U32, U34, U24, U38, U30, U16 and U23.**
+**Eight units have cleared the merge bar: U32, U34, U24, U38, U30, U16, U23 and
+U12.**
 
 ## The branches
 
@@ -40,7 +40,6 @@ sessions that tried it left a stale identifier behind. Check the subject and
 |---|---|---|
 | `unit/u27-setup-wizard-and-doctor` | `46e04ae` | Still blocked by R-80, but R-80 is now ONE FUNCTION rather than the whole probe. The probe was split per intent so its flags are readable at the call site, verified on a real merge: the guard went from reporting `_probe` to reporting `_probe_writable`. The write behaviour is now pinned by a test that bites. Branch battery green: 3435 passed, 14 skipped, 3449 collected. Merges WITHOUT a closing trailer. |
 | `merge/u27-attempt-2026-08-14` | `01eb6da` | **DO NOT MERGE.** The resolved U27 merge, kept so its work is not paid for twice. **Red on THREE guards, not one**, measured 2026-08-14: R-80, plus that branch's own un-re-pinned kebab literal population and a fixture the `grant-path-access` reservation moved. The other two are re-pin work, not a second collision. See R-80. |
-| `unit/u12-memory-derived-worker-sizing` | `fc73b82` | round 6, never verified. Needs a 25 run timing measurement, which the harness provides. |
 | `fix/conformance-3-and-soft-delete-reader` | `897ef12` | parked. Its `write/metadata.py:195` defect is live on main. |
 
 All are pushed. The u23 branch and worktree are gone, deleted in both places.
@@ -60,8 +59,12 @@ All are pushed. The u23 branch and worktree are gone, deleted in both places.
    `test_the_write_probe_classifies_every_way_a_write_is_refused`, so any
    replacement has something to fail against. Do not widen `_os_open_reads`; it
    is correct, and do not relocate the probe, which is R-102.
-2. **U12**, the last unverified unit, with
-   `time_repeated(fn, repeats=25, threshold_seconds=threshold_seconds(multiplier))`.
+2. **R-115, CI has been red on `main` for at least ten consecutive runs** and
+   cannot go green, because the workflow runs Linux against proofs that require
+   macOS and deliberately fail rather than skip. It is not a regression and
+   nothing is broken. It needs a decision about what CI is for, and METHOD should
+   then say so, since it currently rests everything on three local commands and
+   never mentions CI at all.
 3. `docs/METHOD.md` is over 265 lines against the 80 it was written to be and
    still wants a trim pass.
 
@@ -69,7 +72,7 @@ All are pushed. The u23 branch and worktree are gone, deleted in both places.
 
 - **Residual numbers are APPEND ONLY.** Main's numbers never move; an incoming
   branch's residuals take fresh numbers above main's highest. **Main's highest is
-  now R-102.**
+  now R-115.**
 - **A renumber is NOT finished inside `docs/residual-findings.md`.** A branch
   cites its own numbers in `docs/HANDOFF.md`, in its mutation tables and
   sometimes in source. Repoint only the lines that branch ADDED, because main's

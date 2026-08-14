@@ -340,3 +340,75 @@ resolution changes this behaviour, so the decision was about to be taken over a
 suite that could not see the difference. Pinning first was worth more than
 deciding fast, and it is the step that was available regardless of which way the
 decision goes.
+
+## U12 merged, and the coordination note that had aged
+
+Verified MERGE by an independent pass that did not write the code: 45 rows
+against the cap, 44 killed, one zero, that zero promoted to the full suite and
+shown effectively equivalent for any importable source. Five residuals, none
+blocking. **Eight units have now cleared the merge bar.**
+
+The merge's real work was `tests/_source_guards.py`, where both sides had
+independently generalized one import walk. `main` carried a coordination note
+naming U12 by name and saying the collapse must take `_import_targets` with it,
+because the other copies "still carry the suffix match this file has now
+replaced in both of its own".
+
+**That note had aged and checking it was worth the trip.** The branch had since
+grown its own resolution in `_absolute_module`, and the two resolvers were
+compared directly on the climb cases rather than read: they agree, including the
+off the top case that returns None. So the collapse onto the branch's module
+parameterized `ImportsOf` reinstates nothing. The note was right that the
+collapse is not textual, and wrong about which copy was defective by the time
+the two met. A merge instruction is a measurement with a date on it.
+
+**What the merge did have to add**, and it is the shape worth carrying: the
+generalization arrived on one branch and the `package` argument that makes the
+relative half exact arrived on the other. The subclass took only a tree, and
+every review caller on the other side passes a package positionally. That
+mismatch raises NOTHING, because the resolution falls back to matching by dotted
+tail, so the failure is a guard answering about the wrong file. Driven rather
+than assumed: three tests fail without the forward, the first reporting offenders
+in a source that has none.
+
+`tests/_pending.py` auto merged and was verified by hand rather than trusted:
+main's ten keys plus `cratekit.analysis`, the one key the branch adds, with the
+`EXPECTED_PENDING` mirror resolved as a union. No countdown discharge here.
+
+### The renumber, and one judgement inside it
+
+Twelve residuals arrived. Seven collided and became R-108 through R-114; R-103
+through R-107 kept their numbers because `main`'s highest was R-102. **R-18 did
+not collide**, `main` having a gap there, and it was moved with its siblings
+anyway rather than dropped into the gap, because a lone finding seated between
+`main`'s unrelated R-17 and R-19 reads as belonging to a sequence it has nothing
+to do with. Nothing inside the twelve cited a moved number, checked rather than
+assumed. The `R23` token that looks like a citation is a plan REQUIREMENT, as are
+R29, R31 and R34 elsewhere in the file, and a regex that treated those as
+residuals would have repointed four requirements at findings.
+
+### The reconciliation
+
+5689 in the union, 5665 collected, **24 present on a side and absent, all 24
+accounted for.** Fourteen are `main`'s rename of conformance 3, which carries 22
+identifiers on both sides. Five are register keys `main` has discharged. Four are
+planned verbs that have landed and correctly lost their markers. One is
+`deletion_verb` to `deletion_pass`. None is lost coverage.
+
+## R-115: ten red CI runs that nobody had looked at
+
+Found by reading the run LIST rather than a run, immediately after the push.
+**Every CI run on `main` in the visible history is a failure**, back through ten
+commits and several merges, while the local battery was clean for every one.
+
+It is not a regression and nothing is broken. The workflow runs Linux and this
+product targets macOS: the hardware proofs require `hdiutil` and **fail rather
+than skip** by deliberate design, the calibration correctly refuses a baseline
+from a different machine, and one test receives `OS linux not supported!`.
+
+The cost is that a signal exists which cannot change state. Red when the tree is
+perfect is red when the tree is broken. It is the same defect as the flaky
+battery and the silent countdown, in the shape this project is least equipped to
+notice, because the thing carrying no information sits OUTSIDE the battery.
+METHOD rests the whole merge discipline on three local commands and never
+mentions CI, which is exactly why ten red runs went unremarked.
