@@ -226,8 +226,9 @@ def _refused_of_two(exc: OSError, fallback: str) -> str:
     there is nothing to do about. The same shape is reachable from ``os.rename``
     whenever the SOURCE side is what the kernel refused.
 
-    So it is measured rather than guessed, the same way ``_probe`` measures a
-    driver level error instead of assuming one. The destination keeps precedence:
+    So it is measured rather than guessed, the same way ``_probe_readable``
+    measures a driver level error instead of assuming one. The destination keeps
+    precedence:
     it is asked first, and the source is named only when the destination is not
     itself refused and the source is.
 
@@ -239,7 +240,7 @@ def _refused_of_two(exc: OSError, fallback: str) -> str:
         spelled = _spelled(candidate)
         if spelled is None:
             continue
-        if _probe(spelled, writing=False) is not None:
+        if _probe_readable(spelled) is not None:
             return spelled
     return fallback
 
@@ -284,8 +285,8 @@ def _from_copy_error(exc: BaseException) -> AccessRefusal | None:
 
     The paths survive the rendering even though the errno does not, so the paths
     are what this measures: each named source is asked directly, exactly as
-    :func:`_probe` asks for a driver level error. A member that is merely gone by
-    now claims nothing.
+    :func:`_probe_readable` asks for a driver level error. A member that is merely
+    gone by now claims nothing.
     """
     if type(exc).__module__ != "shutil" or type(exc).__name__ != "Error":
         return None
@@ -295,14 +296,41 @@ def _from_copy_error(exc: BaseException) -> AccessRefusal | None:
     for entry in entries:
         if not isinstance(entry, (list, tuple)) or not entry:
             continue
-        found = _probe(str(entry[0]), writing=False)
+        found = _probe_readable(str(entry[0]))
         if found is not None:
             return found
     return None
 
 
-def _probe(path: str, *, writing: bool) -> AccessRefusal | None:
-    """Ask the operating system directly what it does with ``path``.
+#: WHY THERE ARE TWO OF THESE AND WHY THEY MAY NOT BE FOLDED BACK INTO ONE.
+#:
+#: They were one function taking ``writing: bool`` and building ``flags`` on the
+#: line above the call. That is the obvious spelling and it is the one a tidy up
+#: will reach for, so the reason it was abandoned is recorded HERE, next to the
+#: duplication, rather than in a document nobody is holding at the time.
+#:
+#: The reports package is guarded by an allowlist whose argument is that nothing
+#: it admits can touch a file, and it admits this module because both report
+#: modules import ``Scope`` and ``refuse``. The guard decides whether an
+#: ``os.open`` is a read by reading THE CALL'S OWN ARGUMENT against a set of
+#: reading flags. It cannot resolve a name back to an assignment, so
+#: ``os.open(path, flags)`` is reported as an open whose flags it cannot read,
+#: whatever the assignment says. Driven 2026-08-14: five different assignments
+#: were tried, including a plain ``os.O_RDONLY`` with no conditional in it, and
+#: every one was refused. Only the inline expression is readable, and then it is
+#: exactly right in both directions: read only passes, write capable fails.
+#:
+#: So the flag expression has to be spelled at the call site, and one call site
+#: can only spell one of them. That is what forces two functions.
+#:
+#: ``os.O_NONBLOCK`` is also spelled directly rather than through
+#: ``getattr(os, "O_NONBLOCK", 0)``, and that was a defensive fallback that was
+#: measured unreadable by the same guard. This package targets macOS, where the
+#: constant is always present. See R-80 and R-102.
+
+
+def _probe_readable(path: str) -> AccessRefusal | None:
+    """Ask the operating system whether ``path`` can be READ.
 
     A driver level error says "unable to open database file" and nothing else,
     so whether that was a permission is not stated anywhere in it. It is
@@ -321,9 +349,37 @@ def _probe(path: str, *, writing: bool) -> AccessRefusal | None:
     wait inside the virtual filesystem layer, so a hung network mount would still
     block here. No stalled mount was available to drive it.
     """
-    flags = (os.O_RDWR if writing else os.O_RDONLY) | getattr(os, "O_NONBLOCK", 0)
     try:
-        handle = os.open(path, flags)
+        handle = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError as probe:
+        return _from_os_error(probe)
+    except ValueError:
+        return None
+    os.close(handle)
+    return None
+
+
+def _probe_writable(path: str) -> AccessRefusal | None:
+    """Ask the operating system whether ``path`` can be WRITTEN.
+
+    Same measurement as :func:`_probe_readable` and the same two guards, against
+    a write capable handle, because a file this account can read and cannot write
+    answers a read probe with silence. Nothing is written and nothing is created:
+    there is no ``O_CREAT`` and no ``O_TRUNC``, so the handle is opened and
+    closed.
+
+    THE ONE CALLER IS :func:`_from_database_error`, for a driver error that is not
+    ``SQLITE_CANTOPEN``. That narrowness is deliberate and is the whole reason the
+    two probes are separate: this is the only place in the package that needs to
+    ask about writing, so it is the only place that opens a write capable handle,
+    and the reports package's reach to one is confined to this single function.
+
+    NOT PINNED BY THE SUITE. Measured 2026-08-14: forcing every probe to read only
+    killed zero tests out of 5044 collected. So a change to what this asks for
+    will not be caught by running the suite and needs its own driven evidence.
+    """
+    try:
+        handle = os.open(path, os.O_RDWR | os.O_NONBLOCK)
     except OSError as probe:
         return _from_os_error(probe)
     except ValueError:
@@ -341,7 +397,9 @@ def _from_database_error(exc: BaseException) -> AccessRefusal | None:
     path = getattr(exc, DATABASE_PATH_ATTRIBUTE, None)
     if path is None:
         return None
-    return _probe(str(path), writing=not name.startswith("SQLITE_CANTOPEN"))
+    if name.startswith("SQLITE_CANTOPEN"):
+        return _probe_readable(str(path))
+    return _probe_writable(str(path))
 
 
 def name_the_database(exc: BaseException, path: Any) -> BaseException:

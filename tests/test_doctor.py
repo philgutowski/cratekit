@@ -6045,8 +6045,8 @@ def test_a_path_no_filesystem_can_represent_is_answered_rather_than_raised():
     # And the two seams answer instead, exactly as ``os.path.ismount`` does.
     assert os.path.ismount(unrepresentable) is False
     assert cause_module._immutable(unrepresentable) is False
-    assert cause_module._probe(unrepresentable, writing=False) is None
-    assert cause_module._probe(unrepresentable, writing=True) is None
+    assert cause_module._probe_readable(unrepresentable) is None
+    assert cause_module._probe_writable(unrepresentable) is None
 
     # Constructed, because no syscall can carry one: the classification answers
     # rather than raising through the handler that is reading it.
