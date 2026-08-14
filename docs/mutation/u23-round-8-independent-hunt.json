@@ -1,0 +1,70 @@
+{
+  "name": "u23-round-8-independent-hunt",
+  "pass_kind": "full",
+  "branch": "unit/u23-library-adoption",
+  "head": "83ae047",
+  "when": "2026-08-14 14:29 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 3801,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/tags.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/tags.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "86c8b31d3490439c",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 3801,
+    "baseline_collected": 3801,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "HUNT_a_container_leaves_the_writers_table",
+      "description": "Drop .aifc from AIFF_SUFFIXES, so it leaves tags._DIALECT_BY_SUFFIX and LEDGER_CONTAINERS with it",
+      "file": "src/cratekit/core/tags.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dc642bee892da5a8",
+      "subset": [
+        "tests/test_adoption.py",
+        "tests/test_tags.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "collect-error",
+      "deaths": 1,
+      "collected": 615,
+      "baseline_collected": 653,
+      "collect_drift": true,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tags.py::test_each_container_is_classified_once[.aifc-Dialect.ID3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "collection changed: 615 collected against a baseline of 653. A file that fails to collect takes its tests with it and the run still looks green, so this is not a zero.",
+      "runs": 1,
+      "head_verified": true,
+      "old": "AIFF_SUFFIXES = (\".aiff\", \".aif\", \".aifc\")",
+      "new": "AIFF_SUFFIXES = (\".aiff\", \".aif\")"
+    }
+  ],
+  "dropped": []
+}

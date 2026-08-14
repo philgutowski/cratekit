@@ -1234,3 +1234,190 @@ in every case rather than more.
 than a whole-file hash and that a replacement cannot reproduce, which is the same
 thing R-25 wants for a different reason. A decoded-stream fingerprint of the first
 few seconds is the candidate and it is a unit of its own.
+
+---
+
+## R-34. Round 8's own refusal message is asserted by nothing
+
+**Found:** by the independent round 8 verifier, 2026-08-14, row
+`H1_unrecorded_value_refusal_reworded` of
+`docs/mutation/u23-round-8-independent.md`.
+
+`_a_value_nothing_recorded` is the refusal round 8 added, and it is the whole
+user surface of the round: it is what a person sees when a file was rewritten
+after adoption ran and writing over it would put a value in no file and no
+record. Rewording its opening clause kills **0** tests out of 3782.
+
+**The composite, so the zero is read correctly.** `B1_settled_never_refuses`,
+which removes the refusal entirely, kills **4**. So the suite pins that the
+refusal FIRES and pins nothing about what it says. The message names the
+recorded original, the field, the held value and the two causes a person has to
+tell apart, and any of that can be deleted or made wrong with a green suite.
+
+**Cost:** the person meeting the one refusal this round exists to produce is the
+person least able to check the message against the code. The same shape is R-78
+on `main` for a different message, so this is a class rather than an instance.
+
+**Closes when:** one assertion pins the clauses that carry information, in the
+shape `test_adoption.py` already uses for its other refusals: the recorded
+original, the field name, and the fact that nothing was written.
+
+---
+
+## R-35. The acceptance for a third adoption under a third taxonomy is driven by no test
+
+**Found:** by the independent round 8 verifier, 2026-08-14, row
+`B2_settled_drops_the_bytes_acceptance`, and then driven to establish that the
+branch it covers is reachable.
+
+`_settled_or_refused` accepts twice: once when nothing unrecorded is at risk, and
+once when the bytes are exactly what adoption left. Removing the SECOND
+acceptance kills **0** tests. Removing the whole function's refusal
+(`B1_settled_never_refuses`) kills 4, so the first acceptance and the refusal are
+both driven and only this branch is not.
+
+**It is reachable and it was driven, not argued.** Adopt a file into bucket 1,
+then into bucket 2, then into bucket 3. `record.written` is written once and
+stays at bucket 1, the field holds bucket 2, and this call is about to write
+bucket 3, so no clause of `_nothing_unrecorded_is_at_risk` accounts for the held
+value and the bytes are what decide. Measured end to end through
+`write_tag_with_record`: the third adoption is ACCEPTED, one record survives, and
+its `original` is still the pre-adoption value. The code is right. Nothing tests
+it.
+
+**Cost of the branch being wrong in future:** with the acceptance gone, a third
+adoption under a third taxonomy is REFUSED, and the refusal tells the person a
+different recording was put in place of theirs when nothing of the sort happened.
+The existing round 8 test drives the neighbouring clause, a third adoption
+writing the SAME bucket the file already holds, which accepts one clause earlier
+and cannot reach this one.
+
+**Closes when:** the three-bucket sequence above is a test.
+
+---
+
+## R-36. The vacancy guard's refused-question branch is reachable and untested
+
+**Found:** by the independent round 8 verifier, 2026-08-14, row
+`E3_vacancy_oserror_is_vacant`.
+
+`_the_recorded_path_is_vacant` ends in `except OSError: return False`. Changing
+that to `return True`, so a directory that refuses the question is read as a
+vacant path, kills **0** tests.
+
+**The producer was driven.** `Path.parent.is_dir()` swallows its errors, but
+`Path.exists()` does not swallow all of them: on a directory with mode `000`,
+`Path.exists()` raises `PermissionError`, which is an `OSError`, and a path long
+enough to exceed `ENAMETOOLONG` raises from `is_dir()` too. Both measured on this
+machine. So the branch is reached by an ordinary permission, not by a forgery.
+
+**Cost if it is ever inverted:** a record whose file sits in a directory this
+account cannot read would be declared stranded, and its record handed to any
+byte-identical file anywhere. That is verbatim the loss round 8 closed for the
+unmounted volume, arriving through the other door. The current code is correct
+and refuses to guess, which is the right answer.
+
+**The composite:** `E2_vacancy_parent_check_inverted` kills 2 and
+`E4_vacancy_always_true` kills 3, so the predicate itself is driven and only its
+error branch is not.
+
+**Closes when:** one test adopts a file, makes its containing directory
+unreadable, and asserts a byte-identical copy elsewhere does NOT take its record.
+
+---
+
+## R-37. The size filter's saved read is pinned by nothing
+
+**Found:** by the independent round 8 verifier, 2026-08-14, row
+`F3_byte_search_drops_the_size_filter`.
+
+Removing the recorded-size filter from `_found_by_its_bytes`, so every vacant
+record is hashed against rather than only the ones whose recorded size is this
+file's, kills **0** tests.
+
+**It cannot change an answer** and the module says so correctly: two different
+sizes cannot be the same bytes, so the digest comparison behind it reaches the
+same result either way. What it changes is the number of whole-file reads, which
+is the only thing this filter exists for. Round 8 landed a read-count assertion
+for the ORDER of the filters (`F4_byte_search_reads_before_it_filters` kills 2)
+and none for this filter's own saving.
+
+**Cost:** a future edit can delete the saving and leave the round 8 read-count
+regression half re-introduced with a green suite. The population is a ledger
+holding stranded records of a different size from the file in hand, which is a
+reorganised library, so the cost is reads on the pass that touches every track.
+
+**Closes when:** the existing read-count assertion is extended to a ledger
+holding one stranded record of a different size, asserting zero whole-file reads.
+
+---
+
+## R-38. A derived list's drift assertion is a tautology, and 38 cases can leave without it failing
+
+**Found:** by the independent round 8 verifier, 2026-08-14, in the "what a green
+suite cannot see" sweep rather than in the mutation table, then driven as
+`docs/mutation/u23-round-8-independent-hunt.md`.
+
+`tests/test_adoption.py` derives `LEDGER_CONTAINERS = sorted(tags._DIALECT_BY_SUFFIX)`
+and parametrises two suites over it. `test_the_container_list_is_the_writers_own`
+exists to stop that list and the writer's own table drifting apart, and says so:
+"Both lists, against each other, so neither can drift alone (P3)."
+
+Two of its four assertions are `set(LEDGER_CONTAINERS) == set(tags._DIALECT_BY_SUFFIX)`
+and `len(...) == len(...)`. Since the list IS `sorted()` of that mapping, both
+reduce to `set(sorted(M)) == set(M)` and `len(sorted(M)) == len(M)`, which hold
+for every mapping including the empty one. They cannot fail.
+
+The third assertion, that every `Dialect` has a container, is real but coarse:
+every dialect in the shipped table has three or more suffixes, so no single
+removal empties one.
+
+**Driven, with the number.** Dropping `.aifc` from `AIFF_SUFFIXES` takes the
+`test_adoption.py` and `test_tags.py` subset from **653 collected to 615**, so
+**38 cases stopped existing**. `test_the_container_list_is_the_writers_own` PASSED.
+The only test that died was
+`tests/test_tags.py::test_each_container_is_classified_once[.aifc-Dialect.ID3]`,
+and it died only because its own parametrisation spells the suffix.
+
+**Cost:** the ledger's container coverage can shrink by a whole container while
+the guard named for preventing exactly that reports success. This is the shape
+METHOD calls "a test whose expected value comes from the code under test", and
+the derivation is what makes it invisible.
+
+**Closes when:** the assertion compares the writer's table against a list spelled
+in the test, or against a count spelled in the test, so the derivation has
+something outside itself to disagree with.
+
+---
+
+## R-39. One name, two meanings, and both live inside the adopt package
+
+**Found:** by the independent round 8 verifier, 2026-08-14, in the
+"one symbol meaning two things in two modules" sweep.
+
+`digest_of` is two unrelated functions and the adoption package uses both:
+
+* `src/cratekit/adopt/revert.py:1557` defines `digest_of(path, *, deadline_seconds)`,
+  a bounded whole-file sha256. It is the only unforgeable evidence in the revert
+  ledger and the module's own docstrings call it that.
+* `src/cratekit/adopt/plan.py:52` imports `digest_of` from `cratekit.cli.output`,
+  which is `digest_of(identity: Any)`, a canonical projection of what a gate
+  showed the user. It is what `approval.py` compares an approval against.
+
+Both return `str`, so nothing in the type checker separates them, and both are
+called simply `digest_of` inside one package. A second instance of the same
+shape: `identity_of` is `identity_of(path) -> str` in `adopt/revert.py`, a volume
+and inode claim about a FILE, and `identity_of(store, item_id) -> dict | None` in
+`core/review.py`, what a review item was addressed by. The arity differs there,
+which is why that one is the milder of the two.
+
+**No user cost is claimed and none was driven.** Both call sites are correct
+today. This is recorded because METHOD's second recurring defect pattern is
+"identity that is not unique to the thing it identifies", and a fix round moving
+a line between `plan.py` and `revert.py` would get a compiling, type-checking,
+silently wrong digest: an approval compared against a file hash, or a revert
+accepting on a plan projection.
+
+**Closes when:** the two are spelled apart at the point of use, for example
+`bytes_digest_of` in `revert.py`, or `plan.py` imports the module and calls
+`output.digest_of` so the subject is visible at the call.
