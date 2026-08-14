@@ -16,12 +16,38 @@ The rule for handling that cost, and the reason this file exists:
    is missing.
 3. Every such skip is declared here, and tests/test_pending_units.py asserts the
    declared set is exactly the intended set AND that each target is genuinely
-   still absent. The moment a unit lands its module, that meta-test goes red and
-   the only way to make it green is to delete the entry, which arms the guard.
+   still absent. The moment a unit lands its module, that meta-test goes red.
 
 That third point is the whole design. Without it, a skip added for a good reason
 in August is still silently skipping in December, and the safety net has a hole
 nobody can see. With it, a skip is a countdown, not a hiding place.
+
+DISCHARGING AN ENTRY IS THREE EDITS IN ONE COMMIT, AND MAKING ONLY THE FIRST IS
+WORSE THAN MAKING NONE. Deleting the entry does not arm anything by itself:
+
+1. Delete the entry from PENDING below.
+2. Delete the matching key from EXPECTED_PENDING in tests/test_pending_units.py,
+   which duplicates every key on purpose.
+3. Remove the @requires("<key>") decorator from EVERY guard the key gated, so
+   those guards run unconditionally.
+
+Find the decorator sites BEFORE deleting anything, because a key is usually
+cited from more than one file and a grep that stops at the first hit is how the
+second file loses its collection:
+
+    grep -rn 'requires("<key>")' tests/
+
+Some entries are cited by no decorator at all, and for those step 3 is empty.
+The grep is what tells the two cases apart, which is why it runs first.
+
+A decorator expression is evaluated when its module is IMPORTED, and pytest
+imports a test module in order to collect it. So an entry deleted while a
+decorator still names it is not one red test. requires() raises KeyError during
+collection and the guard's whole FILE stops existing. On the U16 merge that was
+330 tests. Then run the newly armed guard on purpose and read its result,
+because it has never executed once, and reconcile the collected count by
+identifier rather than by total. The full procedure and the worked case are in
+docs/solutions/workflow-issues/countdown-entry-discharge-drops-a-whole-test-file.md
 """
 
 from __future__ import annotations
@@ -341,9 +367,18 @@ def requires(key: str) -> pytest.MarkDecorator:
     """
     if key not in PENDING:
         raise KeyError(
-            f"{key!r} is not declared in _pending.PENDING. Add it there with the "
-            f"unit that lands it, so tests/test_pending_units.py can hold it "
-            f"accountable, or the skip becomes permanent by accident."
+            f"{key!r} is not declared in _pending.PENDING. THIS MESSAGE HAS TWO "
+            f"REMEDIES AND THEY POINT OPPOSITE WAYS, so read which case you are "
+            f"in first. If you are ADDING a gated guard, add {key!r} to PENDING "
+            f"and to EXPECTED_PENDING with the unit that lands it, so "
+            f"tests/test_pending_units.py can hold it accountable, or the skip "
+            f"becomes permanent by accident. If you are DISCHARGING because the "
+            f"module has landed, the key is leaving rather than arriving and "
+            f"adding it back is exactly backwards: you have deleted the entry "
+            f"while a guard still carries @requires({key!r}), and this file is "
+            f"failing to COLLECT rather than failing a test. Delete that "
+            f"decorator from every site "
+            f"`grep -rn 'requires(\"{key}\")' tests/` reports."
         )
     unit, what = PENDING[key]
     return pytest.mark.skipif(

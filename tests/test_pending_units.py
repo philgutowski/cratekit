@@ -12,12 +12,27 @@ hole opens:
    recording it here fails the build. So "just skip it for now" is a visible
    decision in a diff rather than a one-line edit in a test file.
 2. **Every pending target is genuinely still absent.** The moment a unit lands
-   its module, this goes red, and the only way to make it green is to delete the
-   entry, which arms the guard. Nobody has to remember; forgetting is what fails.
+   its module, this goes red. Nobody has to remember; forgetting is what fails.
 3. **No test skips outside the registry.** A bare skip mark anywhere in the suite
    is rejected, so the registry cannot be routed around.
 
 Together these make a skip a countdown rather than a hiding place.
+
+WHAT MAKING IT GREEN ACTUALLY TAKES, because the obvious edit is the dangerous
+one. A discharge is THREE edits in one commit: the entry in ``_pending.PENDING``,
+the mirrored key in ``EXPECTED_PENDING`` below, and the ``@requires("<key>")``
+decorator on every guard the key gated. Run
+``grep -rn 'requires("<key>")' tests/`` before deleting anything, because a key
+is usually cited from more than one file.
+
+Deleting the entry alone does not arm a guard. ``requires()`` then raises
+KeyError while the decorator is being evaluated, which happens at IMPORT and so
+during COLLECTION, and the gated guard's whole file stops existing rather than
+turning red. The asymmetry is why the wrong half is the likely one: skipping the
+decorator edit breaks collection silently under a subset run, while skipping the
+register edit only leaves this file red, which is completely visible.
+``docs/solutions/workflow-issues/countdown-entry-discharge-drops-a-whole-test-file.md``
+carries the procedure and the U16 case where it cost 330 tests.
 """
 
 from __future__ import annotations
@@ -117,16 +132,29 @@ def test_the_declared_pending_set_is_exactly_the_intended_set():
 def test_a_pending_target_that_has_landed_must_be_removed_from_the_registry(key):
     """The countdown. This test is DESIGNED to fail when a unit lands.
 
-    When it does, the fix is to delete the entry from ``_pending.PENDING`` and
-    from ``EXPECTED_PENDING`` above. That single deletion arms every guard gated
-    on it, which is the behaviour we want: the person who lands the module cannot
-    ship it without the guards that govern it turning on.
+    When it does, the fix is THREE edits in one commit, not one: the entry in
+    ``_pending.PENDING``, the mirrored key in ``EXPECTED_PENDING`` above, and the
+    ``@requires`` decorator on every guard the key gated. Only the third arms
+    anything. The first two on their own take the gated guard's whole file out of
+    COLLECTION, because ``requires()`` raises KeyError while the decorator is
+    evaluated at import. Run the grep in the message below before deleting.
+
+    The behaviour this buys is still the one we want: the person who lands the
+    module cannot ship it without the guards that govern it turning on.
     """
     unit, what = _pending.PENDING[key]
     assert _pending._is_absent(key), (
-        f"{key} now exists, so {unit} has landed. Remove {key!r} from "
-        f"_pending.PENDING and from EXPECTED_PENDING in this file. That arms the "
-        f"guard asserting {what}, which must now pass."
+        f"{key} now exists, so {unit} has landed. DISCHARGE IS THREE EDITS IN "
+        f"ONE COMMIT AND THE FIRST TWO ALONE BREAK COLLECTION. One, remove "
+        f"{key!r} from _pending.PENDING. Two, remove it from EXPECTED_PENDING in "
+        f"this file. Three, remove the @requires({key!r}) decorator from EVERY "
+        f"guard it gated, which is what actually arms them: run "
+        f"`grep -rn 'requires(\"{key}\")' tests/` FIRST and act on every hit, "
+        f"because a key is usually cited from more than one file. Doing one and "
+        f"two without three makes requires() raise KeyError at import, so those "
+        f"files fail to COLLECT and their tests stop existing rather than "
+        f"failing. The armed guard asserts {what}, and it must now pass: run it "
+        f"on purpose, because it has never executed once."
     )
 
 

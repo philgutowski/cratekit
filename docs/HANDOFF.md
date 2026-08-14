@@ -720,28 +720,42 @@ also the file `scripts/board.py audit` reads to catch a contradiction, meaning a
 issue closed while the repository still says that unit owes a module, so an entry
 here is the one check on the board's single unverified input.
 
-U11 cleared its own entry, which is the countdown firing as designed. Eleven
-entries remain, and the growth is the mechanism working rather than debt piling
-up: U11 and U19 between them added five, each one an obligation that used to live
-in a docstring. U34 then cleared its own and added one, because clearing the
-entry is the required act of landing and the four verbs it left behind had to
-land somewhere that a mechanism reads. See the residual titled "Four report verbs
-were owed by a unit that was about to close, and named a module nobody could
-build", cited by title because `main` carries a different finding under that
-number.
+U11 cleared its own entry, which is the countdown firing as designed. The growth
+is the mechanism working rather than debt piling up: U11 and U19 between them
+added five, each one an obligation that used to live in a docstring. U34 then
+cleared its own and added one, because clearing the entry is the required act of
+landing and the four verbs it left behind had to land somewhere that a mechanism
+reads. See the residual titled "Four report verbs were owed by a unit that was
+about to close, and named a module nobody could build", cited by title because
+`main` carries a different finding under that number.
+
+**This table is a COPY of `tests/_pending.py`, and the register is the
+authority.** It was reconciled against the register on 2026-08-14 and had
+drifted: it carried eleven targets across ten rows against the register's ten
+keys, because one row named two. Three targets on it were dead, discharged when
+their units landed, and are removed here: `cratekit.acquire.match_cli` (U16),
+`cratekit.core.restore` (U32) and `cratekit.cli.exit_codes` (U38). Two live keys
+were missing entirely and are added: `cratekit.cli.rebuild` (U20) and
+`cratekit.session.restore_cli` (U27). One row per key, ten rows, in register
+order. Regenerate it from `PENDING` rather than editing it by hand.
+
+**Discharging one of these is three edits in one commit**, and the two files
+below say which: the entry, the mirrored key in `EXPECTED_PENDING`, and the
+`@requires` decorator on every guard the key gated. See
+`docs/solutions/workflow-issues/countdown-entry-discharge-drops-a-whole-test-file.md`.
 
 | Unit | Target | Owes |
 |---|---|---|
-| U16 | `cratekit.acquire.match_cli` | the needs-review state becomes queue items; matched and missing stay a plain match result |
-| U20 | `cratekit.write.routing_cli` | the routing CLI, plus closing through `close_run` and converging after a rename. See R-13: U20 is an inference, not a decision |
-| U23 | `cratekit.adopt` | the adoption review surface |
-| U27 | `cratekit.cli.doctor` | a database acknowledged outside the library root is reported every run |
+| U37 | `cratekit.intake.collection_xml` | the COLLECTION TRACK emitter that must never emit a `<TEMPO>` element, plus two obligations U19 parked here because U37 owns the pipeline: record each new track's routing intent at the moment the placement is decided, and close a run that deferred a placement through `routing_pass.close_run` rather than `core.session.close_session` |
+| U23 | `cratekit.adopt` | the adoption plan presented as review items rather than as a plan file, which is the other half of R26 |
+| U37 | `cratekit.intake` | a path repair proposal offered into the queue U11 declared for it, never applied, and never read back out of a file somebody edited |
+| U24 | `cratekit.deletion.cli` | the deletion CLI shell. The re-point to U27 is REVERTED, so this row agrees with `tests/_pending.py`. The wall is R-13's database fixture, not the explicit gate, which main's conformance 3 rewrite took down. It is why a trailer naming this unit's issue returns `board.py audit` exit 2, and its issue stays open by design |
+| U27 | `cratekit.cli.doctor` | a database acknowledged outside the library root is reported on every run, so a snapshot that is a copy rather than an atomic commit stays visible long after somebody accepted it |
+| U28 | `path:skills` | the shipped operator skills the skills lint runs over |
+| U20 | `cratekit.write.routing_cli` | the four `route.*` verbs, each closing through `routing_pass.close_run` rather than the exported `close_session`, and a re-run after a destination rename that CONVERGES by reading U36's `core.convergence.DestinationNode` map rather than building a second one. See R-13: U20 is an inference, not a decision |
+| U20 | `cratekit.cli.rebuild` | the rebuild verb, whose operator disposition is an explicit logged act by a named person and never a flag that clears every tree, and which clears a tree's flag only through `write.rebuild.rebuild_tree` handed the convergence check's own difference list |
+| U27 | `cratekit.session.restore_cli` | the two restore verbs U32 could not land, and one session held across the whole restore through `core.restore.recovery_session`, passed in as `plan_restore`'s and `run_restore`'s gates, because the default shape takes the library lock twice |
 | U27 | `cratekit.cli.reports` | the four report verbs, and the two report engines two of them still have none of. See the residual titled "Four report verbs were owed by a unit that was about to close, and named a module nobody could build": U27 is a judgement, not a decision |
-| U24 | `cratekit.deletion.cli` | the deletion CLI shell. The re-point to U27 is REVERTED, so this row now agrees with `tests/_pending.py`. The wall is R-13's database fixture, not the explicit gate, which main's conformance 3 rewrite took down. It is what makes `Closes #24` return audit exit 2 |
-| U28 | `path:skills` | the shipped skills tree |
-| U32 | `cratekit.core.restore` | the restore verb, and the three obligations U8 registered against it |
-| U37 | `cratekit.intake`, `cratekit.intake.collection_xml` | record routing intents at the decision, close through `close_run`, and never emit a `<TEMPO>` element |
-| U38 | `cratekit.cli.exit_codes` | the reserved exit-code registry |
 
 ## Open items that are not code
 
