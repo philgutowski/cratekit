@@ -45,6 +45,7 @@ from cratekit.core import backup_facts, binaries, config, jobs, profiles, secret
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from tests import doctor_machines
+from tests._hardware import filesystem_kind, hdiutil_available, read_only_volume
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -6179,3 +6180,226 @@ def test_a_copy_that_gave_up_on_one_member_is_classified_by_its_paths(tmp_path):
         assert str(member) in blanket.message
     finally:
         member.chmod(0o600)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Round eight, verified independently: the two answers a double cannot give
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Everything above answers the mount question through ``Probes``, which is the
+# right seam for driving twenty three checks over seven mount states without a
+# second disk. It cannot answer two things, and both are load bearing here:
+#
+# * whether the DISTINCTION between an unmounted volume and a moved one survives
+#   contact with a real volume identity, the kernel's own mount table, and a real
+#   detach. A stubbed identity provider agrees with itself by construction.
+# * whether a volume that refuses writes at the MOUNT, with EROFS, reaches the
+#   user as "remount it" rather than as "grant this interpreter access". A chmod
+#   cannot stand in: it produces EACCES, which is the other kind, and it is the
+#   kind whose advice is correct. Only a read only mount refuses the file's owner
+#   and every other account on the machine alike.
+#
+# These FAIL rather than skip when hdiutil is missing, because a skipped hardware
+# proof is indistinguishable from a passing one in every summary anybody reads.
+
+
+def _require_hdiutil() -> None:
+    if not hdiutil_available():
+        pytest.fail(
+            "hdiutil is required to prove these two answers against real mounts "
+            "and it is missing here. It ships with macOS, which is the platform "
+            "this unit targets first. This fails rather than skips because a "
+            "skipped hardware proof reads as a passing one."
+        )
+
+
+def _library_on(volume: Path) -> None:
+    """What ``read_only_volume`` writes while the image is still writable."""
+    (volume / "library" / "Music").mkdir(parents=True)
+
+
+def test_an_unmounted_volume_and_a_moved_volume_are_told_apart_on_a_real_volume(tmp_path):
+    """The brief's second scenario, driven with nothing about the disk stubbed.
+
+    Four outcomes off ONE real volume, using the platform's own identity call and
+    the kernel's own mount table:
+
+    * the configured root is a directory on the mounted volume: OK;
+    * the volume is mounted and the configured root is not a directory on it:
+      LIBRARY_PATH_MISSING, the library moved WITHIN the volume;
+    * the configured root's mount point does not exist and the volume is attached
+      somewhere else: MOUNTED_ELSEWHERE, found at the place it actually is;
+    * the same configured root after the volume is DETACHED: NOT_MOUNTED.
+
+    The last two are the pair the brief singles out and the pair one "the volume
+    is wrong" sentence conflates. One is fixed by plugging a drive in and the
+    other by editing a path, so a report that cannot tell them apart sends a user
+    to unplug a drive that was never the problem.
+
+    The identity is REAL: ``macos_volume_identity`` reads it through
+    ``getattrlist(2)`` off the mounted image, and it outlives the detach in this
+    test's own variable, which is the entire property that makes it an identity
+    rather than a coincidence.
+    """
+    _require_hdiutil()
+
+    from cratekit.core import preflight
+
+    identity_of = preflight.macos_volume_identity
+    gone_root = tmp_path / "no-such-mount-point" / "library"
+
+    with read_only_volume(_library_on) as volume:
+        # The mount TABLE, never a behaviour probe: the macOS FAT driver allows
+        # symlinks, so probing behaviour to identify a filesystem is measured
+        # wrong on this platform and the habit is what this asks instead.
+        assert filesystem_kind(volume) == "hfs", filesystem_kind(volume)
+
+        recorded = identity_of(volume)
+        assert recorded, (
+            "the fixture volume reports no identity through getattrlist, so this "
+            "test would be asserting about IDENTITY_UNAVAILABLE rather than about "
+            "the distinction it names"
+        )
+
+        on_it = preflight.resolve_mount_state(
+            volume / "library", recorded, identity_provider=identity_of
+        )
+        moved_within = preflight.resolve_mount_state(
+            volume / "not-that-folder", recorded, identity_provider=identity_of
+        )
+        elsewhere = preflight.resolve_mount_state(
+            gone_root,
+            recorded,
+            identity_provider=identity_of,
+            mount_enumerator=preflight.local_mount_points,
+        )
+
+    # Detached here, which is an unplugged drive arranged the only way that is
+    # not a simulation of one.
+    unmounted = preflight.resolve_mount_state(
+        gone_root,
+        recorded,
+        identity_provider=identity_of,
+        mount_enumerator=preflight.local_mount_points,
+    )
+
+    assert on_it.state is preflight.MountState.OK, on_it
+    assert moved_within.state is preflight.MountState.LIBRARY_PATH_MISSING, moved_within
+    assert elsewhere.state is preflight.MountState.MOUNTED_ELSEWHERE, elsewhere
+    assert unmounted.state is preflight.MountState.NOT_MOUNTED, unmounted
+
+    # The moved answer says WHERE, which is the whole difference in what the user
+    # does next. The unmounted answer has no such place to name.
+    assert elsewhere.found_at is not None
+    assert unmounted.found_at is None
+
+    # The two sentences a user reads over the same configured root are different
+    # sentences carrying different acts.
+    moved_detail = doctor._MOUNT_DETAIL[elsewhere.state]
+    absent_detail = doctor._MOUNT_DETAIL[unmounted.state]
+    assert moved_detail != absent_detail
+    assert "Nothing needs plugging in" in moved_detail
+    assert "Attach it" in absent_detail
+
+    # And both refuse a library state read, so nothing downstream reports on a
+    # template it read off a disk nobody looked at.
+    assert not preflight.library_state_is_readable(elsewhere)
+    assert not preflight.library_state_is_readable(unmounted)
+
+
+def test_a_real_read_only_volume_reaches_the_user_as_remount_not_as_a_permission(
+    monkeypatch,
+):
+    """The wizard's write onto the library volume, refused at the MOUNT.
+
+    THIS IS THE SITE ROUND EIGHT WAS ABOUT. Every branch of the wizard used to
+    close with "Give this interpreter write access to that directory", hard
+    coded, and the branch that says it is the branch that writes to the library
+    volume, which is where EROFS actually arises. No permission grant changes a
+    read only mount, so that advice is not a lesser answer: it is an act the user
+    can carry out in full and be no better off for.
+
+    All three channels are asserted, because round eight is the round that
+    discovered they can disagree: the remedy TOKEN a machine consumer reads, the
+    structured cause the envelope carries, and the sentence a person reads. The
+    negative assertions are the load bearing ones.
+    """
+    _require_hdiutil()
+
+    from cratekit.core.cause import AccessKind
+
+    with read_only_volume(_library_on) as volume:
+        root = volume / "library"
+        monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+        cfg = config.from_dict(document_for(root))
+
+        wizard = setup_verb._Wizard({}, silent())
+        setup_verb._seed_taxonomy(wizard, cfg, probes())
+
+        failures = [note for note in wizard.notes if note.status is doctor.Status.FAIL]
+        assert len(failures) == 1, [note.detail for note in wizard.notes]
+        note = failures[0]
+
+        # 1. The token. GRANT_PATH_ACCESS is what the branch hard codes; the kind
+        #    the operating system made is what decides.
+        assert note.remedy is Remedy.REMOUNT_WRITABLE, note.remedy
+
+        # 2. The structured cause, so a failing check does not reach the envelope
+        #    as "N checks are failing" with a null remedy.
+        assert note.cause is not None, note.detail
+        assert note.cause.reason == "path-read-only"
+        assert note.cause.remediation.remedy is Remedy.REMOUNT_WRITABLE
+        assert note.cause.detail["access"] == str(AccessKind.READ_ONLY)
+        # The path named is ON the volume that refused, which is the actionable
+        # content. WHICH file on it is a separate and separately recorded question.
+        assert str(volume) in note.cause.detail["path"]
+
+        # 3. The sentence. This is the assertion that would have caught the
+        #    defect, because the wording and the token are free to disagree.
+        assert "mounted read only" in note.detail
+        assert "no permission grant can change that" in note.detail
+        assert "Full Disk Access" not in note.detail
+        assert "Grant this interpreter" not in note.detail
+
+        # And nothing was written, which is the other half of a refusal: the tool
+        # did not half create the library's own state on a volume it cannot write.
+        assert not config.state_path("taxonomy_active", cfg).exists()
+
+
+def test_the_read_only_refusal_and_the_permission_refusal_do_not_share_an_act(
+    tmp_path, monkeypatch
+):
+    """The pair, because a single kind assertion cannot fail the way this failed.
+
+    The defect was ONE wording for every kind, so a test that only ever meets one
+    kind passes straight over it. EROFS comes from a real read only mount and
+    EACCES from a directory this account may not write, through the same wizard
+    branch, and the two answers have to differ in the token and in the closing
+    sentence both.
+    """
+    _require_hdiutil()
+
+    sealed_root = tmp_path / "sealed" / "library"
+    (sealed_root / "Music").mkdir(parents=True)
+
+    def note_for(root: Path) -> doctor.Finding:
+        monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+        cfg = config.from_dict(document_for(root))
+        wizard = setup_verb._Wizard({}, silent())
+        setup_verb._seed_taxonomy(wizard, cfg, probes())
+        return next(note for note in wizard.notes if note.status is doctor.Status.FAIL)
+
+    sealed_root.chmod(0o500)
+    try:
+        permission = note_for(sealed_root)
+    finally:
+        sealed_root.chmod(0o700)
+
+    with read_only_volume(_library_on) as volume:
+        read_only = note_for(volume / "library")
+
+    assert permission.remedy is Remedy.GRANT_PATH_ACCESS, permission.detail
+    assert read_only.remedy is Remedy.REMOUNT_WRITABLE, read_only.detail
+    assert permission.remedy is not read_only.remedy
+    assert "Full Disk Access" in permission.detail
+    assert "Full Disk Access" not in read_only.detail
