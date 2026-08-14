@@ -741,3 +741,212 @@ six of them already collide across this wave with different subjects on each
 side, so a citation by number points at whatever entry ends up in that slot after
 a merge. Every reference this unit writes, in source, in tests and here, names
 the title instead.
+
+---
+
+## R-103. The analysis countdown is silent on a plan widened without naming PoolPlan
+
+**Found:** during U12's first independent verification, 2026-08-14, driving the
+countdown rather than reading it.
+
+`analysis_sizing_violations` in `tests/test_pool_sizing.py` is the whole of R23's
+enforcement for the package U25 will ship. Its call-site half,
+`unplanned_map_workers`, accepts a plan that arrives as a parameter or off an
+attribute, and its docstring says why: "the guard above forbids any module in the
+shipped tree from having constructed one, which is what makes accepting it sound
+rather than generous."
+
+That premise is false for two shapes, and both were driven through the real
+function rather than argued. A two module fixture whose second module reads
+
+    wide = dataclasses.replace(plan, workers=9)
+    return pool.map_workers(wide, analyse, items)
+
+returns `[]`. So does one that reads
+
+    wide = type(plan)(9, plan.items, plan.bound, plan.worker_bytes, None, None)
+
+Neither names `PoolPlan`, so `pool_plan_constructions` never fires, and neither
+is a construction the walk can credit to the fabricated set, so
+`unplanned_map_workers` reads the argument as a plan that arrived from somewhere
+legitimate. The countdown reports the package as correctly sized while a pool of
+nine model loading children is handed to the runner, which is the exact kill U12
+exists to prevent.
+
+For contrast, the third fixture driven in the same run, a module reading the core
+count through a rebound alias, `counter = os.cpu_count`, IS caught, because the
+core count half of the countdown matches names used anywhere rather than an
+import graph.
+
+`dataclasses.replace` is not an exotic shape. `PoolPlan` is a frozen dataclass,
+and `replace` is the language's own way to derive one from another.
+
+**Why this is a residual and not blocking.** The producer does not exist. There
+is no `cratekit.analysis` package on this branch or on main, it is registered in
+`tests/_pending.py` against U25, and the guard is decorated `@requires` so it has
+never executed against a real tree. Zero candidate producers were available to
+drive, which is a different statement from "nothing produces it": the shape is
+reachable the moment U25 writes it, and that is precisely when a green countdown
+would be read as proof.
+
+**Closes when:** U25 lands, or sooner. The narrow fix is to treat any call whose
+callee resolves to `dataclasses.replace`, or to `type(...)` applied to a name the
+walk already knows is a plan, as a construction. The wider and better fix is to
+invert the premise: require that every plan reaching `map_workers` be traceable
+to a `plan_pool` call in the same module, rather than forbidding the
+constructions somebody thought of.
+
+---
+
+## R-104. The in-module deadlock guard sees only a bare constructor name
+
+**Found:** during U12's first independent verification, 2026-08-14, driving the
+guard's own walk against four spellings.
+
+`test_the_executor_constructor_is_never_written_with_a_recycle_counter` is the
+source half of the deadlock guard, and it is the only source level guard on the
+deadlock inside `src/cratekit/core/pool.py`, because the repository wide walk
+`test_no_module_outside_the_sizing_module_builds_a_process_pool` deliberately
+excludes the sizing module and `test_the_sizing_module_would_fail_its_own_guard`
+exists to say so out loud.
+
+The walk selects with `getattr(node.func, "id", "") != "ProcessPoolExecutor"`,
+which is a bare `ast.Name` and nothing else. Driven against four sources, each
+building an executor with `max_tasks_per_child=100`:
+
+| spelling | guard fires |
+| --- | --- |
+| `ProcessPoolExecutor(...)` | yes, line 2 |
+| `futures.ProcessPoolExecutor(...)` | no |
+| `process.ProcessPoolExecutor(...)` | no |
+| `PPE(...)` after `import ... as PPE` | no |
+
+This is the pattern of a test that forbids the last implementation rather than
+the feature. It forbids the way this module happens to spell the constructor
+today.
+
+The same shape one file over is the interesting half, and it is the reason this
+is worth recording rather than shrugging at. The guard's immediate neighbour,
+`test_every_context_this_module_builds_is_written_as_spawn_in_the_source`,
+derives its name from `node.func.attr` when the callee is an attribute and from
+`node.func.id` when it is not, so it does NOT have the hole. The repository wide
+`process_pool_constructions` derives its import shapes rather than listing them
+and does not have it either. One guard out of three, sitting between two that do
+it correctly.
+
+**Why this is a residual.** Maintainer facing. The runtime half,
+`test_no_plan_at_any_recycle_setting_hands_the_counter_to_an_executor`, still
+covers every executor built through `executor_arguments`, which is every executor
+this module builds today. What is unguarded is a SECOND executor written later
+with an attribute spelling and the counter set, which is a defect that has to be
+introduced before it can be missed.
+
+**Closes when:** the walk reads `node.func.attr` as well as `node.func.id`, or
+better, when it reuses the derived shapes `process_pool_constructions` already
+computes.
+
+---
+
+## R-105. The relative-import climb guard in the shared source walk kills no test
+
+**Found:** during U12's first independent verification, 2026-08-14, as the one
+genuine zero row in a 45 row table.
+
+`_absolute_module` in `tests/_source_guards.py` refuses a relative import whose
+dots climb past the top of the package tree with `if level - 1 > len(parts):
+return None`. Removing that line kills zero tests, confirmed on the full suite at
+3448 collected. Driven, the removal matters for exactly one band of inputs: at a
+package of `cratekit.analysis` and level 4, `parts[: 2 - 3]` slices negatively and
+returns `cratekit.pool` where the guard returns None. At level 3 and level 5 the
+existing `if not base` check catches it and both forms agree. Every input in the
+band is an import the interpreter itself refuses, so no importable file can
+produce one. Recorded rather than fixed.
+
+---
+
+## R-106. The reaping band's reference is a sleep, and the real release it stands in for is twenty four times cheaper
+
+**Found:** during U12's first independent verification, 2026-08-14, by measuring
+the thing the fixture stands in for.
+
+`_PROBE_REAP_SECONDS` is bounded by an exact band, `[2.0, 3.0]` times
+`_RELEASE_SECONDS`, and `_RELEASE_SECONDS = 0.4` is a `time.sleep` the test file
+chose. Round 6 made that literal honest in the only way it could from inside the
+file: `test_the_release_the_fixture_declares_is_what_the_ladder_was_timed_paying`
+times the terminate-to-exit leg and fails if the fixture stops paying what it
+declares. Independently confirmed here over 25 reaps, minimum 0.4025s, median
+0.4122s, maximum 0.4152s, and all five disjoint minima of five inside the stated
+[0.3600, 0.5000] window. That test does what it says.
+
+What nothing measures is whether 0.4 seconds resembles the thing it stands in
+for. The constant's own note says the fixture is "faithful in cost and not in
+kind" and that a real release is allocator and kernel work. It does not say what
+a real release costs, because nobody had measured one.
+
+Measured now, on this tree, on the shipped ladder. A spawned child allocates 300
+megabytes, touches every page so the pages are resident rather than promised,
+installs a SIGTERM handler that frees the allocation and exits with the same
+arbitrary code the suite's own cooperative child uses, and is reaped by
+`pool._reap` through the same `_WatchedChild` wrapper the tests use. Over 15
+reaps, all 15 exiting cleanly through the handler: terminate-to-exit leg minimum
+0.0119s, median 0.0168s, maximum 0.0189s.
+
+So the real release is 0.042 times the declared one. The shipped budget of one
+second is 2.48 real-fixture releases and 59 real-allocation releases.
+
+**What this does and does not mean.** The direction is safe: the fixture is
+twenty four times MORE expensive than the closest measurable real release, so
+the band demands a budget larger than the evidence requires and nothing is
+racing anything. A bytearray is also not a model, and a native runtime's teardown
+of memory-mapped weights, device contexts and worker threads can cost far more
+than an allocator free, so 0.4 may yet be the better estimate of a real model.
+What is established is narrower and still worth having: 0.4 was never measured
+against anything on this tree, the one thing on this tree that can be measured
+disagrees with it by a factor of twenty four, and the band's ceiling argument,
+that a budget above three releases is "a stall in front of a kill that was always
+going to land", is stated against a reference that may be twenty four times too
+large.
+
+**Why this is a residual.** No user facing cost was measured. The cost of being
+wrong in this direction is up to three seconds of reaping per abandoned probe,
+once per pool sizing, on a machine already declared too tight to run the pool it
+asked for. Nobody loses data and nobody is told anything false.
+
+**Closes when:** the first heavy pass lands and a real model loader exists to
+reap. At that point `_RELEASE_SECONDS` should be re-derived from a reap of the
+real thing, and this entry is the measurement to compare it against. Until then
+the honest record is that the band is exact arithmetic over a number nothing on
+this tree corroborates.
+
+---
+
+## R-107. Three wall clock assertions on this branch are absolute numbers
+
+**Found:** during U12's first independent verification, 2026-08-14.
+
+`tests/test_pool_sizing.py` asserts `elapsed < 60` at line 2201, `elapsed < 8` at
+line 2225 and `elapsed < 15` at line 2517. Each is a bare second count compared
+against a `time.monotonic` delta.
+
+`main` now carries `tests/_hardware.py`, whose `time_repeated` and
+`threshold_seconds` express a timing bound as a multiple of a calibrated
+reference workload, with a stored calibration at
+`tests/fixtures/timing_calibration.json`. This branch forked 156 commits before
+that landed and has neither file, which is why the three literals are literals
+rather than an oversight by their author.
+
+Measured rather than asserted: the 15 second literal was driven 25 times with
+`main`'s own harness and passed 25 of 25, median 0.0860s, worst 0.1205s, which is
+124 times under the bound. Expressed in the harness's units that literal is
+`threshold_seconds(220.5)` on this machine. None of the three is close to biting
+here.
+
+**Why this is a residual.** No failure was produced and the headroom is two
+orders of magnitude. What it costs is consistency: after the merge these will be
+the only timing assertions in the repository not written in the units the
+repository adopted for exactly this purpose, and the next person to see one will
+not know whether it was considered or missed.
+
+**Closes when:** the branch is merged and the three are rewritten as
+`time_repeated(..., threshold_seconds=threshold_seconds(m))`, which is a
+mechanical change once `tests/_hardware.py` is present in the tree.
