@@ -1059,3 +1059,118 @@ a hung network mount would still block there. This was not measured, because no
 stalled mount was available to drive it, and it is recorded as unmeasured rather
 than claimed either way. **Closes when:** a stalled mount can be arranged in the
 suite, or the probe grows a deadline.
+
+## R-79. Four reporting sites inside doctor use round eight's mechanism at none of them
+
+**Found:** by the independent verification of U27 round eight, 2026-08-14, driven
+rather than read.
+
+**NUMBERING.** Numbered above `main`'s highest, which is R-78. This branch's own
+R-16 through R-22 collide with `main` and are the incoming side's to move at the
+merge; these three do not.
+
+Round eight added `error` to `doctor.Finding` and classified at construction, so
+that "a failing refusal reaches the envelope as one instead of as N checks are
+failing with a null remedy". It wired the parameter at three sites, all of them
+in `cli/setup.py`. `cli/doctor.py`, which DECLARES the field, passes it at zero
+of its own six `access_remedy` sites, four of which build a `Finding` from a
+caught exception: `_check_config`, `_check_taxonomy`, `_check_commit_hook`, and
+the unstructured leg of `answer`.
+
+**Measured, not argued.** A library whose active template sits under a directory
+this account cannot open, which is the state `cli/doctor` names in three separate
+docstrings as the routine macOS first run shape, arranged with `chmod 000` on the
+coupled directory and driven through `doctor.run` on the green machine:
+
+| what | measured |
+| --- | --- |
+| `taxonomy.active` status | `fail` |
+| `taxonomy.active` remedy | `grant-path-access`, which is right |
+| `taxonomy.active` cause | `None` |
+| envelope reason | `doctor-check-failed` |
+| envelope remedy | `None` |
+| envelope detail | `{"failing": [...]}`, carrying no path |
+
+The same exception handed to a `Finding` as `error=` answers `path-permission-denied`
+with `grant-path-access` and a detail carrying the path. So the mechanism works
+and the module that owns it does not call it.
+
+**Why this is a residual and not a block.** The exit code does not move:
+`doctor-check-failed` and `path-permission-denied` both map to PRECONDITION, code
+30. The finding level remedy is correct, so the rendered steps line carries the
+fix a person reads. What is lost is the machine readable half of one refusal:
+the reason slug a caller branches on, and the path in `detail`. Nobody loses
+data, nobody is told anything false, no verb is blocked, and the report is red
+rather than falsely clean.
+
+The asymmetry is the sharp end. Over ONE path and ONE permission, `crate setup`
+now reports a structured `path-permission-denied` and `crate doctor` reports
+`doctor-check-failed` with a null remedy. That is this project's own recurring
+shape: a fix that lands on the sites it was handed and reproduces the class one
+file over.
+
+**Closes when:** the four `Finding` building handlers in `cli/doctor.py` pass
+`error=exc`, or `answer` classifies centrally for every check the way the
+dispatcher's blanket does.
+
+## R-80. The interpreter ceiling guard forbids the current number rather than the declared one
+
+**Found:** by the independent verification of U27 round eight, 2026-08-14, in the
+hunt for a test that forbids a feature by naming an implementation.
+
+`tests/test_packaging.py::test_the_doctor_reads_the_installed_bound_rather_than_a_constant`
+walks every string constant in `src` and fails if one contains both `3.14` and
+`<`. The property it exists for is "the interpreter ceiling is declared once, in
+`pyproject.toml`, and never repeated in the package". The literal `3.14` is not
+read from `pyproject.toml`; it is typed into the guard.
+
+The consequence is silence rather than a failure. Raise the ceiling to `<3.15`
+and the guard keeps passing while forbidding a string nothing writes any more,
+so the day somebody does repeat the new ceiling in `src` is the day nothing says
+so. Its sibling in `tests/test_doctor.py::test_the_declared_bound_is_read_from_packaging_rather_than_repeated`
+does NOT have this shape, because it asserts the bound is present in
+`pyproject.toml` first and would go red on the same bump; that one is a guard
+that fails loudly when it goes stale, which is the difference.
+
+**Cost:** one guard silently stops guarding at the next version bump. Nothing
+user facing today.
+
+**Closes when:** the ceiling is parsed out of `pyproject.toml`'s
+`requires-python` and the scan looks for whatever it finds there.
+
+## R-81. Seventeen of forty two independently derived mutation rows kill nothing
+
+**Found:** by the independent verification of U27 round eight, 2026-08-14. The
+full table is `docs/mutation/u27-round-8-independent.md`; this records what the
+zeros mean so a later reader does not re-derive them.
+
+Forty two rows, twenty five deaths, seventeen zeros, null control zero, no
+collection drift on any row. Every zero was promoted to the full suite before
+being reported as one. The zeros cluster into six families, and in every family
+something IS pinned, measured in the same batch rather than argued:
+
+| family | unpinned, kills 0 | pinned, and by how much |
+| --- | --- | --- |
+| the two path measurement | candidate ORDER (`C4`), probe MODE (`C5`), and measuring the EROFS side at all (`C7`) | dropping the measurement kills 1 (`C6`), dropping the both paths precondition kills 22 (`C8`), and classifying a read only volume as a permission kills 3 (`C7_composite_kind`) |
+| the copytree classification | the class name half of the identity check (`C9`), probe MODE (`C11`), and its position ahead of the errno rule (`C12`) | asking the destination instead of the source kills 1 (`C10`) |
+| the database probe | the read versus write mode chosen from `SQLITE_CANTOPEN` (`C14`) | a probe that answers None for every refusal kills 3 (`C14_composite_probe_blind`) |
+| the canary's file | which SOURCE the path comes from (`W2`), the `detail` payload it builds (`W4`), `handle_path` itself (`W1`), and `open_db` supplying one (`W6`) | dropping the hand off kills 1 (`W3`), rewording the sentence kills 1 (`W5`), and naming the WRONG file kills 1 (`W2_composite_wrong_file`) |
+| the finding's classification | building a cause for any status (`D3`), OVERWRITING a cause the branch already built (`D4`), and the `compare=False, repr=False` on the field (`D5`) | not classifying at all kills 2 (`D1`), not overruling the hard coded remedy kills 2 (`D2`), and a wrong reason slug on the constructed cause kills 2 (`D4_composite_reason`) |
+| the wizard's hand off | the mount resolution branch (`S4`) and the already there probe branch (`S5`) | the branch that WRITES to the library volume kills 1 (`S2`), the closing clause kills 5 (`S1`), and the hard coded sentence kills 2 (`S3`) |
+
+Two of these are worth naming on their own.
+
+`C12` is inert rather than untested: `shutil.Error` is an `OSError` subclass
+carrying `errno` None, so the errno rule answers None for it whatever the order,
+and asking the copy rule first is a statement of intent rather than a behaviour.
+
+`D4` is the one a later reader should look at first. Nothing pins that a cause a
+branch built for itself survives construction, so a future branch that supplies
+its own cause AND an exception has no guard saying which one the report carries.
+
+Three rows were considered and not run at the forty five cap, and five
+composites were considered and not run; all eight are logged in the table's own
+`Dropped` section with the reason each was ranked below the cap.
+
+**Closes when:** each family's unpinned half acquires an assertion, or the
+family is deliberately declared as intent rather than behaviour in the code.
