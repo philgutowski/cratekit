@@ -145,6 +145,19 @@ not yet a zero and is promoted to a full run before it is reported. Row counts a
 capped by the depth of the pass, and a truncation that nobody logged reads as
 coverage.
 
+### Pinned population
+A count the suite recomputes from the tree on every run and asserts as an exact
+figure, so that a number a document argues from cannot decay silently as the
+tree grows. When a merge moves it the pin fails, and the rule is to look, then
+re-measure and re-pin, never to widen the assertion.
+
+A re-pin names its members rather than matching a delta, because a member
+leaving while another joins reads as no change and two joining while one leaves
+reads as one joining. The comment above the pin is a dated ledger of what joined
+and what left at each merge. When the members are literals in the tree, each is
+asked of git against the pre-merge commit; when a walk derives them, the same
+walk is run over the pre-merge tree and the two sets are differenced.
+
 ## Findings
 
 ### Residual finding
