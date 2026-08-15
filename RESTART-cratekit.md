@@ -1,9 +1,10 @@
 # Restart: Cratekit parallel wave
 
 **Last session 2026-08-14, the second that day.** It corrected R-80's recorded
-mechanism, which was wrong in three separate documents, narrowed that finding
-from a whole module to one function, and **merged U12**. It filed R-102, R-115
-and twelve incoming residuals. **Eight units have now cleared the merge bar.**
+mechanism, narrowed that finding from a whole module to one function, **merged
+U12**, and filed R-102, R-115 and twelve incoming residuals. It then fixed the
+session contract, which had claimed for two weeks that every residual is an
+issue when 99 of 114 are not. **Eight units have cleared the merge bar.**
 
 ## Do this first
 
@@ -25,7 +26,7 @@ rule, never to find out how to work.
     .venv/bin/pytest --tb=no                    # 5652 passed, 13 skipped, 5665 collected
     .venv/bin/python scripts/board.py audit     # exit 0
 
-Main's tip is the commit subject `Merge U12: memory derived worker sizing`.
+Main's tip is the commit subject `board: the board is the build and the residual file is the ledger`.
 **No hash is written here on purpose.** This file is itself part of the commit it
 would be naming, so every correction to the hash changes the hash, and the two
 sessions that tried it left a stale identifier behind. Check the subject and
@@ -46,30 +47,36 @@ All are pushed. The u23 branch and worktree are gone, deleted in both places.
 
 ## What to do next, in order
 
-1. **U27 has ONE question left and it is small.** The probe was split per intent
-   on 2026-08-14, verified on a real merge, and the guard now reports
-   `_probe_writable` alone instead of the whole `_probe`. The remaining question
-   is whether that one function keeps its write capable handle. **Read R-80
-   first**; it carries the six driven scenarios comparing the handle against the
-   metadata alternative, which agreed on all six, the one divergence class that
-   was NOT driven (a network mounted volume), and a reframing that weakens the
-   objection: the probe only ever runs for a driver error that already
-   established a write was refused, so it is explaining a refusal rather than
-   predicting one. Attack that reframing first. The behaviour is now pinned by
-   `test_the_write_probe_classifies_every_way_a_write_is_refused`, so any
-   replacement has something to fail against. Do not widen `_os_open_reads`; it
-   is correct, and do not relocate the probe, which is R-102.
-2. **R-115, CI has been red on `main` for at least ten consecutive runs** and
-   cannot go green, because the workflow runs Linux against proofs that require
-   macOS and deliberately fail rather than skip. It is not a regression and
-   nothing is broken. It needs a decision about what CI is for, and METHOD should
-   then say so, since it currently rests everything on three local commands and
-   never mentions CI at all.
-3. `docs/METHOD.md` is over 265 lines against the 80 it was written to be and
-   still wants a trim pass.
+**Work is picked from the board, by number.** These three are the batch, and the
+issue is the brief in each case. Battery green between them.
+
+1. **#56, A3.** Amend the stale coordination note at `tests/_source_guards.py:612`
+   and date what the U12 merge discharged in R-57 and R-111. Small, and the
+   falsehood is live on `main` right now.
+2. **#27, U27.** One question left: does `_probe_writable` keep its write capable
+   handle. Read R-80 first; it carries six driven scenarios, the one divergence
+   class that was NOT driven (a network mounted volume), and the reframing to
+   attack first, that the probe only runs for a driver error which already
+   established a write was refused, so it explains a refusal rather than
+   predicting one. The behaviour is pinned by
+   `test_the_write_probe_classifies_every_way_a_write_is_refused`. Do not widen
+   `_os_open_reads` and do not relocate the probe, which is R-102 and #54.
+   **Merges WITHOUT a closing trailer.**
+3. **#55, R-115.** Decide what CI is for and say so in METHOD. It cannot go green
+   as configured, so a red run currently carries no information.
+
+Also open and not in the batch: **#54, R-102**, the allowlist audit being one hop
+deep, which is a real design change rather than a fix. `docs/METHOD.md` is over
+265 lines against the 80 it was written to be and still wants a trim pass.
 
 ## Standing decisions
 
+- **The board is the BUILD, `docs/residual-findings.md` is the LEDGER.** Units and
+  attended chores are issues; a residual earns one only if somebody decides to act
+  on it. Fifteen of 114 have issues and that is an artifact of one batch on
+  2026-08-02, not a rule. **Do not backfill.** `board.py audit` now fails with a
+  CONTRADICTION if an `R-N` issue title stops matching the finding that number
+  points at, which is the surface a renumber silently repoints.
 - **Residual numbers are APPEND ONLY.** Main's numbers never move; an incoming
   branch's residuals take fresh numbers above main's highest. **Main's highest is
   now R-115.**
