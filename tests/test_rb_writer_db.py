@@ -40,6 +40,7 @@ import pytest
 
 from cratekit.core import config
 from cratekit.core import rb_writer as W
+from cratekit.core.exit_codes import Remedy
 from tests.test_config import valid_data
 
 #: The pin the tests record and then satisfy. A shape, not anybody's installed
@@ -649,3 +650,101 @@ def test_the_battery_reports_which_database_it_ran_against(database):
         "a supplied snapshot is opened with the key; the synthetic database is not"
     )
     assert path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Round eight: a permission may never reach "restore from a snapshot"
+# ---------------------------------------------------------------------------
+
+
+def test_a_sealed_database_is_a_grant_rather_than_an_order_to_overwrite_it(
+    database, cloud_sync_off
+):
+    """THE ADVICE WAS DESTRUCTIVE, NOT MERELY WRONG.
+
+    ``canary-read-failed`` sits on the library-unreadable band, whose declared
+    remedy is ``restore-from-snapshot``, and over a ``chmod 000`` that sends the
+    user to overwrite library state they still have. Every earlier finding in this
+    unit was a wrong message; this one destroys data if followed.
+
+    WHY IT WAS UNCLASSIFIED. The binding opens lazily, so a sealed file passes the
+    open and fails at the canary's two reads, and what comes back is an object
+    mapper error wrapping a ``sqlite3.OperationalError``: no errno, no filename,
+    no path anywhere. ``queue.db`` and ``review.db`` are answered correctly
+    because their connection sites record the path; this one did not, so the one
+    thing the classification measures was absent and the destructive default
+    stood.
+
+    The chain is asserted rather than assumed, because the path has to be recorded
+    on the exception two links down that actually carries ``sqlite_errorname``,
+    not on the wrapper a handler can see.
+    """
+    path, unlock = database
+    before = path.stat().st_mode
+    path.chmod(0o000)
+    try:
+        with pytest.raises(W.RekordboxUnavailable) as excinfo:
+            W.open_db(path, check_app_version=False, unlock=unlock)
+        # READ WHILE THE FILE IS STILL SEALED, which is when the dispatcher reads
+        # it. The classification MEASURES the path rather than trusting the
+        # driver's sentence, so a condition that has already cleared correctly
+        # claims nothing, and restoring the mode first would test the clearing.
+        error = excinfo.value
+        cause = error.cause
+    finally:
+        path.chmod(before & 0o777)
+
+    assert cause.remediation.remedy is not Remedy.RESTORE_FROM_SNAPSHOT, (
+        "a chmod told the user to overwrite the library with an older copy"
+    )
+    assert cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
+    assert cause.reason == "path-permission-denied"
+    assert cause.detail["path"] == str(path)
+    assert cause.detail["access"] == "permission"
+    assert str(path) in cause.message
+
+    # The site's own reading is kept and is exactly what it was, so the row this
+    # test kills is the recording rather than anything downstream of it.
+    assert error.declared_cause.reason == "canary-read-failed"
+
+    # The shape the recording had to cross: the classifiable error is two links
+    # down the DECLARED chain, under a wrapper that carries none of its fields.
+    chain = []
+    current: BaseException | None = error
+    while current is not None:
+        chain.append(current)
+        current = current.__cause__
+    assert any(getattr(link, "sqlite_errorname", "") == "SQLITE_CANTOPEN" for link in chain), (
+        f"the driver level error left the chain: {[type(link).__name__ for link in chain]}"
+    )
+
+
+def test_a_sealed_sidecar_beside_the_database_is_the_same_answer(database, cloud_sync_off):
+    """THE OTHER HALF OF THE SAME CONNECTION, and the same destructive default.
+
+    ``database-open-failed`` shares the canary's band and therefore shares
+    ``restore-from-snapshot``. The binding reads rekordbox's own legacy playlist
+    file while it constructs, and that file travels with the database through
+    every snapshot and restore, so a mode on it is a state a real library reaches.
+
+    A sealed sidecar is refused as a ``PermissionError``, which carries its own
+    filename, so this leg needs no hand-off to be classifiable. It is driven
+    anyway because the property being asserted is not "the hand-off works", it is
+    that NO permission reaches an instruction to overwrite the library.
+    """
+    path, unlock = database
+    sidecar = path.parent / W.MASTER_PLAYLIST_XML
+    sidecar.write_text("<DJPLAYLISTS/>", encoding="utf-8")
+    sidecar.chmod(0o000)
+    try:
+        with pytest.raises(W.RekordboxUnavailable) as excinfo:
+            W.open_db(path, check_app_version=False, unlock=unlock)
+        cause = excinfo.value.cause
+    finally:
+        sidecar.chmod(0o600)
+
+    assert excinfo.value.declared_cause.reason == "database-open-failed"
+    assert excinfo.value.declared_cause.remediation.remedy is Remedy.RESTORE_FROM_SNAPSHOT
+    assert cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
+    assert cause.reason == "path-permission-denied"
+    assert cause.detail["path"] == str(sidecar)

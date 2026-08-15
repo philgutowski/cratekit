@@ -221,10 +221,26 @@ def find(name: str) -> str | None:
     return None
 
 
-def resolve(name: str) -> str:
-    """Absolute path for ``name``, or ``BinaryNotFound`` naming what to do."""
+def override_problem(name: str) -> str | None:
+    """The override that is SET and is not an executable file, or None.
+
+    One rule with two callers, which is why it is a function rather than an
+    ``if`` repeated in each. ``find`` returns None for a broken override, which
+    is correct and is also indistinguishable from "not installed anywhere", so
+    every caller that wants to tell a user what to DO has to ask this separately:
+    "install it" and "the override you set points at nothing" are opposite
+    instructions, and doctor was giving the first for the second.
+    """
     override = os.environ.get(env_var(name))
     if override and not _executable(Path(override)):
+        return override
+    return None
+
+
+def resolve(name: str) -> str:
+    """Absolute path for ``name``, or ``BinaryNotFound`` naming what to do."""
+    override = override_problem(name)
+    if override:
         raise BinaryNotFound(
             f"{env_var(name)} is set to {override!r}, which is not an executable "
             f"file. Fix or unset the override; falling through to PATH would run "
@@ -321,6 +337,7 @@ __all__ = [
     "fallback_dirs",
     "find",
     "install_hint",
+    "override_problem",
     "resolve",
     "subprocess_env",
 ]

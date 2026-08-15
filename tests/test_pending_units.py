@@ -54,7 +54,6 @@ EXPECTED_PENDING = frozenset(
         "cratekit.intake.collection_xml",  # U37, the COLLECTION emitter
         "cratekit.deletion.cli",  # U24, delete.review, behind the explicit-gate wall
         "cratekit.intake",  # U37, path repair proposals as review items
-        "cratekit.cli.doctor",  # U27, the health check
         "path:skills",  # U28, the shipped operator skills
         "cratekit.write.routing_cli",  # U20, the route.* verbs and the gated close
         "cratekit.cli.rebuild",  # U20, the rebuild verb and its named disposition
@@ -77,6 +76,29 @@ EXPECTED_PENDING = frozenset(
 # discharged and which half became an always-armed tripwire in
 # ``tests/test_restore.py``.
 
+# U27 removed ``cratekit.cli.doctor`` when the health check landed. That UNGATED
+# the two guards waiting on it, and ungating is not arming: as first written,
+# neither of them could fail.
+#
+# The containment report in ``tests/test_config.py`` asked whether any finding
+# contained both "db_path" and "atomic", and the OK branch of the very check
+# under test says "library.db_path sits under library.root, so a snapshot commits
+# atomically with a rename". ``atomic`` is inside ``atomically``, so a check that
+# reported the CONTAINED answer unconditionally passed the guard against a
+# database that is not contained.
+#
+# Conformance assertion 8 in ``tests/test_cli_contract.py`` ran the doctor and
+# required every declared key to come back with an answer, which is identically
+# the existence check it replaced: the keys are derived from the check table and
+# every check returns its own key, so a stub emitting one empty finding per key
+# passed while observing nothing.
+#
+# Both are behaviour now, and each is driven against the evasion that satisfied
+# its first version as well as against correct code. The lesson is the one this
+# file already teaches from the other side: deleting an entry from the register
+# is the moment to read the guard it releases, because until that moment nothing
+# has ever run it.
+#
 # U8's two entries were removed here when ``cratekit.core.snapshot`` and
 # ``cratekit.core.session`` landed, which is the countdown working as designed.
 # ``cratekit.core.session`` appeared TWICE in the literal above. A set makes a

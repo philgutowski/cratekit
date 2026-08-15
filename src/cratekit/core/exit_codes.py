@@ -147,6 +147,23 @@ class Remedy(StrEnum):
     RELEASE_STALE_LOCK = "release-stale-lock"
     QUIT_REKORDBOX = "quit-rekordbox"
     MOUNT_LIBRARY_VOLUME = "mount-library-volume"
+    # A path this account cannot reach, which is a DIFFERENT act from attaching a
+    # drive: nothing is missing and nothing needs plugging in. On macOS an
+    # interpreter without Full Disk Access is refused by the kernel for anything
+    # under Documents, Desktop, Downloads or an external volume, and telling that
+    # user to mount a volume that is already mounted is the collapse this
+    # vocabulary exists to prevent.
+    GRANT_PATH_ACCESS = "grant-path-access"
+    # Two acts that are NOT "grant this account access", and were both being told
+    # to. A read only volume refuses every writer on the machine, so no amount of
+    # Full Disk Access changes it: the fix is to remount it read write, or to
+    # slide a card's write-protect tab back. A library on a read only disk image
+    # or a locked SD card is an ordinary DJ arrangement.
+    REMOUNT_WRITABLE = "remount-writable"
+    # A per-file immutable flag, which is what Finder's "Locked" checkbox writes
+    # and what ``chflags uchg`` sets. It refuses the file's OWNER, so it is not a
+    # permission either, and it is the commonest non-permission EPERM on macOS.
+    UNLOCK_PATH = "unlock-path"
     REVALIDATE_PINS = "revalidate-pins"
     REBUILD_TREE = "rebuild-tree"
     RESTORE_FROM_SNAPSHOT = "restore-from-snapshot"

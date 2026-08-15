@@ -1457,7 +1457,14 @@ class Refused(CratekitError):
     ("source", "expected"),
     [
         (SEEN_OPTIONAL_DISCRIMINATOR, {"tagger-source-unreadable", "tagger-art-rejected"}),
-        (SEEN_DISCRIMINATOR_IMPORTED_FOR_TYPING_ONLY, {"repair-backup-facts", "upgrade-cratekit"}),
+        # Three members rather than two since the U27 merge, 2026-08-15, which
+        # appended GRANT_PATH_ACCESS to backup_facts.Remedy. The fixture derives
+        # the whole enum, so this set is re-measured and re-pinned when a unit
+        # adds a member, never widened to stop noticing.
+        (
+            SEEN_DISCRIMINATOR_IMPORTED_FOR_TYPING_ONLY,
+            {"repair-backup-facts", "upgrade-cratekit", "grant-path-access"},
+        ),
         (SEEN_A_DATACLASS_EXCEPTION, {"tagger-art-rejected"}),
         (SEEN_A_TYPE_CALL, {"tagger-art-rejected"}),
         (SEEN_A_FACTORY, {"tagger-art-rejected"}),
@@ -4619,7 +4626,25 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # the population to 103 and the non-reserved half to 81. The reserved half
     # is UNCHANGED at 22 across all three re-pins, so the comparison the
     # docstring argues is still undisturbed.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (103, 81, 22)
+    #
+    # Re-pinned again on the U27 merge, 2026-08-15, and THIS IS THE FIRST RE-PIN
+    # THAT MOVES THE RESERVED HALF, so it is not the routine bump the three above
+    # are. U27 appends exactly five causes, named rather than counted:
+    # grant-path-access, library-root-unreachable, path-locked,
+    # path-permission-denied and path-read-only. Measured by asking git whether
+    # each of the 108 appears anywhere in main's own `src` before the merge, not
+    # by subtracting one total from another.
+    #
+    # Four of the five are ordinary and take the population to 108 and the
+    # non-reserved half to 85. The fifth, grant-path-access, is a REMEDY token
+    # that this merge had to reserve, because U27's branch was cut before U38
+    # landed the registry and only the merged tree can see the obligation, so the
+    # reserved half moves 22 to 23 for the first time. The comparison the
+    # docstring argues is undisturbed by that: the reserved half growing makes the
+    # named surface no larger relative to the literal one, and the literal
+    # headroom assertion below still reports no offender, which is the check that
+    # would notice if it had.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (108, 85, 23)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4633,7 +4658,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # are not causes, the two that are being the pair re-pinned above. The
     # headroom assertion below still reports no offender, which is what these
     # numbers are bought for and the only reason moving them is safe.
-    assert (len(literals), len(literals - set(causes))) == (270, 168), (
+    # Re-pinned again on the U27 merge, 2026-08-15: 270 to 282 distinct and 168
+    # to 175 non-keys. Twelve kebab literals land with the wizard, the doctor and
+    # the login verb, of which five are the causes named in the pin above and
+    # seven are not causes at all. Nothing was lost in either direction, measured
+    # rather than inferred from the totals moving by the right amount. The
+    # headroom assertion below still reports no offender.
+    assert (len(literals), len(literals - set(causes))) == (282, 175), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -4675,7 +4706,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # holding a name resolving to a cause declared somewhere else, which is the
     # shape that would say the one key set had stopped holding, and no merge has
     # ever moved it.
-    assert (len(without), len(with_own), len(both)) == (8, 20, 11), (
+    # Re-pinned again on the U27 merge, 2026-08-15: core/preflight.py is the one
+    # module added, taking the with-own half from 20 to 21 and the also-holds-an
+    # -integer half from 11 to 12. Named rather than counted, and measured by
+    # running this same derivation over main's own tree in a scratch worktree and
+    # differencing the two SETS, because a count moving by one says a module
+    # joined and does not say which, and a module leaving while another joined
+    # reads identically. THE WITHOUT-OWN HALF IS STILL 8, now across five
+    # measurements and four merges.
+    assert (len(without), len(with_own), len(both)) == (8, 21, 12), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "
@@ -4692,7 +4731,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # than narrowed, which is the direction that keeps the decision intact. That
     # comparison is the whole reason these four numbers are measured, and it has
     # now widened at every one of the three merges that moved them.
-    assert (len(literal_holders), len(literal_both)) == (42, 13), (
+    # Re-pinned again on the U27 merge, 2026-08-15: 42 to 45 holders, 13 to 14
+    # also holding an in-range integer. The three are the three modules the unit
+    # lands, cli/doctor.py, cli/setup.py and cli/verbs/login.py, and of those only
+    # cli/doctor.py also holds an in-range integer. The literal side grew by three
+    # while the named side grew by one, so the comparison just below widened for
+    # the fourth time out of four. It has never narrowed, and the day it does is
+    # the day the decision this rests on has to be re-argued rather than re-pinned.
+    assert (len(literal_holders), len(literal_both)) == (45, 14), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
@@ -4713,11 +4759,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
         and not isinstance(node.value, bool)
         and low <= node.value < high
     ]
+    # Re-pinned on the U27 merge, 2026-08-15: 42 to 45 declared enum values and 6
+    # to 7 of them also reserved-table causes. The integers are UNCHANGED at 28,
+    # which is the half that makes this the sharpest case, so the shape of the
+    # finding is exactly as it was. The three new members are the three acts
+    # round eight split one instruction into, GRANT_PATH_ACCESS,
+    # REMOUNT_WRITABLE and UNLOCK_PATH, none of which existed in main's own
+    # core/exit_codes.py before the merge. Only the first is also a reserved
+    # cause, which is this merge's own reservation and is the seventh.
     assert (
         len(declared_in_its_own_enum),
         len(declared_in_its_own_enum & CAUSES),
         len(integers),
-    ) == (42, 6, 28), (
+    ) == (45, 7, 28), (
         "core/exit_codes.py is the sharpest case in the residual and its figures "
         "moved. It declares cause-shaped strings in its own Remedy enum, some of "
         "which are also reserved-table causes, and it holds in-range integers "

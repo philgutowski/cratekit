@@ -70,7 +70,7 @@ from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from cratekit.core import config, processes
-from cratekit.core.cause import Cause, CratekitError, Scope, refuse
+from cratekit.core.cause import Cause, CratekitError, Scope, name_the_database, refuse
 from cratekit.core.exit_codes import Remedy
 
 logger = logging.getLogger(__name__)
@@ -983,21 +983,64 @@ def assert_cloud_sync_readable(db: Any = None, *, force: bool = False) -> None:
 # ---------------------------------------------------------------------------
 
 
-def canary(db: Any, *, write_intent: bool = False, force_cloud_canary: bool = False) -> None:
+def handle_path(db: Any) -> str | None:
+    """The database file an OPEN HANDLE is actually reading, or None.
+
+    The binding keeps no public attribute for it, and the object mapper it is
+    built on does: the engine carries the URL it was constructed from. Read off
+    the handle rather than remembered by the caller so that a read failure names
+    the file even where the caller did not open it, which is every reader that
+    was handed a handle.
+
+    None rather than a guess when the handle is not one of these, because a wrong
+    path is worse here than no path: the classification would probe a file the
+    failure was never about.
+    """
+    database = getattr(getattr(db, "engine", None), "url", None)
+    spelled = getattr(database, "database", None)
+    return str(spelled) if spelled else None
+
+
+def canary(
+    db: Any,
+    *,
+    write_intent: bool = False,
+    force_cloud_canary: bool = False,
+    path: Path | str | None = None,
+) -> None:
     """Cheap reads that fail fast on key or schema drift, plus the cloud refusal.
 
     The two reads are chosen because they exercise the whole path: the local
     update counter proves the registry is readable and the first content row
     proves the main table maps. A failure of either means the database is
     incompatible or unopenable, whatever the file's existence suggests.
+
+    THE FILE IS NAMED ON THE FAILURE, and this is the site the whole guarantee
+    below rests on. ``canary-read-failed`` sits on the library-unreadable band,
+    whose declared remedy is ``restore-from-snapshot``, which tells a user to
+    overwrite the library state they still have. Over a ``chmod 000`` that advice
+    destroys data, and a ``chmod 000`` is exactly what produces this failure: the
+    binding opens lazily, so the file is not touched until these two reads, and
+    what comes back is a driver level "unable to open database file" carrying no
+    errno, no filename and nothing else to classify.
+
+    The path is what makes it classifiable, and this is the only place that knows
+    it, so this is where it is recorded. ``path`` when the caller opened the file
+    and knows which one it meant, and the handle's own engine URL otherwise.
     """
     try:
         db.get_local_usn()
         db.get_content().first()
     except Exception as exc:  # noqa: BLE001 - any read failure means incompatible
+        named = path if path is not None else handle_path(db)
+        if named is not None:
+            name_the_database(exc, named)
+        where = f" at {named}" if named is not None else ""
         raise _unavailable(
             "canary-read-failed",
-            f"the rekordbox database opened but could not be read as expected: {exc}",
+            f"the rekordbox database{where} opened but could not be read as "
+            f"expected: {exc}",
+            detail={"path": str(named)} if named is not None else None,
         ) from exc
 
     if cloud_sync_active(db):
@@ -1070,6 +1113,18 @@ def open_db(
     try:
         db = Rekordbox6Database(path=str(target), unlock=unlock)
     except Exception as exc:  # noqa: BLE001 - every open failure is one refusal
+        # The same hand-off the canary makes, at the other half of the same
+        # connection, and MEASURED TO KILL NOTHING TODAY, which is recorded in
+        # the mutation table rather than left for a reader to discover. This
+        # binding never connects while it constructs, so every failure it raises
+        # here is a Python level error or an ``OSError`` carrying its own
+        # filename, both of which the classification already answers; the case
+        # that needs a recorded path is a driver level ``sqlite3.Error``, which
+        # only an eagerly connecting binding produces. It stays because this slug
+        # shares the canary's band and therefore its ``restore-from-snapshot``
+        # default, so the day the binding connects earlier is the day a chmod
+        # here starts telling a user to overwrite their library.
+        name_the_database(exc, target)
         raise _unavailable(
             "database-open-failed",
             f"the rekordbox database at {target} could not be opened: {exc}",
@@ -1078,7 +1133,12 @@ def open_db(
 
     clear_registry_buffer()
 
-    canary(db, write_intent=require_closed, force_cloud_canary=force_cloud_canary)
+    canary(
+        db,
+        write_intent=require_closed,
+        force_cloud_canary=force_cloud_canary,
+        path=target,
+    )
     assert_schema_version(db, force=force_schema, cfg=cfg)
     return db
 

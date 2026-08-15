@@ -154,12 +154,6 @@ PENDING: dict[str, tuple[str, str]] = {
         "recorder and a consulter agreeing without coordinating is the only "
         "thing that makes a tombstone match anything at all",
     ),
-    "cratekit.cli.doctor": (
-        "U27",
-        "that a database acknowledged outside the library root is REPORTED on "
-        "every run, so the snapshot that is a copy rather than an atomic commit "
-        "stays visible long after the date somebody accepted it",
-    ),
     "path:skills": (
         "U28",
         "the shipped operator skills the skills lint runs over",

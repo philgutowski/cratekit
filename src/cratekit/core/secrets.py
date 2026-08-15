@@ -19,6 +19,10 @@ not there needs a third:
 * ``CredentialRejected`` - the entry exists and the service refused it. Telling
   the user to set the credential is useless; it IS set, it is stale.
 
+A fourth joined them later, for the same reason and not as an exception to it:
+``CredentialIndexUnusable`` means this installation's own presence sidecar could
+not be locked, so the keychain is fine and what needs repairing is here.
+
 Collapse those into one error and every caller has to parse a message string to
 find out which advice to give, which is precisely the failure KTD25 names: a
 typed failure that flattens at any hop cannot be recovered downstream. The
@@ -44,6 +48,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Iterable
+from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
 
@@ -97,6 +102,7 @@ class Remedy(StrEnum):
     INSTALL_KEYCHAIN_BACKEND = "install-keychain-backend"
     SET_CREDENTIAL = "set-credential"
     REAUTHENTICATE = "reauthenticate"
+    REPAIR_CREDENTIAL_STORE = "repair-credential-store"
 
 
 class CredentialError(Exception):
@@ -119,6 +125,31 @@ class CredentialMissing(CredentialError):
     """The backend works and holds no entry. Remediation: record the credential."""
 
     remedy = Remedy.SET_CREDENTIAL
+
+
+class CredentialIndexUnusable(CredentialError):
+    """The presence index could not be locked, so its cycle was not run.
+
+    A FOURTH type for the reason there are three: it needs its own remediation.
+    The keychain is fine, the entry may be fine, and what is broken is this
+    installation's own sidecar, so telling the user to install a backend or to
+    re-enter a value is advice about the wrong thing.
+
+    Refusing rather than writing unlocked is the same decision ``core/review``
+    makes about its stores. Proceeding unlocked IS the defect being fixed, so
+    degrading to it on a platform where advisory locking is unavailable would
+    leave exactly that defect reachable by anybody on that platform.
+
+    THE CONSEQUENCE, STATED RATHER THAN DISCOVERED: on a platform with no
+    ``fcntl``, recording a credential refuses. That is the same thing the two
+    decision stores in ``core/review`` already do there, so it is one product
+    behaviour rather than a new one, and the unit that brings a lock primitive to
+    that platform closes all three at once. It is not the shape ``core/jobs``
+    uses; that one proceeds unlocked, on the argument that its claim is a
+    transaction and the lock is only an early refusal, which is not true here.
+    """
+
+    remedy = Remedy.REPAIR_CREDENTIAL_STORE
 
 
 class CredentialRejected(CredentialError):
@@ -178,9 +209,18 @@ def _unavailable(action: str, name: str, exc: Exception) -> CredentialBackendUna
     ``CredentialError`` handler never sees it and the user gets a traceback
     instead of the one sentence that would help. Anything the keychain raises
     means the same thing: this machine cannot handle credentials right now.
+
+    WHAT IS NOT INTERPOLATED: the backend's own MESSAGE. Only its type name goes
+    into the refusal. This string reaches the wizard's check table, standard
+    error and the JSON envelope, so a backend that puts the value it was handed
+    into its exception message would put a credential into all three, and a
+    backend is third-party code whose message text is not ours to bound. The type
+    name is what tells the failures apart; the message is what could carry a
+    secret. The original exception is still chained for a developer reading a
+    traceback, which no user-facing path prints.
     """
     return CredentialBackendUnavailable(
-        f"the OS keychain could not {action} {name!r} ({exc}). Credentials are "
+        f"the OS keychain could not {action} {name!r} ({type(exc).__name__}). Credentials are "
         f"never written to a plain file, so this machine cannot handle them until "
         f"a keychain backend is installed. Set "
         f"{ENV_ALLOW_ENV_CREDENTIALS}=1 to opt in to environment-supplied "
@@ -198,6 +238,20 @@ def _env_override(name: str) -> str | None:
     if os.environ.get(ENV_ALLOW_ENV_CREDENTIALS) != "1":
         return None
     return os.environ.get(_env_name(name)) or None
+
+
+def environment_value(name: str) -> str | None:
+    """The opt-in environment value for ``name``, or None when it is not opted in.
+
+    Public so that a caller who needs to know whether the fallback has a value,
+    rather than whether the credential resolves, asks THIS module instead of
+    re-reading the two variables itself. There is exactly one rule about when the
+    environment may supply a credential, and a second reader spelling it again is
+    a second rule that will eventually disagree with this one: the fallback would
+    then be on for one caller and off for another with nothing in the config to
+    explain it.
+    """
+    return _env_override(str(name))
 
 
 def get(name: str) -> str:
@@ -250,6 +304,21 @@ def set(name: str, value: str) -> None:
     discarded, the presence index records the name anyway, doctor reports the
     credential as set, every read raises ``CredentialMissing``, and the user
     follows that remedy, re-records it successfully, and loops forever.
+
+    THE INDEX LOCK IS TAKEN BEFORE THE KEYCHAIN IS TOUCHED, and the order is the
+    fix for a defect the lock itself introduced. Taken afterwards, an
+    unobtainable lock refused a write that had ALREADY happened: the keychain
+    held the value, the index did not name it, ``exists`` answered False, and
+    doctor sent the user to record a credential the machine was already holding,
+    which is the exact failure the lock was added to prevent, reachable through
+    the lock's own refusal. Now the refusal happens while both stores are still
+    untouched, so a refusal means nothing changed anywhere.
+
+    What that leaves is one narrow window and it fails in the safe direction: the
+    keychain write succeeds and the index write then fails on its own (a full
+    disk). The value is stored and reads as unrecorded, so the user records it
+    again, which is idempotent. The opposite order would leave the index naming a
+    credential the keychain never accepted, which is the loop above.
     """
     if not value:
         raise CredentialMissing(
@@ -258,32 +327,48 @@ def set(name: str, value: str) -> None:
             f"others, so the presence check could not answer honestly.",
             name=str(name),
         )
-    try:
-        keyring.set_password(SERVICE, str(name), value)
-        stored = keyring.get_password(SERVICE, str(name))
-    except Exception as exc:  # see _unavailable: the keychain's failures are open-ended
-        raise _unavailable("record", str(name), exc) from exc
-    if stored != value:
-        raise _unavailable(
-            "record",
-            str(name),
-            RuntimeError("the keychain accepted the write and stored nothing"),
-        )
-    # Only after the read-back. The index must never claim a credential the
-    # keychain does not actually hold, because the whole reason the index exists
-    # is to answer the presence question without retrieving anything.
-    _index_add(str(name))
+    with _index_locked("record"):
+        try:
+            keyring.set_password(SERVICE, str(name), value)
+            stored = keyring.get_password(SERVICE, str(name))
+        except Exception as exc:  # see _unavailable: the keychain's failures are open-ended
+            raise _unavailable("record", str(name), exc) from exc
+        if stored != value:
+            raise _unavailable(
+                "record",
+                str(name),
+                RuntimeError("the keychain accepted the write and stored nothing"),
+            )
+        # Only after the read-back. The index must never claim a credential the
+        # keychain does not actually hold, because the whole reason the index
+        # exists is to answer the presence question without retrieving anything.
+        _record_name(str(name))
 
 
 def delete(name: str) -> None:
-    """Remove a credential. Absent is not an error; the end state is what matters."""
-    try:
-        keyring.delete_password(SERVICE, str(name))
-    except keyring.errors.PasswordDeleteError:
-        pass
-    except Exception as exc:  # see _unavailable: the keychain's failures are open-ended
-        raise _unavailable("remove", str(name), exc) from exc
-    _index_remove(str(name))
+    """Remove a credential. Absent is not an error; the end state is what matters.
+
+    THE INDEX ENTRY GOES FIRST, under the lock, and the keychain entry second.
+    The reverse order is what shipped and it produced the one disagreement that
+    makes a report lie: the keychain entry was removed, the index write then
+    failed or was refused, and ``exists`` answered TRUE for a credential that was
+    gone, so doctor reported green over nothing and the workflow that spent it
+    failed later with a missing credential.
+
+    This order cannot produce that. A failure between the two leaves the index
+    saying "not recorded" for a value the keychain may still hold, which reads as
+    work to do rather than as work already done, and re-recording is idempotent.
+    Taking the lock first means a lock that cannot be taken changes neither
+    store at all.
+    """
+    with _index_locked("remove"):
+        _forget_name(str(name))
+        try:
+            keyring.delete_password(SERVICE, str(name))
+        except keyring.errors.PasswordDeleteError:
+            pass
+        except Exception as exc:  # see _unavailable: the keychain's failures are open-ended
+            raise _unavailable("remove", str(name), exc) from exc
 
 
 def get_json(name: str) -> dict:
@@ -392,16 +477,94 @@ def _index_write(names: Iterable[str]) -> None:
     config.atomic_write_bytes(payload.encode("utf-8"), _index_path())
 
 
-def _index_add(name: str) -> None:
+def _index_lock_path() -> Path:
+    return config.state_path("credential_index_lock")
+
+
+@contextmanager
+def _index_locked(action: str = "update"):
+    """Hold the sibling lock across ONE read then write cycle over the index.
+
+    MEASURED, not theorised. Two processes recording one credential each left the
+    keychain holding both and this index naming one, in 23 of 25 trials, and both
+    calls returned normally. Three concurrent adds lost at least one in 40 of 40.
+    The read and the write are a cycle, and an unlocked cycle over a shared
+    document loses whatever the other writer put there between them.
+
+    THE LOSS IS THE ONE THAT MAKES A REPORT LIE. ``exists`` is what doctor asks
+    to answer "is this credential recorded" without retrieving a value, so a name
+    that never lands reads as ``not recorded`` for a credential the keychain
+    holds, and the remedy sends the user to record it again.
+
+    BLOCKING, like the other two stores in this product: two processes recording
+    credentials should serialize rather than raise at a person. The lock file
+    persists after release, for the reason the config lock states at length:
+    unlinking the name lets a second process lock a fresh inode while the first
+    still holds the old one, and both then believe they are alone.
+
+    ``action`` names what the caller was about to do, so the refusal can say that
+    NOTHING was done. Callers take this lock before touching the keychain, not
+    after, so "the index could not be locked" and "nothing changed" are the same
+    sentence, and the message has to say so or the user is left guessing whether
+    a value was stored.
+    """
+    config._mkdir_private(_index_lock_path().parent)
+    handle = None
+    try:
+        import fcntl
+
+        # os.open with an explicit mode rather than the builtin open(), which
+        # creates at 0666 masked by the umask. A world-writable lock is one any
+        # local account can hold, which turns every future credential write into
+        # a refusal.
+        descriptor = os.open(_index_lock_path(), os.O_CREAT | os.O_RDWR, config.PRIVATE_FILE_MODE)
+        handle = os.fdopen(descriptor, "r+b")
+        # O_CREAT applies the mode only when it CREATES the file, so a lock left
+        # behind at another mode would keep it without this. Guarded the way the
+        # config writer guards its own chmod: a POSIX mode is meaningless on some
+        # platforms, and a health-adjacent path must not raise over one.
+        if config._CAN_SET_MODE:
+            os.chmod(_index_lock_path(), config.PRIVATE_FILE_MODE)
+        fcntl.flock(handle, fcntl.LOCK_EX)
+    except (ImportError, OSError) as exc:
+        if handle is not None:
+            handle.close()
+        raise CredentialIndexUnusable(
+            f"the credential presence index at {_index_path()} could not be "
+            f"locked ({type(exc).__name__}), and writing it unlocked loses "
+            f"whatever a second process is recording at the same time, silently, "
+            f"while reporting success. NOTHING WAS CHANGED: the lock is taken "
+            f"before the keychain is touched, so no credential was stored or "
+            f"removed by the attempt to {action} one, and the keychain and this "
+            f"index still agree.",
+            name=None,
+        ) from exc
+    try:
+        yield
+    finally:
+        handle.close()  # closing the descriptor releases the lock; the file stays
+
+
+def _record_name(name: str) -> None:
+    """The read then write half, WITHOUT taking the lock. Callers hold it.
+
+    Split from the locking wrapper because ``flock`` is held per open file
+    description, so a second acquisition from inside a cycle that already holds
+    one deadlocks against itself. ``set`` and ``delete`` take the lock around
+    their whole operation, keychain included, so they call these directly.
+    """
     names = _index_read()
     if name not in names:
         _index_write(names | {name})
 
 
-def _index_remove(name: str) -> None:
+def _forget_name(name: str) -> None:
+    """The removal half, WITHOUT taking the lock. See :func:`_record_name`."""
     names = _index_read()
     if name in names:
         _index_write(names - {name})
+
+
 
 
 __all__ = [
@@ -411,11 +574,13 @@ __all__ = [
     "Credential",
     "CredentialBackendUnavailable",
     "CredentialError",
+    "CredentialIndexUnusable",
     "CredentialMissing",
     "CredentialRejected",
     "Remedy",
     "backend_available",
     "delete",
+    "environment_value",
     "exists",
     "get",
     "get_json",

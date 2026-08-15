@@ -83,7 +83,7 @@ from typing import Any, Iterator, Mapping, Sequence
 
 from cratekit.cli.output import canonical_json, timestamp
 from cratekit.core import config
-from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
+from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, name_the_database, refuse
 from cratekit.core.exit_codes import Remedy
 
 #: The queue's own schema version. A cross version read REFUSES rather than
@@ -805,16 +805,26 @@ class ReviewStore:
 
     def __init__(self, path: Path) -> None:
         self.path = path
-        self.conn = sqlite3.connect(str(path), isolation_level=None, timeout=30.0)
-        self.conn.row_factory = sqlite3.Row
-        # The mode goes on BEFORE the write ahead log pragma: SQLite gives the log
-        # and shared memory files the permissions the database file has when it
-        # creates them, so doing this afterwards leaves two umask moded sidecars
-        # beside a correctly moded database.
-        _make_private(path)
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA synchronous=FULL")
-        self.conn.execute("PRAGMA busy_timeout=30000")
+        # Named for the same reason the job queue's connection is named: the
+        # driver's refusal is not an ``OSError``, so it carries no errno, no
+        # filename and no ``__cause__``, and a store this account cannot open
+        # left the classification with nothing to work from and the user with a
+        # request to report a defect. The path is recorded on the exception and
+        # the exception is re-raised untouched.
+        try:
+            self.conn = sqlite3.connect(str(path), isolation_level=None, timeout=30.0)
+            self.conn.row_factory = sqlite3.Row
+            # The mode goes on BEFORE the write ahead log pragma: SQLite gives
+            # the log and shared memory files the permissions the database file
+            # has when it creates them, so doing this afterwards leaves two umask
+            # moded sidecars beside a correctly moded database.
+            _make_private(path)
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA synchronous=FULL")
+            self.conn.execute("PRAGMA busy_timeout=30000")
+        except sqlite3.Error as exc:
+            name_the_database(exc, path)
+            raise
 
     def close(self) -> None:
         self.conn.close()

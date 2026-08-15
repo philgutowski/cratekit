@@ -253,6 +253,39 @@ RESERVATIONS: tuple[Reservation, ...] = (
             "one can, so the fix is the newer build and not the repair"
         ),
     ),
+    # THE THIRD MEMBER OF THE SAME FAMILY, reserved at the U27 merge on
+    # 2026-08-15. U27 added GRANT_PATH_ACCESS to backup_facts.Remedy so that a
+    # directory this account cannot open stops being reported as a damaged fact
+    # file, which is the correction the raise site's own comment explains at
+    # length. U27's branch was cut before U38 landed this registry, so its new
+    # remedy never had to be reserved on either side and only the merged tree can
+    # see the obligation.
+    #
+    # 32 IS MEASURED RATHER THAN CHOSEN, which is what this table's rule asks:
+    # agree with the landed conversion. core.session catches every
+    # BackupFactsUnreadable at one site, src/cratekit/core/session.py:1042, and
+    # re-raises it with remedy REPAIR_BACKUP_FACTS without reading the
+    # exception's own remedy at all. Measured on the merged tree: both siblings
+    # above answer 32, so this token's landed code today is 32 and reserving
+    # anything else would reserve a conversion that does not happen.
+    #
+    # That flattening is itself a finding and is filed as a residual rather than
+    # repaired here: the remedy correction landed on the raising path while the
+    # consuming path still replaces it, so a person whose directory is unreadable
+    # is told to repair or reset the very record the raise site was changed to
+    # stop blaming. Repairing that changes refusal behaviour no verifier drove,
+    # which is not a merge's work.
+    Reservation(
+        cause="grant-path-access",
+        code=ExitCode.ACK_REQUIRED,
+        remedy=Remedy.GRANT_PATH_ACCESS,
+        note=(
+            "the fact file may be perfectly intact and unreachable, so the gate "
+            "that has to show a backup age cannot be satisfied until the account "
+            "can open the path. Repairing or resetting the record is the wrong "
+            "act and destroys library state to answer a question nobody asked"
+        ),
+    ),
     # ── The backup module's refusals ────────────────────────────────────────
     Reservation(
         cause="rclone-missing",

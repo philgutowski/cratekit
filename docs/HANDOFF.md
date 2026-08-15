@@ -1060,6 +1060,22 @@ were missing entirely and are added: `cratekit.cli.rebuild` (U20) and
 `cratekit.session.restore_cli` (U27). One row per key, ten rows, in register
 order. Regenerate it from `PENDING` rather than editing it by hand.
 
+**The U27 merge on 2026-08-15 discharged `cratekit.cli.doctor`, all three halves
+in the merge commit**, so the table above is nine rows rather than ten. The
+module landed, so the entry went, the mirrored key in `EXPECTED_PENDING` went,
+and no `@requires("cratekit.cli.doctor")` decorator survives anywhere under
+`tests/`, which was checked by grep rather than assumed. Two guards were behind
+that key and neither had ever executed: the containment report in
+`tests/test_config.py` and conformance assertion 8 in
+`tests/test_cli_contract.py`. As first written neither could fail, because each
+was satisfied by the very answer it was checking, and the branch rewrote both as
+behaviour and drove each against the evasion that had satisfied it. The
+obligation that was appended INSIDE that entry, doctor reporting whether the
+library volume has a usable Trash, rides on `cratekit.deletion.cli` and did not
+go with it. U27's other three keys are untouched and are why its issue stays
+open: a unit that still owes a module is a unit whose closing trailer would make
+`board.py audit` exit 2.
+
 **Discharging one of these is three edits in one commit**, and the two files
 below say which: the entry, the mirrored key in `EXPECTED_PENDING`, and the
 `@requires` decorator on every guard the key gated. See
@@ -1076,7 +1092,6 @@ issue. That last shape is R-13's failure and is live three times over already.
 | U37 | `cratekit.intake.collection_xml` | the COLLECTION TRACK emitter that must never emit a `<TEMPO>` element, plus two obligations U19 parked here because U37 owns the pipeline: record each new track's routing intent at the moment the placement is decided, and close a run that deferred a placement through `routing_pass.close_run` rather than `core.session.close_session` |
 | U37 | `cratekit.intake` | a path repair proposal offered into the queue U11 declared for it, never applied, and never read back out of a file somebody edited |
 | U24 | `cratekit.deletion.cli` | the deletion CLI shell. The re-point to U27 is REVERTED, so this row agrees with `tests/_pending.py`. The wall is R-13's database fixture, not the explicit gate, which main's conformance 3 rewrite took down. It is why a trailer naming this unit's issue returns `board.py audit` exit 2, and its issue stays open by design |
-| U27 | `cratekit.cli.doctor` | a database acknowledged outside the library root is reported on every run, so a snapshot that is a copy rather than an atomic commit stays visible long after somebody accepted it |
 | U28 | `path:skills` | the shipped operator skills the skills lint runs over |
 | U20 | `cratekit.write.routing_cli` | the four `route.*` verbs, each closing through `routing_pass.close_run` rather than the exported `close_session`, and a re-run after a destination rename that CONVERGES by reading U36's `core.convergence.DestinationNode` map rather than building a second one. See R-13: U20 is an inference, not a decision |
 | U20 | `cratekit.cli.rebuild` | the rebuild verb, whose operator disposition is an explicit logged act by a named person and never a flag that clears every tree, and which clears a tree's flag only through `write.rebuild.rebuild_tree` handed the convergence check's own difference list |

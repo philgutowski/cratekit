@@ -5477,6 +5477,59 @@ the guard stays red on one function and U27 stays blocked on the battery rule. I
 it is replaced, the guard goes fully green and the reports' invariant becomes true
 again. The evidence above is what that decision now rests on, and it is a decision
 about a shipped classification path rather than about a merge.
+
+### DECIDED 2026-08-15. The handle is gone and this finding is CLOSED
+
+`_probe_writable` no longer opens anything. It asks `_probe_readable` first and
+then attributes the refusal from metadata: `ST_RDONLY` on the volume, the
+per-file immutable flag, and `os.access` with `effective_ids`. Landed on
+`unit/u27-setup-wizard-and-doctor` at `4a34a84`, merged 2026-08-15.
+
+**The reframing was attacked first, as this entry asked, and it holds.** The one
+caller is `_from_database_error` for a driver error that is not
+`SQLITE_CANTOPEN`, so `SQLITE_READONLY` or `SQLITE_PERM`, and both mean the
+driver already attempted a write and was refused. The probe attributes an
+outcome that has happened rather than predicting one, and all three attributions
+this program can act on are readable from metadata.
+
+**Driven, both implementations over the same real arrangements, 12 rows.** An
+ordinary file, mode 444, mode 000, `chflags uchg`, an ACL denying write with the
+mode still 644, an absent file, a path with an embedded null, a writable
+directory, a directory at mode 555, and a real `hdiutil` read only volume in two
+shapes plus its mountpoint. **Ten agree. The two that disagree are both
+DIRECTORIES**, and a directory cannot arrive here: driven, `sqlite3` answers
+`SQLITE_CANTOPEN` both for a directory as the database path and for a new
+database inside a sealed directory, and `SQLITE_CANTOPEN` routes to
+`_probe_readable`. So the divergence is over an input the one producer cannot
+produce, which is this file's own reachability rule applied to a replacement
+rather than to a finding.
+
+**Driven end to end as well**, through `access_refusal` on a live read only
+volume, a live mode refusal and a live Finder lock, and each gives the same
+`AccessRefusal` as the handle did.
+
+**The replacement's own mutation table found two zero rows and both are now
+pinned.** Eight rows on the branch. The `ST_RDONLY` branch and the read probe
+delegation each killed nothing, both user facing, so neither took a one line
+record: `test_the_write_probe_names_the_medium_rather_than_the_account` and
+`test_the_write_probe_answers_for_a_path_it_cannot_reach_at_all` were added and
+re-measured at 2 and 1 deaths. A third test was added because nothing drove the
+ROUTE rather than the answer. The eighth row, `effective_ids`, stays at zero and
+is R-127. Tables: `docs/mutation/u27-r80-write-probe-replacement.md` and
+`docs/mutation/u27-r80-write-probe-zero-rows-repinned.md`.
+
+**Verified on the merged tree, which is the only place the collision exists:**
+`test_the_allowlist_admits_no_writer_this_guard_cannot_name` passes, and
+`test_the_write_probe_classifies_every_way_a_write_is_refused` passes unchanged,
+which is what it was written for.
+
+**What was given up, and it is unmeasured rather than lost.** A network mounted
+volume, where a client can answer from cached metadata while the server is what
+refuses. That class was never driven for EITHER implementation and no share was
+available, and the direction is not established, because an open on a client
+holding cached attributes does not reach the server either. Recorded separately
+as R-126 so it is a standing question rather than a footnote inside a closed
+finding.
 <!-- ------------------------------------------------------------------ -->
 
 ## The twenty findings below arrived with the U23 merge, 2026-08-14, and were renumbered
@@ -7120,3 +7173,663 @@ reads as passing" hazard those tests were written to refuse unless the job also
 asserts that it deselected a known count; or the workflow is deleted, on the
 argument that a check nobody can read is worse than no check. Whichever is taken,
 say in METHOD what CI is for, because at the moment it is for nothing.
+
+<!-- ------------------------------------------------------------------ -->
+
+## The ten findings below arrived with the U27 merge, 2026-08-15, and were renumbered
+
+They are U27's, and every one of them carried a different number on that branch.
+`main`'s numbers did not move; the incoming side's did, which is the rule.
+
+Branch R-16 through R-22 became R-116 through R-122, and branch R-79 through
+R-81 became R-123 through R-125, in order. Two shifts rather than one, because
+the branch numbered its first seven when `main`'s highest was R-15 and its last
+three later, when `main`'s highest was R-78. Both blocks collided: `main` has
+since filled R-16 onward and R-79 onward with entirely different findings.
+
+Citations INSIDE these ten were repointed with them. Citations of R-13, R-14 and
+R-15 were NOT touched, because those name `main`'s findings and always did, and
+the branch's own text says so in the notes it wrote about its numbering.
+
+Each entry carried a `NUMBERING.` paragraph addressed to this merge, saying which
+numbers collided and who moves at it. Those are gone, because the merge they were
+addressed to has happened and a standing instruction that has been carried out
+reads, to the next person, as one still outstanding. What they recorded is above.
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-116. Three read-modify-write cycles over one document, none of them locked
+
+**Found:** during U27, while hunting the shape the last two waves both shipped.
+**One of the three is CLOSED here. Two remain, and they are the two the
+reasoning below actually covers.**
+
+`core/config.py` ships an `fcntl.flock` class whose docstring names this exact
+hazard, and the two units that ignored it lost real records. Three cycles in
+landed code had the same shape. None of them was new to this unit, and U27's own
+verbs sit on top of all three, which is why it is recorded here rather than
+carried in somebody's head.
+
+**Closed here: the credential presence index.** `secrets.set` and
+`secrets.delete` now hold an exclusive lock across the read and the write, and
+`credential_index_lock` is declared in `STATE_FILES` beside the file it guards,
+in the shape `core/jobs.py` and `core/review.py` already use. Three things made
+it separable from the two below rather than part of them: it is in a different
+file that no unit in this wave is editing, its cycle contains no prompt, and it
+is four lines. What made it the URGENT one is that its loss makes a report LIE.
+`secrets.exists` is doctor's `credential_recorded` probe, so an entry lost to a
+race becomes `credential.provider: not recorded` for a credential the keychain is
+holding, and the remedy sends the user to record it again. Measured before the
+fix: two processes recording one credential each left the keychain holding both
+and the index naming one in 23 of 25 trials, with both calls returning normally;
+three concurrent adds lost at least one in 40 of 40.
+
+**STILL OPEN, and both are the same document:**
+
+1. **`crate setup`.** Read the configuration, ask, write it back.
+   `cli/setup.py:201` reads through `config.load`, `cli/setup.py:778` writes
+   through `config.save`, and the questions are in between. Two concurrent
+   wizards each read the same document and the second write erases the first set
+   of answers while reporting success.
+2. **`crate profile set`.** The same cycle over the same file, landed in U5:
+   `cli/verbs/profile.py:40` reads through `config.load` and
+   `cli/verbs/profile.py:156` writes through `config.save`. A lock taken by setup
+   alone would not help, because the two verbs would have to agree on the lock and
+   only one of them would be holding it. That is what makes `config.save` the
+   placement rather than either caller.
+
+The call sites are given with file and line so the closing unit does not re-run
+the hunt. They will drift; the two functions will not.
+
+**Why not fixed here.** The right lock is around `config.save`'s whole cycle
+rather than around one caller, and that is a change to a foundation file three
+units are editing in this wave. The loss rate is comparable to the two defects
+that shipped in the last wave rather than worse than them.
+
+**A REQUIREMENT ON THE FIX, not a note about it.** `config.save` may not hold the
+lock across the wizard's prompt. Setup reads, asks a person questions, and then
+writes, so a lock spanning that cycle blocks a second process on somebody typing,
+for as long as they take. The closing change is therefore the decide-outside,
+re-decide-under-the-lock shape that `core/config.py:load_from_path` already uses
+and documents at length: answer the caller from the first pass, then take the
+lock, re-read what is actually on disk, and re-decide from that. Any fix that
+holds one lock from the first read to the final write satisfies the letter of
+this finding and is not shippable.
+
+**How likely, honestly.** Both are foreground interactive acts on a single-user
+installation. The damage is real and the window is small, which is exactly the
+profile of the two defects that shipped.
+
+**Closes when:** the configuration read-modify-write goes through one locked
+helper that every writer uses, in the re-decide-under-the-lock shape above, with
+a test that drives two writers over one document and asserts neither set of
+answers is lost.
+
+**No unit owns this.** Deliberately not assigned: inventing an owner for an
+obligation nobody accepted is the inference R-13 spent a wave undoing. It needs
+an issue of its own.
+
+---
+
+## R-117. Three answers that claim slightly more than the check observed
+
+**Found:** during the third review of U27, 2026-08-03. Recorded rather than fixed
+by decision of that review: none is a false green, each is a sentence that is
+true of the common case and wider than the thing actually measured.
+
+**1. A library root that exists as a FILE now derives an identity.** The derive
+guard asks whether the walk crossed a directory a volume would fill. A path that
+exists as a regular file crosses nothing, so an identity is read, and it is the
+right volume's identity, which is why this is not a safety regression: the run
+then fails later when something tries to create a directory under it. The earlier
+"the root must be a directory" rule refused it up front, which is better service.
+**Closes when:** the wizard validates that `library.root` is a directory or is
+absent, separately from the volume question, and says which of the two is wrong.
+
+**2. `library.db_containment` says more than path containment proves.** Its OK
+detail reads "library.db_path sits under library.root, so a snapshot commits
+atomically with a rename", and the check is a pure textual containment test. A
+filesystem mounted at or under `db_path` puts the two on different filesystems
+while the paths still nest, so the rename is a copy and the inference is wrong.
+Rare, and it is a real shape: a database on its own volume mounted inside the
+library tree. **Closes when:** the check compares `st_dev` for the two paths, or
+the sentence stops claiming the consequence and states the containment it
+measured.
+
+**3. `keychain.reachable` states an observation it did not make.** Its OK detail
+reads "a keychain backend that can store a credential is available", and the
+probe is `secrets.backend_available`, whose own docstring calls it a heuristic
+about a backend CLASS rather than an observation about a call: it asks keyring
+which backend it would choose and reads that backend's priority. A backend that
+resolves and then fails on write reports green here, which is exactly why
+`secrets.set` verifies its write by reading it back. **Closes when:** the detail
+says what was asked, or the check performs a real round trip against a scratch
+entry, which is a decision about whether a health check may write.
+
+---
+
+## R-118. Five places where "I could not look" is still not said out loud
+
+**Found:** during the fourth review of U27, 2026-08-03, while closing the four
+that were blocking. Recorded rather than fixed because each needs a decision or a
+platform this run could not drive, and none of them reports a false GREEN: they
+either err toward a refusal or are loud.
+
+**1. Windows has no row in the mount-location table, so the derive refuses
+nothing there.** `preflight._VOLUME_MOUNT_LOCATIONS` declares macOS and Linux.
+`volume_mount_locations` answers with an empty tuple everywhere else, and the
+caller reads that as "nothing to refuse", which is right for a platform nobody
+has described and wrong for Windows specifically: `windows_volume_identity`
+exists, so an identity IS recorded there, and it is recorded off whatever the
+walk finds with the drive detached. The reason it is not fixed here is that a
+Windows volume is a drive root rather than a directory under a mount directory,
+so the row is a different shape, and inventing an untested shape for the one
+platform this machine cannot drive is how the guard becomes a no-op that reads
+as coverage. **Closes when:** somebody with Windows adds the row and drives it,
+or the derive refuses outright on a platform with an identity adapter and no
+mount-location row.
+
+**2. A volume hand-mounted somewhere the table does not name is accepted while
+it is unmounted.** The rule only asks about slots it knows about, so a volume
+mounted at a path of the user's own choosing has no slot, and the identity read
+with it detached is its parent's. Stated in `identity_source`'s own docstring.
+**Closes when:** the wizard offers to record the mount location it observed, or
+the table is read from configuration.
+
+**3. An ancestor this account cannot traverse. CLOSED 2026-08-04, by the SIXTH
+review, having been reported closed by the fourth and the fifth.** ~~The wizard
+exits with a traceback, which is loud rather than wrong.~~
+
+**READ THE LAST PARAGRAPH OF THIS ITEM FIRST.** It was closed three times at six
+call sites and found again three times, and the reason is recorded there: a fix
+per call site is a fix the next call site does not have.
+
+The entry above is struck out because it was wrong about the fact and wrong about
+the severity, and the error was load bearing: it is the whole argument for having
+deferred the item. Driven end to end, `crate setup --library-root <sealed>/lib`
+produced no traceback at all. The dispatcher's blanket at `cli/__init__.py`
+caught the `PermissionError` and rendered
+
+    setup: failed (INTERNAL)
+    internal-error: PermissionError: [Errno 13] ...
+    fix: this is a defect; report it with the cause identifier below
+
+and exited 1. So the product CLASSIFIED THE USER'S OWN FILESYSTEM PERMISSION AS A
+CRATEKIT DEFECT and sent them to file a bug report, in the one verb whose entire
+job is getting a fresh clone to a first write. And the trigger is routine on the
+platform this ships for first: on macOS a library root under Documents, Desktop,
+Downloads or an external volume raises EPERM from `stat` for any interpreter
+without Full Disk Access, and `Path.exists` re-raises EPERM rather than answering
+False. That is a normal first-run state rather than a sealed-directory curiosity.
+
+**How it is closed.** `cause.REASONS` declares `library-root-unreachable`, on the
+reserved `LIBRARY_UNAVAILABLE` code, and `exit_codes.Remedy` declares
+`GRANT_PATH_ACCESS`, which is a different act from mounting a volume: nothing is
+missing and nothing needs plugging in. `cli/setup.py:_resolve_volume_id` raises
+that refusal, naming the path and both ways out, and `_seed_taxonomy` writes it
+as a finding rather than raising, because the configuration is already saved by
+the time it runs and the report is what the user reads. Doctor's behaviour was
+already right, exit 30 with every check answered, and is now pinned so the two
+cannot drift apart.
+
+**And the same collapse one screen lower, which the first pass moved rather than
+closed.** Handling the mount question at the top of `_seed_taxonomy` left two
+more filesystem calls unhandled at the bottom of the same function. `path.exists`
+over a `.cratekit` directory this account cannot traverse re-raises, and
+`config.atomic_write_bytes` raises for a state directory it may not write in and
+for a library volume mounted read only. Both escaped into the same blanket and
+were rendered as the same defect report, over a library root that is perfectly
+reachable, so nothing above them refused first. They are handled as two findings
+rather than one, because "could not look at the path" and "reached the path and
+was refused the write" are different acts, and the second is a routine state for
+anyone whose library sits on a volume mounted read only. The one-line advice on
+`GRANT_PATH_ACCESS` was widened to "cannot reach or write" for the same reason:
+as written it asserted a directory could not be opened, which is false of the
+whole write half, and each finding names its own act in its own detail.
+
+**AND SITE BY SITE GUARDING FAILED THREE ROUNDS RUNNING, WHICH IS WHAT ACTUALLY
+CLOSED IT.** The paragraphs above describe six call sites, closed across two
+rounds, and the sixth review found three more: doctor's own check runner attached
+`REPORT_DEFECT` to the permission for four checks at once, `_probe_db_path`
+stat-ed a path nobody had guarded and took the whole verb down with it, and
+`os.path.ismount` swallowed the permission and reported an attached volume as an
+absent one. One `crate setup` report said "this is not a defect, grant this
+interpreter access" from the wizard's note and "this is a defect; report it"
+three lines below from four checks, over one path and one permission.
+
+The rule is now a CLASSIFICATION rather than a handler. `cause.permission_denied`
+answers "is this an `OSError` whose errno is EACCES or EPERM, here or on its
+declared `__cause__` chain", `cause.access_remedy` turns that into a token, and
+the two blankets that exist for what nobody guarded both ask: the dispatcher in
+`cli/__init__.py` and the check runner in `cli/doctor.py`. So a site nobody has
+converted still comes out as a permission the user can grant, and what is left
+for a call site is a better SENTENCE, never the difference between a defect and a
+permission. `cause.REASONS` declares `path-permission-denied` on the reserved
+`PRECONDITION` code for the generic case; `library-root-unreachable` stays for the
+refusal that knows the path was the library's.
+
+The trigger for the whole class is one standard-library behaviour worth naming
+once: `Path.exists` and `Path.is_dir` RE RAISE under EPERM rather than answering
+False, so every line in the package that reads like a question is a line that can
+throw.
+
+**AND THAT CLOSE WAS ALSO WRONG, FOR THE FOURTH TIME, AND THE SEVENTH REVIEW SAYS
+WHY.** "A site nobody has converted still comes out as a permission" was true and
+irrelevant. An AST walk over `src/cratekit` counts nineteen `except OSError` sites
+that raise a STRUCTURED refusal, and eighteen of them never reach either blanket,
+because a blanket only ever sees what nobody caught. Three of the eighteen hard
+coded the wrong answer, and one of those rendered a refusal as "no session is
+recorded with the identifier x", which reads absence out of a read that never
+happened. The hole had moved from unguarded lines to converted ones, which is the
+same shape as the three closes before it.
+
+The decision now lives in `cause.classified`, called from `CratekitError.cause`,
+which is the constructor every structured refusal in the package passes through.
+It reads the DECLARED cause chain, which is what `raise ... from exc` sets, so
+nothing is inferred from the call stack and a handler that recovers and later
+raises something unrelated is not re-labelled. Three further gaps closed with it:
+the classification answered for the `OSError` family alone and this program keeps
+its own state in SQLite, whose refusals carry no errno and no filename; EROFS was
+not classified at all, so a read only volume was sent to Full Disk Access; and a
+kernel refusal with no path was claimed as a path, producing "grant access to the
+path named below" with nothing below it.
+
+**4. `secrets.exists` answers False for a presence index it could not read.**
+`_index_read` catches `OSError` and `ValueError` alike and returns an empty set,
+so an index this account cannot open reads as "nothing recorded". It errs toward
+a FAIL that tells the user to record a credential the keychain may already hold,
+which is the loop R-116 measured, reachable from a permission rather than from a
+race. **Closes when:** the reader tells a missing index from an unreadable one
+and doctor says which it saw.
+
+**5. Two answers from R-117 still claim more than they observed.**
+`library.db_containment` infers an atomic rename from pure path containment, and
+`keychain.reachable` states an observation when its probe is a heuristic about a
+backend class. Both were judged in round three and the judgement stands; they are
+repeated here so that a reader of the newest entry sees the whole set.
+
+---
+
+## R-119. A hand-mounted volume at `/mnt/<name>` is now accepted while detached
+
+**Found:** during the fifth review of U27, 2026-08-03, as the deliberate cost of
+closing the over-restriction the same review found.
+
+`preflight._VOLUME_MOUNT_LOCATIONS` no longer declares `("/mnt", 1)` for Linux.
+Every row in that table is a claim that an empty directory there is evidence of
+an absent volume, and the rule built on it refuses a slot with nothing mounted
+in it. The claim holds for a location a mounter creates and removes around a
+mount. It is false for `/mnt`, which the filesystem hierarchy standard reserves
+for mounting by hand, so the directory is made by hand and stays whether or not
+anything is mounted.
+
+What the row cost was total: Linux has no identity adapter, so every mount
+outcome there is `IDENTITY_UNAVAILABLE` and the write leg always goes through
+`root_can_be_created`, which the row made permanently False for a library at
+`/mnt/<name>/music` on an ordinary root filesystem. The wizard refused to write
+the active template, doctor read for it, found nothing, and answered
+`taxonomy.active` FAIL with run-setup, so the user re-ran setup forever with no
+way out, `--volume-id` included.
+
+What losing it costs is what R-118 item 2 already records for every hand-mounted
+location: a drive mounted at `/mnt/<name>` is accepted while it is detached, and
+the identity read with it detached is its parent's. On Linux that identity is
+never recorded automatically, because there is no adapter to read one, so what
+remains is a taxonomy copy landing on the root filesystem instead of on the drive.
+**Closes when:** the wizard offers to record the mount location it observed, or
+the table is read from configuration, which is the same close as R-118 item 2.
+
+---
+
+## R-120. Two rescues that are kept without being covered
+
+**Found:** during the fifth review of U27, 2026-08-03, while driving the twenty
+handlers a verifier's sweep found covered by nothing.
+
+Both are argued in the source beside the handler rather than only here, which is
+the standard the review set: a handler nobody exercises is a claim nobody has
+checked, so it either gets driven or it says out loud why it cannot be.
+
+**1. `doctor._run_findings` rescues an `OSError` from `Path.glob` that CPython
+does not raise.** Measured on this interpreter: `glob` swallows `PermissionError`
+inside its own scandir walk, and answers with an empty result for a run directory
+somebody replaced with a plain file. Neither shape reaches the handler through a
+real filesystem. It is kept because the swallowing is an implementation detail
+rather than a documented promise, and losing the whole `crate status` verb to a
+future change of mind would be worse than a handler that never fires.
+
+**Narrowed by the sixth review.** The unmeasurable thing is the TRIGGER, and that
+was being used to excuse leaving the CONTRACT unwritten, which is how it sat as a
+rescue no test exercised. The contract is assertable whatever CPython does: a
+walk that refuses costs the report its run records rather than the verb.
+`tests/test_doctor.py` now states it by handing `_run_findings` a run directory
+whose `glob` raises, and the `# pragma: no cover` came off. What is still
+residual is only that no arrangement of a real filesystem produces the raise.
+**Closes when:** the standard library documents the behaviour either way, or the
+walk is done with `scandir` here so the failure is this module's to catch.
+
+**2. `Finding.cause` is not carried into the diagnostic payload.** A check that
+refuses under a declared reason now keeps its reason, remedy, steps and reserved
+exit code, and all four travel in the envelope's `cause`. The per-check entries
+in `data.checks` are unchanged, so a consumer reading only that array sees the
+refusal's message and remedy but not its slug. The envelope is where a machine
+consumer reads a reason, and adding a key to every check entry for a field that
+is None on all of them is a schema change for one case. **Closes when:** a second
+check refuses structurally and a consumer needs to tell which one did.
+
+---
+
+## R-121. Three edges of the permission classification, stated rather than closed
+
+**Found:** during the sixth review of U27, 2026-08-04, while making "a permission
+the user can grant is not a defect in this program" one decision instead of six
+handlers.
+
+**1. The classification reads `__cause__` and deliberately does not read
+`__context__`.** An explicit `raise X from exc` is a statement that this failure
+IS that failure, so a wrapper cannot hide a permission underneath it. An implicit
+context is only "this happened while handling that", which is exactly what a
+handler that catches a permission and then raises a real defect produces, and
+reading it would file that defect under a permission the user is told to grant.
+The cost is the mirror case: a wrapper that re-raises without `from` hides the
+permission, and its failure is reported as an internal defect. Chosen because the
+two errors are not symmetric. Reporting a defect as a permission sends a user to
+change filesystem permissions that were never the problem and leaves the defect
+unreported; reporting a permission as a defect is the state this whole item
+records, and it is caught by the two blankets for anything that reaches them
+unwrapped. **Closes when:** a real wrapper in this package is found re-raising an
+`OSError` without `from`, at which point the fix is the `from`, not the reader.
+
+**2. `config._read_raw` still calls a permission a corruption.** A configuration
+file that is present and that this account may not open raises `ConfigCorrupt`,
+whose remedy token is `repair-config-file`. It is the same shape as the
+`backup.age` finding this round closed, one module over, and it is NOT reached in
+the arrangement that matters most: `config.load` stats the file first, so a
+SEALED ANCESTOR raises before this line and is classified correctly. What reaches
+it is a config file whose own mode is unreadable under a readable parent. It is
+recorded rather than fixed because `core/config.py` belongs to U2 and its five
+error types are a declared vocabulary with their own suite; changing which one a
+permission maps to is that unit's decision rather than a fix smuggled in under
+this one. **Closes when:** U2 splits "could not be read" from "could not be
+understood", which is the same split this unit made in four other modules.
+
+**PARTLY CLOSED IN ROUND SEVEN, at the three hops this unit owns.** The scoping
+above is still right about `core/config.py` and was being used to leave the same
+shape standing in files that are not U2's: `cli/setup.py` gave
+`repair-config-file` for its own second read of a sealed document, `doctor`'s
+`config.present` check read the remedy straight off the error class, and the
+dispatcher's `ConfigError` branch did the same at the last hop. All three now ask
+the classification first, so a document that is byte for byte intact is not
+called unrepairable, and a `ConfigCorrupt` raised by `core/config.py` itself gets
+the right ACT at every surface a user reads even though its type is unchanged.
+What is still open is the type, which is U2's to change.
+
+**3. `_names_one_path` compares paths, not directories, and is named for it.** It
+was `_names_one_directory` and never asked whether either side was a directory:
+two spellings of one regular file, and a FIFO compared with itself, both answered
+True under a name that promised otherwise. The name is now honest and the
+behaviour is unchanged, because the caller compares an ancestor against a
+DECLARED mount directory, so the directory-ness belongs to the declared row. A
+version that stat-ed for `is_dir` would refuse a first run into a mount slot that
+does not exist yet, which is the over-restriction rounds three and four both
+produced. **Closes when:** the declared rows are validated where they are
+declared, so the comparison never has to.
+
+---
+
+## R-122. Four edges of the round eight classification, measured and left open
+
+**Found:** during the eighth review of U27, 2026-08-04, while closing the two
+channels a refusal travels: the exception a site raises, and the finding a site
+reports.
+
+**1. A read only volume names the atomic writer's temporary file.** Driven on a
+real `hdiutil attach -readonly` HFS+ image, `crate setup` answers `path-read-only`
+with `remount-writable`, which is the act, and the path it names is
+`.../coupled/tmpXXXX.tmp` rather than the destination beside it. The write fails
+while the TEMPORARY file is being created, so the kernel's error carries one
+filename and that filename is the temporary one; the destination-first rule in
+`_refused_path` exists for the `os.replace` half, which never runs here. The
+volume is the actionable content and the volume is right, and the destination is
+named in the same sentence by the wizard's own words, so the report is
+actionable and the path line is momentarily confusing rather than wrong. Fixing
+it means a second hand-off like `name_the_database`, at
+`config.atomic_write_bytes`, so the destination travels with a refusal that
+happened before any destination was touched. **Closes when:** the guarded writer
+grows that hand-off, or `atomic_write_bytes` reports the destination as
+`filename2` on the way out.
+
+**2. The open side of `open_db` records a path that nothing drives.** The mutation
+row `M8-02-open-path` kills zero, and the reason is measured rather than guessed:
+`Rekordbox6Database` does not connect while it constructs, so every failure it
+raises there is a Python level error or an `OSError` carrying its own filename,
+and both are already classifiable without a recorded path. The case the recording
+exists for is a driver level `sqlite3.Error` at construction, which only an
+eagerly connecting binding produces. It is kept because the slug on that handler
+shares the canary's exit band and therefore its `restore-from-snapshot` default.
+**Closes when:** the binding connects while it constructs, at which point the row
+starts killing the sealed-database test, or the binding is replaced.
+
+**3. `os.link` and `os.symlink` appear nowhere in `src/cratekit`.** The measured
+pick between two named paths is therefore correct and unexercised by production
+code today: it is driven from a real `os.link` out of a sealed directory in the
+suite, and the shape it protects against is equally reachable from `os.rename`
+whenever the SOURCE side is what the kernel refused, which no writer in this
+package currently arranges. **Closes when:** a writer links or renames with a
+source it does not control, at which point the row stops being latent.
+
+**4. The probe does not cover a mount that has stopped responding.**
+`_probe` opens with `O_NONBLOCK`, which returns immediately for a FIFO with no
+writer and does NOT cover a blocking wait inside the virtual filesystem layer, so
+a hung network mount would still block there. This was not measured, because no
+stalled mount was available to drive it, and it is recorded as unmeasured rather
+than claimed either way. **Closes when:** a stalled mount can be arranged in the
+suite, or the probe grows a deadline.
+
+## R-123. Four reporting sites inside doctor use round eight's mechanism at none of them
+
+**Found:** by the independent verification of U27 round eight, 2026-08-14, driven
+rather than read.
+
+Round eight added `error` to `doctor.Finding` and classified at construction, so
+that "a failing refusal reaches the envelope as one instead of as N checks are
+failing with a null remedy". It wired the parameter at three sites, all of them
+in `cli/setup.py`. `cli/doctor.py`, which DECLARES the field, passes it at zero
+of its own six `access_remedy` sites, four of which build a `Finding` from a
+caught exception: `_check_config`, `_check_taxonomy`, `_check_commit_hook`, and
+the unstructured leg of `answer`.
+
+**Measured, not argued.** A library whose active template sits under a directory
+this account cannot open, which is the state `cli/doctor` names in three separate
+docstrings as the routine macOS first run shape, arranged with `chmod 000` on the
+coupled directory and driven through `doctor.run` on the green machine:
+
+| what | measured |
+| --- | --- |
+| `taxonomy.active` status | `fail` |
+| `taxonomy.active` remedy | `grant-path-access`, which is right |
+| `taxonomy.active` cause | `None` |
+| envelope reason | `doctor-check-failed` |
+| envelope remedy | `None` |
+| envelope detail | `{"failing": [...]}`, carrying no path |
+
+The same exception handed to a `Finding` as `error=` answers `path-permission-denied`
+with `grant-path-access` and a detail carrying the path. So the mechanism works
+and the module that owns it does not call it.
+
+**Why this is a residual and not a block.** The exit code does not move:
+`doctor-check-failed` and `path-permission-denied` both map to PRECONDITION, code
+30. The finding level remedy is correct, so the rendered steps line carries the
+fix a person reads. What is lost is the machine readable half of one refusal:
+the reason slug a caller branches on, and the path in `detail`. Nobody loses
+data, nobody is told anything false, no verb is blocked, and the report is red
+rather than falsely clean.
+
+The asymmetry is the sharp end. Over ONE path and ONE permission, `crate setup`
+now reports a structured `path-permission-denied` and `crate doctor` reports
+`doctor-check-failed` with a null remedy. That is this project's own recurring
+shape: a fix that lands on the sites it was handed and reproduces the class one
+file over.
+
+**Closes when:** the four `Finding` building handlers in `cli/doctor.py` pass
+`error=exc`, or `answer` classifies centrally for every check the way the
+dispatcher's blanket does.
+
+## R-124. The interpreter ceiling guard forbids the current number rather than the declared one
+
+**Found:** by the independent verification of U27 round eight, 2026-08-14, in the
+hunt for a test that forbids a feature by naming an implementation.
+
+`tests/test_packaging.py::test_the_doctor_reads_the_installed_bound_rather_than_a_constant`
+walks every string constant in `src` and fails if one contains both `3.14` and
+`<`. The property it exists for is "the interpreter ceiling is declared once, in
+`pyproject.toml`, and never repeated in the package". The literal `3.14` is not
+read from `pyproject.toml`; it is typed into the guard.
+
+The consequence is silence rather than a failure. Raise the ceiling to `<3.15`
+and the guard keeps passing while forbidding a string nothing writes any more,
+so the day somebody does repeat the new ceiling in `src` is the day nothing says
+so. Its sibling in `tests/test_doctor.py::test_the_declared_bound_is_read_from_packaging_rather_than_repeated`
+does NOT have this shape, because it asserts the bound is present in
+`pyproject.toml` first and would go red on the same bump; that one is a guard
+that fails loudly when it goes stale, which is the difference.
+
+**Cost:** one guard silently stops guarding at the next version bump. Nothing
+user facing today.
+
+**Closes when:** the ceiling is parsed out of `pyproject.toml`'s
+`requires-python` and the scan looks for whatever it finds there.
+
+## R-125. Seventeen of forty two independently derived mutation rows kill nothing
+
+**Found:** by the independent verification of U27 round eight, 2026-08-14. The
+full table is `docs/mutation/u27-round-8-independent.md`; this records what the
+zeros mean so a later reader does not re-derive them.
+
+Forty two rows, twenty five deaths, seventeen zeros, null control zero, no
+collection drift on any row. Every zero was promoted to the full suite before
+being reported as one. The zeros cluster into six families, and in every family
+something IS pinned, measured in the same batch rather than argued:
+
+| family | unpinned, kills 0 | pinned, and by how much |
+| --- | --- | --- |
+| the two path measurement | candidate ORDER (`C4`), probe MODE (`C5`), and measuring the EROFS side at all (`C7`) | dropping the measurement kills 1 (`C6`), dropping the both paths precondition kills 22 (`C8`), and classifying a read only volume as a permission kills 3 (`C7_composite_kind`) |
+| the copytree classification | the class name half of the identity check (`C9`), probe MODE (`C11`), and its position ahead of the errno rule (`C12`) | asking the destination instead of the source kills 1 (`C10`) |
+| the database probe | the read versus write mode chosen from `SQLITE_CANTOPEN` (`C14`) | a probe that answers None for every refusal kills 3 (`C14_composite_probe_blind`) |
+| the canary's file | which SOURCE the path comes from (`W2`), the `detail` payload it builds (`W4`), `handle_path` itself (`W1`), and `open_db` supplying one (`W6`) | dropping the hand off kills 1 (`W3`), rewording the sentence kills 1 (`W5`), and naming the WRONG file kills 1 (`W2_composite_wrong_file`) |
+| the finding's classification | building a cause for any status (`D3`), OVERWRITING a cause the branch already built (`D4`), and the `compare=False, repr=False` on the field (`D5`) | not classifying at all kills 2 (`D1`), not overruling the hard coded remedy kills 2 (`D2`), and a wrong reason slug on the constructed cause kills 2 (`D4_composite_reason`) |
+| the wizard's hand off | the mount resolution branch (`S4`) and the already there probe branch (`S5`) | the branch that WRITES to the library volume kills 1 (`S2`), the closing clause kills 5 (`S1`), and the hard coded sentence kills 2 (`S3`) |
+
+Two of these are worth naming on their own.
+
+`C12` is inert rather than untested: `shutil.Error` is an `OSError` subclass
+carrying `errno` None, so the errno rule answers None for it whatever the order,
+and asking the copy rule first is a statement of intent rather than a behaviour.
+
+`D4` is the one a later reader should look at first. Nothing pins that a cause a
+branch built for itself survives construction, so a future branch that supplies
+its own cause AND an exception has no guard saying which one the report carries.
+
+Three rows were considered and not run at the forty five cap, and five
+composites were considered and not run; all eight are logged in the table's own
+`Dropped` section with the reason each was ranked below the cap.
+
+**Closes when:** each family's unpinned half acquires an assertion, or the
+family is deliberately declared as intent rather than behaviour in the code.
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-126. The write probe's one undriven class is a network mount, and it is undriven for both designs
+
+**Found:** at the U27 merge, 2026-08-15, while deciding R-80. Recorded rather
+than resolved, because the arrangement it needs was not available.
+
+`_probe_writable` attributes an already refused write from metadata:
+`os.statvfs` `ST_RDONLY`, the per-file immutable flag, and `os.access`. Twelve
+real arrangements were driven against the write capable handle it replaces and
+every one that its producer can reach agrees.
+
+A network mounted volume is the class where they COULD diverge and neither was
+driven there. On a share whose server refuses the write while the client holds
+cached attributes, the metadata reading answers from the client and reports
+nothing, and the classification falls through to an unclassified errno.
+
+**Say it as a symmetry, not as a loss.** An `os.open` on that same client does
+not necessarily reach the server either: whether it does depends on the protocol
+and on the attribute cache, and SMB and NFS differ. So the honest statement is
+that the class is unmeasured for both designs, and that the write handle's
+advantage there is an argument rather than a measurement. The reframing in R-80
+weakens it further: the probe runs only after the driver established the write
+was refused, so client staleness costs an attribution rather than a prediction.
+
+**Measured cost.** None observed. The failure mode when nothing attributes the
+refusal is an unclassified error, which is honest rather than false: the user is
+told the program did not anticipate it, not told to perform an act that cannot
+work. Nobody loses data and nobody is told anything untrue.
+
+**Closes when:** a network share can be arranged in the suite and the two designs
+are driven over it, or the product declares that a library on a network share is
+out of scope and the probe says so where it answers.
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-127. The write probe asks for the effective identity and nothing on this machine can tell
+
+**Found:** by the write probe's own mutation table at the U27 merge, 2026-08-15.
+
+`_probe_writable` calls
+`os.access(path, os.W_OK, effective_ids=os.access in os.supports_effective_ids)`.
+Asking for the effective identity is right, because the write the driver made
+used it and `os.access` otherwise answers for the real one.
+
+**Row W6, measured: forcing that argument to False kills ZERO tests.** Promoted
+to the full suite before being reported as a zero, per METHOD.
+
+**Why, measured rather than argued.** This process runs `uid=501 euid=501
+gid=20 egid=20`, and `os.access` answers the same both ways on a file at mode
+464, so nothing on this machine separates the two. Separating them needs a
+setuid binary, and this program is never setuid.
+
+**Maintainer facing, so it gets this line and no composite**, which is METHOD's
+rule for a zero row whose severity floor means it can never block. The argument
+is kept because it is the correct question to ask, not because a test holds it.
+
+**Closes when:** an arrangement exists where the real and effective identities
+differ, or the argument is dropped with the reason recorded that it can never
+matter here.
+
+<!-- ------------------------------------------------------------------ -->
+
+## R-128. The remedy correction landed on the raising path and the consuming path still replaces it
+
+**Found:** at the U27 merge, 2026-08-15, while reserving `grant-path-access`.
+
+U27 added `GRANT_PATH_ACCESS` to `backup_facts.Remedy` so that a directory this
+account cannot open stops being reported as a damaged fact file. That is the
+right correction and the raise site's own comment explains it at length.
+
+`src/cratekit/core/session.py:1042` catches EVERY `BackupFactsUnreadable` at one
+site and re-raises it as the cause `backup-facts-unreadable` with
+`remedy=Remedy.REPAIR_BACKUP_FACTS`, without reading the exception's own remedy
+at all. So a person whose directory is unreadable is told to repair or reset the
+very record the raise site was changed to stop blaming.
+
+**This is defect pattern 3 from METHOD**, a fix that lands on the performing path
+while the checking path keeps the old answer, and it is worth naming as that
+rather than as a one off.
+
+**Measured cost.** The exit code does not move. `grant-path-access` is reserved
+at `ExitCode.ACK_REQUIRED`, 32, and so are `repair-backup-facts` and
+`upgrade-cratekit`, so a caller branching on the code sees the same integer
+either way. What is lost is the remedy TOKEN a machine consumer reads and the
+sentence a person reads, on one refusal. Nobody loses data and no verb is
+blocked, so it is a residual.
+
+**Why the reservation was made at 32 anyway.** The table's rule is to agree with
+the landed conversion rather than with the intended one. Reserving anything else
+would reserve a conversion that does not happen, and would make the registry
+describe a build nobody has.
+
+**Closes when:** the session site reads the exception's own remedy instead of
+naming one, or the two refusals are separated so an unreachable directory and a
+damaged record are different causes rather than one.

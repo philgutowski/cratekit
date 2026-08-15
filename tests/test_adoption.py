@@ -2810,12 +2810,25 @@ def test_no_refusal_in_this_module_tells_the_person_to_RUN_A_VERB_THAT_IS_PLANNE
 ):
     """Every message here ended by naming a command the build does not have.
 
-    ``crate doctor`` answers ``invalid choice: 'doctor'``: the registry marks it
-    ``planned_in="U27"``. An instruction that cannot be carried out is worse than
-    none, because the person spends the failure looking for the command instead of
-    at the ledger. The machine readable remedy stays ``RUN_DOCTOR``, which is this
-    repository's slug for it in five modules; the residual titled "the refusal's
-    remedy names a verb that has not landed" carries that half.
+    An instruction that cannot be carried out is worse than none, because the
+    person spends the failure looking for the command instead of at the ledger.
+    The machine readable remedy stays ``RUN_DOCTOR``, which is this repository's
+    slug for it in five modules; the residual titled "the refusal's remedy names
+    a verb that has not landed" carries that half.
+
+    THE SUBJECT WAS ``doctor`` AND IS NOW WHATEVER IS STILL PLANNED. This test was
+    written while ``crate doctor`` answered ``invalid choice: 'doctor'``, and it
+    opened by asserting that, so that the day doctor landed the test would fail
+    and say it had gone stale rather than quietly assert about a verb that now
+    exists. That day was the U27 merge, 2026-08-15, and this is that failure being
+    answered rather than deleted: the forbidden set is now DERIVED from the
+    registry's own ``planned_in`` marks, so it follows every unit that lands and
+    every one that does not, and the property outlives the verb it was written
+    about.
+
+    The derived set is asserted non-empty on purpose. When the last planned verb
+    lands it becomes empty, and an empty forbidden set is a test that passes over
+    any message at all, which is the shape this repository calls a tautology.
 
     Each refusal below is built through the public API rather than by calling the
     message helpers, so a new message that reintroduces the instruction is caught
@@ -2823,11 +2836,14 @@ def test_no_refusal_in_this_module_tells_the_person_to_RUN_A_VERB_THAT_IS_PLANNE
     """
     from cratekit.cli import registry as cli_registry
 
-    assert cli_registry.entry("doctor").planned_in, (
-        "doctor has landed, so this test and the residual it names are stale"
+    planned = {one.name for one in cli_registry.entries() if one.planned_in}
+    assert planned, (
+        "every declared verb has landed, so this test forbids nothing and is "
+        "asserting over an empty set rather than over a property"
     )
-    assert all(
-        landed.name != "doctor" for landed in cli_registry.landed_entries()
+    assert "doctor" not in planned, (
+        "doctor is planned again, which would make the U27 merge's discharge of "
+        "the cratekit.cli.doctor countdown entry wrong"
     )
 
     said: list[str] = []
@@ -2865,7 +2881,11 @@ def test_no_refusal_in_this_module_tells_the_person_to_RUN_A_VERB_THAT_IS_PLANNE
 
     assert len(said) == 2
     for message in said:
-        assert "doctor" not in message, message
+        named = sorted(verb for verb in planned if verb in message)
+        assert not named, (
+            f"a refusal names a verb this build does not have: {named} in "
+            f"{message!r}"
+        )
         assert "Run the" not in message, message
 
 

@@ -14,13 +14,23 @@ Parameterising five drifted copies would have preserved the drift in a config
 file, where it is harder to see. So the drift was resolved against the live
 library, and only the resolved result became declarable.
 
-WHY IT TAKES NO CONFIGURATION. This module reads no config and imports none
-(KTD23, seam decision S3). A resolver that reaches for global configuration
-cannot be tested against two different taxonomies in one process, and proving
-that a friend's differently-named tree routes correctly with no code change is
-exactly the verification this unit owes. So a Taxonomy is a value the caller
-supplies, and the only file this module reads is the read-only default that ships
-inside the wheel.
+WHY IT TAKES NO CONFIGURATION. This module reads no configuration VALUE (KTD23,
+seam decision S3). A resolver that reaches for global configuration cannot be
+tested against two different taxonomies in one process, and proving that a
+friend's differently-named tree routes correctly with no code change is exactly
+the verification this unit owes. So a Taxonomy is a value the caller supplies,
+and the only file this module reads is the read-only default that ships inside
+the wheel.
+
+The one thing it does import from ``core/config`` is a pure predicate over a
+string, ``template_name_is_usable``, and the distinction is worth stating because
+the sentence above used to say "imports none". Nothing is READ: no path is
+resolved, no document is loaded, no global is consulted, and every function here
+is still a function of its arguments. What the import buys is that the set of
+template names this module OFFERS and the set configuration ACCEPTS are one set.
+Spelling the rule twice is how a wizard comes to offer a name that validation
+then refuses, which is the same two-answers-to-one-question defect the shared
+walk below exists to close.
 
 WHY VALIDATION HAPPENS AT LOAD. Every rule below fails at load time and again in
 the setup wizard, never at write time. A friend whose template omits a tempo
@@ -36,6 +46,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from importlib import resources
 from typing import Any, Mapping, Sequence
+
+from cratekit.core import config
 
 # A stable identifier. Lowercase snake, because it is compared, persisted, and
 # never rendered. The pattern is enforced rather than documented so that a
@@ -54,11 +66,18 @@ SUPPORTED_SCHEMA_VERSIONS = frozenset({1})
 # together is how a template starts loading at a depth the writer cannot emit.
 SUPPORTED_TREE_DEPTH = 3
 
+# How a shipped template is named on disk. The short name between the two is the
+# stable identifier configuration records, so both halves are declared once and
+# the walk below and the reader below cannot disagree about which files count.
+_TEMPLATE_PREFIX = "taxonomy."
+_TEMPLATE_SUFFIX = ".toml"
+
 # The name of the packaged default. Read-only data inside the wheel; a library's
 # ACTIVE template is a copy in its own state root (seam decision S6), which is
 # what lets one library be self-describing and lets a snapshot roll the taxonomy
 # back alongside the database it describes.
-DEFAULT_TEMPLATE = "taxonomy.default.toml"
+DEFAULT_TEMPLATE_NAME = "default"
+DEFAULT_TEMPLATE = f"{_TEMPLATE_PREFIX}{DEFAULT_TEMPLATE_NAME}{_TEMPLATE_SUFFIX}"
 
 
 class TaxonomyError(ValueError):
@@ -415,8 +434,97 @@ def default_taxonomy() -> Taxonomy:
     cannot vary at runtime. A library's active template is read by the caller and
     passed to :func:`load_taxonomy` as text.
     """
-    source = resources.files("cratekit") / "templates" / DEFAULT_TEMPLATE
-    return load_taxonomy(source.read_text(encoding="utf-8"))
+    return load_taxonomy(shipped_template_text(DEFAULT_TEMPLATE_NAME))
+
+
+def shipped_template_names() -> tuple[str, ...]:
+    """Every taxonomy template that ships in the wheel, by its short name.
+
+    Walked rather than listed, so a second template is offered by the wizard and
+    accepted by the health check on the day it is added (P3).
+
+    It lives HERE rather than in the wizard that first needed it because two
+    layers ask the same question and the answers have to be one answer: the
+    wizard offers the shipped names as a closed set, and doctor refuses a
+    configuration naming a template that is not one of them. A copy of this walk
+    in the CLI would let a name be offered that the check rejects, or accepted by
+    the check with nothing shipping it.
+
+    IT NEVER RAISES, and that is not defensive habit. Its caller is an ARGUMENT
+    PARSER, and the whole command tree is built before anything dispatches, so a
+    packaged directory that is missing or unreadable used to take every command
+    down with an unhandled error, including the health report. That report exists
+    for the broken machine, and a partial install is a broken machine: it has to
+    be able to describe one. An empty answer here is the honest one, and the
+    caller reports the missing template as a finding rather than as a traceback.
+
+    ``ValueError`` IS CAUGHT BESIDE ``OSError``, and the reason is that the claim
+    above was false without it. ``importlib.resources`` does not promise one
+    exception family: a filesystem-backed traversable raises ``FileNotFoundError``
+    or ``NotADirectoryError``, both of which are ``OSError``, while a zip-backed
+    one raises ``ValueError("Can't listdir a file")``, which is not. Catching one
+    family and writing "never raises" is the shape of overclaim this unit has
+    been shipping all week, so both are caught and the sentence is true.
+
+    WHICH LEAVES THE OTHER HALF, and it is why this delegates. An empty answer is
+    honest to an argument parser, which only ever needed a list of choices, and
+    it is a LIE to a health check, which needs to know whether nothing ships or
+    nothing could be read. Those have opposite remedies and the check was giving
+    the wrong one. :func:`shipped_templates` returns both halves; this returns
+    the half a parser can use.
+    """
+    return shipped_templates()[0]
+
+
+def shipped_templates() -> tuple[tuple[str, ...], str | None]:
+    """The shipped template names, AND why the directory could not be listed.
+
+    Two returns rather than one because "no template ships under that name" and
+    "the packaged directory could not be read" are different diagnoses with
+    opposite remedies, and collapsing them into an empty tuple gave every caller
+    the first sentence for the second condition. Doctor told a user with a
+    damaged install that their configuration named a template nothing ships and
+    sent them to re-run setup, which cannot repair packaged data.
+
+    The problem is a SENTENCE rather than the exception, because the caller
+    renders it into a report and the only thing it needs from the failure is what
+    went wrong with which directory.
+
+    A NAME IS ONLY OFFERED IF CONFIGURATION WOULD ACCEPT IT. Anything between the
+    prefix and the suffix is a candidate on disk, so ``taxonomy.deep.house.toml``
+    yields ``deep.house``, which ``config.validate`` refuses because the name is
+    composed into a resource path. Offering a value that is then rejected one
+    layer down is the same two-answers-to-one-question defect this function was
+    written to close, so the filter is applied here, from the module that owns
+    the rule.
+
+    IT NEVER RAISES either, for the reason above it: the argument parser reaches
+    this through :func:`shipped_template_names` on every invocation of every verb.
+    """
+    try:
+        entries = list((resources.files("cratekit") / "templates").iterdir())
+    except (OSError, ValueError) as exc:
+        return (), f"the packaged template directory could not be listed: {exc}"
+    found = []
+    for item in entries:
+        name = item.name
+        if not name.startswith(_TEMPLATE_PREFIX) or not name.endswith(_TEMPLATE_SUFFIX):
+            continue
+        short = name[len(_TEMPLATE_PREFIX) : -len(_TEMPLATE_SUFFIX)]
+        if config.template_name_is_usable(short):
+            found.append(short)
+    return tuple(sorted(found)), None
+
+
+def shipped_template_text(name: str) -> str:
+    """The packaged text of one template, by its short name.
+
+    Raises ``FileNotFoundError`` when nothing ships under that name, which is the
+    answer a caller wants: the shipped set is read-only data, so a name outside
+    it is a configuration error rather than a transient failure.
+    """
+    source = resources.files("cratekit") / "templates" / f"{_TEMPLATE_PREFIX}{name}{_TEMPLATE_SUFFIX}"
+    return source.read_text(encoding="utf-8")
 
 
 def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:

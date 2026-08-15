@@ -31,13 +31,511 @@ Layer note: FOUNDATION. It carries remediation TOKENS, never command text (D2).
 
 from __future__ import annotations
 
+import errno
 import json
-from dataclasses import dataclass, field
+import os
+import sqlite3
+import stat
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from cratekit.core.exit_codes import ExitCode, Remedy, meaning_of
+
+#: The two errno values that mean "this account does not hold that permission".
+#: ``PermissionError`` is exactly the ``OSError`` subclass CPython raises for
+#: these two, so the class test below is the same rule; the numbers are named as
+#: well because an ``OSError`` reconstructed across a boundary can arrive as the
+#: base class carrying only its number.
+PERMISSION_ERRNOS: frozenset[int] = frozenset({errno.EACCES, errno.EPERM})
+
+#: The errno that means the MEDIUM refuses every writer, not this account.
+#: Granting an account more access cannot change it and no amount of Full Disk
+#: Access will, so it is a different act with a different sentence: remount the
+#: volume read write, or slide the card's write-protect tab back. A library on a
+#: read only disk image or a locked SD card is an ordinary DJ arrangement rather
+#: than an exotic one, and it used to arrive as an internal defect.
+READ_ONLY_ERRNOS: frozenset[int] = frozenset({errno.EROFS})
+
+#: SQLite's own names for "the file system would not give me this file". These
+#: arrive as ``sqlite3.OperationalError``, which is NOT an ``OSError``: it
+#: carries no errno, no filename and no ``__cause__``, so an errno rule alone is
+#: blind to every permission that reaches this program through the C extension
+#: it stores its own state in. The names are stable SQLite result-code names
+#: exposed by CPython 3.11 and later as ``sqlite_errorname``.
+DATABASE_ACCESS_ERRORNAMES: tuple[str, ...] = (
+    "SQLITE_CANTOPEN",
+    "SQLITE_READONLY",
+    "SQLITE_PERM",
+)
+
+#: Where a driver records WHICH file its error was about. The driver knows the
+#: path and the exception does not carry one, so the knowledge is attached at
+#: the one place that has it rather than guessed at the place that does not.
+#: See :func:`name_the_database`.
+DATABASE_PATH_ATTRIBUTE = "cratekit_database_path"
+
+
+class AccessKind(StrEnum):
+    """Which kind of refusal the operating system made, because the acts differ.
+
+    Three different sentences and three different things for a person to do. The
+    vocabulary collapsed all three into "grant this interpreter access, on macOS
+    through Full Disk Access", which is the right instruction for exactly one of
+    them and confidently wrong for the other two: Full Disk Access will never
+    make a write to a read only volume succeed, and it will never clear Finder's
+    Locked checkbox.
+    """
+
+    #: This account is not allowed. Granting it access is the fix.
+    PERMISSION = "permission"
+    #: The volume refuses every writer. Remounting or unlocking the medium is.
+    READ_ONLY = "read-only"
+    #: A per-file immutable flag, which is what Finder's "Locked" checkbox sets.
+    LOCKED = "locked"
+
+
+#: The declared reason slug for each kind. They share an exit code, which is
+#: correct and is what the registry's own note describes: the band answers "can
+#: this installation proceed", and the slug is where the distinction stays
+#: useful.
+ACCESS_REASONS: Mapping[AccessKind, str] = MappingProxyType(
+    {
+        AccessKind.PERMISSION: "path-permission-denied",
+        AccessKind.READ_ONLY: "path-read-only",
+        AccessKind.LOCKED: "path-locked",
+    }
+)
+
+ACCESS_REMEDIES: Mapping[AccessKind, Remedy] = MappingProxyType(
+    {
+        AccessKind.PERMISSION: Remedy.GRANT_PATH_ACCESS,
+        AccessKind.READ_ONLY: Remedy.REMOUNT_WRITABLE,
+        AccessKind.LOCKED: Remedy.UNLOCK_PATH,
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class AccessRefusal:
+    """One refusal by the operating system, with the path it was about.
+
+    ``path`` IS NOT OPTIONAL, and that is the type's whole point. The
+    classification this replaces answered "yes, a permission" for a
+    ``PermissionError`` the kernel raised with no filename at all, which a
+    socket bind to a privileged port and ``os.setuid`` both produce, and the
+    sentence it then rendered told the user to grant access to "the path named
+    below" with no path below it. ``render.access_note``'s own docstring calls
+    the path "the entire actionable content"; a type that cannot be built
+    without one is how that stops being a docstring and starts being a rule.
+    """
+
+    kind: AccessKind
+    path: str
+
+    @property
+    def reason(self) -> str:
+        return ACCESS_REASONS[self.kind]
+
+    @property
+    def remedy(self) -> Remedy:
+        return ACCESS_REMEDIES[self.kind]
+
+
+def _chain(exc: BaseException | None) -> Iterator[BaseException]:
+    """``exc`` and its DECLARED causes, once each.
+
+    THE ``__cause__`` CHAIN IS FOLLOWED AND ``__context__`` IS NOT. An explicit
+    ``raise X from exc`` is a statement that this failure IS that failure, so a
+    wrapper may not hide a refusal underneath it. An implicit context is merely
+    "this happened while handling that", which is exactly what a handler that
+    catches a refusal, recovers, and then raises a real defect produces, and
+    reading it would classify that defect as a refusal.
+
+    The ``seen`` set is not decoration. ``__cause__`` is assignable, so a pair of
+    exceptions can name each other and this walk is then infinite; without it the
+    process does not fail, it stops responding, which is the worst shape a defect
+    in a classification can take.
+    """
+    seen: set[int] = set()
+    current = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        current = current.__cause__
+
+
+def _immutable(path: str) -> bool:
+    """Whether a per-file immutable flag is set on ``path``.
+
+    ``chflags uchg`` is what Finder's "Locked" checkbox writes, and it is the
+    commonest way a macOS user meets EPERM on a file they own and can see. The
+    flags field only exists on the BSD family, so its absence answers False
+    rather than raising.
+
+    ``ValueError`` IS CAUGHT ALONGSIDE ``OSError`` AND IS NOT THE SAME KIND OF
+    THING. A path with an embedded null is rejected by ``os.lstat`` before any
+    syscall is made, and that is not an ``OSError``: it is the argument being
+    unrepresentable. This function is read from inside the dispatcher's own
+    ``except CratekitError`` handler, where an escaping exception replaces a
+    refusal a user could act on with a traceback, so a question asked about an
+    unrepresentable path answers False here for the same reason
+    ``os.path.ismount`` answers False for it.
+    """
+    try:
+        flags = getattr(os.lstat(path), "st_flags", 0)
+    except (OSError, ValueError):
+        return False
+    return bool(flags & (getattr(stat, "UF_IMMUTABLE", 0) | getattr(stat, "SF_IMMUTABLE", 0)))
+
+
+def _spelled(candidate: Any) -> str | None:
+    """One filename off an ``OSError``, as text, or None when it carries none."""
+    if candidate is None:
+        return None
+    if isinstance(candidate, bytes):
+        return os.fsdecode(candidate)
+    return str(candidate)
+
+
+def _refused_path(exc: OSError) -> str | None:
+    """The path the refusal was about, DESTINATION first.
+
+    ``os.replace`` sets ``filename`` to the source and ``filename2`` to the
+    destination, and the guarded writer writes every file by renaming a
+    temporary one over it. Reading ``filename`` alone named ``cfg/tmpXXXX.tmp``
+    at the user, a path that no longer exists by the time they read about it,
+    while the file they actually have to unlock went unmentioned.
+    """
+    for candidate in (exc.filename2, exc.filename):
+        spelled = _spelled(candidate)
+        if spelled is not None:
+            return spelled
+    return None
+
+
+def _refused_of_two(exc: OSError, fallback: str) -> str:
+    """Which of two named paths the operating system ACTUALLY refused.
+
+    POSITION ALONE DOES NOT SAY WHICH SIDE WAS REFUSED, and the destination-first
+    rule above is measured right for ``os.replace``, ``os.rename``, ``os.symlink``
+    and ``shutil.move`` and measured WRONG for ``os.link``: with a source this
+    account cannot reach, ``filename`` is the sealed source and ``filename2`` is
+    the destination it can already write, so destination-first names the one path
+    there is nothing to do about. The same shape is reachable from ``os.rename``
+    whenever the SOURCE side is what the kernel refused.
+
+    So it is measured rather than guessed, the same way ``_probe_readable``
+    measures a driver level error instead of assuming one. The destination keeps
+    precedence:
+    it is asked first, and the source is named only when the destination is not
+    itself refused and the source is.
+
+    ONLY FOR A PERMISSION OR A LOCK, never for a read only volume, and that is
+    the one caller's job to enforce rather than this function's to explain twice.
+    See :func:`_from_os_error`.
+    """
+    for candidate in (exc.filename2, exc.filename):
+        spelled = _spelled(candidate)
+        if spelled is None:
+            continue
+        if _probe_readable(spelled) is not None:
+            return spelled
+    return fallback
+
+
+def _from_os_error(exc: BaseException) -> AccessRefusal | None:
+    if not isinstance(exc, OSError):
+        return None
+    path = _refused_path(exc)
+    if path is None:
+        # A refusal with no path is not a refusal this program can tell anybody
+        # how to fix, so it is not claimed as one. See ``AccessRefusal``.
+        return None
+    if exc.errno in READ_ONLY_ERRNOS:
+        # THE DESTINATION, WITHOUT MEASURING. A read only volume is a property of
+        # the MEDIUM rather than of one path on it: a two path call that answers
+        # EROFS had both paths on that volume, because a call across two
+        # filesystems answers EXDEV instead. There is nothing to choose between
+        # them and the destination is the one the user was trying to reach.
+        return AccessRefusal(kind=AccessKind.READ_ONLY, path=path)
+    if isinstance(exc, PermissionError) or exc.errno in PERMISSION_ERRNOS:
+        for candidate in (exc.filename2, exc.filename):
+            spelled = _spelled(candidate)
+            if spelled is not None and _immutable(spelled):
+                return AccessRefusal(kind=AccessKind.LOCKED, path=spelled)
+        if exc.filename2 is not None and exc.filename is not None:
+            path = _refused_of_two(exc, path)
+        return AccessRefusal(kind=AccessKind.PERMISSION, path=path)
+    return None
+
+
+def _from_copy_error(exc: BaseException) -> AccessRefusal | None:
+    """The refusal inside a ``shutil`` copy that gave up on individual members.
+
+    ``shutil.copytree`` DOES NOT RAISE THE REFUSAL IT MET. It collects every
+    member it could not copy and raises one ``shutil.Error`` at the end whose
+    single argument is a list of ``(source, destination, why)`` triples, and
+    ``why`` has already been rendered to TEXT. Measured on this platform, that
+    exception is an ``OSError`` subclass carrying ``errno``, ``filename`` and
+    ``filename2`` all None and no ``__cause__``, so every errno rule in this
+    module answers None for it and a sealed member of a declared capture source
+    reached the user as "this is a defect; report it".
+
+    The paths survive the rendering even though the errno does not, so the paths
+    are what this measures: each named source is asked directly, exactly as
+    :func:`_probe_readable` asks for a driver level error. A member that is merely
+    gone by now claims nothing.
+    """
+    if type(exc).__module__ != "shutil" or type(exc).__name__ != "Error":
+        return None
+    entries = exc.args[0] if exc.args else ()
+    if not isinstance(entries, (list, tuple)):
+        return None
+    for entry in entries:
+        if not isinstance(entry, (list, tuple)) or not entry:
+            continue
+        found = _probe_readable(str(entry[0]))
+        if found is not None:
+            return found
+    return None
+
+
+#: WHY THERE ARE TWO OF THESE, AND WHY EXACTLY ONE OF THEM OPENS ANYTHING.
+#:
+#: This module is admitted to the reports allowlist, because both report modules
+#: import ``Scope`` and ``refuse`` from it, and that allowlist's whole argument is
+#: that nothing it admits can touch a file. So this module may hold ONE ``os.open``
+#: and it has to be a read.
+#:
+#: The read probe below spells its flags INLINE, and that is not style. The guard
+#: decides whether an ``os.open`` is a read by reading THE CALL'S OWN ARGUMENT
+#: against a set of reading flags. It cannot resolve a name back to an assignment,
+#: so ``os.open(path, flags)`` is reported as an open whose flags it cannot read,
+#: whatever the assignment says. Driven 2026-08-14: five different assignments were
+#: tried, including a plain ``os.O_RDONLY`` with no conditional in it, and every
+#: one was refused. Only the inline expression is readable, and then it is exactly
+#: right in both directions: read only passes, write capable fails. The same
+#: measurement is why ``os.O_NONBLOCK`` is spelled directly rather than through
+#: ``getattr(os, "O_NONBLOCK", 0)``, which was a defensive fallback the guard also
+#: could not read. This package targets macOS, where the constant is always
+#: present.
+#:
+#: SO THEY MAY NOT BE FOLDED BACK INTO ONE FUNCTION TAKING ``writing: bool``. That
+#: is the obvious spelling and it is the one a tidy up reaches for. It reinstates
+#: the unreadable shape, and it reinstates the write capable handle this module is
+#: not allowed to hold. See R-80 and R-102.
+
+
+def _probe_readable(path: str) -> AccessRefusal | None:
+    """Ask the operating system whether ``path`` can be READ.
+
+    A driver level error says "unable to open database file" and nothing else,
+    so whether that was a permission is not stated anywhere in it. It is
+    MEASURED here rather than assumed: the file is opened the same way the driver
+    would have, and the ``OSError`` that comes back carries the errno and the
+    filename the classification needs. An open that succeeds answers None, and
+    the failure keeps its honest "this program did not anticipate it" reading.
+
+    ``ValueError`` is caught for the reason :func:`_immutable` gives: a path with
+    an embedded null is rejected by ``os.open`` before any syscall, and this is
+    read from inside the dispatcher's own refusal handler, where raising replaces
+    an act the user could take with a traceback.
+
+    NOT MEASURED: a mount that has stopped responding. ``O_NONBLOCK`` covers a
+    FIFO with no writer, which returns immediately, and does not cover a blocking
+    wait inside the virtual filesystem layer, so a hung network mount would still
+    block here. No stalled mount was available to drive it.
+    """
+    try:
+        handle = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError as probe:
+        return _from_os_error(probe)
+    except ValueError:
+        return None
+    os.close(handle)
+    return None
+
+
+def _probe_writable(path: str) -> AccessRefusal | None:
+    """Say WHY a write to ``path`` was refused, without opening a write handle.
+
+    THE ONE CALLER IS :func:`_from_database_error`, for a driver error that is not
+    ``SQLITE_CANTOPEN``, which leaves ``SQLITE_READONLY`` and ``SQLITE_PERM``.
+    Both mean the driver ALREADY tried a write and was refused. So this is not
+    predicting an outcome, it is attributing one that has happened, and the three
+    attributions this program can act on are all readable from metadata: the
+    medium refuses every writer, a per-file lock refuses this write, or this
+    account does not hold the permission.
+
+    IT USED TO OPEN ``os.O_RDWR`` AND MAY NOT AGAIN. R-80: this module is on the
+    reports allowlist, whose argument is that nothing it admits can touch a file,
+    and a write capable handle here made that argument false. The guard that says
+    so cannot be widened and the module cannot be relocated, so the handle went.
+    The read probe is still real, and is asked first, because a file this account
+    cannot even read is a refusal the errno already classifies and that answer
+    outranks any metadata reading.
+
+    ORDER IS DELIBERATE. A read only medium is a property of the volume rather
+    than of one path on it, so it outranks both per-file answers. The immutable
+    flag outranks the mode for the same reason :func:`_from_os_error` checks it
+    first: ``chflags uchg`` and a denied mode both arrive as a refusal and they
+    route to different acts, and only one of them is something the user can chmod
+    away.
+
+    ``effective_ids`` is asked for where the platform has it, because the write
+    that was refused was made with the effective identity and ``os.access``
+    otherwise answers for the real one.
+
+    DRIVEN, 2026-08-15, against the write capable handle it replaces: 12 real
+    arrangements, and every one that this function's ONE producer can actually
+    hand it agrees. The two that disagree are both DIRECTORIES, and a directory
+    reaches ``sqlite3`` as ``SQLITE_CANTOPEN``, which routes to
+    :func:`_probe_readable` and never arrives here. Driven end to end as well,
+    through :func:`access_refusal`, on a real read only volume, a real mode
+    refusal and a real Finder lock.
+
+    NOT MEASURED: a network mounted volume, where the client can answer from
+    cached metadata while the server is what refuses. That class is unmeasured for
+    BOTH implementations rather than a known loss, because an open on a client
+    that has already cached the attributes does not reach the server either. No
+    network share was available.
+    """
+    refused = _probe_readable(path)
+    if refused is not None:
+        return refused
+    effective = os.access in os.supports_effective_ids
+    try:
+        if os.statvfs(path).f_flag & os.ST_RDONLY:
+            return AccessRefusal(kind=AccessKind.READ_ONLY, path=path)
+        if _immutable(path):
+            return AccessRefusal(kind=AccessKind.LOCKED, path=path)
+        if not os.access(path, os.W_OK, effective_ids=effective):
+            return AccessRefusal(kind=AccessKind.PERMISSION, path=path)
+    except (OSError, ValueError):
+        # The same two guards :func:`_probe_readable` gives, for the same reason:
+        # this is read inside the dispatcher's own refusal handler, where an
+        # escaping exception replaces an act the user could take with a traceback.
+        return None
+    return None
+
+
+def _from_database_error(exc: BaseException) -> AccessRefusal | None:
+    if not isinstance(exc, sqlite3.Error):
+        return None
+    name = getattr(exc, "sqlite_errorname", "") or ""
+    if not name.startswith(DATABASE_ACCESS_ERRORNAMES):
+        return None
+    path = getattr(exc, DATABASE_PATH_ATTRIBUTE, None)
+    if path is None:
+        return None
+    if name.startswith("SQLITE_CANTOPEN"):
+        return _probe_readable(str(path))
+    return _probe_writable(str(path))
+
+
+def name_the_database(exc: BaseException, path: Any) -> BaseException:
+    """Record which file a driver level error was about, and return it unchanged.
+
+    The connection site knows the path; the exception does not carry one and
+    never will, because the driver's error is a result code and a sentence. This
+    is the whole hand-off: one attribute, set where the knowledge is, read by
+    :func:`access_refusal` where the decision is. Returning the SAME exception
+    keeps the traceback and the class, so nothing downstream has to learn a new
+    type to catch.
+
+    IT RECORDS ALONG THE DECLARED CHAIN, NOT ONLY ON THE EXCEPTION HANDED IN.
+    Two of this package's three connection sites catch ``sqlite3.Error`` itself,
+    so the chain is one link long and this changes nothing for them. The third
+    goes through an object mapper, which catches the driver's error and re-raises
+    its OWN type ``from`` it: the exception a handler there can see is a
+    ``sqlalchemy.exc.OperationalError``, and the ``sqlite3.OperationalError``
+    that actually carries ``sqlite_errorname`` is two links down. Recording only
+    on the top of that chain records on the one object the classification cannot
+    read, which is a fix landing beside the thing it was meant to land on.
+    """
+    try:
+        spelled = os.fspath(path)
+    except TypeError:  # pragma: no cover - defensive
+        return exc
+    for current in _chain(exc):
+        try:
+            setattr(current, DATABASE_PATH_ATTRIBUTE, spelled)
+        except AttributeError:  # pragma: no cover - defensive
+            continue
+    return exc
+
+
+def access_refusal(exc: BaseException | None) -> AccessRefusal | None:
+    """The refusal by the operating system inside ``exc``, with its path, or None.
+
+    ONE DECISION, MADE ONCE, because making it per call site failed four
+    consecutive review rounds. A path the operating system will not let this
+    interpreter open, write, or replace is not a defect in this program: it is a
+    machine state its user can act on, and every layer that meets one has to say
+    so. Rendering it as an internal error sends a person to file a bug report
+    about their own filesystem, and on macOS that is the ROUTINE first run rather
+    than an exotic state: anything under Documents, Desktop, Downloads or an
+    external volume is refused this way for an interpreter without Full Disk
+    Access.
+
+    The reason it kept reappearing at ordinary looking call sites is that
+    ``Path.exists`` and ``Path.is_dir`` RE RAISE under EPERM rather than
+    answering False, so a line that reads like a question is a line that throws.
+    A guard per line is a guard the next line will not have, which is why this is
+    a classification rather than a handler.
+
+    IT ANSWERS FOR MORE THAN THE ``OSError`` FAMILY. The previous rule was a set
+    of two errno values, and this program keeps its own state in SQLite, whose
+    refusals are not ``OSError`` at all. It also answers with a KIND, because a
+    read only volume and a locked file are refusals that Full Disk Access cannot
+    fix, and confidently telling a user to grant access is not a lesser failure
+    than telling them to file a bug.
+    """
+    for current in _chain(exc):
+        found = (
+            _from_copy_error(current)
+            or _from_os_error(current)
+            or _from_database_error(current)
+        )
+        if found is not None:
+            return found
+    return None
+
+
+def permission_denied(exc: BaseException | None) -> OSError | None:
+    """The permission this account does not hold, inside ``exc``, or None.
+
+    A NARROWER QUESTION THAN :func:`access_refusal`, kept separate on purpose.
+    This one answers "is this the CLASS of failure the operating system raises
+    when an account is not allowed", and its callers are the ones deciding
+    whether to re-raise or to answer False: ``preflight`` will not let a
+    permission masquerade as "not a mount point", and ``backup_facts`` will not
+    let one masquerade as a corrupt file. None of them tells a user anything, so
+    none of them needs a path.
+
+    Anything that RENDERS a refusal asks :func:`access_refusal` instead, because
+    a sentence naming no path is a sentence a user can do nothing with.
+    """
+    for current in _chain(exc):
+        if isinstance(current, PermissionError):
+            return current
+        if isinstance(current, OSError) and current.errno in PERMISSION_ERRNOS:
+            return current
+    return None
+
+
+def access_remedy(exc: BaseException | None, *, otherwise: Remedy) -> Remedy:
+    """The act for a failure that MIGHT be one the operating system refused.
+
+    The one chooser every site calls instead of writing ``Remedy.REPORT_DEFECT``
+    beside a caught ``OSError``. It answers with the act for the KIND that was
+    found, so a read only volume is not sent to Full Disk Access and a locked
+    file is not either.
+    """
+    found = access_refusal(exc)
+    return found.remedy if found is not None else otherwise
 
 
 class Scope(StrEnum):
@@ -159,6 +657,23 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
     {
         # ── Process ─────────────────────────────────────────────────────────
         "internal-error": ExitCode.INTERNAL,
+        # U27. The operating system refused this account, anywhere under a verb,
+        # at a call nobody guarded. It is deliberately NOT ``internal-error``:
+        # that slug carries ``report-defect``, and a permission the user can
+        # grant is not a defect in this program. It sits on the installation band
+        # rather than on the library's, because the dispatcher meets it without
+        # knowing whether the path was the library, the configuration directory
+        # or a packaged file. A refusal that DOES know says so under its own
+        # slug, which is why ``library-root-unreachable`` still exists.
+        "path-permission-denied": ExitCode.PRECONDITION,
+        # The same band, and deliberately NOT the same slug. Neither of these is
+        # a permission this account can be granted: a read only volume refuses
+        # every writer on the machine, and an immutable flag refuses the owner.
+        # One slug for all three would put "grant Full Disk Access" beside two
+        # states it cannot change, which is the collapse the vocabulary exists to
+        # prevent, one level in from where it was last prevented.
+        "path-read-only": ExitCode.PRECONDITION,
+        "path-locked": ExitCode.PRECONDITION,
         "no-evidence": ExitCode.INTERNAL,
         "snapshot-integrity-failed": ExitCode.INTERNAL,
         "smoke-test-failed": ExitCode.INTERNAL,
@@ -198,6 +713,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "job-driver-held": ExitCode.LIBRARY_BUSY,
         "rekordbox-running": ExitCode.REKORDBOX_OPEN,
         "library-volume-unmounted": ExitCode.LIBRARY_UNAVAILABLE,
+        # U27. Some directory on the way to the configured library root cannot be
+        # opened by this account, so which volume the library sits on was not
+        # established. Its own slug rather than one of the three below it,
+        # because every one of those is a positive claim this run did NOT make:
+        # nothing established that the volume is unmounted, that it is the wrong
+        # one, or that the directory is missing. The remedy is a different act
+        # too, which is why it carries its own token.
+        "library-root-unreachable": ExitCode.LIBRARY_UNAVAILABLE,
         "library-volume-mismatch": ExitCode.LIBRARY_UNAVAILABLE,
         "library-directory-missing": ExitCode.LIBRARY_UNAVAILABLE,
         "library-database-missing": ExitCode.LIBRARY_UNAVAILABLE,
@@ -661,6 +1184,55 @@ class Cause:
         return json.dumps(self.to_json(), sort_keys=True)
 
 
+def classified(cause: Cause, exc: BaseException | None) -> Cause:
+    """``cause``, corrected if the operating system is what actually refused.
+
+    THE CLASSIFICATION LIVES WHERE A REFUSAL IS CONSTRUCTED, NOT ONLY WHERE ONE
+    ESCAPES, and that is the whole point of this function. The previous round put
+    the decision in two blankets, the dispatcher and doctor's check runner, on
+    the stated property that "a site nobody has converted now comes out right".
+    That was true and irrelevant: an AST walk over the package finds nineteen
+    ``except OSError`` sites that raise a structured refusal, and eighteen of them
+    bypassed both blankets by construction, because a blanket only ever sees what
+    nobody caught. Three of the eighteen hard coded the wrong answer, and one of
+    those rendered a permission as "no session is recorded with that identifier",
+    which reads absence out of a refusal that established nothing at all.
+
+    So the correction happens here, at the constructor every structured refusal
+    in the package passes through, and the sites need no edit. A site written
+    next year is right by default.
+
+    WHAT IT READS IS THE DECLARED CAUSE CHAIN. Every one of those sites writes
+    ``raise refuse(...) from exc``, which is the author's own statement that this
+    failure IS that one. Nothing is inferred from the call stack and nothing is
+    inferred from ``__context__``, so a handler that catches a refusal, recovers,
+    and later raises something unrelated is not re-labelled.
+
+    WHAT IT CHANGES IS THE SLUG AND THE ACT, NEVER THE WORDS. This module is
+    FOUNDATION and carries tokens, never sentences (D2); ``cli.render`` owns the
+    words for the token this chooses. A site whose act is ALREADY the right one
+    is left exactly as it is, so a refusal that knows more than this does keeps
+    its better slug.
+    """
+    refusal = access_refusal(exc)
+    if refusal is None or cause.remediation.remedy is refusal.remedy:
+        return cause
+    return replace(
+        cause,
+        reason=refusal.reason,
+        remediation=replace(cause.remediation, remedy=refusal.remedy),
+        detail={
+            **dict(cause.detail),
+            "path": refusal.path,
+            "access": str(refusal.kind),
+            # Kept because the site's own reading is still worth reading, and
+            # dropped from the headline because it was not what happened. It is
+            # never branched on; ``detail`` is not read for control flow.
+            "declared_reason": cause.reason,
+        },
+    )
+
+
 class CratekitError(Exception):
     """The one exception type that carries a cause across a raise.
 
@@ -673,7 +1245,29 @@ class CratekitError(Exception):
 
     def __init__(self, cause: Cause) -> None:
         super().__init__(cause.message)
-        self.cause = cause
+        self._declared = cause
+
+    @property
+    def cause(self) -> Cause:
+        """The cause as the reader gets it, classified against what caused it.
+
+        A PROPERTY RATHER THAN AN ATTRIBUTE FOR ONE REASON: ``raise X from exc``
+        sets ``__cause__`` AFTER this object is built, so a value computed in
+        ``__init__`` cannot see the thing the site just declared this failure to
+        be. Reading it here is the first moment the declaration exists, and every
+        consumer, the dispatcher, doctor, the job engine and the tests, reaches
+        the cause through this one name.
+        """
+        return classified(self._declared, self.__cause__)
+
+    @property
+    def declared_cause(self) -> Cause:
+        """The cause exactly as the raising site wrote it, unclassified.
+
+        For the one caller that needs to see the site's own reading rather than
+        the corrected one: the test that proves the correction happened.
+        """
+        return self._declared
 
 
 def refuse(
@@ -718,13 +1312,26 @@ def refuse(
 
 
 __all__ = [
+    "ACCESS_REASONS",
+    "ACCESS_REMEDIES",
+    "DATABASE_ACCESS_ERRORNAMES",
+    "DATABASE_PATH_ATTRIBUTE",
+    "PERMISSION_ERRNOS",
+    "READ_ONLY_ERRNOS",
     "REASONS",
+    "AccessKind",
+    "AccessRefusal",
     "Cause",
     "CratekitError",
     "Outcome",
     "Remediation",
     "Scope",
     "UnknownReason",
+    "access_refusal",
+    "access_remedy",
+    "classified",
+    "name_the_database",
+    "permission_denied",
     "refuse",
     "widest_scope",
 ]

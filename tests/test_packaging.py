@@ -73,6 +73,87 @@ def test_python_bound_is_closed_at_both_ends(pyproject):
     assert "<3.14" in requires
 
 
+def _clauses(specifier: str) -> frozenset[str]:
+    """A requires-python string as a SET of clauses, whitespace and order removed.
+
+    Order is not meaningful in a specifier and the two sources spell it
+    differently: pyproject says ``>=3.12,<3.14`` and the metadata generated from
+    it comes back ``<3.14,>=3.12``. Comparing the strings would fail on a
+    difference that means nothing, and comparing nothing at all is what left the
+    two free to differ in ways that mean everything.
+    """
+    return frozenset(part.strip() for part in specifier.split(",") if part.strip())
+
+
+def test_the_installed_metadata_carries_the_bound_pyproject_declares(pyproject):
+    """KTD19's bound is READ from packaging metadata by doctor, so the two must agree.
+
+    ``cli/doctor`` deliberately does not repeat the bound: it reads
+    ``Requires-Python`` from this distribution's own metadata, on the argument
+    that a second copy is a copy that drifts. That argument is only true while
+    something PINS the metadata to the declaration it was built from, and nothing
+    did: the assertions above read the pyproject text and never opened the
+    installed distribution at all.
+
+    What that permits is not theoretical. A stale ``dist-info`` left behind by an
+    earlier editable install carries whatever bound was declared when it was
+    generated, so with ``>=3.9,<3.11`` sitting there doctor reports the running
+    3.12 as UNSUPPORTED and exits the whole run on PRECONDITION, driven entirely
+    by a file nobody looked at. The failure names the interpreter, which is the
+    one thing that is not wrong.
+    """
+    from importlib import metadata
+
+    from cratekit.cli import registry
+
+    try:
+        installed = metadata.metadata(registry.DISTRIBUTION)["Requires-Python"]
+    except metadata.PackageNotFoundError:  # pragma: no cover - see the assertion
+        installed = None
+
+    assert installed is not None, (
+        f"{registry.DISTRIBUTION} is not installed in this environment, so "
+        f"doctor's interpreter bound reads as 'not asserted' and this "
+        f"declaration is enforced by nothing. Install the package, editable is "
+        f"enough, before trusting a green run."
+    )
+    assert _clauses(installed) == _clauses(pyproject["project"]["requires-python"]), (
+        f"the installed metadata says {installed!r} and pyproject declares "
+        f"{pyproject['project']['requires-python']!r}. Doctor reads the first and "
+        f"this repository maintains the second, so a run can refuse an "
+        f"interpreter this project supports, or accept one it does not. "
+        f"Reinstall the distribution."
+    )
+
+
+def test_the_doctor_reads_the_installed_bound_rather_than_a_constant():
+    """The other half of the pin: nothing in the package repeats the number.
+
+    A constant here would be the drift the test above exists to catch, arriving
+    from the other direction and invisible to it.
+    """
+    import ast
+
+    from cratekit.cli import doctor
+
+    assert doctor._declared_python_bound() is not None
+    # Over the syntax tree rather than the text, so a COMMENT that mentions the
+    # ceiling while explaining why it is not repeated does not fire the guard
+    # that exists to stop it being repeated.
+    sources: list[str] = []
+    for path in sorted((REPO_ROOT / "src").rglob("*.py")):
+        if "_vendor" in path.parts:
+            continue
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if "3.14" in node.value and "<" in node.value:
+                    sources.append(f"{path.name}:{node.lineno}")
+    assert not sources, (
+        f"the interpreter ceiling is written into {sources} as well as into "
+        f"pyproject.toml, so one of the two is now the copy that drifts"
+    )
+
+
 def test_license_is_mit_and_the_text_ships(pyproject):
     project = pyproject["project"]
     assert project["license"] == "MIT"
