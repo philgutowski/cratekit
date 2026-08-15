@@ -132,7 +132,7 @@ It does not tell you what is there now.
 
 **Read the other side's records, not just your own.** This is the correction that
 costs the most to skip, and this merge skipped it. U12's branch had filed R-111
-(`docs/residual-findings.md:6851`) on 2026-08-03, and it names the exact hazard
+(`docs/residual-findings.md:6925`) on 2026-08-03, and it names the exact hazard
 the merge would hit:
 
 > **What the collapse must carry.** The `package` argument, at every call site
@@ -353,7 +353,7 @@ that the two implementations AGREE on every case checked, not that they are
 identical, and the sweep covers importable and unimportable relative spellings
 rather than all possible packages.
 
-R-105 (`docs/residual-findings.md:6647`) measures the adjacent question from the
+R-105 (`docs/residual-findings.md:6721`) measures the adjacent question from the
 other direction: deleting the branch resolver's climb guard entirely kills zero
 tests, because every input in the band it protects is an import the interpreter
 itself refuses. That is a fact about the branch's function against itself rather
@@ -411,11 +411,20 @@ copy problem inside one file as a three copy problem across three branches, and
 the next reader will spend this same trip again working out which sentences still
 hold.
 
+**Discharged 2026-08-15, as A3, issue #56.** The note was rewritten in the shape
+the Guidance above asks for: the action stated in the imperative, then each fact
+it rests on as a dated sentence saying whether it was driven or only read. Both
+resolvers were confirmed byte identical to what the merge measured, and the third
+copy on the parked branch was read at its tip and marked as read rather than
+driven. R-57 and R-111 each carry a dated line saying what the U12 merge
+discharged and what remains, and both stay open against the collapse itself,
+which is still outstanding on `main`.
+
 ## Related
 
 - `merge-falsifies-a-guard-invariant-and-every-remedy-breaks-something.md` and
   `countdown-entry-discharge-drops-a-whole-test-file.md`: the other two merge time
-  traps in this directory. All three are invisible from either branch alone and
+  traps here. All three are invisible from either branch alone and
   exist only in the union. They differ in what the repository knew in advance and
   in the direction of the danger. The countdown trap silently removes evidence,
   so its danger is a merge that looks finished. The guard invariant trap produces
@@ -425,10 +434,9 @@ hold.
   performs the wrong work. For the other two the question is "what could go wrong
   here". For this one the question is "which sentences in this warning are still
   true, and what did the other side write down".
-- `a-false-claim-in-the-auto-loaded-contract-compounds-silently.md`: the fourth
-  document in this directory and the only one that is NOT a merge trap. The other
-  three fire when two branches meet; that one is always on, in a file every session
-  reads before it does anything. It is this document's closest relative in
+- `a-false-claim-in-the-auto-loaded-contract-compounds-silently.md`: not a merge
+  trap at all. The three above fire when two branches meet; that one is always on,
+  in a file every session reads before it does anything. It is this document's closest relative in
   mechanism, both being prose whose truth no check evaluates, and its furthest in
   radius: a note misleads one merger for one merge, a contract misleads every
   session for as long as it stands. It also corrects the overclaim in the Guidance
@@ -468,3 +476,11 @@ hold.
   docstring records the parameter mismatch and the three failing tests. The
   neighbouring `ImportsOf` docstring at `:118` explains why the package argument
   makes the relative half exact rather than approximate.
+- `a-cause-read-from-a-log-is-not-a-cause-driven-by-reproducing-it.md` and
+  `a-count-that-moved-by-the-right-amount-is-not-a-measurement-of-what-moved.md`:
+  the same rule extended one level each. This document takes "driven, not read"
+  from a finding's existence to its mechanism; the first of those takes it to a
+  finding's cause, the second to a re-pinned count. Added 2026-08-15, which is why
+  the census that used to sit above this bullet is gone: a directory count in a
+  Related section is exactly the sort of sentence this document says goes stale
+  without anyone re-measuring it.

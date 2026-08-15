@@ -580,14 +580,19 @@ document was the thing that was wrong.
   of that applies to the contract sentence, with one aggravation the entry does not
   cover: a note is read by one person once, and the contract is read by everyone
   always.
-- `docs/residual-findings.md:7034`, R-115: a third instance of the same family, from
-  a different direction. Ten consecutive CI runs on `main` are red because the
-  workflow runs Linux and the product targets macOS, and its measured cost is stated
-  as "a signal exists, is consulted by nobody, and cannot change state". A red that
-  is red when the tree is perfect distinguishes nothing, exactly as a contract that
-  is believed whether or not it is true distinguishes nothing. R-115 also notes that
-  its version is harder to see because the useless signal sits OUTSIDE the battery.
-  So does this one.
+- `docs/residual-findings.md:7133`, R-115: a third instance of the same family, from
+  a different direction. Ten consecutive CI runs on `main` were red while the local
+  battery was clean, and its measured cost is stated as "a signal exists, is
+  consulted by nobody, and cannot change state". A red that is red when the tree
+  is perfect distinguishes nothing, exactly as a contract that is believed whether
+  or not it is true distinguishes nothing. R-115 also notes that its version is
+  harder to see because the useless signal sits OUTSIDE the battery. So does this
+  one. R-115 originally attributed every red run to the workflow running Linux
+  against a macOS product, and that attribution was itself a claim carried without
+  measurement: on 2026-08-15 it was driven and five of the failures reproduced on
+  macOS from a shallow checkout. The entry is closed, CI no longer runs the suite,
+  and `a-cause-read-from-a-log-is-not-a-cause-driven-by-reproducing-it.md` carries
+  the correction.
 - `docs/METHOD.md:229` through `:245`, the append only rule for residual numbers and
   the sweep that certified the last renumber against `src`, `tests` and `scripts`
   while missing GitHub issue titles. That missed surface is precisely what

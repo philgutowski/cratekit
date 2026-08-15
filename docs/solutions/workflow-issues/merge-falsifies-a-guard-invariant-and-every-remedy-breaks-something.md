@@ -65,9 +65,12 @@ green on the branch. `main` was green too. The merged tree was not, and neither
 side could have observed why, because the sentence the two units jointly
 falsified lives in a third file that neither of them edited.
 
-The finding itself is recorded as R-80 (`docs/residual-findings.md:5236`), filed
+The finding itself is recorded as R-80 (`docs/residual-findings.md:5257`), filed
 on `main` in commit `f2f8d5b`. **This document is not that record.** R-80 is the
-measurement of one collision. This is the procedure to run on the next one.
+measurement of one collision. This is the procedure to run on the next one. R-80
+itself was decided and closed on 2026-08-15: the write capable handle was
+replaced with metadata readings, driven against the handle over twelve real
+arrangements, and U27 merged. Nothing in the procedure below changed.
 
 **The class is not new here, which is worth knowing before treating any instance
 as exotic.** (session history) One day earlier, U30 built an emission ratchet in
@@ -371,10 +374,14 @@ What that branch is holding, none of which the blocker affects:
   an obligation only the merged tree could see: U27 added the remedy, and U38
   landed the reservation registry after U27's branch was cut.
 - The cause population re-pinned from 101, 79, 22 to 106, 83, 23, re-measured
-  rather than widened. Those are the BRANCH's figures. `main` has since moved to
-  103, 81, 22 through a later merge that appended two cause slugs of its own, so
-  a reader checking these numbers against `main` will find different ones and
-  neither set is wrong.
+  rather than widened. Those are the BRANCH's figures. `main` moved to 103, 81, 22
+  through a later merge that appended two cause slugs of its own, and then to
+  108, 85, 23 when U27 itself merged on 2026-08-15, so a reader checking these
+  numbers against `main` will find different ones and neither set is wrong. That
+  final re-pin was the first to move the reserved half, and it was done by naming
+  the five members rather than matching the delta; the bare numbers here are the
+  shape `a-count-that-moved-by-the-right-amount-is-not-a-measurement-of-what-moved.md`
+  argues a re-pin comment should not stop at.
 
 Every one of those would have to be redone on a second attempt, and each redo is
 a chance to get one of them differently wrong.
