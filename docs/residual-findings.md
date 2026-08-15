@@ -7876,3 +7876,32 @@ describe a build nobody has.
 **Closes when:** the session site reads the exception's own remedy instead of
 naming one, or the two refusals are separated so an unreachable directory and a
 damaged record are different causes rather than one.
+
+## R-129. Folder-level XML import appends children, and rekordbox parses masterPlaylists6.xml on every play
+
+**Found:** 2026-08-15, diagnosing a rekordbox spinning wheel on the source
+library. Attended, live, after a scratch-copy rehearsal.
+
+The A2 verdict quoted in `write/trees.py` says XML playlist import replaces
+unconditionally. That is the playlist-node half. Importing a FOLDER node that
+already exists merges the folder by name and appends every child playlist as a
+new row, so each whole-tree re-import doubles the children. Nine label year
+playlists reached 3,072 copies each. Separately, macOS spin reports show
+rekordbox re-parsing `masterPlaylists6.xml` on the UI thread on every
+play-history write, so the duplicated tree (28,249 nodes, 3.2 MB) was a hang on
+every track load. Both facts are in
+`docs/solutions/integration-issues/folder-level-xml-import-appends-children-and-the-playlist-xml-is-parsed-on-every-play.md`.
+
+**Measured cost.** None to Cratekit today: no Cratekit writer emitted the
+payload or ran the import, and the library was repaired outside this repo. The
+cost is to the guard model, which reasons about the bridge from one failure
+mode when there are two, and to any future writer that adds `djmdPlaylist`
+rows without weighing the per-play parse it buys.
+
+**Why not fixed here.** It is a documentation refinement plus two guards
+nobody has written; the guards need a unit with tests, not a ledger edit.
+
+**Closes when:** `write/rbxml.py` refuses a payload with duplicate sibling
+NODE names, and a snapshot-time reading (duplicate sibling playlists in
+`djmdPlaylist`, or a `masterPlaylists6.xml` node count out of proportion to
+the library) is a red flag before any write.
