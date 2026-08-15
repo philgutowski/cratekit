@@ -3,8 +3,14 @@
 Acquisition and curation for rekordbox DJs. A slim core, toggleable feature
 modules, and guarded library writes.
 
-This file is the session contract. `docs/HANDOFF.md` is the narrative state and is
-what to read next.
+This file is the session contract. **`docs/METHOD.md` is the operating instruction
+and is what to read next**: the merge bar, the mutation method, the driver rules,
+the merge constraints and the do-not-touch list. `RESTART-cratekit.md` is the
+current wave state and `docs/HANDOFF.md` is the longer narrative.
+
+A restart prompt names board items and nothing else, because the issue is the
+brief. `/ce-work #56` is a complete instruction once this file and METHOD are
+read.
 
 ## The board is the queue
 
