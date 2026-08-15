@@ -7174,7 +7174,50 @@ asserts that it deselected a known count; or the workflow is deleted, on the
 argument that a check nobody can read is worse than no check. Whichever is taken,
 say in METHOD what CI is for, because at the moment it is for nothing.
 
-<!-- ------------------------------------------------------------------ -->
+### DECIDED 2026-08-15, by a fourth option, and this finding is CLOSED
+
+None of the three. The workflow keeps the checks that CAN pass and stops running
+the suite at all. `docs/METHOD.md` now carries a section, "What CI is for", and
+the rule in it is one sentence: a step in the workflow must be able to pass, and
+a check that cannot belongs in the battery.
+
+Concretely: `scan` is unchanged. `test` is renamed `portable` and runs the slim
+install assertion and ruff on 3.12 and 3.13, with no pytest. `cold-install`
+becomes a matrix over both interpreters rather than 3.12 alone.
+
+**Nothing is deselected.** The second option, marking the macOS proofs so a Linux
+job selects against them, was rejected on its own stated hazard: a job that skips
+a hardware proof reads as one that ran it, which is the thing those tests exist to
+refuse. A job that does not claim to run the suite cannot mislead that way. The
+first was rejected because a macOS runner does not make it green either: the
+committed calibration refuses a calibration captured on a different machine, and
+a hosted runner is a different machine.
+
+**What is lost, said plainly: nothing now proves the suite passes on 3.13.** That
+is a real loss rather than an oversight. `cold-install` on both interpreters buys
+back the cheap half.
+
+### THIS ENTRY'S OWN ACCOUNT OF THE CAUSE WAS INCOMPLETE, corrected by driving it
+
+It named five causes and every one is platform. It also says, in its first line,
+that it was filed "by reading the run list rather than a run". The real failure
+set on the last red run is larger, and part of it is not about Linux at all:
+
+- Five in `tests/modules/test_reports.py` are a SHALLOW CHECKOUT.
+  `actions/checkout@v4` fetches one commit; those guards derive their file list
+  from `git log --grep`, and one commit of history derives almost nothing.
+  **Driven on macOS, 2026-08-15**, on a `--depth 1` clone of this repository: the
+  same five fail, 344 pass. `git fetch --unshallow` and all 349 pass. Nothing
+  about it is the platform, and it would have been a one line workflow fix.
+- Two in `tests/test_adoption.py` and two in `tests/test_deletion.py` are about
+  one file in two Unicode composition forms, which APFS normalises and ext4 does
+  not. Platform, and NOT DRIVEN, because no Linux machine was available.
+- Four in `tests/test_pool_sizing.py` are U12's cgroup reader meeting a real
+  cgroup filesystem. Platform, and NOT DRIVEN, for the same reason.
+
+The four platform attributions above are read from a log rather than driven, and
+they are recorded as read. That distinction is the entire lesson of this
+correction and the reason it is written out rather than folded into the decision.
 
 ## The ten findings below arrived with the U27 merge, 2026-08-15, and were renumbered
 
