@@ -8,6 +8,15 @@ and is what to read next**: the merge bar, the mutation method, the driver rules
 the merge constraints and the do-not-touch list. `RESTART-cratekit.md` is the
 current wave state and `docs/HANDOFF.md` is the longer narrative.
 
+Two more are worth knowing about rather than reading front to back.
+`docs/solutions/` is the durable record of problems already solved here, filed by
+category with YAML frontmatter (`module`, `problem_type`, `tags`) so it can be
+searched rather than read; most entries are traps that cost real time once and are
+written so they do not cost it twice. `CONCEPTS.md` is the shared vocabulary, the
+words that carry a specific meaning in this project rather than their ordinary
+one. Both are relevant when starting work in an area either one covers, and
+`CONCEPTS.md` is the faster of the two when a term is the thing that is unclear.
+
 A restart prompt names board items and nothing else, because the issue is the
 brief. `/ce-work #56` is a complete instruction once this file and METHOD are
 read.
