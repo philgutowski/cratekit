@@ -302,31 +302,30 @@ def _from_copy_error(exc: BaseException) -> AccessRefusal | None:
     return None
 
 
-#: WHY THERE ARE TWO OF THESE AND WHY THEY MAY NOT BE FOLDED BACK INTO ONE.
+#: WHY THERE ARE TWO OF THESE, AND WHY EXACTLY ONE OF THEM OPENS ANYTHING.
 #:
-#: They were one function taking ``writing: bool`` and building ``flags`` on the
-#: line above the call. That is the obvious spelling and it is the one a tidy up
-#: will reach for, so the reason it was abandoned is recorded HERE, next to the
-#: duplication, rather than in a document nobody is holding at the time.
+#: This module is admitted to the reports allowlist, because both report modules
+#: import ``Scope`` and ``refuse`` from it, and that allowlist's whole argument is
+#: that nothing it admits can touch a file. So this module may hold ONE ``os.open``
+#: and it has to be a read.
 #:
-#: The reports package is guarded by an allowlist whose argument is that nothing
-#: it admits can touch a file, and it admits this module because both report
-#: modules import ``Scope`` and ``refuse``. The guard decides whether an
-#: ``os.open`` is a read by reading THE CALL'S OWN ARGUMENT against a set of
-#: reading flags. It cannot resolve a name back to an assignment, so
-#: ``os.open(path, flags)`` is reported as an open whose flags it cannot read,
-#: whatever the assignment says. Driven 2026-08-14: five different assignments
-#: were tried, including a plain ``os.O_RDONLY`` with no conditional in it, and
-#: every one was refused. Only the inline expression is readable, and then it is
-#: exactly right in both directions: read only passes, write capable fails.
+#: The read probe below spells its flags INLINE, and that is not style. The guard
+#: decides whether an ``os.open`` is a read by reading THE CALL'S OWN ARGUMENT
+#: against a set of reading flags. It cannot resolve a name back to an assignment,
+#: so ``os.open(path, flags)`` is reported as an open whose flags it cannot read,
+#: whatever the assignment says. Driven 2026-08-14: five different assignments were
+#: tried, including a plain ``os.O_RDONLY`` with no conditional in it, and every
+#: one was refused. Only the inline expression is readable, and then it is exactly
+#: right in both directions: read only passes, write capable fails. The same
+#: measurement is why ``os.O_NONBLOCK`` is spelled directly rather than through
+#: ``getattr(os, "O_NONBLOCK", 0)``, which was a defensive fallback the guard also
+#: could not read. This package targets macOS, where the constant is always
+#: present.
 #:
-#: So the flag expression has to be spelled at the call site, and one call site
-#: can only spell one of them. That is what forces two functions.
-#:
-#: ``os.O_NONBLOCK`` is also spelled directly rather than through
-#: ``getattr(os, "O_NONBLOCK", 0)``, and that was a defensive fallback that was
-#: measured unreadable by the same guard. This package targets macOS, where the
-#: constant is always present. See R-80 and R-102.
+#: SO THEY MAY NOT BE FOLDED BACK INTO ONE FUNCTION TAKING ``writing: bool``. That
+#: is the obvious spelling and it is the one a tidy up reaches for. It reinstates
+#: the unreadable shape, and it reinstates the write capable handle this module is
+#: not allowed to hold. See R-80 and R-102.
 
 
 def _probe_readable(path: str) -> AccessRefusal | None:
@@ -360,31 +359,65 @@ def _probe_readable(path: str) -> AccessRefusal | None:
 
 
 def _probe_writable(path: str) -> AccessRefusal | None:
-    """Ask the operating system whether ``path`` can be WRITTEN.
-
-    Same measurement as :func:`_probe_readable` and the same two guards, against
-    a write capable handle, because a file this account can read and cannot write
-    answers a read probe with silence. Nothing is written and nothing is created:
-    there is no ``O_CREAT`` and no ``O_TRUNC``, so the handle is opened and
-    closed.
+    """Say WHY a write to ``path`` was refused, without opening a write handle.
 
     THE ONE CALLER IS :func:`_from_database_error`, for a driver error that is not
-    ``SQLITE_CANTOPEN``. That narrowness is deliberate and is the whole reason the
-    two probes are separate: this is the only place in the package that needs to
-    ask about writing, so it is the only place that opens a write capable handle,
-    and the reports package's reach to one is confined to this single function.
+    ``SQLITE_CANTOPEN``, which leaves ``SQLITE_READONLY`` and ``SQLITE_PERM``.
+    Both mean the driver ALREADY tried a write and was refused. So this is not
+    predicting an outcome, it is attributing one that has happened, and the three
+    attributions this program can act on are all readable from metadata: the
+    medium refuses every writer, a per-file lock refuses this write, or this
+    account does not hold the permission.
 
-    NOT PINNED BY THE SUITE. Measured 2026-08-14: forcing every probe to read only
-    killed zero tests out of 5044 collected. So a change to what this asks for
-    will not be caught by running the suite and needs its own driven evidence.
+    IT USED TO OPEN ``os.O_RDWR`` AND MAY NOT AGAIN. R-80: this module is on the
+    reports allowlist, whose argument is that nothing it admits can touch a file,
+    and a write capable handle here made that argument false. The guard that says
+    so cannot be widened and the module cannot be relocated, so the handle went.
+    The read probe is still real, and is asked first, because a file this account
+    cannot even read is a refusal the errno already classifies and that answer
+    outranks any metadata reading.
+
+    ORDER IS DELIBERATE. A read only medium is a property of the volume rather
+    than of one path on it, so it outranks both per-file answers. The immutable
+    flag outranks the mode for the same reason :func:`_from_os_error` checks it
+    first: ``chflags uchg`` and a denied mode both arrive as a refusal and they
+    route to different acts, and only one of them is something the user can chmod
+    away.
+
+    ``effective_ids`` is asked for where the platform has it, because the write
+    that was refused was made with the effective identity and ``os.access``
+    otherwise answers for the real one.
+
+    DRIVEN, 2026-08-15, against the write capable handle it replaces: 12 real
+    arrangements, and every one that this function's ONE producer can actually
+    hand it agrees. The two that disagree are both DIRECTORIES, and a directory
+    reaches ``sqlite3`` as ``SQLITE_CANTOPEN``, which routes to
+    :func:`_probe_readable` and never arrives here. Driven end to end as well,
+    through :func:`access_refusal`, on a real read only volume, a real mode
+    refusal and a real Finder lock.
+
+    NOT MEASURED: a network mounted volume, where the client can answer from
+    cached metadata while the server is what refuses. That class is unmeasured for
+    BOTH implementations rather than a known loss, because an open on a client
+    that has already cached the attributes does not reach the server either. No
+    network share was available.
     """
+    refused = _probe_readable(path)
+    if refused is not None:
+        return refused
+    effective = os.access in os.supports_effective_ids
     try:
-        handle = os.open(path, os.O_RDWR | os.O_NONBLOCK)
-    except OSError as probe:
-        return _from_os_error(probe)
-    except ValueError:
+        if os.statvfs(path).f_flag & os.ST_RDONLY:
+            return AccessRefusal(kind=AccessKind.READ_ONLY, path=path)
+        if _immutable(path):
+            return AccessRefusal(kind=AccessKind.LOCKED, path=path)
+        if not os.access(path, os.W_OK, effective_ids=effective):
+            return AccessRefusal(kind=AccessKind.PERMISSION, path=path)
+    except (OSError, ValueError):
+        # The same two guards :func:`_probe_readable` gives, for the same reason:
+        # this is read inside the dispatcher's own refusal handler, where an
+        # escaping exception replaces an act the user could take with a traceback.
         return None
-    os.close(handle)
     return None
 
 
