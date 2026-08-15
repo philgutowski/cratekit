@@ -30,6 +30,26 @@ Contradiction is the board and the repository disagreeing about whether work
 landed, and is never repaired automatically, because doing so means choosing one
 source of truth to overwrite silently.
 
+### Coordination note
+A warning written into source on one branch, addressed to whoever performs a
+future merge, about a collision no tool will report. It exists for the case where
+two branches each change the same thing correctly and both merge cleanly, so the
+only thing that can raise the alarm is a person who saw it coming.
+
+It is the unenforced counterpart of the pending register, and the difference
+decides which to reach for: a register entry is an obligation the suite fails on,
+while a note is prose whose claim no check evaluates. So a note has no expiry, no owner,
+and no way to go red, and it is written in the present tense about a branch its
+author cannot run and often has not read. Its instruction and the fact that
+instruction rests on are separate claims with separate lifetimes, and the fact
+may have been unmeasured from the moment it was written, so a reader obeys the
+warning and re-measures the fact. A note whose fact was actually checked says so.
+A note that survives the merge it was written for is corrected or deleted,
+because it has stopped describing anything that exists. Notes come in pairs more
+often than their authors realize, since each side of a collision has its own
+reason to write one, so a merge reads both branches' records rather than only the
+one it is standing on.
+
 ## Verification
 
 ### Guard
@@ -71,7 +91,9 @@ outright and executes nothing, so the loss reads as ordinary only to a run told 
 continue past collection errors, to a subset run that never names the affected
 file, or to a comparison of collected totals rather than identifiers. An entry
 that no guard actually cites gates nothing, and is an unenforced countdown wearing
-the costume of an enforced one.
+the costume of an enforced one. A future obligation that cannot be stated as a
+missing thing the suite can name is not a register entry at all and belongs in a
+coordination note, which is the weaker instrument on purpose.
 
 ### Battery
 The fixed set of checks that must all be clean before anything merges. It is one
@@ -79,6 +101,12 @@ named gate rather than a list assembled per change, so asking whether the batter
 was run has a single unambiguous answer. An author running their own battery is
 not a review: every defect the adversarial reviews have found here passed a green
 suite written by the person who wrote the defect.
+
+What it checks is code, imports and repository structure. One of its parts does
+read prose, hunting machine specific paths and secrets in any text it finds, but
+nothing in it evaluates whether a sentence is TRUE. So a claim written in a
+comment or a docstring is outside the battery entirely, which is the property a
+coordination note depends on and suffers from.
 
 The battery is unconditional and is a separate question from whether any
 particular finding blocks. Whether a finding blocks on its own merits is decided
@@ -136,6 +164,10 @@ produces it.
 - Discharging a pending register entry has been described as two halves, meaning
   the entry and the decorator. It is three edits, because the meta suite keeps its
   own mirrored copy of the key that must move with them.
+- A pending register entry and a coordination note have both been called "a note
+  for a future unit". They are different instruments and the choice between them
+  is not stylistic: one is enforced by the suite and one is not, and only the
+  register can make a future obligation fail on arrival.
 - "Residual" does not mean "does not stop a merge". It answers only whether a
   finding blocks on its own merits. A residual with no cost to any person still
   stops a merge whenever the battery is red on its account, and both halves are
