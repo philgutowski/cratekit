@@ -6123,6 +6123,88 @@ def test_the_write_probe_classifies_every_way_a_write_is_refused(tmp_path):
     assert _probe_writable(str(ordinary)) is None
 
 
+def test_the_write_probe_names_the_medium_rather_than_the_account():
+    """The fourth way a write is refused, and the one no file mode can imitate.
+
+    R-80 was resolved by replacing the write capable handle with three metadata
+    readings, and a mutation table then measured the read only branch of those
+    three at ZERO deaths: dropping it left every test green while a read only
+    volume started reporting as a permission. That is the one answer of the three
+    a user cannot act on if it is wrong, because no amount of Full Disk Access
+    makes a read only volume writable.
+
+    The arrangement is REAL and is not built here. Every current macOS mounts its
+    system volume read only, so ``/usr/bin/true`` sits on a medium that refuses
+    every writer on the machine, and the test asserts that rather than assuming
+    it. The file is also mode 555 and owned by root, which is what makes the row
+    bite: with the read only branch removed the probe still refuses the write and
+    refuses it as a PERMISSION, sending the user to grant an access that would
+    change nothing.
+    """
+    from cratekit.core.cause import AccessKind, _probe_readable, _probe_writable
+
+    on_the_system_volume = "/usr/bin/true"
+    assert os.path.exists(on_the_system_volume), (
+        "this machine has no /usr/bin/true, so the arrangement is not the one "
+        "this test names"
+    )
+    assert os.statvfs(on_the_system_volume).f_flag & os.ST_RDONLY, (
+        "this machine's system volume is writable, so it proves nothing"
+    )
+    assert _probe_readable(on_the_system_volume) is None, "the read probe can see it"
+
+    refused = _probe_writable(on_the_system_volume)
+    assert refused is not None
+    assert refused.kind is AccessKind.READ_ONLY, (
+        "a medium that refuses every writer was reported as this account's "
+        "permission, which is an act the user can take and that cannot work"
+    )
+    assert refused.remedy is Remedy.REMOUNT_WRITABLE
+    assert refused.path == on_the_system_volume
+
+
+def test_the_write_probe_answers_for_a_path_it_cannot_reach_at_all(tmp_path):
+    """The read probe delegation, which is the only thing that answers here.
+
+    R-80's replacement asks the read probe first and returns its classification
+    when a read is itself refused. Every metadata reading below that line needs
+    to reach the path, and a parent directory denying traversal refuses all three
+    of them: ``os.statvfs``, ``os.lstat`` and ``os.access`` all answer EACCES, so
+    without the delegation the probe returns None and the refusal reaches the
+    user as an unanticipated failure.
+
+    LATENT RATHER THAN LIVE, AND SAID SO. The one caller reaches this function
+    only after ``sqlite3`` opened the database and then refused a write, so the
+    parent was traversable a moment earlier and something changed it in between.
+    That is a race rather than an ordinary arrangement. It is pinned because the
+    delegation costs one branch, because a mutation table measured its removal at
+    zero deaths, and because the failure it prevents is the worst shape there is:
+    a real refusal reported as a defect in this program.
+    """
+    from cratekit.core.cause import AccessKind, _probe_writable
+
+    sealed = tmp_path / "sealed"
+    sealed.mkdir()
+    target = sealed / "library.db"
+    target.write_bytes(b"x")
+    sealed.chmod(0o000)
+    try:
+        assert (os.statvfs(str(sealed)).f_flag & os.ST_RDONLY) == 0, (
+            "this temporary directory is on a read only volume, so the read only "
+            "branch would answer before the delegation does"
+        )
+        refused = _probe_writable(str(target))
+    finally:
+        sealed.chmod(0o755)
+
+    assert refused is not None, (
+        "a path this account cannot reach was answered with silence, which "
+        "reaches the user as an unanticipated failure rather than as an act"
+    )
+    assert refused.kind is AccessKind.PERMISSION
+    assert refused.path == str(target)
+
+
 def test_a_two_path_refusal_names_the_side_the_operating_system_refused(tmp_path):
     """F4. DESTINATION FIRST IS RIGHT FOR A RENAME AND WRONG FOR A LINK.
 
@@ -6469,3 +6551,68 @@ def test_the_read_only_refusal_and_the_permission_refusal_do_not_share_an_act(
     assert permission.remedy is not read_only.remedy
     assert "Full Disk Access" in permission.detail
     assert "Full Disk Access" not in read_only.detail
+
+
+def test_the_driver_path_to_the_write_probe_is_driven_on_a_real_read_only_volume():
+    """The whole producer chain for the write probe, on real hardware.
+
+    The three metadata readings that replaced R-80's write capable handle are
+    pinned individually above. This drives the chain that reaches them, which
+    nothing did: a real ``sqlite3`` database on a real read only mount, a real
+    write attempt, the driver's own ``SQLITE_READONLY``, and the classification
+    that comes back out of ``access_refusal``.
+
+    IT IS THE ONLY WAY THIS FUNCTION IS REACHED IN THE PRODUCT. ``_probe_writable``
+    has one caller and that caller is a driver level error, so a test that calls
+    the probe directly proves the answer and not the route. The route is what
+    round eight's whole vocabulary rests on: the driver carries no errno, no
+    filename and no cause, and if the path attribute does not survive the hop
+    then every one of these classifications answers None no matter how right the
+    probe is.
+    """
+    _require_hdiutil()
+
+    import sqlite3
+
+    from cratekit.core.cause import AccessKind, access_refusal, name_the_database
+
+    def a_database_on(volume: Path) -> None:
+        connection = sqlite3.connect(str(volume / "library.db"))
+        connection.execute("CREATE TABLE t (a)")
+        connection.commit()
+        connection.close()
+
+    with read_only_volume(a_database_on) as volume:
+        database = volume / "library.db"
+        refused: sqlite3.Error | None = None
+        try:
+            connection = sqlite3.connect(str(database))
+            connection.execute("INSERT INTO t VALUES (1)")
+            connection.commit()
+            connection.close()
+        except sqlite3.Error as error:
+            refused = error
+        assert refused is not None, (
+            "the write onto a read only volume succeeded, so the arrangement is "
+            "not the one this test names"
+        )
+        assert getattr(refused, "sqlite_errorname", "") == "SQLITE_READONLY", (
+            f"the driver answered {getattr(refused, 'sqlite_errorname', None)}, "
+            f"which routes to the READ probe and not to the one under test"
+        )
+
+        # The hop the whole vocabulary rests on: the connection site is the only
+        # place that knows the path, so it attaches it and the classifier reads it.
+        name_the_database(refused, database)
+        refusal = access_refusal(refused)
+
+        assert refusal is not None, (
+            "a driver level refusal on a read only volume reached the user as an "
+            "unanticipated failure"
+        )
+        assert refusal.kind is AccessKind.READ_ONLY, (
+            "the medium refused every writer and the user was told to grant this "
+            "account an access that cannot change it"
+        )
+        assert refusal.path == str(database)
+        assert refusal.remedy is Remedy.REMOUNT_WRITABLE
