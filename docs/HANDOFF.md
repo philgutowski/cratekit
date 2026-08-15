@@ -10,11 +10,19 @@ and U24.
 
 `docs/BOARD.md` names it: https://github.com/users/philgutowski/projects/2
 
-All 37 units, the 11 residual findings, and the attended items are issues on
-`philgutowski/cratekit`, and the issue number matches the unit number. Each unit
-issue carries its full brief from the plan, so a unit can be picked up without
-the plan document. Eight units are Ready, twelve are Blocked, and the board says
-which blocks which. Read BOARD.md for what to update when a merge lands.
+Every implementation unit and every attended chore is an issue on
+`philgutowski/cratekit`. A residual finding is NOT, unless somebody decided to act
+on it: residuals live in `docs/residual-findings.md`, which is the ledger of what
+is known and accepted rather than a queue of work. `docs/BOARD.md` states the
+split and says why backfilling is wrong.
+
+Each unit issue carries its full brief from the plan, so a unit can be picked up
+without the plan document. An issue number usually matches its unit number and is
+not guaranteed to, so look it up.
+
+**No counts are written here.** They were, and they were wrong for twelve days.
+`board.py next` prints what is ready and `board.py audit` says whether the board
+still matches the repository. Read BOARD.md for what to update when a merge lands.
 
 ## State
 

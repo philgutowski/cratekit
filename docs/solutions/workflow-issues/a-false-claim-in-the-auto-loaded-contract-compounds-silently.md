@@ -97,13 +97,19 @@ R-1 through R-11 are #38 to #48". `docs/HANDOFF.md:13` carries the same text
 verbatim from the same commit: "All 37 units, the 11 residual findings, and the
 attended items are issues".
 
-**Both are still false at head, after the fix.** `e0387d9` corrected `CLAUDE.md`
-and left the other two standing, which is this repository's fifth recurring
-pattern, "a fix round fixes the instance it was handed and reproduces the class
-one file over", committed in the same session that was documenting the class. It
-was found afterwards, by a search that asked where else the sentence lives rather
-than whether the one known copy was fixed. That search is the cheap step and it
-is the one that did not happen first.
+**Both were still false at head after the first fix.** `e0387d9` corrected
+`CLAUDE.md` and left the other two standing, which is this repository's fifth
+recurring pattern, "a fix round fixes the instance it was handed and reproduces
+the class one file over", committed in the same session that was documenting the
+class. They were found afterwards, by a search that asked where else the sentence
+lives rather than whether the one known copy was fixed. That search is the cheap
+step and it is the one that did not happen first.
+
+**All three are corrected as of 2026-08-15**, and none of the three now carries a
+census. `docs/BOARD.md` and `docs/HANDOFF.md` state the build versus ledger rule
+and point at the commands that produce a count, and BOARD.md records why it no
+longer gives one. The sweep was repeated after the fix rather than assumed, which
+is the step the first round skipped.
 
 **Why the units kept their issues and the residuals did not.** `board.py start`
 refuses to run without an issue. `scripts/board.py:329` raises on `no issue #N`,
@@ -545,12 +551,12 @@ document was the thing that was wrong.
   mechanism proving it generalizes past the instrument each document happens to be
   about. It is narrowed there now, with a pointer here.
 
-- **STILL LIVE, and not fixed by the commit that fixed the contract:**
-  `docs/BOARD.md:13`, `:14` and `:17`, and `docs/HANDOFF.md:13`. Both carry the
-  original claim from `86e3000`, BOARD.md as a table. Any session reading either
-  will believe what the contract no longer says. This document deliberately records
-  them as outstanding rather than quietly cleaning them up, because the gap between
-  "the contract is fixed" and "the claim is gone" is the most useful thing here.
+- `docs/BOARD.md` and `docs/HANDOFF.md`: the other two homes of the same claim,
+  both from `86e3000`, BOARD.md as a table. They survived the commit that fixed the
+  contract and were corrected a day later, once a repo wide search asked where else
+  the sentence lived. Neither now carries a count. The gap between "the contract is
+  fixed" and "the claim is gone" lasted one day and is the most useful thing in this
+  document, so it is recorded rather than smoothed over.
 - `docs/solutions/workflow-issues/countdown-entry-discharge-drops-a-whole-test-file.md`,
   the third merge time trap in this directory. Its subject is a register entry that
   IS enforced, and how discharging half of one silently removes a whole test file

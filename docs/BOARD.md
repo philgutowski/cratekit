@@ -8,14 +8,37 @@ Issues live on `philgutowski/cratekit`. Milestones are the six plan phases.
 
 ## What is on it
 
-| Kind | Range | Count | Source |
-|---|---|---|---|
-| Implementation units | U1 to U37 | 37 | the reengineering plan's unit index |
-| Residual findings | R-1 to R-11 | 11 | `docs/residual-findings.md` |
-| Attended items | A1, A2 | 2 | things that need a person at the machine |
+**The board is the BUILD. `docs/residual-findings.md` is the LEDGER.** Two
+registers answering two questions, and they are not mirrors of each other.
 
-**Issue numbers match unit numbers.** U8 is issue #8, U37 is issue #37. R-1 through
-R-11 are #38 to #48, and A1 and A2 are #49 and #50.
+| Kind | On the board | Why |
+|---|---|---|
+| Implementation units `U-N` | always | they are the work, and work is picked here |
+| Attended items `A-N` | always | a chore needing a person at the machine is also work |
+| Residual findings `R-N` | only on intent | a residual is a problem recorded rather than fixed, so it lives in the ledger and earns an issue only when somebody decides to act on it |
+
+**Do not backfill residuals.** Most have no issue and should not. Putting the
+ledger on the board would claim you intend to do a hundred things you have decided
+not to do, and would flood the project board's Ready column, because a non unit
+issue with nothing waiting on it derives as Ready. A residual issue is also
+unstable before its unit merges, since a merge renumbers the incoming branch's
+residuals while the issue title keeps the old number. `board.py audit` reports a
+title that no longer matches its finding as a CONTRADICTION.
+
+**No count is written here on purpose.** An earlier version of this section gave
+one, as a table, and it was true for 97 minutes: it said eleven residual findings
+on 2026-08-02 and the file passed a hundred while the table sat still, and every
+session read the stale number for twelve days. A census in a document nothing
+checks is a claim with no expiry. Ask the repository instead:
+
+    gh issue list --repo philgutowski/cratekit --state all --limit 300 \
+      --json number,title --jq '.[].title' | cut -c1-3 | sort | uniq -c
+    grep -c '^## R-' docs/residual-findings.md
+
+**An issue number usually matches its unit number and is not guaranteed to.** U8
+is issue #8 and U37 is issue #37, but U38 is issue #51, because #38 onward were
+taken by residual and attended issues. Look it up before writing a closing
+trailer rather than computing it.
 
 Each unit issue carries that unit's full brief, copied from the plan: goal,
 requirements, dependencies, key files, approach, test scenarios, verification. The
