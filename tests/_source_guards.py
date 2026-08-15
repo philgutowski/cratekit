@@ -609,20 +609,43 @@ def _import_targets(
 class ExitCodeImports:
     """How one source file reaches ``ExitCode``, in every import shape.
 
-    U12 COORDINATION. This is the same walk ``ReviewImports`` does, asked about
-    a different module, and the relative half of it is now literally shared:
-    both call ``_import_targets``. U12 is generalizing ``ReviewImports`` into a
-    module-parameterized ``ImportsOf`` on its own branch, and the conformance
-    branch has a third copy as ``SoftDeleteNames``. All three merge textually
-    clean in any order, so nothing will flag it. When they land together, this
-    class collapses into ``ImportsOf(tree, EXIT_CODE_MODULE)`` with one
-    narrowing, because this one records only the ``ExitCode`` symbol where
-    ``ImportsOf`` records every symbol a source imported, and ``SoftDeleteNames``
-    collapses the same way. THE COLLAPSE HAS TO TAKE ``_import_targets`` WITH IT.
-    The two copies on the other branches still carry the suffix match this file
-    has now replaced in both of its own, and a collapse onto either of them
-    would reinstate the defect in one place instead of two. The residual
-    "Two copies of one import walk still carry a relative-import defect" records that.
+    COLLAPSE OUTSTANDING, and it is now a two copy problem inside THIS ONE FILE.
+    This is the same walk :class:`ImportsOf` (at ``:118``) does, asked about a
+    different module. U12 merged on 2026-08-14 and brought its generalization
+    here, so the two are no longer on separate branches and nothing about the
+    collapse is cross branch any more. What that leaves is two relative
+    resolvers in one file: ``_absolute_module`` (``:76``), which ``ImportsOf``
+    reaches, and ``_relative_module`` (``:533``), which only this class reaches,
+    through ``_import_targets`` (``:569``).
+
+    THE ACTION. Collapse this class into
+    ``ImportsOf(tree, EXIT_CODE_MODULE, package)`` with one narrowing, because
+    this one records only the ``ExitCode`` symbol where ``ImportsOf`` records
+    every symbol a source imported, and take ``_import_targets`` and
+    ``_relative_module`` with it. THREAD THE PACKAGE at every call site that
+    walks a real file. Without it resolution falls back to matching by dotted
+    tail, which raises nothing and makes the guard answer about the wrong file:
+    that is the defect the U12 merge had to fix in ``ReviewImports`` (``:258``),
+    driven there rather than argued.
+
+    THE FACTS THE ACTION RESTS ON, falsifiable and dated. Either resolver may
+    survive, because the two were driven against each other over the same
+    inputs at the U12 merge on 2026-08-14: 5 packages of 1 to 5 parts, levels 1
+    through 7, and 4 module tails including the empty one ``from . import X``
+    produces, 140 cases and 0 disagreements. Both functions are byte identical
+    at head to what was measured, checked 2026-08-15 against merge commit
+    ``038168a``. So this collapse is deduplication rather than a defect fix,
+    which is the opposite of what this note said before U12 landed.
+
+    A third copy, ``SoftDeleteNames``, is on the parked branch
+    ``fix/conformance-3-and-soft-delete-reader``, and it DOES still match by
+    dotted tail. Read 2026-08-15 at that branch's tip ``897ef12``, unmoved since
+    2026-08-03, and read rather than driven. If that branch ever lands it
+    collapses the same way, and it must not be the implementation that survives.
+
+    The residuals "Two copies of one import walk still carry a relative-import
+    defect" and "The import walk to keep, and the argument the collapse must
+    carry" record this, and both carry what the U12 merge discharged.
 
     Seven shapes are recognized, and they are every shape this repository's own
     modules use between them::

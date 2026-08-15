@@ -3006,6 +3006,27 @@ for `from . import <module>`, and the existing two-level fixture still passing.
 Reviewing the collapse means checking that specific line, not that the tests are
 green.
 
+**2026-08-15. What the U12 merge discharged, and what is left.** U12 merged on
+2026-08-14 as `038168a`, so the copy this entry places on U12's branch is now on
+`main` in this same file, and one of the two named copies has stopped being a
+separate copy. The half of the closing condition that is about RESOLUTION is
+done: `ImportsOf` resolves `node.level` against the importing file's package
+through `_absolute_module`, and all three fixtures this entry asks for are live
+and green in one parametrization at `tests/test_review_queue.py:2196`, the
+sibling form, `from . import <module>`, and the two-level form. The merge also
+found and fixed a forwarding defect that existed only in the union of the two
+sides, written up at `tests/_source_guards.py:258`.
+
+The half that is about the COLLAPSE is not done, and this entry stays open
+against it. `main` holds `ImportsOf` and `ExitCodeImports` in one file, so it
+holds two relative resolvers, `_absolute_module` and `_relative_module`, the
+second reachable only through `_import_targets`. The two were driven against
+each other at the merge and agree on every case checked, so the collapse is now
+deduplication rather than a defect fix: see R-111 for the measurement.
+`SoftDeleteNames` on the parked branch `fix/conformance-3-and-soft-delete-reader`
+still matches by dotted tail, read 2026-08-15 at that branch's tip `897ef12`,
+unmoved since 2026-08-03.
+
 ---
 
 ## R-58. One check in this unit is unreachable. The other five were reachable and are now driven
@@ -6900,6 +6921,31 @@ answer would then be everybody's answer.
 `package_of(path, root)` from every walk that holds a path, and carry the
 fixtures that prove both directions. The two sibling copies were deliberately
 not read while this was decided, so the collapse still owes them a comparison.
+
+**2026-08-15. What the U12 merge discharged, and what is left.** One of the two
+comparisons this entry says the collapse owes has been done. At the merge on
+2026-08-14 both resolvers were reimplemented in a scratch script and driven over
+the same inputs rather than read against each other: 5 packages of 1 to 5 parts,
+levels 1 through 7, and 4 module tails including the empty one `from . import X`
+produces. 140 cases, 0 disagreements. `main`'s `_relative_module` and this
+walk's `_absolute_module` reach the same answers by differently spelled guards,
+including the climb off the top of the package tree, so keeping either one
+reinstates nothing. The full table is in
+`docs/solutions/workflow-issues/a-rewrite-is-not-a-re-measurement-of-the-claim-inside-it.md`.
+Both functions are byte identical at head to what was measured, checked
+2026-08-15 against `038168a`.
+
+The prediction in "What the collapse must carry" was correct and was paid for.
+The merge dropped exactly that `package` forward in the two line `ReviewImports`
+subclass, nothing raised, and three tests in `tests/test_review_queue.py` were
+driven red to prove it before it was fixed. This entry was on the branch and was
+not read at the merge, which is the point of the same solutions document.
+
+What is left: the three-way collapse itself, and the second comparison. The
+third copy, `SoftDeleteNames` on the parked branch
+`fix/conformance-3-and-soft-delete-reader`, has still not been driven against
+this walk. It was read on 2026-08-15 at tip `897ef12` and still matches by
+dotted tail, which is a claim about its source rather than about its behaviour.
 
 ---
 
