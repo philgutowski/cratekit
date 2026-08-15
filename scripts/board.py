@@ -384,6 +384,58 @@ def cmd_start(args) -> int:
     return 0
 
 
+def residual_titles() -> dict[int, str]:
+    """Every ``## R-N.`` heading in the residual file, by number.
+
+    Read as text rather than parsed as a document, because the only structure
+    this needs is the heading line and the file is append only by rule.
+    """
+    source = Path(__file__).resolve().parent.parent / "docs" / "residual-findings.md"
+    if not source.exists():
+        return {}
+    found: dict[int, str] = {}
+    for line in source.read_text().splitlines():
+        match = re.match(r"^## R-(\d+)\.\s*(.+?)\s*$", line)
+        if match:
+            found[int(match.group(1))] = match.group(2)
+    return found
+
+
+def repointed_residuals(graph: dict) -> list[str]:
+    """Residual issues whose title no longer matches the finding they number.
+
+    A RESIDUAL'S NUMBER LIVES IN ITS ISSUE TITLE, which is a surface the
+    repository cannot see. Residual numbers are append only for exactly this
+    reason, and METHOD records that the sweep certifying the last renumber
+    checked `src`, `tests` and `scripts` and missed this one: a renumber
+    silently repoints every issue title at a different finding, and nothing in
+    the tree can observe it.
+
+    So the check is not that a residual has an issue. Most do not, and should
+    not: the board is the build and the residual file is the ledger. The check
+    is that an issue which DOES exist still names what its number now points at.
+    """
+    file_titles = residual_titles()
+    found = []
+    for node in sorted(graph.values(), key=lambda n: n["number"]):
+        match = re.match(r"^R-(\d+):\s*(.+?)\s*$", node["title"])
+        if not match:
+            continue
+        number, issue_title = int(match.group(1)), match.group(2)
+        if number not in file_titles:
+            found.append(
+                f"#{node['number']} R-{number}\n"
+                f"      the issue names it, docs/residual-findings.md has no such finding"
+            )
+        elif file_titles[number] != issue_title:
+            found.append(
+                f"#{node['number']} R-{number} names a different finding than the file does\n"
+                f"      issue: {issue_title[:72]}\n"
+                f"      file : {file_titles[number][:72]}"
+            )
+    return found
+
+
 def contradictions(graph: dict) -> list[str]:
     """What the repository and the board disagree about, that a sync cannot fix.
 
@@ -407,7 +459,7 @@ def contradictions(graph: dict) -> list[str]:
                 f"#{uid} {node['title'][:44]}\n"
                 f"      closed, but tests/_pending.py still owes it {', '.join(modules)}"
             )
-    return found
+    return found + repointed_residuals(graph)
 
 
 def reconcile(owner: str, apply: bool, labels_only: bool = False) -> list[str]:

@@ -19,8 +19,26 @@ picked from the board:
 
     https://github.com/users/philgutowski/projects/2
 
-Every implementation unit, residual finding, and attended item is an issue on this
-repository, and the issue number matches the unit number: U11 is issue #11.
+**The board is the BUILD. `docs/residual-findings.md` is the LEDGER.** Two
+registers answering two questions, and they are not mirrors of each other.
+
+- Every implementation unit `U-N` is an issue, and so is every attended chore
+  `A-N`. Those are the work, and the board is where work is picked.
+- A residual `R-N` is a real problem that was recorded rather than fixed, because
+  it did not meet the bar to hold a merge. It is not a queued task, it is the
+  honest register of what is known and accepted, so it lives in the file and
+  usually has no issue at all. Fifteen of one hundred and fourteen do, which is
+  an artifact of a single batch created on 2026-08-02 rather than a rule.
+  **Do not backfill the rest.** Putting the ledger on the board would claim you
+  intend to do a hundred things you have decided not to do, and would bury the
+  handful of units that are actually ready.
+- A residual earns an issue only if somebody decides to act on it. `board.py
+  audit` then checks that the issue still names the finding its number points at,
+  because a residual's number lives in its issue title, which is a surface the
+  repository cannot otherwise see.
+
+An issue number usually matches its unit number, U11 is issue #11, and it is not
+guaranteed: U38 is issue #51. Look it up before writing a trailer.
 
 **Start every session here:**
 
