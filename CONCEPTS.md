@@ -118,6 +118,14 @@ them. That is the property a coordination note depends on and suffers from, and 
 is what lets a confident sentence about the project's own state stay wrong
 indefinitely while every check stays green.
 
+The battery is the merge gate and continuous integration is not. Integration
+runs on a hosted machine that lacks the hardware and tools the suite proves
+things against, so a check that cannot pass there says nothing when it fails
+there. Integration is confined to what it can actually establish, that the
+package installs and imports cleanly on each supported interpreter and that no
+personal path or secret reached the tree, and it does not run the suite. Nothing
+in it is skipped or deselected, because a skipped proof reads as a passing one.
+
 The battery is unconditional and is a separate question from whether any
 particular finding blocks. Whether a finding blocks on its own merits is decided
 by the conditions under Blocking finding; whether a tree may merge at all is
