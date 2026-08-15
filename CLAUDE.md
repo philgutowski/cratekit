@@ -30,8 +30,12 @@ registers answering two questions, and they are not mirrors of each other.
   usually has no issue at all. Fifteen of one hundred and fourteen do, which is
   an artifact of a single batch created on 2026-08-02 rather than a rule.
   **Do not backfill the rest.** Putting the ledger on the board would claim you
-  intend to do a hundred things you have decided not to do, and would bury the
-  handful of units that are actually ready.
+  intend to do a hundred things you have decided not to do, and would flood the
+  project board's Ready column, because a non unit issue with nothing waiting on it
+  derives as Ready. `board.py next` filters to units and would be unaffected, so
+  the damage is to the view a person reads rather than to the tool. A residual
+  issue is also unstable before its unit merges, since a merge renumbers the
+  incoming branch's residuals and the issue title keeps the old number.
 - A residual earns an issue only if somebody decides to act on it. `board.py
   audit` then checks that the issue still names the finding its number points at,
   because a residual's number lives in its issue title, which is a surface the

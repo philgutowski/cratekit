@@ -104,10 +104,17 @@ because it was a measurement of somebody else's branch. What failed twice after
 that was the assumption that editing a paragraph refreshes it.
 
 **Treat every coordination note as a measurement with a date on it.** It has no
-expiry, no test, and no owner. Every other claim in this repository is either
-executed by the suite or dated in `docs/residual-findings.md`. A docstring note
-is neither, is written in the present tense about other people's branches, and
-those branches keep moving after it is written.
+expiry, no test, and no owner. MOST claims in this repository are either executed
+by the suite or dated in `docs/residual-findings.md`. A docstring note is neither,
+is written in the present tense about other people's branches, and those branches
+keep moving after it is written.
+
+That sentence said "every other claim" until 2026-08-14, and it was corrected the
+same day by its own counterexample. The session contract asserted a false census
+about the repository's own management state, neither executed nor dated, and it is
+not a docstring note either, so it fell outside a set this document had called
+exhaustive. See `a-false-claim-in-the-auto-loaded-contract-compounds-silently.md`.
+A document about unverified prose is not exempt from writing some.
 
 **A fact about another branch has a shelf life you do not control.** That is what
 makes this different from ordinary documentation rot. The claim did not decay
@@ -418,6 +425,14 @@ hold.
   performs the wrong work. For the other two the question is "what could go wrong
   here". For this one the question is "which sentences in this warning are still
   true, and what did the other side write down".
+- `a-false-claim-in-the-auto-loaded-contract-compounds-silently.md`: the fourth
+  document in this directory and the only one that is NOT a merge trap. The other
+  three fire when two branches meet; that one is always on, in a file every session
+  reads before it does anything. It is this document's closest relative in
+  mechanism, both being prose whose truth no check evaluates, and its furthest in
+  radius: a note misleads one merger for one merge, a contract misleads every
+  session for as long as it stands. It also corrects the overclaim in the Guidance
+  above.
 - `docs/METHOD.md:17`, the merge bar's first condition (section heading at `:11`): "It was driven end to end, not
   argued from reading the source." The re-verification here is that rule applied
   to a NOTE rather than to a finding. The sibling document already extended it
@@ -425,8 +440,11 @@ hold.
   standing instructions a merge inherits.
 - `docs/METHOD.md:154`: "Every number was measured or the report says it was not."
   The note is the counterexample that shows the rule needs a home in prose too. It
-  stated an unmeasured fact without saying it was unmeasured, in the one kind of
-  artifact the battery cannot read.
+  stated an unmeasured fact without saying it was unmeasured, in a kind of artifact
+  whose truth the battery cannot judge. The battery DOES read the file, hunting
+  machine specific paths and secrets; what it never does is ask whether a sentence
+  is true. An earlier wording here said the battery cannot read it, which is a
+  different and false claim, corrected 2026-08-14.
 - `docs/residual-findings.md`, R-57: the origin. It created the note, names all
   three copies, and carries its own correction, because an earlier round recorded
   a live defect as living on somebody else's branch. That correction is this same

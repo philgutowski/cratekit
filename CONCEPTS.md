@@ -24,6 +24,13 @@ board is recomputed rather than remembered. Ranking is by how much of the
 remaining build a unit releases, counted transitively, so a unit whose single
 dependent gates a whole phase outranks one with several dead end dependents.
 
+WHAT BELONGS ON IT is a separate question from how it derives, and the two were
+confused for weeks. The board carries WORK: units, and the attended chores that are
+somebody's to do. It does not carry the register of known and accepted problems,
+which is a ledger rather than a queue, so a residual finding earns a place here
+only when somebody decides to act on it. Mirroring the ledger onto the board would
+assert intent that does not exist and would swamp the few items genuinely ready.
+
 Two failure states are distinct and are not repaired the same way. Drift is a
 derived value that fell out of date, and is repaired by recomputing it.
 Contradiction is the board and the repository disagreeing about whether work
@@ -104,9 +111,12 @@ suite written by the person who wrote the defect.
 
 What it checks is code, imports and repository structure. One of its parts does
 read prose, hunting machine specific paths and secrets in any text it finds, but
-nothing in it evaluates whether a sentence is TRUE. So a claim written in a
-comment or a docstring is outside the battery entirely, which is the property a
-coordination note depends on and suffers from.
+nothing in it evaluates whether a sentence is TRUE. So any claim made in prose is
+outside the battery entirely, whether it sits in a comment, a docstring, or the
+instruction files a session reads before it starts, the session contract among
+them. That is the property a coordination note depends on and suffers from, and it
+is what lets a confident sentence about the project's own state stay wrong
+indefinitely while every check stays green.
 
 The battery is unconditional and is a separate question from whether any
 particular finding blocks. Whether a finding blocks on its own merits is decided
@@ -133,7 +143,8 @@ coverage.
 A real defect, gap, or overclaim that is recorded rather than blocking a merge on
 its own merits. Recording it with its measured cost is the point; residuals are
 not deferred work items so much as the honest register of what is known and not
-fixed.
+fixed. A residual therefore lives in that register and not on the board, which
+carries work; it moves onto the board only if somebody decides to act on it.
 
 "On its own merits" is the whole of the qualification and it is not the same as
 "never stops a merge". A residual whose account the battery is red on stops the
@@ -164,6 +175,11 @@ produces it.
 - Discharging a pending register entry has been described as two halves, meaning
   the entry and the decorator. It is three edits, because the meta suite keeps its
   own mirrored copy of the key that must move with them.
+- Unit, attended chore, and residual finding have all been called "an item on the
+  board". Two of the three are work and belong there; a residual is a record of an
+  accepted problem and belongs in the register instead. Collapsing them is what
+  makes people ask why the board does not list everything the project owes, and the
+  answer is that owing and intending are different.
 - A pending register entry and a coordination note have both been called "a note
   for a future unit". They are different instruments and the choice between them
   is not stylistic: one is enforced by the suite and one is not, and only the
