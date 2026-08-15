@@ -191,6 +191,42 @@ own venv:
     ./.venv/bin/python -m pytest --tb=no
     ./.venv/bin/python scripts/scan_repo.py
 
+## What CI is for, decided 2026-08-15
+
+**The battery above is the merge gate. CI is not, and it does not run the
+suite.** It proves PACKAGING and PORTABILITY, which are the two things the
+battery structurally cannot see, because this laptop already has everything: the
+package installs from a clean checkout on 3.12 and on 3.13, the slim profile
+pulls in no DSP and no ML stack, the vendored downloader actually shipped, ruff
+is clean, and no personal path or credential reached the tree.
+
+**A step in `.github/workflows/ci.yml` must be able to pass. A check that cannot
+belongs in the battery.** That is the whole rule, and R-115 is what bought it:
+every run on `main` failed for ten commits while the battery was clean for every
+one of them, so red carried no information at all. This file rested the entire
+merge discipline on three local commands and never mentioned CI, which is why
+nobody remarked on it.
+
+**Nothing is deselected, and that is deliberate.** Marking the macOS proofs so a
+Linux job skips them reintroduces exactly the hazard those tests were written to
+refuse, that a skipped hardware proof reads as a passing one in every summary
+anybody reads. The job does not claim to run the suite, so nothing in it can read
+as a proof that never ran.
+
+**What is genuinely lost: nothing proves the suite passes on 3.13.** Say that
+rather than let the matrix imply otherwise. `cold-install` runs on both
+interpreters and buys back the cheap half, that the package imports and the entry
+point answers.
+
+**Before blaming the platform for a red CI run, drive it.** R-115 named five
+causes, all of them platform, and it says in its own text that it was written by
+reading the run list rather than a run. Five of the failures were a SHALLOW
+CHECKOUT: `actions/checkout@v4` fetches one commit, the guards in
+`tests/modules/test_reports.py` derive their file list from `git log --grep`, and
+one commit of history derives almost nothing. Driven on macOS 2026-08-15, on a
+`--depth 1` clone of this repository: the same five fail, and `git fetch
+--unshallow` turns all 349 green. Nothing about that is Linux.
+
 ## Committing and merging
 
 - **No pull requests.** Feature branch per unit, merge to `main` locally, push
