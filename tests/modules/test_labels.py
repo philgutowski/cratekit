@@ -68,12 +68,21 @@ class Album:
 
 
 class PagedArtist:
+    """A provider listing that truncates to one page when not given a limit.
+
+    That is the real client shape: one page, no complaint. A crawl that
+    calls this without pagination wrappers will silently lose everything
+    after the first 100.
+    """
+
+    page_size = 100
+
     def __init__(self, albums: list[Album]) -> None:
         self._albums = list(albums)
 
     def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Album]:
-        end = offset + (limit or len(self._albums))
-        return self._albums[offset:end]
+        size = self.page_size if limit is None else limit
+        return self._albums[offset : offset + size]
 
     def get_ep_singles(self, limit: int | None = None, offset: int = 0) -> list[Album]:
         return []
@@ -242,6 +251,7 @@ def test_a_listing_longer_than_one_page_returns_fully(cfg):
         for i in range(180)
     ]
     artist = PagedArtist(albums)
+    assert len(artist.get_albums()) == 100
     found = crawl.releases(artist)
     assert len(found) == 180
     assert [item.id for item in found] == [f"a{i}" for i in range(180)]
@@ -309,15 +319,8 @@ def test_the_label_package_does_not_construct_a_csv_writer():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Acquisition set vs the source algorithm
+# Acquisition set
 # ═══════════════════════════════════════════════════════════════════════════
-
-
-def _source_acquisition_set(albums: list[Album], *, confirmed: set[str], owned: set[str], limit: int) -> list[str]:
-    """The source system's keep set: confirmed, not owned, newest first, capped."""
-    kept = [album for album in albums if album.id in confirmed and album.id not in owned]
-    kept.sort(key=lambda album: album.year, reverse=True)
-    return [album.id for album in kept[:limit]]
 
 
 def test_a_sweep_produces_the_same_acquisition_set_as_the_source_algorithm(cfg):
@@ -330,29 +333,28 @@ def test_a_sweep_produces_the_same_acquisition_set_as_the_source_algorithm(cfg):
         Album("c", year="2024", artist="Act", title="C"),
         Album("d", year="2023", artist="Act", title="D"),
     ]
-    confirmed = {"a", "b", "d"}
-    owned = {"b"}
     store = labels.RegistryStore()
     label_id = store.add("Lost & Found", match="lost and found")
     found = sweep.list_for_label(
         cfg,
         store.load().by_id(label_id),
         artist=PagedArtist(albums),
-        verify=_confirm_named(confirmed),
-        owned=owned,
+        verify=_confirm_named({"a", "b", "d"}),
+        owned={"b"},
         limit=2,
     )
-    assert [item.identity for item in found.candidates] == _source_acquisition_set(
-        albums, confirmed=confirmed, owned=owned, limit=2
-    )
+    # c is unconfirmed. b is owned. Newest remaining, cap 2: a then d.
+    assert [item.identity for item in found.candidates] == ["a", "d"]
 
 
 def test_increment_does_not_use_the_watermark_as_a_date_floor(cfg):
+    from cratekit.label import marks as label_marks
     from cratekit.label import registry as labels
     from cratekit.label import sweep
 
     store = labels.RegistryStore()
     label_id = store.add("Crosstown Rebels", match="crosstown")
+    label_marks.advance(cfg, label_id, year="2024")
     artist = PagedArtist(
         [
             Album("new", year="2026", artist="Damian Lazarus", title="New"),
@@ -377,6 +379,9 @@ def test_increment_does_not_use_the_watermark_as_a_date_floor(cfg):
         staging=Path(cfg.paths.download_staging),
     )
     assert set(result.processed) == {"new", "old"}
+    with review.open_store(cfg) as queue:
+        items = list(review.list_items(queue, queue=Queue.LABEL_RELEASE))
+    assert {item.payload["identity"] for item in items} == {"new", "old"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -419,6 +424,49 @@ def test_harvest_offers_verified_labels_and_imports_nothing(cfg, tmp_path):
 # ═══════════════════════════════════════════════════════════════════════════
 # Import is a single-label increment, not a date-floored crawl
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_an_unreadable_intent_file_refuses_rather_than_going_empty(cfg):
+    from cratekit.core.cause import CratekitError
+    from cratekit.label import registry as labels
+
+    path = config.state_path("label_intent")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("not json", encoding="utf-8")
+    with pytest.raises(CratekitError) as excinfo:
+        labels.RegistryStore().load()
+    assert excinfo.value.cause.reason == "label-intent-unusable"
+
+
+def test_renaming_an_unknown_label_refuses(cfg):
+    from cratekit.core.cause import CratekitError
+    from cratekit.label import registry as labels
+
+    with pytest.raises(CratekitError) as excinfo:
+        labels.RegistryStore().rename("no-such-label", "Other")
+    assert excinfo.value.cause.reason == "label-unknown"
+
+
+def test_harvest_of_an_unreadable_playlist_refuses_and_offers_nothing(cfg):
+    from cratekit.core.cause import CratekitError
+    from cratekit.label import cli as label_cli
+
+    class Args:
+        playlist = "https://example.invalid/playlist"
+
+    class Ctx:
+        args = Args()
+        entry = type("E", (), {"name": "label.harvest", "handler_key": "label.harvest"})()
+        run = type("R", (), {"run_id": "run-h"})()
+
+        def envelope(self, **kwargs):
+            raise AssertionError("harvest must refuse before it emits")
+
+    with pytest.raises(CratekitError) as excinfo:
+        label_cli.harvest_playlist(Ctx())
+    assert excinfo.value.cause.reason == "label-playlist-unreadable"
+    with review.open_store(cfg) as queue:
+        assert list(review.list_items(queue, queue=Queue.LABEL_RELEASE)) == []
 
 
 def test_import_one_label_returns_the_unowned_confirmed_set(cfg):
