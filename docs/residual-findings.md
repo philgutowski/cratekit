@@ -8121,3 +8121,296 @@ shell defect.
 **Closes when:** the first-run watermark is either visible on the refuse
 envelope, or written only after a recorded decision that names history
 as the thing being accepted.
+
+---
+
+## R-135. An empty label listing is treated as a verified empty catalogue
+
+**Found:** at the post-merge U26 correctness review, 2026-08-17. Accepted
+rather than held. Issue 26 stays closed.
+
+The review named an increment that called `Source.list_recent` with no
+limit and, on an empty album list, wrote a per-label watermark at
+`year=this_year`, so the next increment would skip that label until the
+year rolled. That increment is not in the tree. Labels consume U22's
+`cratekit.sync.run.increment` (`src/cratekit/sync/run.py:95`). An empty
+processed set with no errors returns `shortfall="empty"` and does not
+advance the source watermark (`src/cratekit/sync/run.py:132-138`).
+`cratekit.label.marks.advance` is never called from the increment path.
+
+The remaining hole is the same class, absence read as evidence of
+absence. `LabelSource.list_recent` never raises `run.LookupFailure`
+(`src/cratekit/label/sweep.py:173-189`). `crawl.releases` returns
+`listing.artist_releases` (`src/cratekit/label/crawl.py:15-17`). That
+wrapper returns `[]` when neither listing method exists
+(`src/cratekit/acquire/listing.py:235-236`) and `paginate` treats a
+missing or empty first page as exhaustion
+(`src/cratekit/acquire/listing.py:123-126`). Increment then reports a
+verified empty catalogue. A later successful page is not skipped by a
+year watermark, because there is no year floor. It is still reported as
+empty rather than as a listing that could not be read.
+
+Reachability of a first-page failure that returns `[]` rather than
+raising was not re-driven this session. The empty-page and missing-method
+producers are in the listing source.
+
+**Measured cost.** A labels increment can report `shortfall="empty"`
+when the provider was unreadable. No per-label year skip is in the tree.
+
+**Why not fixed here.** Rewriting the increment to raise on `[]` would
+change U22's empty-catalogue contract, and distinguishing a verified
+empty label from a failed first page needs a signal the listing wrapper
+does not currently return. That is a later unit, not a silent rewrite
+of U26.
+
+**Closes when:** a listing that cannot be read raises `LookupFailure` or
+an equivalent refusal, and only a crawl that actually exhausted the
+provider is reported empty.
+
+---
+
+## R-136. The increment path drops discarded and suppressed
+
+**Found:** at the post-merge U26 correctness review, 2026-08-17. Accepted
+rather than held. Issue 26 stays closed.
+
+`list_for_label` computes `dropped` (unconfirmed) and `suppressed`
+(tombstoned) and returns them on `LabelListing`
+(`src/cratekit/label/sweep.py:105-134`). Owned identities are skipped
+with no record. `LabelSource.list_recent` extends only
+`listing.candidates` (`src/cratekit/label/sweep.py:181-187`).
+`run.increment` returns `IncrementResult` with `processed`, `errors`,
+and `shortfall` (`src/cratekit/sync/run.py:53-60`). A caller that needs
+the discarded or suppressed populations for a report, or for a later
+unit, has no way to get them. The brief named both.
+
+**Measured cost.** No acquisition is wrong. The cost is to a report or a
+later unit that needs those two populations and has to recrawl to
+rebuild them.
+
+**Why not fixed here.** Widening `IncrementResult` is a U22 contract
+change. Returning the two tuples only from `list_for_label` is already
+true and does not help the increment caller. Filing rather than
+rewriting U26.
+
+**Closes when:** the increment result, or a labels-specific report
+beside it, carries the discarded and suppressed sets the sweep already
+computed.
+
+---
+
+## R-137. LabelSource takes newest-N before owned-dedup
+
+**Found:** at the post-merge U26 correctness review, 2026-08-17. Accepted
+rather than held. Issue 26 stays closed.
+
+`list_for_label` itself drops owned, then takes newest N of what remains
+(`src/cratekit/label/sweep.py:125-129`). The increment path does not
+call it that way. `LabelSource.list_recent` passes no `owned` and no
+`limit`, so the per-label cap is `registry.effective_limit` and owned
+releases stay in `candidates` (`src/cratekit/label/sweep.py:181-189`).
+It then sorts by recency and slices `found[:n]`. `run.increment` feeds
+that already sliced list to `scope.scoped`, which drops owned and takes
+the limit of the remainder (`src/cratekit/sync/scope.py:36-41`).
+
+A label whose newest N albums are already owned therefore returns empty
+even when older unowned albums exist in the same year. The brief said
+drop owned, then take newest N of what remains. The unit's own
+acquisition-set test passes `owned` into `list_for_label` directly
+(`tests/modules/test_labels.py:338-347`) and never drives
+`LabelSource.list_recent` through increment with an owned newest-N.
+
+**Measured cost.** A sweep of a label whose recent catalogue is already
+owned reports nothing and skips older unowned releases that the brief
+said to take.
+
+**Why not fixed here.** Passing `owned` through `list_recent` is a
+source-protocol change (U22's `Source.list_recent` takes only `n`), or
+else `LabelSource` has to learn owned itself. Either is a later unit.
+
+**Closes when:** the increment path drops owned first, then takes newest
+N of what remains, and a test drives that order through
+`LabelSource.list_recent` rather than only through `list_for_label`.
+
+---
+
+## R-138. The 400 cap is albums, not tracks
+
+**Found:** at the post-merge U26 correctness review, 2026-08-17. Accepted
+rather than held. Issue 26 stays closed.
+
+`registry.DEFAULT_TRACK_LIMIT` is 400 and is named as a track limit
+(`src/cratekit/label/registry.py:21,52-56`). `list_for_label` applies
+that number as a cap on confirmed release candidates
+(`src/cratekit/label/sweep.py:103,128-129`). `LabelSource.list_recent`
+then slices the combined album list again (`src/cratekit/label/sweep.py:189`).
+No path counts tracks. A 400-album increment can be thousands of
+tracks. The brief cap is 400 tracks.
+
+**Measured cost.** A single-label import or a labels increment can queue
+far more audio than the named cap. The review-queue and the intake file
+then look like a bounded run that was not bounded in tracks.
+
+**Why not fixed here.** Counting tracks means hydrating each album's
+track list before the cap, which is a listing-shape change and a
+performance change. Filing rather than rewriting U26.
+
+**Closes when:** the cap is applied to tracks, or the field is renamed
+and reported as an album cap so the number means what it does.
+
+---
+
+## R-139. The harvest CLI always reports the playlist unreadable
+
+**Found:** at the post-merge U26 correctness review, 2026-08-17. Accepted
+rather than held. Issue 26 stays closed.
+
+The review named a `HarvestResult` with no `readable` field and a CLI
+that defaulted `getattr(result, "readable", False)`. That type is not
+in the tree. The shipped handler is stronger and worse:
+`harvest_playlist` raises `label-playlist-unreadable` on every call and
+never lists the playlist (`src/cratekit/label/cli.py:224-232`). The
+harvest engine (`cratekit.label.harvest.from_tracks`) is reachable only
+from tests. The unit test for this path asserts the refusal
+(`tests/modules/test_labels.py:450-467`). A successful harvest cannot
+be reported, because the verb never harvests.
+
+**Measured cost.** `crate label harvest` always tells the person the
+playlist could not be listed. Feature row harvest is a command that
+cannot succeed.
+
+**Why not fixed here.** Wiring the CLI to `listing.playlist_tracks` and
+`harvest.from_tracks` is the rest of the verb, not a one-line report
+fix. Filing rather than rewriting U26.
+
+**Closes when:** a reachable playlist is listed through
+`listing.playlist_tracks`, verified names are offered, and only a
+playlist that could not be read raises `label-playlist-unreadable`.
+
+---
+
+## R-140. LabelSource.process treats offer as an acquisition
+
+**Found:** at the post-merge U26 correctness review, 2026-08-17. Accepted
+rather than held. Issue 26 stays closed.
+
+The review named `process()` in `harvest.py` reporting
+`acquired=len(accepted)` after `review.offer()`. `harvest.from_tracks`
+calls `review.offer` and returns `HarvestReport(offered, dropped)`
+(`src/cratekit/label/harvest.py:73-83`). It does not claim an
+acquisition. The live hole is the increment source:
+`LabelSource.process` calls `offer_release`, which is `review.offer`
+(`src/cratekit/label/sweep.py:191-203`, `:137-152`). `review.offer` is
+the U11 review-queue seam: it queues an item and returns the item, not
+an acquisition (`src/cratekit/core/review.py:1141-1152`).
+`run.increment` treats a process call that does not raise as processed,
+appends those identities to `{run_id}_synced.xml`, and advances the
+source watermark (`src/cratekit/sync/run.py:124-157`). The harvest CLI
+never reaches this path (R-139). The labels increment does.
+
+**Measured cost.** A labels increment reports processed identities and
+writes an intake file after only offering the releases for review. A
+person who imports that file, or who reads the watermark as "these
+landed", is told something the tool did not do.
+
+**Why not fixed here.** Making process download, or making increment
+wait for a review decision, is a later worker. U26's brief said the
+sweep's review output is a review-queue item, not a file, and the
+increment engine still writes the file.
+
+**Closes when:** increment records an acquisition only after a review
+decision that accepts the release, or the intake file and the watermark
+are not written from an offer.
+
+---
+
+## R-141. Harvest does not persist harvested labels on the playlist row
+
+**Found:** at the post-merge U26 correctness review, 2026-08-17. Accepted
+rather than held. Issue 26 stays closed.
+
+`harvest.from_tracks` offers verified names and writes nothing back onto
+a playlist record (`src/cratekit/label/harvest.py:50-83`). There is no
+playlist store call in `src/cratekit/label/`. U27 owns the playlist
+store. A later harvest of the same playlist rediscovers the same names.
+
+**Measured cost.** None to a library today: the harvest CLI never
+reaches this engine (R-139). The cost is to the first caller that does,
+which will re-offer names already harvested from that playlist.
+
+**Why not fixed here.** Persisting on the playlist row is U27's store.
+Writing a side file from U26 would be a second store for the same fact.
+
+**Closes when:** a completed harvest is recorded on the playlist row
+U27 owns, and a second harvest of the same playlist does not re-offer
+the same names.
+
+---
+
+## R-142. Harvest walks only the tracks it is given
+
+**Found:** at the post-merge U26 correctness review, 2026-08-17. Accepted
+rather than held. Issue 26 stays closed.
+
+The review named a `harvest()` that did not inspect `Playlist.tracks`,
+so a playlist whose tracks were never hydrated harvested nothing.
+There is no playlist-shaped `harvest()` in the tree.
+`harvest.from_tracks` iterates the sequence it is handed
+(`src/cratekit/label/harvest.py:62-83`). `harvest.playlist_tracks`
+delegates to `listing.playlist_tracks` (`src/cratekit/label/harvest.py:45-47`)
+and no production caller uses it. The CLI refuses before listing
+(R-139). A caller that passes an empty unhydrated `playlist.tracks`
+list therefore harvests nothing, and nothing says the playlist was
+unread.
+
+**Measured cost.** Latent until R-139 closes. Then an unhydrated
+playlist and a playlist with no label credits look the same: zero
+offers.
+
+**Why not fixed here.** The hydration path already exists as
+`harvest.playlist_tracks`. The CLI does not call it. Wiring that is
+R-139, not a second engine.
+
+**Closes when:** the harvest verb lists through `listing.playlist_tracks`
+and refuses when that listing cannot be read, rather than iterating a
+raw `.tracks` attribute.
+
+---
+
+## R-143. Harvest does not pass through per-row unreadable
+
+**Found:** at the post-merge U26 correctness review, 2026-08-17. Accepted
+rather than held. Issue 26 stays closed.
+
+`from_tracks` has two outcomes per name: offer if verified, or
+`HarvestDrop` if the verdict is not confirmed
+(`src/cratekit/label/harvest.py:69-72`). A track the extractor cannot
+read, a track whose copyright field is unreadable, and a track that
+simply has no label credit all become "no name" and disappear. There is
+no per-row unreadable channel on `HarvestReport`.
+
+**Measured cost.** Latent until R-139 closes. Then a playlist with
+unreadable rows reports only the names that parsed, with no count of
+rows the tool could not read.
+
+**Why not fixed here.** Adding the channel is a harvest-report change
+and needs a producer that can mark a row unreadable. The CLI does not
+harvest yet.
+
+**Closes when:** `HarvestReport` carries the unreadable rows, and the
+harvest verb reports them separately from unconfirmed names.
+
+---
+
+The following P2s from the same review do not hold against
+`src/cratekit/label/` on 8101c90 and are not filed:
+
+* increment date-floor uses `this_year` even when `watermark.year` is
+  older. `list_for_label` deletes `last_pulled` and does not read it
+  (`src/cratekit/label/sweep.py:93-98`). Marks are audit records
+  (`src/cratekit/label/marks.py:1-4`). Driven by
+  `test_increment_does_not_use_the_watermark_as_a_date_floor`.
+* increment never paginates. `crawl.releases` goes through
+  `listing.artist_releases` (`src/cratekit/label/crawl.py:15-17`).
+* `_recent_unverified` in `crawl.py` is defined and unused. The symbol
+  is not in the file. `crawl.py` only defines `releases`.
