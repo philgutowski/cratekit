@@ -7997,3 +7997,44 @@ satisfy the live gate the brief names.
 **Closes when:** one live tree has been prechecked, flipped, opened in
 rekordbox with no integrity prompt, and has taken one post-cutover sync
 that placed new tracks without a manual playlist import.
+
+---
+
+## R-132. U37 lands the emitter and the pipeline; it does not drive a live set
+
+**Found:** at the U37 review, 2026-08-17. Accepted rather than held.
+
+The unit's automated half is in the tree: `build_track_xml` emits no tempo
+child and no real average BPM, including the adversarial inizio-and-no-energy
+case; a path with a space and a bang synthesizes a Location through
+`locations.location_url`; a U22 stub listing is refused as a splice target;
+identification-only writes a tracklist and downloads nothing; a file already
+on disk ingests without a network call; a missing recognition key refuses
+before the identifier is called; path repair offers into
+`Queue.PATH_REPAIR` and is idempotent on a name that already fits; routing
+intents are recorded at placement; intake never calls `close_session`.
+
+The unit's verification, one real set URL and one real tracklist each
+reaching the library through the new pipeline, was not run. The live
+rekordbox database stays off limits for an unattended session, and this
+build does not bind a live ACRCloud identifier. `intake.set`,
+`intake.playlist`, and `tag.folder` queue a job. No worker in this build
+calls the pipeline for those verbs. `sync.run` still appends a U22 stub
+listing; remounting that writer onto this emitter is R-130, not a second
+unit.
+
+**Measured cost.** None to a library today: no live set was ingested and no
+registry record was written against a live database. The cost is to the
+operator who still has to bind recognition and drive one real URL by hand,
+and to anyone who reads a landed U37 as meaning mix intake is already
+unattended end to end.
+
+**Why not fixed here.** Opening rekordbox, or the live master, is a
+standing refusal. Binding a live recognition key and spending it is an
+attended act. Inventing a flip against a disposable copy would not satisfy
+the live gate the brief names.
+
+**Closes when:** one real set URL and one real tracklist have each produced
+an importable `*_inboxed.xml` through this pipeline, that file has been
+imported into rekordbox, and the no-beatgrid suite is still green against
+the same builder.

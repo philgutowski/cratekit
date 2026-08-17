@@ -44,7 +44,6 @@ from pathlib import Path
 
 import pytest
 
-from tests._pending import requires
 from tests.xml_fixtures import _ml_track, _no_bare_lf, _xml_doc
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -408,7 +407,6 @@ def _meta(**over):
     return meta
 
 
-@requires("cratekit.intake.collection_xml")
 def test_track_xml_has_no_beatgrid():
     from cratekit.intake.collection_xml import build_track_xml
 
@@ -420,7 +418,6 @@ def test_track_xml_has_no_beatgrid():
         )
 
 
-@requires("cratekit.intake.collection_xml")
 def test_track_xml_has_no_grid_even_with_inizio_and_no_energy():
     """The adversarial case: an anchor present and no energy.
 

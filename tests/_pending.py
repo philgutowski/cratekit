@@ -68,30 +68,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # value -> (unit that lands it, one line saying what the guard asserts)
 # ---------------------------------------------------------------------------
 PENDING: dict[str, tuple[str, str]] = {
-    "cratekit.intake.collection_xml": (
-        "U37",
-        "the COLLECTION TRACK emitter that must never emit a <TEMPO> element. "
-        "A SECOND OBLIGATION arrives with U19 and is registered here because U37 "
-        "owns the pipeline that owes it (P5): intake must record each new track's "
-        "routing intent AT THE MOMENT the placement is decided, through "
-        "cratekit.write.routing_pass.record_intents, rather than at the end of "
-        "the run. U19's whole mechanism hangs off that one call. Without it "
-        "nothing is ever deferred, every run closes with no outstanding tracks "
-        "because none were ever recorded, and the deferred-routing suite stays "
-        "green over a feature that never runs. A THIRD OBLIGATION, same unit and "
-        "same reason: a run that deferred a placement closes through "
-        "cratekit.write.routing_pass.close_run, never through "
-        "cratekit.core.session.close_session, because the gate is opt-in and its "
-        "bypass is the exported call",
-    ),
-    "cratekit.intake": (
-        "U37",
-        "that a path repair proposal is offered into the queue U11 declared for "
-        "it rather than applied. A wrong answer re-points a library row at "
-        "somebody else's file, so the proposal is never applied without a "
-        "decision, and the decision is never read back out of a file somebody "
-        "edited",
-    ),
     # U16 APPENDED A SECOND OBLIGATION HERE AND IT HAS BEEN REMOVED, which is
     # worth a note because removing an obligation is normally the wrong move.
     # It said a tombstone must be recorded under cratekit.acquire.match's kind

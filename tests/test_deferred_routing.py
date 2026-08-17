@@ -62,7 +62,6 @@ from cratekit.core import (
 from cratekit.core.cause import REASONS, CratekitError
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import routing_pass, trees
-from tests._pending import requires
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database
 
@@ -1276,7 +1275,6 @@ def test_no_caller_acknowledges_a_track_with_an_actor_it_invented():
     )
 
 
-@requires("cratekit.intake.collection_xml")
 def test_the_intake_pipeline_records_its_routing_intents_at_the_decision():
     """P5's countdown, armed the moment the pipeline that owes it lands.
 
@@ -2105,7 +2103,6 @@ def test_the_routing_verbs_close_their_runs_through_the_gated_close():
     )
 
 
-@requires("cratekit.intake.collection_xml")
 def test_the_intake_pipeline_closes_its_runs_through_the_gated_close():
     """The same obligation against the unit that CREATES the deferred work."""
     package = SRC_ROOT / "cratekit" / "intake"

@@ -1335,6 +1335,19 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # supplying one rather than a success that would have had to put a
         # credential in the process listing.
         "login": ["provider-session"],
+        # U37. Identify is driven against a missing recording so it must refuse
+        # with a vocabulary code before any paid call (no recognition keys on
+        # a fresh install). Set and playlist queue a job, so the source string
+        # is frozen and never fetched. File and tag take a path under the
+        # configured library. Repair and name.apply take no positional: an
+        # empty library is the state a fresh install is genuinely in.
+        "intake.set": ["https://example.invalid/mix"],
+        "intake.identify": [str(library / "no-such-set.mp3")],
+        "intake.playlist": ["https://example.invalid/playlist"],
+        "intake.file": [str(library / "no-such-track.flac")],
+        "tag.folder": [str(library / "Music")],
+        "name.apply": [],
+        "repair.paths": [],
     }[entry.name]
 
 

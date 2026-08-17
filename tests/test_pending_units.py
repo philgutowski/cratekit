@@ -51,9 +51,7 @@ TESTS_DIR = Path(__file__).resolve().parent
 # the second place is a test that a reviewer reads.
 EXPECTED_PENDING = frozenset(
     {
-        "cratekit.intake.collection_xml",  # U37, the COLLECTION emitter
         "cratekit.deletion.cli",  # U24, delete.review, behind the explicit-gate wall
-        "cratekit.intake",  # U37, path repair proposals as review items
         "path:skills",  # U28, the shipped operator skills
         "cratekit.session.restore_cli",  # U27, the restore verbs and the one held session
         "cratekit.cli.reports",  # U27, the four report verbs and two missing engines

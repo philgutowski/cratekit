@@ -4653,7 +4653,10 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # cutover-open-run, cutover-xml-pending, cutover-export-missing,
     # cutover-snapshot-missing, rebuild-actor-required, rebuild-tree-not-native.
     # Population 112 to 118, non-reserved 89 to 95, reserved half UNCHANGED at 23.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (118, 95, 23)
+    # Re-pinned on U37, 2026-08-17. Three slugs named rather than counted:
+    # intake-export-is-stub, intake-recognition-unready, intake-staging-refused.
+    # Population 118 to 121, non-reserved 95 to 98, reserved half UNCHANGED at 23.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (121, 98, 23)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4677,7 +4680,10 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # because the four new literals are the four causes named above.
     # Re-pinned on U20, 2026-08-17: 286 to 292 distinct, non-keys stay 175,
     # because the six new literals are the six causes named above.
-    assert (len(literals), len(literals - set(causes))) == (292, 175), (
+    # Re-pinned on U37, 2026-08-17: 292 to 297 distinct, 175 to 177 non-keys.
+    # Three new literals are the causes named above. The two that are not
+    # causes are has-genre and no-hit, the skip markers on a tagging result.
+    assert (len(literals), len(literals - set(causes))) == (297, 177), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -4757,7 +4763,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # above the reserved range so it is not a status-shaped integer.
     # Re-pinned on U20, 2026-08-17: 50 to 52 holders. The two are cli/rebuild.py
     # and write/routing_cli.py. The also-holds-an-integer half stays 14.
-    assert (len(literal_holders), len(literal_both)) == (52, 14), (
+    # Re-pinned on U37, 2026-08-17: 52 to 61 holders. The nine are
+    # intake/cli.py, intake/collection_xml.py, intake/ingest.py,
+    # intake/normalize.py, intake/pipeline.py, intake/recognize.py,
+    # intake/repair_cli.py, tagging/cli.py, write/naming_cli.py.
+    # The also-holds-an-integer half stays 14.
+    assert (len(literal_holders), len(literal_both)) == (61, 14), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

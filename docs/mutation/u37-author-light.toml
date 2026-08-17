@@ -1,0 +1,72 @@
+name = "u37-author-light"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_stub_listing"
+description = "Treat a U22 stub listing as a spliceable Fresh Export"
+file = "src/cratekit/intake/collection_xml.py"
+surface = "user"
+tests = ["tests/intake/test_collection_xml.py", "tests/intake/test_pipeline.py"]
+old = '''    if is_stub_listing(raw):
+        raise refuse(
+            "intake-export-is-stub",'''
+new = '''    if False and is_stub_listing(raw):
+        raise refuse(
+            "intake-export-is-stub",'''
+
+[[rows]]
+id = "G2_recognition_gate"
+description = "Skip the recognition presence gate"
+file = "src/cratekit/intake/recognize.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py"]
+old = '''    missing = recognition_ready()
+    if not missing:
+        return
+    raise refuse('''
+new = '''    missing = recognition_ready()
+    if True:
+        return
+    raise refuse('''
+
+[[rows]]
+id = "G3_gridless_bpm"
+description = "Write a real AverageBpm instead of the gridless constant"
+file = "src/cratekit/intake/collection_xml.py"
+surface = "user"
+tests = ["tests/intake/test_collection_xml.py", "tests/test_no_beatgrid_ever.py"]
+old = '''Year="0" AverageBpm="0.00"'''
+new = '''Year="0" AverageBpm="124.00"'''
+
+[[rows]]
+id = "G4_staging"
+description = "Allow inbox of files still under download staging"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py"]
+old = '''    if resolved == staging or staging in resolved.parents:'''
+new = '''    if False and (resolved == staging or staging in resolved.parents):'''
+
+[[rows]]
+id = "G5_path_repair_queue"
+description = "Offer path repair into the adoption queue instead"
+file = "src/cratekit/intake/repair.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/intake/test_repair.py"]
+old = '''            queue=Queue.PATH_REPAIR,'''
+new = '''            queue=Queue.ADOPTION,'''
+
+[[dropped]]
+id = "G7_lossy_policy"
+description = "Permit unmarked lossy under strict policy"
+reason = "ranked below the cap: decide_lossless already has its own U15 table"
+
+[[dropped]]
+id = "G8_inherited_location"
+description = "Re-encode an inherited Location"
+reason = "ranked below the cap: KTD27 is already pinned in tests/test_locations.py"
+
+[[dropped]]
+id = "G9_close_session"
+description = "Call close_session from intake"
+reason = "the AST guard is the test; a mutation that adds a call is a rewrite not a revert"
