@@ -52,8 +52,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Callable
 
-from cratekit.core import config
-from cratekit.core.cause import Cause, CratekitError, Remediation, Scope
+from cratekit.core import config, session, snapshot, taxonomy
+from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 
 #: The state entry this module owns. Named once, so the resolver and every caller
@@ -103,10 +103,12 @@ class DerivationSource(StrEnum):
     than as a judgement somebody makes at the moment they flip. A tree that has
     gone database-native has exactly one repair path when a restore leaves it
     short, and that path is a full-scope rebuild: incremental sync cannot close
-    the gap, because its scope is a watermark plus deduplication against what is
-    already owned, and the files a restore orphaned are still on disk and still
-    read as owned. So a tree whose membership no declared source can reproduce is
-    a tree that must never flip, and this enum is the question asked out loud.
+    the gap, because its scope is most-recent-N minus what is already owned, and
+    the files a restore orphaned are still on disk and still read as owned. The
+    watermark is an audit of a clean completion. It is not a date floor and it
+    is not an input to that scope. So a tree whose membership no declared source
+    can reproduce is a tree that must never flip, and this enum is the question
+    asked out loud.
 
     THE TWO NON-DERIVABLE MEMBERS ARE NOT PLACEHOLDERS. Catalogued source folders
     come from a crawl of a third-party catalogue that answers differently month to
@@ -396,6 +398,17 @@ class Registry:
         kept = tuple(e for e in self.trees if e.tree_id != record.tree_id)
         return Registry(tuple(sorted((*kept, record), key=lambda e: e.tree_id)))
 
+    def without_record(self, tree_id: str) -> Registry:
+        """This registry with ``tree_id`` back on the bridge.
+
+        The inverse of :meth:`with_record` for a failed cutover that has not
+        yet taken a native write. After a post-cutover write the same edit is
+        not a revert: the database already owns the tree and the XML bridge
+        must not write it again.
+        """
+        kept = tuple(entry for entry in self.trees if entry.tree_id != tree_id)
+        return Registry(kept)
+
 
 #: The registry every library starts with, and the value an absent file resolves
 #: to. Named, because "empty" is a real answer here and not a missing one.
@@ -682,6 +695,7 @@ def record_cutover(
             f"underneath this registry cannot be detected"
         )
     assert_rebuildable(tree_id, source)
+    assert_not_intake(tree_id)
     with config._exclusive_lock(lock_path(cfg)):
         updated = read(cfg).with_record(
             TreeRecord(
@@ -692,6 +706,159 @@ def record_cutover(
                 source=source,
             )
         )
+        write(cfg, updated)
+    return updated
+
+
+#: Intake XML names this product writes and a person still has to import.
+#: Walked rather than listed per verb, so a new suffix cannot sit pending
+#: while the precheck reports a clean library.
+PENDING_XML_SUFFIXES: tuple[str, ...] = (
+    "_synced.xml",
+    "_inboxed.xml",
+    "_favorites.xml",
+)
+
+
+def pending_intake_xml(cfg: config.Config) -> tuple[Path, ...]:
+    """Every un-imported intake XML sitting in this library or its staging.
+
+    The suffixes are the names this product writes. A Fresh Export is a
+    different file and is not in this set. The U22 stub ``*_synced.xml`` is
+    a listing, not an importable splice; it still counts as pending because
+    a cutover that proceeds over debris the next run will try to consume is
+    a cutover that started dirty.
+    """
+    roots = (Path(cfg.library.root), Path(cfg.paths.download_staging))
+    found: list[Path] = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*.xml"):
+            name = path.name
+            if any(name.endswith(suffix) for suffix in PENDING_XML_SUFFIXES):
+                found.append(path)
+    return tuple(sorted(found))
+
+
+def assert_cutover_ready(cfg: config.Config, *, export: Path) -> None:
+    """Refuse a flip while the library still owes an act or has no undo.
+
+    Four checks, and each one is a different reason the next write would
+    not be recoverable. An open run still holds a capture. An un-imported
+    intake XML is work the next sync will try to consume. A Fresh Export
+    is the XML-era fallback if the flip has to be walked back before any
+    native write. A snapshot is the restore target if validation fails
+    after the flip.
+
+    THE EXPORT IS A PATH THE CALLER NAMES, not a file this function hunts
+    for. A hunt that picked the newest XML in the library would pick the
+    pending intake file this same function refuses, and a cutover that
+    treated debris as the fallback would have no fallback.
+    """
+    open_runs = [record for record in session.records(cfg) if not record.terminal]
+    if open_runs:
+        first = open_runs[0]
+        raise refuse(
+            "cutover-open-run",
+            f"session {first.session_id} has not reached a terminal state, so "
+            f"a cutover would flip a tree while that run still holds a capture "
+            f"and possibly an un-imported export",
+            remedy=Remedy.COMPLETE_PENDING_ACTION,
+            steps=(
+                "close or abandon every open run",
+                "import any export a run left in awaiting-import, then close it",
+            ),
+            scope=Scope.RUN,
+            origin=("tree_registry",),
+            detail={
+                "sessions": [record.session_id for record in open_runs],
+            },
+        )
+    pending = pending_intake_xml(cfg)
+    if pending:
+        raise refuse(
+            "cutover-xml-pending",
+            f"{len(pending)} un-imported intake XML file(s) are still sitting "
+            f"in this library, so a cutover would proceed over work the next "
+            f"run will try to consume",
+            remedy=Remedy.COMPLETE_PENDING_ACTION,
+            steps=(
+                "import or remove each pending intake XML",
+                "do not treat a U22 stub listing as an importable splice",
+            ),
+            scope=Scope.RUN,
+            origin=("tree_registry",),
+            detail={"paths": [str(path) for path in pending]},
+        )
+    export_path = Path(export)
+    if not export_path.is_file() or export_path.stat().st_size == 0:
+        raise refuse(
+            "cutover-export-missing",
+            "a Fresh Export has to exist before a tree flips, so a failed "
+            "validation still has an XML-era copy of the tree to walk back to",
+            remedy=Remedy.COMPLETE_PENDING_ACTION,
+            steps=("take a Fresh Export from rekordbox and pass that file in",),
+            scope=Scope.RUN,
+            origin=("tree_registry",),
+            detail={"export": str(export_path)},
+        )
+    store = snapshot.store_root(cfg)
+    verified = False
+    if store.is_dir():
+        for child in store.iterdir():
+            if not child.is_dir():
+                continue
+            try:
+                record = snapshot.read_manifest(child)
+            except CratekitError:
+                continue
+            if record.verified:
+                verified = True
+                break
+    if not verified:
+        raise refuse(
+            "cutover-snapshot-missing",
+            "no verified snapshot exists for this library, so a failed "
+            "cutover would have nothing to restore from in the same session",
+            remedy=Remedy.COMPLETE_PENDING_ACTION,
+            steps=("take a library snapshot before flipping a tree",),
+            scope=Scope.RUN,
+            origin=("tree_registry",),
+            detail={"store": str(store)},
+        )
+
+
+def flip(
+    cfg: config.Config,
+    tree_id: str,
+    *,
+    root_id: str,
+    on: date,
+    source: DerivationSource,
+    export: Path,
+) -> Registry:
+    """Precheck, then record one tree as database-native.
+
+    The precheck and the record are one act so a caller cannot flip a tree
+    whose library still owes an import or has no undo. The adopted root is
+    required here for the same reason :func:`record_cutover` requires it.
+    """
+    assert_cutover_ready(cfg, export=export)
+    return record_cutover(cfg, tree_id, root_id=root_id, on=on, source=source)
+
+
+def revert_cutover(cfg: config.Config, tree_id: str) -> Registry:
+    """Put ``tree_id`` back on the bridge.
+
+    Safe only before the flipped tree has taken a post-cutover native write.
+    After that write the database owns the tree, and deleting the record
+    would send the next XML splice at a tree U9's A2 verdict says must not
+    be imported over. A failed live validation restores the snapshot first,
+    then calls this, in the same session.
+    """
+    with config._exclusive_lock(lock_path(cfg)):
+        updated = read(cfg).without_record(tree_id)
         write(cfg, updated)
     return updated
 
@@ -736,6 +903,29 @@ def refuse_database_write(tree_id: str, registry: Registry) -> None:
             f"overwrite whatever was written natively",
             tree_id=tree_id,
             mode=registry.mode(tree_id),
+            attempted=Mode.DATABASE,
+            remedy=Remedy.COMPLETE_PENDING_ACTION,
+        )
+
+
+def assert_not_intake(tree_id: str) -> None:
+    """Refuse a cutover of the intake tree. It stays on the XML bridge (R16).
+
+    Rebuildability is the wrong question here. The intake tree can be
+    described by the taxonomy, so a caller could pass TAXONOMY and pass
+    :func:`assert_rebuildable`. The intake folder is still the XML bridge
+    for new files, and flipping it would make the next splice refuse the
+    one tree that is supposed to keep accepting imports.
+    """
+    declared = taxonomy.default_taxonomy()
+    if tree_id == declared.intake.id:
+        raise TreeModeRefused(
+            f"the tree {tree_id!r} is this library's intake folder, so it "
+            f"stays on the XML bridge; new-track intake still arrives as an "
+            f"import and flipping it would refuse the splice that lands those "
+            f"rows",
+            tree_id=tree_id,
+            mode=Mode.XML,
             attempted=Mode.DATABASE,
             remedy=Remedy.COMPLETE_PENDING_ACTION,
         )
@@ -839,14 +1029,20 @@ __all__ = [
     "TreeModeRefused",
     "TreeRecord",
     "TreeRegistryUnreadable",
+    "PENDING_XML_SUFFIXES",
     "anchored_root",
+    "assert_cutover_ready",
+    "assert_not_intake",
     "assert_rebuildable",
+    "flip",
     "lock_path",
     "path_for",
+    "pending_intake_xml",
     "read",
     "read_path",
     "record_cutover",
     "refuse_bridge_write",
     "refuse_database_write",
+    "revert_cutover",
     "write",
 ]

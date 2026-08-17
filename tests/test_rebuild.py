@@ -66,7 +66,6 @@ from cratekit.core import (
 from cratekit.core.cause import REASONS, CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.write import rebuild, routing_pass, trees
-from tests._pending import requires
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database
 
@@ -2251,7 +2250,7 @@ def test_the_empty_derivation_reason_is_declared_in_the_one_vocabulary():
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_the_read_only_verb_is_landed_and_the_destructive_one_is_not():
+def test_the_read_only_verb_and_the_destructive_one_stay_in_separate_modules():
     """The wall has three independent parts and only ONE of them is the database.
 
     A verb is behind it if it declares an explicit gate, if it needs the
@@ -2259,14 +2258,15 @@ def test_the_read_only_verb_is_landed_and_the_destructive_one_is_not():
     exit OK where no database exists. ``converge`` is none of the three: no
     gates, nothing destructive, nothing written. It was parked only because both
     convergence verbs named one module and the countdown keys on the module, and
-    parking it parked the remedy both of this unit's refusals name.
+    parking it parked the remedy both of this unit's refusals name. U20 landed
+    rebuild in its own module, so the read-only verb stays reachable.
     """
     converge_entry = registry.entry("converge")
     rebuild_entry = registry.entry("rebuild")
     assert converge_entry.landed and converge_entry.module == "cratekit.cli.converge"
     assert converge_entry.gates == () and not converge_entry.destructive
     assert converge_entry.writes == frozenset()
-    assert not rebuild_entry.landed
+    assert rebuild_entry.landed
     assert rebuild_entry.destructive and "db_tree" in rebuild_entry.writes
     assert rebuild_entry.module != converge_entry.module, (
         "one module for two verbs is what parked the read-only one"
@@ -2332,7 +2332,6 @@ def test_the_landed_verb_never_calls_an_uncompared_tree_converged(cfg, adopted_r
     assert converge_cli.MATCHING not in {entry["status"] for entry in checks}
 
 
-@requires("cratekit.cli.rebuild")
 def test_the_rebuild_verb_records_a_named_person_for_a_disposition():
     """The guard behind this unit's remaining register entry (P5).
 

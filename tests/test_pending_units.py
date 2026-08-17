@@ -55,8 +55,6 @@ EXPECTED_PENDING = frozenset(
         "cratekit.deletion.cli",  # U24, delete.review, behind the explicit-gate wall
         "cratekit.intake",  # U37, path repair proposals as review items
         "path:skills",  # U28, the shipped operator skills
-        "cratekit.write.routing_cli",  # U20, the route.* verbs and the gated close
-        "cratekit.cli.rebuild",  # U20, the rebuild verb and its named disposition
         "cratekit.session.restore_cli",  # U27, the restore verbs and the one held session
         "cratekit.cli.reports",  # U27, the four report verbs and two missing engines
         # U27, the adopt.apply shell and the session the residual titled

@@ -3,12 +3,13 @@
 WHAT THIS MODULE IS FOR. A database-native tree has exactly one repair path. The
 XML bridge is gone for it, so there is no export to re-import, and under U9's A2
 verdict importing one would replace the tree rather than merge into it.
-Incremental sync cannot help either: its scope is a watermark plus deduplication
-against what the library already owns, and the files a recovered database no
-longer places are still sitting on disk and still read as owned, so a sync sees
-nothing to do. What is left is deriving the tree's whole membership again, from
-the declared taxonomy and from what is actually on the disk, with no watermark
-anywhere in it. That is the rebuild.
+Incremental sync cannot help either: its scope is most-recent-N minus what the
+library already owns, and the files a recovered database no longer places are
+still sitting on disk and still read as owned, so owned-dedup drops them and a
+sync sees nothing to do. The watermark is an audit of how far a clean run got.
+It is not a date floor and it is not in that decision. What is left is deriving
+the tree's whole membership again, from the declared taxonomy and from what is
+actually on the disk, with no watermark anywhere in it. That is the rebuild.
 
 THE THREE PROPERTIES, each one a failure the naive version produces.
 

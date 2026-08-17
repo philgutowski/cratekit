@@ -188,37 +188,9 @@ PENDING: dict[str, tuple[str, str]] = {
         "package whose light pass was sized correctly and whose vocal pass handed "
         "the same runner a hand-built plan of nine workers passed it",
     ),
-    "cratekit.write.routing_cli": (
-        "U20",
-        "the command-line surface for the four route.* verbs, and the obligation "
-        "that every one of them closes its run through "
-        "cratekit.write.routing_pass.close_run rather than through the exported "
-        "cratekit.core.session.close_session, because the close gate is opt-in "
-        "and its bypass is the public call. REGISTERED HERE RATHER THAN LEFT AS "
-        "A planned_in MARKER because scripts/board.py reads this file and "
-        "nothing else, so an obligation carried only by a marker on a closing "
-        "unit is owned by nobody the moment that unit closes (P5). RE-POINTED "
-        "FROM U19 TO U20, and the reasoning is left legible because it is a "
-        "judgement a human may want to move again: U19 could not land the "
-        "module because conformance 3 requires a landed gated verb to exit OK "
-        "once its gate is answered, and a destructive db_tree verb cannot do "
-        "that on a machine with no database. U20 is the unit that flips trees "
-        "to database-native and therefore must ship a destructive database "
-        "surface anyway. A SECOND OBLIGATION rides on the same unit because the "
-        "same unit owns the records it needs: a re-run of the routing pass after "
-        "somebody renames a destination folder must CONVERGE rather than refuse. "
-        "U19 refuses today, which is correct but is not service. Converging "
-        "needs a persisted map from the stable destination identifiers to the "
-        "node identifiers a previous write used, which is the shape the tree "
-        "registry already has for a tree's adopted root, and U20 is the unit "
-        "that owns that record. Building a second one inside the routing pass "
-        "would give two answers to which node a destination is. THAT MAP NOW "
-        "EXISTS: U36 landed it as cratekit.core.convergence.DestinationNode, "
-        "recorded per tree and read back through "
-        "cratekit.write.rebuild.resolve_destinations, so the obligation on "
-        "U20 narrowed from building the record to READING it. Building a second "
-        "one would still give two answers",
-    ),
+    # cratekit.write.routing_cli LANDED WITH U20. The four route.* verbs close
+    # through routing_pass.close_run, and a re-run after a destination rename
+    # converges by reading U36's DestinationNode map.
     # THREE THINGS THE MERGE WITH U32 HAS TO DO IN THIS FILE AND ITS SIBLINGS,
     # verified against a real merge on 2026-08-02 rather than inferred:
     #
@@ -237,37 +209,8 @@ PENDING: dict[str, tuple[str, str]] = {
     #    ``restore._hand_tree_shortness_over`` and the
     #    ``reconcile.Kind.UNCONVERGED_TREE`` path behind it, exactly as U32's own
     #    entry text asks.
-    "cratekit.cli.rebuild": (
-        "U20",
-        "the command-line surface for the rebuild verb, and the obligation that "
-        "the operator disposition which clears a refusal for one tree is an "
-        "EXPLICIT, LOGGED act by a named person: never a flag that clears every "
-        "tree, and never an actor derived from the environment or from the "
-        "process owner. cratekit.core.convergence.Disposition refuses an empty "
-        "actor, so the surface has to carry a real one, and the guard behind "
-        "this entry drives that refusal directly. A SECOND OBLIGATION, same "
-        "unit: the verb clears a tree's flag only through "
-        "cratekit.write.rebuild.rebuild_tree, whose clearing call is handed the "
-        "convergence check's own difference list, never through a bare "
-        "convergence.clear_unconverged or a bare reconcile disposition. "
-        "REGISTERED HERE RATHER THAN LEFT AS A planned_in MARKER because "
-        "scripts/board.py reads this file and nothing else, so an obligation "
-        "carried only by a marker on a closing unit is owned by nobody the "
-        "moment that unit closes (P5). RE-POINTED FROM U36 TO U20 by the "
-        "reasoning that re-pointed the routing CLI: conformance 3 requires a "
-        "landed gated verb to exit OK once its gate is answered, and rebuild "
-        "writes db_tree and is destructive, which cannot exit OK on a machine "
-        "with no rekordbox database. U20 is the unit that flips trees to "
-        "database-native and must therefore ship a destructive database surface "
-        "anyway. ONLY REBUILD IS BEHIND THAT WALL. U36 first parked converge "
-        "here too, because both verbs named one module and this countdown keys "
-        "on the module; converge declares no gates, is destructive of nothing, "
-        "and is what both of this unit's refusals name as remediation step one, "
-        "so parking it parked the remedy. It landed with U36 as "
-        "cratekit.cli.converge and is read only by contract: a diagnostic that "
-        "needed the gates the unconverged flag is holding shut is a diagnostic "
-        "nobody can reach",
-    ),
+    # cratekit.cli.rebuild LANDED WITH U20. The actor is typed. The flag is
+    # cleared only through rebuild_tree.
     "cratekit.session.restore_cli": (
         "U27",
         "the command-line surface for the two restore verbs, which the registry "

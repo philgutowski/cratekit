@@ -3331,6 +3331,14 @@ review those numbers exist to trigger:
   holders 45 to 50: the five new modules are the sync package
   (`artifacts.py`, `cli.py`, `marks.py`, `run.py`, `watermarks.py`). The
   also-holds-an-integer half stays 14.
+* **U20, 2026-08-17.** Six slugs appended to the closed reason registry:
+  `cutover-open-run`, `cutover-xml-pending`, `cutover-export-missing`,
+  `cutover-snapshot-missing`, `rebuild-actor-required`,
+  `rebuild-tree-not-native`. Cause population 112 to 118, non-reserved half
+  89 to 95, reserved half unchanged at 23. Kebab literals 286 to 292, all
+  six new literals being those six keys, so the non-key half stays 175.
+  Literal holders 50 to 52: the two new modules are `cli/rebuild.py` and
+  `write/routing_cli.py`. The also-holds-an-integer half stays 14.
 
 The comparison this section rests on survived both, and it widened rather than
 narrowed each time: 13 against 24, then 17 against 36, now 18 against 38. The
@@ -7948,3 +7956,44 @@ inventing the worker here would pretend a listing exists.
 **Closes when:** a source worker calls `increment` with one run id per
 `sync.all` invocation, `sync.favorites` is remounted onto the unit that
 lands `cratekit.favorites.cli`, and the intake file is the U37 emitter.
+
+## R-131. U20 lands the cutover machinery; it does not flip a live tree
+
+**Found:** at the U20 review, 2026-08-17. Accepted rather than held.
+
+The unit's automated half is in the tree: a precheck that refuses an open
+run, pending intake XML, a missing Fresh Export, or a missing snapshot;
+`flip` and `revert_cutover`; the emitter guard still blocking a flipped
+tree while an unflipped sibling accepts a splice; the four `route.*` verbs
+closing through `routing_pass.close_run`; a re-run after a destination
+rename converging through U36's node map; and `crate rebuild` taking a
+typed actor and never naming the clearing call.
+
+The unit's verification, each flipped tree rendering in rekordbox with no
+integrity prompt and one full sync landing new tracks without a manual
+playlist import, was not run. The live rekordbox database stays off limits
+for an unattended session. The execution note is attended, one tree per
+session, lived with through at least one normal sync before the next.
+
+Three verbs are a surface without a worker. `route.inbox` answers its
+apply gate and writes nothing. `route.unplaced` always reports an empty
+plan. `route.resort` and `rebuild` queue a job with no item list, and no
+worker in this build calls `rebuild_tree`. `route.pending` does call the
+U19 engine when a tree is native and intents are outstanding.
+
+Only `genre_energy` is rebuildable from the shipped taxonomy. `inbox`
+stays on the XML bridge (R16). `record_labels` is a catalogue crawl and
+cannot flip (R39).
+
+**Measured cost.** None to a library today: no registry record was written
+against a live database. The cost is to the operator who still has to run
+the attended flip, and to anyone who reads a landed U20 as meaning the
+library is already database-native.
+
+**Why not fixed here.** Opening rekordbox, or the live master, is a
+standing refusal. Inventing a flip against a disposable copy would not
+satisfy the live gate the brief names.
+
+**Closes when:** one live tree has been prechecked, flipped, opened in
+rekordbox with no integrity prompt, and has taken one post-cutover sync
+that placed new tracks without a manual playlist import.

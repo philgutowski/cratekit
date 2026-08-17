@@ -4,9 +4,11 @@ WHAT THIS MODULE IS FOR. Once a tree cuts over, the database is the only copy of
 its membership. There is no export to re-import and, under U9's A2 verdict, no
 safe way to import one, so anything that puts the database back to an earlier
 state leaves that tree short with nothing to notice it. Incremental sync cannot
-close the gap either: its scope is a watermark plus deduplication against what is
-already owned, and the files an old database no longer places are still on disk
-and therefore still read as owned. This module is the record of which trees are
+close the gap either: its scope is most-recent-N minus what is already owned,
+and the files an old database no longer places are still on disk and therefore
+still read as owned. The watermark is an audit of a clean completion. It is not
+a date floor and it is not in that decision. This module is the record of which
+trees are
 in that condition, plus the two questions that put a tree into it and the one act
 that takes it out.
 
