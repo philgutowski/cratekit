@@ -1478,6 +1478,74 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="source_watermarks",
+        snapshot=SnapshotRole.COUPLED,
+        rollback_effects=(
+            RollbackEffect.DOWNLOADED_FILE,
+            RollbackEffect.REMOTE_PLAYLIST_PREFIX,
+        ),
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="source_watermarks.json",
+        why=(
+            "R25's per-source audit record of how far each increment got on THIS "
+            "library. The cursor does not decide the next scope; owned-dedup "
+            "does. A second install that kept the same file would report "
+            "completions that never happened on this machine, and a watermark "
+            "that survives a rollback of the intake it recorded would tell "
+            "status a source was clean after the restore removed that intake. "
+            "Distinct from label_watermarks.json, which is the per-label "
+            "last-pulled document U26 owns; this file is one cursor per source id."
+        ),
+    ),
+    StateFile(
+        key="source_watermarks_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="source_watermarks.lock",
+        why=(
+            "The sibling lock for the source watermark document. Two increments "
+            "finishing at once would both read the same cursors, both write, and "
+            "the second rename would discard the first source's advance while "
+            "reporting success. Library-scoped for the reason the document is: a "
+            "lock in a per-installation directory is invisible to a second "
+            "machine editing the same library. NEVER_RESTORED because the "
+            "document is COUPLED and a lock inside that directory would have its "
+            "inode swapped under every process holding it."
+        ),
+    ),
+    StateFile(
+        key="sync_artifacts",
+        snapshot=SnapshotRole.COUPLED,
+        rollback_effects=(RollbackEffect.DOWNLOADED_FILE,),
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="sync_artifacts.json",
+        why=(
+            "The register of every file a sync run created, written at creation "
+            "time so crash debris in the staging directory cannot become the next "
+            "run's intake. Library-scoped because the files describe what THIS "
+            "library's run produced. COUPLED so a restore forgets registrations "
+            "for intake that no longer exists, and those leftover files become "
+            "debris again rather than being re-imported as if they were new."
+        ),
+    ),
+    StateFile(
+        key="sync_artifacts_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="sync_artifacts.lock",
+        why=(
+            "The sibling lock for the artifact register. Two sources in one run "
+            "register files concurrently, and an unlocked read-modify-write would "
+            "drop one source's registrations, which is how crash debris becomes "
+            "invisible and then looks like next-run intake. NEVER_RESTORED for "
+            "the inode reason every lock here shares."
+        ),
+    ),
+    StateFile(
         key="backup_ack",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.LIBRARY,

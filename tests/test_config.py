@@ -612,6 +612,7 @@ def test_the_coupled_state_named_by_the_plan_rolls_back_with_the_database():
     for key in (
         "tree_registry",
         "label_watermarks",
+        "source_watermarks",
         "deletion_watermark",
         "tombstones",
         "declines",

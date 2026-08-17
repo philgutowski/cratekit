@@ -1147,9 +1147,8 @@ ENTRIES: tuple[Entry, ...] = (
         source_scripts=("dj-sync",),
         argv_builder="sync_argv",
         long_running=True,
-        emits=frozenset({"job_state"}),
-        output_schema="job_state/1",
-        planned_in="U22",
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
     ),
     Entry(
         name="sync.labels",

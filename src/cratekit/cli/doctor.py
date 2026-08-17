@@ -2295,16 +2295,18 @@ def _run_findings() -> list[Finding]:
 
 
 def _source_findings(cfg: config.Config) -> list[Finding]:
-    """Per-source sync state, from the one landed producer of it.
+    """Per-source sync state, from the session log and the watermark store.
 
     R29 makes the destructive boundary one source per run, committed and captured
     independently, and the session record carries a state per source for exactly
     that reason: without it a resume either redoes committed work or skips
-    uncommitted work and nothing outside can tell which. That record is what this
-    reports. The per-source WATERMARKS the sweeps will keep are a different store
-    and land with the units that write them; reporting a watermark this build
-    cannot read would be guessing at a shape.
+    uncommitted work and nothing outside can tell which. U22's watermark store
+    is the other half: each source's last clean completion, reported rather than
+    guessed. The rows come from ``cratekit.sync.watermarks.status_rows``, which
+    derives the source set, so a source added there cannot go unreported (P3).
     """
+    from cratekit.sync import watermarks as sync_watermarks
+
     found: list[Finding] = []
     for record in session.records(cfg):
         if record.terminal:
@@ -2323,6 +2325,28 @@ def _source_findings(cfg: config.Config) -> list[Finding]:
                     else None,
                 )
             )
+    try:
+        rows = sync_watermarks.status_rows(cfg)
+    except CratekitError as exc:
+        found.append(
+            Finding(
+                key="source.watermarks",
+                title="source watermarks",
+                status=Status.FAIL,
+                detail=exc.cause.message,
+                remedy=exc.cause.remediation.remedy,
+            )
+        )
+        return found
+    for row in rows:
+        found.append(
+            Finding(
+                key=f"source.{row['source_id']}.watermark",
+                title=f"{row['source_id']} watermark",
+                status=Status.INFO,
+                detail=row["detail"],
+            )
+        )
     return found
 
 

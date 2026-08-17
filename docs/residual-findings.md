@@ -3323,6 +3323,14 @@ review those numbers exist to trigger:
 * **U16 merge, 2026-08-13.** `acquire/match.py` is the one module added. Named
   surface 17 to 18, literal surface 36 to 38, cause population 100 to 101 on a
   single appended slug, `intake-list-unusable`.
+* **U22, 2026-08-17.** Four slugs appended to the closed reason registry:
+  `sync-watermark-unusable`, `sync-source-lookups-failed`, `sync-marks-blocked`,
+  `sync-artifacts-unusable`. Cause population 108 to 112, non-reserved half 85
+  to 89, reserved half unchanged at 23. Kebab literals 282 to 286, all four new
+  literals being those four keys, so the non-key half stays 175. Literal
+  holders 45 to 50: the five new modules are the sync package
+  (`artifacts.py`, `cli.py`, `marks.py`, `run.py`, `watermarks.py`). The
+  also-holds-an-integer half stays 14.
 
 The comparison this section rests on survived both, and it widened rather than
 narrowed each time: 13 against 24, then 17 against 36, now 18 against 38. The
@@ -7905,3 +7913,38 @@ nobody has written; the guards need a unit with tests, not a ledger edit.
 NODE names, and a snapshot-time reading (duplicate sibling playlists in
 `djmdPlaylist`, or a `masterPlaylists6.xml` node count out of proportion to
 the library) is a red flag before any write.
+
+## R-130. U22 queues increments and proves the engine; it does not yet drive a real source
+
+**Found:** at the U22 review, 2026-08-17. Accepted rather than held.
+
+`crate sync all` freezes the configuration and queues one job per enabled
+source. `cratekit.sync.run.increment` is the engine those jobs will call:
+most-recent-N plus owned-dedup, watermark as audit, one `{run_id}_synced.xml`
+per run, crash debris excluded from intake. The CLI does not invoke the
+engine. Labels land with U26, favorites still have no module, and playlists
+have no listing yet. A later worker that uses each job id as the run id
+would produce one importable file per source and break R29. That obligation
+is not in the pending register.
+
+`sync.favorites` still carries `planned_in="U22"`. The module is absent, so
+the countdown stays green, and `cratekit.favorites.cli` is not in
+`tests/_pending.py`, so the planned_in versus PENDING check never sees it.
+After this unit closes, that verb is owed by nobody.
+
+The intake XML the engine writes is a `TRACK Name` listing, not a Fresh
+Export splice. Importing it would be wrong. U37 owns the real emitter.
+
+The unit's live verification, two consecutive real syncs, was not run.
+
+**Measured cost.** None to a library today: the verb only queues. The cost is
+to the next worker, which can multiply import files or leave favorites
+unowned, and to anyone who treats the stub XML as importable.
+
+**Why not fixed here.** A real source is U26 and the favorites module. A
+shared run id across queued jobs is a contract those workers must take, and
+inventing the worker here would pretend a listing exists.
+
+**Closes when:** a source worker calls `increment` with one run id per
+`sync.all` invocation, `sync.favorites` is remounted onto the unit that
+lands `cratekit.favorites.cli`, and the intake file is the U37 emitter.

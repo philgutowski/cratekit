@@ -1305,6 +1305,10 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # what lets the half of adoption that is ready land while its
         # destructive sibling waits.
         "adopt.scan": [],
+        # U22. No positional argument: the verb queues one job per enabled
+        # source from the active profile. The configured fixture is the full
+        # profile, so three jobs land, and queueing needs no database.
+        "sync.all": [],
         # U27. The wizard and the two reports take no positional argument at all:
         # every answer the wizard needs is already recorded by the ``configured``
         # fixture, so a drive here resolves each one from the file and reaches no

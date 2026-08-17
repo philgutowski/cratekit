@@ -1085,6 +1085,27 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # it, which costs that entry and nothing else. PRECONDITION rather than a
         # defect code, because the state of the library is what is wrong.
         "adoption-file-unidentifiable": ExitCode.PRECONDITION,
+        # U22. Appended, not filed under an earlier heading: two units writing
+        # into different halves of this literal auto-merge and a duplicate key
+        # is then resolved by line order. An append conflicts textually.
+        #
+        # The per-source watermark document is present and cannot be understood.
+        # Same shape as the deletion watermark: refusing rather than treating it
+        # as unset, because an unreadable audit record read as "never synced"
+        # would make the next increment look like a first run.
+        "sync-watermark-unusable": ExitCode.PRECONDITION,
+        # Every listing call for one source failed. Raising, not returning an
+        # empty catalogue, is KTD11: the source system treated that empty list
+        # as "nothing new" and advanced a watermark over a playlist that had
+        # never been read.
+        "sync-source-lookups-failed": ExitCode.UPSTREAM_UNAVAILABLE,
+        # An irreversible remote mark was requested before the local importable
+        # file existed. Deferred prefixing is the rule; applying the mark first
+        # is how a crash leaves the provider believing the run finished.
+        "sync-marks-blocked": ExitCode.PRECONDITION,
+        # The artifact registry is present and cannot be understood. Treating it
+        # as empty would make crash debris look like next-run intake.
+        "sync-artifacts-unusable": ExitCode.PRECONDITION,
     }
 )
 

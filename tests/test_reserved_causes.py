@@ -4644,7 +4644,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # named surface no larger relative to the literal one, and the literal
     # headroom assertion below still reports no offender, which is the check that
     # would notice if it had.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (108, 85, 23)
+    #
+    # Re-pinned on U22, 2026-08-17. Four slugs named rather than counted:
+    # sync-watermark-unusable, sync-source-lookups-failed, sync-marks-blocked,
+    # sync-artifacts-unusable. Population 108 to 112, non-reserved 85 to 89,
+    # reserved half UNCHANGED at 23.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (112, 89, 23)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4664,7 +4669,9 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # seven are not causes at all. Nothing was lost in either direction, measured
     # rather than inferred from the totals moving by the right amount. The
     # headroom assertion below still reports no offender.
-    assert (len(literals), len(literals - set(causes))) == (282, 175), (
+    # Re-pinned on U22, 2026-08-17: 282 to 286 distinct, non-keys stay 175,
+    # because the four new literals are the four causes named above.
+    assert (len(literals), len(literals - set(causes))) == (286, 175), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -4738,7 +4745,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # while the named side grew by one, so the comparison just below widened for
     # the fourth time out of four. It has never narrowed, and the day it does is
     # the day the decision this rests on has to be re-argued rather than re-pinned.
-    assert (len(literal_holders), len(literal_both)) == (45, 14), (
+    # Re-pinned on U22, 2026-08-17: 45 to 50 holders. The five are the five
+    # sync package modules: artifacts.py, cli.py, marks.py, run.py, watermarks.py.
+    # The also-holds-an-integer half stays 14; run.py's newest-N default sits
+    # above the reserved range so it is not a status-shaped integer.
+    assert (len(literal_holders), len(literal_both)) == (50, 14), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
