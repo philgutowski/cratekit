@@ -118,6 +118,11 @@ shipped. The marker does not clear itself: a countdown fails the moment that
 module is importable, and that failure is the signal to remove the marker that
 has been keeping the verb out of the running command tree.
 
+The expiry key is the module string already written on the verb, not a
+directory a brief listed. A package that appears under a different path
+does not make the verb importable, so the countdown stays green and the
+command never enters the running tree.
+
 A planned verb whose first typed word is already a one-word command cannot enter
 the running tree as written: the parser treats that word as a finished command,
 not as a group that can grow a child. The name has to change before the marker
