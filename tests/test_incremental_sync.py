@@ -367,3 +367,8 @@ def test_sync_all_queues_one_job_per_enabled_source(cfg):
         queued = list(jobs.list_jobs(store))
     assert len(queued) == len(expected)
     assert {job.payload["source_id"] for job in queued} == set(expected)
+    run_ids = {job.payload.get("run_id") for job in queued}
+    assert len(run_ids) == 1 and None not in run_ids, (
+        "every source in one sync.all invocation must share one run id, or "
+        "each increment writes its own intake file and R29 is broken"
+    )

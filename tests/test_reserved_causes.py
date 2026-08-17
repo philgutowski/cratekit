@@ -4656,7 +4656,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-pinned on U37, 2026-08-17. Three slugs named rather than counted:
     # intake-export-is-stub, intake-recognition-unready, intake-staging-refused.
     # Population 118 to 121, non-reserved 95 to 98, reserved half UNCHANGED at 23.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (121, 98, 23)
+    # Re-pinned on U26, 2026-08-17. Five slugs named rather than counted:
+    # label-intent-unusable, label-name-invalid, label-unknown,
+    # label-watermark-unusable, label-playlist-unreadable.
+    # Population 121 to 126, non-reserved 98 to 103, reserved half UNCHANGED at 23.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (126, 103, 23)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4686,7 +4690,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-pinned on U25, 2026-08-17: 297 to 299 distinct, 177 to 179 non-keys.
     # The two that joined are skipped-prefixed and skipped-no-key, the resume
     # and no-detect markers on an analysis result. Neither is a cause.
-    assert (len(literals), len(literals - set(causes))) == (299, 179), (
+    # Re-pinned on U26, 2026-08-17: 299 to 305 distinct, 179 to 180 non-keys.
+    # Five new literals are the causes named above. The one that is not a
+    # cause is harvested-label, the harvest offer kind. label-release was
+    # already the review queue slug.
+    assert (len(literals), len(literals - set(causes))) == (305, 180), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -4779,7 +4787,10 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # way the other shells do. It also holds 16, the SQLite header length
     # used to tell a synthetic database from an encrypted one, so the
     # also-holds-an-integer half moves 14 to 15.
-    assert (len(literal_holders), len(literal_both)) == (63, 15), (
+    # Re-pinned on U26, 2026-08-17: 63 to 66 holders. The three are
+    # label/cli.py, label/marks.py and label/registry.py. The
+    # also-holds-an-integer half stays 15.
+    assert (len(literal_holders), len(literal_both)) == (66, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

@@ -1152,7 +1152,6 @@ ENTRIES: tuple[Entry, ...] = (
         adjudicates=True,
         destructive=True,
         doctor_checks=("library.mounted", "credential.provider"),
-        planned_in="U26",
     ),
     Entry(
         name="sync.favorites",
@@ -1185,7 +1184,6 @@ ENTRIES: tuple[Entry, ...] = (
         module_id="labels",
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
-        planned_in="U26",
     ),
     Entry(
         name="label.import",
@@ -1204,7 +1202,6 @@ ENTRIES: tuple[Entry, ...] = (
         adjudicates=True,
         destructive=True,
         doctor_checks=("library.mounted", "credential.provider"),
-        planned_in="U26",
     ),
     Entry(
         name="label.harvest",
@@ -1217,7 +1214,6 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"review_set"}),
         output_schema="review_set/1",
         adjudicates=True,
-        planned_in="U26",
     ),
     # ── Adoption, deletion, export, standalone utilities ────────────────────
     Entry(

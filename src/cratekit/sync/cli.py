@@ -11,7 +11,7 @@ import the CLI registry (KTD23).
 
 from __future__ import annotations
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, new_run_id
 from cratekit.core import config, jobs, profiles
 from cratekit.core.cause import Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import Remedy
@@ -80,11 +80,12 @@ def queue_all(ctx) -> dict:
         if ctx.args.job:
             return _diagnostic([jobs.reconcile(store, ctx.args.job)])
         membership = profiles.resolve(cfg.profile.name, cfg.modules.explicit)
+        shared_run = new_run_id()
         queued = [
             jobs.enqueue(
                 store,
                 handler_key=ctx.entry.handler_key,
-                payload={"source_id": source_id},
+                payload={"source_id": source_id, "run_id": shared_run},
                 cfg=cfg,
             )
             for source_id in sources.enabled(membership)
@@ -96,11 +97,10 @@ def all_sources(ctx) -> Envelope:
     """Queue the increments, or reconcile one already queued.
 
     WHAT THIS SHELL DOES NOT YET DO. It queues one job per enabled source and
-    reports them. The worker that lists a real provider and writes a real
-    intake file is not in this verb: labels land with U26, favorites still
-    have no module, and playlists ride the same engine once a listing exists.
-    ``cratekit.sync.run.increment`` is the engine those workers call. Recorded
-    here rather than discovered by watching a queued job sit still.
+    reports them, sharing one run id so later workers write one intake file
+    (R29). Labels land the first worker in ``cratekit.label.cli``. Favorites
+    still have no module. Playlists ride the same engine once a listing
+    exists. ``cratekit.sync.run.increment`` is the engine those workers call.
     """
     data = queue_all(ctx)
     return ctx.envelope(data=data)

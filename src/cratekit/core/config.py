@@ -798,6 +798,21 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="label_intent_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="label_intent.lock",
+        why=(
+            "The sibling lock for the curated label list. Two processes adding "
+            "one label each would both read the same document, both write, and "
+            "the second rename would discard the first add while reporting that "
+            "it saved. NEVER_RESTORED for the inode reason every lock here "
+            "shares: a restore that replaced the lock file would leave a live "
+            "holder believing it still owns a file whose inode is gone."
+        ),
+    ),
+    StateFile(
         key="credential_index",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.INSTALLATION,
@@ -1212,6 +1227,22 @@ STATE_FILES: tuple[StateFile, ...] = (
             " COUPLED, named by R30: a watermark that survives a rollback of the "
             "intake it recorded makes the next sync skip exactly the tracks the "
             "restore removed."
+        ),
+    ),
+    StateFile(
+        key="label_watermarks_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="label_watermarks.lock",
+        why=(
+            "The sibling lock for the per-label last-pulled document. Two "
+            "sweeps finishing at once would both read the same years, both "
+            "write, and the second rename would discard the first label's "
+            "advance while reporting success. NEVER_RESTORED for the inode "
+            "reason every lock here shares, and it lives under local rather "
+            "than coupled so a restore cannot swap the inode a holder still "
+            "has open."
         ),
     ),
     StateFile(

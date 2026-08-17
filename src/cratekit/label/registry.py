@@ -1,0 +1,272 @@
+"""The curated favourite-label list. Identity is not the display name.
+
+D4 split the source file: this document is installation-scoped intent
+(``label_intent``). Per-label last-pulled years live in ``label_watermarks``.
+D5 forbids keying a persisted record on a display name, so a rename changes
+the name and leaves the identifier (and every watermark keyed on it) alone.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from typing import Any
+
+from cratekit.core import config
+from cratekit.core.cause import CratekitError, Scope, refuse
+
+REGISTRY_VERSION = 1
+DEFAULT_TRACK_LIMIT = 400
+
+_SLUG = re.compile(r"[^a-z0-9]+")
+
+
+def slug(name: str) -> str:
+    """Stable identifier derived from a name at creation time, never later."""
+    folded = _SLUG.sub("-", name.lower()).strip("-")
+    if not folded:
+        raise refuse(
+            "label-name-invalid",
+            "a favourite label needs a name that yields an identifier; "
+            "an empty or punctuation-only name would collapse every such "
+            "entry onto one record",
+            steps=("give the label a name with a letter or a digit",),
+            scope=Scope.ITEM,
+            origin=("label.registry",),
+        )
+    return folded
+
+
+def _coerce_int(value: Any) -> int | None:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number
+
+
+def effective_limit(entry: LabelEntry, default: int = DEFAULT_TRACK_LIMIT) -> int:
+    """Per-label newest-N. A last-pulled year is not an input."""
+    if entry.track_limit is not None and entry.track_limit > 0:
+        return entry.track_limit
+    return default
+
+
+@dataclass(frozen=True, slots=True)
+class LabelEntry:
+    """One followed label. ``label_id`` is the identity; ``name`` is display."""
+
+    label_id: str
+    name: str
+    match: str | None = None
+    seed_artists: tuple[str, ...] = ()
+    track_limit: int | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "label_id": self.label_id,
+            "name": self.name,
+            "match": self.match,
+            "seed_artists": list(self.seed_artists),
+            "track_limit": self.track_limit,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class Registry:
+    """The intent document, keyed by ``label_id``."""
+
+    labels: dict[str, LabelEntry]
+
+    def by_id(self, label_id: str) -> LabelEntry | None:
+        return self.labels.get(label_id)
+
+    def by_name(self, name: str) -> LabelEntry | None:
+        wanted = name.strip().casefold()
+        for entry in self.labels.values():
+            if entry.name.casefold() == wanted:
+                return entry
+        return None
+
+    def resolve(self, name_or_id: str) -> LabelEntry | None:
+        found = self.by_id(name_or_id)
+        if found is not None:
+            return found
+        found = self.by_name(name_or_id)
+        if found is not None:
+            return found
+        return self.by_id(slug(name_or_id)) if name_or_id.strip() else None
+
+
+def _entry_from(label_id: str, raw: Mapping[str, Any]) -> LabelEntry:
+    seeds = raw.get("seed_artists")
+    seed_list = tuple(str(item) for item in seeds) if isinstance(seeds, list) else ()
+    name = str(raw.get("name") or label_id)
+    match = raw.get("match")
+    return LabelEntry(
+        label_id=str(raw.get("label_id") or label_id),
+        name=name,
+        match=str(match) if match else None,
+        seed_artists=seed_list,
+        track_limit=_coerce_int(raw.get("track_limit")),
+    )
+
+
+def recognize(raw: Any) -> Registry:
+    """Load a document. Malformed input degrades to empty rather than crashing."""
+    if not isinstance(raw, Mapping):
+        return Registry(labels={})
+    records = raw.get("labels")
+    if not isinstance(records, Mapping):
+        return Registry(labels={})
+    found: dict[str, LabelEntry] = {}
+    for key, value in records.items():
+        if not isinstance(value, Mapping):
+            continue
+        entry = _entry_from(str(key), value)
+        found[entry.label_id] = entry
+    return Registry(labels=found)
+
+
+def empty() -> Registry:
+    return Registry(labels={})
+
+
+class RegistryStore:
+    """Locked read-modify-write over the installation-scoped intent file."""
+
+    def __init__(self, *, path=None, lock_path=None) -> None:
+        self.path = path if path is not None else config.state_path("label_intent")
+        self.lock_path = (
+            lock_path if lock_path is not None else config.state_path("label_intent_lock")
+        )
+
+    def _unusable(self, what: str) -> CratekitError:
+        return refuse(
+            "label-intent-unusable",
+            f"the favourite-label list at {self.path.name} could not be read "
+            f"({what}), so which labels to follow is unknown; treating it as "
+            f"empty would drop the curated list on the next save",
+            steps=("repair or restore the favourite-label list before editing it",),
+            scope=Scope.RUN,
+            origin=("label.registry",),
+            detail={"problem": what, "path": str(self.path)},
+        )
+
+    def load(self) -> Registry:
+        if not self.path.exists():
+            return empty()
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise self._unusable("it could not be opened") from exc
+        except ValueError as exc:
+            raise self._unusable("it is not JSON") from exc
+        if isinstance(raw, Mapping) and raw.get("version") not in (None, REGISTRY_VERSION):
+            raise self._unusable(
+                f"it says version {raw.get('version')!r} and this build writes "
+                f"{REGISTRY_VERSION}"
+            )
+        return recognize(raw)
+
+    def _write(self, held: Registry) -> None:
+        payload = {
+            "version": REGISTRY_VERSION,
+            "labels": {key: entry.to_json() for key, entry in held.labels.items()},
+        }
+        config.atomic_write_bytes(
+            (json.dumps(payload, indent=2) + "\n").encode("utf-8"),
+            self.path,
+        )
+
+    def update(self, mutator: Callable[[dict[str, LabelEntry]], None]) -> Registry:
+        lock = config._exclusive_lock(self.lock_path)
+        try:
+            lock.__enter__()
+        except config.ConfigLockUnavailable as exc:
+            raise refuse(
+                "label-intent-unusable",
+                f"the favourite-label list could not be locked ({exc}), and "
+                f"writing it unlocked discards whatever a second edit is "
+                f"recording at the same time",
+                steps=("make the installation state directory writable by this account",),
+                scope=Scope.RUN,
+                origin=("label.registry",),
+                detail={"lock": str(self.lock_path)},
+            ) from exc
+        try:
+            current = dict(self.load().labels)
+            mutator(current)
+            held = Registry(labels=current)
+            self._write(held)
+            return held
+        finally:
+            lock.__exit__(None, None, None)
+
+    def add(
+        self,
+        name: str,
+        *,
+        match: str | None = None,
+        seed_artists: tuple[str, ...] | list[str] = (),
+        track_limit: int | None = None,
+    ) -> str:
+        """Add or update by identifier. Re-adding keeps the same ``label_id``."""
+        label_id = slug(name)
+
+        def mutate(current: dict[str, LabelEntry]) -> None:
+            existing = current.get(label_id)
+            current[label_id] = LabelEntry(
+                label_id=label_id,
+                name=name,
+                match=match if match is not None else (existing.match if existing else None),
+                seed_artists=tuple(seed_artists) if seed_artists else (
+                    existing.seed_artists if existing else ()
+                ),
+                track_limit=track_limit if track_limit is not None else (
+                    existing.track_limit if existing else None
+                ),
+            )
+
+        self.update(mutate)
+        return label_id
+
+    def rename(self, label_id: str, new_name: str) -> LabelEntry:
+        """Change the display name. The identifier, and its watermarks, stay."""
+
+        def mutate(current: dict[str, LabelEntry]) -> None:
+            existing = current.get(label_id)
+            if existing is None:
+                raise refuse(
+                    "label-unknown",
+                    f"no favourite label has the identifier {label_id!r}",
+                    steps=("list the registry and take the identifier from it",),
+                    scope=Scope.ITEM,
+                    origin=("label.registry",),
+                    detail={"label_id": label_id},
+                )
+            current[label_id] = LabelEntry(
+                label_id=existing.label_id,
+                name=new_name,
+                match=existing.match,
+                seed_artists=existing.seed_artists,
+                track_limit=existing.track_limit,
+            )
+
+        return self.update(mutate).by_id(label_id)
+
+    def remove(self, name_or_id: str) -> bool:
+        held = self.load()
+        entry = held.resolve(name_or_id)
+        if entry is None:
+            return False
+
+        def mutate(current: dict[str, LabelEntry]) -> None:
+            current.pop(entry.label_id, None)
+
+        self.update(mutate)
+        return True
