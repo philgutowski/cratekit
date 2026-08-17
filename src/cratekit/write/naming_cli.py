@@ -108,12 +108,14 @@ def name_apply(ctx) -> Envelope:
             continue
         title = tags.read_tag(path, "title") or path.stem
         key = tags.read_tag(path, "initialkey")
+        marker = cfg.naming.lossy_marker
         rendered = naming.build(
             NameSpec(
                 stem=naming.strip_head(title, template=template),
                 suffix=path.suffix,
                 key=key,
                 title=naming.strip_head(title, template=template),
+                lossy=marker in path.stem or marker in title,
             ),
             template=template,
             budget=budget,
@@ -121,7 +123,13 @@ def name_apply(ctx) -> Envelope:
         )
         target = path.with_name(rendered.filename)
         if target != path:
-            path.rename(target)
+            if not naming.claim_target(target):
+                continue
+            try:
+                path.rename(target)
+            except OSError:
+                target.unlink(missing_ok=True)
+                continue
             path = target
         tags.write_tags(path, {"title": rendered.title_tag})
     return ctx.envelope(data=plan, outcome=Outcome.OK)

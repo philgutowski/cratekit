@@ -206,12 +206,22 @@ def place_files(
 
     collection_xml.splice_tracks(content, xml_rows)
     tree = rbxml.intake_tree(declared, tree_registry.read(cfg))
-    rbxml.insert_intake_playlist(
+    playlist_error = rbxml.insert_intake_playlist(
         content,
         destination.stem,
         [item.track_id for item in placed],
         tree=tree,
     )
+    if playlist_error:
+        raise refuse(
+            "library-export-unusable",
+            f"the intake playlist could not be written ({playlist_error})",
+            steps=(
+                "export the collection again from rekordbox so the intake "
+                "folder is present, then retry",
+            ),
+            origin=("intake.ingest",),
+        )
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(bytes(content))
 
