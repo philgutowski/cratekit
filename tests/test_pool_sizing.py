@@ -58,7 +58,6 @@ from types import SimpleNamespace
 import pytest
 
 from cratekit.core import pool
-from tests._pending import requires
 from tests._source_guards import ImportsOf, calls_attribute, package_modules, package_of
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -4369,7 +4368,6 @@ def test_the_analysis_countdown_bites_the_evasions_that_used_to_pass_it(modules)
     assert analysis_sizing_violations(modules) != []
 
 
-@requires("cratekit.analysis")
 def test_the_analysis_pools_are_sized_here_and_never_by_the_core_count():
     """U25's obligation, registered because U12 is the unit it would silently undo.
 

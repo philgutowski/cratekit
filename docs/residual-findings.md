@@ -8038,3 +8038,42 @@ the live gate the brief names.
 an importable `*_inboxed.xml` through this pipeline, that file has been
 imported into rekordbox, and the no-beatgrid suite is still green against
 the same builder.
+
+---
+
+## R-133. U25 lands the two-pass pools; it does not drive a full library
+
+**Found:** at the U25 authoring pass, 2026-08-17. Accepted rather than held.
+
+The unit's automated half is in the tree: both passes plan through
+`plan_pool` and run through `map_workers`; a vocal loader that raises
+degrades to vocal-inactive and still returns key and energy; chunked
+inference matches the unchunked path on a fixture and actually splits the
+signal; a Camelot-prefixed name is skipped on resume; a missing analysis
+extra names `pip install 'cratekit[analysis]'`; tempo is computed as
+`rate` and never written as a grid or a tempo tag. The author's light
+table killed 4 of 4 guards, 6016 collected, null control 0.
+
+The unit's verification, a default-configuration full-library run that
+completes within memory on an 18GB machine, was not run. The live library
+volume is off limits for an unattended session. `analyze.vocals` and
+`metadata.mytags-vocals` stay planned: they name `cratekit.vocals.cli` and
+`cratekit.write.metadata_cli`, which this unit did not create, because
+one module string is one `planned_in` expiry. keyfinder-cli is not
+bound. PANNs is not loaded in this environment.
+
+**Measured cost.** None to a library today: no live folder was analysed
+and no tag was written against a live file. The cost is to the operator
+who still has to install the extras and drive one real folder by hand,
+and to anyone who reads a landed U25 as meaning unattended analysis is
+already proven on 18GB.
+
+**Why not fixed here.** Opening the live library is a standing refusal.
+Installing torch and a 300 megabyte checkpoint, then running the whole
+collection, is an attended act. Inventing a memory figure from a fixture
+would not satisfy the live gate the brief names.
+
+**Closes when:** a default-configuration run over a real library folder
+has completed on an 18GB machine without an out-of-memory kill, and
+`analyze.vocals` has either landed beside this package or been reassigned
+to a unit that owns `cratekit.vocals.cli`.

@@ -4683,7 +4683,10 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-pinned on U37, 2026-08-17: 292 to 297 distinct, 175 to 177 non-keys.
     # Three new literals are the causes named above. The two that are not
     # causes are has-genre and no-hit, the skip markers on a tagging result.
-    assert (len(literals), len(literals - set(causes))) == (297, 177), (
+    # Re-pinned on U25, 2026-08-17: 297 to 299 distinct, 177 to 179 non-keys.
+    # The two that joined are skipped-prefixed and skipped-no-key, the resume
+    # and no-detect markers on an analysis result. Neither is a cause.
+    assert (len(literals), len(literals - set(causes))) == (299, 179), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -4768,7 +4771,10 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # intake/normalize.py, intake/pipeline.py, intake/recognize.py,
     # intake/repair_cli.py, tagging/cli.py, write/naming_cli.py.
     # The also-holds-an-integer half stays 14.
-    assert (len(literal_holders), len(literal_both)) == (61, 14), (
+    # Re-pinned on U25, 2026-08-17: 61 to 62 holders. The one is
+    # analysis/cli.py, which names config-unusable the same way the other
+    # shells do. The also-holds-an-integer half stays 14.
+    assert (len(literal_holders), len(literal_both)) == (62, 14), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
