@@ -39,7 +39,6 @@ from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from tests import _pending
 from tests import _source_guards as _guards
-from tests._pending import requires
 from tests._source_guards import (
     calls_review,
     constructs_a_csv_writer,
@@ -2723,7 +2722,6 @@ def test_the_adoption_plan_becomes_review_items_rather_than_a_file():
     )
 
 
-@requires("cratekit.intake")
 def test_the_path_repair_pass_offers_its_proposals_into_the_path_repair_queue():
     """U37's obligation.
 

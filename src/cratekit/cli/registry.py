@@ -415,7 +415,7 @@ REPORTS_CLI_UNIT = "U27"
 #: wall actually is, which R-13 currently states wrongly, is written down in that
 #: entry rather than here.
 ADOPT_APPLY_CLI_UNIT = "U27"
-#: Where ``doctor.repair-paths`` lives, and the unit that lands it.
+#: Where ``repair.paths`` lives, and the unit that lands it.
 #:
 #: IT WAS ``cratekit.cli.doctor`` AND U27, AND IT IS NOW NEITHER. The reasoning is
 #: written down rather than implied, in the same shape and for the same reason as
@@ -530,11 +530,11 @@ ENTRIES: tuple[Entry, ...] = (
         output_schema="diagnostic/1",
     ),
     Entry(
-        name="doctor.repair-paths",
+        name="repair.paths",
         summary="repair recorded file paths the library can no longer resolve",
         module=REPAIR_CLI_MODULE,
         builder="build_repair_paths",
-        handler_key="doctor.repair-paths",
+        handler_key="repair.paths",
         feature_rows=(17,),
         source_scripts=("dj-path-repair",),
         module_id="repair",
@@ -545,7 +545,6 @@ ENTRIES: tuple[Entry, ...] = (
         destructive=True,
         doctor_checks=("library.mounted", "rekordbox.pins"),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
-        planned_in=REPAIR_CLI_UNIT,
     ),
     Entry(
         name="status",
@@ -778,7 +777,6 @@ ENTRIES: tuple[Entry, ...] = (
         adjudicates=True,
         destructive=True,
         doctor_checks=("library.mounted", "binary.ffmpeg", "credential.provider"),
-        planned_in="U37",
     ),
     Entry(
         name="intake.identify",
@@ -792,7 +790,6 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"match"}),
         output_schema="match/1",
         doctor_checks=("credential.recognition",),
-        planned_in="U37",
     ),
     Entry(
         name="intake.playlist",
@@ -809,7 +806,6 @@ ENTRIES: tuple[Entry, ...] = (
         adjudicates=True,
         destructive=True,
         doctor_checks=("library.mounted", "credential.provider"),
-        planned_in="U37",
     ),
     Entry(
         name="intake.file",
@@ -823,7 +819,6 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"xml", "files"}),
         destructive=True,
         doctor_checks=("library.mounted",),
-        planned_in="U37",
     ),
     Entry(
         name="tag.folder",
@@ -840,7 +835,6 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"files"}),
         destructive=True,
         doctor_checks=("binary.ffmpeg",),
-        planned_in="U37",
     ),
     Entry(
         name="name.apply",
@@ -867,7 +861,6 @@ ENTRIES: tuple[Entry, ...] = (
         #: U21 landed the per-field policy this verb applies, not the verb. The
         #: shell renames files on disk and rewrites name fields, which is the
         #: naming half of intake, so it travels with U37 beside the verb above it.
-        planned_in="U37",
     ),
     # ── Acquisition ─────────────────────────────────────────────────────────
     Entry(

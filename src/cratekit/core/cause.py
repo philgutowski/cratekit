@@ -1124,6 +1124,25 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # A rebuild of a tree still on the bridge would write membership the
         # next import would overwrite.
         "rebuild-tree-not-native": ExitCode.PRECONDITION,
+        # ── U37's refusals, appended ────────────────────────────────────────
+        #
+        # APPENDED, same reason as the U20 block above: two units writing into
+        # different halves of this literal auto-merge, and a duplicate key is
+        # then resolved by line order.
+        #
+        # A U22 stub listing was handed to the COLLECTION emitter as if it were
+        # a Fresh Export. Importing that listing is wrong (R-130). PRECONDITION
+        # rather than a defect code, because the file the operator named is the
+        # problem, not this build.
+        "intake-export-is-stub": ExitCode.PRECONDITION,
+        # Recognition spend was about to start without the recorded keys, or
+        # without the helper binary that carves the audio. Presence only, never
+        # retrieval. SET_CREDENTIAL, not AUTHENTICATE_PROVIDER.
+        "intake-recognition-unready": ExitCode.PRECONDITION,
+        # Inbox of files still sitting in download staging. Locations stamp from
+        # the current path, so importing now would fill the collection with dead
+        # staging references (the 2026-06-29 flood).
+        "intake-staging-refused": ExitCode.PRECONDITION,
     }
 )
 

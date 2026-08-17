@@ -1,0 +1,207 @@
+{
+  "name": "u37-author-light",
+  "pass_kind": "light",
+  "branch": "unit/u37-intake-pipeline-recognition-ingest-taggi",
+  "head": "2ddbf05",
+  "when": "2026-08-17 14:11 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 6004,
+  "baseline_exit": 0,
+  "pytest_runs": 11,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/collection_xml.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/collection_xml.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "66fdef44c4ba19c1",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 6004,
+    "baseline_collected": 6004,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G1_stub_listing",
+      "description": "Treat a U22 stub listing as a spliceable Fresh Export",
+      "file": "src/cratekit/intake/collection_xml.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "92a11715c867790e",
+      "subset": [
+        "tests/intake/test_collection_xml.py",
+        "tests/intake/test_pipeline.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_collection_xml.py::test_a_u22_stub_listing_is_not_a_splice_target"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if is_stub_listing(raw):\n        raise refuse(\n            \"intake-export-is-stub\",",
+      "new": "    if False and is_stub_listing(raw):\n        raise refuse(\n            \"intake-export-is-stub\","
+    },
+    {
+      "id": "G2_recognition_gate",
+      "description": "Skip the recognition presence gate",
+      "file": "src/cratekit/intake/recognize.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5fd55f1c97bd3e06",
+      "subset": [
+        "tests/intake/test_pipeline.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 10,
+      "baseline_collected": 10,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_pipeline.py::test_a_missing_recognition_key_is_reported_before_any_spend",
+        "tests/intake/test_pipeline.py::test_identification_only_downloads_nothing_and_writes_a_tracklist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    missing = recognition_ready()\n    if not missing:\n        return\n    raise refuse(",
+      "new": "    missing = recognition_ready()\n    if True:\n        return\n    raise refuse("
+    },
+    {
+      "id": "G3_gridless_bpm",
+      "description": "Write a real AverageBpm instead of the gridless constant",
+      "file": "src/cratekit/intake/collection_xml.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7e1664e5810d612e",
+      "subset": [
+        "tests/intake/test_collection_xml.py",
+        "tests/test_no_beatgrid_ever.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 42,
+      "baseline_collected": 42,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_collection_xml.py::test_average_bpm_is_the_gridless_constant_even_when_bpm_is_present"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "Year=\"0\" AverageBpm=\"0.00\"",
+      "new": "Year=\"0\" AverageBpm=\"124.00\""
+    },
+    {
+      "id": "G4_staging",
+      "description": "Allow inbox of files still under download staging",
+      "file": "src/cratekit/intake/ingest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b06e9a1c02c8249a",
+      "subset": [
+        "tests/intake/test_pipeline.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 10,
+      "baseline_collected": 10,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_pipeline.py::test_staging_files_are_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if resolved == staging or staging in resolved.parents:",
+      "new": "    if False and (resolved == staging or staging in resolved.parents):"
+    },
+    {
+      "id": "G5_path_repair_queue",
+      "description": "Offer path repair into the adoption queue instead",
+      "file": "src/cratekit/intake/repair.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6154400975ee603b",
+      "subset": [
+        "tests/test_review_queue.py",
+        "tests/intake/test_repair.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 150,
+      "baseline_collected": 150,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair.py::test_offer_repairs_writes_path_repair_queue_items",
+        "tests/test_review_queue.py::test_every_new_adjudication_surface_is_owed_by_a_registered_unit",
+        "tests/test_review_queue.py::test_the_path_repair_pass_offers_its_proposals_into_the_path_repair_queue"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            queue=Queue.PATH_REPAIR,",
+      "new": "            queue=Queue.ADOPTION,"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "G7_lossy_policy",
+      "description": "Permit unmarked lossy under strict policy",
+      "reason": "ranked below the cap: decide_lossless already has its own U15 table"
+    },
+    {
+      "id": "G8_inherited_location",
+      "description": "Re-encode an inherited Location",
+      "reason": "ranked below the cap: KTD27 is already pinned in tests/test_locations.py"
+    },
+    {
+      "id": "G9_close_session",
+      "description": "Call close_session from intake",
+      "reason": "the AST guard is the test; a mutation that adds a call is a rewrite not a revert"
+    }
+  ]
+}
