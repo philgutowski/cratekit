@@ -1,0 +1,167 @@
+{
+  "name": "u25-author-light",
+  "pass_kind": "light",
+  "branch": "unit/u25-analysis-and-vocal-modules",
+  "head": "23b1982",
+  "when": "2026-08-17 15:57 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 6016,
+  "baseline_exit": 0,
+  "pytest_runs": 8,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/analysis/run.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/analysis/run.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "aec0e091e3869099",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 6016,
+    "baseline_collected": 6016,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G1_resume_prefix",
+      "description": "Treat every filename as unfinished, including a complete Camelot head",
+      "file": "src/cratekit/analysis/run.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5de804d6a9d55606",
+      "subset": [
+        "tests/test_analysis.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 5,
+      "baseline_collected": 5,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis.py::test_a_killed_batch_resumes_skipping_completed_tracks"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return has_head(path.name, template=_RESUME_TEMPLATE)\n",
+      "new": "    return False\n"
+    },
+    {
+      "id": "G2_vocal_degrade",
+      "description": "Let a vocal loader exception abort the batch instead of degrading",
+      "file": "src/cratekit/analysis/vocals.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6e4a8e0b94de6b5a",
+      "subset": [
+        "tests/test_analysis.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 5,
+      "baseline_collected": 5,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis.py::test_vocal_model_load_failure_leaves_key_and_energy_intact"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    try:\n        _VOCAL_MODEL = loader()\n    except Exception:\n        _VOCAL_FAILED = True\n        _VOCAL_MODEL = None\n    return _VOCAL_MODEL\n",
+      "new": "    _VOCAL_MODEL = loader()\n    return _VOCAL_MODEL\n"
+    },
+    {
+      "id": "G3_unchunked_only",
+      "description": "Ignore chunk_samples and always run one whole-track pass",
+      "file": "src/cratekit/analysis/vocal.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "935ef75504c7887a",
+      "subset": [
+        "tests/test_analysis.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 5,
+      "baseline_collected": 5,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis.py::test_chunked_inference_walks_the_signal_in_pieces"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if chunk_samples is None or width <= chunk_samples:\n        slices = [batch]\n    else:\n        slices = [\n            batch[:, start : start + chunk_samples]\n            for start in range(0, width, chunk_samples)\n        ]\n",
+      "new": "    slices = [batch]\n"
+    },
+    {
+      "id": "G4_sizing_countdown",
+      "description": "Report the analysis package as correctly sized no matter what it contains",
+      "file": "tests/test_pool_sizing.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "90fb1fecce38d4bf",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 267,
+      "baseline_collected": 267,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_the_analysis_countdown_bites_the_evasions_that_used_to_pass_it[core-count-in-a-hand-built-plan]",
+        "tests/test_pool_sizing.py::test_the_analysis_countdown_bites_the_evasions_that_used_to_pass_it[empty]",
+        "tests/test_pool_sizing.py::test_the_analysis_countdown_bites_the_evasions_that_used_to_pass_it[hand-built-plan-through-an-ancestor]",
+        "tests/test_pool_sizing.py::test_the_analysis_countdown_bites_the_evasions_that_used_to_pass_it[hand-built-plan]",
+        "tests/test_pool_sizing.py::test_the_analysis_countdown_bites_the_evasions_that_used_to_pass_it[no-sizing]",
+        "tests/test_pool_sizing.py::test_the_analysis_countdown_bites_the_evasions_that_used_to_pass_it[private-pool]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not modules:\n        return [\"the analysis package landed with no modules in it\"]\n",
+      "new": "    return []\n"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "G5_extras_stub",
+      "description": "The extras stub lives in cli construction, already measured by U5",
+      "reason": "ranked below the cap: not this unit's code"
+    }
+  ]
+}
