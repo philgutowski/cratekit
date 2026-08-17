@@ -158,6 +158,24 @@ and what left at each merge. When the members are literals in the tree, each is
 asked of git against the pre-merge commit; when a walk derives them, the same
 walk is run over the pre-merge tree and the two sets are differenced.
 
+## Sync
+
+### Sync watermark
+An audit record of how far one source got on a clean increment. It does not
+decide what the next increment lists or keeps.
+
+A sync watermark advances only when that source completed without error and
+actually processed items. A listing that failed entirely is not an empty
+catalogue, and it does not write one. Status reads the record. Restore replaces
+the coupled file. Scope does not read it.
+
+*Avoid:* treating this as the deletion watermark, or as a date floor.
+
+### Owned dedup
+The sync scope rule: take the newest N items the source listed, then drop any
+identity the library already holds. That is how a second run processes only what
+is new, without reading the sync watermark.
+
 ## Findings
 
 ### Residual finding
@@ -190,6 +208,9 @@ produces it.
 
 ## Flagged ambiguities
 
+- "Watermark" is not one job. Deletion's watermark is a sequence floor, and
+  filtering removals by it is the design. Sync's watermark is an audit record,
+  and filtering increment scope by it is the silent empty-run bug.
 - "Guard" and "test" are not interchangeable here. Every guard is a test, but a
   test that exercises a feature is not a guard, and the distinction decides
   whether the pending register is the right home for it.
