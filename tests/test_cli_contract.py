@@ -1309,6 +1309,19 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # source from the active profile. The configured fixture is the full
         # profile, so three jobs land, and queueing needs no database.
         "sync.all": [],
+        # U20. Inbox, unplaced and pending take no positional argument: an empty
+        # intake folder and an empty ledger are the state a fresh install is
+        # genuinely in, and each verb must still emit a well-formed plan and
+        # exit OK. Resort and rebuild are long-running, so they queue and
+        # report a job. Rebuild carries a typed actor because an empty one is
+        # the product answering for the user. No tree flag, because a library that
+        # has never flipped a tree has nothing native and the verb still
+        # queues.
+        "route.inbox": [],
+        "route.unplaced": [],
+        "route.resort": [],
+        "route.pending": [],
+        "rebuild": ["--actor", "a-person"],
         # U27. The wizard and the two reports take no positional argument at all:
         # every answer the wizard needs is already recorded by the ``configured``
         # fixture, so a drive here resolves each one from the file and reaches no

@@ -65,7 +65,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.cli import output
-from cratekit.core import config, locations, session, taxonomy, tree_registry
+from cratekit.core import config, convergence, locations, session, taxonomy, tree_registry
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import trees
@@ -969,13 +969,12 @@ def assert_destinations_are_not_renamed(
     persisted record by a display name; this is the same lesson arriving on the
     recovery path.
 
-    CONVERGING PROPERLY IS THE TREE LAYER'S, NOT THIS ONE'S. What would make the
-    re-run converge is a persisted map from the stable destination identifiers to
-    the node identifiers a previous write used, which is the shape the tree
-    registry already has for a tree's adopted root. Inventing a second one here
-    would give two answers to "which node is this destination". So this refuses
-    instead, and the obligation to converge is registered against the unit that
-    owns the tree layer's records rather than asserted in a docstring (P5).
+    THE NODE MAP IS READ FIRST. A previous write records each destination's
+    playlist identifiers through :func:`cratekit.core.convergence.record_nodes`,
+    and :func:`cratekit.write.rebuild.resolve_destinations` resolves a rename
+    through those identifiers. This refusal is the leftover: it fires only when
+    that map cannot name the folder the track already sits in, so writing by
+    the declared display name would create the destination a second time.
 
     THE CONDITION IS NARROW ON PURPOSE (P7). It fires only when the destination
     folder is not under the adopted root AND the track already sits under that
@@ -1020,6 +1019,85 @@ def assert_destinations_are_not_renamed(
                 "found_under": orphaned,
             },
         )
+
+
+def _converge_destinations(
+    cfg: config.Config,
+    db: Any,
+    group: Sequence[Placed],
+    declared: taxonomy.Taxonomy,
+    *,
+    tree_id: str,
+    root_id: str,
+) -> list[Placed]:
+    """Rewrite each placement through the node map a previous write recorded.
+
+    Imported lazily because :mod:`cratekit.write.rebuild` already imports this
+    module at the top. A cycle at import time would take both modules out of
+    collection.
+    """
+    from cratekit.write import rebuild
+
+    placements = [
+        rebuild.DeclaredPlacement(item.intent.location, item.intent.bucket, item.intent.sub)
+        for item in group
+    ]
+    standing = rebuild.read_tree(db, root_id)
+    record = convergence.read(cfg).tree(tree_id)
+    destinations = rebuild.resolve_destinations(declared, placements, standing, record)
+    by_key = {(entry.bucket, entry.sub): entry for entry in destinations}
+    remapped: list[Placed] = []
+    for item in group:
+        destination = by_key.get((item.intent.bucket, item.intent.sub))
+        if destination is None:
+            remapped.append(item)
+            continue
+        remapped.append(replace(item, folder=destination.folder, sub=destination.playlist))
+    return remapped
+
+
+def _record_routed_nodes(
+    cfg: config.Config,
+    db: Any,
+    group: Sequence[Placed],
+    *,
+    tree_id: str,
+    root_id: str,
+) -> None:
+    """Persist the playlist identifiers this pass just wrote, merging per tree.
+
+    Merged, not replaced. This pass looks at the destinations it placed, not
+    at every destination the tree has ever held, and a whole-record replace
+    would drop the ones it did not touch.
+    """
+    from cratekit.write import rebuild
+
+    standing = rebuild.read_tree(db, root_id)
+    by_display: dict[tuple[str, str], list[Any]] = {}
+    for node in standing:
+        by_display.setdefault((node.folder_display, node.playlist_display), []).append(node)
+    recorded: list[convergence.DestinationNode] = []
+    seen: set[tuple[str, str]] = set()
+    for item in group:
+        key = (item.intent.bucket, item.intent.sub)
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates = by_display.get((item.folder, item.sub), ())
+        if len(candidates) != 1:
+            continue
+        node = candidates[0]
+        recorded.append(
+            convergence.DestinationNode(
+                bucket=item.intent.bucket,
+                sub=item.intent.sub,
+                folder_id=node.folder_id,
+                playlist_id=node.playlist_id,
+            )
+        )
+    if recorded:
+        convergence.assert_injective(tree_id, recorded)
+        convergence.record_nodes(cfg, tree_id, recorded)
 
 
 # ---------------------------------------------------------------------------
@@ -1131,13 +1209,13 @@ def route(
     that matters, and a second walk of an exhausted one reports every track
     absent while the run reports clean.
 
-    THE RE-RUN CONVERGES OR IT REFUSES, and it never quietly duplicates. The
-    sentence above about a re-run being free rests on the find-or-create helpers
-    deduplicating, and those target by display name, so a folder renamed between
-    the commit and the recovery makes the recovery create the destination a
-    second time and file the track twice.
-    :func:`assert_destinations_are_not_renamed` runs over every tree's plan
-    BEFORE the first write, for exactly that case.
+    THE RE-RUN CONVERGES WHEN THE NODE MAP CAN NAME THE FOLDER. A previous
+    write records each destination's playlist identifiers, and the plan is
+    rewritten through those identifiers before any find-or-create. A folder
+    renamed between the commit and the recovery is therefore the same folder,
+    not a second one. :func:`assert_destinations_are_not_renamed` still runs
+    over every tree's remapped plan, and it is the leftover: it fires only
+    when the map cannot name the folder the track already sits in.
 
     IT PLACES WHAT IT CAN AND REPORTS THE REST, one reason per track. A record
     whose destination the taxonomy no longer declares is one entry in the report
@@ -1176,19 +1254,31 @@ def route(
     # READ-ONLY, AND BEFORE THE FIRST WRITE OF THE FIRST TREE. Checking inside
     # the loop would leave a refusal on the second tree standing beside a first
     # tree that was already committed and marked, and the whole point of this
-    # refusal is that nothing gets filed twice.
+    # refusal is that nothing gets filed twice. Destinations are remapped
+    # through the recorded node identifiers first, so a rename the map can
+    # name never reaches the leftover refusal.
     anchored = {
         tree_id: tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
         for tree_id in sorted(by_tree)
     }
+    remapped: dict[str, list[Placed]] = {}
     for tree_id in sorted(by_tree):
-        assert_destinations_are_not_renamed(
+        remapped[tree_id] = _converge_destinations(
+            cfg,
             db,
             by_tree[tree_id],
             declared,
             tree_id=tree_id,
             root_id=anchored[tree_id],
         )
+        assert_destinations_are_not_renamed(
+            db,
+            remapped[tree_id],
+            declared,
+            tree_id=tree_id,
+            root_id=anchored[tree_id],
+        )
+    by_tree = remapped
 
     routed: list[str] = []
     reports: list[trees.MembershipReport] = []
@@ -1215,6 +1305,13 @@ def route(
             workflow=workflow,
         )
         reports.append(report)
+        _record_routed_nodes(
+            cfg,
+            db,
+            group,
+            tree_id=tree_id,
+            root_id=report.root_id,
+        )
 
         proven = [
             item for item in group if membership_proven(db, item, root_id=report.root_id)

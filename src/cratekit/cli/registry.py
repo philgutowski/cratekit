@@ -680,7 +680,6 @@ ENTRIES: tuple[Entry, ...] = (
         destructive=True,
         doctor_checks=("library.mounted", "library.identity", "rekordbox.closed"),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
-        planned_in=REBUILD_CLI_UNIT,
     ),
     # ── Jobs ────────────────────────────────────────────────────────────────
     # U10 landed these against ``cratekit.cli.jobs`` rather than the
@@ -932,7 +931,6 @@ ENTRIES: tuple[Entry, ...] = (
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
-        planned_in=ROUTING_CLI_UNIT,
     ),
     Entry(
         name="route.unplaced",
@@ -949,7 +947,6 @@ ENTRIES: tuple[Entry, ...] = (
         taxonomy_terms=("genre_energy",),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
-        planned_in=ROUTING_CLI_UNIT,
     ),
     Entry(
         name="route.resort",
@@ -968,7 +965,6 @@ ENTRIES: tuple[Entry, ...] = (
         taxonomy_terms=("genre_energy", "low", "med", "high"),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
-        planned_in=ROUTING_CLI_UNIT,
     ),
     Entry(
         name="audit.coverage",
@@ -1497,12 +1493,6 @@ ENTRIES: tuple[Entry, ...] = (
         destructive=True,
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
-        # The same module its three ``route.*`` siblings name, so all four expire
-        # on one countdown. The engine behind it landed with U19; the CLI module
-        # did not, and U19's declared file list never contained one. See
-        # ``ROUTING_CLI_UNIT`` for why the countdown now runs against U20, and
-        # ``tests/_pending.py`` for the register entry that actually owns it.
-        planned_in=ROUTING_CLI_UNIT,
     ),
 )
 
@@ -1582,6 +1572,7 @@ __all__ = [
     "ENTRIES",
     "FEATURES",
     "POLICY_ROWS",
+    "REBUILD_CLI_UNIT",
     "REPAIR_CLI_MODULE",
     "REPAIR_CLI_UNIT",
     "ROUTING_CLI_UNIT",

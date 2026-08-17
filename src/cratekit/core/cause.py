@@ -1106,6 +1106,24 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # The artifact registry is present and cannot be understood. Treating it
         # as empty would make crash debris look like next-run intake.
         "sync-artifacts-unusable": ExitCode.PRECONDITION,
+        # ── U20's refusals, appended for the reason given above ─────────────
+        #
+        # A tree cannot flip while a run is still open, while an intake XML is
+        # still sitting there, while nobody took a Fresh Export, or while no
+        # snapshot exists to restore from. Four slugs, one code: what differs
+        # is the sentence and the step, and those travel on the remediation.
+        "cutover-open-run": ExitCode.PRECONDITION,
+        "cutover-xml-pending": ExitCode.PRECONDITION,
+        "cutover-export-missing": ExitCode.PRECONDITION,
+        "cutover-snapshot-missing": ExitCode.PRECONDITION,
+        # The rebuild surface needs a named person. An empty actor is the
+        # product answering for the user. PRECONDITION rather than USAGE,
+        # because USAGE belongs to argparse and the parser accepted the
+        # invocation; the missing name is the problem.
+        "rebuild-actor-required": ExitCode.PRECONDITION,
+        # A rebuild of a tree still on the bridge would write membership the
+        # next import would overwrite.
+        "rebuild-tree-not-native": ExitCode.PRECONDITION,
     }
 )
 

@@ -1578,6 +1578,13 @@ def test_a_recovery_run_after_a_rekordbox_rename_refuses_rather_than_duplicating
     from pyrekordbox.db6 import tables
 
     _crash_between_the_commit_and_the_mark(cfg, db, adopted_root, declared, monkeypatch)
+    from cratekit.core import convergence
+
+    # THE MAP THIS PASS JUST WROTE IS THE THING THAT MAKES A RENAME CONVERGE.
+    # Wiping it is what leaves the leftover refusal standing: no recorded
+    # identifier, a missing declared folder, and a track sitting under a name
+    # the taxonomy does not know.
+    convergence.record_nodes(cfg, TREE_ID, (), replace_all=True)
     folder_display, _sub_display = routing_pass.destination(declared, *_destination(declared))
     row = db.session.query(tables.DjmdPlaylist).filter_by(Name=folder_display).one()
     row.Name = "A Name Of Their Own"
@@ -1608,21 +1615,20 @@ def _taxonomy_with_the_first_bucket_renamed(new_display: str):
     return taxonomy.build_taxonomy(data)
 
 
-def test_a_recovery_run_after_a_taxonomy_rename_refuses_rather_than_duplicating(
+def test_a_recovery_run_after_a_taxonomy_rename_converges_rather_than_duplicating(
     cfg, gates_pass, db, adopted_root, declared, monkeypatch
 ):
-    """The same failure from the other side: the template moved, not the library."""
+    """The template moved, not the library. The node map still names the folder."""
     _crash_between_the_commit_and_the_mark(cfg, db, adopted_root, declared, monkeypatch)
     renamed = _taxonomy_with_the_first_bucket_renamed("A Bucket Renamed")
     assert renamed.buckets[0].id == declared.buckets[0].id
 
-    with pytest.raises(CratekitError) as excinfo:
-        _route(cfg, db, adopted_root, renamed)
-    assert excinfo.value.cause.reason == "routing-destination-renamed"
+    report = _route(cfg, db, adopted_root, renamed)
+    assert len(report.routed) == 1
     assert _memberships(db, "2") == 1
+    assert routing_pass.read(cfg).outstanding(SESSION_ID) == ()
 
 
-@requires("cratekit.write.routing_cli")
 def test_a_recovery_run_after_a_rename_converges_once_the_tree_layer_can(
     cfg, gates_pass, db, adopted_root, declared, monkeypatch
 ):
@@ -2035,48 +2041,33 @@ def test_the_readiness_answers_are_three_rather_than_two():
 # ── Findings 9 and 10: the obligations a later unit owes ─────────────────────
 
 
-def test_the_routing_verbs_name_a_unit_that_can_actually_land_them():
-    """DERIVED from the registry, so a fifth entry cannot be added under the old unit.
+def test_the_routing_verbs_have_landed():
+    """U20 discharged the countdown: the four verbs are no longer planned.
 
-    U19 shipped the engine and never had a command-line module in its file list.
-    Conformance 3 requires a landed gated verb to exit OK once its gate is
-    answered, and a destructive ``db_tree`` verb cannot do that on a machine with
-    no database, which is why U19 could not land one.
+    Derived from the registry, so a fifth entry added with a leftover marker
+    fails here rather than shipping as a declared-but-absent verb.
     """
     from cratekit.cli import registry as cli_registry
 
-    planned = {
-        entry.name: entry.planned_in
+    named = [
+        entry
         for entry in cli_registry.ENTRIES
         if entry.module == "cratekit.write.routing_cli"
-    }
-    assert planned, "no entry names the routing command-line module any more"
-    assert set(planned.values()) == {"U20"}, (
-        f"the routing verbs are planned in {sorted(set(planned.values()))}; U19 is "
-        f"closing and cannot own an obligation nobody will read"
+    ]
+    assert named, "no entry names the routing command-line module any more"
+    still_planned = [entry.name for entry in named if not entry.landed]
+    assert not still_planned, (
+        f"routing verbs still carry a planned_in marker: {still_planned}"
     )
 
 
-def test_the_routing_command_line_module_is_owed_in_the_register():
-    """P5. A later unit's obligation goes in the register, never in a docstring.
-
-    ``scripts/board.py`` reads ``tests/_pending.py`` and nothing else, so an
-    obligation recorded only as a ``planned_in`` marker is owned by nobody the
-    moment the unit that carried the marker closes.
-    """
+def test_the_routing_command_line_module_is_no_longer_owed_in_the_register():
+    """The countdown fired and was discharged, not left as a comment."""
     from tests import _pending
 
-    assert "cratekit.write.routing_cli" in _pending.PENDING
-    unit, what = _pending.PENDING["cratekit.write.routing_cli"]
-    assert unit == "U20"
-    assert "close_run" in what
-    assert "CONVERGE" in what, (
-        "the register entry does not carry the convergence obligation, so the "
-        "refusal this unit ships in its place becomes permanent by default"
-    )
+    assert "cratekit.write.routing_cli" not in _pending.PENDING
 
 
-@requires("cratekit.write.routing_cli")
 def test_the_routing_verbs_close_their_runs_through_the_gated_close():
     """P5's countdown for the close gate, armed when the surface that spends it lands.
 
