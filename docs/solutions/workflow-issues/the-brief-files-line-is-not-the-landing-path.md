@@ -1,6 +1,7 @@
 ---
 title: The brief Files line is not the landing path
 date: 2026-08-17
+last_updated: 2026-08-17
 category: workflow-issues
 module: src/cratekit/cli/registry.py
 problem_type: workflow_issue
@@ -63,12 +64,14 @@ If that spec appears, the test goes red and the marker must be cleared
 so the conformance suite starts driving the verb.
 
 U26 on 2026-08-17 is the unit that made this expensive to miss. The
-issue brief's Files line named `src/cratekit/modules/labels/`. The
-registry already named `cratekit.label.cli` on all four label verbs
+closed issue brief still names Files as `src/cratekit/modules/labels/`
+(`board.py show 26`, issue 26). The registry already named
+`cratekit.label.cli` on all four label verbs
 (`src/cratekit/cli/registry.py:1141`, `1179`, `1191`, `1209`). Those
 four rows have no `planned_in` in the current tree. They are landed.
 The package that exists is `src/cratekit/label/`, with `cli.py` beside
-the registry, sweep, import, and harvest engines. The brief named
+the registry, sweep, and harvest engines. Import is a CLI handler in
+that same `cli.py`, not a sibling engine module. The brief named
 `src/cratekit/modules/labels/` and that path was never created.
 `src/cratekit/modules/` holds
 the reports engines and the tools package, which is a different shape
@@ -139,8 +142,8 @@ Before you change `module=`, walk the layering rules in
    `modules`. `cratekit.reports.cli` ranks the same way.
    `cratekit.cli.jobs` matches `^cratekit\.cli\.` and ranks `cli`.
 2. Can a file at that path import what it has to import? A verb
-   module that imports the registry must live in the CLI layer or
-   above it. A feature CLI shell that takes an untyped `entry` and
+   module that imports the registry must live in the CLI layer.
+   Nothing ranks above `cli`. A feature CLI shell that takes an untyped `entry` and
    does not import the registry can live in the modules layer, which
    is what `src/cratekit/label/cli.py` does. U10, U11, and the U34
    reports rewrite each found a registry string that could not import
@@ -268,10 +271,11 @@ could not be built. They did not create the historical path
 string that could never appear.
 They changed `module=` to `cratekit.cli.jobs` and
 `cratekit.cli.review` in the landing itself
-(`src/cratekit/cli/registry.py:684-743`). The plan file lists for
-those units already named `src/cratekit/cli/jobs.py` and
-`src/cratekit/cli/review.py`. Files and `module=` were brought into
-agreement, then the files were written at the agreed string.
+(`src/cratekit/cli/registry.py:684-743`). The registry comments
+record that those units' plan file lists already named
+`src/cratekit/cli/jobs.py` and `src/cratekit/cli/review.py`. Files
+and `module=` were brought into agreement, then the files were
+written at the agreed string.
 
 U34 is the neighbour that records the reports half of the same
 rewrite. The four report verbs named `cratekit.reports.cli`.
