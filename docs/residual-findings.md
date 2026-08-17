@@ -3346,6 +3346,14 @@ review those numbers exist to trigger:
   six new literals being those six keys, so the non-key half stays 175.
   Literal holders 50 to 52: the two new modules are `cli/rebuild.py` and
   `write/routing_cli.py`. The also-holds-an-integer half stays 14.
+* **U26, 2026-08-17.** Five slugs appended to the closed reason registry:
+  `label-intent-unusable`, `label-name-invalid`, `label-unknown`,
+  `label-watermark-unusable`, `label-playlist-unreadable`. Cause population
+  121 to 126, non-reserved half 98 to 103, reserved half unchanged at 23.
+  Kebab literals 299 to 305, five of the six new literals being those keys,
+  the sixth being `harvested-label`. Literal holders 63 to 66: the three
+  new modules are `label/cli.py`, `label/marks.py` and `label/registry.py`.
+  The also-holds-an-integer half stays 15. The without-own half is still 8.
 
 The comparison this section rests on survived both, and it widened rather than
 narrowed each time: 13 against 24, then 17 against 36, now 18 against 38. The

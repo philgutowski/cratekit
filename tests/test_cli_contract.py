@@ -1394,6 +1394,14 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "analyze.calibrate": [],
         "analyze.validate": [],
         "analyze.restamp": [str(library / "Music")],
+        # U26. Registry list is the empty-install state. Sync queues one
+        # increment. Import of a name that is not registered must refuse with
+        # a vocabulary code. Harvest of an unreachable playlist must refuse
+        # rather than invent labels.
+        "label.registry": [],
+        "sync.labels": [],
+        "label.import": ["no-such-label"],
+        "label.harvest": ["https://example.invalid/playlist"],
     }[entry.name]
 
 

@@ -1143,6 +1143,26 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # the current path, so importing now would fill the collection with dead
         # staging references (the 2026-06-29 flood).
         "intake-staging-refused": ExitCode.PRECONDITION,
+        # ── U26's refusals, appended ────────────────────────────────────────
+        #
+        # APPENDED, same reason as the U22 and U37 blocks: two units writing
+        # into different halves of this literal auto-merge.
+        #
+        # The curated label list is present and cannot be understood. Treating
+        # it as empty would drop the followed labels on the next save.
+        "label-intent-unusable": ExitCode.PRECONDITION,
+        # A favourite-label name produced no identifier, or a rename arrived
+        # without the new display name. PRECONDITION rather than USAGE, because
+        # the parser accepted the invocation.
+        "label-name-invalid": ExitCode.PRECONDITION,
+        # The operator named a label the registry does not hold.
+        "label-unknown": ExitCode.PRECONDITION,
+        # The per-label last-pulled document is present and cannot be
+        # understood. Same shape as sync-watermark-unusable.
+        "label-watermark-unusable": ExitCode.PRECONDITION,
+        # Harvest could not list the named playlist. An invented label list
+        # would be a guess, so the verb refuses rather than offering one.
+        "label-playlist-unreadable": ExitCode.UPSTREAM_UNAVAILABLE,
     }
 )
 
