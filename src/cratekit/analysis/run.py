@@ -47,7 +47,7 @@ def _as_result(payload: dict[str, Any]) -> Result:
         path=path,
         status=status,
         camelot=payload.get("camelot"),
-        bpm=payload.get("bpm"),
+        bpm=payload.get("bpm", payload.get("rate")),
         energy=payload.get("energy"),
         vocal_active=bool(payload.get("vocal_active")),
         voxlevel=payload.get("voxlevel"),

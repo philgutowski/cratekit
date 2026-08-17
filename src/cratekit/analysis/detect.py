@@ -1,9 +1,10 @@
 """Read-only detectors. Tempo is measured. It is never emitted as a grid.
 
-The no-beatgrid rule is about writing: a TEMPO element, a BPM tag, an
-AverageBpm field, an ANLZ grid. Reading a tempo tag or computing a tempo
-from audio is how energy scoring and the filename head get a number.
-This module never assigns into a tag mapping and never writes XML.
+The no-beatgrid rule is about writing: a grid element, a tempo tag, an
+average-tempo field, an analysis-file grid. Reading a tempo tag or
+computing a tempo from audio is how energy scoring and the filename head
+get a number. This module never assigns into a tag mapping and never
+writes XML.
 """
 
 from __future__ import annotations
@@ -81,4 +82,4 @@ def analyse_file(path: Path) -> dict[str, Any] | None:
     camelot = _KEY_TO_CAMELOT.get(best_key or "")
     if camelot is None:
         return None
-    return {"path": path, "camelot": camelot, "bpm": bpm, "energy": None}
+    return {"path": path, "camelot": camelot, "rate": bpm, "energy": None}
