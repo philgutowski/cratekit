@@ -5868,3 +5868,159 @@ def test_nothing_reconstructs_a_former_builds_composition_any_more(cfg):
         f"rather than through version_of alone, so a second composer decides a "
         f"question about history"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The delete.review shell
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _drive(argv: list[str]) -> tuple[int, str, str]:
+    from cratekit import cli as crate_cli
+
+    out, err = io.StringIO(), io.StringIO()
+    code = crate_cli.run(argv, stdout=out, stderr=err)
+    return code, out.getvalue(), err.getvalue()
+
+
+@pytest.fixture
+def review_cli(library_root, gates_pass, monkeypatch):
+    """A configured machine the delete.review verb can actually finish on.
+
+    Full profile, because deletion is a feature module and slim hides it.
+    """
+    data = valid_data(
+        library_root,
+        profile={"name": "full"},
+        rekordbox={
+            "pinned_app_version": RECORDED_APP_VERSION,
+            "pin_validated_on": "2026-08-02",
+        },
+    )
+    ready = config.from_dict(data)
+    _build_disposable_database(Path(ready.library.db_path))
+    config.save(ready)
+    config.reset_cache()
+    monkeypatch.setattr(
+        preflight,
+        "default_identity_provider",
+        lambda: (lambda _path: ready.library.volume_id),
+    )
+    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
+    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
+    session.record_acknowledgment(ready, terminal=lambda: True)
+    return ready
+
+
+def test_delete_review_refuses_at_its_explicit_gate(review_cli):
+    """First drive discovers the confirm gate and leaves the run resumable."""
+    code, out, err = _drive(["--output", "json", "delete", "review"])
+    assert code == int(ExitCode.DECISION_REQUIRED), err or out
+    envelope = json.loads(out)
+    assert envelope["resumable"] is True
+    assert envelope["cause"]["detail"]["gate"] == "delete.review.confirm"
+    assert envelope["cause"]["detail"]["explicit"] is True
+
+
+def test_delete_review_refuses_an_inline_answer_and_does_not_record_it(review_cli):
+    """R34: the same invocation cannot answer the gate it just discovered."""
+    code, out, _ = _drive(["--output", "json", "delete", "review"])
+    run_id = json.loads(out)["run_id"]
+    code, out, err = _drive(
+        [
+            "--output",
+            "json",
+            "-d",
+            "delete.review.confirm=trash",
+            "--run",
+            run_id,
+            "delete",
+            "review",
+        ]
+    )
+    assert code == int(ExitCode.DECISION_REQUIRED), err or out
+    from cratekit.cli import gates
+
+    assert "delete.review.confirm" not in gates.load(run_id).decisions
+
+
+def test_delete_review_exits_ok_after_the_recorded_decision(review_cli):
+    """The two-act path: refuse, record with an actor, resume, emit a review set."""
+    code, out, err = _drive(["--output", "json", "delete", "review"])
+    assert code == int(ExitCode.DECISION_REQUIRED), err or out
+    run_id = json.loads(out)["run_id"]
+    code, _, err = _drive(
+        ["run", "decide", run_id, "delete.review.confirm", "trash", "--actor", "a-person"]
+    )
+    assert code == int(ExitCode.OK), err
+    code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
+    assert code == int(ExitCode.OK), err or out
+    envelope = json.loads(out)
+    assert envelope["data"]["queue"] == "deletion"
+    assert envelope["data"]["items"] == []
+    assert envelope["data"]["unresolved"] == 0
+
+
+def test_delete_review_abort_moves_nothing(review_cli):
+    code, out, err = _drive(["--output", "json", "delete", "review"])
+    run_id = json.loads(out)["run_id"]
+    code, _, err = _drive(
+        ["run", "decide", run_id, "delete.review.confirm", "abort", "--actor", "a-person"]
+    )
+    assert code == int(ExitCode.OK), err
+    code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
+    assert code == int(ExitCode.OK), err or out
+    assert json.loads(out)["outcome"] == "no_op"
+
+
+def test_delete_review_trashes_a_confirmed_file(review_cli, tmp_path, monkeypatch):
+    """The gate is the confirmation: a deletable file lands in the Trash."""
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    monkeypatch.setattr("cratekit.deletion.trash.Path.home", lambda: home)
+
+    music = _music(review_cli, ONE)
+    db_path = Path(review_cli.library.db_path)
+    handle = rb_writer.open_db(db_path, unlock=False, cfg=review_cli)
+    try:
+        watermark.WatermarkStore(review_cli).baseline(
+            database_identity=library.database_identity(handle),
+            sequence=40,
+            actor="cli",
+        )
+    finally:
+        rb_writer.close_db(handle)
+    _write_rows(
+        db_path,
+        [
+            ("1", str(music), True, 50, music.stat().st_size, Path(ONE).stem),
+            ("2", str(Path(review_cli.library.root) / "Music" / TWO), False, 20, 11, Path(TWO).stem),
+        ],
+    )
+    _music(review_cli, TWO)
+
+    code, out, err = _drive(["--output", "json", "delete", "review"])
+    assert code == int(ExitCode.DECISION_REQUIRED), err or out
+    run_id = json.loads(out)["run_id"]
+    code, _, err = _drive(
+        ["run", "decide", run_id, "delete.review.confirm", "trash", "--actor", "a-person"]
+    )
+    assert code == int(ExitCode.OK), err
+    code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
+    assert code == int(ExitCode.OK), err or out
+    assert not music.exists()
+    assert any(home.joinpath(".Trash").iterdir()), "the confirmed file never reached the Trash"
+
+
+def test_delete_review_names_a_missing_library_directory(review_cli):
+    """Exit 22 is the unmounted-volume sentence, not a traceback."""
+    gone = Path(review_cli.library.root) / "not-mounted" / "master.db"
+    data = review_cli.to_toml_dict()
+    data["library"]["db_path"] = str(gone)
+    missing = config.from_dict(data)
+    config.save(missing)
+    config.reset_cache()
+    code, out, err = _drive(["--output", "json", "delete", "review"])
+    assert code == int(ExitCode.LIBRARY_UNAVAILABLE), err or out
+    assert json.loads(out)["cause"]["reason"] == "library-directory-missing"

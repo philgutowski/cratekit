@@ -636,6 +636,13 @@ than skips, so the battery runs either way and a supplied fixture strengthens it
 The natural owner is U27, which lands doctor and is the unit that makes a machine
 ready.
 
+**Partially driven 2026-08-17, on U24's leftover shell.** `delete.review` now
+exits OK after R34's two acts against the disposable fixture. That verb only
+READs the collection. Verbs that WRITE the database (restore, adopt.apply, a
+routing apply that opens a native tree) still sit behind part 3, because
+succeeding on a synthetic schema is not the same proof as succeeding on a
+write.
+
 ---
 
 ## R-14. Analysis-file paths are share-relative, and the wrong join finds nothing
@@ -8077,3 +8084,32 @@ would not satisfy the live gate the brief names.
 has completed on an 18GB machine without an out-of-memory kill, and
 `analyze.vocals` has either landed beside this package or been reassigned
 to a unit that owns `cratekit.vocals.cli`.
+
+---
+
+## R-134. The first delete.review drive baselines before the confirm gate
+
+**Found:** at the leftover U24 shell review, 2026-08-17. Accepted rather than held.
+
+`run.plan` writes the first-run watermark inside the same call that
+builds the plan. `delete.review` has to plan before it can digest the
+confirm gate, so the first `crate delete review` accepts prior removals
+as history before anyone can refuse. Abort then reports `no_op`. R35
+wants that baseline so a whole library of old removals is not dumped as
+new work. The gate's prompt is about trashing files, not about accepting
+history, and the review_set schema has no field for `baselined`.
+
+**Measured cost.** No file moves. The cost is a person who aborts the
+first run believing nothing was recorded, then never seeing those
+removals offered. Driven from the engine's existing first-run tests plus
+the CLI call order, not from a new library-with-history-plus-abort
+process.
+
+**Why not fixed here.** Undoing the watermark on abort, or moving the
+write to after a recorded trash decision, changes R35's first-run rule
+and would present the historical set. That is a product decision, not a
+shell defect.
+
+**Closes when:** the first-run watermark is either visible on the refuse
+envelope, or written only after a recorded decision that names history
+as the thing being accepted.

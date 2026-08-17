@@ -2320,7 +2320,7 @@ def test_the_decision_store_countdown_stays_quiet_on_correct_code(source):
 #: must actually offer into the queue it was registered against.
 NEW_SURFACE_OWED_BY: dict[str, str] = {
     review.Queue.DUPLICATES: "cratekit.modules.reports",
-    review.Queue.DELETION: "cratekit.deletion.cli",
+    review.Queue.DELETION: "cratekit.deletion",
     review.Queue.ADOPTION: "cratekit.adopt",
     review.Queue.PATH_REPAIR: "cratekit.intake",
 }
