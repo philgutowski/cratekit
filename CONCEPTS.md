@@ -197,6 +197,22 @@ The sync scope rule: take the newest N items the source listed, then drop any
 identity the library already holds. That is how a second run processes only what
 is new, without reading the sync watermark.
 
+## Review
+
+### Review item
+A persisted, addressable question the product asks a person, never a file they
+must edit. A report is an output. A review item is a decision that has to survive
+a later session and a different process.
+
+### Verdict
+The stored decision on a review item: for an offered candidate, or against every
+candidate. A later act that moves files or settles work reads this store. It does
+not infer the decision from some other confirmation.
+
+### Confirm gate
+A recorded act that this invocation may proceed. It is not a verdict. Honouring
+the gate confirms the run. It does not accept any review item.
+
 ## Findings
 
 ### Residual finding
@@ -241,6 +257,9 @@ produces it.
 - "Landed" names two different events. A unit lands when it merges. A verb lands
   when its planned marker clears because the module exists. They can happen in
   different sessions, and only the second puts the name in front of the parser.
+- "Confirm" and "accept" are not one write. A confirm gate records that the run
+  may proceed. A verdict records what to do with a review item. The first without
+  the second can report success and still do nothing.
 - "bpm" is both the domain quantity and a file-tag spelling. The quantity may
   live on an attribute. The tag spelling may not appear as a mapping key in the
   package, because a mapping that carries it is treated as a grid write.
