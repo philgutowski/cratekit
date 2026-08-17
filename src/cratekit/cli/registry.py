@@ -1030,7 +1030,6 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"files"}),
         destructive=True,
         doctor_checks=("binary.ffmpeg",),
-        planned_in="U25",
     ),
     Entry(
         name="analyze.calibrate",
@@ -1045,7 +1044,6 @@ ENTRIES: tuple[Entry, ...] = (
         extras_modules=("librosa", "numpy", "scipy"),
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
-        planned_in="U25",
     ),
     Entry(
         name="analyze.validate",
@@ -1060,7 +1058,6 @@ ENTRIES: tuple[Entry, ...] = (
         extras_modules=("librosa", "numpy", "scipy"),
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
-        planned_in="U25",
     ),
     Entry(
         name="analyze.restamp",
@@ -1081,7 +1078,6 @@ ENTRIES: tuple[Entry, ...] = (
         destructive=True,
         doctor_checks=("library.mounted", "rekordbox.pins"),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
-        planned_in="U25",
     ),
     Entry(
         name="analyze.vocals",

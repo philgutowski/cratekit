@@ -1348,6 +1348,14 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "tag.folder": [str(library / "Music")],
         "name.apply": [],
         "repair.paths": [],
+        # U25. Folder verbs take a path under the configured library. Calibrate
+        # and validate accept no folder, which is the state with no labelled
+        # set yet. Run and restamp queue, so they must still emit a job_state
+        # envelope over an empty folder rather than a traceback.
+        "analyze.run": [str(library / "Music")],
+        "analyze.calibrate": [],
+        "analyze.validate": [],
+        "analyze.restamp": [str(library / "Music")],
     }[entry.name]
 
 
