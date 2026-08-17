@@ -83,53 +83,13 @@ PENDING: dict[str, tuple[str, str]] = {
     # a guard that is armed today rather than a countdown:
     # test_the_tombstone_identity_is_u24s_algorithm_byte_for_byte pins the exact
     # identifier, so the two copies cannot drift while both exist.
-    "cratekit.deletion.cli": (
-        "U24",
-        "the command-line surface for delete.review, the one verb of this unit "
-        "that could not land with the engine. THE RE-POINT TO U27 IS REVERTED "
-        "and the reasoning is left legible because it is a judgement a human may "
-        "want to move again. U27 is a wizard and a doctor: it ships no deletion "
-        "domain, no destructive verb, and it proved on the same evening that it "
-        "could not carry an explicitly gated verb by moving doctor.repair-paths "
-        "away for this identical reason. Worse, it CLOSES in this wave, so the "
-        "re-point moved a contradiction from one closing unit to another rather "
-        "than resolving it. THE WALL RECORDED HERE ON 2026-08-02 IS STALE AND "
-        "THIS IS THE CORRECTION. That entry said the wall was R34 and "
-        "conformance 3, because an explicit gate could not be answered the way "
-        "the product answers one, and it asserted that a missing database was "
-        "NOT the problem. Main's 3269ab1 rewrote conformance 3 and the gate wall "
-        "is down: built and driven on a throwaway merge of main on 2026-08-03, "
-        "delete.review refuses at its gate, refuses an inline answer without "
-        "recording it, takes the answer from a separate run decide act with its "
-        "actor, and resumes past it. It then stops at exit 22, "
-        "library-directory-missing, which is the wall the stale entry denied. "
-        "Reading the collection is what this verb IS, so it cannot exit OK on a "
-        "machine with no rekordbox database, and the conformance fixture is such "
-        "a machine. That is R-13's original database wall, whose closing "
-        "condition is a disposable fixture on the CRATEKIT_TEST_DB convention "
-        "and whose natural owner is U27. THIS ENTRY IS THEREFORE WHAT MAKES A "
-        "Closes #24 TRAILER RETURN board.py audit EXIT 2 PERMANENTLY, and "
-        "clearing it is a decision about who owns the fixture rather than a "
-        "repair. tombstone.list did NOT need to wait, declares no gate, and "
-        "landed as cratekit.deletion.tombstone_cli. U24's other obligation, that "
-        "a declined file and a tombstoned version are recorded through the "
-        "revocable decision stores U11 shipped, is DISCHARGED: the package "
-        "landed and the guard in tests/test_review_queue.py runs unconditionally "
-        "over cratekit.deletion. TWO OBLIGATIONS OWED BY OTHER UNITS RIDE HERE, "
-        "on this long-lived key, because both were first appended inside entries "
-        "that the countdown forces this same wave to delete, which would have "
-        "retired them the evening they were written (P5). One, owed by U27: "
-        "doctor reports whether the library volume has a usable Trash, through "
-        "cratekit.deletion.trash.probe with create=False so the check cannot "
-        "pass by having run, because R35 sends a confirmed file to the system "
-        "Trash and never to an unlink, and a person otherwise meets that refusal "
-        "in the middle of a deletion. Two, owed by U16: a candidate the "
-        "tombstone store suppresses is REPORTED as suppressed rather than "
-        "omitted (R36), asked through cratekit.core.tombstone.version_identity "
-        "rather than by comparing artist and title some other way, because a "
-        "recorder and a consulter agreeing without coordinating is the only "
-        "thing that makes a tombstone match anything at all",
-    ),
+    #
+    # cratekit.deletion.cli LANDED WITH U24. delete.review is the shell. The
+    # disposable database fixture is what closed R-13's remaining wall for a
+    # verb that only READs the collection. The U16 rider (report a tombstoned
+    # version as suppressed) is already armed in tests/test_match_states.py.
+    # The U27 rider (doctor reports a usable Trash via deletion.trash.probe)
+    # moved onto cratekit.cli.reports below, because this key is going away.
     "path:skills": (
         "U28",
         "the shipped operator skills the skills lint runs over",
@@ -238,7 +198,13 @@ PENDING: dict[str, tuple[str, str]] = {
         "only open unit already landing modules in src/cratekit/cli/, because "
         "three of the four verbs emit the diagnostic surface doctor owns, and "
         "because it is unblocked today. The choice is a judgement and is left "
-        "legible so a human can move it again",
+        "legible so a human can move it again. RIDER MOVED HERE FROM "
+        "cratekit.deletion.cli when that key landed: doctor reports whether "
+        "the library volume has a usable Trash, through "
+        "cratekit.deletion.trash.probe with create=False so the check cannot "
+        "pass by having run, because R35 sends a confirmed file to the system "
+        "Trash and never to an unlink, and a person otherwise meets that "
+        "refusal in the middle of a deletion",
     ),
     "cratekit.adopt.apply_cli": (
         "U27",

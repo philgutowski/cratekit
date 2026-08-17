@@ -91,15 +91,40 @@ def library(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def configured(library):
-    """A machine that has been set up, so a verb reaches its own logic."""
+def configured(library, monkeypatch):
+    """A machine that has been set up, so a verb reaches its own logic.
+
+    The disposable database is the R-13 substitute: a supplied
+    ``CRATEKIT_TEST_DB`` snapshot wins, otherwise a synthetic file is built.
+    The battery runs either way. Volume identity and the two-process refusal
+    are satisfied here because ``delete.review`` asserts both before it can
+    return OK, and a fixture that claims to be set up must be a machine the
+    destructive session will actually admit.
+    """
+    from cratekit.core import preflight, rb_writer
+    from tests.test_rb_writer_db import _build_disposable_database
+
+    db_path = library / "db" / "master.db"
+    supplied = rb_writer.integration_db_path()
+    if supplied is not None:
+        import shutil
+
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(supplied, db_path)
+        for suffix in rb_writer.db_sidecar_suffixes():
+            sidecar = supplied.with_name(supplied.name + suffix)
+            if sidecar.exists():
+                shutil.copy2(sidecar, db_path.with_name(db_path.name + suffix))
+    else:
+        _build_disposable_database(db_path)
+
     cfg = config.from_dict(
         {
             "schema_version": config.CURRENT_SCHEMA_VERSION,
             "library": {
                 "root": str(library),
                 "volume_id": "F1E2-D3C4",
-                "db_path": str(library / "db" / "master.db"),
+                "db_path": str(db_path),
             },
             "paths": {"download_staging": str(library.parent / "staging")},
             "profile": {"name": "full"},
@@ -107,6 +132,14 @@ def configured(library):
     )
     config.save(cfg)
     config.reset_cache()
+    monkeypatch.setattr(
+        preflight,
+        "default_identity_provider",
+        lambda: (lambda _path: cfg.library.volume_id),
+    )
+    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
+    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     return cfg
 
 
@@ -1290,6 +1323,11 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # exit OK rather than treating an empty store as a failure. Revoking is
         # driven from the deletion suite, where a real tombstone exists to lift.
         "tombstone.list": [],
+        # U24. No positional argument: the confirm gate is the only input, and
+        # the first run on this fixture baselines an empty removal set rather
+        # than presenting history. The drive here is the refuse-at-the-gate
+        # half; the two-act OK path is conformance 3.
+        "delete.review": [],
         # U16. Same convention as the two file verbs above and for the same
         # reason: a path under the CONFIGURED library rather than a literal, and
         # one that is deliberately absent, so the verb must refuse with a code

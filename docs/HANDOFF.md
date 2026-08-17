@@ -142,34 +142,14 @@ a module with its sibling. R36 says a tombstone is listable AND revocable, both
 words are about a person, and until this verb existed the feature shipped with no
 surface for either.
 
-`delete.review` genuinely cannot land yet, **and the reason written here on
-2026-08-02 is stale.** That note said the wall was R34 and conformance 3: an
-explicit gate is answerable only by a separate recorded act, conformance 3 drove
-the inline answer and then required exit `OK`, so no explicitly gated verb could
-land. It also asserted that a missing database was NOT the problem. Main's
-`3269ab1` rewrote conformance 3, and the gate wall is **down**.
-
-Driven rather than argued. On 2026-08-03 the verb was built on a throwaway merge
-of `main` and driven through all four acts: it refuses at `delete.review.confirm`
-and reports the run resumable; an inline `-d` answer on the same run is refused
-and is **not** recorded, which is R34 honoured; `run decide` records it with its
-actor; and the resumed invocation carries the answer forward and proceeds past
-the gate. Everything R34 asks for works now.
-
-It stops one step later, at exit **22**, `library-directory-missing`. Reading the
-collection is what this verb IS, so it cannot exit `OK` on a machine with no
-rekordbox database, and the conformance fixture is exactly such a machine. That
-is **R-13's original database wall**, unchanged, which closes on a disposable
-fixture on the `CRATEKIT_TEST_DB` convention and whose natural owner is U27. The
-stale note replaced one wrong reason with another and denied the true one.
-
-`cratekit.deletion.cli` is registered in `tests/_pending.py` against **U24**,
-which is where it belongs; an earlier re-point to U27 is reverted, because U27
-ships no deletion domain and closes in this same wave, so the re-point moved a
-contradiction rather than resolving one. **That entry is what makes a
-`Closes #24` trailer return `board.py audit` exit 2 permanently**, and it is a
-decision about who owns the database fixture rather than a repair. See R-13 and
-R-16 in `docs/residual-findings.md`.
+`delete.review` has landed as `cratekit.deletion.cli`. The 2026-08-02 note that
+said it could not, and the later note that blamed a missing database, are both
+history. The gate wall is down. The remaining wall was the conformance fixture
+having no rekordbox database. That fixture now substitutes a disposable file on
+the `CRATEKIT_TEST_DB` convention, so the verb can exit `OK` after R34's two
+acts. The countdown key is gone from `tests/_pending.py`. The U27 trash-probe
+rider moved onto `cratekit.cli.reports`. See R-13 and R-16 in
+`docs/residual-findings.md`.
 
 U24's other countdown is DISCHARGED: the guard that declines and tombstones go
 through the revocable stores is armed and now runs over the whole package.
@@ -1091,7 +1071,7 @@ issue. That last shape is R-13's failure and is live three times over already.
 |---|---|---|
 | U37 | `cratekit.intake.collection_xml` | the COLLECTION TRACK emitter that must never emit a `<TEMPO>` element, plus two obligations U19 parked here because U37 owns the pipeline: record each new track's routing intent at the moment the placement is decided, and close a run that deferred a placement through `routing_pass.close_run` rather than `core.session.close_session` |
 | U37 | `cratekit.intake` | a path repair proposal offered into the queue U11 declared for it, never applied, and never read back out of a file somebody edited |
-| U24 | `cratekit.deletion.cli` | the deletion CLI shell. The re-point to U27 is REVERTED, so this row agrees with `tests/_pending.py`. The wall is R-13's database fixture, not the explicit gate, which main's conformance 3 rewrite took down. It is why a trailer naming this unit's issue returns `board.py audit` exit 2, and its issue stays open by design |
+| U24 | `cratekit.deletion.cli` | LANDED. `crate delete review` is the shell. The disposable database fixture is what let conformance 3 exit OK after R34's two acts. The U27 trash-probe rider moved onto `cratekit.cli.reports`. |
 | U28 | `path:skills` | the shipped operator skills the skills lint runs over |
 | U20 | `cratekit.write.routing_cli` | the four `route.*` verbs, each closing through `routing_pass.close_run` rather than the exported `close_session`, and a re-run after a destination rename that CONVERGES by reading U36's `core.convergence.DestinationNode` map rather than building a second one. See R-13: U20 is an inference, not a decision |
 | U20 | `cratekit.cli.rebuild` | the rebuild verb, whose operator disposition is an explicit logged act by a named person and never a flag that clears every tree, and which clears a tree's flag only through `write.rebuild.rebuild_tree` handed the convergence check's own difference list |

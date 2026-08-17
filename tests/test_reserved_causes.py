@@ -4774,7 +4774,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-pinned on U25, 2026-08-17: 61 to 62 holders. The one is
     # analysis/cli.py, which names config-unusable the same way the other
     # shells do. The also-holds-an-integer half stays 14.
-    assert (len(literal_holders), len(literal_both)) == (62, 14), (
+    # Re-pinned on U24's leftover shell, 2026-08-17: 62 to 63 holders.
+    # The one is deletion/cli.py, which names config-unusable the same
+    # way the other shells do. It also holds 16, the SQLite header length
+    # used to tell a synthetic database from an encrypted one, so the
+    # also-holds-an-integer half moves 14 to 15.
+    assert (len(literal_holders), len(literal_both)) == (63, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
