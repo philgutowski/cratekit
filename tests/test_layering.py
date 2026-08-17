@@ -124,7 +124,7 @@ MODULE_PACKAGES = frozenset(
     {
         "acquire", "intake", "analysis", "vocals", "label", "favorites",
         "setbuilder", "reports", "backup", "web", "desktop", "sync",
-        "maintenance", "tagging", "master", "deletion",
+        "maintenance", "tagging", "master", "deletion", "export", "outbound",
         # U23. Library adoption is a Module row that stays available in every
         # profile (R5), which makes it MORE likely to be reached for from below
         # rather than less: "it is always there" is exactly the reasoning that

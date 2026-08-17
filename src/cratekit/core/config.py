@@ -1851,6 +1851,48 @@ STATE_FILES: tuple[StateFile, ...] = (
             "document cannot arrive without a lock."
         ),
     ),
+    # ── U33's two entries, appended ────────────────────────────────────────
+    #
+    # APPENDED RATHER THAN FILED BESIDE favorites_state, for the reason the
+    # verb registry and the reason registry both give: several units land
+    # against this literal at once, two entries inserted into different
+    # halves of it auto-merge, and a duplicate key is then resolved silently
+    # by whichever line comes last. An append conflicts textually.
+    StateFile(
+        key="outbound_writes",
+        snapshot=SnapshotRole.SURVIVES_ROLLBACK,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="outbound_writes.json",
+        why=(
+            "The remote identifiers a playlist export or a heart-back already "
+            "wrote on THIS library's streaming account. A second install that "
+            "lost it would create a second remote playlist for a crate that "
+            "already has one, and would re-heart tracks the account already "
+            "hearts. Library-scoped because the records name this library's "
+            "playlists and favourites, not the machine."
+            " It SURVIVES a rollback: the remote account does not roll back, "
+            "and forgetting a remote playlist id is how the next export "
+            "duplicates one. Coupled would be the wrong role, because a "
+            "restore of the database must not make the next export create."
+        ),
+    ),
+    StateFile(
+        key="outbound_writes_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="outbound_writes.lock",
+        why=(
+            "The sibling lock for the outbound write ledger. Two exports "
+            "finishing at once would both miss the same remote id, both "
+            "create, and the second rename would discard the first playlist "
+            "while reporting success. Library-scoped for the reason the "
+            "document is: a lock in a per-installation directory is invisible "
+            "to a second machine editing the same library. NEVER_RESTORED "
+            "for the inode reason every lock here shares."
+        ),
+    ),
 )
 
 _STATE_BY_KEY: Mapping[str, StateFile] = MappingProxyType({s.key: s for s in STATE_FILES})
