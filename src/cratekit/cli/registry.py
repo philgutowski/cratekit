@@ -1170,8 +1170,18 @@ ENTRIES: tuple[Entry, ...] = (
         adjudicates=True,
         destructive=True,
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "credential.provider"),
-        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
-        planned_in="U22",
+        gates=(
+            GateSpec(
+                name="sync.favorites.confirm",
+                options=("sync", "abort"),
+                prompt="Heart matching tracks on the streaming service? This never removes a heart.",
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+        # Landed by U33. The marker said U22; R-130 remounts this verb onto
+        # the unit that creates cratekit.favorites.cli. U33 is that unit.
     ),
     Entry(
         name="label.registry",
@@ -1332,7 +1342,15 @@ ENTRIES: tuple[Entry, ...] = (
         output_schema="job_state/1",
         writes=frozenset({"remote"}),
         doctor_checks=("credential.provider",),
-        planned_in="U33",
+        gates=(
+            GateSpec(
+                name="export.playlist.confirm",
+                options=("export", "abort"),
+                prompt="Write this playlist to the streaming service?",
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
     ),
     Entry(
         name="setbuild",

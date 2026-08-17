@@ -1163,6 +1163,18 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # Harvest could not list the named playlist. An invented label list
         # would be a guess, so the verb refuses rather than offering one.
         "label-playlist-unreadable": ExitCode.UPSTREAM_UNAVAILABLE,
+        # ── U33's refusals, appended ────────────────────────────────────────
+        #
+        # APPENDED, same reason as the U26 block: two units writing into
+        # different halves of this literal auto-merge.
+        #
+        # The outbound write ledger is present and cannot be understood.
+        # Treating it as empty would create a second remote playlist for a
+        # library playlist this account already exported.
+        "outbound-ledger-unusable": ExitCode.PRECONDITION,
+        # Export was invoked without a playlist identifier. PRECONDITION
+        # rather than USAGE, because the parser accepted the invocation.
+        "export-playlist-unknown": ExitCode.PRECONDITION,
     }
 )
 

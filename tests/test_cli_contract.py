@@ -1402,6 +1402,11 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "sync.labels": [],
         "label.import": ["no-such-label"],
         "label.harvest": ["https://example.invalid/playlist"],
+        # U33. Export takes the playlist identifier and queues after its
+        # own confirm gate. Favourites sync takes no positional: the
+        # confirm is the remote half, separate from any local colour write.
+        "export.playlist": ["crate-export"],
+        "sync.favorites": [],
     }[entry.name]
 
 

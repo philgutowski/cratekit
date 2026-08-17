@@ -3354,6 +3354,14 @@ review those numbers exist to trigger:
   the sixth being `harvested-label`. Literal holders 63 to 66: the three
   new modules are `label/cli.py`, `label/marks.py` and `label/registry.py`.
   The also-holds-an-integer half stays 15. The without-own half is still 8.
+* **U33, 2026-08-17.** Two slugs appended to the closed reason registry:
+  `outbound-ledger-unusable`, `export-playlist-unknown`. Cause population
+  126 to 128, non-reserved half 103 to 105, reserved half unchanged at 23.
+  Kebab literals 305 to 307, both new literals being those two keys, so
+  the non-key half stays 180. Literal holders 66 to 69: the three new
+  modules are `export/cli.py`, `favorites/cli.py` and
+  `modules/outbound/ledger.py`. The also-holds-an-integer half stays 15.
+  The without-own half is still 8.
 
 The comparison this section rests on survived both, and it widened rather than
 narrowed each time: 13 against 24, then 17 against 36, now 18 against 38. The
@@ -8414,3 +8422,42 @@ The following P2s from the same review do not hold against
   `listing.artist_releases` (`src/cratekit/label/crawl.py:15-17`).
 * `_recent_unverified` in `crawl.py` is defined and unused. The symbol
   is not in the file. `crawl.py` only defines `releases`.
+
+---
+
+## R-144. U33 lands the outbound discipline; it does not drive a live account
+
+**Found:** at the U33 authoring pass, 2026-08-17. Accepted rather than held.
+
+The unit's automated half is in the tree: playlist export reports unmatched
+tracks and asks its own confirm gate; a re-export of the same playlist key
+updates the recorded remote playlist; hearts ignore every remove-shaped
+flag and the package defines no remove write; deletion imports none of
+the outbound packages; an interrupted export or heart-back resumes on the
+recorded remote id without creating a second playlist or a second heart.
+The author's suite is 6060 passed, 2 skipped.
+
+The unit's verification, a real export and a real hearts sweep leaving
+the remote account in the reported state and nothing else, was not run.
+The live provider account stays off limits for an unattended session.
+Both verbs queue a job. No worker in this build calls
+`cratekit.modules.outbound.export.apply` or
+`cratekit.modules.outbound.hearts.heart_back` for those verbs. Forward
+acquisition of unowned hearts, and the local colour and tag write the
+favorites verb still declares, are not driven here.
+
+**Measured cost.** None to a library today: no live account was written
+and no registry record was written against a live database. The cost is
+to the operator who still has to bind a provider session and drive one
+real playlist and one real hearts sweep by hand, and to anyone who reads
+a landed U33 as meaning outbound writes are already unattended end to
+end.
+
+**Why not fixed here.** Opening a live streaming account, or the live
+master, is a standing refusal. Inventing a remote state from a fixture
+would not satisfy the live gate the brief names.
+
+**Closes when:** one real library playlist has been exported and one real
+hearts sweep has run through these engines, the remote account matches
+the reported added and unmatched sets, and a second run of each updates
+rather than duplicates.
