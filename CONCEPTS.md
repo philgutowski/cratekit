@@ -82,6 +82,15 @@ propagating rather than converging. When every offered remedy terminates in
 breaking something else, that is a finding about the design and never a licence
 to widen the guard so it accepts what it was written to catch.
 
+### Beat grid
+The rekordbox-authored timing map for a track. This product never writes one. A
+wrong grid is worse than no grid, because a folded tempo moves every cue and
+loop the user has set.
+
+A mapping that carries the tag spelling of tempo is treated as a write, even
+when it never reaches a file. The domain word may live on an attribute. The
+serialized key may not.
+
 ### Pending register
 The one declaration of guards whose subject does not exist yet. Each entry names
 the missing thing, the unit that will land it, and what the guard behind it
@@ -232,6 +241,9 @@ produces it.
 - "Landed" names two different events. A unit lands when it merges. A verb lands
   when its planned marker clears because the module exists. They can happen in
   different sessions, and only the second puts the name in front of the parser.
+- "bpm" is both the domain quantity and a file-tag spelling. The quantity may
+  live on an attribute. The tag spelling may not appear as a mapping key in the
+  package, because a mapping that carries it is treated as a grid write.
 - Unit, attended chore, and residual finding have all been called "an item on the
   board". Two of the three are work and belong there; a residual is a record of an
   accepted problem and belongs in the register instead. Collapsing them is what
