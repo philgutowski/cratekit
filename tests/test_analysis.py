@@ -93,6 +93,23 @@ def test_chunked_inference_matches_unchunked_on_a_fixture():
     assert reduce_frames(*whole) == reduce_frames(*parts)
 
 
+def test_chunked_inference_walks_the_signal_in_pieces():
+    from cratekit.analysis.vocal import infer_frames
+
+    class _Counting(_FakeModel):
+        def __init__(self) -> None:
+            self.widths: list[int] = []
+
+        def inference(self, wav):
+            self.widths.append(int(np.asarray(wav).shape[-1]))
+            return super().inference(wav)
+
+    wav = np.full(16000, 0.2, dtype=np.float32)
+    model = _Counting()
+    infer_frames(model, wav, chunk_samples=3200)
+    assert model.widths == [3200, 3200, 3200, 3200, 3200]
+
+
 def test_a_killed_batch_resumes_skipping_completed_tracks(tmp_path):
     from cratekit.analysis.run import run_batch
 
