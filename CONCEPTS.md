@@ -102,6 +102,18 @@ the costume of an enforced one. A future obligation that cannot be stated as a
 missing thing the suite can name is not a register entry at all and belongs in a
 coordination note, which is the weaker instrument on purpose.
 
+### Planned verb
+A command the registry names before the module that implements it exists. The
+name is in the table so the whole surface can be checked before every unit has
+shipped. The marker does not clear itself: a countdown fails the moment that
+module is importable, and that failure is the signal to remove the marker that
+has been keeping the verb out of the running command tree.
+
+A planned verb whose first typed word is already a one-word command cannot enter
+the running tree as written: the parser treats that word as a finished command,
+not as a group that can grow a child. The name has to change before the marker
+clears, because clearing the marker is what puts the verb in front of the parser.
+
 ### Battery
 The fixed set of checks that must all be clean before anything merges. It is one
 named gate rather than a list assembled per change, so asking whether the battery
@@ -217,6 +229,9 @@ produces it.
 - Discharging a pending register entry has been described as two halves, meaning
   the entry and the decorator. It is three edits, because the meta suite keeps its
   own mirrored copy of the key that must move with them.
+- "Landed" names two different events. A unit lands when it merges. A verb lands
+  when its planned marker clears because the module exists. They can happen in
+  different sessions, and only the second puts the name in front of the parser.
 - Unit, attended chore, and residual finding have all been called "an item on the
   board". Two of the three are work and belong there; a residual is a record of an
   accepted problem and belongs in the register instead. Collapsing them is what
