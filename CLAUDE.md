@@ -141,7 +141,8 @@ two things in two modules.
 - **No pull requests.** Feature branch per unit, merge to `main` locally, push
   `main`, delete the branch.
 - **No em dashes, en dashes, or double hyphens** in any prose, code comment,
-  commit message, or issue body.
+  commit message, or issue body. Do not swap a dash for a colon; favor commas,
+  and keep colons for a genuine list or definition.
 - **Ship the explanation.** Every unit lands with the code and architecture
   explanation Phillip's standing rule asks for. He is learning this codebase as it
   is built and should be able to explain any of it in an interview.

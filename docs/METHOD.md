@@ -236,7 +236,8 @@ one commit of history derives almost nothing. Driven on macOS 2026-08-15, on a
   400`. Push one branch at a time. `http.postBuffer` is already raised and does
   not fix it.
 - **No em dashes, no en dashes, no double hyphens** in prose, comments, commit
-  messages or issue bodies.
+  messages or issue bodies. Do not swap a dash for a colon; favor commas over
+  colons.
 - **U24 and U27 merge WITHOUT closing trailers.** GitHub matches a closing
   keyword anywhere in a body, not only in trailer position, and it scans **every
   commit in the pushed range**, not only the merge commit. Scan the RANGE:
