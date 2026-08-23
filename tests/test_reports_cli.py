@@ -28,11 +28,13 @@ from pathlib import Path
 import pytest
 
 from cratekit import cli
-from cratekit.cli import output
+from cratekit.cli import output, registry
+from cratekit.cli import reports as reports_cli
 from cratekit.core import config, review
 from cratekit.core.exit_codes import ExitCode
 from cratekit.core.naming import MarkerRule, NameTemplate
 from cratekit.core.taxonomy import default_taxonomy
+from cratekit.modules.reports import duplicates
 from tests.modules.test_reports import _close, _collection, _document, _folder, _playlist
 
 TREE = default_taxonomy().tree
@@ -257,6 +259,44 @@ def test_duplicates_offers_the_pair_into_the_queue_under_its_own_handler_key(
     assert [item.item_id for item in addressed] == [
         document["data"]["items"][0]["id"]
     ], "the queue cannot show what the verb produced under the name a person typed"
+
+
+def test_the_two_copies_of_the_duplicate_handler_key_cannot_drift():
+    """One verb name lives in two modules, and nothing compared them.
+
+    ``duplicates.HANDLER_KEY`` is the engine's default and
+    ``registry.entry("audit.duplicates").handler_key`` is what the shell passes.
+    They are the same string today, which is exactly why the author's mutation
+    table measured ZERO for dropping the shell's argument: the mutation was
+    semantically inert on this tree, so the row said nothing about the wiring.
+    What can actually go wrong is the two drifting, and the drift is silent,
+    because the queue would still accept items under a key no verb name resolves.
+    This is the comparison that was missing.
+    """
+    assert duplicates.HANDLER_KEY == registry.entry("audit.duplicates").handler_key
+
+
+def test_the_shell_passes_the_REGISTRY_key_rather_than_letting_the_engine_default(
+    configured, exported, monkeypatch
+):
+    """The wiring itself, driven, which the inert mutation above could not reach.
+
+    The engine's parameter is a default evaluated when the function is defined,
+    so replacing the module constant proves nothing. Wrapping the call and
+    reading what the shell actually handed it does.
+    """
+    seen: list[str | None] = []
+    real = duplicates.audit_and_offer
+
+    def recording(view, store, *, template, handler_key=None):
+        seen.append(handler_key)
+        return real(view, store, template=template, handler_key=handler_key)
+
+    monkeypatch.setattr(reports_cli.duplicates, "audit_and_offer", recording)
+    code, _document = envelope_of(["audit", "duplicates", str(exported(duplicated=True))])
+
+    assert code == int(ExitCode.OK)
+    assert seen == [registry.entry("audit.duplicates").handler_key]
 
 
 def test_a_second_run_re_offers_the_same_item_rather_than_a_second_one(

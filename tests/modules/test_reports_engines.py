@@ -195,18 +195,60 @@ def test_a_tree_nested_inside_another_folder_is_still_the_governed_tree():
     assert [item.entry.track_id for item in report.covered] == ["1"]
 
 
-def test_the_uncovered_order_is_stable_across_two_runs_of_one_document(view):
-    """Two runs of an unchanged library must not look different.
+def test_the_uncovered_list_is_ordered_BY_ARTIST_AND_NOT_BY_THE_WALK():
+    """The order is asserted, not merely asserted to be repeatable.
 
-    Sorting on nothing leaves the walk's order, which changes when somebody
-    reorders their tree, and a diff of two reports then shows work that did not
-    happen.
+    THE VERSION THIS REPLACES MEASURED NOTHING, and the author's own mutation
+    table is what said so. It compared two reads of one document and required
+    them to agree, which the unsorted collection order satisfies perfectly: the
+    walk is deterministic, so "stable" was free and the sort was worth zero
+    deaths. What a person needs is not that two runs agree, it is that the list
+    is in an order they can scan, and that a tree somebody rearranges does not
+    reshuffle it.
+
+    So the collection here DECLARES its entries in the reverse of the order the
+    report must produce. Nothing but the sort can turn one into the other.
     """
-    first = coverage.coverage(view, tree=TREE)
-    second = coverage.coverage(export.read_export(_library()), tree=TREE)
-    assert [item.entry.track_id for item in first.uncovered] == [
-        item.entry.track_id for item in second.uncovered
+    reversed_collection = _document(
+        collection=_collection(
+            [
+                (1, "05B - 120 - Zulu", "Yolanda", "file://localhost/a.flac"),
+                (2, "05B - 120 - Yankee", "Xavier", "file://localhost/b.flac"),
+                (3, "05B - 120 - Alpha", "Adele", "file://localhost/c.flac"),
+            ]
+        ),
+        root_children=[_folder(TREE.display, 0, 1), _close(1)],
+        root_count=1,
+    )
+    report = coverage.coverage(export.read_export(reversed_collection), tree=TREE)
+
+    assert [item.entry.artist for item in report.uncovered] == [
+        "Adele",
+        "Xavier",
+        "Yolanda",
     ]
+
+
+def test_two_entries_sharing_an_artist_and_a_name_still_hold_an_order():
+    """The tie break, which the pair above never reaches.
+
+    Two rows can genuinely carry one artist and one name, which is the pair the
+    duplicate audit exists to ask about. Sorting on the first two fields alone
+    leaves that pair in whatever order the walk produced, so the identifier is
+    the third key and this is what drives it.
+    """
+    tied = _document(
+        collection=_collection(
+            [
+                (9, "05B - 120 - Same", "One", "file://localhost/b.flac"),
+                (2, "05B - 120 - Same", "One", "file://localhost/a.flac"),
+            ]
+        ),
+        root_children=[_folder(TREE.display, 0, 1), _close(1)],
+        root_count=1,
+    )
+    report = coverage.coverage(export.read_export(tied), tree=TREE)
+    assert [item.entry.track_id for item in report.uncovered] == ["2", "9"]
 
 
 def test_governed_paths_names_the_playlists_and_not_the_folders(view):
@@ -368,6 +410,65 @@ def test_the_shape_measures_the_governed_tree_from_its_own_node(view):
     assert stats.shape.deepest == 3
     assert not stats.shape.deeper_than_declared
     assert (stats.shape.folders, stats.shape.playlists) == (3, 2)
+
+
+def test_a_folder_below_a_genre_is_not_itself_a_genre():
+    """A genre is a folder whose PARENT is the tree, not one anywhere beneath it.
+
+    THE AUTHOR'S MUTATION TABLE FOUND THIS UNGUARDED. Loosening the filter to
+    "the tree appears anywhere in the path" killed nothing, because every fixture
+    in this module was exactly three deep and the two rules agree on a tree that
+    shallow. A person who has sub-foldered one genre would have had that
+    sub-folder reported as a genre of its own, with the parent's tracks counted
+    twice across the two rows.
+    """
+    sub_foldered = _document(
+        collection=_collection([(1, "08A - 124 - A", "X", "file://localhost/a.flac")]),
+        root_children=[
+            _folder(TREE.display, 1, 1),
+            _folder(DEEP.display, 1, 2),
+            _folder("Sub", 1, 3),
+            *_playlist("High", [1], 4),
+            _close(3),
+            _close(2),
+            _close(1),
+        ],
+        root_count=1,
+    )
+    stats = library_report.statistics(
+        export.read_export(sub_foldered), declared=default_taxonomy(), template=TEMPLATE
+    )
+    assert [row.display for row in stats.genres] == [DEEP.display]
+    assert "Sub" not in {row.display for row in stats.genres}
+
+
+def test_a_tree_nested_under_another_folder_yields_no_genre_from_that_folder():
+    """The other direction of the same loosening, driven separately.
+
+    Under "the tree appears anywhere in the path", the tree's own folder sitting
+    inside an archive folder makes the tree itself a two-segment path whose last
+    segment is the tree, and the archive's other children become genres. Under
+    the rule this ships, a genre is the child of the tree and nothing else is.
+    """
+    nested = _document(
+        collection=_collection([(1, "08A - 124 - A", "X", "file://localhost/a.flac")]),
+        root_children=[
+            _folder("Archive", 2, 1),
+            _folder(TREE.display, 1, 2),
+            _folder(DEEP.display, 1, 3),
+            *_playlist("High", [1], 4),
+            _close(3),
+            _close(2),
+            _folder("Scratch", 0, 2),
+            _close(2),
+            _close(1),
+        ],
+        root_count=1,
+    )
+    stats = library_report.statistics(
+        export.read_export(nested), declared=default_taxonomy(), template=TEMPLATE
+    )
+    assert [row.display for row in stats.genres] == [DEEP.display]
 
 
 def test_a_tree_deeper_than_the_template_declares_is_reported_as_deeper():

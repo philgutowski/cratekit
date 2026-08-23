@@ -2406,26 +2406,42 @@ def test_a_broken_trash_is_informational_when_no_verb_this_profile_needs_it(libr
     assert finding.remedy is None
 
 
-def test_the_trash_check_cannot_pass_by_having_run(tmp_path):
-    """The seam binds ``create=False``, driven rather than read off the signature.
+def test_the_trash_check_cannot_pass_by_having_run(tmp_path, monkeypatch):
+    """The seam binds ``create=False``, and the BINDING is what is driven.
 
-    ``trash.probe`` creates the per-volume Trash by default, because the desktop
-    does too. A health check taking that default would make the directory it is
-    asking about exist and then report the pass it had itself produced, which is
-    the same defect as a test asserting its own fixture.
+    THE VERSION THIS REPLACES MEASURED NOTHING, and the author's own mutation
+    table is what said so: flipping the seam to ``create=True`` killed zero
+    tests. It watched a temporary directory for a new folder, and on this
+    platform ``layout_for`` resolves that directory's volume root to ``/``, so
+    the create it was watching for was refused by the filesystem rather than by
+    the argument. The test passed for a reason that had nothing to do with the
+    property.
+
+    So the call is captured instead. ``trash.probe`` creates the per-volume Trash
+    by default, because the desktop does too, and a health check taking that
+    default would make the directory it is asking about exist and then report the
+    pass it had itself produced.
     """
     from cratekit.deletion import trash
 
+    seen: list[dict] = []
+
+    def recording(path, **kwargs):
+        seen.append(dict(kwargs, path=path))
+        return trash.TrashStatus(None, False, "not probed for real")
+
+    monkeypatch.setattr(doctor.trash, "probe", recording)
     volume = tmp_path / "volume"
     (volume / "Music").mkdir(parents=True)
-    before = sorted(one.name for one in volume.iterdir())
 
-    answer = doctor._probe_trash(volume)
+    doctor._probe_trash(volume)
 
-    assert sorted(one.name for one in volume.iterdir()) == before, (
-        "the probe created the directory it was asked about"
+    assert len(seen) == 1
+    assert seen[0]["create"] is False, (
+        "the doctor probe took the creating default, so the check can pass by "
+        "having run"
     )
-    assert isinstance(answer, trash.TrashStatus)
+    assert seen[0]["path"] == volume
 
 
 def test_a_trash_probe_the_operating_system_refuses_is_a_failure_with_the_right_act(
