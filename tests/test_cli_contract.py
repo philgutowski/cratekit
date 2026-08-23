@@ -1402,6 +1402,19 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "sync.labels": [],
         "label.import": ["no-such-label"],
         "label.harvest": ["https://example.invalid/playlist"],
+        # U27. The four report verbs each take a collection export, and each is
+        # handed a path under the CONFIGURED library that is deliberately absent,
+        # for the same reason the file verbs above are: a literal here would be a
+        # real path on somebody's machine (R1), and an absent one makes every one
+        # of them refuse with a code from the vocabulary rather than with a
+        # traceback. There is no configured export location to default to, so an
+        # absent file is the state every fresh install is genuinely in. The happy
+        # path over a real export is driven in tests/modules/test_reports.py,
+        # which is where the export fixtures live.
+        "audit.coverage": [str(library / "no-such-export.xml")],
+        "audit.duplicates": [str(library / "no-such-export.xml")],
+        "report.library": [str(library / "no-such-export.xml")],
+        "report.intake-aging": [str(library / "no-such-export.xml")],
         # U33. Export takes the playlist identifier and queues after its
         # own confirm gate. Favourites sync takes no positional: the
         # confirm is the remote half, separate from any local colour write.

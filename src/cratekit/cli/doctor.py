@@ -121,6 +121,7 @@ from cratekit.core.cause import (
     access_remedy,
 )
 from cratekit.core.exit_codes import Remedy
+from cratekit.deletion import trash
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
@@ -440,6 +441,20 @@ def _git_dir(root: Path) -> tuple[Path | None, str | None, Remedy | None]:
     return pointed, None, None
 
 
+def _probe_trash(path: Path) -> trash.TrashStatus:
+    """Whether a file at ``path`` could be trashed, WITHOUT making it possible.
+
+    ``create=False`` is bound here rather than left to the check, and it is the
+    whole reason this seam exists as its own function. :func:`trash.probe`
+    creates the per-volume Trash by default, because the desktop does too and a
+    volume nobody has trashed anything on legitimately has no directory yet. A
+    health check that took that default would make the directory it is asking
+    about exist, and would then report a pass it had itself produced, which is
+    the same defect as a test that asserts its own fixture.
+    """
+    return trash.probe(path, create=False)
+
+
 @dataclass(frozen=True, slots=True)
 class Probes:
     """Every seam a check reaches the outside world through.
@@ -476,6 +491,11 @@ class Probes:
     binding_pin_problem: Callable[[config.Config | None], str | None] = _binding_pin_problem
     rclone_remotes: Callable[[str], Mapping[str, Mapping[str, Any]] | None] = _rclone_remotes
     checkout_root: Callable[[], Path | None] = _checkout_root
+    #: Whether this account could move a file into the library volume's Trash.
+    #: A seam like every other here, so a test describes a volume whose Trash is
+    #: missing, unwritable, or on another filesystem without needing three real
+    #: volumes to describe them on.
+    trash_probe: Callable[[Path], trash.TrashStatus] = _probe_trash
 
 
 # ---------------------------------------------------------------------------
@@ -886,6 +906,113 @@ def _check_db_containment(inputs: _Inputs) -> Finding:
             f"is a copy rather than one atomic commit, so a crash mid-capture can "
             f"leave the two halves describing different moments"
         ),
+    )
+
+
+def _check_trash(inputs: _Inputs) -> Finding:
+    """Whether the library volume has a Trash this account can move a file into.
+
+    R35 sends a confirmed deletion to the system Trash and never to an unlink, so
+    a volume with no usable Trash is a volume on which the deletion pass refuses.
+    Without this check a person meets that refusal in the middle of a deletion,
+    after the review, after the confirm gate, with a plan already digested. This
+    is the run that says so beforehand.
+
+    IT DOES NOT DEFER TO THE MOUNT CHECKS, unlike the two library-scoped state
+    readers below, and the difference is real rather than an oversight. Those two
+    read a file this product WROTE under the library root, so an absent volume
+    means there is nothing to read and the volume is one problem reported once.
+    This asks whether a specific directory on that volume will accept a move, and
+    the two questions come apart in the direction that matters: a mounted volume
+    with the recorded identity and a read-only mount answers both mount checks
+    green and has no usable Trash at all. A foreign volume failing both is not one
+    answer twice, it is two preconditions of one destructive act.
+
+    ASKED WITH ``create=False``, through the seam that binds it, so the check
+    cannot pass by having run.
+    """
+    key, title = "library.trash", "system Trash on the library volume"
+    if inputs.cfg is None:
+        return _unchecked(key, title)
+    root = inputs.cfg.library.root
+    try:
+        status = inputs.probes.trash_probe(root)
+    except OSError as exc:
+        # GATED ON ``required`` LIKE EVERY NEIGHBOURING CHECK. An unanswerable
+        # question is still not a pass, but on a profile where nothing trashes a
+        # file it is not a red either, and a report that paints red for a
+        # capability nothing uses is how people learn to ignore red.
+        needed = inputs.required(key)
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL if needed else Status.INFO,
+            detail=(
+                f"whether {root} has a usable Trash could not be established "
+                f"({exc}), so whether a confirmed deletion would land in the "
+                f"Trash or refuse is unknown"
+            ),
+            remedy=access_remedy(exc, otherwise=Remedy.REPORT_DEFECT) if needed else None,
+            error=exc if needed else None,
+        )
+    if status.usable:
+        where = status.layout.files if status.layout is not None else root
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.OK,
+            detail=f"{where} exists on the same filesystem as {root} and accepts a move",
+        )
+    if status.absent:
+        # NOT A FAILURE, and getting this wrong made the check worse than absent.
+        # ``trash.probe`` creates the per-volume Trash on first use because the
+        # desktop does, and the deletion pass takes that default. Doctor asks with
+        # ``create=False`` so its answer cannot be produced by its own asking,
+        # which means a volume nobody has trashed anything on answers "not a
+        # directory" here and works perfectly when a deletion actually runs.
+        # Driven: probe(create=False) says unusable and probe(create=True) says
+        # usable on the same fresh volume. Reporting that as red tells a person
+        # deletion will refuse when it will not, which is the one thing a
+        # precondition must never do.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.OK,
+            detail=(
+                f"{root} has no Trash directory yet, which is the state of a "
+                f"volume nobody has deleted from; the deletion pass creates it on "
+                f"first use exactly as the desktop does"
+            ),
+        )
+    if not inputs.required(key):
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"{status.problem}, and no verb this profile switches on moves a "
+                f"file to the Trash, so nothing depends on it today"
+            ),
+        )
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.FAIL,
+        detail=(
+            f"{status.problem}. A confirmed deletion moves the file to the "
+            f"volume's own Trash and never unlinks it, so this profile switches "
+            f"on a verb that would refuse partway through a deletion rather than "
+            f"before one"
+        ),
+        # NOT ``RUN_DOCTOR``, which is what ``trash.assert_usable`` refuses with:
+        # that token sends a person here, and here answering with it again is a
+        # loop. The three shapes this probe reports are a directory that is not
+        # there, one this account cannot write, and one on another filesystem,
+        # and the first two are a path to grant access to. The third is named in
+        # the sentence, because no token in the vocabulary means "your Trash is
+        # on the wrong disk" and inventing one for a case a person meets once
+        # would be a token nobody ever reads.
+        remedy=Remedy.GRANT_PATH_ACCESS,
     )
 
 
@@ -2023,6 +2150,7 @@ CHECKS: tuple[Check, ...] = (
     Check("library.mounted", _check_library_mounted),
     Check("library.identity", _check_library_identity),
     Check("library.db_containment", _check_db_containment),
+    Check("library.trash", _check_trash),
     Check("taxonomy.active", _check_taxonomy),
     Check("rekordbox.closed", _check_rekordbox_closed),
     Check("rekordbox.pins", _check_rekordbox_pins),

@@ -207,6 +207,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         "library.mounted",
         "library.identity",
         "library.db_containment",
+        "library.trash",
         "taxonomy.active",
         "rekordbox.closed",
         "rekordbox.pins",
@@ -2358,6 +2359,188 @@ def test_a_contained_database_says_the_snapshot_commits_with_a_rename(configured
     finding = find(doctor.run(configured, probes=probes()), "library.db_containment")
     assert finding.status is doctor.Status.OK
     assert "under library.root" in finding.detail
+
+
+# ── the Trash on the library volume, which deletion refuses without ──────────
+
+
+def test_a_volume_whose_trash_accepts_a_move_reads_green(configured):
+    finding = find(doctor.run(configured, probes=probes()), "library.trash")
+    assert finding.status is doctor.Status.OK
+    assert str(configured.library.root) in finding.detail
+    assert finding.remedy is None
+
+
+def test_a_volume_with_no_usable_trash_refuses_because_a_verb_depends_on_it(configured):
+    """R35 sends a confirmed deletion to the Trash and never to an unlink.
+
+    Without this check a person meets that refusal in the middle of a deletion,
+    after the review and after the confirm gate, against a plan already digested.
+    The remedy is NOT run-doctor, which is what ``trash.assert_usable`` refuses
+    with: that token sends somebody here, and answering with it here is a loop.
+    """
+    finding = find(
+        doctor.run(configured, probes=doctor_machines.hostile()), "library.trash"
+    )
+    assert finding.status is doctor.Status.FAIL
+    assert finding.remedy is Remedy.GRANT_PATH_ACCESS
+    assert "not writable" in finding.detail
+    assert "never unlinks it" in finding.detail
+
+
+def test_a_volume_with_no_trash_directory_yet_is_not_a_failure(configured):
+    """The false red the cross-model review found, driven both ways.
+
+    ``trash.probe`` creates the per-volume Trash on first use because the desktop
+    does, and the deletion pass takes that default. Doctor asks with
+    ``create=False`` so its answer cannot be produced by its own asking, which
+    means a volume nobody has deleted from answers "not a directory" here and
+    works perfectly when a deletion actually runs. Reporting that as red told a
+    person deletion would refuse on a machine where it would succeed, which is the
+    one thing a precondition must never do.
+    """
+    finding = find(
+        doctor.run(configured, probes=probes(trash_probe=doctor_machines._absent_trash)),
+        "library.trash",
+    )
+    assert finding.status is doctor.Status.OK
+    assert finding.remedy is None
+    assert "creates it on first use" in finding.detail
+
+
+def test_the_two_probe_answers_that_made_the_false_red_are_really_different(tmp_path):
+    """The asymmetry itself, measured on the real probe rather than on a seam.
+
+    This is the evidence the finding rested on, kept as a test so the seam above
+    cannot drift away from what the module it stands in for actually does.
+    """
+    from cratekit.deletion import trash
+
+    volume = tmp_path / "volume"
+    (volume / "Music").mkdir(parents=True)
+    home = tmp_path / "home"
+    common = {"home": home, "uid": 501, "platform": "linux"}
+
+    asked = trash.probe(volume, create=False, **common)
+    made = trash.probe(volume, create=True, **common)
+
+    assert not asked.usable and asked.absent, "doctor's question"
+    assert made.usable, "the deletion pass's question, on the same volume"
+
+
+def test_a_broken_trash_is_informational_when_no_verb_this_profile_needs_it(library):
+    """The deletion module off means nothing on this machine trashes a file.
+
+    Reporting red for a capability nothing uses is how a person learns to ignore
+    red, which is the argument the INFO status carries everywhere else here.
+    """
+    document = document_for(library)
+    document["profile"] = {"name": "slim"}
+    cfg = config.from_dict(document)
+    finding = find(
+        doctor.run(cfg, probes=probes(trash_probe=doctor_machines._no_trash)),
+        "library.trash",
+    )
+    assert finding.status is doctor.Status.INFO
+    assert "nothing depends on it today" in finding.detail
+    assert finding.remedy is None
+
+
+def test_the_trash_check_cannot_pass_by_having_run(tmp_path, monkeypatch):
+    """The seam binds ``create=False``, and the BINDING is what is driven.
+
+    THE VERSION THIS REPLACES MEASURED NOTHING, and the author's own mutation
+    table is what said so: flipping the seam to ``create=True`` killed zero
+    tests. It watched a temporary directory for a new folder, and on this
+    platform ``layout_for`` resolves that directory's volume root to ``/``, so
+    the create it was watching for was refused by the filesystem rather than by
+    the argument. The test passed for a reason that had nothing to do with the
+    property.
+
+    So the call is captured instead. ``trash.probe`` creates the per-volume Trash
+    by default, because the desktop does too, and a health check taking that
+    default would make the directory it is asking about exist and then report the
+    pass it had itself produced.
+    """
+    from cratekit.deletion import trash
+
+    seen: list[dict] = []
+
+    def recording(path, **kwargs):
+        seen.append(dict(kwargs, path=path))
+        return trash.TrashStatus(None, False, "not probed for real")
+
+    monkeypatch.setattr(doctor.trash, "probe", recording)
+    volume = tmp_path / "volume"
+    (volume / "Music").mkdir(parents=True)
+
+    doctor._probe_trash(volume)
+
+    assert len(seen) == 1
+    assert seen[0]["create"] is False, (
+        "the doctor probe took the creating default, so the check can pass by "
+        "having run"
+    )
+    assert seen[0]["path"] == volume
+
+
+def test_a_trash_probe_the_operating_system_refuses_is_a_failure_with_the_right_act(
+    configured,
+):
+    """An unanswerable question is not a pass, and the act follows the refusal.
+
+    The classification runs at ``Finding`` construction, so a permission error
+    reaches the report as grant-path-access and a read-only volume as
+    remount-writable, rather than as one hardcoded sentence for both.
+    """
+
+    def refuses(path):
+        # WITH A FILENAME, because ``access_refusal`` will not claim a refusal it
+        # cannot name a path for: a sentence with no path is one a user can do
+        # nothing with. Every real refusal on this route carries one, since the
+        # probe stats and opens named directories.
+        raise PermissionError(errno.EACCES, "Operation not permitted", str(path))
+
+    finding = find(
+        doctor.run(configured, probes=probes(trash_probe=refuses)), "library.trash"
+    )
+    assert finding.status is doctor.Status.FAIL
+    assert "could not be established" in finding.detail
+    assert finding.remedy is not None
+    assert finding.remedy is not Remedy.REPORT_DEFECT
+
+
+def test_an_unanswerable_trash_probe_is_informational_when_no_verb_needs_it(library):
+    """The gate on the refusal branch, which the fix round left unmeasured.
+
+    Forcing that branch to FAIL regardless of the profile killed nothing in the
+    author's own table, because the only test of it ran on the full profile where
+    the answer is FAIL either way. A machine with the deletion module switched off
+    has nothing that moves a file to the Trash, so an unanswerable question about
+    it is worth knowing and is not a fault, which is the rule every neighbouring
+    check in this file applies.
+    """
+
+    def refuses(path):
+        raise PermissionError(errno.EACCES, "Operation not permitted", str(path))
+
+    document = document_for(library)
+    document["profile"] = {"name": "slim"}
+    finding = find(
+        doctor.run(config.from_dict(document), probes=probes(trash_probe=refuses)),
+        "library.trash",
+    )
+    assert finding.status is doctor.Status.INFO
+    assert finding.remedy is None
+    assert "could not be established" in finding.detail
+
+
+def test_the_trash_check_is_unchecked_when_there_is_no_configuration(tmp_path, monkeypatch):
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "empty"))
+    config.reset_cache()
+    finding = find(doctor.run(probes=probes()), "library.trash")
+    assert finding.status is doctor.Status.INFO
+    assert "no usable configuration" in finding.detail
 
 
 # ═══════════════════════════════════════════════════════════════════════════

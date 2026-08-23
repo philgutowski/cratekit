@@ -132,6 +132,19 @@ class TrashStatus:
     layout: TrashLayout | None
     usable: bool
     problem: str = ""
+    #: True when the ONLY thing wrong is that the directory has not been created
+    #: yet. Carried as a typed field rather than left for a caller to recognise
+    #: in ``problem``, because branching on a sentence is how two readers come to
+    #: disagree about what it said.
+    #:
+    #: IT EXISTS FOR THE ASYMMETRY BETWEEN THIS MODULE'S TWO CALLERS. The
+    #: deletion pass probes with ``create=True`` and a volume nobody has trashed
+    #: anything on therefore works. Doctor probes with ``create=False`` so its
+    #: check cannot pass by having run, and without this field it read that same
+    #: volume as a failure and told a person deletion would refuse on a machine
+    #: where it would succeed. Absent and unwritable are two states, and only one
+    #: of them is a fault.
+    absent: bool = False
 
 
 def volume_root(path: Path | str) -> Path:
@@ -243,7 +256,12 @@ def probe(
         except OSError as exc:
             return TrashStatus(layout, False, f"{layout.root} could not be created: {exc}")
     if not target.is_dir():
-        return TrashStatus(layout, False, f"{target} is not a directory")
+        return TrashStatus(
+            layout,
+            False,
+            f"{target} is not a directory",
+            absent=not target.exists(),
+        )
     if not os.access(target, os.W_OK | os.X_OK):
         return TrashStatus(layout, False, f"{target} is not writable by this account")
     try:

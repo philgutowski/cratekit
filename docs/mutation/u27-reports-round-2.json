@@ -1,0 +1,223 @@
+{
+  "name": "u27-reports-round-2",
+  "pass_kind": "light",
+  "branch": "unit/u27-reports-cli",
+  "head": "106335d",
+  "when": "2026-08-23 15:48 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 6120,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/modules/reports/coverage.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/modules/reports/coverage.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "40187a0120bcf97f",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 6120,
+    "baseline_collected": 6120,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C3_uncovered_order",
+      "description": "Round 1 zero, re-run against the replacement guard: drop the deterministic order",
+      "file": "src/cratekit/modules/reports/coverage.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "96bfff7edbbc72d5",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "test files importing cratekit.modules.reports.coverage",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 23,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_the_uncovered_list_is_ordered_BY_ARTIST_AND_NOT_BY_THE_WALK",
+        "tests/modules/test_reports_engines.py::test_two_entries_sharing_an_artist_and_a_name_still_hold_an_order"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        uncovered=tuple(sorted(uncovered, key=_by_name)),",
+      "new": "        uncovered=tuple(uncovered),"
+    },
+    {
+      "id": "C3b_tie_break",
+      "description": "Sort on artist and name alone, leaving the tie to the walk",
+      "file": "src/cratekit/modules/reports/coverage.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8a53dc64c82e7d4f",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "test files importing cratekit.modules.reports.coverage",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 23,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_two_entries_sharing_an_artist_and_a_name_still_hold_an_order"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return (placement.entry.artist, placement.entry.name, placement.entry.track_id)",
+      "new": "    return (placement.entry.artist, placement.entry.name, \"\")"
+    },
+    {
+      "id": "L2_genre_parent",
+      "description": "Round 1 zero, re-run against the replacement guards: loosen the genre filter",
+      "file": "src/cratekit/modules/reports/library.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e97fae9ce135b027",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "test files importing cratekit.modules.reports.library",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 23,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_a_folder_below_a_genre_is_not_itself_a_genre",
+        "tests/modules/test_reports_engines.py::test_a_tree_nested_under_another_folder_yields_no_genre_from_that_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if len(folder) < 2 or folder[-2] != tree_display:",
+      "new": "        if len(folder) < 2 or tree_display not in folder:"
+    },
+    {
+      "id": "S5_handler_key_wrong",
+      "description": "Round 1's S5 was inert because the engine default matched; pass a WRONG key instead",
+      "file": "src/cratekit/cli/reports.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "26bb9d365694bd93",
+      "subset": [
+        "tests/test_reports_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.cli.reports",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 22,
+      "baseline_collected": 22,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_reports_cli.py::test_duplicates_offers_the_pair_into_the_queue_under_its_own_handler_key",
+        "tests/test_reports_cli.py::test_the_shell_passes_the_REGISTRY_key_rather_than_letting_the_engine_default"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            view, store, template=_template(cfg), handler_key=ctx.entry.handler_key",
+      "new": "            view, store, template=_template(cfg), handler_key=\"duplicates\""
+    },
+    {
+      "id": "S5b_engine_default_drift",
+      "description": "Drift the engine's own copy of the handler key away from the registry's",
+      "file": "src/cratekit/modules/reports/duplicates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "98355d82da1c21c6",
+      "subset": [
+        "tests/modules/test_reports.py",
+        "tests/test_reports_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.modules.reports.duplicates",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 371,
+      "baseline_collected": 371,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports.py::test_every_item_carries_the_handler_key_the_registry_declares",
+        "tests/modules/test_reports.py::test_the_declared_handler_key_is_the_one_the_registry_carries",
+        "tests/test_reports_cli.py::test_the_two_copies_of_the_duplicate_handler_key_cannot_drift"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "HANDLER_KEY = \"audit.duplicates\"",
+      "new": "HANDLER_KEY = \"duplicates.audit\""
+    },
+    {
+      "id": "D1_probe_creates",
+      "description": "Round 1 zero, re-run against the replacement guard: take the creating default",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "161c813f411015f1",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "test files importing cratekit.cli.doctor",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 945,
+      "baseline_collected": 945,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_the_trash_check_cannot_pass_by_having_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return trash.probe(path, create=False)",
+      "new": "    return trash.probe(path, create=True)"
+    }
+  ],
+  "dropped": []
+}

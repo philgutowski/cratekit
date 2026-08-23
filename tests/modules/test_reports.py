@@ -4453,6 +4453,33 @@ def _citing_files() -> tuple[str, ...]:
     )
 
 
+#: Modules that live in the reports package and are NOT this unit's, so the bound
+#: below must not claim them.
+#:
+#: THE GLOB OVER-CLAIMED AND THIS IS THE CORRECTION, not a relaxation. The bound
+#: reads every ``.py`` under the package and asserts `CITED_FLOOR` names all of
+#: them, on the reasoning that the package IS this unit. That was true while U34
+#: was the only unit shipping into it. U27 ships the tree-coverage engine and the
+#: library-statistics engine here, because the two report verbs that had no engine
+#: anywhere in the tree belong beside their siblings and behind the same import
+#: allowlist, and neither is a file this unit writes, keeps true, or can be held
+#: to this unit's residual citations.
+#:
+#: LISTED RATHER THAN DERIVED FROM GIT, and that is the point rather than a
+#: shortcut. Every git derivation in this module can answer emptily at once, which
+#: is the single failure this bound exists to survive; a git query asking who added
+#: each module would shrink the bound to nothing on exactly that failure and go
+#: quiet. A typed name cannot. Its own hazard, a name added here to escape the
+#: floor, is answered by the two assertions in the bound: an entry naming a file
+#: the package does not hold fails, and an exclusion that empties the bound fails.
+_PACKAGE_MODULES_ANOTHER_UNIT_OWNS: frozenset[str] = frozenset(
+    {
+        "src/cratekit/modules/reports/coverage.py",
+        "src/cratekit/modules/reports/library.py",
+    }
+)
+
+
 def _files_this_unit_puts_on_disk() -> tuple[str, ...]:
     """What `CITED_FLOOR` cannot fall below, read off the filesystem.
 
@@ -4485,7 +4512,22 @@ def _files_this_unit_puts_on_disk() -> tuple[str, ...]:
     named.add(str(Path(__file__).resolve().relative_to(REPO_ROOT)))
     for pattern in ("docs/mutation-u34.*", "docs/u34-*", "docs/mutation/u34-*"):
         named |= {str(one.relative_to(REPO_ROOT)) for one in REPO_ROOT.glob(pattern)}
-    return tuple(sorted(named))
+    absent = sorted(one for one in _PACKAGE_MODULES_ANOTHER_UNIT_OWNS if one not in named)
+    assert absent == [], (
+        f"the exclusion names files the package does not hold: {absent}. A stale "
+        f"entry here silently shrinks the bound, which is the failure the bound "
+        f"exists to catch one level up"
+    )
+    claimed = sorted(set(_PACKAGE_MODULES_ANOTHER_UNIT_OWNS) & set(CITED_FLOOR))
+    assert claimed == [], (
+        f"the exclusion names files this unit's own floor claims: {claimed}. The "
+        f"two registers would then disagree about who owns them, and the widening "
+        f"that adds a genuinely owned file to the exclusion is exactly the drift "
+        f"this bound exists to refuse"
+    )
+    remaining = tuple(sorted(named - set(_PACKAGE_MODULES_ANOTHER_UNIT_OWNS)))
+    assert remaining, "the exclusion emptied the bound, so it bounds nothing"
+    return remaining
 
 
 #: The residuals THIS UNIT filed, addressed by TITLE.

@@ -4663,7 +4663,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-pinned on U33, 2026-08-17. Two slugs named rather than counted:
     # outbound-ledger-unusable, export-playlist-unknown.
     # Population 126 to 128, non-reserved 103 to 105, reserved half UNCHANGED at 23.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (128, 105, 23)
+    # Re-pinned on U27's report shell, 2026-08-23. Two slugs named rather than
+    # counted: governed-tree-absent, which is the routing tree missing from an
+    # export, and report-as-of-invalid, which is an aging report handed a value
+    # that is not a date. Population 128 to 130, non-reserved 105 to 107,
+    # reserved half UNCHANGED at 23.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (130, 107, 23)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4699,7 +4704,9 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # already the review queue slug.
     # Re-pinned on U33, 2026-08-17: 305 to 307 distinct, non-keys stay 180,
     # because the two new literals are the two causes named above.
-    assert (len(literals), len(literals - set(causes))) == (307, 180), (
+    # Re-pinned on U27's report shell, 2026-08-23: 307 to 309 distinct, non-keys
+    # stay 180, because the two new literals are the two causes named above.
+    assert (len(literals), len(literals - set(causes))) == (309, 180), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -4798,7 +4805,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-pinned on U33, 2026-08-17: 66 to 69 holders. The three are
     # export/cli.py, favorites/cli.py and modules/outbound/ledger.py.
     # The also-holds-an-integer half stays 15.
-    assert (len(literal_holders), len(literal_both)) == (69, 15), (
+    # Re-pinned on U27's report shell, 2026-08-23: 69 to 71 holders. The two are
+    # cli/reports.py, which names config-unusable the same way every other shell
+    # does, and modules/reports/coverage.py, which names its own refusal. The
+    # also-holds-an-integer half stays 15.
+    assert (len(literal_holders), len(literal_both)) == (71, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
