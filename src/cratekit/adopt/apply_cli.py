@@ -259,8 +259,28 @@ def adopt_apply_argv(job) -> list[str]:
     is what stops a resume queueing a second record for one piece of work.
     ``job`` is a ``cratekit.core.jobs.Job`` and is unannotated for the layering
     reason the module docstring gives.
+
+    IT CARRIES ``--run``, AND WITHOUT IT THIS JOB COULD NEVER BE DRIVEN. The
+    approval gate is ``explicit``, so R34 makes it answerable only by a separate
+    recorded act against a run, never inline. A resume that minted a fresh run
+    would meet the gate again with nothing recorded against it and exit
+    DECISION_REQUIRED, every time, for ever: the job driver would respawn a child
+    that refuses, and the queue would hold a job nobody could advance. Measured on
+    2026-08-23 by driving exactly the argv this function returns.
+
+    SO THE RUN IS FROZEN IN THE PAYLOAD, and the resume continues the run that
+    holds the approval rather than asking for it again. That is the same act
+    ``crate run decide`` records and the same resume the conformance suite drives,
+    and it is why the approval cannot be laundered: a run with no recorded
+    decision resumes to the same refusal a fresh one would.
+
+    A JOB QUEUED BY AN OLDER BUILD HAS NO ``run_id`` and is handled rather than
+    crashed on. It resumes without the flag, meets the gate, and refuses
+    resumably, which is the state it was already in.
     """
-    return ["adopt", "apply", "--job", job.job_id]
+    run_id = (job.payload or {}).get("run_id")
+    resume = ["--run", str(run_id)] if run_id else []
+    return [*resume, "adopt", "apply", "--job", job.job_id]
 
 
 def _approval_gate(entry):
@@ -330,7 +350,15 @@ def apply_adoption(ctx) -> Envelope:
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
-            payload={"tree": plan.tree, "digest": plan.digest()},
+            payload={
+                "tree": plan.tree,
+                "digest": plan.digest(),
+                # FROZEN SO THE APPROVAL SURVIVES THE RESPAWN. See
+                # ``adopt_apply_argv``: the gate is explicit, so a resume on a
+                # fresh run can never be answered and the job would be
+                # undriveable.
+                "run_id": ctx.run.run_id,
+            },
             cfg=cfg,
         )
         return ctx.envelope(data=_reported(store, job))

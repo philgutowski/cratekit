@@ -35,11 +35,13 @@ from cratekit import cli
 from cratekit.adopt import apply as adopt_apply
 from cratekit.adopt import apply_cli
 from cratekit.adopt import plan as adopt_plan
+from cratekit.adopt import scan as adopt_scan
+from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry
 from cratekit.core import config, jobs, rb_writer, session, tags, taxonomy
 from cratekit.core.cause import CratekitError, Outcome
 from cratekit.core.exit_codes import ExitCode
-from tests.test_adoption import TREE_ID, _bucket_and_genre, _plan_of, _row
+from tests.test_adoption import TREE_ID, _bucket_and_genre, _plan_of, _readable, _row
 from tests.test_config import valid_data
 from tests.test_tags import _synth
 
@@ -165,7 +167,13 @@ def test_the_analysis_watch_is_armed_on_the_library_root(acknowledged, declared)
     than of whether this verb armed it over the right roots.
     """
     plan, _path = _one_track_plan(acknowledged, declared)
-    grid = Path(acknowledged.library.root) / "Music" / "ANLZ0001.DAT"
+    # BESIDE THE MUSIC FOLDER, NOT INSIDE IT, and that placement is the assertion.
+    # A grid under Music is still watched when the roots are narrowed to Music, so
+    # a test that put it there would hold "the watch is armed" and would say
+    # nothing about WHICH roots. Measured: narrowing the declared root to
+    # cfg.library.root / "Music" killed zero tests until this file moved up one
+    # level, and kills this one now.
+    grid = Path(acknowledged.library.root) / "ANLZ0001.DAT"
     grid.write_bytes(b"not a real grid, and never written by this product")
 
     def tag_value(_entry, _declared):
@@ -441,13 +449,27 @@ def test_a_verb_declaring_no_plan_digested_gate_refuses_rather_than_applying():
     assert excinfo.value.cause.reason == "internal-error"
 
 
-def test_the_resume_names_the_job_rather_than_restating_the_request():
-    """The contract every long-running verb owes, and the reason it is a function."""
+def test_the_resume_names_the_job_and_carries_the_run_that_holds_the_approval():
+    """The contract every long-running verb owes, in both shapes it has to answer.
+
+    A job frozen by this build carries its run, so the resume continues the run
+    holding the recorded approval. A job frozen by an older build carries none,
+    and the resume must still be a valid command line rather than a crash: it
+    refuses at the gate resumably, which is the state that job was already in.
+    """
 
     class _Job:
         job_id = "job-7"
+        payload = {"run_id": "run-3"}
 
-    assert apply_cli.adopt_apply_argv(_Job()) == ["adopt", "apply", "--job", "job-7"]
+    class _Older:
+        job_id = "job-7"
+        payload = {}
+
+    assert apply_cli.adopt_apply_argv(_Job()) == [
+        "--run", "run-3", "adopt", "apply", "--job", "job-7",
+    ]
+    assert apply_cli.adopt_apply_argv(_Older()) == ["adopt", "apply", "--job", "job-7"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -593,3 +615,117 @@ def test_a_declined_run_queues_nothing_at_all(installed):
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert envelope["data"]["job_id"] is None
     assert _queued(installed) == [], "a declined adoption was queued anyway"
+
+
+def test_an_approval_recorded_against_a_plan_that_has_since_moved_is_refused(
+    installed, monkeypatch
+):
+    """The digest is what the gate is offered, and it is what makes a stale answer visible.
+
+    ``digest_source="plan"`` on this verb's gate is only worth anything if the
+    handler actually OFFERS the digest, and nothing else in this file could see
+    that: the queued payload digest is computed straight from the plan, so it
+    matches whether or not the gate was ever told. Measured: dropping
+    ``digest=plan.digest()`` from the require call killed zero tests across the
+    whole suite before this one existed.
+
+    THE PLAN IS MOVED BY GIVING THE CENSUS A ROW, which is the one honest way to
+    move it here, and it is also the shape a real library changes by: somebody
+    approves an adoption, the collection gains a track, and the plan they
+    approved is no longer the plan that would be applied.
+    """
+    plan_before = apply_cli.current_plan(installed, taxonomy.default_taxonomy())
+
+    _code, refused = _drive(["adopt", "apply"])
+    run_id = refused["run_id"]
+    decided, _ = _drive(
+        ["run", "decide", run_id, "adopt.apply.approve", "approve", "--actor", "a-person"]
+    )
+    assert decided == int(ExitCode.OK)
+
+    music = Path(installed.library.root) / "Music"
+    path = _synth(music, ".flac")
+    _bucket, genre = _bucket_and_genre(taxonomy.default_taxonomy())
+    scanned = tuple(
+        adopt_scan.scan_rows(
+            [_row(installed, path.name, genre, "c-moved")],
+            taxonomy.default_taxonomy(),
+            root=installed.library.root,
+            probe=_readable,
+        )
+    )
+    monkeypatch.setattr(apply_cli, "census", lambda _cfg: scanned)
+    assert apply_cli.current_plan(installed, taxonomy.default_taxonomy()).digest() != (
+        plan_before.digest()
+    ), "the fixture did not actually move the plan, so the assertion below is empty"
+
+    code, envelope = _drive(["--run", run_id, "adopt", "apply"])
+    assert code != int(ExitCode.OK)
+    assert envelope["cause"]["reason"] == "decision-stale", envelope
+    assert _queued(installed) == [], "a plan that moved after approval was queued anyway"
+
+
+def test_the_resume_the_job_driver_spawns_can_actually_proceed(installed):
+    """The argv this verb hands the driver has to be one the verb will accept.
+
+    THE DEFECT THIS GUARDS, driven on 2026-08-23 before it was fixed. The approval
+    gate is explicit, so R34 makes it answerable only by a separate recorded act
+    against a run. The resume argv named the job and nothing else, so the child
+    minted a fresh run, met the gate with nothing recorded against it, and exited
+    DECISION_REQUIRED. Every respawn did the same, so the job could never be
+    advanced by anything, and no test in this file or in the conformance suite
+    could see it: conformance 3 drives the verb WITHOUT a job, and every other
+    test here calls the engine directly.
+
+    So this drives the real ``argv_for`` output through the real dispatcher, which
+    is the only thing that can tell a resume that works from one that is refused
+    for ever.
+    """
+    _code, refused = _drive(["adopt", "apply"])
+    run_id = refused["run_id"]
+    _drive(["run", "decide", run_id, "adopt.apply.approve", "approve", "--actor", "a-person"])
+    approved, envelope = _drive(["--run", run_id, "adopt", "apply"])
+    assert approved == int(ExitCode.OK), envelope
+
+    with jobs.open_store() as store:
+        job = jobs.get(store, envelope["data"]["job_id"])
+    argv = cli_jobs.argv_for(job)
+    assert "--job" in argv and job.job_id in argv
+
+    code, resumed = _drive(argv)
+    assert code == int(ExitCode.OK), (
+        f"the resume the driver spawns refuses: {resumed.get('cause')}. A job "
+        f"whose own resume cannot answer its gate is a job nothing can advance"
+    )
+    assert resumed["data"]["job_id"] == job.job_id
+    assert len(_queued(installed)) == 1, "the resume queued a second record"
+
+
+def test_a_resume_reconciles_a_claim_a_dead_driver_left_behind(installed):
+    """Reconcile, not get. A row saying running while no driver holds the lock is a lie.
+
+    Measured: swapping ``jobs.reconcile`` for ``jobs.get`` in the resume branch
+    killed zero tests across the whole suite before this one existed, because
+    nothing drove the resume branch at all.
+
+    THE JOB IS PUT INTO RUNNING WITH NO LOCK HELD, which is exactly the state a
+    killed driver leaves: the queue cannot see for itself that the process is
+    gone, and a report that trusted the row would tell a person their adoption is
+    in progress when nothing is running it.
+    """
+    _code, refused = _drive(["adopt", "apply"])
+    run_id = refused["run_id"]
+    _drive(["run", "decide", run_id, "adopt.apply.approve", "approve", "--actor", "a-person"])
+    _approved, envelope = _drive(["--run", run_id, "adopt", "apply"])
+    job_id = envelope["data"]["job_id"]
+
+    with jobs.open_store() as store:
+        jobs.transition(store, job_id, jobs.JobState.RUNNING)
+        assert jobs.get(store, job_id).state is jobs.JobState.RUNNING
+
+    code, resumed = _drive(["--run", run_id, "adopt", "apply", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.QUEUED), (
+        "the resume reported the stale row rather than re-deriving the state "
+        "from disk truth, so a job whose driver died reads as still running"
+    )
