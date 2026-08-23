@@ -5943,8 +5943,12 @@ def test_the_planned_marker_on_the_apply_verb_CAN_ACTUALLY_FIRE():
     disarmed a guard permanently, and closing the issue would have left two verbs
     shipping with no conformance coverage and nothing anywhere saying so.
 
-    So this asserts the property the marker test needs and cannot assert about
-    itself: the probe must ANSWER rather than raise.
+    BOTH VERBS HAVE NOW LANDED, and this guard was rewritten rather than deleted
+    when the second one did. What it asserted was never "the marker is still
+    there"; it was that the PROBE ANSWERS, which is a property of the module
+    strings and holds whether a verb has landed or not. Deleting it on the day it
+    went green would have taken the only check on that property with it, and the
+    typo it caught is a typo somebody can make again in either direction.
     """
     import importlib.util  # noqa: PLC0415
 
@@ -5959,14 +5963,29 @@ def test_the_planned_marker_on_the_apply_verb_CAN_ACTUALLY_FIRE():
         "they share, so the half that is ready is held back by the half that is "
         "not, and neither countdown is about itself"
     )
-    assert scan_entry.landed, "the census shell did not land"
-    assert not apply_entry.landed
-    assert apply_entry.planned_in == registry.ADOPT_APPLY_CLI_UNIT
 
-    # The whole defect in one line: this call used to raise, and the raise was
-    # caught and read as absence.
-    assert importlib.util.find_spec(apply_entry.module) is None
+    # THE WHOLE DEFECT IN ONE LINE, and it is the same line either way: this call
+    # used to RAISE, and the raise was caught and read as absence. Asserting the
+    # spec is not None now says the module is genuinely importable AND that the
+    # probe answered; before it landed, the same call had to return None rather
+    # than raise. The failure the guard exists for is the raise, not the value.
+    assert importlib.util.find_spec(apply_entry.module) is not None
     assert importlib.util.find_spec(scan_entry.module) is not None
+
+    # DERIVED FROM THE REGISTRY rather than asserted as a state, so this outlives
+    # both verbs: a marker and a landed module cannot both be true, in either
+    # direction, for either verb.
+    for entry in (scan_entry, apply_entry):
+        assert entry.landed is (entry.planned_in is None), (
+            f"{entry.name} says landed={entry.landed} and planned_in="
+            f"{entry.planned_in!r}, so the marker and the module disagree and "
+            f"the conformance suite drives whichever one it happens to read"
+        )
+        assert entry.landed, (
+            f"{entry.name} carries a planned_in again while its module is "
+            f"importable; the countdown that expires a marker keys on the "
+            f"module, so this is the state where a verb ships uncovered"
+        )
 
     assert scan_entry.module_id == apply_entry.module_id == "adoption", (
         "the profile toggle is a different namespace from the package and was "
@@ -5974,36 +5993,51 @@ def test_the_planned_marker_on_the_apply_verb_CAN_ACTUALLY_FIRE():
     )
 
 
-def test_the_remaining_adoption_obligation_is_owned_by_the_file_the_board_reads():
+def test_no_landed_adoption_verb_still_owes_the_file_the_board_reads():
     """P5. ``scripts/board.py`` reads ``tests/_pending.py`` and nothing else.
 
     An obligation carried only by a ``planned_in`` marker on a CLOSING unit is
     owned by nobody the moment that unit closes: the board reports no drift and
     no contradiction, and the verb ships uncovered. That is R-13's failure, and it
-    is already live for three closed units.
+    was live for three closed units.
+
+    THIS GUARD USED TO ASSERT THE OBLIGATION WAS PRESENT, with the text of the
+    register entry read for the words naming the wall. U27 landed
+    ``cratekit.adopt.apply_cli`` and spent that entry, so the old assertion was a
+    countdown that had reached zero. It is answered here rather than deleted, and
+    the property it becomes is the one that holds in both directions and for
+    every adoption verb this package ever adds: a verb that has not landed is
+    registered, and a verb that HAS landed is not. The second half is the one
+    that bites, because a register entry left behind after its module ships makes
+    ``board.py audit`` exit 2 on a contradiction nobody introduced deliberately.
+
+    WHAT THE SPENT ENTRY SAID, kept here because a fact deleted with its entry is
+    a fact the next reader re-derives: R-13 named the wall as the absence of a
+    database and that was wrong. It was two properties of ``test_conformance_3``,
+    an inline answer against an ``explicit`` gate and a one-gate-per-drive loop
+    against a verb declaring two. Both were fixed in the test, and the rider that
+    outlived the entry is R-148.
     """
     from cratekit.cli import registry  # noqa: PLC0415
     from tests import _pending  # noqa: PLC0415
 
-    apply_entry = registry.entry("adopt.apply")
-    assert apply_entry.module in _pending.PENDING
-    unit, what = _pending.PENDING[apply_entry.module]
-    assert unit == apply_entry.planned_in, (
-        "the marker and the register name two different units, so whichever one "
-        "somebody reads is the one that is wrong"
-    )
-    # The entry has to say what the wall IS, because R-13 states a close
-    # condition that will not close it: not the database, but conformance 3's
-    # inline answer against an explicit gate, and its one-gate-per-drive loop
-    # against a verb declaring two.
-    lowered = what.lower()
-    assert "explicit" in lowered and "two gates" in lowered, (
-        "the entry does not say what the wall is, so the next reader acts on "
-        "R-13's close condition, which will not close it"
-    )
-    assert "no destructive session and no library lock" in what, (
-        "the residue apply_plan admits to is owned by nothing"
-    )
+    for entry in registry.ENTRIES:
+        if entry.module_id != "adoption":
+            continue
+        registered = entry.module in _pending.PENDING
+        assert registered is not entry.landed, (
+            f"{entry.name} has landed={entry.landed} and is "
+            f"{'in' if registered else 'absent from'} the pending register. A "
+            f"landed module still owed by the register is the contradiction "
+            f"board.py audit exits 2 on; an unlanded one absent from it is an "
+            f"obligation nobody owns"
+        )
+        if registered:
+            unit, _what = _pending.PENDING[entry.module]
+            assert unit == entry.planned_in, (
+                "the marker and the register name two different units, so "
+                "whichever one somebody reads is the one that is wrong"
+            )
 
 
 def test_the_adoption_shell_never_reaches_into_the_layer_above_it():

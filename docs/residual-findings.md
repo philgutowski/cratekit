@@ -8546,3 +8546,56 @@ landing it inside U27 would widen a unit that is already large.
 
 **Closes when:** an AST-derived check asserts every `requires(...)` key in
 `tests/` is declared, and is driven against a deliberately dangling one.
+
+---
+
+## R-148. Adoption's memberships are collected and never written, because no unit lands a collection reader
+
+**Found by** U27, 2026-08-23, while landing `cratekit.adopt.apply_cli` and
+discharging its countdown entry. It is the RIDER of that entry, named here rather
+than deleted with it, because an obligation carried only by a marker on a closing
+unit is owned by nobody the moment that unit closes (P5).
+
+R-81 is closed by this unit. `apply_outstanding` opens ONE destructive session
+around the whole `apply_plan` loop, with the volume identity asserted, the backup
+acknowledgment asserted, the whole-run lock held, and the analysis watch armed on
+the library root. All four are driven in `tests/test_adopt_apply_cli.py` against
+a real file's bytes rather than argued from the call order.
+
+**What is still absent is the other half of an apply.** The `place` handed down
+to the loop COLLECTS each entry's destination and writes nothing, so an adoption
+run today rewrites the genre tag and records the applied ledger while no
+membership row reaches the database. Two reasons, and only the first is a
+decision:
+
+- **Sessions do not nest, and that is enforced.**
+  `cratekit.core.session.session_lock` raises `SessionComposition` when one is
+  opened inside another in the same process, and
+  `cratekit.write.trees.write_tree_membership` owns its own session and refuses a
+  caller-supplied gates factory (U8's decision, reinforced by U32). So R-81's
+  close condition as written, "opens ONE session around the whole loop, passing
+  its own open guard down", cannot be met with `write_tree_membership` as the
+  `place`. The composition is driven in
+  `test_a_nested_session_is_refused_rather_than_deadlocking` so the argument is a
+  measurement rather than a reading of the source.
+- **There is no input.** Turning a rekordbox library into
+  `cratekit.adopt.scan.CollectionRow` values needs a collection reader, and no
+  unit in this build lands one. `adopt.scan` shipped in the same position and says
+  so in the same words. So the census is empty, the plan is the empty plan, and
+  nothing is outstanding for the missing membership write to have written.
+
+**Measured cost.** None on any machine today, and the reason is the second bullet
+rather than the first: with an empty census nothing reaches the loop at all.
+`test_the_census_is_empty_because_no_unit_lands_a_collection_reader` drives that
+and fails the day a reader lands, which is the point at which this residual stops
+being theoretical and the tag write starts landing without its membership.
+
+**Why not fixed here.** The fix is not a line in this module. It is either a
+collection reader, which is a unit, or a change to `write_tree_membership`'s
+refusal of a shared session, which is U8's and U32's decision and carries the hole
+U32 already registered: a caller supplying its own factory can supply one that
+names no analysis roots. Neither is U27's to take.
+
+**Closes when:** a collection reader lands and the memberships this loop collects
+are written, in a second session opened after this one closes rather than inside
+it, with the ordering between the ledger mark and the membership row argued.

@@ -198,42 +198,36 @@ PENDING: dict[str, tuple[str, str]] = {
     # ``cli/doctor._probe_trash`` so no caller can take the creating default, and
     # ``delete.review`` declares the key as a precondition so the conformance
     # suite holds it to a green machine and a broken one.
-    "cratekit.adopt.apply_cli": (
-        "U27",
-        "the command-line surface for adopt.apply, and with it the destructive "
-        "session and the library lock that apply_plan honestly says it does not "
-        "take (the residual titled 'adoption's tag write takes no destructive "
-        "session and no library lock'). R29 says one source per run, and the "
-        "loop is not "
-        "a run, so only the verb can open that session. REGISTERED HERE RATHER "
-        "THAN LEFT AS A planned_in MARKER because scripts/board.py reads this "
-        "file and nothing else, so an obligation carried only by a marker on a "
-        "closing unit is owned by nobody the moment that unit closes (P5). "
-        "U23's own board entry does not appear in board.pending_units at all, "
-        "so closing #23 produced no drift and no contradiction while two verbs "
-        "shipped with no conformance coverage; that is R-13's failure verbatim "
-        "and it is already live for U8, U15 and U35. "
-        "ONLY adopt.apply IS BEHIND THE WALL. adopt.scan shared this verb's "
-        "module string, declares no gate, writes nothing and is not destructive, "
-        "so conformance 3 is an empty loop for it. It has landed as "
-        "cratekit.adopt.scan_cli. "
-        "WHAT THE WALL ACTUALLY IS, because R-13 states a close condition that "
-        "will not close it. It is NOT the absence of a database, and that is "
-        "proven by elimination: removing explicit=True from both of "
-        "adopt.apply's gates still exits 10. It is two properties of "
-        "test_conformance_3 itself. ONE: it answers gates inline with -d, and "
-        "Gates.require correctly refuses an inline answer to an explicit=True "
-        "gate, which is R34 working rather than failing, so any verb with an "
-        "explicit gate cannot pass. TWO: it drives once per gate on a fresh run "
-        "answering only that gate, so a verb declaring TWO gates always exits "
-        "DECISION_REQUIRED on the other one. adopt.apply has both shapes at "
-        "once. THE OWNER IS U27 on the reasoning that it lands doctor, it is "
-        "the unit that makes a machine ready, and R-13 already names it as the "
-        "natural owner of the conformance-3 correction. The correction is in "
-        "flight on its own branch, so this entry may be spendable before U27 "
-        "reaches it; a human moving it should move ADOPT_APPLY_CLI_UNIT in "
-        "cratekit/cli/registry.py with it",
-    ),
+    # THE ``cratekit.adopt.apply_cli`` ENTRY WAS HERE AND IS DELETED, because
+    # U27 LANDED IT. ``src/cratekit/adopt/apply_cli.py`` ships the shell, and the
+    # thing the entry existed for ships with it: ``apply_outstanding`` opens ONE
+    # destructive session, with the library lock held and the analysis watch
+    # armed on the library root, around the whole ``apply_plan`` loop. The
+    # registry entry has lost ``planned_in``, so all nine conformance properties
+    # now drive the verb, which is the arming this countdown existed to reach. NO
+    # ``@requires`` DECORATOR NAMED THIS KEY: ``grep -rn
+    # 'requires("cratekit.adopt.apply_cli")' tests/`` was run before the deletion
+    # and reported nothing, so step three of the discharge was genuinely empty
+    # here rather than skipped.
+    #
+    # THE WALL THIS ENTRY DESCRIBED WAS ALREADY DOWN when the entry was spent,
+    # and the entry still described it as standing. Both halves had been fixed in
+    # ``test_conformance_3``: it answers an explicit gate through ``crate run
+    # decide`` on the run it reached, and it RESUMES that run rather than driving
+    # a fresh one per gate, so a verb declaring two gates reaches both. Proved by
+    # ``delete.review``, which landed carrying an explicit gate. The one thing
+    # still needed for this verb was that ``write.cloudsync.unreadable`` is named
+    # in ``UNREACHABLE_GATES``, so the second of its two gates is exempt from the
+    # reach assertion rather than needing a rekordbox installation to provoke.
+    #
+    # ITS RIDER IS NOT DISCHARGED AND IS NAMED HERE rather than deleted with the
+    # entry, because a rider deleted silently is an obligation nobody owns. The
+    # memberships half of an apply is still unwritten: ``apply_outstanding``
+    # COLLECTS placements and returns them instead of writing them, because
+    # ``write_tree_membership`` owns its own session and sessions do not nest, and
+    # because no unit in this build lands the collection reader that would give
+    # the census any rows. It is filed as a residual rather than left here, since
+    # no unit remains to own it.
 }
 
 

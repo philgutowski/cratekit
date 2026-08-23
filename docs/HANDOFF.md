@@ -1077,7 +1077,7 @@ issue. That last shape is R-13's failure and is live three times over already.
 | U20 | `cratekit.cli.rebuild` | the rebuild verb, whose operator disposition is an explicit logged act by a named person and never a flag that clears every tree, and which clears a tree's flag only through `write.rebuild.rebuild_tree` handed the convergence check's own difference list |
 | U27 | `cratekit.session.restore_cli` | the two restore verbs U32 could not land, and one session held across the whole restore through `core.restore.recovery_session`, passed in as `plan_restore`'s and `run_restore`'s gates, because the default shape takes the library lock twice |
 | U27 | `cratekit.cli.reports` | the four report verbs, and the two report engines two of them still have none of. See the residual titled "Four report verbs were owed by a unit that was about to close, and named a module nobody could build": U27 is a judgement, not a decision |
-| U27 | `cratekit.adopt.apply_cli` | the apply shell, and the destructive session and library lock `apply_plan` says it does not take. See R-81 for what the wall in front of it actually is, which is not what R-13 says |
+| U27 | `cratekit.adopt.apply_cli` | LANDED. `crate adopt apply` is the shell, and `apply_outstanding` is the ONE destructive session around the whole `apply_plan` loop that R-81 asked for. The wall R-13 named as the missing database was never the wall and was already down when the entry was spent. Its rider, that the memberships are collected and never written because no unit lands a collection reader, is R-148. |
 
 ## Open items that are not code
 
