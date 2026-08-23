@@ -322,6 +322,38 @@ in it and each row will describe a different, plausible, wrong reason.
   constructs. A verb with a resume flag, a dry run flag, or a second phase has
   more than one, and the suite usually drives one.
 
+## Both live instances were fixed the same day
+
+The two verbs this document found are no longer broken, and the measurements
+above are kept as they were taken rather than rewritten, because the point of
+this entry is how the defect hid rather than which commit closed it.
+
+`export.playlist` and `sync.favorites` now freeze the gate run under one shared
+key, `cratekit.core.jobs.GATE_RUN_KEY`, and emit it as the root `--run` flag
+ahead of the verb path. The key is deliberately not `run_id`: `sync.favorites`
+already froze a `run_id` holding the INTAKE run, and two concepts under one name
+is what made its builder read as correct. `adopt.apply` moved onto the same key.
+`delete.review` reads it too, so the latent case is disarmed rather than left
+armed, though the mismatch between its registry entry and its shell is recorded
+separately as R-149.
+
+THE GUARD IS DERIVED FROM THE REGISTRY, in
+`tests/test_queued_resume_contract.py`. It walks every landed entry that is
+`long_running`, names an `argv_builder`, and declares a non exempt `explicit`
+gate, and holds each one to emitting `--run` carrying the frozen run. A test
+naming today's four would pass for ever while the fifth verb shipped broken,
+which is the same shape as a guard that forbids an implementation rather than a
+feature. It also matches `--run` as a WHOLE TOKEN in the returned list rather
+than as a substring of the builder's source, which is the specific mistake that
+declared `sync.favorites` clean in the first place.
+
+Two of its assertions are worth reading before adding a verb. One drives the real
+`argv_for` output through the real dispatcher, because asserting the argv equals
+a list is a unit test of a list. The other hands the builder a payload with no
+gate run, standing in for a job frozen by an older build, and requires a valid
+command line rather than a crash inside a detached subprocess whose only output
+is a log file nobody is watching.
+
 ## Examples
 
 The measured before and after, driven on 2026-08-23.

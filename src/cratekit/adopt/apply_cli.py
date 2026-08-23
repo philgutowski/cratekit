@@ -278,7 +278,7 @@ def adopt_apply_argv(job) -> list[str]:
     crashed on. It resumes without the flag, meets the gate, and refuses
     resumably, which is the state it was already in.
     """
-    run_id = (job.payload or {}).get("run_id")
+    run_id = (job.payload or {}).get(jobs.GATE_RUN_KEY)
     resume = ["--run", str(run_id)] if run_id else []
     return [*resume, "adopt", "apply", "--job", job.job_id]
 
@@ -357,7 +357,11 @@ def apply_adoption(ctx) -> Envelope:
                 # ``adopt_apply_argv``: the gate is explicit, so a resume on a
                 # fresh run can never be answered and the job would be
                 # undriveable.
-                "run_id": ctx.run.run_id,
+                #
+                # UNDER THE SHARED KEY rather than a local spelling, so the one
+                # guard that derives this obligation from the registry covers
+                # this verb and every later one without being edited.
+                jobs.GATE_RUN_KEY: ctx.run.run_id,
             },
             cfg=cfg,
         )

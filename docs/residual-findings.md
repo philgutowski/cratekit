@@ -8599,3 +8599,42 @@ names no analysis roots. Neither is U27's to take.
 **Closes when:** a collection reader lands and the memberships this loop collects
 are written, in a second session opened after this one closes rather than inside
 it, with the ordering between the ledger mark and the membership row argued.
+
+---
+
+## R-149. `delete.review` declares a queueing contract its shell does not implement
+
+**Found by** the queued-resume contract guard added on 2026-08-23, which derives
+its population from the registry rather than from a list of verb names and so
+caught a verb nobody was looking at.
+
+The entry declares `long_running=True` and names `delete_argv` as its
+`argv_builder`. That pair IS the queueing contract: it says this verb produces
+work a job driver re-invokes as a subprocess. The shell does not do it.
+`review_removals` reads the collection, offers, honours the confirm gate, and
+calls `run.apply` inline; it never calls `jobs.enqueue`, and `build_review`
+declares no `--job` argument for a resume to use.
+
+**Measured cost: none today, and the reason is the mismatch itself.** No job is
+ever created under that handler key, so `delete_argv` is never called by
+anything, and the resume defect the guard exists to catch cannot be reached. That
+is why it is recorded rather than blocking: the input is not reachable, and
+`docs/METHOD.md`'s third condition is not met.
+
+**What was fixed anyway, because it was one lookup.** `delete_argv` now reads
+`jobs.GATE_RUN_KEY` and emits `--run` when a gate run is present. If somebody
+makes this verb enqueue, the payload is already read correctly rather than the
+undriveable-resume defect shipping a second time. Its docstring previously said
+"the run id and the recorded gate travel on the invocation" while returning a
+list carrying neither, which is now corrected.
+
+**What is NOT fixed.** Either the entry should drop `long_running` and its
+`argv_builder`, or the shell should queue. Deciding which is U24's call about
+what `delete.review` is meant to be, and it is a design question rather than a
+defect: a deletion pass that queues would need its own `--job` surface, a worker,
+and a decision about whether trashing files belongs in a detached subprocess at
+all. Guessing here would either delete a declared capability or invent one.
+
+**Closes when:** the entry and the shell agree, in whichever direction U24
+chooses, and the derived guard in `tests/test_queued_resume_contract.py` keeps
+holding whichever verb remains in its population.

@@ -53,9 +53,29 @@ def build(parser, entry) -> None:
 
 
 def export_argv(job) -> list[str]:
-    playlist = str((job.payload or {}).get("playlist") or "")
-    argv = ["export", "playlist", playlist, "--job", job.job_id]
-    return argv
+    """The command line that continues one queued export.
+
+    IT CARRIES ``--run``, AND WITHOUT IT THIS JOB COULD NEVER BE DRIVEN. The
+    confirm gate is ``explicit``, so R34 makes it answerable only by a separate
+    act recorded against a run. The child :mod:`cratekit.core.jobs` spawns is a
+    fresh process, and ``cli.run`` mints a NEW run whenever ``--run`` is absent,
+    so a resume naming only the job met the gate with nothing recorded and exited
+    DECISION_REQUIRED. Every respawn did the same, so a confirmed export sat in
+    the queue for ever. Measured by driving this function's own output through
+    the dispatcher on 2026-08-23.
+
+    The flag goes BEFORE the verb path because ``--run`` belongs to the root
+    parser: a decision belongs to the invocation rather than to the subcommand.
+
+    A job frozen by a build older than this one carries no gate run and resumes
+    without the flag, which returns it to the refusal it was already in rather
+    than crashing the driver on a missing key.
+    """
+    payload = job.payload or {}
+    playlist = str(payload.get("playlist") or "")
+    gate_run = payload.get(jobs.GATE_RUN_KEY)
+    resume = ["--run", str(gate_run)] if gate_run else []
+    return [*resume, "export", "playlist", playlist, "--job", job.job_id]
 
 
 def export_playlist(ctx) -> Envelope:
@@ -85,7 +105,9 @@ def export_playlist(ctx) -> Envelope:
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
-            payload={"playlist": playlist},
+            # THE GATE RUN IS FROZEN so the respawned child can name the run
+            # the confirmation was recorded against. See ``export_argv``.
+            payload={"playlist": playlist, jobs.GATE_RUN_KEY: ctx.run.run_id},
             cfg=cfg,
         )
         return ctx.envelope(data=_reported(store, job))
