@@ -4706,7 +4706,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # because the two new literals are the two causes named above.
     # Re-pinned on U27's report shell, 2026-08-23: 307 to 309 distinct, non-keys
     # stay 180, because the two new literals are the two causes named above.
-    assert (len(literals), len(literals - set(causes))) == (309, 180), (
+    # Re-pinned on U27's restore shell, 2026-08-23: 309 to 310 distinct, 180 to
+    # 181 non-keys. EXACTLY ONE literal joined and NOTHING left, differenced as
+    # SETS against `origin/main`'s own `src` tree extracted into a scratch
+    # directory rather than inferred from the totals moving by one, because a
+    # module joining while another leaves reads identically in a count. The one
+    # that joined is `off-machine`, which names one HALF of a restore in the
+    # offer and in the report; it is kebab shaped and it is not a cause, which is
+    # the whole reason the non-key count moves with it. The eight backup refusal
+    # slugs this unit adds to `cause.REASONS` were ALREADY literals in the tree,
+    # in `modules/tools/backup.py`'s own `Refusal` enum, so they move from the
+    # non-key side to the key side and the distinct total does not see them.
+    assert (len(literals), len(literals - set(causes))) == (310, 181), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -4820,7 +4831,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Nothing left the set. The literal side grew by one while the named side
     # stayed at 21 and the without-own half stayed at 8, so the comparison just
     # below widened rather than narrowed, for the ninth time out of nine.
-    assert (len(literal_holders), len(literal_both)) == (72, 15), (
+    # Re-pinned on U27's restore shell, 2026-08-23: 72 to 73 holders. The one is
+    # session/restore_cli.py, which names config-unusable the same way every
+    # other shell does, internal-error for a verb declaring no plan-digested
+    # gate, restore-record-unusable for a session identifier nothing recorded,
+    # and off-machine, which is not a cause and is the literal the distinct
+    # count above moved for. The also-holds-an-integer half stays 15: the module
+    # holds no bare integer at all. NAMED BY DIFFERENCING THE TWO SETS, measured
+    # by running this same derivation over origin/main's own src tree extracted
+    # into a scratch directory, for the reason the entry above gives. Nothing
+    # left the set, and the named side stayed at 21 with the without-own half at
+    # 8, so the comparison just below widened rather than narrowed, for the
+    # tenth time out of ten.
+    assert (len(literal_holders), len(literal_both)) == (73, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

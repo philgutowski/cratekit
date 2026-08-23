@@ -1195,6 +1195,41 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # the one somebody typed would band every grouping against a value this
         # product invented.
         "report-as-of-invalid": ExitCode.PRECONDITION,
+        # ── U27's off-machine restore refusals, appended for the reason above ──
+        #
+        # ``modules.tools.backup`` has always raised its own ``Refusal`` enum,
+        # and until a verb surfaced one nothing needed these here: the module was
+        # reached only from its own suite, which reads the enum directly.
+        # ``restore run --from-backup`` is the first caller that carries one out
+        # to a person, and a bare exception at that boundary arrives as an
+        # internal error with its remediation discarded, which is the collapse
+        # KTD25 exists to stop.
+        #
+        # EVERY CODE HERE IS THE ONE ``cratekit.cli.exit_codes`` ALREADY RESERVED
+        # for the same slug, copied rather than decided again. The two tables
+        # answer different questions, the reserved one holding the per-slug
+        # remediation and this one holding the status, and for these eight they
+        # now answer about the same slugs. ``tests/test_write_session.py`` derives
+        # the agreement from ``backup.REFUSALS`` rather than listing it, so a
+        # member added to that enum later is covered on the day it appears (P3).
+        # ``rekordbox-running`` is deliberately absent from this block: it was
+        # already declared above, by the writer that refuses for the same reason.
+        #
+        # A slug per diagnosis rather than one "the backup refused", because the
+        # remedies are eight different acts: install a program, configure a
+        # remote, mount a volume, take a backup at all.
+        "rclone-missing": ExitCode.PRECONDITION,
+        "remote-not-configured": ExitCode.PRECONDITION,
+        "destination-not-configured": ExitCode.PRECONDITION,
+        "library-root-absent": ExitCode.LIBRARY_UNAVAILABLE,
+        "database-absent": ExitCode.LIBRARY_UNAVAILABLE,
+        # DECISION_REQUIRED rather than a failure code, which is the reservation
+        # table's own judgement: a restore that has not been confirmed is
+        # resumable, and the run continues once the decision naming this library
+        # and this snapshot is recorded.
+        "restore-not-confirmed": ExitCode.DECISION_REQUIRED,
+        "restore-target-absent": ExitCode.LIBRARY_UNAVAILABLE,
+        "no-snapshot-available": ExitCode.PRECONDITION,
     }
 )
 

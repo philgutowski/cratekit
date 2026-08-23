@@ -8638,3 +8638,105 @@ all. Guessing here would either delete a declared capability or invent one.
 **Closes when:** the entry and the shell agree, in whichever direction U24
 chooses, and the derived guard in `tests/test_queued_resume_contract.py` keeps
 holding whichever verb remains in its population.
+
+---
+
+## R-150. A mirror restore runs inline, holding the lock and the terminal for the whole transfer
+
+**Found:** while landing `cratekit.session.restore_cli` under U27, 2026-08-23.
+
+`restore.run` declares neither `long_running` nor an `argv_builder`, so the verb
+performs the whole restore in the invocation that was typed. For the capture
+half that is right: it replaces a rekordbox database and its coupled state from
+a local directory, which is a file copy measured in seconds. For
+`--include-mirror` it is not. That option pulls the music and everything else
+the off-machine mirror carried, which the backup module's own documentation puts
+at hundreds of gigabytes, and every byte of it moves inside one `subprocess`
+call under the held library lock.
+
+**Measured cost.** The terminal is held for the length of the transfer, and so
+is the library lock, so nothing else can write while it runs, which is correct
+but has no progress surface and no resume. A process killed part way leaves the
+restore latch set, which is the designed behaviour and refuses ordinary writes
+until a restore completes, so the recovery from an interrupted mirror pull is to
+run it again from the beginning.
+
+**Why it is not fixed here.** Queueing it is the obvious answer and it does not
+work in this build. Every long-running verb's `--job` path calls
+`jobs.reconcile` and performs nothing, uniformly, across ten shells; a queued
+restore would therefore be a job nothing ever performs, which is strictly worse
+than a slow one. Making the resume perform work is a change to a build-wide
+convention rather than to this unit, and R-149 is the neighbouring finding about
+the same seam from the other direction.
+
+**Closes when:** either the job resume performs the work it was queued for, at
+which point this verb declares `long_running` with an `argv_builder` and freezes
+its gate run in the payload the way `adopt.apply` does, or the mirror half grows
+its own progress and resume without the queue.
+
+---
+
+## R-151. The restore listing's `review_set` names a queue no queue table declares
+
+**Found:** while landing `cratekit.session.restore_cli` under U27, 2026-08-23.
+
+`restore.list` declares `output_schema="review_set/1"`, whose payload carries a
+`queue` string and an `unresolved` count. The listing is not an adjudication
+surface: nothing in it awaits a verdict, and `review.Queue` cannot gain a member
+for it, because `tests/test_review_queue.py` holds the enum and the surface table
+to being the same set in both directions and every declared queue is an
+adjudicated one. So the verb emits the literal `"restore"` as its queue and a
+constant zero as its unresolved count.
+
+**Measured cost.** A consumer that groups review sets by queue sees a value
+`review.adjudicated_queues()` does not list, and would find nothing if it looked
+the value up. The count is honest, because reporting the number of recorded
+sessions as a backlog would tell a person they have work they do not, which is
+the argument `deletion.tombstone_cli` makes for the same field. Nothing consumes
+either today: the only readers of the payload are the renderer and the
+conformance suite, and both check the shape rather than the values.
+
+**Why it is not fixed here.** The two candidate fixes are both bigger than this
+unit. Either `review_set` grows a way to say "this set is a listing rather than a
+queue", which is a schema change every emitter would have to be re-read against,
+or the entry emits a different surface, which changes a registry declaration U32
+made and which nothing has yet complained about.
+
+**Closes when:** the schema distinguishes a listing from a queue, or the entry
+names a surface that fits without one.
+
+---
+
+## R-152. The confirmation digest is over the restore's identity, not over its steps
+
+**Found:** while landing `cratekit.session.restore_cli` under U27, 2026-08-23.
+
+`restore.run`'s explicit gate declares `digest_source="plan"`, and what the
+handler digests is the identity of the restore: the session being restored, its
+recorded change summary, the sessions being discarded, and whether the
+off-machine mirror is being pulled first. It is not the step list.
+
+**Why the step list is unavailable.** `core.restore.plan` refuses to build one
+without an open recovery session, and the session cannot be opened before the
+gate: the gate is `explicit`, so the invocation that discovers it exits, and a
+library that has never acknowledged a backup refuses the session before the
+question is ever asked, which would make the verb unreachable on exactly the
+machine a restore is for.
+
+**Measured cost.** A person approves a restore described by what it targets
+rather than by the individual file operations it will perform. The property a
+digest exists for still holds and is driven: a later session committing between
+the offer and the answer moves the recorded change summary, so the digest moves
+and the decision is refused as stale. What is genuinely lost is that a change
+which alters the STEPS without altering the identity, a companion file appearing
+beside the database between the two acts, does not move the digest.
+
+**Why that is survivable rather than a hole.** The step list is derived under the
+lock and every step is checked against the disk before the first destructive one
+is taken, and `restore._assert_override_names_them` refuses independently when
+the discard set does not name what the restore would actually destroy. Nothing
+rests on the digest alone.
+
+**Closes when:** either the registry's `digest_source` gains a vocabulary that
+can say "the decision's inputs" as distinct from "the artifact", or a plan shape
+exists that can be computed without the destructive session.

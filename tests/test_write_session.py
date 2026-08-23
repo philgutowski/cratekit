@@ -1066,6 +1066,43 @@ def test_the_destructive_half_of_a_restore_has_no_ungated_call_shape():
     assert parameters["cfg"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
 
 
+def test_every_backup_refusal_carries_one_code_in_both_cause_tables():
+    """The two vocabularies agree about every refusal a verb can now surface.
+
+    U27 is what made this matter. ``modules.tools.backup`` raises its own
+    ``Refusal`` enum, and until ``restore run --from-backup`` landed nothing
+    carried one out to a person, so the slugs lived only in
+    ``cratekit.cli.exit_codes``, which holds the per-slug remediation, and not in
+    ``cratekit.core.cause.REASONS``, which holds the status. A ``Cause`` built on
+    an undeclared reason raises, so the verb would have crashed at the boundary
+    it exists to translate.
+
+    DERIVED FROM THE ENUM, NEVER LISTED (P3). A member added to ``Refusal`` later
+    is covered on the day it appears, which is the whole difference between this
+    and the hand-listed set it replaces. The reverse direction is already held by
+    ``modules.tools.backup``'s own suite, which asserts every reserved slug is
+    reachable.
+
+    AND IT COMPARES THE CODES RATHER THAN MERE PRESENCE. Two tables that both
+    know a slug and disagree about its status is worse than one that has never
+    heard of it: the envelope and the process status would then describe
+    different failures, which is the collapse KTD25 is about.
+    """
+    from cratekit.cli import exit_codes as reservations  # noqa: PLC0415
+    from cratekit.core.cause import REASONS  # noqa: PLC0415
+
+    assert backup.REFUSALS, "the refusal enum is empty, so nothing below is measured"
+    disagreements = {
+        str(refusal): (REASONS.get(str(refusal)), reservations.reserved(str(refusal)).code)
+        for refusal in backup.REFUSALS
+        if REASONS.get(str(refusal)) is not reservations.reserved(str(refusal)).code
+    }
+    assert not disagreements, (
+        f"cause.REASONS and exit_codes.RESERVED_CAUSES give different statuses to "
+        f"the same backup refusal: {disagreements}"
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # The latch has an exit, the log fails CLOSED, and the guards run on both paths
 #
