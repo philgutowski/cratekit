@@ -34,9 +34,11 @@ from pathlib import Path
 import pytest
 
 from cratekit import cli
-from cratekit.core import config, jobs, preflight, rb_writer, session
+from cratekit.cli import exit_codes as reservations
+from cratekit.cli import registry
+from cratekit.core import config, jobs, preflight, rb_writer, restore, session
 from cratekit.core.cause import CratekitError, Outcome
-from cratekit.core.exit_codes import ExitCode
+from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.tools import backup
 from cratekit.session import restore_cli
 from tests import test_restore as restore_suite
@@ -118,6 +120,23 @@ def _answer(run_id: str, option: str) -> None:
         ["run", "decide", run_id, CONFIRM, option, "--actor", "a-person"]
     )
     assert code == int(ExitCode.OK), envelope
+
+
+def _offered_digest(refused: dict) -> str:
+    """The digest the run RECORDED as offered, read off the run rather than the message.
+
+    Through ``cli.gates`` because that is the value a later decision is compared
+    against. The refusal envelope carries the gate and its options; the digest
+    lives on the run, which is the whole point of it, so reading it from the
+    envelope would measure a message and not the thing that makes an answer go
+    stale. Non-empty is asserted here so a handler that offered nothing at all
+    fails as a missing digest rather than as two equal absences.
+    """
+    from cratekit.cli import gates as cli_gates  # noqa: PLC0415
+
+    offered = cli_gates.load(refused["run_id"]).offers.get(CONFIRM, "")
+    assert offered, "the run recorded no digest for the confirmation gate"
+    return offered
 
 
 def _lock_taken_in_another_process(path: Path) -> int:
@@ -489,12 +508,158 @@ def test_a_confirmed_restore_queues_no_job_at_all(installed):
 
 
 def test_a_session_identifier_nothing_recorded_is_refused_by_name(installed):
-    """A typo gets a sentence about the identifier, not a traceback and not silence."""
+    """A typo gets a sentence about the identifier, not a traceback and not silence.
+
+    RECORDED AGAINST A LIBRARY THAT HAS A SESSION, which is the whole measurement
+    and which the first version of this test did not do. Over an EMPTY log the
+    refusal is unavoidable: there is no other session to fall through to, so a
+    handler that silently restored the newest one instead of refusing the named
+    one would pass. Measured on the author's own table, row
+    N2_an_unknown_identifier_is_not_refused: falling through to the newest
+    session killed ZERO tests across the whole suite before this line existed,
+    which is a person typing one character wrong and having a different session
+    restored over their library.
+    """
+    recorded, _captured = completed_session(installed)
+
     code, envelope = _drive(["restore", "run", "no-such-session"])
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert code != int(ExitCode.USAGE)
     assert "no-such-session" in envelope["cause"]["message"]
+    assert recorded.session_id not in envelope["cause"]["message"], (
+        "the refusal names a session the person did not ask for"
+    )
+
+
+def test_a_rehearsal_neutralizes_the_mirror_transfers_too(cfg, tmp_path):
+    """The dry run reaches BOTH halves, measured on the argv the runner is handed.
+
+    Measured on the author's own table, row
+    S7_a_rehearsal_performs_the_mirror_pull: hard coding the off-machine half to
+    ``dry_run=False`` killed ZERO tests across the whole suite. The dry run test
+    that existed drove only the capture half, so a rehearsal that transferred
+    hundreds of gigabytes for real would have passed every assertion in this
+    file.
+    """
+    acknowledge(cfg)
+    (tmp_path / "recovered").mkdir()
+    seen: list[tuple[str, ...]] = []
+
+    def runner(command):
+        seen.append(tuple(command.argv))
+        return backup.CommandResult(returncode=0, stdout="2026-08-01T000000Z\n")
+
+    restore_cli.restore_under_one_session(
+        cfg,
+        session_id=None,
+        dry_run=True,
+        from_backup=True,
+        snapshot="2026-08-01T000000Z",
+        target=tmp_path / "recovered",
+        runner=runner,
+        process_lister=lambda: (),
+        **gate_seams(cfg),
+    )
+
+    transfers = [argv for argv in seen if "copy" in argv]
+    assert transfers, "the rehearsal described no transfer at all"
+    for argv in transfers:
+        assert "--dry-run" in argv, (
+            f"a rehearsal handed the transfer {argv} with nothing neutralizing it"
+        )
+
+
+def test_the_mirror_is_pulled_before_the_capture_is_spent(cfg):
+    """The order is the reason the two halves compose, and it is not asserted elsewhere.
+
+    Measured on the author's own table, row S5_the_off_machine_half_runs_second:
+    performing the capture restore FIRST killed ZERO tests. That order overwrites
+    the session a person just restored with whatever the remote happened to hold,
+    which is the failure the composition exists to avoid rather than a cosmetic
+    sequencing choice.
+
+    THE FIRST VERSION OF THIS TEST MEASURED THE END STATE AND STILL DIED AT ZERO.
+    It stamped the database from inside the runner and compared the bytes
+    afterwards, which a mutation that ran the capture restore BOTH before and
+    after the pull satisfies exactly, because the last write is the capture
+    either way. An end state cannot see an order. What is measured now is the
+    world AS THE MIRROR RUNS: at that moment the database must still hold the
+    live bytes, because the capture restore has not happened yet. Re-measured
+    after the change and the row kills.
+    """
+    acknowledge(cfg)
+    record, _captured = completed_session(cfg)
+    database = config.state_path("rekordbox_db", cfg)
+    live = b"database, generation two, written after the capture"
+    database.write_bytes(live)
+    observed: list[bytes] = []
+
+    def runner(command):
+        observed.append(database.read_bytes())
+        return backup.CommandResult(returncode=0, stdout="2026-08-01T000000Z\n")
+
+    restore_cli.restore_under_one_session(
+        cfg,
+        session_id=record.session_id,
+        from_backup=True,
+        snapshot="2026-08-01T000000Z",
+        runner=runner,
+        process_lister=lambda: (),
+        **gate_seams(cfg),
+    )
+
+    assert observed, "the mirror half never ran, so no order was measured"
+    assert observed[0] == live, (
+        "the database had already been replaced when the mirror pull began, so "
+        "the capture was spent first and the remote is about to land on top of it"
+    )
+    assert database.read_bytes() != live, (
+        "the capture half never ran at all, so the order above is vacuous"
+    )
+
+
+def test_the_session_watches_the_whole_library_and_not_a_folder_inside_it(cfg):
+    """The analysis watch names the library root, driven rather than read.
+
+    Measured on the author's own table, rows S3 and S4: arming the watch on no
+    roots at all, and arming it on the Music folder alone, each killed ZERO
+    tests. A restore replaces the database and everything coupled to it, so
+    anything under the library can move, and a watch that names nothing watches
+    nothing while still reporting a clean session, which is worse than an absent
+    guard because the report reads the same either way.
+
+    THE COMPOSITE IS THE SECOND ASSERTION. The first says which root was armed;
+    the second mutates the world the guard is over, by writing under the library
+    but outside Music, and shows the armed watch is wide enough to be over it.
+    """
+    acknowledge(cfg)
+    armed: list[tuple] = []
+    real = restore.recovery_session
+
+    def recording(cfg_value, **kwargs):
+        armed.append(tuple(str(root) for root in kwargs.get("analysis_roots", ())))
+        return real(cfg_value, **kwargs)
+
+    record, _captured = completed_session(cfg)
+    outside_music = Path(cfg.library.root) / "db"
+    assert outside_music.is_dir(), "the fixture has no library directory outside Music"
+
+    import unittest.mock  # noqa: PLC0415
+
+    with unittest.mock.patch.object(restore, "recovery_session", recording):
+        restore_cli.restore_under_one_session(
+            cfg, session_id=record.session_id, **gate_seams(cfg)
+        )
+
+    assert armed == [(str(Path(cfg.library.root)),)], (
+        f"the session was armed over {armed} rather than over the library root"
+    )
+    watched = Path(armed[0][0])
+    assert outside_music != watched and watched in outside_music.parents, (
+        "the armed root does not contain the part of the library a restore "
+        "writes to, so the watch is narrower than the blast radius"
+    )
 
 
 def test_a_bare_run_takes_the_newest_spendable_capture_and_not_merely_the_newest(cfg):
@@ -572,6 +737,115 @@ def test_the_discard_override_reaches_the_engine_as_identifiers(installed, monke
         ]
     )
     assert code == int(ExitCode.OK), envelope
+
+
+def test_the_digest_moves_when_the_discard_set_moves(installed):
+    """A wider destruction is a different decision, and the digest has to say so.
+
+    Measured on the author's own table, row
+    O2_the_discard_set_leaves_the_digest: dropping the discard list out of the
+    digested offer killed ZERO tests. The cost is specific. A person approves
+    restoring to a session while naming one later session they accept losing;
+    with the list outside the digest, a second invocation naming three more
+    sessions matches the recorded decision exactly and destroys work the person
+    never agreed to lose.
+    """
+    target, _captured = completed_session(installed, started="2026-08-01T00:00:00+00:00", stamp="a")
+    later, _second = completed_session(installed, started="2026-08-02T00:00:00+00:00", stamp="b")
+
+    _code, narrow = _drive(["restore", "run", target.session_id])
+    _code, wide = _drive(
+        ["restore", "run", target.session_id, "--discard", later.session_id]
+    )
+
+    assert _offered_digest(narrow) != _offered_digest(wide), (
+        "naming a session to discard did not move the digest, so a decision "
+        "recorded against the narrow restore is honoured against the wide one"
+    )
+
+
+def test_the_digest_moves_when_the_mirror_half_is_added(installed):
+    """Approving one session must not also authorise pulling a mirror off the network.
+
+    Measured on the author's own table, row
+    O3_the_off_machine_half_leaves_the_digest: dropping the off-machine item out
+    of the digested offer killed ZERO tests. The two halves have very different
+    costs, the mirror being hundreds of gigabytes over somebody's connection, and
+    a digest that cannot tell them apart lets a decision made about the cheap one
+    be honoured against the expensive one.
+    """
+    record, _captured = completed_session(installed)
+
+    _code, capture_only = _drive(["restore", "run", record.session_id])
+    _code, with_mirror = _drive(["restore", "run", record.session_id, "--from-backup"])
+
+    assert _offered_digest(capture_only) != _offered_digest(with_mirror), (
+        "adding the mirror half did not move the digest"
+    )
+
+
+def test_the_confirmation_gate_is_found_by_digest_source_and_not_by_position(installed):
+    """The handler asks the gate the entry DIGESTS, whichever order they are written in.
+
+    Measured on the author's own table, row G1_gate_found_by_position: taking
+    ``gates[0]`` killed ZERO tests, and the reason is that the two declared gates
+    happen to be written confirm-first today. That makes the guard true by
+    coincidence, and the day somebody reorders the declaration the handler asks
+    the cloud-sync question against a restore digest and the confirmation is
+    never asked at all.
+
+    DRIVEN OVER A REVERSED ENTRY rather than argued, so what is measured is the
+    handler's selection and not the registry's current spelling.
+    """
+    entry = registry.entry("restore.run")
+    reversed_entry = replace(entry, gates=tuple(reversed(entry.gates)))
+    assert [spec.name for spec in reversed_entry.gates] != [
+        spec.name for spec in entry.gates
+    ], "the entry declares fewer than two gates, so this measures nothing"
+
+    chosen = restore_cli._confirm_gate(reversed_entry)
+
+    assert chosen.digest_source == "plan"
+    assert chosen.name == CONFIRM
+    assert chosen is not reversed_entry.gates[0], (
+        "the handler took the first gate, which is the confirmation only by "
+        "the order the entry happens to be written in"
+    )
+
+
+def test_an_off_machine_refusal_carries_the_reserved_remediation_and_not_the_class_default(
+    cfg, tmp_path
+):
+    """The per-slug answer survives, which is the whole reason the table holds one.
+
+    Measured on the author's own table, row
+    R2_the_reserved_remediation_is_replaced_by_the_class_default: swapping the
+    reserved remediation for ``report-defect`` killed ZERO tests. The cost is a
+    person with an unconfigured remote being told to file a bug, and a person
+    with no snapshot on the remote being told the same thing, when the
+    reservation table already holds a different and correct sentence for each.
+    """
+    acknowledge(cfg)
+    unconfigured = _without_remote(cfg)
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.restore_under_one_session(
+            unconfigured,
+            session_id=None,
+            from_backup=True,
+            target=tmp_path,
+            **gate_seams(cfg),
+        )
+
+    slug = str(backup.Refusal.REMOTE_NOT_CONFIGURED)
+    expected = reservations.remediation_for(slug)
+    got = excinfo.value.cause.remediation
+    assert (got.remedy, got.steps) == (expected.remedy, expected.steps), (
+        f"the refusal carries {got!r} rather than the reservation table's "
+        f"{expected!r}, so the per-slug answer was discarded"
+    )
+    assert got.remedy != Remedy.REPORT_DEFECT, (
+        "an unconfigured remote is not a defect in this program"
+    )
 
 
 def test_the_report_keeps_the_digest_the_decision_was_recorded_against(installed, monkeypatch):
