@@ -1,9 +1,10 @@
 # Restart: Cratekit
 
-**Last session 2026-08-18.** Board audit exit 0. No unit was started. `board.py
-next` named issue 27 as already In Progress and then named nothing ready. That
-is not an empty build. Issue 27 is held open on purpose, and the three modules
-it still owes are the remaining unit work.
+**Last session 2026-08-23.** Board audit exit 0. `board.py next` names issue 27
+as already In Progress and then names nothing ready. That is not an empty build.
+Issue 27 is held open on purpose, and the ONE module it still owes,
+`cratekit.session.restore_cli`, is the remaining unit work. Two of the three
+landed on 2026-08-23: `cratekit.cli.reports` and `cratekit.adopt.apply_cli`.
 
 ## Do this first
 
@@ -26,8 +27,7 @@ rule, never to find out how to work.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count written here
     .venv/bin/python scripts/board.py audit     # exit 0
 
-Main's tip subject is `docs: refresh restart for the week wrap` on top of
-`merge: U33 outbound service writes`. **No hash is written here on purpose.**
+Main's tip subject is the merge of `cratekit.adopt.apply_cli` under U27. **No hash is written here on purpose.**
 This file is itself part of the commit it would be naming. Check the subject
 and `git status -sb` for the ahead or behind count instead.
 
@@ -35,7 +35,8 @@ and `git status -sb` for the ahead or behind count instead.
 28 (U28), and issue 29 (U29). U33 shipped as `cratekit.export.cli` and
 `cratekit.favorites.cli`. The shared engine is `cratekit.modules.outbound`.
 Live account verification is R-144. Post-merge U26 findings are R-135 through
-R-143. Last residual is R-144. Append only.
+R-143. **Main's highest residual is R-148**, adoption's memberships being
+collected and never written. Append only.
 
 ## The branches
 
@@ -49,14 +50,22 @@ R-143. Last residual is R-144. Append only.
 27 as already In Progress and then say nothing is ready. Do not stop. Do not
 invent work from the ledger. Do not run `board.py start` on issue 27 again.
 
-1. **Stay on issue 27. Build `cratekit.cli.reports` first.** The wizard and
-   doctor have merged. The issue stays open because `tests/_pending.py` still
-   owes `cratekit.session.restore_cli`, `cratekit.cli.reports`, and
-   `cratekit.adopt.apply_cli`. A closing trailer naming that issue would make
-   `board.py audit` exit 2. Landing all three is what unblocks issue 28, which
-   unblocks issue 29. Reports is first because it is the only one of the three
-   not tangled with the parked conformance branch or a destructive restore.
-   Branch by hand. Leave the issue open until all three land or are re-owned.
+1. **Stay on issue 27. One module left: `cratekit.session.restore_cli`.**
+   The wizard and doctor merged first, `cratekit.cli.reports` landed on
+   2026-08-23, and `cratekit.adopt.apply_cli` landed the same day. The issue
+   stays open because the register still owes the restore verbs. A closing
+   trailer naming that issue would make `board.py audit` exit 2. Landing it is
+   what unblocks issue 28, which unblocks issue 29. Branch by hand. Leave the
+   issue open until it lands or is re-owned.
+
+   **The restore verbs are the hardest of the three and were left for last on
+   purpose.** `restore.run` declares two gates, one of them explicit, is
+   destructive, and needs one session held across the whole restore through
+   `core.restore.recovery_session`, passed in as `plan_restore`'s and
+   `run_restore`'s gates, because the default shape takes the library lock
+   twice. Read `cratekit/adopt/apply_cli.py` before starting: it is the worked
+   example of a destructive, explicitly gated, long running verb, and its
+   `apply_outstanding` is the shape a held session takes here.
 2. **Do not take issue 28 or issue 29 while they are blocked.** 28 waits on 27.
    29 waits on 28.
 3. **Do not reopen issues 26, 24, or 25.** Do not re-own the three modules onto
@@ -75,7 +84,7 @@ wants a trim pass. Do not trim "What CI is for".
   to act on it. **Do not backfill.**
 - **Residual numbers are APPEND ONLY.** Main's numbers never move; an incoming
   branch's residuals take fresh numbers above main's highest. **Main's highest
-  is R-144.**
+  is R-148.**
 - **A renumber is NOT finished inside `docs/residual-findings.md`.** Repoint
   only the lines the branch ADDED.
 - **CI does not run the suite and never will on Linux.** A step in the workflow
@@ -90,7 +99,7 @@ wants a trim pass. Do not trim "What CI is for".
   `.worktrees/conformance`.
 - **Two or three units per session.**
 
-## Eight things that will bite you
+## Nine things that will bite you
 
 **Scan the whole pushed RANGE for closing keywords, not the merge commit**, and
 run it as a GATE that stops the push. Never write a closing keyword next to an
@@ -121,6 +130,22 @@ its CAUSE. Before blaming the platform for a red CI run, clone at depth 1 and
 run it here.
 
 **Re-pinning a population means naming what moved, not matching a count.**
+The at-risk population pin in `tests/test_reserved_causes.py` fires on almost
+every unit. Name the module by differencing the two SETS, measured by running the
+same derivation over `origin/main`'s own `src` tree extracted into a scratch
+directory. A count moving by one says a module joined and does not say which, and
+a module leaving while another joined reads identically.
+
+**A LONG RUNNING VERB WITH AN EXPLICIT GATE NEEDS ITS RUN IN THE PAYLOAD, or the
+job it queues can never be driven.** The child the job driver spawns is a fresh
+process, so an argv naming only the job mints a NEW run, meets the explicit gate
+with nothing recorded against it, and exits DECISION_REQUIRED. Every respawn does
+the same and the queue holds a job nothing can advance. Nothing in the repository
+sees it: conformance 3 drives a verb WITHOUT a job, so it never reaches the
+resume branch. `adopt.apply` shipped this defect and fixed it in the same unit by
+freezing `ctx.run.run_id` in the payload and emitting `--run` on the argv. Check
+`restore.run` for the same shape before landing it, and drive the real
+`argv_for` output through the real dispatcher rather than reading the builder.
 
 ## The remote
 

@@ -4809,7 +4809,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # cli/reports.py, which names config-unusable the same way every other shell
     # does, and modules/reports/coverage.py, which names its own refusal. The
     # also-holds-an-integer half stays 15.
-    assert (len(literal_holders), len(literal_both)) == (71, 15), (
+    # Re-pinned on U27's adopt.apply shell, 2026-08-23: 71 to 72 holders. The one
+    # is adopt/apply_cli.py, which names config-unusable the same way every other
+    # shell does and internal-error for a verb declaring no plan-digested gate.
+    # The also-holds-an-integer half stays 15: the module holds no bare integer
+    # at all. NAMED BY DIFFERENCING THE TWO SETS, measured by running this same
+    # derivation over origin/main's own src tree extracted into a scratch
+    # directory, because a count moving by one says a module joined and does not
+    # say which, and a module leaving while another joined reads identically.
+    # Nothing left the set. The literal side grew by one while the named side
+    # stayed at 21 and the without-own half stayed at 8, so the comparison just
+    # below widened rather than narrowed, for the ninth time out of nine.
+    assert (len(literal_holders), len(literal_both)) == (72, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

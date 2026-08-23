@@ -423,6 +423,21 @@ REPORTS_CLI_UNIT = "U27"
 #: obligation itself is registered there, against the same unit (P5). What the
 #: wall actually is, which R-13 currently states wrongly, is written down in that
 #: entry rather than here.
+#:
+#: IT HAS LANDED. ``cratekit.adopt.apply_cli`` shipped under U27 with the shell,
+#: the plan-digested approval gate, and the one destructive session the residual
+#: titled "Adoption's tag write takes no destructive session and no library lock"
+#: asked for, so the entry no longer carries a ``planned_in`` and all nine
+#: conformance properties drive it. The constant stays, exactly as
+#: ``ROUTING_CLI_UNIT`` and ``REPORTS_CLI_UNIT`` stayed after their own modules
+#: landed: the paragraphs above are why these two verbs are spelled and split the
+#: way they are, and deleting the name would take the record of that with it.
+#:
+#: THE WALL WAS ALREADY DOWN when the marker was cleared, and the pending entry
+#: still described it as standing. Conformance 3 answers an explicit gate through
+#: ``crate run decide`` and resumes the same run for the next gate, and
+#: ``write.cloudsync.unreadable`` is named in the suite's unreachable set, so this
+#: verb's two gates are one reachable question and one exemption.
 ADOPT_APPLY_CLI_UNIT = "U27"
 #: Where ``repair.paths`` lives, and the unit that lands it.
 #:
@@ -1276,7 +1291,6 @@ ENTRIES: tuple[Entry, ...] = (
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
-        planned_in=ADOPT_APPLY_CLI_UNIT,
     ),
     # ── Deletion: one surface, TWO MODULES, and the split is the decision ────
     #

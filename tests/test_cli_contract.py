@@ -1343,6 +1343,16 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # what lets the half of adoption that is ready land while its
         # destructive sibling waits.
         "adopt.scan": [],
+        # U27. The apply takes no positional argument either, and for the same
+        # R19 reason: the tree comes off the declared taxonomy. It asks its
+        # explicit approval gate against the digest of the plan it rebuilt, which
+        # on this fixture is the EMPTY plan, because no unit in this build lands
+        # the collection reader that would give the census rows. An empty plan is
+        # still a plan a person can abort, so the gate fires, and the two-act OK
+        # path is conformance 3. Queueing needs no database and opens no
+        # destructive session, which is what lets the verb exit OK on a machine
+        # that has never acknowledged a backup.
+        "adopt.apply": [],
         # U22. No positional argument: the verb queues one job per enabled
         # source from the active profile. The configured fixture is the full
         # profile, so three jobs land, and queueing needs no database.

@@ -1,0 +1,239 @@
+name = "u27-adopt-apply-author"
+pass_kind = "full"
+
+# ── The session. This is what the unit exists for. ───────────────────────────
+
+[[rows]]
+id = "S1_no_session_at_all"
+description = "Run the apply loop with no destructive session around it (the residual's condition, unchanged)"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py"]
+old = '''    with session.assert_gates(
+        cfg,
+        workflow=WORKFLOW,
+        analysis_roots=watched,
+        identity_provider=identity_provider,
+        mount_enumerator=mount_enumerator,
+    ):'''
+new = '''    if True:'''
+
+[[rows]]
+id = "S2_analysis_watch_watches_nothing"
+description = "Arm the analysis watch on no roots, so it reports a clean session either way"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_write_session.py"]
+old = '''        analysis_roots=watched,'''
+new = '''        analysis_roots=(),'''
+
+[[rows]]
+id = "S3_watched_root_is_narrower_than_the_library"
+description = "Watch only the Music folder, so a tag write outside it is unwatched"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py"]
+old = '''    watched: tuple[Path, ...] = (cfg.library.root,)'''
+new = '''    watched: tuple[Path, ...] = (cfg.library.root / "Music",)'''
+
+[[rows]]
+id = "S4_workflow_is_not_the_verb"
+description = "Record the session under a name that is not this verb's"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_cli.py"]
+old = '''WORKFLOW = "adopt.apply"'''
+new = '''WORKFLOW = "adoption"'''
+
+[[rows]]
+id = "C1_collector_writes_nothing"
+description = "Place collects nothing, so the ledger marks entries applied with no membership recorded"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py"]
+old = '''        into.setdefault((folder, sub), []).append(entry.content_id)'''
+new = '''        _ = (into, entry, folder, sub)'''
+
+[[rows]]
+id = "C2_collector_records_the_wrong_identifier"
+description = "Collect the plan entry id instead of the content id the tree writer matches on"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py"]
+old = '''        into.setdefault((folder, sub), []).append(entry.content_id)'''
+new = '''        into.setdefault((folder, sub), []).append(entry.entry_id)'''
+
+[[rows]]
+id = "C3_collector_drops_the_sub_playlist"
+description = "Group by folder alone, so every energy band collapses into one destination"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py"]
+old = '''        into.setdefault((folder, sub), []).append(entry.content_id)'''
+new = '''        into.setdefault((folder, ""), []).append(entry.content_id)'''
+
+# ── The approval (R34) ───────────────────────────────────────────────────────
+
+[[rows]]
+id = "A1_approval_actor_is_the_process"
+description = "Mint the approval under a fixed actor, so the record cannot say who asserted it"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adoption.py"]
+old = '''            approval=grant(plan, actor=actor),'''
+new = '''            approval=grant(plan, actor="cli"),'''
+
+[[rows]]
+id = "A2_gate_found_by_position"
+description = "Take the first declared gate rather than the one digested against the plan"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_cli_contract.py"]
+old = '''    for spec in entry.gates:
+        if spec.digest_source == "plan":
+            return spec'''
+new = '''    for spec in entry.gates:
+        if True:
+            return spec'''
+
+[[rows]]
+id = "A3_missing_gate_refuses_under_the_wrong_reason"
+description = "Report a verb declaring no approval gate as a configuration problem"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_cli.py"]
+old = '''            reason="internal-error",
+            message=(
+                f"{entry.name} declares no gate digested against the plan, so "'''
+new = '''            reason="config-unusable",
+            message=(
+                f"{entry.name} declares no gate digested against the plan, so "'''
+
+# ── The shell ────────────────────────────────────────────────────────────────
+
+[[rows]]
+id = "G1_abort_branch_inverted"
+description = "Treat an approval as a decline and a decline as an approval"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_adopt_apply_cli.py"]
+old = '''    if option == "abort":
+        return ctx.envelope('''
+new = '''    if option == "approve":
+        return ctx.envelope('''
+
+[[rows]]
+id = "G2_abort_queues_anyway"
+description = "Queue the pass even when the person declined it"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_adopt_apply_cli.py"]
+old = '''    if option == "abort":
+        return ctx.envelope(
+            data={"job_id": None, "state": "declined", "cause": None, "progress": {}},
+            outcome=Outcome.NO_OP,
+        )'''
+new = '''    if option == "abort":
+        pass'''
+
+[[rows]]
+id = "G3_gate_offers_no_digest"
+description = "Ask the approval gate with no digest, so an approval survives the plan moving"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_adopt_apply_cli.py"]
+old = '''    option = ctx.gate.require(spec, digest=plan.digest())'''
+new = '''    option = ctx.gate.require(spec)'''
+
+[[rows]]
+id = "G4_queued_payload_loses_the_digest"
+description = "Freeze the job without the digest the plan was approved against"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "maintainer"
+tests = ["tests/test_cli_contract.py", "tests/test_adopt_apply_cli.py"]
+old = '''            payload={"tree": plan.tree, "digest": plan.digest()},'''
+new = '''            payload={"tree": plan.tree},'''
+
+[[rows]]
+id = "G5_resume_does_not_reconcile"
+description = "Report the stored job without reconciling a claim a dead driver left behind"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_jobs.py"]
+old = '''            return ctx.envelope(data=_reported(store, jobs.reconcile(store, ctx.args.job)))'''
+new = '''            return ctx.envelope(data=_reported(store, jobs.get(store, ctx.args.job)))'''
+
+[[rows]]
+id = "V1_resume_forgets_the_job"
+description = "Return a command line that queues a second record instead of continuing the one queued"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_cli_contract.py"]
+old = '''    return ["adopt", "apply", "--job", job.job_id]'''
+new = '''    return ["adopt", "apply"]'''
+
+[[rows]]
+id = "V2_resume_names_the_sibling_verb"
+description = "Re-invoke the census instead of the apply"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_cli_contract.py"]
+old = '''    return ["adopt", "apply", "--job", job.job_id]'''
+new = '''    return ["adopt", "scan", "--job", job.job_id]'''
+
+# ── The plan, and R19 ────────────────────────────────────────────────────────
+
+[[rows]]
+id = "P1_tree_is_a_literal"
+description = "Spell the routing tree here instead of resolving it from the declared taxonomy"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_cli_contract.py"]
+old = '''    return plan_engine.build_adoption_plan(census(cfg), declared, tree=declared.tree.id)'''
+new = '''    return plan_engine.build_adoption_plan(census(cfg), declared, tree="genre_energy")'''
+
+# THE ROW THAT WAS HERE WAS INERT AND WAS REPLACED RATHER THAN MEASURED. It
+# swapped ``census(cfg)`` for a literal ``()``, and ``census`` returns ``()`` on
+# this tree, so the two trees behave identically and no test could tell them
+# apart. See docs/solutions/workflow-issues/a-zero-death-row-can-be-a-test-gap-
+# or-an-inert-mutation.md: replacing the constant with an alias of itself is one
+# of the three inert shapes, and an inert zero costs a full suite run to say
+# nothing. The row below moves the value instead.
+[[rows]]
+id = "P2_census_returns_a_row"
+description = "Give the census a row, so the plan the gate digests is no longer the empty plan"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_cli_contract.py"]
+old = '''    del cfg
+    return ()'''
+new = '''    del cfg
+    return (None,)'''
+
+# ── The countdown discharge, and the registry ────────────────────────────────
+
+[[rows]]
+id = "R1_marker_restored"
+description = "Put planned_in back on the entry, so the conformance suite stops driving the landed verb"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_adoption.py", "tests/test_pending_units.py"]
+old = '''            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
+    # ── Deletion: one surface, TWO MODULES, and the split is the decision ────'''
+new = '''            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+        planned_in=ADOPT_APPLY_CLI_UNIT,
+    ),
+    # ── Deletion: one surface, TWO MODULES, and the split is the decision ────'''
+
+[[rows]]
+id = "R2_register_entry_restored"
+description = "Owe the module again in the register while it is importable, the contradiction board.py audit exits 2 on"
+file = "tests/_pending.py"
+surface = "user"
+tests = ["tests/test_pending_units.py", "tests/test_adoption.py"]
+old = '''    "cratekit.session.restore_cli": ('''
+new = '''    "cratekit.adopt.apply_cli": ("U27", "explicit, two gates, no destructive session and no library lock"),
+    "cratekit.session.restore_cli": ('''

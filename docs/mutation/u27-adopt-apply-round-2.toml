@@ -1,0 +1,29 @@
+name = "u27-adopt-apply-round-2"
+pass_kind = "full"
+
+[[rows]]
+id = "S3_watched_root_is_narrower_than_the_library"
+description = "Watch only the Music folder, so a tag write outside it is unwatched"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py"]
+old = '''    watched: tuple[Path, ...] = (cfg.library.root,)'''
+new = '''    watched: tuple[Path, ...] = (cfg.library.root / "Music",)'''
+
+[[rows]]
+id = "G3_gate_offers_no_digest"
+description = "Ask the approval gate with no digest, so an approval survives the plan moving"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py"]
+old = '''    option = ctx.gate.require(spec, digest=plan.digest())'''
+new = '''    option = ctx.gate.require(spec)'''
+
+[[rows]]
+id = "G5_resume_does_not_reconcile"
+description = "Report the stored job without reconciling a claim a dead driver left behind"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py"]
+old = '''            return ctx.envelope(data=_reported(store, jobs.reconcile(store, ctx.args.job)))'''
+new = '''            return ctx.envelope(data=_reported(store, jobs.get(store, ctx.args.job)))'''

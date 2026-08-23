@@ -53,14 +53,15 @@ EXPECTED_PENDING = frozenset(
     {
         "path:skills",  # U28, the shipped operator skills
         "cratekit.session.restore_cli",  # U27, the restore verbs and the one held session
-        # U27, the adopt.apply shell and the session the residual titled
-        # "adoption's tag write takes no destructive session and no library
-        # lock" records as missing.
-        # Its sibling adopt.scan is NOT here: it shared a module string with this
-        # verb, is not gated and not destructive, and has landed.
-        "cratekit.adopt.apply_cli",
     }
 )
+
+# ``cratekit.adopt.apply_cli`` was here and is gone, because U27 landed the shell
+# and, with it, the one destructive session the residual titled "Adoption's tag
+# write takes no destructive session and no library lock" asked for. The mirror in
+# ``tests/_pending.PENDING`` went in the same commit, and no guard carried a
+# ``@requires`` for the key, which was established by grep before the deletion
+# rather than assumed.
 
 # ``cratekit.cli.reports`` was here and is gone, because U27 landed the four
 # report verbs, the coverage engine and the library-statistics engine. The mirror
