@@ -234,6 +234,40 @@ not infer the decision from some other confirmation.
 A recorded act that this invocation may proceed. It is not a verdict. Honouring
 the gate confirms the run. It does not accept any review item.
 
+A gate is either ordinary or explicit, and the difference is not severity, it is
+how many acts answer it. An ordinary gate is answerable in the same invocation
+that discovered it. An explicit gate is not.
+
+### Explicit gate
+A gate whose answer must be a separate, deliberate act recorded against the run,
+never supplied in the invocation that discovered it. No blanket affirmative
+satisfies one: there is no flag, no configuration key and no environment variable
+that can answer it, and that absence is deliberate rather than unimplemented,
+because any of those would answer every gate at once.
+
+The behaviour that follows from this is what surprises people. Answering an
+explicit gate takes two acts, so a verb declaring one refuses its first
+invocation, is answered by a second command naming the run and the actor, and
+proceeds only on a third invocation that continues that same run. Any invocation
+that cannot name the run therefore cannot proceed, however many times it is
+retried, because a fresh run carries no decision and nothing about retrying
+creates one. That is the whole of why a process with no person at it, such as the
+child a queued job spawns, has to inherit the run rather than start its own.
+
+### Run
+The record of one invocation that survives the process that made it, carrying the
+decisions answered against it, the digest of whatever each gate offered, and
+which verb created it. It is addressed by a generated identifier, and a later
+invocation continues it by naming that identifier rather than by starting again.
+
+A run belongs to the verb that created it, so a decision recorded on one run
+cannot answer a gate in a different verb. Decisions are keyed by gate name and
+each carries the actor who gave it, which is what makes an approval auditable
+rather than merely present. The digest is recorded by the invocation that REACHED
+the gate, never supplied by whoever answers it later, because that person is in
+another process, never saw the artifact, and cannot be asked to quote its
+identity; that recording is what makes a stale answer detectable at all.
+
 ## Findings
 
 ### Residual finding
