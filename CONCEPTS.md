@@ -166,10 +166,26 @@ guard's death count. A guard whose removal kills nothing is untested whatever th
 coverage report says, because coverage measures which lines ran and this measures
 which lines mattered.
 
+That reading carries an unstated premise, that the revert produced a tree which
+behaves differently, and a row where it does not is INERT. An inert row is not a
+failed measurement, it is not a measurement: deleting an argument whose value
+equals the callee's own default, swapping a constant for another name bound to the
+same value, and reordering operations that commute all leave the two trees
+behaving identically, so the zero is correct and says nothing about any guard.
+The two causes of a zero render the same and are told apart only by reading the
+mutated site, never by counting. They also want opposite fixes, since a real zero
+is answered with a test and an inert one can only be answered with a better
+mutation, because no test can distinguish two trees that behave the same.
+
+Every batch already contains one deliberate inert row, the null control, which the
+driver writes and which must kill nothing or the apparatus rather than the code is
+broken. It is the concept implemented and, until it was named here, never named.
+
 A death confirmed on a narrow subset is a real death, while a zero on a subset is
-not yet a zero and is promoted to a full run before it is reported. Row counts are
-capped by the depth of the pass, and a truncation that nobody logged reads as
-coverage.
+not yet a zero and is promoted to a full run before it is reported. That promotion
+is what makes inertness expensive rather than merely misleading, since a row that
+could not have moved still costs a whole suite. Row counts are capped by the depth
+of the pass, and a truncation that nobody logged reads as coverage.
 
 ### Pinned population
 A count the suite recomputes from the tree on every run and asserts as an exact
@@ -277,6 +293,10 @@ produces it.
   for a future unit". They are different instruments and the choice between them
   is not stylistic: one is enforced by the suite and one is not, and only the
   register can make a future obligation fail on arrival.
+- A zero death row has been read as one thing, an untested guard. It is two, and
+  the table renders them identically: the suite failing to notice a real change,
+  and there having been no change to notice. Only the first is a finding, and
+  only the second is fixed by rewriting the mutation rather than the tests.
 - "Residual" does not mean "does not stop a merge". It answers only whether a
   finding blocks on its own merits. A residual with no cost to any person still
   stops a merge whenever the battery is red on its account, and both halves are
