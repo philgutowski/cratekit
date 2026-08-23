@@ -1,0 +1,127 @@
+{
+  "name": "u27-adopt-apply-round-2",
+  "pass_kind": "full",
+  "branch": "unit/u27-adopt-apply-cli",
+  "head": "60441e9",
+  "when": "2026-08-23 18:36 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 6150,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/adopt/apply_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/adopt/apply_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "15f94e64f095520e",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 6150,
+    "baseline_collected": 6150,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "S3_watched_root_is_narrower_than_the_library",
+      "description": "Watch only the Music folder, so a tag write outside it is unwatched",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ad951f0772f2737c",
+      "subset": [
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 22,
+      "baseline_collected": 22,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_cli.py::test_the_analysis_watch_is_armed_on_the_library_root"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    watched: tuple[Path, ...] = (cfg.library.root,)",
+      "new": "    watched: tuple[Path, ...] = (cfg.library.root / \"Music\",)"
+    },
+    {
+      "id": "G3_gate_offers_no_digest",
+      "description": "Ask the approval gate with no digest, so an approval survives the plan moving",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "aba28262d11ce307",
+      "subset": [
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 22,
+      "baseline_collected": 22,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_cli.py::test_an_approval_recorded_against_a_plan_that_has_since_moved_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    option = ctx.gate.require(spec, digest=plan.digest())",
+      "new": "    option = ctx.gate.require(spec)"
+    },
+    {
+      "id": "G5_resume_does_not_reconcile",
+      "description": "Report the stored job without reconciling a claim a dead driver left behind",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d898e92bd9d4b99f",
+      "subset": [
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 22,
+      "baseline_collected": 22,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_cli.py::test_a_resume_reconciles_a_claim_a_dead_driver_left_behind"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            return ctx.envelope(data=_reported(store, jobs.reconcile(store, ctx.args.job)))",
+      "new": "            return ctx.envelope(data=_reported(store, jobs.get(store, ctx.args.job)))"
+    }
+  ],
+  "dropped": []
+}
