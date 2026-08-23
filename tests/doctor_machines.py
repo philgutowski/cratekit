@@ -52,6 +52,24 @@ def _usable_trash(path: Path) -> TrashStatus:
     return TrashStatus(TrashLayout(root=root, files=root / "501"), True)
 
 
+def _absent_trash(path: Path) -> TrashStatus:
+    """A volume nobody has ever deleted from, which is not a fault.
+
+    The per-volume Trash is created on first use by the desktop and by this
+    product's own deletion pass, so a fresh volume legitimately has no directory.
+    Doctor asks with ``create=False`` and therefore MEETS this state on every
+    machine that has not deleted anything yet, which makes it the common case
+    rather than an exotic one.
+    """
+    root = Path(path) / ".Trashes"
+    return TrashStatus(
+        TrashLayout(root=root, files=root / "501"),
+        False,
+        f"{root / '501'} is not a directory",
+        absent=True,
+    )
+
+
 def _no_trash(path: Path) -> TrashStatus:
     """A volume with no usable Trash, and a problem sentence a finding can carry.
 

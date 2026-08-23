@@ -415,6 +415,54 @@ def test_an_as_of_that_is_not_a_date_refuses_rather_than_answering_for_today(
     assert document["cause"]["reason"] == "report-as-of-invalid"
 
 
+def test_an_explicitly_empty_as_of_refuses_rather_than_answering_for_today(
+    configured, exported
+):
+    """An empty string is something a person TYPED, so it is not an absent flag.
+
+    FOUND BY THE INDEPENDENT CROSS-MODEL REVIEW, not by this suite, and it is the
+    exact failure the refusal beside it was written to prevent: the handler tested
+    the value for falsiness, so `--as-of ""` was read as "no flag given" and the
+    report aged every grouping against today while exiting OK. Driven before the
+    fix: exit 0, outcome ok, as_of today.
+    """
+    code, document = envelope_of(
+        ["report", "intake-aging", str(exported()), "--as-of", ""]
+    )
+    assert code == int(ExitCode.PRECONDITION)
+    assert document["cause"]["reason"] == "report-as-of-invalid"
+
+
+def test_a_missing_tree_is_named_once_rather_than_as_a_row_per_bucket(
+    configured, library
+):
+    """Eighteen true rows that bury the one thing that went wrong is not a report.
+
+    The engine reports rather than refuses when the governed tree is absent, which
+    is deliberate and argued where it is made. The shell then rendered one gap row
+    per declared bucket, so the shipped template produced eighteen of them and the
+    actual problem, that the export holds no tree at all, appeared nowhere.
+    """
+    path = library / "no-tree.xml"
+    path.write_bytes(
+        _document(
+            collection=_collection([(1, "08A - 124 - A", "B", "file://localhost/a.flac")]),
+            root_children=[_folder(INTAKE.display, 0, 1), _close(1)],
+            root_count=1,
+        )
+    )
+    _code, document = envelope_of(["report", "library", str(path)])
+
+    gaps = [
+        check for check in document["data"]["checks"] if check["key"].startswith("gap.")
+    ]
+    assert [check["key"] for check in gaps] == ["gap.tree"]
+    assert TREE.display in gaps[0]["title"]
+    assert document["data"]["summary"]["unused_buckets"] == len(
+        default_taxonomy().buckets
+    ), "the count still reports every unused bucket; only the rows collapsed"
+
+
 def test_an_export_with_no_intake_flow_refuses(configured, library):
     path = library / "no-intake.xml"
     path.write_bytes(

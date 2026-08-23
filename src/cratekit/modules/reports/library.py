@@ -227,6 +227,28 @@ def genre_rows(view: LibraryView, *, declared: taxonomy.Taxonomy) -> tuple[Genre
     return tuple(sorted(rows, key=lambda row: row.path))
 
 
+def _depth_under(path: tuple[str, ...], tree_display: str) -> int:
+    """How deep ``path`` sits counting the governed tree's own node as one.
+
+    MEASURED FROM THE TREE, NOT FROM THE PLAYLIST ROOT, which is what
+    :class:`TreeShape` promises and what the first version of this module did not
+    do. A person who files the routing tree inside another folder has organized
+    their library, and measuring their tree from the export root made every path
+    one segment longer than the template declares, so a correctly shaped tree
+    reported itself as deeper than the XML bridge can write. Driven on a tree
+    nested one level down: declared depth 3, reported 4.
+
+    The FIRST occurrence is the anchor, matching the widening everywhere else in
+    this package: a tree carrying the declared display twice is measured from the
+    outermost one, so the answer describes the whole structure rather than the
+    deepest fragment of it.
+    """
+    try:
+        return len(path) - path.index(tree_display)
+    except ValueError:  # pragma: no cover - callers filter to governed paths
+        return 0
+
+
 def tree_shape(view: LibraryView, *, declared: taxonomy.Taxonomy) -> TreeShape:
     """The declared depth beside the deepest path the governed tree actually holds.
 
@@ -242,7 +264,10 @@ def tree_shape(view: LibraryView, *, declared: taxonomy.Taxonomy) -> TreeShape:
     governed_playlists = [
         playlist.path for playlist in view.playlists if tree_display in playlist.path[:-1]
     ]
-    deepest = max((len(path) for path in (*governed_folders, *governed_playlists)), default=0)
+    deepest = max(
+        (_depth_under(path, tree_display) for path in (*governed_folders, *governed_playlists)),
+        default=0,
+    )
     return TreeShape(
         declared_depth=declared.tree_depth,
         deepest=deepest,

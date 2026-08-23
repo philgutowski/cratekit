@@ -2388,6 +2388,46 @@ def test_a_volume_with_no_usable_trash_refuses_because_a_verb_depends_on_it(conf
     assert "never unlinks it" in finding.detail
 
 
+def test_a_volume_with_no_trash_directory_yet_is_not_a_failure(configured):
+    """The false red the cross-model review found, driven both ways.
+
+    ``trash.probe`` creates the per-volume Trash on first use because the desktop
+    does, and the deletion pass takes that default. Doctor asks with
+    ``create=False`` so its answer cannot be produced by its own asking, which
+    means a volume nobody has deleted from answers "not a directory" here and
+    works perfectly when a deletion actually runs. Reporting that as red told a
+    person deletion would refuse on a machine where it would succeed, which is the
+    one thing a precondition must never do.
+    """
+    finding = find(
+        doctor.run(configured, probes=probes(trash_probe=doctor_machines._absent_trash)),
+        "library.trash",
+    )
+    assert finding.status is doctor.Status.OK
+    assert finding.remedy is None
+    assert "creates it on first use" in finding.detail
+
+
+def test_the_two_probe_answers_that_made_the_false_red_are_really_different(tmp_path):
+    """The asymmetry itself, measured on the real probe rather than on a seam.
+
+    This is the evidence the finding rested on, kept as a test so the seam above
+    cannot drift away from what the module it stands in for actually does.
+    """
+    from cratekit.deletion import trash
+
+    volume = tmp_path / "volume"
+    (volume / "Music").mkdir(parents=True)
+    home = tmp_path / "home"
+    common = {"home": home, "uid": 501, "platform": "linux"}
+
+    asked = trash.probe(volume, create=False, **common)
+    made = trash.probe(volume, create=True, **common)
+
+    assert not asked.usable and asked.absent, "doctor's question"
+    assert made.usable, "the deletion pass's question, on the same volume"
+
+
 def test_a_broken_trash_is_informational_when_no_verb_this_profile_needs_it(library):
     """The deletion module off means nothing on this machine trashes a file.
 

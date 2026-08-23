@@ -87,9 +87,18 @@ def _load() -> config.Config:
 def _template(cfg: config.Config) -> NameTemplate:
     """The declared naming shape, with the marker text config owns (S3).
 
-    Same rule as ``acquire.match_cli._template`` and for the same reason: a
-    configuration with no marker text is a configuration where no file carries
+    Same rule as ``acquire.match_cli.library_template`` and for the same reason:
+    a configuration with no marker text is a configuration where no file carries
     one, and a marker rule with an empty literal is refused at construction.
+
+    THE CITATION IS CHECKED RATHER THAN REMEMBERED. It first read
+    ``match_cli._template``, which is not a symbol that module has, and a
+    citation nothing verifies is how a reader is sent to a function that was
+    renamed two units ago. ``write/naming_cli._template`` is the third copy of
+    this shape and does NOT carry the empty-marker guard, so it raises at
+    ``MarkerRule`` construction on a configuration with an empty marker. That is
+    recorded here rather than fixed from this unit, because it is that unit's
+    verb and its own suite's business.
     """
     marker = (cfg.naming.lossy_marker or "").strip()
     if not marker:
@@ -116,8 +125,14 @@ def _as_of(ctx) -> date:
     back one layer up.
     """
     written = getattr(ctx.args, "as_of", None)
-    if not written:
+    if written is None:
         return datetime.now(timezone.utc).date()
+    # ``is None`` RATHER THAN FALSINESS, and the difference is the whole point of
+    # the refusal below. An empty string is something a person TYPED, so treating
+    # it as an absent flag answers for a day nobody named, which is the exact
+    # outcome the refusal exists to prevent. The first version of this function
+    # wrote ``if not written`` and argued in its own docstring against the
+    # behaviour it then had.
     try:
         return date.fromisoformat(written)
     except ValueError as exc:
@@ -169,7 +184,7 @@ def audit_coverage(ctx) -> Envelope:
     """
     cfg = _load()
     declared = taxonomy.default_taxonomy()
-    report = coverage.coverage(_view(ctx), tree=declared.tree)
+    report = coverage.survey(_view(ctx), tree=declared.tree)
 
     limit = max(0, int(ctx.args.limit))
     listed = report.uncovered[:limit]
@@ -328,15 +343,41 @@ def report_library(ctx) -> Envelope:
             ),
         )
     )
-    for bucket_id in stats.gaps.unused_buckets:
+    if stats.shape.folders == 0:
+        # ONE ROW, NOT ONE PER DECLARED BUCKET. This engine reports rather than
+        # refuses when the governed tree is absent, which is the right call and is
+        # argued where it is made: an empty count is a true answer. Rendering it
+        # as a gap row per bucket was not. Driven on an export with no tree, the
+        # shipped template produced eighteen "this bucket has no folder" rows,
+        # every one of them true and none of them the thing that had gone wrong,
+        # which is the shape doctor's own INFO status exists to avoid.
         findings.append(
             Finding(
-                key=f"gap.bucket.{bucket_id}",
-                title=f"{bucket_id} has no folder",
+                key="gap.tree",
+                title=f"{stats.tree_display} is not in this export",
                 status=Status.INFO,
-                detail="the taxonomy declares this bucket and the export has no folder for it",
+                detail=(
+                    f"no folder named {stats.tree_display!r} appears anywhere in "
+                    f"the exported tree, so every declared bucket is unused and "
+                    f"there is nothing below it to describe; check that this is "
+                    f"the current export of the library you meant"
+                ),
+                remedy=Remedy.COMPLETE_PENDING_ACTION,
             )
         )
+    else:
+        for bucket_id in stats.gaps.unused_buckets:
+            findings.append(
+                Finding(
+                    key=f"gap.bucket.{bucket_id}",
+                    title=f"{bucket_id} has no folder",
+                    status=Status.INFO,
+                    detail=(
+                        "the taxonomy declares this bucket and the export has no "
+                        "folder for it"
+                    ),
+                )
+            )
 
     data = {
         "checks": [finding.to_json() for finding in findings],

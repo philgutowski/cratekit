@@ -4518,6 +4518,13 @@ def _files_this_unit_puts_on_disk() -> tuple[str, ...]:
         f"entry here silently shrinks the bound, which is the failure the bound "
         f"exists to catch one level up"
     )
+    claimed = sorted(set(_PACKAGE_MODULES_ANOTHER_UNIT_OWNS) & set(CITED_FLOOR))
+    assert claimed == [], (
+        f"the exclusion names files this unit's own floor claims: {claimed}. The "
+        f"two registers would then disagree about who owns them, and the widening "
+        f"that adds a genuinely owned file to the exclusion is exactly the drift "
+        f"this bound exists to refuse"
+    )
     remaining = tuple(sorted(named - set(_PACKAGE_MODULES_ANOTHER_UNIT_OWNS)))
     assert remaining, "the exclusion emptied the bound, so it bounds nothing"
     return remaining

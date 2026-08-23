@@ -938,17 +938,22 @@ def _check_trash(inputs: _Inputs) -> Finding:
     try:
         status = inputs.probes.trash_probe(root)
     except OSError as exc:
+        # GATED ON ``required`` LIKE EVERY NEIGHBOURING CHECK. An unanswerable
+        # question is still not a pass, but on a profile where nothing trashes a
+        # file it is not a red either, and a report that paints red for a
+        # capability nothing uses is how people learn to ignore red.
+        needed = inputs.required(key)
         return Finding(
             key=key,
             title=title,
-            status=Status.FAIL,
+            status=Status.FAIL if needed else Status.INFO,
             detail=(
                 f"whether {root} has a usable Trash could not be established "
                 f"({exc}), so whether a confirmed deletion would land in the "
                 f"Trash or refuse is unknown"
             ),
-            remedy=access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
-            error=exc,
+            remedy=access_remedy(exc, otherwise=Remedy.REPORT_DEFECT) if needed else None,
+            error=exc if needed else None,
         )
     if status.usable:
         where = status.layout.files if status.layout is not None else root
@@ -957,6 +962,27 @@ def _check_trash(inputs: _Inputs) -> Finding:
             title=title,
             status=Status.OK,
             detail=f"{where} exists on the same filesystem as {root} and accepts a move",
+        )
+    if status.absent:
+        # NOT A FAILURE, and getting this wrong made the check worse than absent.
+        # ``trash.probe`` creates the per-volume Trash on first use because the
+        # desktop does, and the deletion pass takes that default. Doctor asks with
+        # ``create=False`` so its answer cannot be produced by its own asking,
+        # which means a volume nobody has trashed anything on answers "not a
+        # directory" here and works perfectly when a deletion actually runs.
+        # Driven: probe(create=False) says unusable and probe(create=True) says
+        # usable on the same fresh volume. Reporting that as red tells a person
+        # deletion will refuse when it will not, which is the one thing a
+        # precondition must never do.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.OK,
+            detail=(
+                f"{root} has no Trash directory yet, which is the state of a "
+                f"volume nobody has deleted from; the deletion pass creates it on "
+                f"first use exactly as the desktop does"
+            ),
         )
     if not inputs.required(key):
         return Finding(

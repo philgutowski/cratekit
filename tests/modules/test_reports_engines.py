@@ -100,7 +100,7 @@ def test_covered_and_uncovered_partition_the_collection(view):
     identifiers rather than over the counts, because two counts that add up is
     the arithmetic a partition failure can satisfy.
     """
-    report = coverage.coverage(view, tree=TREE)
+    report = coverage.survey(view, tree=TREE)
     covered = {item.entry.track_id for item in report.covered}
     uncovered = {item.entry.track_id for item in report.uncovered}
     assert covered & uncovered == set()
@@ -114,13 +114,13 @@ def test_a_track_only_in_the_intake_flow_is_uncovered(view):
     Track 3 is in the intake flow and in no genre folder, which is exactly the
     state a fresh import leaves every track in.
     """
-    report = coverage.coverage(view, tree=TREE)
+    report = coverage.survey(view, tree=TREE)
     assert "3" in {item.entry.track_id for item in report.uncovered}
     assert "3" not in {item.entry.track_id for item in report.covered}
 
 
 def test_a_track_in_no_playlist_at_all_is_uncovered(view):
-    report = coverage.coverage(view, tree=TREE)
+    report = coverage.survey(view, tree=TREE)
     assert "4" in {item.entry.track_id for item in report.uncovered}
 
 
@@ -131,7 +131,7 @@ def test_a_covered_track_names_every_path_under_the_tree_that_holds_it():
     source system's per-playlist walk could not see the pair at all, which is the
     defect the duplicate audit's own docstring opens on.
     """
-    report = coverage.coverage(
+    report = coverage.survey(
         export.read_export(_library(second_placement=True)), tree=TREE
     )
     doubled = [item for item in report.covered if item.entry.track_id == "1"]
@@ -148,7 +148,7 @@ def test_a_tree_the_export_does_not_hold_refuses_rather_than_reporting_everythin
     declared display, because that is the string they have to go and look for.
     """
     with pytest.raises(CratekitError) as raised:
-        coverage.coverage(export.read_export(_library(tree_present=False)), tree=TREE)
+        coverage.survey(export.read_export(_library(tree_present=False)), tree=TREE)
     assert raised.value.cause.reason == "governed-tree-absent"
     assert raised.value.cause.detail["declared"] == TREE.display
     assert raised.value.cause.code is ExitCode.LIBRARY_PREREQUISITE
@@ -167,7 +167,7 @@ def test_a_tree_that_is_present_and_empty_reports_rather_than_refuses():
         root_children=[_folder(TREE.display, 0, 1), _close(1)],
         root_count=1,
     )
-    report = coverage.coverage(export.read_export(empty), tree=TREE)
+    report = coverage.survey(export.read_export(empty), tree=TREE)
     assert len(report.uncovered) == 1
     assert report.covered == ()
     assert report.folders == ()
@@ -191,7 +191,7 @@ def test_a_tree_nested_inside_another_folder_is_still_the_governed_tree():
         ],
         root_count=1,
     )
-    report = coverage.coverage(export.read_export(nested), tree=TREE)
+    report = coverage.survey(export.read_export(nested), tree=TREE)
     assert [item.entry.track_id for item in report.covered] == ["1"]
 
 
@@ -220,7 +220,7 @@ def test_the_uncovered_list_is_ordered_BY_ARTIST_AND_NOT_BY_THE_WALK():
         root_children=[_folder(TREE.display, 0, 1), _close(1)],
         root_count=1,
     )
-    report = coverage.coverage(export.read_export(reversed_collection), tree=TREE)
+    report = coverage.survey(export.read_export(reversed_collection), tree=TREE)
 
     assert [item.entry.artist for item in report.uncovered] == [
         "Adele",
@@ -247,7 +247,7 @@ def test_two_entries_sharing_an_artist_and_a_name_still_hold_an_order():
         root_children=[_folder(TREE.display, 0, 1), _close(1)],
         root_count=1,
     )
-    report = coverage.coverage(export.read_export(tied), tree=TREE)
+    report = coverage.survey(export.read_export(tied), tree=TREE)
     assert [item.entry.track_id for item in report.uncovered] == ["2", "9"]
 
 
@@ -469,6 +469,11 @@ def test_a_tree_nested_under_another_folder_yields_no_genre_from_that_folder():
         export.read_export(nested), declared=default_taxonomy(), template=TEMPLATE
     )
     assert [row.display for row in stats.genres] == [DEEP.display]
+    assert stats.shape.deepest == 3, (
+        "the depth is measured from the governed tree's own node, so a correctly "
+        "shaped tree that somebody filed inside another folder is not deeper"
+    )
+    assert not stats.shape.deeper_than_declared
 
 
 def test_a_tree_deeper_than_the_template_declares_is_reported_as_deeper():
@@ -534,8 +539,8 @@ def test_nothing_in_either_engine_needs_a_date_or_a_clock(view):
     against a fixture at all, which is the property the source system's own aging
     report lost by calling ``date.today()`` inside itself.
     """
-    first = coverage.coverage(view, tree=TREE)
-    second = coverage.coverage(view, tree=TREE)
+    first = coverage.survey(view, tree=TREE)
+    second = coverage.survey(view, tree=TREE)
     assert first == second
     assert library_report.statistics(
         view, declared=default_taxonomy(), template=TEMPLATE
@@ -543,3 +548,56 @@ def test_nothing_in_either_engine_needs_a_date_or_a_clock(view):
         view, declared=default_taxonomy(), template=TEMPLATE
     )
     assert isinstance(date.today(), date)  # the module under test never asks this
+
+
+def test_a_folder_count_never_exceeds_what_the_collection_can_account_for():
+    """The folder rows and the placement count are printed side by side.
+
+    An export can reference a track identifier from a playlist that the
+    collection does not carry. ``export`` validates the collection's own declared
+    count and its duplicate identifiers and does not check a playlist reference
+    against it, so counting a playlist's raw length reported a folder holding
+    tracks while the placement count beside it said nothing was filed. Two
+    numbers about one folder that cannot both be true is worse than either one
+    being absent.
+    """
+    orphaned = _document(
+        collection=_collection([(1, "08A - 124 - A", "X", "file://localhost/a.flac")]),
+        root_children=[
+            _folder(TREE.display, 1, 1),
+            _folder(DEEP.display, 1, 2),
+            *_playlist("High", [1, 999], 3),
+            _close(2),
+            _close(1),
+        ],
+        root_count=1,
+    )
+    report = coverage.survey(export.read_export(orphaned), tree=TREE)
+    assert sum(held for _path, held in report.folders) == report.placements
+    assert report.folders == ((("BY GENRE + ENERGY", "Deep House", "High"), 1),)
+
+
+def test_two_playlists_sharing_a_display_path_add_up_rather_than_overwrite():
+    """The counts are keyed on a display path, which the format does not make unique.
+
+    Whether rekordbox can emit two sibling nodes carrying one name is unmeasured
+    here, so this drives the engine against a view built directly rather than
+    claiming the shape is reachable. What it pins is the arithmetic: the folder
+    rows sum to the placements, whatever the walk hands in.
+    """
+    entries = (
+        export.CollectionEntry(track_id="1", name="A", artist="X", location="a"),
+        export.CollectionEntry(track_id="2", name="B", artist="Y", location="b"),
+    )
+    path = (TREE.display, DEEP.display, "High")
+    view = export.LibraryView(
+        entries=entries,
+        playlists=(
+            export.Playlist(path=path, track_ids=("1",)),
+            export.Playlist(path=path, track_ids=("2",)),
+        ),
+        folders=((TREE.display,), (TREE.display, DEEP.display)),
+    )
+    report = coverage.survey(view, tree=TREE)
+    assert report.folders == ((path, 2),)
+    assert sum(held for _path, held in report.folders) == report.placements

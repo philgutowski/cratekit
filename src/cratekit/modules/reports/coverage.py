@@ -140,24 +140,44 @@ def governed_paths(view: LibraryView, *, tree: taxonomy.Node) -> tuple[tuple[str
     )
 
 
-def coverage(view: LibraryView, *, tree: taxonomy.Node) -> CoverageReport:
+def survey(view: LibraryView, *, tree: taxonomy.Node) -> CoverageReport:
     """Partition the collection by whether the governed tree files it.
+
+    NOT CALLED ``coverage``, which is this module's own name. The sibling engine
+    states the rule and follows it, and the first version of this file broke the
+    rule its own sibling states in the same change: a function whose dotted path
+    repeats its module reads as a package attribute rather than as a call at
+    every site that uses it, which is how ``run`` came to mean two things here.
 
     Indexed once rather than asked per entry. ``LibraryView.entry`` is a linear
     scan and says so; calling it per placement is the N times M shape U18 shipped
     and then had to remove.
+
+    ``held`` IS BUILT FROM TRACK IDS THAT RESOLVE, and the folder counts are
+    built from the same set, so the per-folder rows always sum to
+    ``placements``. Counting a playlist's raw length instead lets an export whose
+    playlist references a collection entry that is not there report a folder
+    holding tracks while the placement count says nothing is filed, and those two
+    numbers are printed beside each other. The export reader validates the
+    collection's own count and its duplicate identifiers but does not check a
+    playlist reference against the collection, so this is where the two are
+    reconciled.
     """
     if not view.has_folder(tree.display):
         raise _refuse_absent(tree)
 
     under = frozenset(governed_paths(view, tree=tree))
+    known = {entry.track_id for entry in view.entries}
     held: dict[str, list[tuple[str, ...]]] = {}
     counts: dict[tuple[str, ...], int] = {}
     for playlist in view.playlists:
         if playlist.path not in under:
             continue
-        counts[playlist.path] = len(playlist.track_ids)
+        counts.setdefault(playlist.path, 0)
         for track_id in playlist.track_ids:
+            if track_id not in known:
+                continue
+            counts[playlist.path] += 1
             held.setdefault(track_id, []).append(playlist.path)
 
     covered: list[Placement] = []
@@ -190,6 +210,6 @@ def _by_name(placement: Placement) -> tuple[str, str, str]:
 __all__ = [
     "CoverageReport",
     "Placement",
-    "coverage",
     "governed_paths",
+    "survey",
 ]
