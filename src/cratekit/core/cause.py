@@ -1175,6 +1175,26 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # Export was invoked without a playlist identifier. PRECONDITION
         # rather than USAGE, because the parser accepted the invocation.
         "export-playlist-unknown": ExitCode.PRECONDITION,
+        # ── U27's report refusal, appended for the reason the blocks above give ─
+        #
+        # The declared routing tree does not appear anywhere in the exported
+        # tree. It sits beside ``intake-flow-absent`` in meaning and takes the
+        # same code for the same reason: the library lacks a structure the
+        # report describes, and the remedy is a declaration or a folder rather
+        # than anything about this installation's configuration. It is its own
+        # slug rather than a second use of the intake one because the two send a
+        # person to different places, the routing tree and the intake flow, and
+        # a shared slug would make a consumer branch on the message text.
+        "governed-tree-absent": ExitCode.LIBRARY_PREREQUISITE,
+        # The aging report was given an as-of value that is not a date.
+        # PRECONDITION rather than USAGE, for the reason the slug directly above
+        # gives: status 2 belongs to the argument parser and to nothing else, and
+        # the parser accepted this invocation because any string is a valid
+        # argument to a flag that takes one. Refused rather than defaulted to
+        # today, because a report that quietly answered for a different day than
+        # the one somebody typed would band every grouping against a value this
+        # product invented.
+        "report-as-of-invalid": ExitCode.PRECONDITION,
     }
 )
 

@@ -89,7 +89,11 @@ PENDING: dict[str, tuple[str, str]] = {
     # verb that only READs the collection. The U16 rider (report a tombstoned
     # version as suppressed) is already armed in tests/test_match_states.py.
     # The U27 rider (doctor reports a usable Trash via deletion.trash.probe)
-    # moved onto cratekit.cli.reports below, because this key is going away.
+    # moved onto cratekit.cli.reports, because this key was going away. That key
+    # has since gone too, and the rider went with it rather than back here: U27
+    # landed it as the doctor check library.trash, which delete.review declares
+    # as a precondition. The note below where that entry stood says so, so this
+    # sentence points at a discharge rather than at a key nobody can find.
     "path:skills": (
         "U28",
         "the shipped operator skills the skills lint runs over",
@@ -177,35 +181,23 @@ PENDING: dict[str, tuple[str, str]] = {
     #   the moment both modules are present with the fallback still there. That is
     #   a countdown that needs no register key, so it cannot be orphaned by a unit
     #   closing.
-    # APPENDED, same reason as the entry above it.
-    "cratekit.cli.reports": (
-        "U27",
-        "the command-line surface for audit.coverage, audit.duplicates, "
-        "report.library and report.intake-aging, and the two report engines two "
-        "of them still have none of: nothing in the tree computes tree coverage "
-        "or library statistics. REGISTERED HERE RATHER THAN LEFT AS A planned_in "
-        "MARKER for the reason R-13 records and mechanizes against: scripts/"
-        "board.py reads this file and nothing else, test_cli_contract only fires "
-        "once the module APPEARS, and an obligation carried only by a marker on "
-        "a closing unit is owned by nobody the moment that unit closes (P5). "
-        "RE-POINTED FROM U34, whose declared file list is the reports package "
-        "and its test module and which landed exactly that, and whose four "
-        "markers would all have named a closed unit the instant #34 merged. The "
-        "module path moved too, from cratekit.reports.cli, which test_layering "
-        "ranks modules while the registry it must dispatch through ranks cli, so "
-        "it could not have been built as spelled; that is the same correction "
-        "U10 and U11 each made on landing. U27 is the owner because it is the "
-        "only open unit already landing modules in src/cratekit/cli/, because "
-        "three of the four verbs emit the diagnostic surface doctor owns, and "
-        "because it is unblocked today. The choice is a judgement and is left "
-        "legible so a human can move it again. RIDER MOVED HERE FROM "
-        "cratekit.deletion.cli when that key landed: doctor reports whether "
-        "the library volume has a usable Trash, through "
-        "cratekit.deletion.trash.probe with create=False so the check cannot "
-        "pass by having run, because R35 sends a confirmed file to the system "
-        "Trash and never to an unlink, and a person otherwise meets that "
-        "refusal in the middle of a deletion",
-    ),
+    # THE ``cratekit.cli.reports`` ENTRY WAS HERE AND IS DELETED, because U27
+    # LANDED IT. ``src/cratekit/cli/reports.py`` ships the four handlers, and the
+    # two engines the entry said nothing in the tree computed ship beside their
+    # siblings as ``modules/reports/coverage.py`` and ``modules/reports/library.py``.
+    # The four registry entries have lost ``planned_in``, so all nine conformance
+    # properties now drive them, which is the arming this countdown existed to
+    # reach. NO ``@requires`` DECORATOR NAMED THIS KEY: ``grep -rn
+    # 'requires("cratekit.cli.reports")' tests/`` was run before the deletion and
+    # reported nothing, so step three of the discharge was genuinely empty here
+    # rather than skipped.
+    #
+    # ITS RIDER IS DISCHARGED TOO, and is named here because a rider deleted
+    # silently is an obligation nobody owns: doctor answers ``library.trash``
+    # through ``cratekit.deletion.trash.probe`` with ``create=False``, bound in
+    # ``cli/doctor._probe_trash`` so no caller can take the creating default, and
+    # ``delete.review`` declares the key as a precondition so the conformance
+    # suite holds it to a green machine and a broken one.
     "cratekit.adopt.apply_cli": (
         "U27",
         "the command-line surface for adopt.apply, and with it the destructive "

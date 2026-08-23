@@ -27,8 +27,10 @@ not thereby replace the thing these functions call to build one.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from cratekit.cli.doctor import Probes as _Probes
+from cratekit.deletion.trash import TrashLayout, TrashStatus
 
 #: A synthetic volume identity. Shaped like a real one and belonging to nobody,
 #: because R1 forbids a shipped artifact from carrying a real library string.
@@ -37,6 +39,33 @@ VOLUME = "F1E2-D3C4"
 #: The application version both machines agree is installed, so a pin recorded in
 #: a fixture matches on the green machine and the drift is deliberate elsewhere.
 INSTALLED_APP_VERSION = "7.0.1"
+
+
+def _usable_trash(path: Path) -> TrashStatus:
+    """A volume whose Trash accepts a move, described rather than created.
+
+    The layout is derived from the path the check was handed, so a finding built
+    from it names the library under test rather than a constant that would be the
+    same sentence on every machine.
+    """
+    root = Path(path) / ".Trashes"
+    return TrashStatus(TrashLayout(root=root, files=root / "501"), True)
+
+
+def _no_trash(path: Path) -> TrashStatus:
+    """A volume with no usable Trash, and a problem sentence a finding can carry.
+
+    UNWRITABLE rather than absent, deliberately. An absent directory is the case
+    the real probe would create its way out of if anything ever passed
+    ``create=True``, so the broken machine describes the one shape no create can
+    fix, which is the shape a person actually meets on a read-only mount.
+    """
+    root = Path(path) / ".Trashes"
+    return TrashStatus(
+        TrashLayout(root=root, files=root / "501"),
+        False,
+        f"{root / '501'} is not writable by this account",
+    )
 
 
 def green(**overrides) -> _Probes:
@@ -57,6 +86,7 @@ def green(**overrides) -> _Probes:
         binding_pin_problem=lambda _cfg: None,
         rclone_remotes=lambda _rclone: {},
         checkout_root=lambda: None,
+        trash_probe=_usable_trash,
     )
     defaults.update(overrides)
     return _Probes(**defaults)
@@ -88,6 +118,7 @@ def hostile(**overrides) -> _Probes:
         binding_pin_problem=lambda _cfg: "the recorded pyrekordbox pin is not satisfied",
         rclone_remotes=lambda _rclone: None,
         checkout_root=lambda: None,
+        trash_probe=_no_trash,
     )
     defaults.update(overrides)
     return green(**defaults)

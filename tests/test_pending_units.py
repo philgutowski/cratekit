@@ -53,7 +53,6 @@ EXPECTED_PENDING = frozenset(
     {
         "path:skills",  # U28, the shipped operator skills
         "cratekit.session.restore_cli",  # U27, the restore verbs and the one held session
-        "cratekit.cli.reports",  # U27, the four report verbs and two missing engines
         # U27, the adopt.apply shell and the session the residual titled
         # "adoption's tag write takes no destructive session and no library
         # lock" records as missing.
@@ -62,6 +61,12 @@ EXPECTED_PENDING = frozenset(
         "cratekit.adopt.apply_cli",
     }
 )
+
+# ``cratekit.cli.reports`` was here and is gone, because U27 landed the four
+# report verbs, the coverage engine and the library-statistics engine. The mirror
+# in ``tests/_pending.PENDING`` went in the same commit, and no guard carried a
+# ``@requires`` for the key, which was established by grep before the deletion
+# rather than assumed.
 
 # ``cratekit.write.rebuild`` was here and is gone, because U36 landed it on `main`
 # in this session and issue #36 closed. A register entry owed by a closed unit is

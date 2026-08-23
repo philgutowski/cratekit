@@ -385,6 +385,15 @@ REBUILD_CLI_UNIT = "U20"
 #: THE MARKER IS NOT THE RECORD, exactly as above. The obligation is registered
 #: in ``tests/_pending.py`` against U27, which is the file the board audit reads
 #: (P5), and this constant is a convenience for the reader.
+#:
+#: IT HAS LANDED. ``cratekit.cli.reports`` shipped under U27 with the four
+#: handlers, the coverage engine and the library-statistics engine the paragraph
+#: above says the unit inherits, so none of the four entries carries a
+#: ``planned_in`` any more and all nine conformance properties now drive them.
+#: The constant stays, exactly as ``ROUTING_CLI_UNIT`` and ``REBUILD_CLI_UNIT``
+#: stayed after their own modules landed: the reasoning above is why these verbs
+#: are spelled and owned the way they are, and deleting the name would take the
+#: record of that decision with it.
 REPORTS_CLI_UNIT = "U27"
 #: The unit that lands ``cratekit.adopt.apply_cli``, named ONCE for the same
 #: reason ``ROUTING_CLI_UNIT`` is, and carrying the judgement rather than only
@@ -970,7 +979,6 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
         taxonomy_terms=("genre_energy",),
-        planned_in=REPORTS_CLI_UNIT,
     ),
     Entry(
         name="audit.duplicates",
@@ -984,7 +992,6 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"review_set"}),
         output_schema="review_set/1",
         adjudicates=True,
-        planned_in=REPORTS_CLI_UNIT,
     ),
     Entry(
         name="report.library",
@@ -996,7 +1003,6 @@ ENTRIES: tuple[Entry, ...] = (
         module_id="reports",
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
-        planned_in=REPORTS_CLI_UNIT,
     ),
     Entry(
         name="report.intake-aging",
@@ -1010,7 +1016,6 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
         taxonomy_terms=("inbox",),
-        planned_in=REPORTS_CLI_UNIT,
     ),
     # ── Analysis ────────────────────────────────────────────────────────────
     Entry(
@@ -1306,7 +1311,18 @@ ENTRIES: tuple[Entry, ...] = (
         adjudicates=True,
         destructive=True,
         writes=frozenset({"files"}),
-        doctor_checks=("library.mounted", "library.identity", "rekordbox.closed"),
+        # ``library.trash`` is declared HERE and by nothing else, because
+        # this is the only verb that moves a file to the Trash (R35). It is
+        # a precondition rather than a note: the deletion pass calls
+        # ``trash.assert_usable`` immediately before every move, so a volume
+        # with no usable Trash refuses AFTER the review, after the confirm
+        # gate, and against a plan already digested.
+        doctor_checks=(
+            "library.mounted",
+            "library.identity",
+            "library.trash",
+            "rekordbox.closed",
+        ),
         gates=(
             GateSpec(
                 name="delete.review.confirm",
