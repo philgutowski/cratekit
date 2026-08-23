@@ -2510,6 +2510,31 @@ def test_a_trash_probe_the_operating_system_refuses_is_a_failure_with_the_right_
     assert finding.remedy is not Remedy.REPORT_DEFECT
 
 
+def test_an_unanswerable_trash_probe_is_informational_when_no_verb_needs_it(library):
+    """The gate on the refusal branch, which the fix round left unmeasured.
+
+    Forcing that branch to FAIL regardless of the profile killed nothing in the
+    author's own table, because the only test of it ran on the full profile where
+    the answer is FAIL either way. A machine with the deletion module switched off
+    has nothing that moves a file to the Trash, so an unanswerable question about
+    it is worth knowing and is not a fault, which is the rule every neighbouring
+    check in this file applies.
+    """
+
+    def refuses(path):
+        raise PermissionError(errno.EACCES, "Operation not permitted", str(path))
+
+    document = document_for(library)
+    document["profile"] = {"name": "slim"}
+    finding = find(
+        doctor.run(config.from_dict(document), probes=probes(trash_probe=refuses)),
+        "library.trash",
+    )
+    assert finding.status is doctor.Status.INFO
+    assert finding.remedy is None
+    assert "could not be established" in finding.detail
+
+
 def test_the_trash_check_is_unchecked_when_there_is_no_configuration(tmp_path, monkeypatch):
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "empty"))
     config.reset_cache()
