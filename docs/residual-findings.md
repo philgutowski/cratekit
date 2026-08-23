@@ -8461,3 +8461,88 @@ would not satisfy the live gate the brief names.
 hearts sweep has run through these engines, the remote account matches
 the reported added and unmatched sets, and a second run of each updates
 rather than duplicates.
+
+## R-145. The report verbs resolve the SHIPPED taxonomy, never the library's ACTIVE copy
+
+**Found by** the U27 review, by two independent reviewers who reached
+opposite severities, which is why the number and the disagreement are both
+recorded here rather than settled quietly.
+
+`cratekit.cli.reports` resolves `taxonomy.default_taxonomy()` in three of
+its four handlers. S6 makes a library self-describing by copying the
+chosen template into the library's own state root at setup, and
+`cli/doctor._check_taxonomy` reads exactly that copy. Nothing else does.
+Ten consumers in this tree resolve the shipped default, so a person who
+edits the active copy so their tree is named something else gets a
+coverage report that refuses for a tree that is present under another
+name, an aging report that refuses for an intake flow that is present,
+and library statistics that count against buckets they do not have.
+
+**Measured cost.** None on any machine this product can produce. Exactly
+one template ships, `cli/setup` and `cli/doctor` both refuse a configured
+name the shipped set does not contain, and the product has no verb that
+edits the active copy. The divergence requires hand-editing a file the
+software only ever writes once, which is a producer that was named and
+NOT driven, so this fails the merge bar's third condition.
+
+**Why not fixed here.** It is systemic rather than U27's. Fixing it in
+one unit's four verbs would give this repository two answers to "which
+taxonomy is in force", which is the defect P2 names, and the half that
+did not move would be the half nobody looks at.
+
+**Closes when:** one function owns resolving the active template with the
+shipped one as its fallback, every consumer asks it, and a library whose
+active copy declares a differently named tree is driven end to end
+through routing, a report, and doctor.
+
+## R-146. A playlist may reference a track the collection does not carry, and nothing checks it
+
+**Found by** the independent cross-model review of U27.
+
+`modules/reports/export.read_export` validates the collection's own
+declared entry count and refuses a duplicate collection identifier. It
+does not check that a playlist's `TrackID` resolves to a collection
+entry. U27's coverage engine now counts only identifiers that resolve, so
+its per-folder rows and its placement count always reconcile, but the
+underlying document is still accepted with a dangling reference and any
+later reader of the same view is free to trust it.
+
+**Measured cost.** None measured. Whether rekordbox can export a playlist
+row pointing at a collection entry it did not write is unmeasured, and no
+candidate producer was driven. The engine-level arithmetic is pinned
+against a view constructed directly, which is why the fix is safe to hold
+without the reachability answer.
+
+**Why not fixed here.** The check belongs at the export boundary, which
+is U34's module and its suite's business, and refusing a whole export
+over one dangling reference is a product decision rather than a repair.
+
+**Closes when:** an export carrying a dangling playlist reference has
+been produced by rekordbox or ruled out, and the reader either refuses it
+by name or records that it cannot occur.
+
+## R-147. A partitioned pytest run cannot see a dangling `@requires` decorator
+
+**Found by** the independent cross-model review of U27. **Pre-existing**,
+and older than this unit: the mechanism is U6's.
+
+`tests/test_pending_units.py` compares the declared register against
+`EXPECTED_PENDING`. It never looks for `requires("...")` call sites. The
+protection against a deleted register entry whose decorator survives is
+that `requires` raises `KeyError` at import, which takes the guard's whole
+file out of collection. That protection only fires when the guarded module
+is collected, so a run scoped to a subset of `tests/` passes while a
+decorator names a key nothing declares.
+
+**Measured cost.** None to this repository today. The discharge in U27
+was verified by grep before the deletion and the full battery collects
+every module, so no dangling decorator exists. The cost is to a future
+session that runs a scoped invocation and reads green.
+
+**Why not fixed here.** The repair is an AST sweep over `tests/`
+asserting every literal `requires` key appears in `PENDING`. It is cheap
+and it belongs to the countdown mechanism rather than to a report verb;
+landing it inside U27 would widen a unit that is already large.
+
+**Closes when:** an AST-derived check asserts every `requires(...)` key in
+`tests/` is declared, and is driven against a deliberately dangling one.
