@@ -460,7 +460,7 @@ def test_the_resume_names_the_job_and_carries_the_run_that_holds_the_approval():
 
     class _Job:
         job_id = "job-7"
-        payload = {"run_id": "run-3"}
+        payload = {jobs.GATE_RUN_KEY: "run-3"}
 
     class _Older:
         job_id = "job-7"

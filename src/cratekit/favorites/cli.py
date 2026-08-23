@@ -58,11 +58,35 @@ def build_sync(parser, entry) -> None:
 
 
 def sync_favorites_argv(job) -> list[str]:
+    """The command line that continues one queued favourites increment.
+
+    TWO RUNS TRAVEL HERE AND THEY ARE NOT THE SAME RUN. ``--run-id`` is this
+    verb's own argument and carries the INTAKE run shared with the other sources
+    in a sync. ``--run`` is the root parser's flag and carries the GATE run, the
+    one the confirm decision was recorded against. They defaulted to the same
+    value, which is exactly why emitting only the first looked like carrying the
+    run and restored no gate state at all: ``cli._run_state_for`` reads
+    ``args.run`` and never ``args.run_id``.
+
+    So this builder emitted ``--run-id`` and the child still minted a fresh run,
+    met the explicit confirm gate with nothing recorded, and exited
+    DECISION_REQUIRED on every respawn. The queue held a confirmed sync nothing
+    could advance. Measured by driving this function's own output through the
+    dispatcher on 2026-08-23. A predicate that searched the source for the
+    substring ``--run`` reported this verb CLEAN, because ``--run-id`` contains
+    it, which is the other half of why it survived.
+
+    A job frozen by a build older than this one carries no gate run and resumes
+    without the flag, which returns it to the refusal it was already in.
+    """
+    payload = job.payload or {}
     argv = ["sync", "favorites", "--job", job.job_id]
-    run_id = (job.payload or {}).get("run_id")
+    run_id = payload.get("run_id")
     if run_id:
         argv.extend(["--run-id", str(run_id)])
-    return argv
+    gate_run = payload.get(jobs.GATE_RUN_KEY)
+    resume = ["--run", str(gate_run)] if gate_run else []
+    return [*resume, *argv]
 
 
 def sync_favorites(ctx) -> Envelope:
@@ -85,7 +109,15 @@ def sync_favorites(ctx) -> Envelope:
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
-            payload={"source_id": "favorites", "run_id": run_id},
+            # TWO RUNS, TWO KEYS, on purpose. ``run_id`` is the intake run this
+            # sync shares across its sources. The gate run is the one the
+            # confirm decision was recorded against, and conflating them is the
+            # defect ``sync_favorites_argv`` describes.
+            payload={
+                "source_id": "favorites",
+                "run_id": run_id,
+                jobs.GATE_RUN_KEY: ctx.run.run_id,
+            },
             cfg=cfg,
         )
         return ctx.envelope(data=_reported(store, job))

@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import config, rb_writer, review
+from cratekit.core import config, jobs, rb_writer, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
 from cratekit.core.exit_codes import Remedy
 from cratekit.deletion import run
@@ -120,11 +120,34 @@ def build_review(parser, entry) -> None:
 def delete_argv(_job) -> list[str]:
     """The command line that continues one queued deletion pass.
 
-    Long-running work is re-invoked from its frozen payload. This verb's
-    resume is the same command: the run id and the recorded gate travel on
-    the invocation, not as a job identifier.
+    THE DOCSTRING HERE USED TO CLAIM THE OPPOSITE OF WHAT THIS RETURNS. It said
+    "the run id and the recorded gate travel on the invocation", and the list
+    below carries neither a run nor a job. That was not merely untidy: this
+    verb's confirm gate is ``explicit``, so a child spawned on this argv would
+    mint a fresh run, meet the gate with nothing recorded, and exit
+    DECISION_REQUIRED for ever.
+
+    IT IS LATENT RATHER THAN LIVE, and only because nothing enqueues this verb.
+    ``review_removals`` does the deletion inline and never calls
+    ``jobs.enqueue``, so no job under this handler key is ever created and no
+    child is ever spawned on this argv. The registry still names a builder, so
+    the shape is here waiting.
+
+    IT CARRIES THE GATE RUN ANYWAY, so the trap is not left armed. The registry
+    declares this verb ``long_running`` with a builder, which IS the queueing
+    contract whatever the handler does today, and the day somebody makes it
+    enqueue the payload will already be read correctly here rather than shipping
+    the defect a second time. Reading a key nothing writes costs one lookup that
+    returns None.
+
+    THERE IS NO ``--job``, and that is this verb's shape rather than an omission:
+    ``build_review`` declares no such argument, and the resume is the same
+    command. What the resume needs is the run the confirm was recorded against,
+    which is what this emits.
     """
-    return ["delete", "review"]
+    gate_run = (getattr(_job, "payload", None) or {}).get(jobs.GATE_RUN_KEY)
+    resume = ["--run", str(gate_run)] if gate_run else []
+    return [*resume, "delete", "review"]
 
 
 def review_removals(ctx) -> Envelope:

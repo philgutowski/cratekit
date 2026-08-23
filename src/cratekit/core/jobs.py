@@ -1308,6 +1308,25 @@ def drive(
 # Detached execution (KTD26)
 # ---------------------------------------------------------------------------
 
+#: The payload key every verb freezes its GATE RUN under, so a resume can carry it.
+#:
+#: WHY THIS IS ONE NAMED CONSTANT RATHER THAN A STRING EACH SHELL SPELLS. A verb
+#: that declares an ``explicit`` gate is answerable only by a separate act
+#: recorded against a run (R34), and the child this module spawns is a fresh
+#: process that mints a NEW run whenever the argv omits ``--run``. So a queued
+#: job whose argv does not carry the approving run meets its own gate with
+#: nothing recorded, exits DECISION_REQUIRED, and does the same on every respawn:
+#: the queue holds work nothing can advance. Three shipped verbs had that shape
+#: and two of them were live, measured 2026-08-23.
+#:
+#: IT IS DELIBERATELY NOT ``run_id``. ``sync.favorites`` already freezes a
+#: ``run_id``, and it is the INTAKE run shared across that sync's sources, which
+#: is a different thing that happens to default to the same value. Its builder
+#: emitted that one as ``--run-id`` and looked correct while restoring no gate
+#: state at all. Two concepts under one name is how that defect read as a fix, so
+#: the gate run gets a name of its own and the two can never be confused again.
+GATE_RUN_KEY = "gate_run_id"
+
 #: The module the engine re-invokes. A MODULE rather than a console script: a
 #: console script is a generated wrapper whose location depends on how the
 #: package was installed, and shelling out to exactly those wrappers is what the
@@ -1370,6 +1389,7 @@ def spawn(
 
 __all__ = [
     "ENTRY_MODULE",
+    "GATE_RUN_KEY",
     "QUEUE_FILENAME",
     "SCHEMA_VERSION",
     "TERMINAL_STATES",
