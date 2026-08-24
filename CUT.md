@@ -12,7 +12,6 @@ noticed this existed" look identical in a diff six months later.
 
 | Source entry point | Why it is not ported |
 |---|---|
-| `dj-pad-camelot` | The zero-padding pass is absorbed into the naming engine, which applies the same rule at write time. A separate sweep exists only because naming was not template-driven. |
 | `dj-split-genre-folders` | A one-time migration between two specific genre folders in one person's library. Its own docstring says so. The declared taxonomy plus the tree writers do this generically. |
 | `dj-genre-research` | The other half of that same one-time migration. The lookup engine inside it is kept and folds into tagging; the verb is not. |
 | `dj-create-vox-playlists` | The sub-playlists it creates are declared by the taxonomy and written by the tree writers, so creating them is no longer a separate act. |
@@ -24,6 +23,22 @@ noticed this existed" look identical in a diff six months later.
 | `dj-web` | The web dashboard is Feature 32, deferred: the CLI is the launch product. Confirmed 2026-08-24: the shipped CLI must be complete enough for any user on its own, so the desktop app is optional and never required, and nothing may treat a window as the only path to a workflow. Nothing about the dashboard is deleted, and the extras group stays declared. |
 | `dj-desktop` | The desktop wrapper is the same Feature 32 row and defers with it. |
 | `dj-label` | Building streaming-service playlist folders for a whole label is Feature 23, deferred post-launch. Importing a label into the library, which is the workflow that touches the library, is Feature 22 and does ship. |
+
+## A script absorbed in halves
+
+`dj-pad-camelot` is claimed by `crate name apply` rather than listed above, and
+the claim needs a paragraph because the script's convention lives on more
+surfaces than the verb touches. The padded Camelot form sits on four: the
+filename, the title tag, the `initialkey` tag, and the rekordbox Name field.
+As of U39 the naming engine writes the padded form at write time and
+`name.apply` repairs existing filenames and title tags to it, which is the
+workflow the script was run for. The rekordbox Name half is
+`write/metadata.plan_title_padding`, a finished and tested planner that no
+verb calls; wiring it was offered and declined on 2026-08-24 and the decision
+is recorded as residual R-165. The `initialkey` tag is stamped at acquisition,
+read at five sites, rewritten by no padding pass in either system, and every
+reader normalizes the unpadded form through the one canonical parser, so
+padding it repairs no driven consumer.
 
 ## A row that describes something that does not exist
 

@@ -870,7 +870,13 @@ ENTRIES: tuple[Entry, ...] = (
         source_scripts=("dj-pad-camelot",),
         emits=frozenset({"plan"}),
         output_schema="plan/1",
-        writes=frozenset({"db_metadata", "files"}),
+        #: Files only, corrected in U39. The handler renames on disk and
+        #: rewrites the title tag; it opens no database, so it can never reach
+        #: the guarded writer or its cloud sync refusal, and the conformance
+        #: suite refuses a declared decision a verb cannot reach, in both
+        #: directions. The rekordbox Name half of the padding convention is
+        #: ``write/metadata.plan_title_padding``, which no verb calls (R-165).
+        writes=frozenset({"files"}),
         destructive=True,
         doctor_checks=("library.mounted", "rekordbox.pins"),
         gates=(
@@ -880,7 +886,6 @@ ENTRIES: tuple[Entry, ...] = (
                 prompt="Apply these renames?",
                 digest_source="plan",
             ),
-            CLOUD_SYNC_UNREADABLE_GATE,
         ),
         #: U21 landed the per-field policy this verb applies, not the verb. The
         #: shell renames files on disk and rewrites name fields, which is the

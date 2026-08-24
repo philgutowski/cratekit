@@ -9069,3 +9069,32 @@ it is prose in a test comment and the merge bar does not hold a unit for one.
 
 **Closes when:** the comment says the true reason, which is that a verb writing
 outside the library should be driven at a named destination.
+
+## R-165. The rekordbox Name half of the padding convention has a planner and no caller
+
+**Found by** U39, 2026-08-24, reconciling `name.apply`'s registry claim with
+`CUT.md`.
+
+The padded Camelot convention lives on four surfaces. U39 makes the naming
+engine write the padded form on two of them, the filename and the title tag,
+and `name.apply` repairs existing files to that form. The third surface, the
+rekordbox Name field, has `write/metadata.plan_title_padding`: finished,
+tested, riding `naming.pad_head`, and called by no verb. The fourth, the
+`initialkey` tag, is stamped at acquisition, read at five sites, rewritten by
+no padding pass in either system, and every reader normalizes the unpadded
+form through the one canonical parser.
+
+**Measured cost.** A library whose rows predate the convention keeps unpadded
+Name fields until a person pads them elsewhere, and rekordbox then sorts 1A
+after 10A in any Name ordered view. Nothing is lost and no report is false.
+The `initialkey` tag costs nothing that any driven consumer can see.
+
+**Why it is not fixed here.** Wiring the planner was offered on 2026-08-24 and
+declined: the sweep is a database write over existing rows, the write-time
+default removes the need for it on everything Cratekit names from now on, and
+the file surfaces are repairable on demand with `name.apply`.
+
+**Closes when:** a verb or the attended U29 cutover drives
+`plan_title_padding` against a disposable database copy and a person applies
+the result to the live library, or the decision is revisited and the planner
+is deleted with its tests.
