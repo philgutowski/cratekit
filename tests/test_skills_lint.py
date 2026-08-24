@@ -93,7 +93,13 @@ NO_SCRIPT_ALLOWLIST: frozenset[str] = frozenset()
 # fenced COMMAND may only use a real console script.
 RETIRED_SKILL_NAMES: frozenset[str] = frozenset()
 
-_FENCED = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
+_FENCED = re.compile(r"(?:```|~~~)[^\n]*\n(.*?)(?:```|~~~)", re.DOTALL)
+# An INDENTED command line, which is this repository's own house style for
+# showing a command and which no fence matcher sees. Narrowed to lines that
+# actually invoke the product, because a four space indent in markdown is also
+# how a list continuation is written and a rule firing on those would be
+# suppressed and then protect nothing (P7).
+_INDENTED_COMMAND = re.compile(r"^[ \t]{4,}(crate(?:\s+\S.*)?)$", re.M)
 _FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 # The project's own command tokens. Anything starting with the product name is a
 # command this repository is responsible for; a general "first token on the line"
@@ -277,6 +283,11 @@ def lint_skills(
                 comment_parts.append(tail)
             else:
                 command_parts.append(line)
+        # Indented invocations join the command text, so rule (g) sees a command
+        # written in the house style exactly as it sees a fenced one. Measured
+        # before this line existed: a skill with two invented verbs in an
+        # indented block and a tilde fence linted completely clean.
+        command_parts += _INDENTED_COMMAND.findall(text)
         command_text = "\n".join(command_parts)
         comment_text = "\n".join(comment_parts)
 
@@ -697,9 +708,76 @@ def test_a_profile_disabled_verb_is_absent_rather_than_refusing():
     )
 
 
+def test_a_command_in_an_indented_block_is_checked(tmp_path):
+    """The house style is not a blind spot. Measured before the fix: clean."""
+    _mk_skill(tmp_path, "crate-x", "Run this:\n\n    crate not-a-verb\n\nDone.\n")
+    problems = _lint(tmp_path, {"crate"})
+    assert any("does not parse" in p for p in problems), problems
+
+
+def test_a_command_in_a_tilde_fence_is_checked(tmp_path):
+    """A tilde fence is a fence. It was invisible to the backtick matcher."""
+    _mk_skill(tmp_path, "crate-x", "~~~bash\ncrate not-a-verb\n~~~\n")
+    problems = _lint(tmp_path, {"crate"})
+    assert any("does not parse" in p for p in problems), problems
+
+
+def test_an_indented_line_that_is_not_a_command_is_left_alone(tmp_path):
+    """The other direction, so the rule cannot be suppressed for false positives.
+
+    A four space indent is also how a markdown list continues, and firing on
+    ordinary indented prose is how a guard gets routed around (P7).
+    """
+    _mk_skill(
+        tmp_path,
+        "crate-x",
+        "- a list item\n    that continues on the next line\n\n    plain indented prose\n",
+    )
+    assert _lint(tmp_path, {"crate"}) == []
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # The real tree
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+#: What ships. Written out rather than derived, for the reason EXPECTED_PENDING is:
+#: the count is a decision, and a decision belongs in a diff. Adding or removing a
+#: skill is a deliberate act that fails here until somebody says so.
+EXPECTED_SKILLS: frozenset[str] = frozenset(
+    {
+        "adopt-a-library",
+        "analyze-audio",
+        "first-run",
+        "intake-and-name",
+        "label-catalogues",
+        "library-reports",
+        "library-status",
+        "remove-tracks",
+        "restore-and-converge",
+        "review-queue",
+        "route-the-library",
+        "sync-and-publish",
+    }
+)
+
+
+def test_the_real_tree_holds_exactly_the_skills_that_are_meant_to_ship():
+    """ANTI-VACUITY, and without it the test below proves nothing.
+
+    ``lint_skills`` over an empty directory returns an empty problem list, which
+    is correct and is also indistinguishable from twelve clean skills. Measured:
+    the real tree test passed over a root with no skills in it at all, so
+    deleting every skill would have left the whole lint suite green. An
+    independent review found it, and it is the same shape as the anti-vacuity
+    clause the two register comparison carries one unit earlier.
+    """
+    found = {d.name for d in SKILLS_ROOT.iterdir() if d.is_dir()}
+    assert found == EXPECTED_SKILLS, (
+        f"the shipped skill set moved. Added: {sorted(found - EXPECTED_SKILLS)}. "
+        f"Removed: {sorted(EXPECTED_SKILLS - found)}. Update EXPECTED_SKILLS in "
+        f"the same commit, so the change is one a reviewer sees."
+    )
 
 
 def test_real_skills_pass_lint():
