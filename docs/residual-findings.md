@@ -8885,3 +8885,187 @@ changes every gated verb's refusal envelope at once.
 **Closes when:** the gate carries its offer into the refusal envelope, for every
 verb at once.
 
+
+---
+
+## R-158. A `path:` countdown key is coupled to a location the register cannot see
+
+**Found:** while landing the operator skills under U28, 2026-08-23.
+
+`tests/_pending._is_absent` resolves a `path:` key against the REPOSITORY ROOT.
+The key `path:skills` therefore asked whether `<repo>/skills` exists, which
+encoded a guess, made when the countdown was opened, about where a later unit
+would put the skills.
+
+U28 put them somewhere else, and had to. R7 says the skills ship with the
+package, and `[tool.setuptools.package-data]` can only name paths under the
+importable tree, so a repository-root directory would be present in a checkout,
+absent from every wheel, and the install verb would have nothing to copy on the
+one machine that matters. They live at `src/cratekit/skills/assets/` for the same
+reason `cratekit.core.taxonomy` keeps its templates inside the package.
+
+**Measured cost, and it is the opposite of the usual one.** The countdown did not
+go red and stay red, which is the failure mode the register's own header warns
+about. It stayed GREEN. The unit landed the thing the entry was waiting for, the
+entry went on saying U28 owed it, and `tests/test_pending_units.py` would have
+agreed, because the path it was watching was still absent and always would be.
+Nothing in the repository could see the disagreement. The entry was discharged by
+hand in the landing commit, so the register is correct today; what is unfixed is
+the mechanism that let it be wrong.
+
+**Why it is not fixed here.** The obvious repair, re-keying to the real path, is
+worthless: the register is now empty, so there is no key to re-point, and the
+next `path:` key will be opened by whoever needs one, against a location that has
+not been decided yet. That is the actual defect and it is in the shape of the key
+rather than in any one value. A module key does not have it, because a dotted
+module path is the same string wherever the unit puts the file.
+
+**Closes when:** a `path:` key names something the landing unit cannot move, or
+the meta test cross-checks the key against the unit's own declared files so a
+landed unit with an unfired countdown is a contradiction the repository can see.
+
+---
+
+## R-159. Rule (g) reads only lines whose first token is the entry point
+
+**Found by** the independent adversarial review of U28, 2026-08-23.
+
+`_verb_problems` returns early unless the line starts with `crate`, after
+stripping a `$ ` or `% ` prompt marker. A line reading `sudo crate ...`, or one
+where the invocation is the right hand side of an assignment, or one inside a
+`for` loop body, is not checked at all.
+
+**Measured cost.** None today: no shipped skill writes an invocation in any of
+those forms, verified by reading all twelve. The cost is that the rule's coverage
+is a property of how the skills happen to be written rather than of the rule.
+
+**Why it is not fixed here.** Every widening is a guess about shell syntax, and
+the rule already parses with a real parser rather than pattern matching, so the
+tempting fix is to find `crate` anywhere on the line and parse from there. That
+fires on prose inside a fenced comment and on a path containing the word, which
+is the false positive shape P7 says gets a guard suppressed.
+
+**Closes when:** the rule extracts invocations with a shell parser rather than by
+looking at the first token, or the house style forbids the other forms outright.
+
+---
+
+## R-160. The taxonomy rule substring matches and cannot see a comment
+
+**Found by** the independent adversarial review of U28, 2026-08-23.
+
+Rule (h) asks whether a display name appears anywhere in a fenced block or an
+inline code span. It is a substring test over the whole span, so a name that is a
+prefix of a longer word matches, and it does not distinguish a command from a
+comment inside the same fence.
+
+**Measured cost.** A false positive on an inline span that happens to contain a
+band name as a prefix, and a false positive on a fenced comment discussing the
+taxonomy rather than hardcoding it. Neither occurs in the twelve shipped skills,
+checked. The cost is the P7 one: a rule that fires on a correct file is a rule
+somebody works around.
+
+**Why it is not fixed here.** Word boundary matching is not obviously right
+either, because several display names contain spaces and punctuation, and the
+fence splitter that separates command text from comment text already exists and
+is used by rule (b). Wiring rule (h) through it is a small change made carelessly
+under time pressure at the end of a unit, which is the wrong moment.
+
+**Closes when:** rule (h) reads the command half of a fence rather than the whole
+span, and matches on boundaries rather than on substrings.
+
+---
+
+## R-161. A destination that is a symlink or a file refuses as an internal error
+
+**Found by** the independent adversarial review of U28, 2026-08-23.
+
+`crate skills install --into` a path whose per skill destination is an existing
+FILE, or a symlink to somewhere else, raises rather than refusing cleanly. The
+verb reports it through the internal error path, which tells a person to report a
+defect for a condition that is theirs to fix, and the run stops part way with
+some skills written and the rest not.
+
+**Measured cost.** A misleading remedy plus a partial install. Reachable only by
+pointing the flag at a directory that already holds a file named after a shipped
+skill, which is not a state the verb creates.
+
+**Why it is not fixed here.** The clean refusal wants its own reason slug and a
+decision about whether a partial install should be rolled back or reported as
+partial, and rolling back means deleting directories the verb has just written,
+which is the exact operation the blocking finding above was about. Doing that
+carelessly is how a fix relocates a hole.
+
+**Closes when:** the verb checks every destination before writing any of them, and
+refuses with a typed cause naming the path.
+
+---
+
+## R-162. Package data ships only SKILL.md, so a second file in a skill never ships
+
+**Found by** the independent adversarial review of U28, 2026-08-23, by rebuilding
+the wheel and unpacking it.
+
+`[tool.setuptools.package-data]` names `assets/*/SKILL.md`. A skill directory
+holding a second file, which `_files` walks and `install_one` copies, exists in a
+checkout and is absent from every wheel. The twelve shipped skills hold one file
+each today, so nothing is currently lost.
+
+**Measured cost.** None today, measured rather than assumed: the wheel was built
+and unpacked and carries all twelve `SKILL.md`. The cost arrives the first time
+somebody adds a second file to a skill and it works locally.
+
+**Why it is not fixed here.** Widening the glob to `assets/*/*` ships whatever
+anybody drops in that directory, including editor backups and operating system
+metadata, and the honest fix is a declared manifest per skill rather than a
+wider glob. That is a shape decision for whoever adds the second file.
+
+**Closes when:** a skill needs a second file, and the packaging declares what a
+skill may contain rather than matching everything.
+
+---
+
+## R-163. An empty skill directory installs and reports success
+
+**Found by** the independent adversarial review of U28, 2026-08-23.
+
+`shipped_names()` walks directories and `_files` walks the files inside one, so a
+directory with no `SKILL.md` is a shipped skill with nothing in it. The install
+verb creates the destination, writes a stamp, and reports `ok`.
+
+**Measured cost.** None in a wheel, where package data can only place a directory
+that has a `SKILL.md` in it. Reachable in a checkout, and it was reached during
+this unit's own development: the authoring agents created their directories
+before writing their files, and two tests failed against that state.
+
+**Why it is not fixed here.** The lint already reports `missing SKILL.md` for
+exactly this, so the condition is caught before it can ship. What is unfixed is
+that the install verb does not also refuse it, which matters only for somebody
+running the verb from a checkout mid edit.
+
+**Closes when:** `shipped_names` requires a `SKILL.md`, or the verb reports an
+empty skill as a failure rather than as an installed one.
+
+---
+
+## R-164. The sample-argument comment claims a hazard the fixture already prevents
+
+**Found by** the independent adversarial review of U28, 2026-08-23.
+
+`tests/test_cli_contract._sample_arguments` passes `--into` for `skills.install`
+with a comment saying a bare drive would write into the real home directory of
+whoever runs the suite. The suite's autouse isolation fixture already redirects
+`HOME` to a temporary directory, so the drive was never going to reach a real
+home.
+
+**Measured cost.** None to any person. The cost is to a reader: the comment
+justifies a correct decision with a reason that is false, and the next person to
+touch that line will either believe it or have to disprove it.
+
+**Why it is not fixed here.** Passing `--into` explicitly is still right, because
+it makes the destination somebody's choice rather than a default, and the fix is
+to rewrite the reason rather than the code. It is filed rather than done because
+it is prose in a test comment and the merge bar does not hold a unit for one.
+
+**Closes when:** the comment says the true reason, which is that a verb writing
+outside the library should be driven at a named destination.

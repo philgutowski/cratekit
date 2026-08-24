@@ -313,6 +313,20 @@ one commit of history derives almost nothing. Driven on macOS 2026-08-15, on a
 
 ## Do not touch
 
-U30's board state, U20, U29, R-9, A1, A2. The parked conformance branch is out
+U30's board state, U20, R-9, A1, A2. The parked conformance branch is out
 of scope until Phillip says otherwise, and its `write/metadata.py:195` defect is
 still live on main.
+
+**U29 is on this list for a reason that will not expire, so it is stated rather
+than left as a name.** Its six other blockers are closed and U28 closes the last,
+so the board will show it Ready. It is still not an agent's unit and no amount of
+building makes it one: its own brief says "attended per workflow, do not batch
+cutovers", and it requires each replacement to run correctly ON THE LIVE LIBRARY
+at least once. The live rekordbox database is off limits by standing constraint,
+so an agent can prepare for U29 and cannot perform it. Do not take it because the
+board says Ready; Ready is a statement about dependencies, not about who can do
+the work.
+
+What an agent MAY do for it, and what is already done: the parity table its test
+scenario asks for is derived from the verb inventory and touches nothing live. It
+ships in `tests/test_cutover_parity.py`.

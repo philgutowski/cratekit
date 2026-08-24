@@ -94,10 +94,25 @@ PENDING: dict[str, tuple[str, str]] = {
     # landed it as the doctor check library.trash, which delete.review declares
     # as a precondition. The note below where that entry stood says so, so this
     # sentence points at a discharge rather than at a key nobody can find.
-    "path:skills": (
-        "U28",
-        "the shipped operator skills the skills lint runs over",
-    ),
+    # THE ``path:skills`` ENTRY WAS HERE AND IS DELETED, because U28 LANDED THE
+    # SKILLS. Twelve of them ship under ``src/cratekit/skills/assets/``, the
+    # install verb ships as ``cratekit.skills.cli``, its registry entry has lost
+    # ``planned_in``, and ``tests/test_skills_lint.py`` now lints the real tree
+    # unconditionally, which is the arming this countdown existed to reach. ONE
+    # guard carried a ``@requires`` for the key and its decorator came off in this
+    # same commit, established by ``grep -rn 'requires("path:skills")' tests/``
+    # before anything was deleted rather than assumed.
+    #
+    # THIS KEY WOULD NEVER HAVE FIRED ON ITS OWN, and that is worth recording
+    # because it is a property of ``path:`` keys rather than a mistake anybody
+    # made. ``_is_absent`` resolves a ``path:`` key against the REPOSITORY ROOT,
+    # so this one was asking whether ``<repo>/skills`` exists. The skills had to
+    # go INSIDE the package instead, because ``package-data`` can only name paths
+    # under the importable tree and a repository-root directory ships in no wheel.
+    # So the unit landed, the countdown stayed green, and the register would have
+    # gone on claiming U28 owed something it had already delivered. A ``path:``
+    # key is coupled to a location decision that is taken later, by the unit, and
+    # the register cannot see that decision. Recorded as R-158.
     # APPENDED RATHER THAN FILED BESIDE A SIBLING, deliberately, for the reason
     # the verb registry gives for the same choice: two entries inserted into the
     # middle of one mapping by two units auto-merge, and an append conflicts

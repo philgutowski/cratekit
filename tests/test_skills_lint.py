@@ -45,16 +45,30 @@ tree, which lands in U28.
 
 from __future__ import annotations
 
+import argparse
+import contextlib
 import importlib.util
+import io
 import re
+import shlex
 import tomllib
 from pathlib import Path
 
-from tests._pending import requires
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SKILLS_ROOT = REPO_ROOT / "skills"
 SRC_ROOT = REPO_ROOT / "src"
+
+#: The shipped skills live INSIDE the package, not at the repository root, and
+#: U28 moved this constant rather than the other way round. R7 says the skills
+#: "ship with the package", and a directory beside the package is not shipped by
+#: a wheel: ``[tool.setuptools.package-data]`` can only name paths under the
+#: importable tree, so a repo-root ``skills/`` would be present in this checkout,
+#: absent from every install, and the install verb would have nothing to copy on
+#: the one machine that matters. ``cratekit.core.taxonomy`` already reads its
+#: shipped templates through ``importlib.resources``, and this follows that
+#: precedent rather than inventing a second answer to one question.
+SKILLS_ROOT = SRC_ROOT / "cratekit" / "skills" / "assets"
 
 
 def _load_scanner():
@@ -79,7 +93,13 @@ NO_SCRIPT_ALLOWLIST: frozenset[str] = frozenset()
 # fenced COMMAND may only use a real console script.
 RETIRED_SKILL_NAMES: frozenset[str] = frozenset()
 
-_FENCED = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
+_FENCED = re.compile(r"(?:```|~~~)[^\n]*\n(.*?)(?:```|~~~)", re.DOTALL)
+# An INDENTED command line, which is this repository's own house style for
+# showing a command and which no fence matcher sees. Narrowed to lines that
+# actually invoke the product, because a four space indent in markdown is also
+# how a list continuation is written and a rule firing on those would be
+# suppressed and then protect nothing (P7).
+_INDENTED_COMMAND = re.compile(r"^[ \t]{4,}(crate(?:\s+\S.*)?)$", re.M)
 _FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 # The project's own command tokens. Anything starting with the product name is a
 # command this repository is responsible for; a general "first token on the line"
@@ -88,6 +108,110 @@ _COMMAND_TOKEN = re.compile(r"(?<![\w/-])(crate(?:-[a-z0-9-]+)?)\b")
 _PY_MODULE = re.compile(r"python3? -m (cratekit\.[\w.]+)")
 _YEAR = re.compile(r"/20\d\d(?=[/\s\"']|$)")
 _DEEP_REF = re.compile(r"`?(src/cratekit/[\w/]+/[A-Za-z0-9_.-]+\.md)`?")
+# Inline code spans, which is where a taxonomy name would be spelled as a value
+# in running prose rather than inside a fenced block.
+_CODE_SPANS = re.compile(r"`([^`\n]+)`")
+
+
+def real_parser():
+    """The parser the installed CLI actually assembles, built fresh each call.
+
+    FRESH RATHER THAN CACHED, because ``parse_args`` mutates the namespace it
+    builds and argparse keeps state on the parser for a failed parse. A shared
+    instance made one skill's bad command affect the next skill's verdict, which
+    is the shape of a test that passes or fails depending on ordering.
+
+    THE FULL MEMBERSHIP, not the active profile's. A skill documents a verb that
+    exists in the product, and the parser a person gets depends on which profile
+    they are running; linting against whichever profile happens to be configured
+    on the machine running the suite would make the result a property of that
+    machine. Which verbs a profile hides is a different question, and it is the
+    one the skills themselves have to describe correctly.
+    """
+    from cratekit.cli import build_parser  # noqa: PLC0415
+
+    return build_parser()
+
+
+def taxonomy_display_names() -> set[str]:
+    """Every display name the shipped taxonomy declares.
+
+    Derived from the template the product actually ships rather than listed here,
+    so a taxonomy edit cannot leave this rule checking last month's names. R19 is
+    the reason the rule exists at all: a display name is simultaneously code,
+    config, a persisted key, XML bytes, and a folder in somebody's library, so a
+    skill that spells one has hardcoded a choice the user is allowed to change.
+    """
+    from cratekit.core import taxonomy  # noqa: PLC0415
+
+    declared = taxonomy.default_taxonomy()
+    return (
+        {declared.tree.display, declared.intake.display}
+        | {bucket.display for bucket in declared.buckets}
+        | {band.display for band in declared.energy.bands}
+    )
+
+
+def _verb_problems(line: str, skill: str, parser_for) -> list[str]:
+    """Check one fenced command line by PARSING IT WITH THE REAL PARSER.
+
+    THIS FUNCTION USED TO REIMPLEMENT ARGPARSE AND DID IT BADLY. It walked the
+    tokens itself, matching a verb path against known prefixes and then checking
+    the flags against a table, which is three of argparse's jobs done by hand. It
+    checked no POSITIONAL argument at all, and an independent review found the
+    cost: eight shipped commands across six skills exit 2, and six of the eight
+    passed this rule, because every one of them omits a required positional. A
+    checker that reimplements the thing it is checking against will always drift
+    from it; the only checker that cannot is the thing itself.
+
+    So the line is tokenised the way a shell would and handed to a parser built
+    from the registry. Exit 2 is argparse's own verdict on a command a person
+    typed, which is exactly the question this rule asks.
+
+    WHAT IS DELIBERATELY NOT CHECKED, because a rule that fires on correct prose
+    gets suppressed and then protects nothing (P7):
+
+    * a continuation line, which carries no complete command of its own;
+    * a pipeline or a redirection, where the text after the operator belongs to
+      another program and argparse would report it as an unrecognised argument;
+    * a line whose quoting does not tokenise, which is a malformed EXAMPLE rather
+      than a malformed command and is caught by reading rather than by this.
+    """
+    text = line.strip()
+    # A prompt marker is decoration, and a person copying the line drops it.
+    for marker in ("$ ", "% "):
+        if text.startswith(marker):
+            text = text[len(marker) :]
+    if not text.startswith("crate ") and text != "crate":
+        return []
+    if text.endswith("\\"):
+        return []
+    # Everything from a shell operator onwards belongs to another program.
+    for operator in ("|", ">", "<", "&&", ";"):
+        if operator in text:
+            text = text.split(operator, 1)[0].strip()
+    try:
+        argv = shlex.split(text)[1:]
+    except ValueError:
+        return []
+    if not argv:
+        return []
+
+    parser = parser_for()
+    buffer = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(buffer), contextlib.redirect_stdout(buffer):
+            parser.parse_args(argv)
+    except SystemExit as exit_code:
+        # 0 is --help and --version, which are real answers rather than failures.
+        if exit_code.code in (0, None):
+            return []
+        complaint = buffer.getvalue().strip().splitlines()
+        detail = complaint[-1] if complaint else "rejected by the parser"
+        return [f"{skill}: fenced command does not parse: {text!r}: {detail}"]
+    except Exception as exc:  # pragma: no cover - a parser defect, not a skill's
+        return [f"{skill}: fenced command raised {type(exc).__name__}: {text!r}"]
+    return []
 
 
 def _module_exists(dotted: str, src_root: Path) -> bool:
@@ -104,6 +228,8 @@ def lint_skills(
     skill_names: set[str] | None = None,
     src_root: Path | None = None,
     repo_root: Path | None = None,
+    parser_for=None,
+    taxonomy_names: set[str] | None = None,
 ) -> list[str]:
     """Return a list of ``"<skill>: <problem>"`` over every SKILL.md found.
 
@@ -115,6 +241,10 @@ def lint_skills(
     problems: list[str] = []
     src_root = src_root if src_root is not None else SRC_ROOT
     repo_root = repo_root if repo_root is not None else REPO_ROOT
+    parser_for = parser_for if parser_for is not None else real_parser
+    taxonomy_names = (
+        taxonomy_names if taxonomy_names is not None else taxonomy_display_names()
+    )
 
     dirs = sorted(d for d in skills_root.glob("*") if d.is_dir())
     names = skill_names if skill_names is not None else {d.name for d in dirs}
@@ -153,6 +283,11 @@ def lint_skills(
                 comment_parts.append(tail)
             else:
                 command_parts.append(line)
+        # Indented invocations join the command text, so rule (g) sees a command
+        # written in the house style exactly as it sees a fenced one. Measured
+        # before this line existed: a skill with two invented verbs in an
+        # indented block and a tilde fence linted completely clean.
+        command_parts += _INDENTED_COMMAND.findall(text)
         command_text = "\n".join(command_parts)
         comment_text = "\n".join(comment_parts)
 
@@ -198,6 +333,29 @@ def lint_skills(
                 f"(use a {{year}} placeholder)"
             )
 
+        # (g) every crate invocation parses against the real parser.
+        for line in command_text.split("\n"):
+            problems += _verb_problems(line, directory.name, parser_for)
+
+        # (h) no shipped skill hardcodes a taxonomy display name.
+        #
+        # SCOPED TO CODE, NOT TO PROSE, and the scoping is by CONTEXT rather than
+        # by exempted file, which is the difference between this and the
+        # carve-out rule (d) exists to refuse. The hazard R19 names is a name
+        # BAKED IN as a value: a path segment, a flag argument, a folder a
+        # command walks. Several display names are also ordinary English words,
+        # so a rule over whole files would fire on a sentence about a high energy
+        # track and get suppressed, and a suppressed rule protects nothing (P7).
+        # Fenced blocks and inline code spans are where a value lives.
+        for span in _CODE_SPANS.findall(text) + _FENCED.findall(text):
+            for name in sorted(taxonomy_names):
+                if name in span:
+                    problems.append(
+                        f"{directory.name}: hardcoded taxonomy name {name!r} in a "
+                        f"command or path; read it from the configured taxonomy "
+                        f"instead"
+                    )
+
         # (f) deep references must resolve
         for reference in sorted(set(_DEEP_REF.findall(text))):
             if not (repo_root / reference).exists():
@@ -218,6 +376,36 @@ def _real_scripts() -> set[str]:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def _fixture_parser():
+    """A tiny real parser for the FIXTURE skills, synthetic exactly as their tree is.
+
+    A fixture proving that the year rule ignores a flag value must not also have
+    to satisfy the verb rule, or it stops proving one thing and starts proving
+    two and the failure message stops naming which. It is a real
+    ``argparse.ArgumentParser`` rather than a table, so the fixtures exercise the
+    same code path the real tree does.
+    """
+    parser = argparse.ArgumentParser(prog="crate", add_help=True)
+    parser.add_argument("--output")
+    subparsers = parser.add_subparsers(dest="verb")
+    sync = subparsers.add_parser("sync")
+    sync.add_argument("--ok", action="store_true")
+    sync.add_argument("--track-limit")
+    sync.add_argument("value", nargs="*")
+    return parser
+
+#: No taxonomy at all for the fixtures, so rule (h) is inert against them and is
+#: proved by its own fixtures below rather than as a side effect of every other.
+_FIXTURE_TAXONOMY: set[str] = set()
+
+
+def _lint(root: Path, scripts: set[str], **kwargs):
+    """Lint a synthetic tree with the synthetic verb table and taxonomy."""
+    kwargs.setdefault("parser_for", _fixture_parser)
+    kwargs.setdefault("taxonomy_names", _FIXTURE_TAXONOMY)
+    return lint_skills(root, scripts, **kwargs)
+
+
 def _mk_skill(root: Path, name: str, body: str, frontmatter: str | None = None) -> None:
     directory = root / name
     directory.mkdir(parents=True)
@@ -231,18 +419,18 @@ def _mk_skill(root: Path, name: str, body: str, frontmatter: str | None = None) 
 
 def test_unknown_script_token_fails(tmp_path):
     _mk_skill(tmp_path, "crate-x", "```bash\ncrate-nonexistent --run\n```\n")
-    problems = lint_skills(tmp_path, {"crate"})
+    problems = _lint(tmp_path, {"crate"})
     assert any("unknown script 'crate-nonexistent'" in p for p in problems)
 
 
 def test_known_script_and_skill_names_pass(tmp_path):
     _mk_skill(tmp_path, "crate-x", "See crate-x and run:\n```bash\ncrate sync --ok\n```\n")
-    assert lint_skills(tmp_path, {"crate"}) == []
+    assert _lint(tmp_path, {"crate"}) == []
 
 
 def test_missing_module_target_fails(tmp_path):
     _mk_skill(tmp_path, "crate-x", "```bash\npython -m cratekit.nope.gone\n```\n")
-    problems = lint_skills(tmp_path, set())
+    problems = _lint(tmp_path, set())
     assert any("missing module 'cratekit.nope.gone'" in p for p in problems)
 
 
@@ -258,7 +446,7 @@ def test_module_path_invocation_fails_even_when_the_module_exists(tmp_path, monk
     (src / "cratekit" / "intake" / "__init__.py").write_text("")
     skills = tmp_path / "skills"
     _mk_skill(skills, "crate-x", "```bash\npython -m cratekit.intake\n```\n")
-    problems = lint_skills(skills, set(), src_root=src)
+    problems = _lint(skills, set(), src_root=src)
     assert any("not on the no-script allowlist" in p for p in problems)
 
 
@@ -279,7 +467,7 @@ def test_a_volume_literal_in_any_skill_fails(tmp_path):
     """
     _mk_skill(tmp_path, "crate-x", f"the volume is {_A_VOLUME_LITERAL} today\n")
     _mk_skill(tmp_path, "crate-backup", f"mirror {_A_VOLUME_LITERAL} nightly\n")
-    problems = lint_skills(tmp_path, set())
+    problems = _lint(tmp_path, set())
     assert any(p.startswith("crate-x: personal literal") for p in problems)
     assert any(p.startswith("crate-backup: personal literal") for p in problems), (
         "no skill is exempt; the source rule's two carve-outs are exactly where "
@@ -294,7 +482,7 @@ def test_a_home_directory_literal_in_a_skill_fails(tmp_path):
     volume-only rule never looked for a home directory at all.
     """
     _mk_skill(tmp_path, "crate-x", f"while working in {_A_HOME_LITERAL}.\n")
-    problems = lint_skills(tmp_path, set())
+    problems = _lint(tmp_path, set())
     assert any("hardcoded home directory" in p for p in problems)
 
 
@@ -307,7 +495,7 @@ def test_a_bare_volume_name_in_a_skill_fails(tmp_path):
     literal set.
     """
     _mk_skill(tmp_path, "crate-x", "The SomeSpecificDrive volume must be mounted.\n")
-    problems = lint_skills(tmp_path, set())
+    problems = _lint(tmp_path, set())
     # Driven through the scanner directly, since the token depends on the machine.
     assert scan.portability_violations(
         "The SomeSpecificDrive volume must be mounted.",
@@ -324,7 +512,7 @@ def test_placeholder_paths_in_a_skill_pass(tmp_path):
         "crate-x",
         "Point the library root at /Volumes/<your-library>/Music.\n",
     )
-    assert lint_skills(tmp_path, set()) == []
+    assert _lint(tmp_path, set()) == []
 
 
 # ── remaining rules ──────────────────────────────────────────────────────────
@@ -336,19 +524,19 @@ def test_year_literal_in_fenced_block_fails_prose_passes(tmp_path):
         "crate-x",
         "Written 2026-08-01.\n```bash\nmv f Processed_Tracks/2026/x/\n```\n",
     )
-    assert any("year-literal path segment" in p for p in lint_skills(tmp_path, set()))
+    assert any("year-literal path segment" in p for p in _lint(tmp_path, set()))
     _mk_skill(
         tmp_path / "b",
         "crate-y",
         'Written 2026-08-01.\n```bash\nmv f "Processed_Tracks/{year}/x/"\n```\n',
     )
-    assert lint_skills(tmp_path / "b", set()) == []
+    assert _lint(tmp_path / "b", set()) == []
 
 
 def test_year_in_a_flag_value_is_not_flagged(tmp_path):
     """``--track-limit 2000`` is a count, not a year path."""
     _mk_skill(tmp_path, "crate-x", "```bash\ncrate sync --track-limit 2000\n```\n")
-    assert lint_skills(tmp_path, {"crate"}) == []
+    assert _lint(tmp_path, {"crate"}) == []
 
 
 def test_missing_frontmatter_and_name_mismatch_fail(tmp_path):
@@ -356,25 +544,25 @@ def test_missing_frontmatter_and_name_mismatch_fail(tmp_path):
     _mk_skill(
         tmp_path, "crate-y", "body\n", frontmatter="---\nname: crate-z\ndescription: d\n---\n"
     )
-    problems = lint_skills(tmp_path, set())
+    problems = _lint(tmp_path, set())
     assert any("no YAML frontmatter" in p for p in problems)
     assert any("crate-y: frontmatter name != directory" in p for p in problems)
 
 
 def test_missing_description_fails(tmp_path):
     _mk_skill(tmp_path, "crate-x", "body\n", frontmatter="---\nname: crate-x\n---\n")
-    assert any("missing description" in p for p in lint_skills(tmp_path, set()))
+    assert any("missing description" in p for p in _lint(tmp_path, set()))
 
 
 def test_dead_deep_reference_fails(tmp_path):
     _mk_skill(tmp_path, "crate-x", "Deep reference: `src/cratekit/nope/NOTES.md`\n")
-    assert any("deep reference does not exist" in p for p in lint_skills(tmp_path, set()))
+    assert any("deep reference does not exist" in p for p in _lint(tmp_path, set()))
 
 
 def test_extra_files_in_a_skill_directory_pass(tmp_path):
     _mk_skill(tmp_path, "crate-x", "```bash\n./helper.sh check\n```\n")
     (tmp_path / "crate-x" / "helper.sh").write_text("#!/bin/sh\n")
-    assert lint_skills(tmp_path, set()) == []
+    assert _lint(tmp_path, set()) == []
 
 
 def test_info_string_fence_is_not_a_blind_spot(tmp_path):
@@ -389,7 +577,7 @@ def test_info_string_fence_is_not_a_blind_spot(tmp_path):
         "crate-x",
         "```bash title=x\ncrate-nonexistent --run\nmv f Processed_Tracks/2026/\n```\n",
     )
-    problems = lint_skills(tmp_path, set())
+    problems = _lint(tmp_path, set())
     assert any("unknown script 'crate-nonexistent'" in p for p in problems)
     assert any("year-literal path segment" in p for p in problems)
 
@@ -403,12 +591,195 @@ def test_the_allowlist_is_empty_by_design():
     assert NO_SCRIPT_ALLOWLIST == frozenset()
 
 
+def test_a_command_naming_no_real_verb_fails(tmp_path):
+    """Rule (g). The script token resolves and the verb does not, which is the
+    whole gap between this rule and (b): ``crate`` is a real console script, so
+    (b) is satisfied by any nonsense typed after it."""
+    _mk_skill(tmp_path, "crate-x", "```bash\ncrate synchronise --ok\n```\n")
+    problems = _lint(tmp_path, {"crate"})
+    assert any("does not parse" in p for p in problems), problems
+    assert any("invalid choice" in p for p in problems), problems
+
+
+def test_a_command_naming_a_flag_the_verb_does_not_declare_fails(tmp_path):
+    """Rule (g), the half that catches the likelier rot. The verb still exists and
+    the flag was renamed underneath the skill, which is the seven-stage-refactor
+    failure this file was ported to catch."""
+    _mk_skill(tmp_path, "crate-x", "```bash\ncrate sync --no-such-flag\n```\n")
+    problems = _lint(tmp_path, {"crate"})
+    assert any("--no-such-flag" in p for p in problems), problems
+
+
+def test_a_command_missing_a_required_positional_fails(tmp_path):
+    """The half the hand rolled walker could not see, and it cost eight commands.
+
+    The verb is real and every flag is real, so the previous rule passed it. The
+    command still exits 2 for the person who types it, because argparse wants an
+    argument the skill never mentions. Six of the eight violations an independent
+    review found in the shipped skills were exactly this.
+    """
+    parser_with_positional = _fixture_parser
+    _mk_skill(tmp_path, "crate-x", "```bash\ncrate sync --track-limit\n```\n")
+    problems = _lint(tmp_path, {"crate"}, parser_for=parser_with_positional)
+    assert any("does not parse" in p for p in problems), problems
+
+
+def test_a_real_verb_with_real_flags_and_a_positional_passes(tmp_path):
+    """The other direction, so the two rules above are not passing on a checker
+    that rejects everything. The positional must not be read as a subcommand."""
+    _mk_skill(
+        tmp_path, "crate-x", "```bash\ncrate sync --ok some-value\ncrate --output json sync\n```\n"
+    )
+    assert _lint(tmp_path, {"crate"}) == []
+
+
+def test_a_continuation_line_is_not_read_as_a_verb(tmp_path):
+    """A long invocation is written across lines, and the tail of one carries no
+    verb. Reporting it would make the rule fire on correct prose, which is how a
+    rule gets suppressed (P7)."""
+    _mk_skill(
+        tmp_path, "crate-x", "```bash\ncrate sync \\\n    --ok\n```\n"
+    )
+    assert _lint(tmp_path, {"crate"}) == []
+
+
+def test_a_hardcoded_taxonomy_name_in_a_command_fails(tmp_path):
+    """Rule (h). R19: a display name is a choice the user owns, so a skill that
+    spells one has baked in somebody else's library."""
+    _mk_skill(tmp_path, "crate-x", "```bash\ncrate sync --ok 'BY GENRE + ENERGY/Deep House'\n```\n")
+    problems = _lint(
+        tmp_path, {"crate"}, taxonomy_names={"BY GENRE + ENERGY", "Deep House"}
+    )
+    assert sum("hardcoded taxonomy name" in p for p in problems) == 2, problems
+
+
+def test_a_hardcoded_taxonomy_name_in_an_inline_code_span_fails(tmp_path):
+    """The same value spelled in running prose as code rather than in a fence.
+    Both are the name used as a VALUE, which is what the rule is about."""
+    _mk_skill(tmp_path, "crate-x", "Put it under `Deep House` when you are done.\n")
+    problems = _lint(tmp_path, {"crate"}, taxonomy_names={"Deep House"})
+    assert any("hardcoded taxonomy name" in p for p in problems), problems
+
+
+def test_a_taxonomy_word_in_ordinary_prose_passes(tmp_path):
+    """The scoping decision, asserted rather than commented. Several display names
+    are ordinary English, and a rule that fired on a sentence would be suppressed
+    and would then protect nothing."""
+    _mk_skill(tmp_path, "crate-x", "Deep House sets tend to run long, so plan for it.\n")
+    assert _lint(tmp_path, {"crate"}, taxonomy_names={"Deep House"}) == []
+
+
+def test_a_profile_disabled_verb_is_absent_rather_than_refusing():
+    """The behaviour two shipped skills described BACKWARDS, pinned here.
+
+    Both said a verb belonging to a switched off module "refuses and says why".
+    It does not. ``cli.build_parser`` skips an entry ``available_to`` answers
+    False for, so the name never reaches argparse and a person gets an invalid
+    choice error with no cause, no reason slug and no remedy. That is a different
+    thing to explain and a different thing to act on.
+
+    PINNED AGAINST THE PARSER RATHER THAN THE PROSE, so this stays true when
+    somebody rewrites the sentence. What it forbids is the product quietly
+    changing to a refusal model while twelve skills go on describing whichever
+    one they were written against.
+    """
+    from cratekit.cli import build_parser  # noqa: PLC0415
+    from cratekit.core import profiles  # noqa: PLC0415
+
+    slim = build_parser(membership=profiles.resolve("slim"))
+    full = build_parser(membership=profiles.resolve("full"))
+
+    def names(parser):
+        found = set()
+        for action in parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                found |= set(action.choices)
+        return found
+
+    hidden = names(full) - names(slim)
+    assert hidden, "no verb differs between the presets, so this pins nothing"
+    absent = sorted(hidden)[0]
+    with pytest.raises(SystemExit) as exit_code:
+        slim.parse_args([absent])
+    assert exit_code.value.code == 2, (
+        f"a verb the slim preset excludes, {absent!r}, no longer produces an "
+        f"argument error; if it now REFUSES with a cause, the skills that "
+        f"describe this behaviour have to be rewritten, not this test"
+    )
+
+
+def test_a_command_in_an_indented_block_is_checked(tmp_path):
+    """The house style is not a blind spot. Measured before the fix: clean."""
+    _mk_skill(tmp_path, "crate-x", "Run this:\n\n    crate not-a-verb\n\nDone.\n")
+    problems = _lint(tmp_path, {"crate"})
+    assert any("does not parse" in p for p in problems), problems
+
+
+def test_a_command_in_a_tilde_fence_is_checked(tmp_path):
+    """A tilde fence is a fence. It was invisible to the backtick matcher."""
+    _mk_skill(tmp_path, "crate-x", "~~~bash\ncrate not-a-verb\n~~~\n")
+    problems = _lint(tmp_path, {"crate"})
+    assert any("does not parse" in p for p in problems), problems
+
+
+def test_an_indented_line_that_is_not_a_command_is_left_alone(tmp_path):
+    """The other direction, so the rule cannot be suppressed for false positives.
+
+    A four space indent is also how a markdown list continues, and firing on
+    ordinary indented prose is how a guard gets routed around (P7).
+    """
+    _mk_skill(
+        tmp_path,
+        "crate-x",
+        "- a list item\n    that continues on the next line\n\n    plain indented prose\n",
+    )
+    assert _lint(tmp_path, {"crate"}) == []
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # The real tree
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@requires("path:skills")
+#: What ships. Written out rather than derived, for the reason EXPECTED_PENDING is:
+#: the count is a decision, and a decision belongs in a diff. Adding or removing a
+#: skill is a deliberate act that fails here until somebody says so.
+EXPECTED_SKILLS: frozenset[str] = frozenset(
+    {
+        "adopt-a-library",
+        "analyze-audio",
+        "first-run",
+        "intake-and-name",
+        "label-catalogues",
+        "library-reports",
+        "library-status",
+        "remove-tracks",
+        "restore-and-converge",
+        "review-queue",
+        "route-the-library",
+        "sync-and-publish",
+    }
+)
+
+
+def test_the_real_tree_holds_exactly_the_skills_that_are_meant_to_ship():
+    """ANTI-VACUITY, and without it the test below proves nothing.
+
+    ``lint_skills`` over an empty directory returns an empty problem list, which
+    is correct and is also indistinguishable from twelve clean skills. Measured:
+    the real tree test passed over a root with no skills in it at all, so
+    deleting every skill would have left the whole lint suite green. An
+    independent review found it, and it is the same shape as the anti-vacuity
+    clause the two register comparison carries one unit earlier.
+    """
+    found = {d.name for d in SKILLS_ROOT.iterdir() if d.is_dir()}
+    assert found == EXPECTED_SKILLS, (
+        f"the shipped skill set moved. Added: {sorted(found - EXPECTED_SKILLS)}. "
+        f"Removed: {sorted(EXPECTED_SKILLS - found)}. Update EXPECTED_SKILLS in "
+        f"the same commit, so the change is one a reviewer sees."
+    )
+
+
 def test_real_skills_pass_lint():
     problems = lint_skills(SKILLS_ROOT, _real_scripts())
     assert not problems, "skill lint violations:\n" + "\n".join(sorted(problems))

@@ -1458,6 +1458,13 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # confirm is the remote half, separate from any local colour write.
         "export.playlist": ["crate-export"],
         "sync.favorites": [],
+        # U28. Driven with an explicit target under the configured library rather
+        # than with no argument at all, and the difference matters: the default
+        # target is the agent skills directory under the REAL home directory of
+        # whoever runs the suite, so a bare drive would write twelve directories
+        # into a person's actual configuration while claiming to be a test. The
+        # flag exists so the destination is always somebody's choice.
+        "skills.install": ["--into", str(library / "agent-skills")],
     }[entry.name]
 
 

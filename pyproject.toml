@@ -131,6 +131,12 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 cratekit = ["templates/*.toml"]
+# R7: the operator skills SHIP WITH THE PACKAGE. They live under the package
+# rather than beside it for exactly this line's sake: package-data can only name
+# paths inside the importable tree, so a repository-root skills directory would
+# be present in a checkout, absent from every wheel, and the install verb would
+# have nothing to copy on the one machine that matters.
+"cratekit.skills" = ["assets/*/SKILL.md"]
 # The vendored component's AGPL text ships INSIDE its own package directory.
 # Anything relying on license-files alone would put it in distribution metadata
 # only, where an unpacked or relocated tree loses it; KTD19 wants the licence
