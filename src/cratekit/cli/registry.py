@@ -642,13 +642,15 @@ ENTRIES: tuple[Entry, ...] = (
         feature_rows=(12,),
         emits=frozenset({"review_set"}),
         output_schema="review_set/1",
-        # U27, NOT U32, and the two used to disagree. U32 declared these verbs and
-        # could not land the module behind them, so the obligation moved to U27 in
-        # tests/_pending.py while this marker stayed on the unit that was closing.
-        # A marker naming a closed unit is owned by nobody, which is the failure the
-        # register entry itself is written to prevent. tests/test_cli_contract.py
-        # now asserts the two agree.
-        planned_in="U27",
+        # U27 LANDED IT. The marker was U32's, then U27's, and it is now gone
+        # because ``cratekit.session.restore_cli`` exists, which is what starts
+        # the conformance properties driving this verb rather than skipping it.
+        # THREE of the nine arm against it, not nine, measured by differencing the
+        # collected identifiers: the claim "all nine" was made here first and is
+        # wrong for every entry, because several properties are AST sweeps over
+        # the package and others are parametrized over populations most entries
+        # are not in. The register entry the marker had to agree with went in the
+        # same commit.
     ),
     Entry(
         name="restore.run",
@@ -672,10 +674,8 @@ ENTRIES: tuple[Entry, ...] = (
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
-        # U27 for the reason restore.list above gives: both verbs name one module,
-        # so landing either lands both, and the register that owns the obligation
-        # says U27.
-        planned_in="U27",
+        # Landed with its sibling above, and by construction: both verbs name one
+        # module, so landing either lands both.
     ),
     Entry(
         name="converge",

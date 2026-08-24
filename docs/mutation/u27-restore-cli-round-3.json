@@ -1,0 +1,69 @@
+{
+  "name": "u27-restore-cli-round-3",
+  "pass_kind": "full",
+  "branch": "unit/u27-restore-cli",
+  "head": "e2dd532",
+  "when": "2026-08-23 23:38 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 6190,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/session/restore_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/session/restore_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "75425845a3c9423d",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 6190,
+    "baseline_collected": 6190,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "S5_the_off_machine_half_runs_second",
+      "description": "Pull the mirror AFTER the capture restore, so the remote overwrites the session just restored",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7ec4214af171e278",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 23,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_mirror_is_pulled_before_the_capture_is_spent"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        transferred: tuple[str, ...] = ()\n        if from_backup:",
+      "new": "        transferred: tuple[str, ...] = ()\n        if session_id is not None and from_backup:\n            decided = restore.plan(cfg, session_id, held=held, discarding=discarding)\n            restore.run(decided, cfg, held=held, dry_run=dry_run)\n        if from_backup:"
+    }
+  ],
+  "dropped": []
+}

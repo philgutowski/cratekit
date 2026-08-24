@@ -238,7 +238,13 @@ one commit of history derives almost nothing. Driven on macOS 2026-08-15, on a
 - **No em dashes, no en dashes, no double hyphens** in prose, comments, commit
   messages or issue bodies. Do not swap a dash for a colon; favor commas over
   colons.
-- **U24 and U27 merge WITHOUT closing trailers.** GitHub matches a closing
+- **U24 merges WITHOUT a closing trailer.** This line named U27 as well until
+  2026-08-23, and that clause has EXPIRED rather than been dropped: the reason
+  was that the unit still owed `tests/_pending.py` a module, so a trailer would
+  have closed an issue the register said was unfinished, which is the exit 2 the
+  audit reports. The register now owes that unit nothing, so its issue closes on
+  the merge like any other. Check the register before deciding, never this line.
+  GitHub matches a closing
   keyword anywhere in a body, not only in trailer position, and it scans **every
   commit in the pushed range**, not only the merge commit. Scan the RANGE:
 

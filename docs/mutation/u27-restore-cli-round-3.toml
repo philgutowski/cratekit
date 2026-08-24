@@ -1,0 +1,16 @@
+name = "u27-restore-cli-round-3"
+pass_kind = "full"
+
+[[rows]]
+id = "S5_the_off_machine_half_runs_second"
+description = """Pull the mirror AFTER the capture restore, so the remote overwrites the session just restored"""
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''        transferred: tuple[str, ...] = ()
+        if from_backup:'''
+new = '''        transferred: tuple[str, ...] = ()
+        if session_id is not None and from_backup:
+            decided = restore.plan(cfg, session_id, held=held, discarding=discarding)
+            restore.run(decided, cfg, held=held, dry_run=dry_run)
+        if from_backup:'''

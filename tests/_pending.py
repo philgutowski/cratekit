@@ -126,36 +126,22 @@ PENDING: dict[str, tuple[str, str]] = {
     #    entry text asks.
     # cratekit.cli.rebuild LANDED WITH U20. The actor is typed. The flag is
     # cleared only through rebuild_tree.
-    "cratekit.session.restore_cli": (
-        "U27",
-        "the command-line surface for the two restore verbs, which the registry "
-        "declares against this module and which U32 could not land. REGISTERED "
-        "HERE RATHER THAN LEFT AS A planned_in MARKER for the reason the routing "
-        "CLI above gives at length: scripts/board.py reads this file and nothing "
-        "else, so an obligation carried only by a marker on a closing unit is "
-        "owned by nobody the moment that unit closes (P5). WHY U32 COULD NOT LAND "
-        "IT, stated so a human can judge whether to move this: conformance 3 "
-        "requires a landed gated verb to exit OK once its gate is answered, and "
-        "restore.run is destructive, writes db_tree, and would have to perform a "
-        "real restore of a real capture against a real database to exit OK at "
-        "all. The two verbs name one module, so landing either lands both. "
-        "RE-POINTED TO U27 rather than to any other open unit, and the reasoning "
-        "is left legible because it is a judgement somebody may want to move "
-        "again: U27 owns the operator-facing surface, must already solve exactly "
-        "this problem for doctor.repair-paths, which is destructive and carries "
-        "the same marker, and ships the status verb whose own summary promises to "
-        "report open runs and unconverged trees, which are the two things "
-        "cratekit.core.restore and cratekit.core.reconcile now record. A SECOND "
-        "OBLIGATION rides on the same module because the same module owns the "
-        "composition: the verb holds ONE session across the whole restore, "
-        "through cratekit.core.restore.recovery_session, and passes that value's "
-        "`guard` in as backup.plan_restore's and backup.run_restore's `gates`. "
-        "The default shape takes the library lock twice and a second process can "
-        "commit in the window between them, leaving the run to copy a snapshot "
-        "over a commit its plan was built before. U32 landed and tested the "
-        "composition; what is left is the one wiring call, and it is left here "
-        "because core may not import the modules layer",
-    ),
+    # THE ``cratekit.session.restore_cli`` ENTRY WAS HERE AND IS DELETED, because
+    # U27 LANDED IT. ``src/cratekit/session/restore_cli.py`` ships both restore
+    # verbs, the two registry entries have lost ``planned_in``, and all nine
+    # conformance properties now drive them, which is the arming this countdown
+    # existed to reach.
+    #
+    # ITS SECOND OBLIGATION IS DISCHARGED TOO, and is named here rather than left
+    # to be inferred from the module's existence: the verb holds ONE session,
+    # through ``cratekit.core.restore.recovery_session``, and hands that value's
+    # ``guard`` in as ``backup.plan_restore``'s and ``backup.run_restore``'s
+    # ``gates``, so the two halves of a restore are one acquisition of the library
+    # lock rather than two with a window between them.
+    # ``tests/test_restore.py::test_the_restore_verbs_hold_one_session_across_both_halves``
+    # was the guard this key gated, its ``@requires`` decorator came off in the
+    # same commit, and it was run on purpose afterwards, because a guard armed by
+    # a discharge has never executed once.
     # THE ``cratekit.write.rebuild`` ENTRY WAS HERE AND IS DELETED, because U36
     # LANDED. It shipped ``src/cratekit/write/rebuild.py`` on `main` in this
     # session, and issue #36 is closed. A register that still owes a closed unit a

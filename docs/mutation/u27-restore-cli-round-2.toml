@@ -1,0 +1,130 @@
+name = "u27-restore-cli-round-2"
+pass_kind = "full"
+
+[[rows]]
+id = "S3_analysis_watch_watches_nothing"
+description = """Arm the analysis watch on no roots, so it reports a clean session either way"""
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''        analysis_roots=watched,'''
+new = '''        analysis_roots=(),'''
+
+[[rows]]
+id = "S4_watched_root_is_narrower_than_the_library"
+description = """Watch only the Music folder, so a restore writing elsewhere under the library is unwatched"""
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''    watched: tuple[Path, ...] = (Path(cfg.library.root),)'''
+new = '''    watched: tuple[Path, ...] = (Path(cfg.library.root) / "Music",)'''
+
+[[rows]]
+id = "S5_the_off_machine_half_runs_second"
+description = """Pull the mirror AFTER the capture restore, so the remote overwrites the session just restored"""
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''        transferred: tuple[str, ...] = ()
+        if from_backup:'''
+new = '''        transferred: tuple[str, ...] = ()
+        if session_id is not None and from_backup:
+            decided = restore.plan(cfg, session_id, held=held, discarding=discarding)
+            restore.run(decided, cfg, held=held, dry_run=dry_run)
+        if from_backup:'''
+
+[[rows]]
+id = "S7_a_rehearsal_performs_the_mirror_pull"
+description = """Ignore dry_run on the off-machine half, so a preview transfers for real"""
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''                    pulled,
+                    cfg,
+                    dry_run=dry_run,'''
+new = '''                    pulled,
+                    cfg,
+                    dry_run=False,'''
+
+[[rows]]
+id = "G1_gate_found_by_position"
+description = """Take gates[0] rather than the gate digested against the plan"""
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_cli_contract.py"]
+old = '''    for spec in entry.gates:
+        if spec.digest_source == "plan":
+            return spec'''
+new = '''    for spec in entry.gates:
+        return spec'''
+
+[[rows]]
+id = "O2_the_discard_set_leaves_the_digest"
+description = """Digest without the sessions being discarded, so an approval covers a wider destruction"""
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''                "discarding": list(discarding),
+            }'''
+new = '''            }'''
+
+[[rows]]
+id = "O3_the_off_machine_half_leaves_the_digest"
+description = """Digest without the mirror half, so approval for one session also authorises a network pull"""
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''    if from_backup:
+        items.append(
+            {
+                "half": "off-machine",
+                "snapshot": snapshot or "newest",
+                "include_mirror": include_mirror,
+            }
+        )'''
+new = '''    if False:
+        items.append({})'''
+
+[[rows]]
+id = "N2_an_unknown_identifier_is_not_refused"
+description = """Fall through to the newest session when the named one does not exist"""
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''    for entry in restore.list_sessions(cfg):
+        if entry.session_id == session_id:
+            return entry
+    raise CratekitError('''
+new = '''    for entry in restore.list_sessions(cfg):
+        if entry.session_id == session_id:
+            return entry
+    for entry in restore.list_sessions(cfg):
+        return entry
+    raise CratekitError('''
+
+[[rows]]
+id = "R2_the_reserved_remediation_is_replaced_by_the_class_default"
+description = """Discard the per-slug remediation the reservation table holds"""
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''            remediation=reservations.remediation_for(slug),'''
+new = '''            remediation=Remediation(remedy=Remedy.REPORT_DEFECT),'''
+
+[[rows]]
+id = "L2_the_listing_reports_a_backlog_it_does_not_have"
+description = """Report every recorded session as unresolved work"""
+file = "src/cratekit/session/restore_cli.py"
+surface = "maintainer"
+tests = ["tests/test_restore_cli.py"]
+old = '''            "unresolved": 0,'''
+new = '''            "unresolved": len(listed),'''
+
+[[rows]]
+id = "V1_the_expected_comparison_set_is_not_checked"
+description = """Drop the anti-vacuity expectation, so the two registers stop being compared silently"""
+file = "tests/test_cli_contract.py"
+surface = "maintainer"
+tests = ["tests/test_cli_contract.py"]
+old = '''    assert {entry.name for entry in compared} == EXPECTED_COMPARED, ('''
+new = '''    assert {entry.name for entry in compared} <= EXPECTED_COMPARED | {"anything"}, ('''

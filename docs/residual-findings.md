@@ -8638,3 +8638,250 @@ all. Guessing here would either delete a declared capability or invent one.
 **Closes when:** the entry and the shell agree, in whichever direction U24
 chooses, and the derived guard in `tests/test_queued_resume_contract.py` keeps
 holding whichever verb remains in its population.
+
+---
+
+## R-150. A mirror restore runs inline, holding the lock and the terminal for the whole transfer
+
+**Found:** while landing `cratekit.session.restore_cli` under U27, 2026-08-23.
+
+`restore.run` declares neither `long_running` nor an `argv_builder`, so the verb
+performs the whole restore in the invocation that was typed. For the capture
+half that is right: it replaces a rekordbox database and its coupled state from
+a local directory, which is a file copy measured in seconds. For
+`--include-mirror` it is not. That option pulls the music and everything else
+the off-machine mirror carried, which the backup module's own documentation puts
+at hundreds of gigabytes, and every byte of it moves inside one `subprocess`
+call under the held library lock.
+
+**Measured cost.** The terminal is held for the length of the transfer, and so
+is the library lock, so nothing else can write while it runs, which is correct
+but has no progress surface and no resume. A process killed part way leaves the
+restore latch set, which is the designed behaviour and refuses ordinary writes
+until a restore completes, so the recovery from an interrupted mirror pull is to
+run it again from the beginning.
+
+**Why it is not fixed here.** Queueing it is the obvious answer and it does not
+work in this build. Every long-running verb's `--job` path calls
+`jobs.reconcile` and performs nothing, uniformly, across ten shells; a queued
+restore would therefore be a job nothing ever performs, which is strictly worse
+than a slow one. Making the resume perform work is a change to a build-wide
+convention rather than to this unit, and R-149 is the neighbouring finding about
+the same seam from the other direction.
+
+**Closes when:** either the job resume performs the work it was queued for, at
+which point this verb declares `long_running` with an `argv_builder` and freezes
+its gate run in the payload the way `adopt.apply` does, or the mirror half grows
+its own progress and resume without the queue.
+
+---
+
+## R-151. The restore listing's `review_set` names a queue no queue table declares
+
+**Found:** while landing `cratekit.session.restore_cli` under U27, 2026-08-23.
+
+`restore.list` declares `output_schema="review_set/1"`, whose payload carries a
+`queue` string and an `unresolved` count. The listing is not an adjudication
+surface: nothing in it awaits a verdict, and `review.Queue` cannot gain a member
+for it, because `tests/test_review_queue.py` holds the enum and the surface table
+to being the same set in both directions and every declared queue is an
+adjudicated one. So the verb emits the literal `"restore"` as its queue and a
+constant zero as its unresolved count.
+
+**Measured cost.** A consumer that groups review sets by queue sees a value
+`review.adjudicated_queues()` does not list, and would find nothing if it looked
+the value up. The count is honest, because reporting the number of recorded
+sessions as a backlog would tell a person they have work they do not, which is
+the argument `deletion.tombstone_cli` makes for the same field. Nothing consumes
+either today: the only readers of the payload are the renderer and the
+conformance suite, and both check the shape rather than the values.
+
+**Why it is not fixed here.** The two candidate fixes are both bigger than this
+unit. Either `review_set` grows a way to say "this set is a listing rather than a
+queue", which is a schema change every emitter would have to be re-read against,
+or the entry emits a different surface, which changes a registry declaration U32
+made and which nothing has yet complained about.
+
+**Closes when:** the schema distinguishes a listing from a queue, or the entry
+names a surface that fits without one.
+
+---
+
+## R-152. The confirmation digest is over the restore's identity, not over its steps
+
+**Found:** while landing `cratekit.session.restore_cli` under U27, 2026-08-23.
+
+**Corrected 2026-08-23** after an independent review measured this entry's own
+claim. It said the off-machine half is in the digest, which is true of WHETHER
+the mirror is pulled and false of WHICH SNAPSHOT is pulled. That second half is
+now R-153 rather than being folded in here, because they close differently.
+
+`restore.run`'s explicit gate declares `digest_source="plan"`, and what the
+handler digests is the identity of the restore: the session being restored, its
+recorded change summary, the sessions being discarded, and whether the
+off-machine mirror is being pulled first. It is not the step list.
+
+**Why the step list is unavailable.** `core.restore.plan` refuses to build one
+without an open recovery session, and the session cannot be opened before the
+gate: the gate is `explicit`, so the invocation that discovers it exits, and a
+library that has never acknowledged a backup refuses the session before the
+question is ever asked, which would make the verb unreachable on exactly the
+machine a restore is for.
+
+**Measured cost.** A person approves a restore described by what it targets
+rather than by the individual file operations it will perform. The property a
+digest exists for still holds and is driven: a later session committing between
+the offer and the answer moves the recorded change summary, so the digest moves
+and the decision is refused as stale. What is genuinely lost is that a change
+which alters the STEPS without altering the identity, a companion file appearing
+beside the database between the two acts, does not move the digest.
+
+**Why that is survivable rather than a hole.** The step list is derived under the
+lock and every step is checked against the disk before the first destructive one
+is taken, and `restore._assert_override_names_them` refuses independently when
+the discard set does not name what the restore would actually destroy. Nothing
+rests on the digest alone.
+
+**Closes when:** either the registry's `digest_source` gains a vocabulary that
+can say "the decision's inputs" as distinct from "the artifact", or a plan shape
+exists that can be computed without the destructive session.
+
+---
+
+## R-153. The newest off-machine snapshot can move between the two acts, and the digest does not
+
+**Found by** the independent adversarial review of `cratekit.session.restore_cli`,
+2026-08-23, driven end to end.
+
+`_offer` digests `snapshot or "newest"`. When a person does not name a stamp, the
+literal string `newest` is what enters the digest, so which snapshot will actually
+be pulled is not part of what they approved. Measured: offer and answer while the
+remote listed `2026-08-01T000000Z`, digest `2773db78d299ff13`; a second snapshot
+appeared; the resumed drive kept the same digest and pulled
+`2026-08-22T235959Z`.
+
+**The producer was driven and it is an ordinary backup.** `backup.plan_backup`
+emits `copy <db> remote:database-snapshots/<stamp>/db/` into a new dated directory
+per run, so the set the resolver picks from grows every time anybody takes a
+backup, including a scheduled one.
+
+**Measured cost.** A person approves restoring from the snapshot that is current
+when they are asked, and a backup landing between the two acts silently changes
+which one arrives. Both are this library's own snapshots, so the damage is
+bounded: they get a NEWER database than the one they approved, not a foreign one.
+
+**Why it is not fixed here.** Putting the resolved stamp in the digest means
+resolving it at offer time, which is a network call to the remote before the gate
+is asked, on a path that currently touches nothing. That is a real design change
+to when the verb reaches the network, and it makes the offer fail on an
+unreachable remote for a restore that may not even use the mirror.
+
+**Closes when:** the offer resolves and shows the stamp it is offering, and the
+digest carries it.
+
+---
+
+## R-154. Nothing asserts a pulled snapshot belongs to this library
+
+**Found by** the independent adversarial review, 2026-08-23, driven.
+
+`--snapshot` reaches the remote path by string interpolation with no validation.
+Measured: `--snapshot ../another-library-snapshots/2020-01-01T000000Z` produced
+`copy remote:database-snapshots/../another-library-snapshots/2020-01-01T000000Z/db/master.db <lib>/db/`,
+with no listing call, no validation, and exit 0.
+
+**Measured cost, stated precisely.** This is a person typing a path into their own
+configured remote, so it is not a privilege boundary being crossed. What it buys
+is restoring a DIFFERENT library's database onto this library's volume while
+every gate passes, because the volume identity assertion is about the disk being
+written to and says nothing about the provenance of what is written onto it.
+
+**Why it is not fixed here.** The narrow half is cheap, refusing a stamp that is
+not the shape `backup.stamp_for` produces, and it does not close the finding: a
+well formed stamp from another library's snapshot directory is still accepted,
+and nothing in a captured database says which library it came from. Recording a
+library identity in the snapshot and checking it on restore is the real fix and it
+is a change to the capture side.
+
+**Closes when:** a snapshot carries the recorded volume identity of the library it
+was taken from, and the restore refuses one that does not match.
+
+---
+
+## R-155. A restore's session log cannot tell a mirror pull from a capture restore
+
+**Found by** the independent adversarial review, 2026-08-23, measured with a spy
+on `core.session.assert_gates` across the dry run, the wet run and the refusal
+path.
+
+`core.restore.CAPTURE_RESTORE_WORKFLOW` and `modules.tools.backup.RESTORE_WORKFLOW`
+are two labels landing in one log field, and that separation exists so the two
+kinds of restore stay distinguishable afterwards. Handing the off-machine half the
+already open guard means `backup._restore_gates` returns that guard rather than
+opening a session of its own, so `RESTORE_WORKFLOW` never reaches the log on any
+path. Only `capture-restore` is ever recorded.
+
+**Measured cost.** Reading the session log afterwards, a run that pulled hundreds
+of gigabytes off the network is indistinguishable from one that spent a local
+capture. Nothing is lost that another surface holds: the report the verb emits
+names both halves, and the reconciliation record is unaffected.
+
+**Why it is not fixed here.** One acquisition and two labels are mutually
+exclusive, and this unit chose the acquisition, which is what the register asked
+for. A second label would need the session record to carry a list of what happened
+under it rather than one workflow string.
+
+**Closes when:** a session record can name more than one kind of work, or the
+restore records the mirror pull some other way the log can see.
+
+---
+
+## R-156. Two of the eight backup refusal slugs duplicate slugs already declared
+
+**Found by** the independent adversarial review, 2026-08-23.
+
+`database-absent` duplicates `library-database-missing`, and `library-root-absent`
+duplicates `library-directory-missing`. Both pairs carry `LIBRARY_UNAVAILABLE`,
+and each pair names one fact with two slugs.
+
+**Measured cost.** A consumer branching on `cause.reason` has to know both
+spellings for one condition, and this is exactly the "one symbol meaning two
+things" shape inverted: two symbols meaning one thing. No duplicate KEYS exist in
+either table, which was checked; the duplication is semantic.
+
+**Why it is not fixed here.** The duplication is not this unit's invention. Both
+slugs were already declared in `cratekit.cli.exit_codes`, deliberately, and its
+own note for `database-absent` argues for them: "Same code as the root being
+absent because the class of answer is the same, and its own slug because the file
+portion of a backup can still run". This unit mirrored a decision that was already
+made rather than making a new one. Collapsing them means deciding that the backup
+module's vocabulary folds into the library's, which is a call about two modules
+that this unit does not own.
+
+**Closes when:** the two vocabularies are reconciled deliberately, or the
+reservation table's argument for keeping them apart is re-affirmed and this entry
+is closed as intended behaviour.
+
+---
+
+## R-157. A person answering the confirmation is never shown the offer it is digested over
+
+**Found by** the independent adversarial review, 2026-08-23. Pre-existing and
+platform wide rather than this unit's.
+
+`ctx.gate.require` raises before the handler reaches `ctx.envelope(data=offered)`,
+so what a person sees when a gate refuses is the prompt and the gate name. The
+offer the digest was taken over, which for a restore is the session, its change
+summary and the discard set, is computed and then discarded.
+
+**Measured cost.** The digest does its job, refusing a stale answer, but the
+person answering cannot see what they are answering about from the refusal alone.
+They can reach it through the run.
+
+**Why it is not fixed here.** All eight `gate.require` call sites in `src` share
+the shape, so this is the gate contract rather than one verb, and changing it
+changes every gated verb's refusal envelope at once.
+
+**Closes when:** the gate carries its offer into the refusal envelope, for every
+verb at once.
+

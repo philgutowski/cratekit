@@ -52,9 +52,16 @@ TESTS_DIR = Path(__file__).resolve().parent
 EXPECTED_PENDING = frozenset(
     {
         "path:skills",  # U28, the shipped operator skills
-        "cratekit.session.restore_cli",  # U27, the restore verbs and the one held session
     }
 )
+
+# ``cratekit.session.restore_cli`` was here and is gone, because U27 landed both
+# restore verbs and the one held session that spans them. The mirror in
+# ``tests/_pending.PENDING`` went in the same commit, and ONE guard carried a
+# ``@requires`` for this key,
+# ``tests/test_restore.py::test_the_restore_verbs_hold_one_session_across_both_halves``.
+# Its decorator came off in the same commit and it was then run on purpose, which
+# is the third edit the header above says is the one people skip.
 
 # ``cratekit.adopt.apply_cli`` was here and is gone, because U27 landed the shell
 # and, with it, the one destructive session the residual titled "Adoption's tag

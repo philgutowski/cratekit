@@ -1188,6 +1188,13 @@ def test_a_planned_verb_whose_module_has_landed_must_lose_its_marker(entry):
     )
 
 
+#: The planned verbs whose module ``tests/_pending.PENDING`` also owes, written
+#: out for the reason ``EXPECTED_PENDING`` is: a change to either register must be
+#: made in a second place a reviewer reads. Empty since U27 landed
+#: ``cratekit.session.restore_cli``, the last one.
+EXPECTED_COMPARED: frozenset[str] = frozenset()
+
+
 def test_a_planned_verb_and_the_pending_register_name_the_same_unit():
     """Two registers hold "who lands this module" and neither read the other.
 
@@ -1221,13 +1228,23 @@ def test_a_planned_verb_and_the_pending_register_name_the_same_unit():
         for entry in registry.entries()
         if not entry.landed and entry.module in _pending.PENDING
     ]
-    # First, that the intersection is not empty, or everything below is vacuous.
-    # Emptying the REGISTRY side lands here by name. Emptying the register side
-    # never reaches this file at all: ``_pending.requires`` raises at import for a
-    # key that is gone, which is a collection error rather than a green run.
-    assert {"restore.list", "restore.run"} <= {entry.name for entry in compared}, (
-        f"the two restore verbs are no longer compared against the register; "
-        f"what is compared is {sorted(entry.name for entry in compared)}"
+    # First, WHAT is compared, written out rather than derived, because the whole
+    # point of this guard is that a change to either register has to be made in a
+    # second place a reviewer reads. It is EMPTY, and that is a true state rather
+    # than a hole: U27 landed ``cratekit.session.restore_cli``, which was the last
+    # planned verb module the register owed, so there is nothing left to compare.
+    #
+    # IT IS STILL FALSIFIABLE IN BOTH DIRECTIONS, which is what an anti-vacuity
+    # guard is for. A unit that declares a verb and registers its module here
+    # fires this assertion on the day it lands, and whoever does that restores the
+    # comparison by naming it. Emptying the register side never reaches this file
+    # at all: ``_pending.requires`` raises at import for a key that is gone, which
+    # is a collection error rather than a green run.
+    assert {entry.name for entry in compared} == EXPECTED_COMPARED, (
+        f"the set of planned verbs the register also owes has moved; it is now "
+        f"{sorted(entry.name for entry in compared)} and this file says it is "
+        f"{sorted(EXPECTED_COMPARED)}. Update the expectation in the same commit "
+        f"as the register, or the comparison below stops covering the new one."
     )
     disagreements = {
         entry.name: (entry.planned_in, _pending.PENDING[entry.module][0])
@@ -1425,6 +1442,17 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "audit.duplicates": [str(library / "no-such-export.xml")],
         "report.library": [str(library / "no-such-export.xml")],
         "report.intake-aging": [str(library / "no-such-export.xml")],
+        # U27. Both restore verbs are driven with no positional argument at all,
+        # and the omission is the state a fresh install is genuinely in rather
+        # than a convenience. The listing answers over an empty session log. The
+        # run means "the newest session whose capture is spendable", of which
+        # there are none here, so it asks its explicit confirmation gate against
+        # the digest of an offer with no halves in it and then reports that there
+        # was nothing to restore. That path opens NO destructive session, which is
+        # what lets the verb exit OK on a machine that has never acknowledged a
+        # backup: the session is opened only by the code that touches the volume.
+        "restore.list": [],
+        "restore.run": [],
         # U33. Export takes the playlist identifier and queues after its
         # own confirm gate. Favourites sync takes no positional: the
         # confirm is the remote half, separate from any local colour write.

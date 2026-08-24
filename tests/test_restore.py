@@ -65,8 +65,6 @@ from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.tools import backup
 
-from ._pending import requires
-
 UTC = timezone.utc
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -2462,7 +2460,6 @@ def test_the_convergence_fallback_expires_the_moment_both_modules_share_a_build(
     )
 
 
-@requires("cratekit.session.restore_cli")
 def test_the_restore_verbs_hold_one_session_across_both_halves():
     """The wiring this unit proved at the seam and could not call.
 
