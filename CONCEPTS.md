@@ -76,11 +76,25 @@ in a different file, with every suite still green. That failure is a property of
 the combined tree rather than of either contributing change, so nothing short of
 the combination can observe it.
 
+A third axis cuts across both kinds: whether the guard consults the real subject
+or a hand rolled model of it. A guard that hands its input to the component that
+owns the answer, the parser, the loader, the dispatcher, cannot disagree with
+that component. A guard that reimplements the component's rules is a second
+implementation of the same semantics, and it will drift, silently, because its
+own fixtures were written from the same model and can only ever confirm it. The
+drift is not in the rules the author wrote, it is in the rules the author never
+knew were there, and a model's silence produces no failing test. Deriving the SET
+a guard quantifies over is a separate question from deriving its JUDGMENT, and
+satisfying the first says nothing about the second.
+
 When such a guard offers remedies for its own failure, the remedies are driven
 rather than reasoned about, and a remedy that makes the guard report MORE is
 propagating rather than converging. When every offered remedy terminates in
 breaking something else, that is a finding about the design and never a licence
-to widen the guard so it accepts what it was written to catch.
+to widen the guard so it accepts what it was written to catch. That last rule
+governs a guard that is a faithful checker. A guard that reimplements its subject
+is a third state, neither correct nor merely too narrow, and replacing it with
+the real thing is not the forbidden widening.
 
 ### Beat grid
 The rekordbox-authored timing map for a track. This product never writes one. A
