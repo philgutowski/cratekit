@@ -984,6 +984,46 @@ def test_a_failed_transfer_refuses_and_never_reports_a_restore_that_did_not_happ
     assert str(wal.name) in cause.message or "companion" in cause.message
 
 
+def test_a_rehearsal_whose_preview_fails_refuses_rather_than_reading_as_a_pass(cfg):
+    """The same defect, one branch over, found by asking what else had the shape.
+
+    ``run_restore``'s dry run branch returned its results unread exactly as the
+    real branch did. It is not the lesser case: that function's own docstring
+    argues a rehearsal is worth running because "a rehearsal that passes is then
+    evidence the real run will reach its work", and that claim is false the
+    moment a failing preview reports as a passing one. A person rehearses
+    precisely to find out whether the remote is reachable.
+
+    NOTHING IS CLEARED ON THIS PATH, which the refusal must not claim otherwise.
+    A dry run performs nothing at all, including the clearing, so the live
+    companions are still there.
+    """
+    acknowledge(cfg)
+    database = config.state_path("rekordbox_db", cfg)
+    wal = database.with_name(database.name + "-wal")
+    wal.write_bytes(b"still here, because a rehearsal clears nothing")
+
+    def failing(command):
+        if "lsf" in command.argv:
+            return backup.CommandResult(returncode=0, stdout="2026-08-01T000000Z/\n")
+        return backup.CommandResult(returncode=1, stdout="", stderr="connection refused")
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.restore_under_one_session(
+            cfg,
+            session_id=None,
+            dry_run=True,
+            from_backup=True,
+            snapshot="2026-08-01T000000Z",
+            runner=failing,
+            process_lister=lambda: (),
+            **gate_seams(cfg),
+        )
+
+    assert excinfo.value.cause.reason == str(backup.Refusal.RESTORE_TRANSFER_FAILED)
+    assert wal.exists(), "a rehearsal cleared the live companion files"
+
+
 def test_a_transfer_that_succeeds_is_still_reported(cfg):
     """The other direction, so the refusal above is not simply a verb that refuses.
 

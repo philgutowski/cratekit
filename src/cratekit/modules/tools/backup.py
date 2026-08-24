@@ -1014,8 +1014,17 @@ def run_restore(
     """
     with _restore_gates(cfg, gates):
         if dry_run:
-            return tuple(
-                runner(Command(label=c.label, argv=dry_run_argv(c))) for c in plan.commands
+            # THE REHEARSAL'S RESULTS ARE READ TOO, and this branch had the same
+            # defect the real one did. It is not a lesser case: the whole reason
+            # a rehearsal is worth running is the claim above, that one which
+            # passes is evidence the real run will reach its work, and that claim
+            # is false the moment a failing preview reports as a passing one.
+            return _ran(
+                tuple(
+                    runner(Command(label=c.label, argv=dry_run_argv(c)))
+                    for c in plan.commands
+                ),
+                plan,
             )
         plan.database_target.parent.mkdir(parents=True, exist_ok=True)
         for stale in plan.clears:
@@ -1050,7 +1059,10 @@ def _ran(results: tuple[CommandResult, ...], plan: RestorePlan) -> tuple[Command
     opens without complaint), so the honest answer to a failed transfer is a loud
     refusal naming what was cleared, not a silent repair this module cannot make.
     """
-    for command, result in zip(plan.commands, results, strict=False):
+    # STRICT, because both callers build the results by walking ``plan.commands``
+    # exactly once, so a length that differs is a driver defect rather than a
+    # short list to be tolerated, and tolerating it would skip the tail unread.
+    for command, result in zip(plan.commands, results, strict=True):
         if result.returncode != 0:
             raise BackupRefused(
                 Refusal.RESTORE_TRANSFER_FAILED,
