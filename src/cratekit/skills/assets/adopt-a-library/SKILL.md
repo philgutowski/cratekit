@@ -193,9 +193,9 @@ governed trees do not cover, and the unplaced sweep finds rows nothing places.
 
 ```bash
 crate converge
-crate audit coverage --limit 200
+crate audit coverage --limit 200 /path/to/collection.xml
 crate route unplaced
-crate report library
+crate report library /path/to/collection.xml
 ```
 
 A disagreement between the first two is the interesting one. Convergence answers

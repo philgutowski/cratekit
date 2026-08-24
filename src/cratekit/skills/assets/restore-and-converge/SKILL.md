@@ -259,6 +259,6 @@ collection. A single reading of "did it work" collapses two different questions
 into one, and the disagreement between them is the interesting result.
 
 ```bash
-crate audit coverage --limit 200
+crate audit coverage --limit 200 /path/to/collection.xml
 crate route unplaced
 ```

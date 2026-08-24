@@ -172,7 +172,7 @@ for the same reason.
 ```bash
 crate route resort
 crate job resume JOB_ID
-crate report library
+crate report library /path/to/collection.xml
 ```
 
 The last one is the read only sanity check, the library's own statistics

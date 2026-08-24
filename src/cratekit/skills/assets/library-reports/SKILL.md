@@ -165,11 +165,14 @@ check rows. Reach for the JSON whenever something other than a person is going t
 read the result, since the human rendering is free to change and the payload is
 not.
 
-## When one of them refuses to run at all
+## When one of them is not there at all
 
-Coverage is core and available under every profile. The duplicate audit rides on
-its own module, and both reports ride on the reports module, so a profile with
-those switched off gives a refusal naming the module rather than hiding the verb.
+Coverage is core and is available under every profile. The duplicate audit rides
+on its own module, and both reports ride on the reports module, so a profile with
+those switched off does not merely refuse them, it does not register them: the
+verb is absent from the parser and you get an argument error rather than a
+message about modules. The error will not mention the profile, which is why this
+is worth knowing here.
 
 ```bash
 crate profile show

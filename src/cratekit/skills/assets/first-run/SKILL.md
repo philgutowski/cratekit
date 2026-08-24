@@ -57,19 +57,32 @@ crate --output json doctor
 The JSON form is the one to reach for when something else is going to read the
 answer, because the human rendering is free to change and the payload is not.
 
-## Profiles decide which modules exist
+## Profiles decide which verbs exist at all
 
-A profile switches feature modules on and off. A verb belonging to a module the
-active profile does not include is not hidden, it refuses and says why, so the
-answer to "why does this verb not work" is usually here.
+A profile switches feature modules on and off, and a verb belonging to a module
+the active profile does not include is NOT PRESENT. It is not a verb that
+refuses with an explanation, it is a name the parser has never heard of, so what
+you get is an argument error rather than a message about profiles. That is the
+answer to "why does this verb not work", and it is worth knowing because the
+error does not point at the profile itself.
+
+Ask what is on before concluding a verb is broken:
 
 ```bash
 crate profile show
-crate profile set slim
 ```
 
-Changing the profile changes nothing else. It does not migrate, move, or delete
-anything, and it does not rewrite the taxonomy.
+The narrower presets remove a substantial part of the surface, including the
+verb that installs these skills, so check what a preset covers before switching
+to it rather than after. Changing the profile changes nothing else: it does not
+migrate, move, or delete anything, and it does not rewrite the taxonomy.
+
+Setting one is a confirmed act, because it changes what the tool can do. The
+widest preset is the one that leaves every verb reachable:
+
+```bash
+crate profile set full
+```
 
 ## Credentials
 

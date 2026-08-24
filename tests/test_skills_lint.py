@@ -46,10 +46,15 @@ tree, which lands in U28.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib.util
+import io
 import re
+import shlex
 import tomllib
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -102,38 +107,24 @@ _DEEP_REF = re.compile(r"`?(src/cratekit/[\w/]+/[A-Za-z0-9_.-]+\.md)`?")
 _CODE_SPANS = re.compile(r"`([^`\n]+)`")
 
 
-def verb_table() -> dict[tuple[str, ...], dict[str, bool]]:
-    """Every verb path the CLI exposes, mapped to its flags and whether each takes a value.
+def real_parser():
+    """The parser the installed CLI actually assembles, built fresh each call.
 
-    DERIVED BY WALKING THE REAL PARSER, never by reading the registry's own
-    fields. The registry says which entries exist; only the assembled parser says
-    what a person may actually type, because each verb's ``build`` adds its own
-    arguments and the root adds the ones that ride on every invocation. A rule
-    checked against the registry would pass a skill naming a flag no builder ever
-    declared, which is precisely the drift this file exists to catch.
+    FRESH RATHER THAN CACHED, because ``parse_args`` mutates the namespace it
+    builds and argparse keeps state on the parser for a failed parse. A shared
+    instance made one skill's bad command affect the next skill's verdict, which
+    is the shape of a test that passes or fails depending on ordering.
+
+    THE FULL MEMBERSHIP, not the active profile's. A skill documents a verb that
+    exists in the product, and the parser a person gets depends on which profile
+    they are running; linting against whichever profile happens to be configured
+    on the machine running the suite would make the result a property of that
+    machine. Which verbs a profile hides is a different question, and it is the
+    one the skills themselves have to describe correctly.
     """
     from cratekit.cli import build_parser  # noqa: PLC0415
 
-    def walk(parser, prefix: tuple[str, ...]):
-        # flag -> whether it consumes the token after it. Recorded because a
-        # value-taking flag's ARGUMENT is not a subcommand, and a walker that did
-        # not know the difference read the "json" in ``--output json`` as a verb
-        # and reported a correct command as naming no real verb. Found by the
-        # fixture below, not by reading this function.
-        found = {
-            prefix: {
-                name: action.nargs != 0
-                for action in parser._actions
-                for name in action.option_strings
-            }
-        }
-        for action in parser._actions:
-            if isinstance(action, argparse._SubParsersAction):
-                for name, sub in action.choices.items():
-                    found.update(walk(sub, prefix + (name,)))
-        return found
-
-    return walk(build_parser(), ())
+    return build_parser()
 
 
 def taxonomy_display_names() -> set[str]:
@@ -155,66 +146,66 @@ def taxonomy_display_names() -> set[str]:
     )
 
 
-def _verb_problems(
-    line: str, skill: str, verbs: dict[tuple[str, ...], dict[str, bool]]
-) -> list[str]:
-    """Check one fenced command line that invokes the product's own entry point.
+def _verb_problems(line: str, skill: str, parser_for) -> list[str]:
+    """Check one fenced command line by PARSING IT WITH THE REAL PARSER.
 
-    Lines that do not start with the entry point are somebody else's command and
-    are not this rule's business. A continuation line, which is how a long
-    invocation is written, carries no verb of its own and is skipped rather than
-    reported: the rule reads what a person would type as one command, and a
-    trailing backslash means the command is not finished.
+    THIS FUNCTION USED TO REIMPLEMENT ARGPARSE AND DID IT BADLY. It walked the
+    tokens itself, matching a verb path against known prefixes and then checking
+    the flags against a table, which is three of argparse's jobs done by hand. It
+    checked no POSITIONAL argument at all, and an independent review found the
+    cost: eight shipped commands across six skills exit 2, and six of the eight
+    passed this rule, because every one of them omits a required positional. A
+    checker that reimplements the thing it is checking against will always drift
+    from it; the only checker that cannot is the thing itself.
 
-    THE VERB PATH IS CONSUMED GREEDILY WHILE IT STAYS A PREFIX of some real path,
-    which is what lets a positional argument follow it without being mistaken for
-    a further subcommand. ``crate restore run no-such-session`` walks to
-    ``restore run`` and stops, because ``restore run no-such-session`` is not a
-    prefix of anything.
+    So the line is tokenised the way a shell would and handed to a parser built
+    from the registry. Exit 2 is argparse's own verdict on a command a person
+    typed, which is exactly the question this rule asks.
+
+    WHAT IS DELIBERATELY NOT CHECKED, because a rule that fires on correct prose
+    gets suppressed and then protects nothing (P7):
+
+    * a continuation line, which carries no complete command of its own;
+    * a pipeline or a redirection, where the text after the operator belongs to
+      another program and argparse would report it as an unrecognised argument;
+    * a line whose quoting does not tokenise, which is a malformed EXAMPLE rather
+      than a malformed command and is caught by reading rather than by this.
     """
-    tokens = line.split()
-    if not tokens or tokens[0] != "crate":
+    text = line.strip()
+    # A prompt marker is decoration, and a person copying the line drops it.
+    for marker in ("$ ", "% "):
+        if text.startswith(marker):
+            text = text[len(marker) :]
+    if not text.startswith("crate ") and text != "crate":
         return []
-    if line.rstrip().endswith("\\"):
+    if text.endswith("\\"):
+        return []
+    # Everything from a shell operator onwards belongs to another program.
+    for operator in ("|", ">", "<", "&&", ";"):
+        if operator in text:
+            text = text.split(operator, 1)[0].strip()
+    try:
+        argv = shlex.split(text)[1:]
+    except ValueError:
+        return []
+    if not argv:
         return []
 
-    prefixes = {path[:n] for path in verbs for n in range(len(path) + 1)}
-    known = dict(verbs.get((), {}))
-    path: tuple[str, ...] = ()
-    flags: list[str] = []
-    rest = tokens[1:]
-    index = 0
-    while index < len(rest):
-        token = rest[index]
-        if token.startswith("-"):
-            flag = token.split("=", 1)[0]
-            flags.append(flag)
-            # Skip the flag's ARGUMENT when it takes one and did not carry it
-            # inline, or the value is read as a subcommand.
-            takes_value = known.get(flag) or verbs.get(path, {}).get(flag)
-            index += 2 if takes_value and "=" not in token else 1
-            continue
-        if path + (token,) in prefixes and path + (token,) != path:
-            path += (token,)
-            known.update(verbs.get(path, {}))
-            index += 1
-            continue
-        break
-    # Everything after the verb path is a value, except the flags among it.
-    for token in rest[index:]:
-        if token.startswith("-"):
-            flags.append(token.split("=", 1)[0])
-
-    if path not in verbs or not path:
-        spelled = " ".join(path) if path else " ".join(rest[:2])
-        return [f"{skill}: fenced command names no real verb: 'crate {spelled}'"]
-
-    allowed = set(verbs[path]) | set(verbs[()])
-    return [
-        f"{skill}: 'crate {' '.join(path)}' does not declare the flag {flag!r}"
-        for flag in sorted(set(flags))
-        if flag not in allowed
-    ]
+    parser = parser_for()
+    buffer = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(buffer), contextlib.redirect_stdout(buffer):
+            parser.parse_args(argv)
+    except SystemExit as exit_code:
+        # 0 is --help and --version, which are real answers rather than failures.
+        if exit_code.code in (0, None):
+            return []
+        complaint = buffer.getvalue().strip().splitlines()
+        detail = complaint[-1] if complaint else "rejected by the parser"
+        return [f"{skill}: fenced command does not parse: {text!r}: {detail}"]
+    except Exception as exc:  # pragma: no cover - a parser defect, not a skill's
+        return [f"{skill}: fenced command raised {type(exc).__name__}: {text!r}"]
+    return []
 
 
 def _module_exists(dotted: str, src_root: Path) -> bool:
@@ -231,7 +222,7 @@ def lint_skills(
     skill_names: set[str] | None = None,
     src_root: Path | None = None,
     repo_root: Path | None = None,
-    verbs: dict[tuple[str, ...], dict[str, bool]] | None = None,
+    parser_for=None,
     taxonomy_names: set[str] | None = None,
 ) -> list[str]:
     """Return a list of ``"<skill>: <problem>"`` over every SKILL.md found.
@@ -244,7 +235,7 @@ def lint_skills(
     problems: list[str] = []
     src_root = src_root if src_root is not None else SRC_ROOT
     repo_root = repo_root if repo_root is not None else REPO_ROOT
-    verbs = verbs if verbs is not None else verb_table()
+    parser_for = parser_for if parser_for is not None else real_parser
     taxonomy_names = (
         taxonomy_names if taxonomy_names is not None else taxonomy_display_names()
     )
@@ -331,9 +322,9 @@ def lint_skills(
                 f"(use a {{year}} placeholder)"
             )
 
-        # (g) every crate invocation names a real verb path and real flags.
+        # (g) every crate invocation parses against the real parser.
         for line in command_text.split("\n"):
-            problems += _verb_problems(line, directory.name, verbs)
+            problems += _verb_problems(line, directory.name, parser_for)
 
         # (h) no shipped skill hardcodes a taxonomy display name.
         #
@@ -374,15 +365,23 @@ def _real_scripts() -> set[str]:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-#: The verb table the FIXTURE skills are checked against. Synthetic on purpose,
-#: exactly as the synthetic skills root is: a fixture proving that the year rule
-#: ignores a flag value must not also have to satisfy the verb rule, or it stops
-#: proving one thing and starts proving two, and the failure message stops naming
-#: which. The real tree is checked against the real parser by the final test.
-_FIXTURE_VERBS: dict[tuple[str, ...], dict[str, bool]] = {
-    (): {"--output": True, "-h": False, "--help": False},
-    ("sync",): {"--ok": False, "--track-limit": True},
-}
+def _fixture_parser():
+    """A tiny real parser for the FIXTURE skills, synthetic exactly as their tree is.
+
+    A fixture proving that the year rule ignores a flag value must not also have
+    to satisfy the verb rule, or it stops proving one thing and starts proving
+    two and the failure message stops naming which. It is a real
+    ``argparse.ArgumentParser`` rather than a table, so the fixtures exercise the
+    same code path the real tree does.
+    """
+    parser = argparse.ArgumentParser(prog="crate", add_help=True)
+    parser.add_argument("--output")
+    subparsers = parser.add_subparsers(dest="verb")
+    sync = subparsers.add_parser("sync")
+    sync.add_argument("--ok", action="store_true")
+    sync.add_argument("--track-limit")
+    sync.add_argument("value", nargs="*")
+    return parser
 
 #: No taxonomy at all for the fixtures, so rule (h) is inert against them and is
 #: proved by its own fixtures below rather than as a side effect of every other.
@@ -391,7 +390,7 @@ _FIXTURE_TAXONOMY: set[str] = set()
 
 def _lint(root: Path, scripts: set[str], **kwargs):
     """Lint a synthetic tree with the synthetic verb table and taxonomy."""
-    kwargs.setdefault("verbs", _FIXTURE_VERBS)
+    kwargs.setdefault("parser_for", _fixture_parser)
     kwargs.setdefault("taxonomy_names", _FIXTURE_TAXONOMY)
     return lint_skills(root, scripts, **kwargs)
 
@@ -587,7 +586,8 @@ def test_a_command_naming_no_real_verb_fails(tmp_path):
     (b) is satisfied by any nonsense typed after it."""
     _mk_skill(tmp_path, "crate-x", "```bash\ncrate synchronise --ok\n```\n")
     problems = _lint(tmp_path, {"crate"})
-    assert any("names no real verb" in p for p in problems), problems
+    assert any("does not parse" in p for p in problems), problems
+    assert any("invalid choice" in p for p in problems), problems
 
 
 def test_a_command_naming_a_flag_the_verb_does_not_declare_fails(tmp_path):
@@ -596,7 +596,21 @@ def test_a_command_naming_a_flag_the_verb_does_not_declare_fails(tmp_path):
     failure this file was ported to catch."""
     _mk_skill(tmp_path, "crate-x", "```bash\ncrate sync --no-such-flag\n```\n")
     problems = _lint(tmp_path, {"crate"})
-    assert any("does not declare the flag '--no-such-flag'" in p for p in problems), problems
+    assert any("--no-such-flag" in p for p in problems), problems
+
+
+def test_a_command_missing_a_required_positional_fails(tmp_path):
+    """The half the hand rolled walker could not see, and it cost eight commands.
+
+    The verb is real and every flag is real, so the previous rule passed it. The
+    command still exits 2 for the person who types it, because argparse wants an
+    argument the skill never mentions. Six of the eight violations an independent
+    review found in the shipped skills were exactly this.
+    """
+    parser_with_positional = _fixture_parser
+    _mk_skill(tmp_path, "crate-x", "```bash\ncrate sync --track-limit\n```\n")
+    problems = _lint(tmp_path, {"crate"}, parser_for=parser_with_positional)
+    assert any("does not parse" in p for p in problems), problems
 
 
 def test_a_real_verb_with_real_flags_and_a_positional_passes(tmp_path):
@@ -642,6 +656,45 @@ def test_a_taxonomy_word_in_ordinary_prose_passes(tmp_path):
     and would then protect nothing."""
     _mk_skill(tmp_path, "crate-x", "Deep House sets tend to run long, so plan for it.\n")
     assert _lint(tmp_path, {"crate"}, taxonomy_names={"Deep House"}) == []
+
+
+def test_a_profile_disabled_verb_is_absent_rather_than_refusing():
+    """The behaviour two shipped skills described BACKWARDS, pinned here.
+
+    Both said a verb belonging to a switched off module "refuses and says why".
+    It does not. ``cli.build_parser`` skips an entry ``available_to`` answers
+    False for, so the name never reaches argparse and a person gets an invalid
+    choice error with no cause, no reason slug and no remedy. That is a different
+    thing to explain and a different thing to act on.
+
+    PINNED AGAINST THE PARSER RATHER THAN THE PROSE, so this stays true when
+    somebody rewrites the sentence. What it forbids is the product quietly
+    changing to a refusal model while twelve skills go on describing whichever
+    one they were written against.
+    """
+    from cratekit.cli import build_parser  # noqa: PLC0415
+    from cratekit.core import profiles  # noqa: PLC0415
+
+    slim = build_parser(membership=profiles.resolve("slim"))
+    full = build_parser(membership=profiles.resolve("full"))
+
+    def names(parser):
+        found = set()
+        for action in parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                found |= set(action.choices)
+        return found
+
+    hidden = names(full) - names(slim)
+    assert hidden, "no verb differs between the presets, so this pins nothing"
+    absent = sorted(hidden)[0]
+    with pytest.raises(SystemExit) as exit_code:
+        slim.parse_args([absent])
+    assert exit_code.value.code == 2, (
+        f"a verb the slim preset excludes, {absent!r}, no longer produces an "
+        f"argument error; if it now REFUSES with a cause, the skills that "
+        f"describe this behaviour have to be rewritten, not this test"
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

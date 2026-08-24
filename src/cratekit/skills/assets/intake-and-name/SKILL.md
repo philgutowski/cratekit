@@ -137,7 +137,7 @@ segment.
 asking for a decision. Answer it on the invocation, or later from anywhere:
 
 ```bash
-crate name apply --decision name.apply.confirm=apply
+crate --decision name.apply.confirm=apply name apply
 crate run show RUN-ID
 crate run decide RUN-ID name.apply.confirm apply --actor operator
 ```

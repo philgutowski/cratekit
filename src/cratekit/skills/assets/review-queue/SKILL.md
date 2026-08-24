@@ -185,7 +185,7 @@ An empty queue usually means the producer has not run yet, not that there is
 nothing to decide. Items are offered by the verb that found the ambiguity.
 
 ```bash
-crate audit duplicates
+crate audit duplicates /path/to/collection.xml
 crate adopt scan
 crate repair paths --root /path/to/library
 crate delete review
@@ -195,7 +195,7 @@ A gate on a long running job is a different mechanism. It stops one run and is
 answered against that run, not against a persisted queue item.
 
 ```bash
-crate run show
+crate run show RUN-IDENTIFIER
 crate status
 ```
 

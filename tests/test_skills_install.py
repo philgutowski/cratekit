@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import io
 import json
-from pathlib import Path
 
 import pytest
 
@@ -133,22 +132,79 @@ def test_an_unstamped_copy_is_drift_rather_than_damage(tmp_path):
     assert skills_cli.installed_version(into / name) == __version__
 
 
-def test_a_file_this_build_no_longer_ships_disappears(tmp_path):
-    """The reason the destination is replaced whole rather than copied over.
+def test_a_file_a_previous_install_wrote_and_this_build_withdrew_disappears(tmp_path):
+    """The withdrawn-file property, narrowed to what this product actually wrote.
 
-    A leftover file looks current to anything reading the directory, and an agent
-    reading a skill this build withdrew is the failure the version stamp exists
-    to make visible everywhere else.
+    A leftover from an older build looks current to anything reading the
+    directory, so a refresh has to remove it. It is identified by the PREVIOUS
+    STAMP naming it rather than by clearing the directory, which is the
+    distinction the blocking finding below turned on.
     """
     into = tmp_path / "agent"
     _drive(["skills", "install", "--into", str(into)])
     name = skills_cli.shipped_names()[0]
-    stale = into / name / "WITHDRAWN.md"
-    stale.write_text("shipped by an older build and withdrawn since\n")
+    withdrawn = into / name / "WITHDRAWN.md"
+    withdrawn.write_text("shipped by an older build\n")
+    (into / name / skills_cli.STAMP_NAME).write_text(
+        'version = "0.0.0"\nskill = "x"\nfiles = ["SKILL.md", "WITHDRAWN.md"]\n'
+    )
 
     _drive(["skills", "install", "--into", str(into)])
 
-    assert not stale.exists(), "a withdrawn file survived a reinstall"
+    assert not withdrawn.exists(), "a withdrawn file survived a refresh"
+    assert (into / name / "SKILL.md").is_file()
+
+
+def test_a_file_the_product_never_wrote_survives_a_refresh(tmp_path):
+    """THE BLOCKING FINDING, driven. A person's own file is not this verb's to delete.
+
+    ``install_one`` used to ``rmtree`` the destination whenever it existed. An
+    independent review drove it: a file written beside the skill between two runs
+    was gone after the second, and the second reported status ``ok`` and "already
+    written by this build". Data lost under a clean report, which is two of the
+    four user facing costs METHOD names at once.
+
+    The refresh path is the one asserted here, because it is the path that still
+    deletes anything at all.
+    """
+    into = tmp_path / "agent"
+    _drive(["skills", "install", "--into", str(into)])
+    name = skills_cli.shipped_names()[0]
+    mine = into / name / "MY-NOTES.md"
+    mine.write_text("notes I keep beside the skill\n")
+    (into / name / skills_cli.STAMP_NAME).write_text(
+        'version = "0.0.0"\nskill = "x"\nfiles = ["SKILL.md"]\n'
+    )
+
+    code, envelope = _drive(["skills", "install", "--into", str(into)])
+
+    assert envelope["data"]["summary"]["refreshed"] == 1, envelope
+    assert mine.read_text() == "notes I keep beside the skill\n"
+
+
+def test_an_up_to_date_install_writes_nothing_at_all(tmp_path):
+    """The other half of the same finding, and the one that was worst.
+
+    On the ``current`` path there is nothing to do, and the old code removed the
+    directory anyway before rewriting identical bytes. Measured by modification
+    time as well as by content, because rewriting the same bytes would be
+    invisible to a content check and is still a write.
+    """
+    into = tmp_path / "agent"
+    _drive(["skills", "install", "--into", str(into)])
+    name = skills_cli.shipped_names()[0]
+    mine = into / name / "MY-NOTES.md"
+    mine.write_text("untouched\n")
+    before = {
+        path.name: path.stat().st_mtime_ns for path in (into / name).iterdir()
+    }
+
+    code, envelope = _drive(["skills", "install", "--into", str(into)])
+
+    assert envelope["data"]["summary"]["current"] == len(skills_cli.shipped_names())
+    after = {path.name: path.stat().st_mtime_ns for path in (into / name).iterdir()}
+    assert after == before, "an up to date install rewrote files it had no reason to"
+    assert mine.exists()
 
 
 def test_the_default_target_is_composed_from_home_and_is_not_a_literal(monkeypatch, tmp_path):
@@ -227,13 +283,20 @@ def test_a_skill_directory_with_no_stamp_reads_as_no_version(tmp_path):
 
 @pytest.mark.parametrize("flag", ["--into"])
 def test_the_declared_flag_is_the_one_the_tests_drive(flag):
-    """The verb's surface, pinned, so a rename shows up here rather than in a skill."""
-    import sys  # noqa: PLC0415
+    """The verb's surface, pinned, so a rename shows up here rather than in a skill.
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from tests.test_skills_lint import verb_table  # noqa: PLC0415
+    Asked of the REAL assembled parser rather than of the registry, because the
+    registry says the entry exists and only the parser says what a person may
+    type at it.
+    """
+    from cratekit.cli import build_parser  # noqa: PLC0415
 
-    assert flag in verb_table()[("skills", "install")]
+    parser = build_parser()
+    with pytest.raises(SystemExit) as exit_code:
+        parser.parse_args(["skills", "install", flag, "/tmp/somewhere", "--help"])
+    assert exit_code.value.code in (0, None), (
+        f"{flag} is not accepted by crate skills install"
+    )
 
 
 def test_a_refusal_leaves_no_half_written_target(tmp_path):

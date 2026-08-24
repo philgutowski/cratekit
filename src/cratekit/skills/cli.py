@@ -31,7 +31,6 @@ command-line layer, for the reason ``adopt.apply_cli`` gives at length.
 
 from __future__ import annotations
 
-import shutil
 from collections.abc import Iterator
 from importlib import resources
 from pathlib import Path
@@ -103,6 +102,26 @@ def installed_version(destination: Path) -> str | None:
     return None
 
 
+def stamped_files(destination: Path) -> tuple[str, ...]:
+    """The files a previous install of this skill wrote, per its own stamp.
+
+    Recorded so a refresh can remove exactly what it put there and nothing else.
+    An unstamped copy names none, which is correct: nothing in it was written by
+    this product, so nothing in it is this product's to delete.
+    """
+    stamp = destination / STAMP_NAME
+    if not stamp.is_file():
+        return ()
+    for line in stamp.read_text().splitlines():
+        name, _, value = line.partition("=")
+        if name.strip() == "files":
+            body = value.strip().strip("[]")
+            return tuple(
+                part.strip().strip('"') for part in body.split(",") if part.strip()
+            )
+    return ()
+
+
 def install_one(name: str, into: Path) -> str:
     """Copy one shipped skill and stamp it. Returns what happened to it.
 
@@ -110,27 +129,50 @@ def install_one(name: str, into: Path) -> str:
     from this build, ``refreshed`` when it came from another one or from nowhere.
     Three answers rather than two, because "it was already right" and "it was
     wrong and now is right" are the two facts a person is running this to learn.
+
+    THIS FUNCTION DESTROYED A USER'S OWN FILES AND REPORTED SUCCESS, and the fix
+    is the reason it is shaped the way it is now. It used to ``rmtree`` the
+    destination whenever the destination existed, INCLUDING on the ``current``
+    path where there is nothing to do at all. Driven by an independent review: a
+    file written beside the skill between two runs was gone after the second, and
+    the second reported ``current``, status ``ok``, "already written by this
+    build". That is data lost under a clean report, which is two of the four user
+    facing costs ``docs/METHOD.md`` names, and this is the only verb in the
+    product that removes a tree at a path the caller supplied.
+
+    SO ``current`` NOW TOUCHES NOTHING, and a refresh removes exactly the files
+    the previous stamp says this product wrote. The withdrawn-file property that
+    the ``rmtree`` was reaching for survives, because a file this build no longer
+    ships is named by the old stamp and by nothing else. A file the product never
+    wrote is not the product's to delete, whatever directory it is sitting in.
     """
     source = packaged_root() / name
     destination = into / name
     previous = installed_version(destination) if destination.exists() else None
-    outcome = (
-        "installed"
-        if not destination.exists()
-        else "current"
-        if previous == __version__
-        else "refreshed"
-    )
+    if not destination.exists():
+        outcome = "installed"
+    elif previous == __version__:
+        # NOTHING IS WRITTEN ON THIS PATH. Rewriting identical bytes would be
+        # harmless and removing anything would not, and the honest report of "it
+        # was already right" is a report about a directory nobody touched.
+        return "current"
+    else:
+        outcome = "refreshed"
 
-    # REPLACED WHOLE RATHER THAN MERGED. A file this build no longer ships has to
-    # disappear, and copying over the top would leave it in place looking current.
-    if destination.exists():
-        shutil.rmtree(destination)
-    destination.mkdir(parents=True)
+    for stale in stamped_files(destination):
+        # ``name`` only, never a path, so a stamp somebody edited cannot reach
+        # outside the directory it describes.
+        (destination / Path(stale).name).unlink(missing_ok=True)
+    (destination / STAMP_NAME).unlink(missing_ok=True)
+
+    destination.mkdir(parents=True, exist_ok=True)
+    written = []
     for entry in _files(source):
         (destination / entry.name).write_bytes(entry.read_bytes())
+        written.append(entry.name)
+    listed = ", ".join(f'"{n}"' for n in sorted(written))
     (destination / STAMP_NAME).write_text(
-        f'version = "{__version__}"\nskill = "{name}"\n'
+        f'version = "{__version__}"\nskill = "{name}"\nfiles = [{listed}]\n'
     )
     return outcome
 
@@ -238,6 +280,7 @@ __all__ = [
     "build",
     "default_target",
     "install_one",
+    "stamped_files",
     "install_skills",
     "installed_version",
     "packaged_root",

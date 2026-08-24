@@ -88,7 +88,7 @@ placed produces no error anywhere; it simply is not in a folder.
 ```bash
 crate route unplaced
 crate --output json route unplaced
-crate audit coverage --limit 200
+crate audit coverage --limit 200 /path/to/collection.xml
 crate converge --tree TREE_ID
 ```
 
