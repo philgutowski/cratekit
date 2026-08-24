@@ -8885,3 +8885,41 @@ changes every gated verb's refusal envelope at once.
 **Closes when:** the gate carries its offer into the refusal envelope, for every
 verb at once.
 
+
+---
+
+## R-158. A `path:` countdown key is coupled to a location the register cannot see
+
+**Found:** while landing the operator skills under U28, 2026-08-23.
+
+`tests/_pending._is_absent` resolves a `path:` key against the REPOSITORY ROOT.
+The key `path:skills` therefore asked whether `<repo>/skills` exists, which
+encoded a guess, made when the countdown was opened, about where a later unit
+would put the skills.
+
+U28 put them somewhere else, and had to. R7 says the skills ship with the
+package, and `[tool.setuptools.package-data]` can only name paths under the
+importable tree, so a repository-root directory would be present in a checkout,
+absent from every wheel, and the install verb would have nothing to copy on the
+one machine that matters. They live at `src/cratekit/skills/assets/` for the same
+reason `cratekit.core.taxonomy` keeps its templates inside the package.
+
+**Measured cost, and it is the opposite of the usual one.** The countdown did not
+go red and stay red, which is the failure mode the register's own header warns
+about. It stayed GREEN. The unit landed the thing the entry was waiting for, the
+entry went on saying U28 owed it, and `tests/test_pending_units.py` would have
+agreed, because the path it was watching was still absent and always would be.
+Nothing in the repository could see the disagreement. The entry was discharged by
+hand in the landing commit, so the register is correct today; what is unfixed is
+the mechanism that let it be wrong.
+
+**Why it is not fixed here.** The obvious repair, re-keying to the real path, is
+worthless: the register is now empty, so there is no key to re-point, and the
+next `path:` key will be opened by whoever needs one, against a location that has
+not been decided yet. That is the actual defect and it is in the shape of the key
+rather than in any one value. A module key does not have it, because a dotted
+module path is the same string wherever the unit puts the file.
+
+**Closes when:** a `path:` key names something the landing unit cannot move, or
+the meta test cross-checks the key against the unit's own declared files so a
+landed unit with an unfired countdown is a contradiction the repository can see.

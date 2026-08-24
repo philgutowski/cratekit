@@ -1438,7 +1438,13 @@ ENTRIES: tuple[Entry, ...] = (
         module_id="skills",
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
-        planned_in="U28",
+        # U28 LANDED IT. ``cratekit.skills.cli`` ships the verb and
+        # ``cratekit/skills/assets/`` ships the twelve skills it installs, so the
+        # marker is gone and the conformance properties drive this entry rather
+        # than skipping it. THE BRIEF'S FILES LINE NAMED ``src/cratekit/cli/skills.py``
+        # AND THIS ENTRY WON, as it did for the restore verbs one unit earlier: a
+        # module path declared here is the one the dispatcher imports, so a unit
+        # that lands the brief's spelling instead lands a module nothing loads.
     ),
     # ── The rest of the review surface (U11) ────────────────────────────────
     #

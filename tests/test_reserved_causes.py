@@ -4855,7 +4855,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # left the set, and the named side stayed at 21 with the without-own half at
     # 8, so the comparison just below widened rather than narrowed, for the
     # tenth time out of ten.
-    assert (len(literal_holders), len(literal_both)) == (73, 15), (
+    # Re-pinned on U28, 2026-08-23: 73 to 74 holders, and the distinct literal
+    # population above does NOT move with it, which is the whole shape of this
+    # entry. skills/cli.py joined because it names path-permission-denied for a
+    # target directory it cannot create, and that slug was already in the tree, so
+    # a module joined the holder set while the literal set stood still. A pin that
+    # only watched the totals would have read this as nothing happening. Differenced
+    # as SETS against origin/main's own src tree, the same way as the entries above:
+    # exactly one module joined, none left, and the named side stayed at 21 with the
+    # without-own half at 8. The also-holds-an-integer half stays 15: the module
+    # holds no bare integer at all.
+    assert (len(literal_holders), len(literal_both)) == (74, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

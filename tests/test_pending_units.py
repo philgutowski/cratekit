@@ -49,11 +49,24 @@ TESTS_DIR = Path(__file__).resolve().parent
 # The intended pending set, written out rather than derived. Duplicating the keys
 # is the entire point: a change to the registry must be made in two places, and
 # the second place is a test that a reviewer reads.
-EXPECTED_PENDING = frozenset(
-    {
-        "path:skills",  # U28, the shipped operator skills
-    }
-)
+# EMPTY, AND WRITTEN AS ``frozenset()`` RATHER THAN ``frozenset({})``. The second
+# spelling is an empty DICT inside a frozenset call, which is still an empty
+# frozenset at run time and is a different node to anything that parses this file.
+# The duplicate guard below reads the literal through the AST and asked a set
+# literal for its elements, so the braces form crashed it with an attribute error
+# the moment the last key came out. Found by discharging the last entry.
+EXPECTED_PENDING: frozenset[str] = frozenset()
+
+# ``path:skills`` was here and is gone, because U28 landed the twelve shipped
+# skills and the verb that installs them. The mirror in ``tests/_pending.PENDING``
+# went in the same commit, and ONE guard carried a ``@requires`` for the key,
+# ``tests/test_skills_lint.py::test_real_skills_pass_lint``, whose decorator came
+# off in the same commit and which was then run on purpose.
+#
+# THE REGISTER IS NOW EMPTY. That is a first for this file and it is a real state
+# rather than a broken one: every countdown this build opened has been discharged.
+# ``EXPECTED_PENDING`` being empty still asserts something, namely that nobody has
+# added a skip without declaring it, which is the whole point of the duplication.
 
 # ``cratekit.session.restore_cli`` was here and is gone, because U27 landed both
 # restore verbs and the one held session that spans them. The mirror in
@@ -131,14 +144,27 @@ def test_the_intended_pending_set_has_no_duplicate_element():
     literal = None
     for node in ast.walk(ast.parse(inspect.getsource(__import__(__name__, fromlist=["x"])))):
         target = None
-        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+        # BOTH ASSIGNMENT NODES, which the sibling guard over ``cause.REASONS``
+        # in tests/test_cli_contract.py has always done and this one had not.
+        # Annotating the register as ``frozenset[str]`` turns an ``Assign`` into
+        # an ``AnnAssign`` and this walk stopped finding it, reporting the
+        # register as no longer module level when it had simply gained a type.
+        if isinstance(node, ast.AnnAssign):
+            target = getattr(node.target, "id", None)
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1:
             target = getattr(node.targets[0], "id", None)
         if target == "EXPECTED_PENDING":
             literal = node.value
 
     assert literal is not None, "EXPECTED_PENDING is no longer a module-level assignment"
-    # ``frozenset({...})``: the set is the call's first argument.
-    elements = literal.args[0].elts if isinstance(literal, ast.Call) else literal.elts
+    # ``frozenset({...})``: the set is the call's first argument. ``frozenset()``
+    # with no argument is the EMPTY register, which is the state this file reached
+    # when U28 discharged the last countdown, and it has no elements to read
+    # rather than being a failure to read them.
+    if isinstance(literal, ast.Call):
+        elements = literal.args[0].elts if literal.args else []
+    else:
+        elements = literal.elts
     written = [element.value for element in elements]
     duplicates = sorted({key for key in written if written.count(key) > 1})
     assert not duplicates, f"written twice and collapsed at parse time: {duplicates}"
@@ -163,9 +189,34 @@ def test_the_declared_pending_set_is_exactly_the_intended_set():
     )
 
 
+def test_the_empty_register_is_a_discharged_register_and_not_a_lost_one():
+    """An empty register is reported OUT LOUD rather than as a mystery skip.
+
+    ``pytest`` skips a parametrized test whose parameter set is empty, so the
+    countdown below became a silent skip the moment U28 discharged the last
+    entry. That is structurally correct, and it is also the exact shape this
+    file's own header warns about: a skip that is fine in August and is still
+    skipping in December with nobody able to see why. This test cannot be skipped
+    and states the condition, so ``pytest -rs`` reads as "the register is empty"
+    rather than as "something got skipped here".
+
+    IT ALSO ASSERTS THE TWO REGISTERS AGREE while both are empty, which the
+    comparison above does vacuously in that state.
+    """
+    assert _pending.PENDING == {}, (
+        f"the register is not empty, so the countdown below is parametrized and "
+        f"this test is stale: {sorted(_pending.PENDING)}"
+    )
+    assert EXPECTED_PENDING == frozenset()
+
+
 @pytest.mark.parametrize("key", sorted(EXPECTED_PENDING))
 def test_a_pending_target_that_has_landed_must_be_removed_from_the_registry(key):
     """The countdown. This test is DESIGNED to fail when a unit lands.
+
+    IT IS CURRENTLY PARAMETRIZED OVER NOTHING, because U28 discharged the last
+    entry, so pytest skips it. The test above is what says so in a run summary.
+    Re-opening any countdown re-arms this one with no edit here.
 
     When it does, the fix is THREE edits in one commit, not one: the entry in
     ``_pending.PENDING``, the mirrored key in ``EXPECTED_PENDING`` above, and the
