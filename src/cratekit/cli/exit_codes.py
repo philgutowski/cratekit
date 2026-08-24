@@ -445,6 +445,24 @@ RESERVATIONS: tuple[Reservation, ...] = (
         ),
     ),
     Reservation(
+        cause="restore-transfer-failed",
+        code=ExitCode.PRECONDITION,
+        steps=(
+            "the restore's transfer failed part way; check the remote is "
+            "reachable and run the restore again before opening the library, "
+            "because the live companion files were cleared and not put back",
+        ),
+        note=(
+            "NOT 1, for the reason archive-verify-failed is not 1: an "
+            "unreachable remote or an expired token is a condition of the world "
+            "rather than a defect in this program, and report-defect sends a "
+            "person to the one place that cannot help. STEPS rather than a "
+            "token, because no token in the vocabulary says the thing that "
+            "actually matters here, which is that the library is mid restore and "
+            "must not be opened until one succeeds"
+        ),
+    ),
+    Reservation(
         cause="encoder-missing",
         code=ExitCode.PRECONDITION,
         remedy=Remedy.INSTALL_BINARY,

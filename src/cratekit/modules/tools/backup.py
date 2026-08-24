@@ -145,6 +145,11 @@ class Refusal(StrEnum):
     RESTORE_NOT_CONFIRMED = "restore-not-confirmed"
     RESTORE_TARGET_ABSENT = "restore-target-absent"
     NO_SNAPSHOT_AVAILABLE = "no-snapshot-available"
+    # U27. A transfer this module ran came back non zero. Its own member rather
+    # than one of the conditions above, because every one of those is decided
+    # BEFORE anything is attempted and this one is the attempt failing: the
+    # remote was reachable enough to plan against and then was not.
+    RESTORE_TRANSFER_FAILED = "restore-transfer-failed"
 
 
 #: Every refusal this module can raise, derived from the enum so U5's reservation
@@ -1015,7 +1020,47 @@ def run_restore(
         plan.database_target.parent.mkdir(parents=True, exist_ok=True)
         for stale in plan.clears:
             stale.unlink(missing_ok=True)
-        return tuple(runner(command) for command in plan.commands)
+        return _ran(tuple(runner(command) for command in plan.commands), plan)
+
+
+def _ran(results: tuple[CommandResult, ...], plan: RestorePlan) -> tuple[CommandResult, ...]:
+    """Every transfer's return code, READ. Raises on the first one that failed.
+
+    THIS FUNCTION IS A BLOCKING DEFECT'S FIX AND THE DEFECT WAS SILENCE. The
+    results were returned unread, so a restore whose every copy failed came back
+    as an ordinary tuple and the caller reported a success. That is not a
+    cosmetic misreport, because the sidecars are cleared BEFORE the first
+    command: measured on 2026-08-23 by driving a runner that answers the listing
+    and fails the copy, the live write-ahead log was deleted, the database was
+    unchanged, and the verb exited OK saying two transfers had happened. The log
+    holds transactions committed since the last checkpoint, which are in no
+    capture by construction, so the one report a person acts on said their
+    library was restored at the moment it had silently lost work.
+
+    RAISES RATHER THAN REPORTING A PARTIAL RUN, which is the difference between
+    this function and :func:`run_backup`'s per portion accounting one file over.
+    A backup that copied three of four portions has still improved the world and
+    the outcome says which. A restore that copied some of a database and its
+    companions has produced a set that matches nothing, and there is no shape of
+    "partly restored" a caller can do anything useful with.
+
+    THE SIDECARS ARE NOT PUT BACK, and the refusal says so rather than pretending
+    otherwise. Clearing them first is the safety property the ordering exists for
+    (a stale log replayed onto a replaced database corrupts it in a way that
+    opens without complaint), so the honest answer to a failed transfer is a loud
+    refusal naming what was cleared, not a silent repair this module cannot make.
+    """
+    for command, result in zip(plan.commands, results, strict=False):
+        if result.returncode != 0:
+            raise BackupRefused(
+                Refusal.RESTORE_TRANSFER_FAILED,
+                f"the transfer {command.label!r} exited {result.returncode} and the "
+                f"restore did not complete. The live companion files beside "
+                f"{plan.database_target.name} were cleared before it began and have "
+                f"not been put back, so run the restore again once the remote is "
+                f"reachable rather than opening the library first.",
+            )
+    return results
 
 
 # ---------------------------------------------------------------------------

@@ -1,8 +1,14 @@
 """U27: the two restore verbs, and the ONE session that spans them.
 
-WHY THIS FILE EXISTS SEPARATELY FROM THE CONFORMANCE SUITE. All nine conformance
-properties drive both verbs the moment their entries lose ``planned_in``, and
-every one of them drives the EMPTY path: a library with no session log, no
+WHY THIS FILE EXISTS SEPARATELY FROM THE CONFORMANCE SUITE. THREE of the nine
+conformance properties actually arm against these verbs, not nine, and the
+difference is worth stating because the shorter claim was made here first and an
+independent review measured it: six identifiers mention ``[restore.list]`` and
+seven mention ``[restore.run]``, which is properties 1, 2 and 3 plus one gate
+walk. The others are AST sweeps over the package or are parametrized over a
+population these entries are not in.
+
+Every one of those three drives the EMPTY path: a library with no session log, no
 capture, and nothing to roll back to. None of them reaches the destructive
 session, because a restore that would perform nothing deliberately does not open
 one. So the thing the unit exists for would ship undriven if this file did not
@@ -29,6 +35,7 @@ import json
 import subprocess
 import sys
 from dataclasses import replace
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -36,7 +43,7 @@ import pytest
 from cratekit import cli
 from cratekit.cli import exit_codes as reservations
 from cratekit.cli import registry
-from cratekit.core import config, jobs, preflight, rb_writer, restore, session
+from cratekit.core import config, jobs, preflight, rb_writer, restore, session, snapshot
 from cratekit.core.cause import CratekitError, Outcome
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.tools import backup
@@ -137,6 +144,37 @@ def _offered_digest(refused: dict) -> str:
     offered = cli_gates.load(refused["run_id"]).offers.get(CONFIRM, "")
     assert offered, "the run recorded no digest for the confirmation gate"
     return offered
+
+
+def _fake_rclone(cfg_value, monkeypatch) -> Path:
+    """Put a stand-in for rclone on the ONE seam the product ships for it.
+
+    ``CRATEKIT_BIN_RCLONE`` is ``core.binaries``'s per binary override, read
+    before PATH, so what is replaced here is the external PROGRAM and nothing
+    else: the argument parser, the gate flow, the session, the plan and the
+    transfer construction are all the real ones. Patching a runner attribute
+    cannot do this from a command line drive, because ``plan_restore`` binds its
+    default runner at definition time and no flag reaches it.
+
+    It answers ``lsf`` with one dated snapshot so a plan can be built, exits 0 on
+    everything else, and appends each invocation to a log the caller reads. The
+    log is what the assertions are taken over, so what is measured is the
+    program's own view of what it was asked to do.
+    """
+    home = Path(config.installation_state_dir())
+    home.mkdir(parents=True, exist_ok=True)
+    log = home / "rclone-invocations.log"
+    program = home / "fake-rclone"
+    program.write_text(
+        "#!/bin/sh\n"
+        f'printf "%s\\n" "$*" >> "{log}"\n'
+        'case " $* " in *" lsf "*) echo "2026-08-01T000000Z/" ;; esac\n'
+        "exit 0\n"
+    )
+    program.chmod(0o755)
+    monkeypatch.setenv("CRATEKIT_BIN_RCLONE", str(program))
+    del cfg_value
+    return log
 
 
 def _lock_taken_in_another_process(path: Path) -> int:
@@ -242,14 +280,25 @@ def test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened(
         **gate_seams(cfg),
     )
 
+    # DERIVED FROM THE STATE INVENTORY, NOT FROM THE REPORT. Both of these
+    # assertions used to take their expected value from ``report.pulled``, which
+    # made them X equals X: an independent reviewer's mutation deduplicating the
+    # transfer labels killed nothing, because both sides moved together. The
+    # inventory is the same declaration ``plan_restore`` reads to decide which
+    # companions come back, so it is the honest independent source for how many
+    # transfers a database-only restore is made of: the database itself, plus one
+    # per sidecar the schema marks as restored.
+    expected = 1 + sum(
+        1 for sidecar in config.state_file("rekordbox_db").sidecars if sidecar.restored
+    )
+    assert expected > 1, "the inventory restores no sidecar, so this pins nothing"
+
     assert report.outcome is None
-    assert backup.RESTORE_DATABASE in report.pulled
+    assert report.pulled == (backup.RESTORE_DATABASE,) * expected
 
     payload = restore_cli._performed(report, {"digest": "d"})
-    assert payload["totals"]["transfers"] == len(report.pulled)
-    assert [item["half"] for item in payload["items"]] == ["off-machine"] * len(
-        report.pulled
-    )
+    assert payload["totals"]["transfers"] == expected
+    assert [item["half"] for item in payload["items"]] == ["off-machine"] * expected
     assert "converged" not in payload["totals"], (
         "a run that spent no capture reported on the capture restore's own question"
     )
@@ -872,3 +921,324 @@ def test_the_report_keeps_the_digest_the_decision_was_recorded_against(installed
         f"the report's digest is not the one the decision carries; the gate was "
         f"offered {offered.get('gate')!r}"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Fix round 2: the two blocking findings an independent review drove, and the
+# command-line coverage whose absence was the cause of eleven of its zero rows.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_failed_transfer_refuses_and_never_reports_a_restore_that_did_not_happen(cfg):
+    """BLOCKING finding 1, driven, and the measurement is what a person was told.
+
+    ``backup.run_restore`` returned its results unread. The verb then built its
+    report from the PLAN's command labels, so a restore whose every copy failed
+    came back as two completed transfers and exit OK. That is not a cosmetic
+    misreport: the live companion files are cleared BEFORE the first command, and
+    the write-ahead log holds transactions committed since the last checkpoint,
+    which are in no capture by construction. Measured before the fix: the log was
+    deleted, the database was unchanged, and the person was told the restore had
+    happened.
+
+    THE RUNNER FAILS THE COPY AND NOT THE LISTING, which is the shape of the real
+    condition: the remote is reachable enough to plan against, then the transfer
+    fails on an expired token or a dropped connection.
+    """
+    acknowledge(cfg)
+    database = config.state_path("rekordbox_db", cfg)
+    wal = database.with_name(database.name + "-wal")
+    wal.write_bytes(b"transactions committed since the last checkpoint")
+
+    def failing(command):
+        if "lsf" in command.argv:
+            return backup.CommandResult(returncode=0, stdout="2026-08-01T000000Z/\n")
+        return backup.CommandResult(returncode=1, stdout="", stderr="connection refused")
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.restore_under_one_session(
+            cfg,
+            session_id=None,
+            from_backup=True,
+            snapshot="2026-08-01T000000Z",
+            runner=failing,
+            process_lister=lambda: (),
+            **gate_seams(cfg),
+        )
+
+    cause = excinfo.value.cause
+    assert cause.reason == str(backup.Refusal.RESTORE_TRANSFER_FAILED)
+    assert cause.code is not ExitCode.INTERNAL, (
+        "an unreachable remote is not a defect in this program"
+    )
+    assert backup.RESTORE_DATABASE in cause.message, (
+        "the refusal does not name which transfer failed"
+    )
+    assert cause.remediation.steps, (
+        "the person is told the restore failed and not what to do about it"
+    )
+    # THE STATE THE REFUSAL LEAVES, ASSERTED RATHER THAN ASSUMED. The clearing is
+    # the safety property the ordering exists for and is not undone, so what the
+    # message promises about the world has to be true of the world.
+    assert not wal.exists()
+    assert str(wal.name) in cause.message or "companion" in cause.message
+
+
+def test_a_transfer_that_succeeds_is_still_reported(cfg):
+    """The other direction, so the refusal above is not simply a verb that refuses.
+
+    A guard that fires on every run is indistinguishable from a broken verb, and
+    a test that only drove the failure could not tell those apart.
+    """
+    acknowledge(cfg)
+
+    report = restore_cli.restore_under_one_session(
+        cfg,
+        session_id=None,
+        from_backup=True,
+        snapshot="2026-08-01T000000Z",
+        runner=lambda command: backup.CommandResult(returncode=0, stdout=""),
+        process_lister=lambda: (),
+        **gate_seams(cfg),
+    )
+
+    assert report.pulled, "a run whose every transfer succeeded reported nothing"
+
+
+def test_a_capture_this_product_pruned_is_refused_by_name_and_not_as_a_defect(installed):
+    """BLOCKING finding 2, with its producer DRIVEN rather than hand mutated.
+
+    THE PRODUCER IS THIS PRODUCT'S OWN RETENTION. ``restore.prune`` deletes a
+    capture directory while the session record stays in the log, which is the
+    ordinary end state of every library that keeps history bounded. Before the
+    fix, ``restore list`` explained that state correctly in a sentence and
+    ``restore run`` on the same session exited 1 with ``internal-error`` and
+    ``report-defect`` carrying a raw errno: a person told to file a bug about a
+    directory the tool removed on purpose.
+
+    THE TWO SURFACES NOW SAY THE SAME SENTENCE, because it is computed once, in
+    ``Restorable.unusable``, and both read it rather than each inventing one.
+    """
+    acknowledge(installed)
+    record, captured = completed_session(installed)
+    removed = restore.prune(
+        installed, policy=restore.RetentionPolicy(keep=0, max_age=timedelta(0))
+    )
+    assert removed and not captured.root.exists(), (
+        "retention removed nothing, so the state under test was never produced"
+    )
+
+    _code, listing = _drive(["restore", "list"])
+    row = listing["data"]["items"][0]
+    assert row["restorable"] is False
+    sentence = row["unusable"]
+    assert sentence, "the listing explains nothing, so there is nothing to agree with"
+
+    code, envelope = _drive(["restore", "run", record.session_id])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "restore-record-unusable"
+    assert envelope["cause"]["remediation"]["remedy"] != str(Remedy.REPORT_DEFECT), (
+        "a person is told to report a defect for a capture this product deleted"
+    )
+    assert sentence in envelope["cause"]["message"], (
+        "the two surfaces give different accounts of one state"
+    )
+
+
+def test_an_unusable_capture_is_refused_before_the_mirror_moves_a_byte(cfg):
+    """The half of finding 2 that costs something, and it is the ordering.
+
+    With ``--from-backup`` the off machine half runs FIRST, so a refusal deferred
+    to the plan let every transfer complete and the live companion files be
+    cleared before anything asked whether the capture could be spent at all. The
+    refusal now happens before any session opens, so the runner is never reached.
+    """
+    acknowledge(cfg)
+    record, captured = completed_session(cfg)
+    restore.prune(cfg, policy=restore.RetentionPolicy(keep=0, max_age=timedelta(0)))
+    assert not captured.root.exists()
+    ran: list[str] = []
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.restore_under_one_session(
+            cfg,
+            session_id=restore_cli._named(cfg, record.session_id).session_id,
+            from_backup=True,
+            runner=lambda command: ran.append(command.label),
+            **gate_seams(cfg),
+        )
+
+    assert excinfo.value.cause.reason == "restore-record-unusable"
+    assert ran == [], f"the mirror ran before the capture was checked: {ran}"
+
+
+# ── the command-line surface the review found had none ───────────────────────
+
+
+def test_the_from_backup_flag_reaches_the_off_machine_half_through_the_dispatcher(
+    installed, monkeypatch
+):
+    """``--from-backup``, driven end to end, which nothing did before.
+
+    Eleven of the independent review's twenty one user facing zero rows were
+    this: the three off machine flags appeared in no test, so the wiring could be
+    changed freely with the suite green. The seam replaced here is the external
+    program and nothing else, so the argument parser, the gate flow, the session
+    and the plan are all the real ones.
+    """
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch)
+
+    _code, refused = _drive(["restore", "run", "--from-backup"])
+    _answer(refused["run_id"], "restore")
+    code, envelope = _drive(["--run", refused["run_id"], "restore", "run", "--from-backup"])
+
+    assert code == int(ExitCode.OK), envelope
+    invoked = log.read_text().splitlines() if log.exists() else []
+    assert invoked, "the flag was accepted and no transfer was ever attempted"
+    copies = [line for line in invoked if " copy " in f" {line} "]
+    assert envelope["data"]["totals"]["transfers"] == len(copies), (
+        f"the report claims {envelope['data']['totals']['transfers']} transfers and "
+        f"the program was asked to copy {len(copies)} times"
+    )
+    assert all(item["half"] == "off-machine" for item in envelope["data"]["items"])
+
+
+def test_without_the_flag_no_transfer_is_attempted_at_all(installed, monkeypatch):
+    """The other direction, so the test above is not passing on a verb that always pulls.
+
+    Measured on the review's own row: forcing the off machine half on for every
+    run killed nothing, because no test ever established that a plain restore
+    does not touch the network.
+    """
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch)
+
+    _code, refused = _drive(["restore", "run"])
+    _answer(refused["run_id"], "restore")
+    code, envelope = _drive(["--run", refused["run_id"], "restore", "run"])
+
+    assert code == int(ExitCode.OK), envelope
+    invoked = log.read_text().splitlines() if log.exists() else []
+    assert invoked == [], f"a restore nobody asked to pull reached the remote: {invoked}"
+
+
+def test_include_mirror_adds_the_file_half_and_its_absence_leaves_it_out(cfg):
+    """The flag that decides whether hundreds of gigabytes move, pinned both ways.
+
+    Measured on the review's own row: forcing the mirror on for every run killed
+    nothing. The two directions are asserted together because either one alone
+    passes over a flag that is ignored.
+    """
+    acknowledge(cfg)
+    captured: dict[bool, list[str]] = {}
+
+    for wanted in (False, True):
+        labels: list[str] = []
+
+        def runner(command, sink=labels):
+            sink.append(command.label)
+            return backup.CommandResult(returncode=0, stdout="2026-08-01T000000Z/\n")
+
+        restore_cli.restore_under_one_session(
+            cfg,
+            session_id=None,
+            from_backup=True,
+            include_mirror=wanted,
+            snapshot="2026-08-01T000000Z",
+            runner=runner,
+            process_lister=lambda: (),
+            **gate_seams(cfg),
+        )
+        captured[wanted] = labels
+
+    assert backup.RESTORE_MIRROR in captured[True]
+    assert backup.RESTORE_MIRROR not in captured[False], (
+        "the mirror was pulled by a run that did not ask for it"
+    )
+
+
+def test_the_snapshot_flag_chooses_which_dated_snapshot_is_pulled(cfg):
+    """``--snapshot``, pinned on the argv the transfer is actually given.
+
+    Measured on the review's own row: ignoring the flag and always taking the
+    newest killed nothing, because no test ever read the path a transfer was
+    handed.
+    """
+    acknowledge(cfg)
+    seen: list[tuple[str, ...]] = []
+
+    def runner(command):
+        seen.append(tuple(command.argv))
+        return backup.CommandResult(returncode=0, stdout="2026-08-01T000000Z/\n")
+
+    restore_cli.restore_under_one_session(
+        cfg,
+        session_id=None,
+        from_backup=True,
+        snapshot="2026-08-02T111111Z",
+        runner=runner,
+        process_lister=lambda: (),
+        **gate_seams(cfg),
+    )
+
+    copies = [argv for argv in seen if "copy" in argv]
+    assert copies, "no transfer was attempted"
+    assert all("2026-08-02T111111Z" in " ".join(argv) for argv in copies), (
+        f"the named snapshot did not reach the transfer: {copies}"
+    )
+
+
+# ── the two properties nothing pinned at either layer ─────────────────────────
+
+
+def test_the_default_takes_the_newest_of_several_spendable_captures(cfg):
+    """Newest FIRST, pinned where reversing the order can actually be seen.
+
+    The independent review's strongest zero: reversing this module's walk over
+    the listing killed nothing, and so did reversing ``list_sessions``'s own
+    ordering one layer down. Both rows were inert because the only spendable
+    session in the fixture the older test built was ALSO the oldest, so newest
+    and oldest were the same row. Two spendable sessions is the smallest fixture
+    in which the two answers differ.
+    """
+    older, _first = completed_session(cfg, started="2026-08-01T00:00:00+00:00", stamp="a")
+    newer, _second = completed_session(cfg, started="2026-08-02T00:00:00+00:00", stamp="b")
+    assert older.session_id != newer.session_id
+
+    chosen = restore_cli._newest_restorable(cfg)
+
+    assert chosen is not None
+    assert chosen.session_id == newer.session_id, (
+        f"the default took {chosen.session_id}, which is not the newest spendable "
+        f"capture of the two"
+    )
+
+
+def test_a_capture_that_exists_but_is_unverified_is_not_spendable(cfg):
+    """The VERIFIED half of spendable, which nothing pinned at either layer.
+
+    A capture whose manifest is present and whose integrity check never passed is
+    exactly the capture a restore must not reach for by default: the files are
+    there and nothing has established they are the files. Measured on the
+    review's own rows, widening ``restorable`` to drop this half killed nothing.
+    """
+    record, captured = completed_session(cfg)
+    only = restore_cli._newest_restorable(cfg)
+    assert only is not None and only.session_id == record.session_id, (
+        "the fixture's own capture is not spendable, so this pins nothing"
+    )
+
+    manifest = captured.root / snapshot.MANIFEST_NAME
+    document = json.loads(manifest.read_text())
+    assert document.get("integrity_verified") is True, (
+        "the fixture's capture was never verified, so clearing the flag pins nothing"
+    )
+    document["integrity_verified"] = False
+    manifest.write_text(json.dumps(document))
+
+    assert restore_cli._newest_restorable(cfg) is None, (
+        "an unverified capture was offered as the default restore target"
+    )
+

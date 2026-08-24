@@ -4668,7 +4668,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # export, and report-as-of-invalid, which is an aging report handed a value
     # that is not a date. Population 128 to 130, non-reserved 105 to 107,
     # reserved half UNCHANGED at 23.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (130, 107, 23)
+    # Re-pinned on U27's restore shell, 2026-08-23. ONE slug, named rather than
+    # counted: restore-transfer-failed, which an independent review's blocking
+    # finding bought. It is the first slug this unit adds to BOTH tables, which is
+    # why the reserved half moves for the first time in eight re-pins: the eight
+    # backup refusals landing in cause.REASONS alongside it were ALREADY reserved,
+    # so they moved from the reserved-only side to the both side and left this
+    # union unchanged. Population 130 to 131, non-reserved UNCHANGED at 107,
+    # reserved half 23 to 24.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (131, 107, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4717,7 +4725,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # slugs this unit adds to `cause.REASONS` were ALREADY literals in the tree,
     # in `modules/tools/backup.py`'s own `Refusal` enum, so they move from the
     # non-key side to the key side and the distinct total does not see them.
-    assert (len(literals), len(literals - set(causes))) == (310, 181), (
+    # Re-pinned again in U27's second fix round, 2026-08-23: 310 to 311 distinct,
+    # non-keys UNCHANGED at 181. The one that joined is `restore-transfer-failed`,
+    # differenced as SETS against `origin/main` the same way, and it is a KEY on
+    # both sides, so the non-key half does not move with it. Nothing left.
+    assert (len(literals), len(literals - set(causes))) == (311, 181), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

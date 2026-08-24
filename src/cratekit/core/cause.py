@@ -1230,6 +1230,11 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "restore-not-confirmed": ExitCode.DECISION_REQUIRED,
         "restore-target-absent": ExitCode.LIBRARY_UNAVAILABLE,
         "no-snapshot-available": ExitCode.PRECONDITION,
+        # Appended in U27's second fix round rather than with the eight above,
+        # because it did not exist when they landed: the review found that
+        # ``run_restore`` never read a return code, so this is the slug the
+        # reading now raises under.
+        "restore-transfer-failed": ExitCode.PRECONDITION,
     }
 )
 

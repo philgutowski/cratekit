@@ -44,12 +44,16 @@ then derived under the lock and checked again there, and
 set does not name what a restore would actually destroy, so nothing here rests
 on the digest alone.
 
-NO WORKFLOW LABEL IS PASSED TO THE SESSION, deliberately.
-``core.restore.CAPTURE_RESTORE_WORKFLOW`` and ``backup.RESTORE_WORKFLOW`` are two
-different labels landing in one log field precisely so an rclone pull and a
-capture restore stay distinguishable afterwards. Handing the verb name down
-would collapse both into one string and erase the distinction that constant
-exists to hold.
+NO WORKFLOW LABEL IS PASSED TO THE SESSION, and the whole verb is therefore
+recorded under ``core.restore.CAPTURE_RESTORE_WORKFLOW``. An earlier version of
+this paragraph said the point was to keep that label and
+``backup.RESTORE_WORKFLOW`` distinguishable in the log, which is FALSE HERE and
+was measured false by an independent review: handing the off machine half the
+already open guard means ``backup._restore_gates`` returns that guard instead of
+opening a session of its own, so its label never reaches the log at all, on any
+path. One acquisition and two labels are mutually exclusive, and this unit chose
+the acquisition. The consequence, that the session log cannot tell a run which
+pulled a mirror from one which did not, is recorded rather than papered over.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and
 :mod:`cratekit.cli.exit_codes` and nothing else from the command-line layer, and
@@ -300,15 +304,46 @@ def _named(cfg: config.Config, session_id: str) -> restore.Restorable:
     to a different session, and the row itself already carries the sentence
     saying why. One message for both would send half of them to the wrong place.
 
-    IT DOES NOT REFUSE AN UNUSABLE CAPTURE HERE. The plan refuses it under the
-    lock with the engine's own diagnosis, which is more specific than anything
-    this layer could restate, and restating it would be a second opinion that
-    can drift. What this layer owes is the identifier check the engine cannot
-    make, because the engine is handed one identifier and never sees the list.
+    IT REFUSES AN UNUSABLE CAPTURE HERE TOO, and the docstring that used to say
+    the opposite was wrong in a way a person met. It claimed the plan refuses one
+    under the lock "with the engine's own diagnosis, which is more specific than
+    anything this layer could restate". Measured on 2026-08-23, by driving this
+    product's OWN retention to delete a capture whose session record stays in the
+    log, that diagnosis is a raw errno carrying ``internal-error`` and
+    ``report-defect``: a person is told to file a bug about a directory the tool
+    removed on purpose, while ``restore list`` sitting beside it explains the
+    situation correctly in a sentence.
+
+    SO THE SENTENCE THE LISTING ALREADY COMPUTED IS WHAT IS RAISED, rather than a
+    second opinion invented here. ``Restorable.unusable`` is one string produced
+    in one place, and both surfaces now say it.
+
+    AND IT REFUSES BEFORE ANY SESSION OPENS, which is the half that matters with
+    ``--from-backup``. The off machine pull runs first, so a refusal deferred to
+    the plan let two transfers complete and the live companion files be cleared
+    before anything looked at whether the capture could be spent at all.
     """
     for entry in restore.list_sessions(cfg):
-        if entry.session_id == session_id:
-            return entry
+        if entry.session_id != session_id:
+            continue
+        if entry.unusable:
+            raise CratekitError(
+                Cause(
+                    reason="restore-record-unusable",
+                    message=(
+                        f"session {session_id} cannot be restored: {entry.unusable}"
+                    ),
+                    remediation=Remediation(
+                        steps=(
+                            "run the restore listing and choose a session whose "
+                            "capture is still spendable",
+                        )
+                    ),
+                    origin=("session.restore_cli",),
+                    detail={"session_id": session_id, "unusable": entry.unusable},
+                )
+            )
+        return entry
     raise CratekitError(
         Cause(
             reason="restore-record-unusable",
@@ -508,7 +543,7 @@ def restore_under_one_session(
                     **_seam("runner", runner),
                     **_seam("process_lister", process_lister),
                 )
-                backup.run_restore(
+                ran = backup.run_restore(
                     pulled,
                     cfg,
                     dry_run=dry_run,
@@ -517,12 +552,22 @@ def restore_under_one_session(
                 )
             except backup.BackupRefused as exc:
                 raise _refused(exc) from exc
-            # THE PLAN'S COMMANDS RATHER THAN THE RUNNER'S RESULTS. A dry run
-            # neutralizes every transfer, so the results describe a rehearsal
-            # either way; what a person needs reported is which transfers this
-            # restore was made of, and ``dry_run`` on the report already says
-            # whether they happened.
-            transferred = tuple(command.label for command in pulled.commands)
+            # THE RESULTS, NOT THE PLAN'S COMMANDS, and the earlier spelling of
+            # this line was half of a blocking defect. Reporting the planned
+            # labels said a transfer had happened whether or not it had, and
+            # ``run_restore`` was returning its results unread, so a restore
+            # whose every copy failed reported two completed transfers and exited
+            # OK, with the live companion files already cleared. The reading is
+            # now in ``run_restore`` where every caller gets it, and this line no
+            # longer describes work it did not watch.
+            #
+            # ONE LABEL PER RESULT, zipped strictly, so a runner returning fewer
+            # results than the plan holds commands is a hard failure here rather
+            # than a report that quietly lists the shorter of the two.
+            transferred = tuple(
+                command.label
+                for command, _result in zip(pulled.commands, ran, strict=True)
+            )
         if session_id is None:
             return RestoreReport(pulled=transferred, outcome=None, dry_run=dry_run)
         decided = restore.plan(
