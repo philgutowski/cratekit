@@ -25,12 +25,30 @@ rule, never to find out how to work.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 0
 
-Main's tip subject is the U28 review evidence commit. **No hash is written here
-on purpose**, since this file is part of the commit it would be naming. Check the
-subject and `git status -sb` for the ahead or behind count instead.
+Main's tip subject names this file's own restart commit. **No hash is written
+here on purpose**, since this file is part of the commit it would be naming.
+Check the subject and `git status -sb` for the ahead or behind count instead.
 
 **Thirty seven units are done.** The last measured suite was **6239 passed and 1
 skipped**. **Main's highest residual is R-164.** Append only.
+
+## What the last session compounded
+
+Two learnings were filed, both in `docs/solutions/workflow-issues/`, and both
+came out of an adversarial review returning BLOCKING on a unit whose own battery
+was green.
+
+- `adding-the-first-caller-makes-you-the-owner-of-its-unreviewed-defects.md`,
+  from U27. A restore whose every transfer failed exited OK, and the callee had
+  shipped that way for as long as nothing called it.
+- `a-checker-that-reimplements-what-it-checks-drifts-and-stays-green.md`, from
+  U28. It also extends `CONCEPTS.md`'s Guard entry with a third axis, whether a
+  guard consults the real subject or a model of it.
+
+The second one flags one thing for a human to decide rather than doing it:
+`docs/METHOD.md`'s "What a green suite cannot see" list has four items, and this
+learning is a fifth of exactly that shape. METHOD is the auto loaded contract, so
+a compound run does not edit it.
 
 ## The one open unit, and why the board is wrong about it
 
