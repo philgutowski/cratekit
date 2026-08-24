@@ -1,21 +1,19 @@
 # Restart: Cratekit
 
-**Last session 2026-08-23.** Board audit exit 0. `board.py next` names issue 27
-as already In Progress and then names nothing ready. That is not an empty build.
-Issue 27 is held open on purpose, and the ONE module it still owes,
-`cratekit.session.restore_cli`, is the remaining unit work. Two of the three
-landed on 2026-08-23: `cratekit.cli.reports` and `cratekit.adopt.apply_cli`.
+**Last session 2026-08-24.** U27 and U28 both merged and pushed. Board audit
+exit 0, 38 units, 37 done. **The pending register is EMPTY for the first time in
+this build**, and the only open unit is issue 29.
 
 ## Do this first
 
 1. `docs/METHOD.md`. The operating instruction: the merge bar, the workspace
-   rules, the mutation table method, the driver rules, the four defect
-   patterns, the battery, what CI is for, the merge constraints and the cost
-   rules.
+   rules, the mutation table method, the driver rules, the four defect patterns,
+   the battery, what CI is for, the merge constraints and the cost rules. **Read
+   its "Do not touch" section before touching issue 29**, because the board will
+   tell you to take it.
 2. `CLAUDE.md` is the session contract.
 3. This file for the current wave state. `docs/HANDOFF.md` is the longer
-   narrative. Its pending table is a copy of `tests/_pending.py` and has
-   drifted; the register is the authority.
+   narrative.
 
 Older `wave-state-*.md` files are history. Read one for the reasoning behind a
 rule, never to find out how to work.
@@ -24,19 +22,53 @@ rule, never to find out how to work.
 
     git log --oneline -1                        # subject below, and pushed
     git status --porcelain                      # empty
-    .venv/bin/pytest --tb=no                    # run it; do not trust a count written here
+    .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 0
 
-Main's tip subject is the merge of `cratekit.adopt.apply_cli` under U27. **No hash is written here on purpose.**
-This file is itself part of the commit it would be naming. Check the subject
-and `git status -sb` for the ahead or behind count instead.
+Main's tip subject is the U28 review evidence commit. **No hash is written here
+on purpose**, since this file is part of the commit it would be naming. Check the
+subject and `git status -sb` for the ahead or behind count instead.
 
-**Thirty five units are done.** The three still open are issue 27 (U27), issue
-28 (U28), and issue 29 (U29). U33 shipped as `cratekit.export.cli` and
-`cratekit.favorites.cli`. The shared engine is `cratekit.modules.outbound`.
-Live account verification is R-144. Post-merge U26 findings are R-135 through
-R-143. **Main's highest residual is R-148**, adoption's memberships being
-collected and never written. Append only.
+**Thirty seven units are done.** The last measured suite was **6239 passed and 1
+skipped**. **Main's highest residual is R-164.** Append only.
+
+## The one open unit, and why the board is wrong about it
+
+`board.py next` says **Take #29**. Do not take it. Ready is a statement about
+DEPENDENCIES and not about who can do the work, and all seven of U29's blockers
+are now closed, which is the only reason it says Ready.
+
+U29 is the cutover and retirement of the live system. Its own brief says
+**attended per workflow, do not batch cutovers**, and it requires each
+replacement to run correctly **on the live library at least once**. The live
+rekordbox database is off limits by standing constraint, so an agent can prepare
+for U29 and cannot perform it. `docs/METHOD.md` now says this in the do-not-touch
+section rather than just naming the unit, so the reasoning does not have to be
+rediscovered.
+
+**What is already prepared for it.** `tests/test_cutover_parity.py` is the parity
+table U29's own test scenario asks for. It derives coverage from the verb
+registry and fails when a Feature Inventory row has no covering verb, in both
+directions.
+
+**The cutover backlog is TEN of thirty seven rows, and it splits in two.**
+
+| half | rows | waiting on |
+|---|---|---|
+| declared and unbuilt | 6, 7, 29, 30, 31 | a unit that exists: `acquire.download`, `acquire.audit`, `setbuild`, `master`, `backup.run` |
+| cited by no registry entry at all | 16, 18, 19, 23, 32 | somebody deciding whether the product covers them |
+
+The second half is the one that surprises. A parity table derived from the
+registry alone reports those five as though they do not exist, which is why the
+test reads the inventory instead. The first measurement taken for U28 put the
+backlog at five.
+
+## What else is open, and none of it is the queue
+
+Every other open issue is the residual ledger or an attended chore: #38 through
+#54 are residual issues from a single batch created on 2026-08-02, and A1 (#49)
+and A2 (#50) are attended chores. **Do not take a residual issue and do not
+backfill the rest of the ledger onto the board.**
 
 ## The branches
 
@@ -44,60 +76,26 @@ collected and never written. Append only.
 |---|---|---|
 | `fix/conformance-3-and-soft-delete-reader` | five defects in the scoping and exclusion rules | parked in `.worktrees/conformance`. Its `write/metadata.py:195` defect is live on main. Do not touch the worktree or the branch. |
 
-## What to do next, in order
-
-**Work is picked from the board, by number.** `board.py next` will print issue
-27 as already In Progress and then say nothing is ready. Do not stop. Do not
-invent work from the ledger. Do not run `board.py start` on issue 27 again.
-
-1. **Stay on issue 27. One module left: `cratekit.session.restore_cli`.**
-   The wizard and doctor merged first, `cratekit.cli.reports` landed on
-   2026-08-23, and `cratekit.adopt.apply_cli` landed the same day. The issue
-   stays open because the register still owes the restore verbs. A closing
-   trailer naming that issue would make `board.py audit` exit 2. Landing it is
-   what unblocks issue 28, which unblocks issue 29. Branch by hand. Leave the
-   issue open until it lands or is re-owned.
-
-   **The restore verbs are the hardest of the three and were left for last on
-   purpose.** `restore.run` declares two gates, one of them explicit, is
-   destructive, and needs one session held across the whole restore through
-   `core.restore.recovery_session`, passed in as `plan_restore`'s and
-   `run_restore`'s gates, because the default shape takes the library lock
-   twice. Read `cratekit/adopt/apply_cli.py` before starting: it is the worked
-   example of a destructive, explicitly gated, long running verb, and its
-   `apply_outstanding` is the shape a held session takes here.
-2. **Do not take issue 28 or issue 29 while they are blocked.** 28 waits on 27.
-   29 waits on 28.
-3. **Do not reopen issues 26, 24, or 25.** Do not re-own the three modules onto
-   new issues unless Phillip asks. Moving them would make 28 Ready without
-   landing the verbs.
-4. **#54, R-102**, the allowlist audit being one hop deep. A real design change
-   rather than a unit. Not the queue.
-
-`docs/METHOD.md` is over 300 lines against the 80 it was written to be and still
-wants a trim pass. Do not trim "What CI is for".
-
 ## Standing decisions
 
 - **The board is the BUILD, `docs/residual-findings.md` is the LEDGER.** Units
   and attended chores are issues; a residual earns one only if somebody decides
   to act on it. **Do not backfill.**
 - **Residual numbers are APPEND ONLY.** Main's numbers never move; an incoming
-  branch's residuals take fresh numbers above main's highest. **Main's highest
-  is R-148.**
-- **A renumber is NOT finished inside `docs/residual-findings.md`.** Repoint
-  only the lines the branch ADDED.
+  branch's residuals take fresh numbers above main's highest. **Main's highest is
+  R-164.**
+- **The pending register is empty.** `tests/test_pending_units.py` now carries a
+  test that says so out loud, because an emptily parametrized countdown is
+  SKIPPED by pytest and a silent skip is the exact hazard that file warns about.
+  Re-opening any countdown re-arms the machinery with no edit.
 - **CI does not run the suite and never will on Linux.** A step in the workflow
-  must be able to pass. A check that cannot belongs in the battery. See METHOD.
+  must be able to pass. See METHOD.
 - **Use `scripts/mutate.py`.** Do not hand roll a driver. Pass `--repo-root` and
   `--out-dir` when driving a worktree from the main checkout's script.
 - **A finding blocks only if its input is REACHABLE and you drove the producer.**
-- **U24 merges WITHOUT a closing trailer.** U27's code has merged; its issue
-  stays open. Every other unit gets a trailer, and check which issue it is
-  BEFORE writing the merge commit.
-- **Do not touch** U30's board state, U29's board state, A1, A2, or
-  `.worktrees/conformance`.
-- **Two or three units per session.**
+- **Every unit gets a trailer**, and U24's exception is the only one left. Check
+  which issue it is BEFORE writing the merge commit.
+- **Do not touch** U30's board state, U20, R-9, A1, A2, or `.worktrees/conformance`.
 
 ## Nine things that will bite you
 
@@ -106,46 +104,38 @@ run it as a GATE that stops the push. Never write a closing keyword next to an
 issue number, even to quote one; backticks do not defuse it.
 
 **A unit's issue number does NOT reliably match its unit number.** U38 is #51.
-Look it up before writing any trailer.
 
-**A COUNTDOWN DISCHARGE IS THREE EDITS IN ONE COMMIT**, the entry, the mirrored
-key in `EXPECTED_PENDING`, and the `@requires` decorator on every guard the key
-gated. Run `grep -rn 'requires("<key>")' tests/` before deleting anything, and
-run the newly armed guard on purpose.
+**A COUNTDOWN DISCHARGE IS THREE EDITS IN ONE COMMIT.** The register is empty
+now, so the next one to open is also the next one to get this wrong. Also:
+removing the last entry leaves `frozenset({})`, and empty braces are a DICT, which
+crashes the AST guard that reads the literal; and annotating the register turns an
+`Assign` into an `AnnAssign` that guard was not looking for.
 
-**A GUARD WRITTEN TO FAIL ON A DATE WILL FAIL ON THAT DATE.** Answer it rather
-than delete it: derive what it forbids from the registry so the property
-outlives the verb.
+**A `path:` KEY IS COUPLED TO A LOCATION THE REGISTER CANNOT SEE.** `_is_absent`
+resolves one against the repository root, so a key naming a location the landing
+unit then has to change stays green forever and the register goes on claiming a
+debt that is paid. That is R-158, and it is why `path:skills` never fired.
 
 **Every agent gets its own worktree, its own venv and its own scratch directory.
 None of that isolates the PROCESS TABLE.** Kill by PID. Build venvs with
 `/opt/homebrew/bin/python3.12`. Never symlink a venv.
 
 **Reconcile the collected count by IDENTIFIER, under `LC_ALL=C`, against the
-UNION of both sides, and check the cwd of the shell you count from.** A total
-moving by the right amount is not a reconciliation.
+UNION of both sides.** A total moving by the right amount is not a reconciliation.
 
 **A FINDING'S MECHANISM HAS TO BE DRIVEN, NOT ONLY ITS EXISTENCE**, and so does
-its CAUSE. Before blaming the platform for a red CI run, clone at depth 1 and
-run it here.
+its CAUSE. Both of U28's blocking findings were driven again locally before being
+acted on, and doing so corrected the reported count on one of them.
 
-**Re-pinning a population means naming what moved, not matching a count.**
-The at-risk population pin in `tests/test_reserved_causes.py` fires on almost
-every unit. Name the module by differencing the two SETS, measured by running the
-same derivation over `origin/main`'s own `src` tree extracted into a scratch
-directory. A count moving by one says a module joined and does not say which, and
-a module leaving while another joined reads identically.
+**Re-pinning a population means naming what moved, not matching a count.** Name
+the module by differencing the two SETS against `origin/main`'s own `src` tree
+extracted into a scratch directory. U28 moved the holder count without moving the
+literal count, which a pin watching totals alone would read as nothing happening.
 
-**A LONG RUNNING VERB WITH AN EXPLICIT GATE NEEDS ITS RUN IN THE PAYLOAD, or the
-job it queues can never be driven.** The child the job driver spawns is a fresh
-process, so an argv naming only the job mints a NEW run, meets the explicit gate
-with nothing recorded against it, and exits DECISION_REQUIRED. Every respawn does
-the same and the queue holds a job nothing can advance. Nothing in the repository
-sees it: conformance 3 drives a verb WITHOUT a job, so it never reaches the
-resume branch. `adopt.apply` shipped this defect and fixed it in the same unit by
-freezing `ctx.run.run_id` in the payload and emitting `--run` on the argv. Check
-`restore.run` for the same shape before landing it, and drive the real
-`argv_for` output through the real dispatcher rather than reading the builder.
+**A CHECKER THAT REIMPLEMENTS THE THING IT CHECKS WILL DRIFT FROM IT.** U28's
+skill lint hand rolled a token walker doing three of argparse's jobs and checked
+no positional at all, so six of eight broken shipped commands passed it. Hand the
+input to the real thing.
 
 ## The remote
 
