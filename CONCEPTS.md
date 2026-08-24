@@ -282,6 +282,11 @@ carries work; it moves onto the board only if somebody decides to act on it.
 merge through the battery, which answers a different question and admits no
 exceptions.
 
+A residual is also a verdict about the world as it stands rather than a permanent
+grade. The same finding, over the same unchanged code, becomes blocking the moment
+something makes its input reachable, so a residual recorded against code nothing
+calls is a residual only until something calls it.
+
 Residual numbers are append only. A number, once given, belongs to that finding
 for life, and numbers already recorded never move when new ones arrive, because
 the number is cited from surfaces the repository cannot see and a renumber
@@ -297,6 +302,13 @@ The third condition is the one that is usually skipped. A cost over an input tha
 nothing can produce is not a cost, and the honest report of a failed hunt names
 how many candidate producers were driven rather than claiming that nothing
 produces it.
+
+Reachability is a property of a moment, not of a line, and that is what decides
+whose finding it is. A defect can sit unreachable for as long as nothing calls
+the code holding it, and become blocking without that code changing at all, on
+the day a change supplies the producer. The branch that made it reachable is the
+branch it blocks, because asking who wrote the line asks a question whose answer
+never makes anybody fix it.
 
 ## Flagged ambiguities
 
@@ -315,6 +327,11 @@ produces it.
 - "Confirm" and "accept" are not one write. A confirm gate records that the run
   may proceed. A verdict records what to do with a review item. The first without
   the second can report success and still do nothing.
+- "Reachable" names two questions that get answered at different times. One is
+  whether any producer exists that can be driven to the input at all, which is
+  what a hunt reports. The other is when the input became reachable, which is what
+  decides which branch a finding belongs to. A finding can fail the first question
+  today and pass it tomorrow with no change to the code it is about.
 - "bpm" is both the domain quantity and a file-tag spelling. The quantity may
   live on an attribute. The tag spelling may not appear as a mapping key in the
   package, because a mapping that carries it is treated as a grid write.
