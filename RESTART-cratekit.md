@@ -1,8 +1,9 @@
 # Restart: Cratekit
 
-**Last session 2026-08-24.** U27 and U28 both merged and pushed. Board audit
-exit 0, 38 units, 37 done. **The pending register is EMPTY for the first time in
-this build**, and the only open unit is issue 29.
+**Last session 2026-08-24.** U27 and U28 merged and pushed, the cutover
+dispositions audited, and two new units queued. Board audit exit 0, 40 units,
+37 done, 3 ready. **The pending register is EMPTY**, and the open units are
+issue 29 (attended, do not take), #57 (U39) and #58 (U40).
 
 ## Do this first
 
@@ -65,21 +66,31 @@ section rather than just naming the unit, so the reasoning does not have to be
 rediscovered.
 
 **What is already prepared for it.** `tests/test_cutover_parity.py` is the parity
-table U29's own test scenario asks for. It derives coverage from the verb
-registry and fails when a Feature Inventory row has no covering verb, in both
-directions.
+table U29's own test scenario asks for. Rewritten 2026-08-24: it now derives
+everything from `registry.FEATURES`, which carries each row's plan disposition,
+instead of vendoring a second copy of the inventory. A row is backlog only if its
+disposition is owed (core, module, reshaped) and no LANDED verb covers it, and a
+drift check compares the transcribed dispositions against the plan when DJ_tools
+is checked out beside this repo.
 
-**The cutover backlog is TEN of thirty seven rows, and it splits in two.**
+**The cutover backlog is FIVE of thirty seven rows**, 6, 7, 29, 30 and 31, each
+awaiting a declared verb: `acquire.download`, `acquire.audit`, `setbuild`,
+`master`, `backup.run`.
 
-| half | rows | waiting on |
-|---|---|---|
-| declared and unbuilt | 6, 7, 29, 30, 31 | a unit that exists: `acquire.download`, `acquire.audit`, `setbuild`, `master`, `backup.run` |
-| cited by no registry entry at all | 16, 18, 19, 23, 32 | somebody deciding whether the product covers them |
-
-The second half is the one that surprises. A parity table derived from the
-registry alone reports those five as though they do not exist, which is why the
-test reads the inventory instead. The first measurement taken for U28 put the
-backlog at five.
+The other five rows the first version reported as backlog were never backlog.
+The plan dispositioned 16, 18 and 19 Cut and 23 and 32 Defer on 2026-08-01, and
+the old test's vendored copy dropped the disposition column, so it reported
+settled decisions as open questions. A session's audit of all five (2026-08-24)
+confirmed 19, 23 and 32 and overturned two: 16's justification was false in the
+tree (the naming engine does not pad, and `name.apply` strips the head off any
+file it renames, driven and confirmed), and 18 leaves mis-tagged arrivals
+permanently parked in the fallback bucket. Phillip decided both: **U39 (#57)**
+fixes padding and `name.apply`, row 16 stays Cut and its note becomes true;
+**U40 (#58)** builds the retag verb and flips row 18 to Module, which requires
+amending the plan's row 18 cell in DJ_tools at merge time because the drift
+check couples the two trees. Both are on the board as Ready. Row 32's Defer was
+strengthened: the CLI must be complete for any user on its own, recorded in
+`CUT.md`.
 
 ## What else is open, and none of it is the queue
 

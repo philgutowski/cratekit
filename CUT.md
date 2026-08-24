@@ -21,7 +21,7 @@ noticed this existed" look identical in a diff six months later.
 
 | Source entry point | Why it is not at launch |
 |---|---|
-| `dj-web` | The web dashboard is Feature 32, deferred: the CLI is the launch product. Nothing about the dashboard is deleted, and the extras group stays declared. |
+| `dj-web` | The web dashboard is Feature 32, deferred: the CLI is the launch product. Confirmed 2026-08-24: the shipped CLI must be complete enough for any user on its own, so the desktop app is optional and never required, and nothing may treat a window as the only path to a workflow. Nothing about the dashboard is deleted, and the extras group stays declared. |
 | `dj-desktop` | The desktop wrapper is the same Feature 32 row and defers with it. |
 | `dj-label` | Building streaming-service playlist folders for a whole label is Feature 23, deferred post-launch. Importing a label into the library, which is the workflow that touches the library, is Feature 22 and does ship. |
 
