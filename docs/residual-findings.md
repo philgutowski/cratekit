@@ -9098,3 +9098,57 @@ the file surfaces are repairable on demand with `name.apply`.
 `plan_title_padding` against a disposable database copy and a person applies
 the result to the live library, or the decision is revisited and the planner
 is deleted with its tests.
+
+## R-166. The CUT.md reconciliation has no guard against drifting back apart
+
+**Found by** the independent adversarial review of U39, 2026-08-25.
+
+U39 existed partly to fix a live contradiction: `name.apply`'s registry entry
+claimed `dj-pad-camelot` through `source_scripts` while `CUT.md` simultaneously
+listed that script as not ported. The fix moved the row out of the cut table
+into a paragraph naming where each of the four padded surfaces lives.
+
+`tests/test_cli_contract.py::test_every_source_entry_point_is_either_mapped_or_written_down_as_cut`
+is the nearest test, and it asks only that a script be claimed by some entry's
+`source_scripts` OR named somewhere in `CUT.md`. That is an inclusive or, so
+the reconciled state and the contradictory state both satisfy it equally. The
+test cannot tell them apart in either direction.
+
+**Measured cost.** None to any person today, and the two records currently
+agree. The cost is that the exact defect class this unit was built to fix is
+unguarded against returning, on either side. `CUT1_prose_contradicted` restores
+the pre-U39 contradiction word for word and kills 0 of 6254, promoted to a full
+suite run before being reported.
+
+**Why it is not fixed here.** It is maintainer facing, so METHOD's severity
+floor says it can never block, and the fix is a new test asserting an exclusive
+relationship rather than a change to any shipped behaviour. Writing that test
+means deciding what the exclusive rule actually is for scripts that are partly
+ported, which is a question about the cut ledger's semantics rather than about
+this unit.
+
+**Closes when:** a test distinguishes a script that is claimed by a verb from
+one written down as cut, rather than accepting either.
+
+## R-167. The Camelot regex's end anchor has zero test coverage
+
+**Found by** the independent adversarial review of U39, 2026-08-25, in the
+existing-guard sample rather than in the round's own diff.
+
+`core/naming.py`'s `_CAMELOT_RE` is matched with `.match()`, which anchors only
+the start, so the pattern's trailing `$` is the only thing stopping a value
+like `1Axyz` from validating as `1A` with the junk ignored. `E3_camelot_anchor_dropped`
+removes the anchor and kills 0 of 6254, promoted to a full suite run.
+
+**Measured cost.** None today. The shipped anchor is correct and was driven
+directly: `is_camelot("1Axyz")` returns False and `parse_camelot("1Axyz")`
+returns None on this tree. The cost is that a regression removing the anchor
+would be invisible, and the values that would then validate are keys, which
+reach filenames and tag fields.
+
+**Why it is not fixed here.** It pre-dates this unit, this unit does not touch
+the expression, and the guard is currently correct. It is recorded because the
+sample surfaced it and METHOD says to record what a sample finds.
+
+**Closes when:** a test drives a Camelot code with trailing junk through
+`is_camelot` and `parse_camelot` and pins both refusals.

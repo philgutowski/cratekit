@@ -1,0 +1,336 @@
+name = "u39-naming-independent"
+pass_kind = "full"
+
+# Independent U39 review table. Derived without reading the author table's
+# zero-death claims. Scope is the round's own diff (naming.py's write-time
+# padding, naming_cli.py's shared spec builder, the registry correction) plus
+# a small fixed sample of existing guards this diff leans on. Several rows
+# here target branches the shipped suite exercises only in a form where both
+# operands of an `or` are simultaneously true, which a driven scratch fixture
+# (drive_u39.py, scenario G) shows is a live gap, not a theoretical one.
+
+[[rows]]
+id = "D1_default_pad_reverted"
+description = "Revert key_pad default to the pre-U39 unpadded written form"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+    key_pad: str = "camelot2"
+'''
+new = '''
+    key_pad: str = "none"
+'''
+
+[[rows]]
+id = "D2_pad_condition_inverted"
+description = "Invert the padding condition: pad exactly the off-wheel values and leave real Camelot codes alone"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+        if key_pad == "camelot2" and parse_camelot(rendered) is not None:
+'''
+new = '''
+        if key_pad == "camelot2" and parse_camelot(rendered) is None:
+'''
+
+[[rows]]
+id = "D3_pad_condition_unreachable"
+description = "The padding stage never fires for any key_pad value, including camelot2"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+        if key_pad == "camelot2" and parse_camelot(rendered) is not None:
+'''
+new = '''
+        if key_pad == "impossible-sentinel":
+'''
+
+[[rows]]
+id = "D4_fake_pad_no_zero_fill"
+description = "Padding uppercases but does not zero-fill, a plausible-looking near miss"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+            rendered = pad_camelot(rendered)
+'''
+new = '''
+            rendered = rendered.upper()
+'''
+
+[[rows]]
+id = "R1_filename_source_dropped"
+description = "Head recovery loses the filename source and keeps only the title fallback"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+    head = (
+        naming.parse_head(path.name, template=template)
+        or naming.parse_head(title, template=template)
+        or {}
+    )
+'''
+new = '''
+    head = (
+        naming.parse_head(title, template=template)
+        or {}
+    )
+'''
+
+[[rows]]
+id = "R2_title_fallback_dropped"
+description = "Head recovery loses the title fallback that heals the tag-then-rename crash window"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+    head = (
+        naming.parse_head(path.name, template=template)
+        or naming.parse_head(title, template=template)
+        or {}
+    )
+'''
+new = '''
+    head = (
+        naming.parse_head(path.name, template=template)
+        or {}
+    )
+'''
+
+[[rows]]
+id = "R3_head_precedence_swapped"
+description = "Title tried before filename: order swapped, not dropped, so it only shows up when the two heads disagree in VALUE"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+    head = (
+        naming.parse_head(path.name, template=template)
+        or naming.parse_head(title, template=template)
+        or {}
+    )
+'''
+new = '''
+    head = (
+        naming.parse_head(title, template=template)
+        or naming.parse_head(path.name, template=template)
+        or {}
+    )
+'''
+
+[[rows]]
+id = "R4_bpm_dropped"
+description = "The recovered tempo is discarded, reproducing the head-destroying defect this unit exists to fix"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        bpm=int(head["bpm"]) if "bpm" in head else None,
+'''
+new = '''
+        bpm=None,
+'''
+
+[[rows]]
+id = "R5_bpm_wrong_type"
+description = "The recovered tempo is coerced to float instead of int"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        bpm=int(head["bpm"]) if "bpm" in head else None,
+'''
+new = '''
+        bpm=float(head["bpm"]) if "bpm" in head else None,
+'''
+
+[[rows]]
+id = "R6_head_key_overrules_tag"
+description = "Precedence reversed: a stale head key wins over a corrected initialkey tag"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+    key = tag_key if tag_key and naming.is_camelot(tag_key) else head.get("key")
+'''
+new = '''
+    key = head.get("key") or tag_key
+'''
+
+[[rows]]
+id = "R7_junk_tag_admitted"
+description = "A non-Camelot initialkey tag reaches the renderer instead of being ignored"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+    key = tag_key if tag_key and naming.is_camelot(tag_key) else head.get("key")
+'''
+new = '''
+    key = tag_key if tag_key else head.get("key")
+'''
+
+[[rows]]
+id = "R8_stem_source_swapped"
+description = "Stem stripped from the raw filename stem instead of the title, a plausible refactor slip"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+    stem = naming.strip_head(title, template=template)
+'''
+new = '''
+    stem = naming.strip_head(path.stem, template=template)
+'''
+
+[[rows]]
+id = "K1_lossy_title_side_dropped"
+description = "The lossy OR loses its title operand; only a filename-carried marker is recognized"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        lossy=marker in path.stem or marker in title,
+'''
+new = '''
+        lossy=marker in path.stem,
+'''
+
+[[rows]]
+id = "K2_lossy_filename_side_dropped"
+description = "The lossy OR loses its filename operand; only a title-carried marker is recognized"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        lossy=marker in path.stem or marker in title,
+'''
+new = '''
+        lossy=marker in title,
+'''
+
+[[rows]]
+id = "K3_lossy_flag_dropped"
+description = "The shared spec loses the lossy flag entirely, recreating the plan/apply disagreement U39 closed"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        lossy=marker in path.stem or marker in title,
+'''
+new = '''
+        lossy=False,
+'''
+
+[[rows]]
+id = "W1_db_surface_restored"
+description = "name.apply reclaims db_metadata it never writes, with no cloud-sync gate to answer it"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+old = '''
+        writes=frozenset({"files"}),
+        destructive=True,
+        doctor_checks=("library.mounted", "rekordbox.pins"),
+'''
+new = '''
+        writes=frozenset({"db_metadata", "files"}),
+        destructive=True,
+        doctor_checks=("library.mounted", "rekordbox.pins"),
+'''
+
+[[rows]]
+id = "W2_unreachable_gate_restored"
+description = "name.apply redeclares the cloud-sync decision its own work can never raise"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+old = '''
+            GateSpec(
+                name="name.apply.confirm",
+                options=("apply", "abort"),
+                prompt="Apply these renames?",
+                digest_source="plan",
+            ),
+        ),
+'''
+new = '''
+            GateSpec(
+                name="name.apply.confirm",
+                options=("apply", "abort"),
+                prompt="Apply these renames?",
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+'''
+
+[[rows]]
+id = "CUT1_prose_contradicted"
+description = "CUT.md's reconciliation claim is reverted to say the script is NOT ported, directly contradicting registry.py's source_scripts claim"
+file = "CUT.md"
+surface = "maintainer"
+old = '''
+## A script absorbed in halves
+
+`dj-pad-camelot` is claimed by `crate name apply` rather than listed above, and
+the claim needs a paragraph because the script's convention lives on more
+surfaces than the verb touches. The padded Camelot form sits on four: the
+'''
+new = '''
+## A script absorbed in halves
+
+`dj-pad-camelot` is not ported. The zero-padding pass is absorbed into the
+naming engine, which applies the same rule at write time. A separate sweep
+exists only because naming was not template-driven. The padded Camelot form sits on four: the
+'''
+
+[[rows]]
+id = "M1_refusal_reworded"
+description = "Reword the unwritable-key refusal instead of appending to it, so an `in` assertion cannot see the change"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+            f"{name}={value!r} renders as {rendered!r}, which this engine cannot "
+'''
+new = '''
+            f"{name}={value!r} is not something this template can round trip: "
+'''
+
+[[rows]]
+id = "E1_budget_ordering_inverted"
+description = "Existing guard sample: the budget-narrower-than-written refusal is inverted rather than disabled outright"
+file = "src/cratekit/core/naming.py"
+surface = "maintainer"
+old = '''
+        if KEY_PADS.index(self.budget_key_pad) < KEY_PADS.index(self.key_pad):
+'''
+new = '''
+        if KEY_PADS.index(self.budget_key_pad) > KEY_PADS.index(self.key_pad):
+'''
+
+[[rows]]
+id = "E2_wheel_letter_widened"
+description = "Existing guard sample: the Camelot letter class admits C, not just A/B"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+_CAMELOT_LETTER = r"[AB]"
+'''
+new = '''
+_CAMELOT_LETTER = r"[ABC]"
+'''
+
+[[rows]]
+id = "E3_camelot_anchor_dropped"
+description = "Existing guard sample: the Camelot regex loses its end anchor, admitting trailing junk"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+_CAMELOT_RE = re.compile(rf"^0?({_CAMELOT_NUMBER})({_CAMELOT_LETTER})$", re.IGNORECASE)
+'''
+new = '''
+_CAMELOT_RE = re.compile(rf"^0?({_CAMELOT_NUMBER})({_CAMELOT_LETTER})", re.IGNORECASE)
+'''
+
+[[dropped]]
+id = "S1_constructor_sites"
+description = "Mutate each of the six template constructor call sites individually"
+reason = "the round changed no constructor; every site inherits the default D1 already measures, so six rows would re-measure one guard six times"
+
+[[dropped]]
+id = "S2_strip_and_claim_guards"
+description = "Mutate strip_head, dedupe_stem and claim_target internals"
+reason = "untouched by this round and measured by prior tables; ranked below the E-series existing-guard sample already taken"
+
+[[dropped]]
+id = "S3_config_key_pad_threading"
+description = "Mutate config.py's naming section defaults"
+reason = "no site in this round reads a config value for key_pad; the six constructors all use the NameTemplate default directly (verified by reading, not measured), so a config-layer row would test nothing this round touches"
