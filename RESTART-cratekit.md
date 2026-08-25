@@ -1,10 +1,9 @@
 # Restart: Cratekit
 
-**Last session 2026-08-25.** U39 merged and pushed after an independent review
-returned CLEAN, then a live data loss defect was found in the verb it repairs
-and filed as U41. Board audit exit 0, 41 units, 38 done, 3 ready. **The pending
-register is EMPTY**, and the open units are issue 29 (attended, do not take),
-#58 (U40) and #59 (U41). **Take U41 first**, and the section below says why.
+**Last session 2026-08-25.** U39 and U41 both merged and pushed, each after an
+independent adversarial pass returned CLEAN. Board audit exit 0, 41 units, 39
+done, 2 ready. **The pending register is EMPTY**, and the open units are issue
+29 (attended, do not take) and #58 (U40), which is the only takeable one.
 
 ## Do this first
 
@@ -31,8 +30,8 @@ Main's tip subject names this file's own restart commit. **No hash is written
 here on purpose**, since this file is part of the commit it would be naming.
 Check the subject and `git status -sb` for the ahead or behind count instead.
 
-**Thirty eight units are done.** The last measured suite was **6256 passed and 1
-skipped**. **Main's highest residual is R-168.** Append only.
+**Thirty nine units are done.** The last measured suite was **6265 passed and 1
+skipped**. **Main's highest residual is R-180.** Append only.
 
 ## What the last session did
 
@@ -105,10 +104,10 @@ amending the plan's row 18 cell in DJ_tools at merge time because the drift
 check couples the two trees. Row 32's Defer was strengthened: the CLI must be
 complete for any user on its own, recorded in `CUT.md`.
 
-**U39 merged 2026-08-25 and row 16's note is now true.** U40 (#58) and U41 (#59)
-are the takeable units. **U41 should go first**, because `name.apply` is the
-padding sweep U29's cutover would run over the real library, and until U41 lands
-that sweep destroys the artist on almost every file.
+**U39 and U41 both merged 2026-08-25.** Row 16's note is true and the padding
+sweep is safe to run: `name.apply` derives the head and carries each surface's
+body, so it no longer truncates a name to its title tag. **U40 (#58) is the only
+takeable unit.**
 
 ## What else is open, and none of it is the queue
 
@@ -130,7 +129,7 @@ backfill the rest of the ledger onto the board.**
   to act on it. **Do not backfill.**
 - **Residual numbers are APPEND ONLY.** Main's numbers never move; an incoming
   branch's residuals take fresh numbers above main's highest. **Main's highest is
-  R-168.**
+  R-180.**
 - **The pending register is empty.** `tests/test_pending_units.py` now carries a
   test that says so out loud, because an emptily parametrized countdown is
   SKIPPED by pytest and a silent skip is the exact hazard that file warns about.
@@ -144,7 +143,15 @@ backfill the rest of the ledger onto the board.**
   which issue it is BEFORE writing the merge commit.
 - **Do not touch** U30's board state, U20, R-9, A1, A2, or `.worktrees/conformance`.
 
-## Twelve things that will bite you
+## Thirteen things that will bite you
+
+**A GUARD THAT RUNS ZERO TIMES REPORTS THE SAME GREEN AS ONE THAT HOLDS.** U41's
+central test was a loop over the planned moves with no assertion outside it, so
+an implementation proposing no rename passed it. Four reviewers read that test,
+two of them arguing about whether its first assertion was redundant, and the
+independent pass found it by stubbing the plan pass empty. Any test whose whole
+body is a `for` over a computed collection owes an assertion on that collection's
+length, and R-173 is the worked case.
 
 **A REVIEWER'S REASON FOR LEAVING A ZERO ROW AT ZERO IS ITSELF A CLAIM.** U39's
 independent pass called one row unkillable because the file already equalled its
