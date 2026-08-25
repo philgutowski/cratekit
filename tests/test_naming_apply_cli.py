@@ -225,3 +225,16 @@ def test_a_marker_in_the_title_alone_is_still_recovered(configured):
     marker = configured.naming.lossy_marker
     _track(folder, "Cola.flac", title=f"{marker} Cola")
     assert _moves(_plan(folder)) == [("Cola.flac", f"{marker} Cola.flac")]
+
+
+def test_a_marker_in_the_filename_alone_is_not_stripped_off(configured):
+    """The other operand of the same ``or``, and the direction that loses data.
+    An acquired file is marked in its name while its title tag arrives clean
+    from the source. If only the title were consulted the render would drop
+    the marker, and the pass would propose renaming the marked file to its
+    unmarked form, which is how a lossy copy and its lossless twin stop being
+    distinguishable. It proposes nothing instead."""
+    folder = _folder(configured)
+    marker = configured.naming.lossy_marker
+    _track(folder, f"{marker} Cola.flac", title="Cola")
+    assert _plan(folder)["items"] == []
