@@ -191,6 +191,19 @@ mutated site, never by counting. They also want opposite fixes, since a real zer
 is answered with a test and an inert one can only be answered with a better
 mutation, because no test can distinguish two trees that behave the same.
 
+Reading the site is necessary and not sufficient, because the judgment is about
+behaviour UNDER the mutation rather than about the line as it stands. An argument
+that a row could not be killed has to say what the mutated tree does with some
+input and show the original doing the same, and an argument that describes only
+the original is not about the row at all, however true it is. The tempting form
+of the mistake notices that a subject already equals its own rendered output
+today and concludes that nothing could separate the trees, when applying the
+mutation is precisely what changes that output. So a dismissal is a claim and is
+driven like any finding. An author's table is a draft because an author mutates
+what they believe they changed; a reviewer's reason for leaving a zero at zero is
+a draft in the same way, and independence from the code buys better measurements
+without buying better reasoning.
+
 Every batch already contains one deliberate inert row, the null control, which the
 driver writes and which must kill nothing or the apparatus rather than the code is
 broken. It is the concept implemented and, until it was named here, never named.
