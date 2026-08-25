@@ -60,6 +60,25 @@ def _spec_for(path: Path, *, template: NameTemplate, cfg: config.Config) -> Name
     survives in the title and not in the filename. The key prefers the tag,
     because renaming from metadata is the verb's job; the head fills silence
     and supplies the tempo, which has no tag field at all, structurally.
+
+    THE HEAD IS DERIVED AND THE BODY IS CARRIED (U41). Each surface keeps its
+    own body: the filename's body renders the filename, the title tag's body
+    renders the tag. ``NameSpec`` always held ``stem`` and ``title`` separately
+    for exactly this, and collapsing them onto one value is what made a rename
+    destructive. Composing the filename from the tag dropped the artist off
+    almost every file in the library, since the convention keeps the artist in
+    the name and the title alone in the tag (R-168). Feeding the filename's
+    body the other way would have been worse, stuffing the artist and the album
+    into every title tag the apply pass rewrites.
+
+    No recomposition rule is attempted and that is the decision, not an
+    omission. Measured over the library on 2026-08-25, read only: 53 percent of
+    names are ``Title - Artist - Album``, 25 percent are ``Artist - Title``,
+    one percent have a body equal to the title tag, and the remainder differ
+    from the tag only because the filesystem cannot hold a colon or a quote. No
+    single rule fits that, so the verb pads the head it understands and leaves
+    the text it does not. Normalizing the library to one grammar is a separate
+    decision for a person to take deliberately.
     """
     title = tags.read_tag(path, "title") or path.stem
     head = (
@@ -70,13 +89,12 @@ def _spec_for(path: Path, *, template: NameTemplate, cfg: config.Config) -> Name
     tag_key = tags.read_tag(path, "initialkey")
     key = tag_key if tag_key and naming.is_camelot(tag_key) else head.get("key")
     marker = cfg.naming.lossy_marker
-    stem = naming.strip_head(title, template=template)
     return NameSpec(
-        stem=stem,
+        stem=naming.strip_head(path.stem, template=template),
         suffix=path.suffix,
         key=key,
         bpm=int(head["bpm"]) if "bpm" in head else None,
-        title=stem,
+        title=naming.strip_head(title, template=template),
         lossy=marker in path.stem or marker in title,
     )
 

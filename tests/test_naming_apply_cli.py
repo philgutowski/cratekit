@@ -24,8 +24,9 @@ from pathlib import Path
 import pytest
 
 from cratekit import cli
-from cratekit.core import config, tags
+from cratekit.core import config, naming, tags
 from cratekit.core.exit_codes import ExitCode
+from cratekit.write.naming_cli import _template
 from tests._containers import synth_container
 from tests.test_config import valid_data
 
@@ -199,21 +200,139 @@ def test_the_filename_head_wins_when_both_heads_parse_and_disagree(configured):
     ]
 
 
-#: THERE IS NO TEST HERE ON PURPOSE, AND R-168 IS WHY.
-#:
-#: A test asserting that the body comes from the title tag lived here for one
-#: day, written to close the mutation row `R8_stem_source_swapped`. It was
-#: removed on 2026-08-25 once the real library was measured: 149 of 150 sampled
-#: files carry `Artist - Title` or `Title - Artist - Album` in the filename
-#: while the title tag holds the title alone, so taking the body from the tag
-#: truncates almost every name in the library. The test was pinning the
-#: destructive answer to a question nobody had decided.
-#:
-#: `R8` is therefore a zero death row again, and that is the honest state: the
-#: line's correct behaviour is disputed, so nothing should pin it until U41
-#: settles what the body is for. Do not close this row by writing a test that
-#: matches whatever the code does today. That is how the truncation would
-#: become permanent.
+#: U41 answered the question the removed test had guessed at. The head is the
+#: verb's to derive; the BODY of each surface is carried through untouched. The
+#: filename keeps the filename's body and the title tag keeps the title tag's,
+#: which is what `NameSpec` always meant by holding `stem` and `title`
+#: separately. Measured over the library on 2026-08-25, read only: 53 percent of
+#: names are `Title - Artist - Album`, 25 percent are `Artist - Title`, and one
+#: percent have a body equal to the title tag, so no single recomposition rule
+#: fits and none is attempted.
+
+
+def test_the_filename_body_is_carried_through_a_padding_rename(configured):
+    """R-168. The library keeps the artist in the filename and the title alone
+    in the tag, so composing the name from the tag drops the artist off almost
+    every file. The head is padded and the body is whatever the file already
+    had."""
+    folder = _folder(configured)
+    _track(
+        folder,
+        "1A - 124 - Artist Name - Song Title.flac",
+        title="1A - 124 - Song Title",
+        key="1A",
+    )
+    assert _moves(_plan(folder)) == [
+        (
+            "1A - 124 - Artist Name - Song Title.flac",
+            "01A - 124 - Artist Name - Song Title.flac",
+        )
+    ]
+
+
+def test_the_title_tag_is_not_given_the_filename_body(configured):
+    """The other half of the same decision, and the one a rename could corrupt
+    silently. The apply pass rewrites the title tag, so a spec that fed the
+    filename's body into both surfaces would stuff the artist and the album
+    into every title tag in the library. Each surface keeps its own body."""
+    folder = _folder(configured)
+    _track(
+        folder,
+        "1A - 124 - Artist Name - Song Title.flac",
+        title="1A - 124 - Song Title",
+        key="1A",
+    )
+    _apply(folder)
+    renamed = folder / "01A - 124 - Artist Name - Song Title.flac"
+    assert renamed.is_file()
+    assert tags.read_tag(renamed, "title") == "01A - 124 - Song Title"
+
+
+def test_both_library_grammars_survive_a_rename(configured):
+    """Measured on the real library: `Artist - Title` and
+    `Title - Artist - Album` both occur, in that order of rarity, and no rule
+    distinguishes them. Preserving the body serves both without knowing which
+    is which."""
+    folder = _folder(configured)
+    _track(folder, "2A - 120 - Artist - Song.flac", title="2A - 120 - Song")
+    _track(
+        folder,
+        "3A - 121 - Song Two - Artist Two - Some Album.flac",
+        title="3A - 121 - Song Two",
+    )
+    assert sorted(_moves(_plan(folder))) == sorted(
+        [
+            ("2A - 120 - Artist - Song.flac", "02A - 120 - Artist - Song.flac"),
+            (
+                "3A - 121 - Song Two - Artist Two - Some Album.flac",
+                "03A - 121 - Song Two - Artist Two - Some Album.flac",
+            ),
+        ]
+    )
+
+
+def test_a_rename_never_replaces_the_body_with_the_title_tag(configured):
+    """The structural form of R-168, stated as what it actually forbids.
+
+    "A rename never shortens the body" is the wrong rule and was tried first.
+    Two shorteners are legitimate and predate this unit: ``dedupe_stem`` drops a
+    trailing segment that merely repeats the lead, and ``fit_to_budget``
+    truncates a name over the path ceiling. Driven over sixty real library files
+    they account for every remaining body change and nothing else does. What
+    must never happen is the body being REPLACED by the title tag's body, which
+    is the defect, and that is the first assertion.
+
+    THESE THREE FIXTURES DELIBERATELY TRIGGER NEITHER SHORTENER, which is why
+    the second assertion may demand exact equality here. That is a property of
+    the inputs and not a general rule, so do not read it as one and do not
+    "fix" a future failure by widening it. The shorteners are pinned in
+    ``test_a_trailing_segment_repeating_the_lead_is_still_deduped``,
+    ``test_a_trailing_segment_that_only_starts_with_the_lead_survives`` and
+    ``test_a_name_over_the_byte_ceiling_is_truncated_not_rebuilt``. Two
+    reviewers caught this docstring promising a weaker rule than the assertion
+    enforced, which is the same shape as the defect this unit fixes."""
+    folder = _folder(configured)
+    names = [
+        "1A - 124 - Artist Name - Song Title.flac",
+        "2A - 120 - Song - Artist - Album.flac",
+        "4A - 90 - Just A Body.flac",
+    ]
+    for name in names:
+        _track(folder, name, title="Song")
+    template = _template(configured)
+    moves = _moves(_plan(folder))
+    # Without this the whole guard is a loop with no assertion outside it, so an
+    # implementation that proposes NO rename satisfies it vacuously. Driven by
+    # the independent pass, which passed this test against a plan pass stubbed
+    # to return nothing. All three fixtures are unpadded, so all three move.
+    assert len(moves) == 3, f"expected three renames, got {moves!r}"
+    for frm, to in moves:
+        before = naming.strip_head(Path(frm).stem, template=template)
+        after = naming.strip_head(Path(to).stem, template=template)
+        assert after != "Song", (
+            f"{frm} was rebuilt from the title tag: {before!r} became {after!r}"
+        )
+        assert after == before, f"{frm} lost body text: {before!r} became {after!r}"
+
+
+def test_a_trailing_segment_repeating_the_lead_is_still_deduped(configured):
+    """``dedupe_stem`` has always run inside ``build`` and never had anything to
+    work on, because the body it received was a single segment off the title
+    tag. Feeding it the filename's real body is what switches it on, so its
+    behaviour is pinned here rather than discovered later as a surprise. Nine of
+    sixty real files take this path."""
+    folder = _folder(configured)
+    _track(
+        folder,
+        "5A - 122 - Golden Boy - Alphadog - Golden Boy.flac",
+        title="5A - 122 - Golden Boy",
+    )
+    assert _moves(_plan(folder)) == [
+        (
+            "5A - 122 - Golden Boy - Alphadog - Golden Boy.flac",
+            "05A - 122 - Golden Boy - Alphadog.flac",
+        )
+    ]
 
 
 def test_a_marker_in_the_title_alone_is_still_recovered(configured):
@@ -239,3 +358,78 @@ def test_a_marker_in_the_filename_alone_is_not_stripped_off(configured):
     marker = configured.naming.lossy_marker
     _track(folder, f"{marker} Cola.flac", title="Cola")
     assert _plan(folder)["items"] == []
+
+
+def test_a_trailing_segment_that_only_starts_with_the_lead_survives(configured):
+    """The negative half of dedupe, and the rule that makes it safe to run
+    unconditionally. ``dedupe_stem``'s docstring calls it "ambiguity means
+    identity": anything not matching exactly passes through byte identical, so
+    a trailing segment that merely BEGINS with the lead is not a repeat and is
+    kept. Only the positive case was pinned, which is how a widened rule would
+    have shipped looking correct."""
+    folder = _folder(configured)
+    _track(
+        folder,
+        "6A - 118 - Track - Artist - Track (Deluxe Edition).flac",
+        title="6A - 118 - Track",
+    )
+    assert _moves(_plan(folder)) == [
+        (
+            "6A - 118 - Track - Artist - Track (Deluxe Edition).flac",
+            "06A - 118 - Track - Artist - Track (Deluxe Edition).flac",
+        )
+    ]
+
+
+def test_a_deduping_rename_converges_on_one_pass(configured):
+    """``dedupe_stem`` applies its rule once rather than to a fixed point, and
+    this unit is what gave it real input, so convergence is pinned at the
+    surface rather than assumed. Apply, then re-plan and require silence."""
+    folder = _folder(configured)
+    _track(
+        folder,
+        "5A - 122 - Golden Boy - Alphadog - Golden Boy.flac",
+        title="5A - 122 - Golden Boy",
+    )
+    _apply(folder)
+    assert (folder / "05A - 122 - Golden Boy - Alphadog.flac").is_file()
+    assert _plan(folder)["items"] == []
+
+
+def test_a_file_with_no_title_tag_takes_its_body_from_the_filename(configured):
+    """The only surface left when the tag is absent is the name itself, so the
+    body comes from there and the tag is populated from it. This fills an empty
+    tag rather than losing anything, and it is what the pre-U41 code did too.
+    Driven by hand during review and pinned here because a hand drive that
+    leaves no test is a measurement nobody can repeat."""
+    folder = _folder(configured)
+    _track(folder, "1A - 124 - Artist Name - Song Title.flac", key="1A")
+    _apply(folder)
+    renamed = folder / "01A - 124 - Artist Name - Song Title.flac"
+    assert renamed.is_file()
+    assert tags.read_tag(renamed, "title") == "01A - 124 - Artist Name - Song Title"
+
+
+def test_a_name_over_the_byte_ceiling_is_truncated_not_rebuilt(configured):
+    """Truncation went from unreachable to live in this unit, and nothing drove
+    it. While the body came off the title tag it was short by construction, so
+    the ceiling was never approached; carrying the real body means some names
+    now cross it. Four of thirty six renames in a sixty file real library
+    sample took this path.
+
+    Truncating is not the defect. Losing the body to the tag is. This asserts
+    the shape rather than an exact string, because the fixture's temporary
+    parent directory varies in length between runs and moves the cut."""
+    folder = _folder(configured)
+    body = "Artist Name - " + ("Extremely Long Song Title Part " * 6).strip()
+    name = f"1A - 124 - {body}.flac"
+    _track(folder, name, title="1A - 124 - Short")
+    moves = _moves(_plan(folder))
+    assert len(moves) == 1
+    template = _template(configured)
+    before = naming.strip_head(Path(moves[0][0]).stem, template=template)
+    after = naming.strip_head(Path(moves[0][1]).stem, template=template)
+    assert after != "Short", "the body was rebuilt from the title tag"
+    assert after.startswith("Artist Name - "), "the leading artist was lost"
+    assert "~" in after, "an over ceiling name should carry the truncation hash"
+    assert len(after) < len(before), "nothing was truncated"
