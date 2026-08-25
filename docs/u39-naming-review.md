@@ -33,16 +33,23 @@ suite) that confirms the shipped code's actual behaviour on the exact branch
 the zero row touches is correct. That combination is why none of the five
 rises to BLOCKING: the shipped code is right when driven, the shipped test
 suite just does not pin it. Those six rows collapse into FIVE findings,
-because `K1` and `K2` are the two halves of one finding, and they are filed
-as residuals R-166 through R-170.
+because `K1` and `K2` are the two halves of one finding.
+
+**The numbers R-166 through R-170 in the finding headings below are this
+reviewer's PROPOSALS and are not what was filed.** Findings 1 through 3 sat on
+code this unit had just written and were closed with tests instead, and only
+findings 4 and 5 became residuals, taking R-166 and R-167. Each heading now
+carries its proposed number and its actual disposition, so a reader following a
+number into `docs/residual-findings.md` does not land on an unrelated entry. The
+postscript at the end of this file records the re-measurement.
 
 | # | Finding | Class | Measured cost |
 |---|---------|-------|---------------|
-| 1 | The lossy marker's `or` has two live branches; the shipped suite exercises only the case where both are true at once | residual (R-166) | zero kills on `K1`/`K2`; composite: `K3` (same line region) kills 1; scratch scenario G shows the shipped code correctly recovers a title-only marker, and a title-only-branch mutation would silently stop doing so |
-| 2 | Filename-first / title-second head-recovery precedence is stated in the commit message but pinned by no test where the two heads disagree in VALUE | residual (R-167) | zero kills on `R3`; composite: `R1`/`R2` (same code region) each kill 1; scratch scenario E shows the shipped code does prefer the filename when a stale title disagrees |
-| 3 | `_spec_for`'s `stem` must come from the title tag's BODY text, not the raw filename stem, and no shipped test makes the two disagree outside the head | residual (R-168) | zero kills on `R8`; composite: `R4`/`R6`/`K3` (same function) kill 6/1/1; scratch scenario H shows the shipped code correctly prefers a corrected title's body over a stale filename body |
-| 4 | CUT.md's reconciliation of `dj-pad-camelot` is prose only; no test guards the reverse direction of `test_every_source_entry_point_is_either_mapped_or_written_down_as_cut`, so the exact contradiction this unit fixed (claimed by a verb's `source_scripts` while CUT.md called it not ported) is not guarded against recurring | residual (R-169), maintainer-facing, no composite required | zero kills on `CUT1`, promoted to a full-suite run before being reported |
-| 5 | The Camelot regex's end anchor (`$`) has zero test coverage; a regression dropping it would let `"1Axyz"` wrongly validate | residual (R-170), existing-guard sample, not part of this round's diff | zero kills on `E3`, promoted to a full-suite run; confirmed by direct interpreter check that the shipped anchor correctly rejects `is_camelot("1Axyz")` and `parse_camelot("1Axyz")` today |
+| 1 | The lossy marker's `or` has two live branches; the shipped suite exercises only the case where both are true at once | proposed R-166 and R-167, CLOSED WITH TESTS | zero kills on `K1`/`K2`; composite: `K3` (same line region) kills 1; scratch scenario G shows the shipped code correctly recovers a title-only marker, and a title-only-branch mutation would silently stop doing so |
+| 2 | Filename-first / title-second head-recovery precedence is stated in the commit message but pinned by no test where the two heads disagree in VALUE | proposed R-167, CLOSED WITH A TEST | zero kills on `R3`; composite: `R1`/`R2` (same code region) each kill 1; scratch scenario E shows the shipped code does prefer the filename when a stale title disagrees |
+| 3 | `_spec_for`'s `stem` must come from the title tag's BODY text, not the raw filename stem, and no shipped test makes the two disagree outside the head | proposed R-168, CLOSED WITH A TEST | zero kills on `R8`; composite: `R4`/`R6`/`K3` (same function) kill 6/1/1; scratch scenario H shows the shipped code correctly prefers a corrected title's body over a stale filename body |
+| 4 | CUT.md's reconciliation of `dj-pad-camelot` is prose only; no test guards the reverse direction of `test_every_source_entry_point_is_either_mapped_or_written_down_as_cut`, so the exact contradiction this unit fixed (claimed by a verb's `source_scripts` while CUT.md called it not ported) is not guarded against recurring | proposed R-169, FILED AS R-166, maintainer-facing, no composite required | zero kills on `CUT1`, promoted to a full-suite run before being reported |
+| 5 | The Camelot regex's end anchor (`$`) has zero test coverage; a regression dropping it would let `"1Axyz"` wrongly validate | proposed R-170, FILED AS R-167, existing-guard sample, not part of this round's diff | zero kills on `E3`, promoted to a full-suite run; confirmed by direct interpreter check that the shipped anchor correctly rejects `is_camelot("1Axyz")` and `parse_camelot("1Axyz")` today |
 
 ## Battery, from inside the worktree with its own venv
 
@@ -130,7 +137,7 @@ one-line interpreter check): no seventh site writes an unpadded template.
 it correctly falls outside the six constructors the brief names and needed no
 flip.
 
-## Finding 1 (R-166), residual. The lossy marker's OR is exercised only on its always-true diagonal
+## Finding 1 (proposed R-166 and R-167, CLOSED WITH TESTS instead). The lossy marker's OR is exercised only on its always-true diagonal
 
 `write/naming_cli.py`'s shared spec builder computes
 `lossy=marker in path.stem or marker in title`. The only shipped test that
@@ -162,7 +169,7 @@ repairing it.
 **Not BLOCKING** because the shipped code is correct on this branch, driven.
 What is missing is a pinning test, not a working guard.
 
-## Finding 2 (R-167), residual. Filename-first precedence is asserted, not pinned
+## Finding 2 (proposed R-167, CLOSED WITH A TEST instead). Filename-first precedence is asserted, not pinned
 
 The commit message states: "The head is recovered as text from the filename
 first and the title tag second... never from any analysis surface." The code
@@ -194,7 +201,7 @@ a recovery fallback for the crash window, not a correction channel), and
 correct when driven. The gap is that no shipped test would catch a regression
 that silently swapped this precedence.
 
-## Finding 3 (R-168), residual. Stem source must be the title, not the raw filename stem
+## Finding 3 (proposed R-168, CLOSED WITH A TEST instead). Stem source must be the title, not the raw filename stem
 
 `_spec_for` computes `stem = naming.strip_head(title, template=template)`.
 Every shipped scenario that supplies both a title tag and a filename gives
@@ -217,7 +224,7 @@ test that ever makes a title's body text differ from its filename's.
 
 **Not BLOCKING.** Driven, correct, undocumented by a test.
 
-## Finding 4 (R-169), residual, maintainer-facing. CUT.md's reconciliation has no reverse-direction guard
+## Finding 4 (proposed R-169, FILED AS R-166), residual, maintainer-facing. CUT.md's reconciliation has no reverse-direction guard
 
 This unit's own stated purpose (issue #57, approach step 3) was partly to fix
 a live contradiction: `name.apply`'s registry entry claimed `dj-pad-camelot`
@@ -243,7 +250,7 @@ METHOD's severity floor). It is filed because it is the identical defect
 CLASS this unit was built to fix, now unguarded against a future edit
 reintroducing it on either side.
 
-## Finding 5 (R-170), residual, existing-guard sample. The Camelot regex's end anchor has zero test coverage
+## Finding 5 (proposed R-170, FILED AS R-167), residual, existing-guard sample. The Camelot regex's end anchor has zero test coverage
 
 Not part of this round's diagonal; sampled as one of the fixed existing-guard
 rows METHOD asks for. `_CAMELOT_RE = re.compile(rf"^0?({_CAMELOT_NUMBER})({_CAMELOT_LETTER})$",
@@ -459,10 +466,27 @@ of the unmutated tree and it is not true under the mutation, which is the only
 state that matters for whether a row is killable. Driven: `[MP3] Cola.flac`
 with a clean title proposes no rename today, and with the filename operand
 dropped the render loses the marker, so the pass proposes renaming the marked
-file to its unmarked form. `core/naming.py`'s own stripper docstring says what
-that costs, a marked lossy copy and its lossless twin normalize to the same
-key and stop being distinguishable. So the row was not only killable, it was
-the direction of the two that loses data.
+file to its unmarked form. `core/naming.py:683` says what that costs in its own
+words, the file is "indistinguishable on disk from a lossless one". So the row
+was not only killable, it was the direction of the two that loses data.
+
+**Corrected 2026-08-25, and the correction is the same defect one more time.**
+The paragraph above originally cited `_marker_pattern`'s docstring at
+`core/naming.py:328` and said the cost was that a marked lossy copy and its
+lossless twin normalize to the same match key. That docstring describes a
+different failure, a stripper that FAILED to strip a marker so the two produced
+DIFFERENT keys and did not dedupe, and stripping for match keys is supposed to
+collapse them. Right severity, wrong mechanism, cited without being driven,
+which is precisely what this finding is about. The merge commit `31bf91f`
+carries the original wording and cannot be amended.
+
+**What the driving actually shows, and it is sharper than the first account.**
+`_render_markers` at `core/naming.py:679` raises only when a flag is True and
+the template declares no marker rule for it. Under this mutation the flag
+itself is computed False, so the guard never fires, no marker is emitted, and
+the rename is proposed in silence. R21 enforces a TEMPLATE that permits a
+condition without marking it. It cannot see a SPEC that miscomputes the
+condition, and the mutation walks straight underneath it.
 
 The general shape is worth naming, because METHOD already carries its sibling.
 METHOD says an author's own mutation table is a draft rather than a result. The
