@@ -456,6 +456,7 @@ than a death somewhere in the suite:
     null control           0 deaths
     R3_head_precedence_swapped        0 -> 1   test_the_filename_head_wins_when_both_heads_parse_and_disagree
     R8_stem_source_swapped            0 -> 1   test_the_body_text_comes_from_the_title_and_not_the_filename
+                                               (REVERTED 2026-08-25, see below)
     K1_lossy_title_side_dropped       0 -> 1   test_a_marker_in_the_title_alone_is_still_recovered
     K2_lossy_filename_side_dropped    0 -> 1   test_a_marker_in_the_filename_alone_is_not_stripped_off
 
@@ -498,3 +499,26 @@ here is, by driving it.**
 rows were "filed as residuals R-166 through R-171". Six rows collapse to five
 findings, because `K1` and `K2` are two halves of one, so that numbering
 claimed a residual that never existed. Fixed in place.
+
+
+## Correction: the R8 closure was withdrawn, 2026-08-25
+
+`R8_stem_source_swapped` was reported above as closed by
+`test_the_body_text_comes_from_the_title_and_not_the_filename`. That test was
+removed the same day and the row is a zero again.
+
+The row asks whether a file's body text should come from the title tag or from
+the filename. The test answered "the tag", which is what the code does, and the
+answer is wrong for this library: filenames carry `Artist - Title` or
+`Title - Artist - Album` while the tag holds the title alone. Measured on the
+real library, read only, no database opened: 149 of 150 sampled files out of
+9867 lose text under a rename. Driven end to end through the real dispatcher
+against copies:
+
+    FROM: 10A - 122 - Sweep - Sébastien Léger, Lost Miracle - Ramses  Sweep_PN.flac
+      TO: 10A - 122 - Sweep.flac
+
+Filed as R-168, owned by U41 (issue #59). The defect predates U39, which
+repaired the head and left the body alone. What U39 changed is that the verb now
+works well enough to be run, and the padding sweep over the existing library is
+its intended use.

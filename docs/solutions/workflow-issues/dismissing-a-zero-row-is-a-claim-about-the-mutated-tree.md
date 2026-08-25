@@ -381,6 +381,7 @@ it untouched:
     null control           0 deaths
     R3_head_precedence_swapped        0 -> 1   test_the_filename_head_wins_when_both_heads_parse_and_disagree
     R8_stem_source_swapped            0 -> 1   test_the_body_text_comes_from_the_title_and_not_the_filename
+                                               (that test was REMOVED the same day, see the postscript below)
     K1_lossy_title_side_dropped       0 -> 1   test_a_marker_in_the_title_alone_is_still_recovered
     K2_lossy_filename_side_dropped    0 -> 1   test_a_marker_in_the_filename_alone_is_not_stripped_off
 
@@ -449,3 +450,43 @@ inference from the wrong tree.
 - Issue #57, the unit's brief. Merge commit `31bf91f`, "merge: the padded form
   at write time, and the head that survives a rename", with the tests in
   `2cb5d08` and `a73deab` and the review in `07efed0`.
+
+
+## Postscript: the fourth closure was itself the error, 2026-08-25
+
+Added by the session that wrote this doc, hours after writing it, and left here
+rather than folded in because the sequence is the point.
+
+Three of the four rows above were closed correctly. The fourth,
+`R8_stem_source_swapped`, was closed with a test asserting that a file's body
+text comes from the title tag rather than from the filename. That test was
+removed the same day and `R8` is a zero death row again.
+
+The row mutates `stem = naming.strip_head(title, template=template)` to read the
+filename's own stem instead. Closing it required deciding which source is
+correct, and that decision was never made. It was inferred from a docstring and
+from the shape of the surrounding code, and the test was written to match what
+the code already did. Driven afterwards against the real library, the code was
+wrong: the filenames carry `Artist - Title` or `Title - Artist - Album` while
+the title tag holds the title alone, so taking the body from the tag truncates
+almost every name. 149 of 150 sampled files out of 9867 lose text. That is
+R-168, and U41 owns the fix.
+
+**The lesson is one turn of the screw tighter than the one above.** This doc
+says a dismissal is a claim about the mutated tree and has to be driven there.
+The same is true of a CLOSURE. A test written to make a zero row die, whose
+expected value was read off the current behaviour rather than derived from a
+decision about what the behaviour should be, does not pin a guard. It pins
+whatever was there, and it converts an open question into a settled looking
+green assertion. The row stopped reporting and nothing had been learned.
+
+So the rule has two halves, and the second was learned expensively:
+
+- A zero row is not dismissed until the mutated tree has been driven.
+- A zero row is not CLOSED until somebody has decided what the correct
+  behaviour is, from something other than the code under test. Otherwise the
+  test is a characterization of the defect wearing the costume of a guard.
+
+`R8` is deliberately left at zero. `tests/test_naming_apply_cli.py` carries a
+comment where the test was, saying why, and saying not to close the row by
+matching current behaviour a second time.

@@ -199,20 +199,21 @@ def test_the_filename_head_wins_when_both_heads_parse_and_disagree(configured):
     ]
 
 
-def test_the_body_text_comes_from_the_title_and_not_the_filename(configured):
-    """The stem is taken from the title tag with its head stripped, which is
-    the whole point of renaming from metadata: somebody corrects a title and
-    the file follows it. No other test makes the two bodies differ, so a
-    version reading the filename's own stem instead would pass all of them."""
-    folder = _folder(configured)
-    _track(
-        folder,
-        "1A - 124 - Old Stale Body.flac",
-        title="1A - 124 - Corrected Body",
-    )
-    assert _moves(_plan(folder)) == [
-        ("1A - 124 - Old Stale Body.flac", "01A - 124 - Corrected Body.flac")
-    ]
+#: THERE IS NO TEST HERE ON PURPOSE, AND R-168 IS WHY.
+#:
+#: A test asserting that the body comes from the title tag lived here for one
+#: day, written to close the mutation row `R8_stem_source_swapped`. It was
+#: removed on 2026-08-25 once the real library was measured: 149 of 150 sampled
+#: files carry `Artist - Title` or `Title - Artist - Album` in the filename
+#: while the title tag holds the title alone, so taking the body from the tag
+#: truncates almost every name in the library. The test was pinning the
+#: destructive answer to a question nobody had decided.
+#:
+#: `R8` is therefore a zero death row again, and that is the honest state: the
+#: line's correct behaviour is disputed, so nothing should pin it until U41
+#: settles what the body is for. Do not close this row by writing a test that
+#: matches whatever the code does today. That is how the truncation would
+#: become permanent.
 
 
 def test_a_marker_in_the_title_alone_is_still_recovered(configured):

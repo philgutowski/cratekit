@@ -9152,3 +9152,48 @@ sample surfaced it and METHOD says to record what a sample finds.
 
 **Closes when:** a test drives a Camelot code with trailing junk through
 `is_camelot` and `parse_camelot` and pins both refusals.
+
+## R-168. name.apply truncates the body to the title tag, and the library keeps the artist in the filename
+
+**Found by** compounding U39's learning, 2026-08-25, when a prior session's
+claim about filename bodies was driven instead of repeated.
+
+`write/naming_cli.py:_spec_for` takes the body from the title tag,
+`stem = naming.strip_head(title, template=template)`. The library's filenames
+carry more than the title. The convention is `KEY - BPM - Artist - Title` or
+`KEY - BPM - Title - Artist - Album`, and the title tag holds the title alone,
+already head padded by the live system. So a rename replaces the body with the
+tag's shorter form and the artist and album text is gone.
+
+**Measured cost, and it is the whole library.** 149 of 150 randomly sampled
+files from `Music/` change body under a rename, out of 9867 audio files. Driven
+end to end through the real dispatcher against copies of real files in a
+temporary directory, with the volume read only and no database opened:
+
+    FROM: 10A - 122 - Sweep - Sébastien Léger, Lost Miracle - Ramses  Sweep_PN.flac
+      TO: 10A - 122 - Sweep.flac
+
+    FROM: 5A - 101 - Infiltrator - LTJ Xperience, Anduze - Deepening of A Groove_PN.flac
+      TO: 05A - 101 - Infiltrator.flac
+
+This meets all three conditions of the merge bar. It is recorded here rather
+than fixed because the fix is a design decision, what the body is for and how a
+corrected tag should move a file, and that belongs in a brief. **U41 owns it.**
+
+**It predates U39 and U39 did not cause it.** Before U39 the verb built its
+spec from tags alone, rendered no head at all, and renamed the same file to
+`Sweep.flac`, which is the same truncation plus the head. U39 repaired the head
+and left the body untouched. What U39 changed is that the verb now works well
+enough that somebody would run it, and the padding sweep over the existing
+library is exactly its intended use, so the cost moved from unreachable to
+imminent.
+
+**Why no test holds it, and why none should yet.** Every fixture in
+`tests/test_naming_apply_cli.py` gives a file the same body on both surfaces,
+so nothing separates the two sources. A test asserting the tag wins was written
+on 2026-08-25 to close the mutation row `R8_stem_source_swapped` and was removed
+the same day, because it pinned the truncating answer. That row is a zero death
+row again and stays one until the design is settled.
+
+**Closes when:** U41 decides what the body is composed from, and a rename can no
+longer drop text that only the filename carries.
