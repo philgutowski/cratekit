@@ -45,6 +45,42 @@ def _budget(cfg: config.Config) -> NameBudget:
     )
 
 
+def _spec_for(path: Path, *, template: NameTemplate, cfg: config.Config) -> NameSpec:
+    """One spec for one file, shared by the plan and the apply pass.
+
+    The two passes previously built their specs separately and disagreed on
+    the lossy flag, so a marked file was promised a rename the apply pass was
+    never going to perform. One builder makes agreement structural.
+
+    The head is recovered from the FILENAME first and the title tag second,
+    as text through the head parser, never from any analysis surface (U39).
+    Without this, a spec built from tags alone has no tempo, the default head
+    is all or nothing, and a rename strips the head the file already carries.
+    The title fallback heals the tag then rename crash window, where the head
+    survives in the title and not in the filename. The key prefers the tag,
+    because renaming from metadata is the verb's job; the head fills silence
+    and supplies the tempo, which has no tag field at all, structurally.
+    """
+    title = tags.read_tag(path, "title") or path.stem
+    head = (
+        naming.parse_head(path.name, template=template)
+        or naming.parse_head(title, template=template)
+        or {}
+    )
+    tag_key = tags.read_tag(path, "initialkey")
+    key = tag_key if tag_key and naming.is_camelot(tag_key) else head.get("key")
+    marker = cfg.naming.lossy_marker
+    stem = naming.strip_head(title, template=template)
+    return NameSpec(
+        stem=stem,
+        suffix=path.suffix,
+        key=key,
+        bpm=int(head["bpm"]) if "bpm" in head else None,
+        title=stem,
+        lossy=marker in path.stem or marker in title,
+    )
+
+
 def _plan_for(root: Path, *, cfg: config.Config) -> dict:
     template = _template(cfg)
     budget = _budget(cfg)
@@ -53,15 +89,8 @@ def _plan_for(root: Path, *, cfg: config.Config) -> dict:
         for path in sorted(root.rglob("*")):
             if not path.is_file() or path.suffix.lower() not in AUDIO_EXTS:
                 continue
-            title = tags.read_tag(path, "title") or path.stem
-            key = tags.read_tag(path, "initialkey")
             rendered = naming.build(
-                NameSpec(
-                    stem=naming.strip_head(title, template=template),
-                    suffix=path.suffix,
-                    key=key,
-                    title=naming.strip_head(title, template=template),
-                ),
+                _spec_for(path, template=template, cfg=cfg),
                 template=template,
                 budget=budget,
                 parent_dir=str(path.parent),
@@ -106,17 +135,8 @@ def name_apply(ctx) -> Envelope:
         path = Path(item["path"])
         if not path.is_file():
             continue
-        title = tags.read_tag(path, "title") or path.stem
-        key = tags.read_tag(path, "initialkey")
-        marker = cfg.naming.lossy_marker
         rendered = naming.build(
-            NameSpec(
-                stem=naming.strip_head(title, template=template),
-                suffix=path.suffix,
-                key=key,
-                title=naming.strip_head(title, template=template),
-                lossy=marker in path.stem or marker in title,
-            ),
+            _spec_for(path, template=template, cfg=cfg),
             template=template,
             budget=budget,
             parent_dir=str(path.parent),

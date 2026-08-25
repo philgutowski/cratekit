@@ -192,9 +192,11 @@ class NameTemplate:
     #: one and a template that changes the head must not silently change dedupe.
     segment_sep: str = " - "
     markers: tuple[MarkerRule, ...] = ()
-    #: How the key is WRITTEN. The library convention writes single-digit and
-    #: pads in a later stage, so "none" is the default.
-    key_pad: str = "none"
+    #: How the key is WRITTEN. Padded at write time (U39): the library holds
+    #: the two-digit form, and writing it here is what absorbed the source
+    #: system's separate padding sweep. The budget below was measured against
+    #: this form from the start, so the flip widens nothing.
+    key_pad: str = "camelot2"
     #: How the key is MEASURED. The widest form the key will ever take, so a later
     #: padding stage cannot push a fitted name over the ceiling.
     budget_key_pad: str = "camelot2"
@@ -646,7 +648,12 @@ def _field_value(name: str, spec: NameSpec) -> object | None:
 def _format_field(name: str, spec: NameSpec, key_pad: str) -> str:
     value = _field_value(name, spec)
     if name == "key":
-        rendered = pad_camelot(str(value)) if key_pad == "camelot2" else str(value)
+        rendered = str(value)
+        if key_pad == "camelot2" and parse_camelot(rendered) is not None:
+            # Padding owns normalization for a code arriving as DATA. A value
+            # the wheel does not hold falls through unchanged so the refusal
+            # below stays the one refusal for every unwritable key.
+            rendered = pad_camelot(rendered)
     else:
         rendered = str(value)
     field = HEAD_FIELDS[name]

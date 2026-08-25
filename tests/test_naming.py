@@ -299,8 +299,8 @@ class TestRender:
                      title="Make Luv"),
             template=DEFAULT,
         )
-        assert out.filename == "8A - 124 - Make Luv - Room 5.flac"
-        assert out.title_tag == "8A - 124 - Make Luv"
+        assert out.filename == "08A - 124 - Make Luv - Room 5.flac"
+        assert out.title_tag == "08A - 124 - Make Luv"
         assert out.library_name == out.title_tag
         assert MARKER not in out.filename
 
@@ -310,28 +310,38 @@ class TestRender:
                      title="Aleteo", lossy=True),
             template=DEFAULT,
         )
-        assert out.filename == f"8A - 124 - {MARKER} Aleteo - Maluman.mp3"
-        assert out.title_tag == f"8A - 124 - {MARKER} Aleteo"
+        assert out.filename == f"08A - 124 - {MARKER} Aleteo - Maluman.mp3"
+        assert out.title_tag == f"08A - 124 - {MARKER} Aleteo"
 
     def test_the_stem_is_the_fallback_when_there_is_no_title_tag(self):
         out = render_all(
             NameSpec(stem="Some Bootleg", suffix=".opus", key="4B", bpm=90, lossy=True),
             template=DEFAULT,
         )
-        assert out.title_tag == f"4B - 90 - {MARKER} Some Bootleg"
-        assert out.filename == f"4B - 90 - {MARKER} Some Bootleg.opus"
+        assert out.title_tag == f"04B - 90 - {MARKER} Some Bootleg"
+        assert out.filename == f"04B - 90 - {MARKER} Some Bootleg.opus"
 
     def test_an_already_fitted_stem_passes_through_verbatim(self):
         out = render_all(
             NameSpec(stem="Truncated Stem~ab12cd", suffix=".flac", key="8A", bpm=124),
             template=DEFAULT,
         )
-        assert out.filename == "8A - 124 - Truncated Stem~ab12cd.flac"
+        assert out.filename == "08A - 124 - Truncated Stem~ab12cd.flac"
 
-    def test_the_key_is_written_unpadded_and_measured_padded(self):
+    def test_the_key_is_written_and_measured_in_the_same_padded_form(self):
+        """U39 flipped the written form to padded, so the written head and the
+        measured head now coincide and the byte the budget always reserved is
+        simply used. The unpadded form stays expressible, and a template that
+        writes it still measures against the padded form, which is the
+        2026-07-04 rule the ordering check enforces."""
         spec = NameSpec(stem="Body", suffix=".flac", key="8A", bpm=124)
-        assert render_all(spec, template=DEFAULT).filename.startswith("8A - 124 - ")
+        assert render_all(spec, template=DEFAULT).filename.startswith("08A - 124 - ")
         assert budget_head(spec, template=DEFAULT) == "08A - 124 - "
+        legacy = NameTemplate(
+            key_pad="none", markers=(MarkerRule(field="lossy", literal=MARKER),)
+        )
+        assert render_all(spec, template=legacy).filename.startswith("8A - 124 - ")
+        assert budget_head(spec, template=legacy) == "08A - 124 - "
 
     def test_rendering_is_idempotent(self):
         """The source had a real decoupling window: when the tag write succeeded
@@ -354,6 +364,62 @@ class TestRender:
         with pytest.raises(ValueError, match="cannot"):
             render_all(NameSpec(stem="Body", suffix=".flac", key="13A", bpm=124),
                        template=DEFAULT)
+
+
+class TestWriteTimePadding:
+    """U39: the engine writes the padded form the library already holds.
+
+    The plan cut the dj-pad-camelot sweep with the note "absorbed into the
+    naming engine". Until U39 the note was false: every constructor left
+    ``key_pad`` at "none", so nothing anywhere wrote the padded form and the
+    retired sweep had no successor. The default is the absorption, and the
+    byte budget was reserved against the padded form from the start
+    (``budget_key_pad``), so no fitted name can newly exceed the ceiling.
+    """
+
+    def test_the_default_template_writes_the_padded_form(self):
+        out = render_all(
+            NameSpec(stem="Cola", suffix=".flac", key="1A", bpm=124),
+            template=NameTemplate(),
+        )
+        assert out.filename == "01A - 124 - Cola.flac"
+        assert out.title_tag == "01A - 124 - Cola"
+
+    def test_an_already_padded_key_renders_unchanged(self):
+        out = render_all(
+            NameSpec(stem="Cola", suffix=".flac", key="12A", bpm=124),
+            template=NameTemplate(),
+        )
+        assert out.filename == "12A - 124 - Cola.flac"
+
+    def test_a_code_read_as_data_is_normalized_by_the_padding_stage(self):
+        """Case tolerance follows the one-parser rule: a code arriving as
+        DATA, from a tag or a detector, is normalized, and only a code
+        already written into a name is held to the convention. Padding is
+        the normalizing stage now, so it owns the case fix too."""
+        out = render_all(
+            NameSpec(stem="Cola", suffix=".flac", key="4a", bpm=124),
+            template=NameTemplate(),
+        )
+        assert out.filename == "04A - 124 - Cola.flac"
+
+    def test_an_off_wheel_key_is_still_refused_not_padded(self):
+        with pytest.raises(ValueError, match="cannot"):
+            render_all(
+                NameSpec(stem="Cola", suffix=".flac", key="13A", bpm=124),
+                template=NameTemplate(),
+            )
+
+    def test_rendering_the_padded_output_again_changes_nothing(self):
+        first = render_all(
+            NameSpec(stem="Cola", suffix=".flac", key="1A", bpm=124),
+            template=NameTemplate(),
+        )
+        again = render_all(
+            NameSpec(stem="Cola", suffix=".flac", key="01A", bpm=124),
+            template=NameTemplate(),
+        )
+        assert again.filename == first.filename == "01A - 124 - Cola.flac"
 
 
 class TestAnalysisOff:
@@ -478,13 +544,13 @@ def test_a_second_template_produces_a_different_correct_tree_with_no_code_change
     """Two shapes, one process, one engine. An engine that read its template from
     global configuration could not produce both of these in one run."""
     spec = NameSpec(stem="Body", suffix=".flac", key="8A", bpm=124)
-    assert render_all(spec, template=DEFAULT).filename == "8A - 124 - Body.flac"
+    assert render_all(spec, template=DEFAULT).filename == "08A - 124 - Body.flac"
     assert render_all(spec, template=CUSTOM).filename == "08A_124 :: Body.flac"
 
 
 def test_an_optional_field_widens_render_and_parse_together():
     spec = NameSpec(stem="Body", suffix=".flac", key="8A")
-    assert render_all(spec, template=OPTIONAL_BPM).filename == "8A - Body.flac"
+    assert render_all(spec, template=OPTIONAL_BPM).filename == "08A - Body.flac"
     assert parse_head("8A - Body", template=OPTIONAL_BPM) == {"key": "8A"}
     # The same name under the default template is not a head at all, so the body
     # is left whole rather than half-eaten.
@@ -533,10 +599,13 @@ class TestTemplateValidation:
 
 
 class TestBudgetInteraction:
-    def test_the_budget_head_is_exactly_one_byte_wider_than_the_written_head(self):
+    def test_the_budget_head_equals_the_written_head_since_the_pad_moved_in(self):
+        """Before U39 the budget head was one byte wider than the written head,
+        the reserved pad byte. The written form is now the padded form, so the
+        two coincide and the reservation is spent rather than waiting."""
         spec = NameSpec(stem="Body", suffix=".flac", key="8A", bpm=124)
         written = render_all(spec, template=DEFAULT).filename[: -len("Body.flac")]
-        assert len(budget_head(spec, template=DEFAULT).encode()) == len(written.encode()) + 1
+        assert budget_head(spec, template=DEFAULT) == written
 
     def test_the_marker_is_paid_for_in_the_budget_head(self):
         lossy = NameSpec(stem="Body", suffix=".mp3", key="8A", bpm=124, lossy=True)
@@ -559,15 +628,16 @@ class TestBudgetInteraction:
         assert budget_head(NameSpec(stem="", suffix=""), template=DEFAULT) == ""
         assert len(bare.stem) > len(analyzed.stem)
 
-    def test_build_fits_then_renders_and_the_result_fits_after_padding(self):
+    def test_build_fits_and_its_result_is_already_in_the_padded_form(self):
+        """The retired padding stage has nothing left to add to a name this
+        engine writes: the fitted result is emitted padded, and running the
+        pad over it is a no-op rather than a one-byte growth to re-budget."""
         out = build(
             NameSpec(stem="U" * 300, suffix=".flac", key="8A", bpm=124),
             template=DEFAULT, budget=BUDGET, parent_dir=DIR)
         written = f"{DIR}/{out.filename}"
-        padded = f"{DIR}/{pad_head(out.filename, template=DEFAULT)}"
         assert len(written.encode()) <= BUDGET.path_budget_bytes
-        assert len(padded.encode()) <= BUDGET.path_budget_bytes
-        assert len(padded) == len(written) + 1
+        assert pad_head(out.filename, template=DEFAULT) == out.filename
 
     def test_the_same_input_twice_yields_the_same_path(self):
         spec = NameSpec(stem="V" * 300, suffix=".flac", key="8A", bpm=124)
