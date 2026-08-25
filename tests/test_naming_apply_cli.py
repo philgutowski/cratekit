@@ -280,7 +280,17 @@ def test_a_rename_never_replaces_the_body_with_the_title_tag(configured):
     truncates a name over the path ceiling. Driven over sixty real library files
     they account for every remaining body change and nothing else does. What
     must never happen is the body being REPLACED by the title tag's body, which
-    is the defect, so that is what this asserts."""
+    is the defect, and that is the first assertion.
+
+    THESE THREE FIXTURES DELIBERATELY TRIGGER NEITHER SHORTENER, which is why
+    the second assertion may demand exact equality here. That is a property of
+    the inputs and not a general rule, so do not read it as one and do not
+    "fix" a future failure by widening it. The shorteners are pinned in
+    ``test_a_trailing_segment_repeating_the_lead_is_still_deduped``,
+    ``test_a_trailing_segment_that_only_starts_with_the_lead_survives`` and
+    ``test_a_name_over_the_byte_ceiling_is_truncated_not_rebuilt``. Two
+    reviewers caught this docstring promising a weaker rule than the assertion
+    enforced, which is the same shape as the defect this unit fixes."""
     folder = _folder(configured)
     names = [
         "1A - 124 - Artist Name - Song Title.flac",
@@ -293,7 +303,7 @@ def test_a_rename_never_replaces_the_body_with_the_title_tag(configured):
     for frm, to in _moves(_plan(folder)):
         before = naming.strip_head(Path(frm).stem, template=template)
         after = naming.strip_head(Path(to).stem, template=template)
-        assert after != "Song" or before == "Song", (
+        assert after != "Song", (
             f"{frm} was rebuilt from the title tag: {before!r} became {after!r}"
         )
         assert after == before, f"{frm} lost body text: {before!r} became {after!r}"
@@ -342,3 +352,78 @@ def test_a_marker_in_the_filename_alone_is_not_stripped_off(configured):
     marker = configured.naming.lossy_marker
     _track(folder, f"{marker} Cola.flac", title="Cola")
     assert _plan(folder)["items"] == []
+
+
+def test_a_trailing_segment_that_only_starts_with_the_lead_survives(configured):
+    """The negative half of dedupe, and the rule that makes it safe to run
+    unconditionally. ``dedupe_stem``'s docstring calls it "ambiguity means
+    identity": anything not matching exactly passes through byte identical, so
+    a trailing segment that merely BEGINS with the lead is not a repeat and is
+    kept. Only the positive case was pinned, which is how a widened rule would
+    have shipped looking correct."""
+    folder = _folder(configured)
+    _track(
+        folder,
+        "6A - 118 - Track - Artist - Track (Deluxe Edition).flac",
+        title="6A - 118 - Track",
+    )
+    assert _moves(_plan(folder)) == [
+        (
+            "6A - 118 - Track - Artist - Track (Deluxe Edition).flac",
+            "06A - 118 - Track - Artist - Track (Deluxe Edition).flac",
+        )
+    ]
+
+
+def test_a_deduping_rename_converges_on_one_pass(configured):
+    """``dedupe_stem`` applies its rule once rather than to a fixed point, and
+    this unit is what gave it real input, so convergence is pinned at the
+    surface rather than assumed. Apply, then re-plan and require silence."""
+    folder = _folder(configured)
+    _track(
+        folder,
+        "5A - 122 - Golden Boy - Alphadog - Golden Boy.flac",
+        title="5A - 122 - Golden Boy",
+    )
+    _apply(folder)
+    assert (folder / "05A - 122 - Golden Boy - Alphadog.flac").is_file()
+    assert _plan(folder)["items"] == []
+
+
+def test_a_file_with_no_title_tag_takes_its_body_from_the_filename(configured):
+    """The only surface left when the tag is absent is the name itself, so the
+    body comes from there and the tag is populated from it. This fills an empty
+    tag rather than losing anything, and it is what the pre-U41 code did too.
+    Driven by hand during review and pinned here because a hand drive that
+    leaves no test is a measurement nobody can repeat."""
+    folder = _folder(configured)
+    _track(folder, "1A - 124 - Artist Name - Song Title.flac", key="1A")
+    _apply(folder)
+    renamed = folder / "01A - 124 - Artist Name - Song Title.flac"
+    assert renamed.is_file()
+    assert tags.read_tag(renamed, "title") == "01A - 124 - Artist Name - Song Title"
+
+
+def test_a_name_over_the_byte_ceiling_is_truncated_not_rebuilt(configured):
+    """Truncation went from unreachable to live in this unit, and nothing drove
+    it. While the body came off the title tag it was short by construction, so
+    the ceiling was never approached; carrying the real body means some names
+    now cross it. Four of thirty six renames in a sixty file real library
+    sample took this path.
+
+    Truncating is not the defect. Losing the body to the tag is. This asserts
+    the shape rather than an exact string, because the fixture's temporary
+    parent directory varies in length between runs and moves the cut."""
+    folder = _folder(configured)
+    body = "Artist Name - " + ("Extremely Long Song Title Part " * 6).strip()
+    name = f"1A - 124 - {body}.flac"
+    _track(folder, name, title="1A - 124 - Short")
+    moves = _moves(_plan(folder))
+    assert len(moves) == 1
+    template = _template(configured)
+    before = naming.strip_head(Path(moves[0][0]).stem, template=template)
+    after = naming.strip_head(Path(moves[0][1]).stem, template=template)
+    assert after != "Short", "the body was rebuilt from the title tag"
+    assert after.startswith("Artist Name - "), "the leading artist was lost"
+    assert "~" in after, "an over ceiling name should carry the truncation hash"
+    assert len(after) < len(before), "nothing was truncated"

@@ -9195,5 +9195,126 @@ on 2026-08-25 to close the mutation row `R8_stem_source_swapped` and was removed
 the same day, because it pinned the truncating answer. That row is a zero death
 row again and stays one until the design is settled.
 
-**Closes when:** U41 decides what the body is composed from, and a rename can no
-longer drop text that only the filename carries.
+**Closed 2026-08-25 by U41.** The head is derived and the body is carried:
+each surface renders from its own source, so the filename keeps the filename's
+body and the title tag keeps the tag's. Driven over sixty copies of real library
+files, truncation to the title tag went from almost every rename to none. The
+mutation row that guards it, `R8`, is a killing row again and is killed by tests
+asserting the decided rule rather than tests matching current behaviour.
+
+## R-169. A renamed file is opened four times, and the sweep is the slow case
+
+**Found by** the U41 simplification pass, 2026-08-25.
+
+`write/naming_cli._spec_for` reads two tags, and `core/tags.read_tag` calls
+`mutagen.File` per call, so building one spec opens and parses the container
+twice. `_plan_for` builds a spec for every audio file under the root, and
+`name_apply` builds it again for every file the plan proposes to move, so a
+renamed file costs four opens and an unchanged one costs two.
+
+**Measured cost.** Not measured in seconds, and the report says so. The shape
+is known: the padding sweep over the library is 9867 files, which is roughly
+twenty thousand container opens for the plan alone, against an external USB
+volume. That is the exact workflow this verb exists for, so the slow path is
+the common path rather than an edge.
+
+**Why it is not fixed here.** It predates U41, which changed what `_spec_for`
+computes and not how often it is called. The obvious fix is wrong: caching the
+spec from the plan pass into the apply pass carries it across the confirm gate,
+which is an unbounded human pause during which a tag can be edited or a file
+removed. `name_apply` already re-checks `path.is_file()` for that reason, and a
+cached spec would reintroduce the plan and apply disagreement U39 closed. A
+correct fix reads the container once per file rather than once per tag, which
+is a change to `core/tags`, not to this verb.
+
+**Closes when:** a spec is built from one container read per file, with the
+plan and apply passes still reading independently.
+
+## R-170. The engine normalizes twice, and the shell adds a third strip
+
+**Found by** the U41 simplification pass, 2026-08-25, and CORRECTED the same day
+by the U41 code review, which showed the first version of this entry blamed the
+wrong layer.
+
+`_spec_for` calls `naming.strip_head` on both surfaces before building the spec.
+`naming.build` then calls `fit_to_budget`, which opens with `normalize_spec`
+(`core/naming.py:767`), and then `render_all`, which calls `normalize_spec`
+again (`:743`). So a head is stripped three times on the way to a name, and
+twice inside the engine alone.
+
+**Measured cost.** For every shape driven, none. A body carrying ONE leading
+head renders identically whether the shell pre-strips or not, including the over
+budget case that carries a truncation hash. A body carrying TWO stacked heads
+loses both either way, because two normalizations already saturate it. So the
+shell's strip is redundant and the engine's second strip is the one that
+amputates, which is the reverse of what the first version of this entry said.
+
+**Why it is not fixed here.** Removing the shell's strip is the tidy change and
+it fixes nothing, because the double normalize inside `build` survives it. The
+real question is which of the two engine calls should go, and `render_all`'s is
+the one the crash window relies on for idempotency, so the answer is probably
+`fit_to_budget`'s. That is a change to the engine every naming caller shares,
+it wants its own mutation coverage, and the library volume was disconnected
+before it could be driven against the tree. `docs/METHOD.md` names a fix
+justified on fixtures rather than on the tree as its most dangerous defect
+pattern.
+
+**Closes when:** `build` normalizes exactly once, the stacked head case is
+pinned by a test, and the result is driven over real library files.
+
+## R-171. An empty title BODY makes the tag inherit the filename body
+
+**Found by** the U41 code review, 2026-08-25, driven through the real
+dispatcher.
+
+`core/naming.py:745` reads `body_tag = spec.title if spec.title else spec.stem`.
+That is a truthiness test, so a title tag that is PRESENT but whose body strips
+to empty, a head with nothing after it, takes the same branch as a title that
+was never supplied, and the tag is rendered from the FILENAME body instead. A
+file named `1A - 124 - Artist Name - Song Title.flac` whose title tag reads
+`1A - 124 -` has its tag rewritten to `01A - 124 - Artist Name - Song Title`.
+
+**Measured cost.** Small, and smaller than what it replaced. The fallback was
+inert while `stem` and `title` were the same string, and U41 made the two
+surfaces differ, so this is the one door by which a filename body can reach the
+tag. Driven on the same input, `origin/main` produced the filename
+`01A - 124 - .flac`, which is a name with no body at all, so U41 is strictly
+better here and the tag gains text rather than losing it. The population of
+head-only title tags in the real library is UNMEASURED: 499 of 500 sampled tags
+carried a head and a body, and the volume was disconnected before the degenerate
+case could be counted.
+
+**Why it is not fixed here.** The fix is one character of intent,
+`if spec.title is not None`, in the engine that every naming caller shares, and
+it changes what a blank tag renders to. That is a decision about what an empty
+title MEANS rather than a repair, and it belongs with R-170's normalize question
+in a unit that owns the engine.
+
+**Closes when:** the engine distinguishes an absent title surface from a present
+but empty one, or a decision is recorded that it should not.
+
+## R-172. A rename the plan promised can be skipped while the run reports ok
+
+**Found by** the U41 code review, 2026-08-25, driven end to end.
+
+Two files whose rendered names collide leave the plan promising two renames and
+the apply pass performing one. `write/naming_cli.py` calls `naming.claim_target`
+and `continue`s when the claim fails, and the envelope still returns `ok`.
+Driven: two files that dedupe onto `05A - 120 - Song - Artist.flac` produce a
+two item plan, one rename, one file untouched, exit 0 and outcome ok.
+
+**Measured cost.** An operator sweeping the library is told a rename happened
+when it did not, with nothing in the report naming which file stayed put. That
+is the "shown a clean report over state the tool could not act on" shape the
+merge bar names.
+
+**Why it is not fixed here, and why U41 improves it.** It predates U41 and this
+unit makes it LESS likely rather than more. While the body came from the title
+tag, any two files sharing a key, a tempo and a title rendered to one name;
+carrying the artist and the album into the name separates most of those. The
+collision path itself, and the silent `continue`, are untouched by this diff.
+The fix belongs in the plan pass, which should detect two paths rendering to one
+target before the gate rather than discovering it during the rename.
+
+**Closes when:** a collision is detected while the plan is built, or the apply
+pass reports a skipped rename as something other than ok.

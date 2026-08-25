@@ -487,6 +487,16 @@ So the rule has two halves, and the second was learned expensively:
   behaviour is, from something other than the code under test. Otherwise the
   test is a characterization of the defect wearing the costume of a guard.
 
-`R8` is deliberately left at zero. `tests/test_naming_apply_cli.py` carries a
-comment where the test was, saying why, and saying not to close the row by
-matching current behaviour a second time.
+`R8` was deliberately left at zero when this was written, with a comment where
+the test had been saying not to close the row by matching current behaviour a
+second time.
+
+**Closed 2026-08-25 by U41, and the closure is the point.** The row was not
+closed by writing a test against the code. The real library was measured first,
+read only: 53 percent of names carry `Title - Artist - Album`, 25 percent carry
+`Artist - Title`, and one percent have a body equal to the title tag. That
+measurement decided what the body is for, the decision was taken by a person,
+and only then were tests written to assert it. `R8` now dies five times, killed
+by tests that assert the decided rule. The gap between the two attempts is the
+whole learning: the first closure took its expected value from the code and
+lasted one day, the second took it from the subject and settled the question.
