@@ -183,3 +183,45 @@ def test_the_filename_head_alone_is_enough_when_the_title_tag_lacks_it(configure
     renamed = folder / "01A - 124 - Cola.flac"
     assert renamed.is_file()
     assert tags.read_tag(renamed, "title") == "01A - 124 - Cola"
+
+
+def test_the_filename_head_wins_when_both_heads_parse_and_disagree(configured):
+    """Precedence, pinned where it is observable. Every other test that gives
+    both surfaces a parseable head gives them the SAME values, so none of them
+    can tell "the filename wins" from "either wins, it did not matter here".
+    The filename is the convention's ground truth and the title is a recovery
+    fallback for the crash window, not a correction channel, so a stale title
+    head must not drag a correct filename backwards."""
+    folder = _folder(configured)
+    _track(folder, "1A - 124 - Cola.flac", title="5B - 95 - Cola")
+    assert _moves(_plan(folder)) == [
+        ("1A - 124 - Cola.flac", "01A - 124 - Cola.flac")
+    ]
+
+
+def test_the_body_text_comes_from_the_title_and_not_the_filename(configured):
+    """The stem is taken from the title tag with its head stripped, which is
+    the whole point of renaming from metadata: somebody corrects a title and
+    the file follows it. No other test makes the two bodies differ, so a
+    version reading the filename's own stem instead would pass all of them."""
+    folder = _folder(configured)
+    _track(
+        folder,
+        "1A - 124 - Old Stale Body.flac",
+        title="1A - 124 - Corrected Body",
+    )
+    assert _moves(_plan(folder)) == [
+        ("1A - 124 - Old Stale Body.flac", "01A - 124 - Corrected Body.flac")
+    ]
+
+
+def test_a_marker_in_the_title_alone_is_still_recovered(configured):
+    """The marker is read from either surface, and the only other test of that
+    ``or`` puts it in BOTH at once, so it cannot say which operand carries the
+    case. This is the marker's own crash window: a run that wrote the marked
+    title and died before the rename leaves the marker in the title alone, and
+    the pass has to carry it onto the file rather than drop it."""
+    folder = _folder(configured)
+    marker = configured.naming.lossy_marker
+    _track(folder, "Cola.flac", title=f"{marker} Cola")
+    assert _moves(_plan(folder)) == [("Cola.flac", f"{marker} Cola.flac")]
