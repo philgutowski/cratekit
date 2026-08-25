@@ -1,0 +1,586 @@
+name = "u41-naming-independent"
+pass_kind = "full"
+
+# ---------------------------------------------------------------------------
+# A. The round's own diff. _spec_for is the only function this unit changed,
+#    and the change is two assignments: the filename body now comes from the
+#    filename and the tag body from the tag.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "A1_stem_from_title_again"
+description = "R-168 restored: the filename body is rebuilt from the title tag, which is the truncation this unit exists to stop"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        stem=naming.strip_head(path.stem, template=template),
+'''
+new = '''
+        stem=naming.strip_head(title, template=template),
+'''
+
+[[rows]]
+id = "A2_title_fed_the_filename_body"
+description = "The other direction of the same collapse: the title tag is rebuilt from the filename body, stuffing artist and album into every tag the apply pass rewrites"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        title=naming.strip_head(title, template=template),
+'''
+new = '''
+        title=naming.strip_head(path.stem, template=template),
+'''
+
+[[rows]]
+id = "A3_stem_not_stripped"
+description = "The filename body is carried WITHOUT stripping its existing head, so a head stacks on a head"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        stem=naming.strip_head(path.stem, template=template),
+'''
+new = '''
+        stem=path.stem,
+'''
+
+[[rows]]
+id = "A4_title_not_stripped"
+description = "The tag body is carried without stripping its head, so the tag stacks a head on a head"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        title=naming.strip_head(title, template=template),
+'''
+new = '''
+        title=title,
+'''
+
+[[rows]]
+id = "A5_title_field_dropped"
+description = "The spec carries no title at all, so render_all falls back to the filename body for the tag"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        title=naming.strip_head(title, template=template),
+'''
+new = '''
+        title=None,
+'''
+
+[[rows]]
+id = "A6_stem_from_path_name"
+description = "The filename body is taken from path.name rather than path.stem, so the suffix leaks into the body"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        stem=naming.strip_head(path.stem, template=template),
+'''
+new = '''
+        stem=naming.strip_head(path.name, template=template),
+'''
+
+[[rows]]
+id = "A7_title_fallback_dropped"
+description = "An absent title tag no longer falls back to the filename stem; the title source becomes the empty string"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+    title = tags.read_tag(path, "title") or path.stem
+'''
+new = '''
+    title = tags.read_tag(path, "title") or ""
+'''
+
+[[rows]]
+id = "A8_title_fallback_is_path_name"
+description = "The absent-tag fallback uses path.name instead of path.stem, so the suffix reaches the title tag"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+    title = tags.read_tag(path, "title") or path.stem
+'''
+new = '''
+    title = tags.read_tag(path, "title") or path.name
+'''
+
+# ---------------------------------------------------------------------------
+# B. The rest of _spec_for, a fixed sample of the guards U39 landed and the
+#    decision now sits on top of.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "B1_head_precedence_swapped"
+description = "The title's head is parsed before the filename's, so a stale tag head drags a correct filename backwards"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        naming.parse_head(path.name, template=template)
+        or naming.parse_head(title, template=template)
+'''
+new = '''
+        naming.parse_head(title, template=template)
+        or naming.parse_head(path.name, template=template)
+'''
+
+[[rows]]
+id = "B2_filename_head_source_dropped"
+description = "The filename is no longer a head source, so only a tag-carried head is recovered"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        naming.parse_head(path.name, template=template)
+'''
+new = '''
+        None
+'''
+
+[[rows]]
+id = "B3_title_head_source_dropped"
+description = "The title is no longer a head source, so the tag-then-rename crash window stops healing"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        or naming.parse_head(title, template=template)
+'''
+new = '''
+        or None
+'''
+
+[[rows]]
+id = "B4_bpm_dropped"
+description = "The recovered tempo never reaches the spec, so the head degrades to key only"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        bpm=int(head["bpm"]) if "bpm" in head else None,
+'''
+new = '''
+        bpm=None,
+'''
+
+[[rows]]
+id = "B5_key_head_overrules_tag"
+description = "The head's key wins over a corrected initialkey tag, so renaming from metadata stops working"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+    key = tag_key if tag_key and naming.is_camelot(tag_key) else head.get("key")
+'''
+new = '''
+    key = head.get("key") or tag_key
+'''
+
+[[rows]]
+id = "B6_camelot_check_on_the_tag_key_dropped"
+description = "A non-Camelot initialkey tag is trusted, so junk reaches the head renderer"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+    key = tag_key if tag_key and naming.is_camelot(tag_key) else head.get("key")
+'''
+new = '''
+    key = tag_key if tag_key else head.get("key")
+'''
+
+[[rows]]
+id = "B7_lossy_filename_operand_dropped"
+description = "U39's K2: the lossy OR loses its filename operand, so a file marked only in its name is renamed to its unmarked form"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        lossy=marker in path.stem or marker in title,
+'''
+new = '''
+        lossy=marker in title,
+'''
+
+[[rows]]
+id = "B8_lossy_title_operand_dropped"
+description = "U39's K1: the lossy OR loses its title operand, so a marker surviving only in the tag stops being restored"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        lossy=marker in path.stem or marker in title,
+'''
+new = '''
+        lossy=marker in path.stem,
+'''
+
+# ---------------------------------------------------------------------------
+# C. The plan and apply loop, the guards the decision now leans on because a
+#    carried body makes longer names and more collisions than a tag body did.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "C1_plan_no_op_filter_dropped"
+description = "Every audio file enters the plan, including the ones already in convention"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+            if rendered.filename != path.name:
+'''
+new = '''
+            if True:
+'''
+
+[[rows]]
+id = "C3_apply_isfile_recheck_dropped"
+description = "The apply pass no longer re-checks that the planned path still exists across the confirm gate"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        if not path.is_file():
+            continue
+'''
+new = '''
+'''
+
+[[rows]]
+id = "C4_claim_target_dropped"
+description = "R-172's guard: the rename no longer claims its target first, so POSIX rename silently overwrites the loser of a collision"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+            if not naming.claim_target(target):
+                continue
+'''
+new = '''
+'''
+
+[[rows]]
+id = "C5_failed_rename_leaves_the_claim"
+description = "A rename that raises leaves the zero-byte claim stub behind as a phantom track"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+                target.unlink(missing_ok=True)
+'''
+new = '''
+                pass
+'''
+
+[[rows]]
+id = "C6_target_identity_guard_dropped"
+description = "The rename branch is entered even when the target equals the source"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        if target != path:
+'''
+new = '''
+        if True:
+'''
+
+[[rows]]
+id = "C7_title_tag_write_dropped"
+description = "The apply pass renames and never writes the title tag, so the two surfaces diverge"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''
+        tags.write_tags(path, {"title": rendered.title_tag})
+'''
+new = '''
+        pass
+'''
+
+# ---------------------------------------------------------------------------
+# D. dedupe_stem. This unit is what gave it real input, so its rule is now
+#    load bearing on the library's names rather than inert.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "D1_dedupe_disabled"
+description = "The stem is never deduped, so a trailing segment repeating the lead survives"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+    deduped = dedupe_stem(spec.stem, spec.title, spec.album, sep=template.segment_sep)
+'''
+new = '''
+    deduped = spec.stem
+'''
+
+[[rows]]
+id = "D2_structural_min_parts_lowered"
+description = "The structural rule fires on two segments instead of three, so a two segment name loses its second half"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+    if len(parts) >= 3:
+'''
+new = '''
+    if len(parts) >= 2:
+'''
+
+[[rows]]
+id = "D3_endswith_widened_to_containment"
+description = "The repeat test becomes containment rather than a trailing match, so a lead appearing mid name triggers a cut"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+        if lead and stem.endswith(sep + lead):
+'''
+new = '''
+        if lead and (sep + lead) in stem:
+'''
+
+[[rows]]
+id = "D4_empty_lead_guard_dropped"
+description = "An empty lead segment no longer blocks the structural rule"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+        if lead and stem.endswith(sep + lead):
+'''
+new = '''
+        if stem.endswith(sep + lead):
+'''
+
+[[rows]]
+id = "D5_candidate_separator_guard_dropped"
+description = "The structural rule stops requiring that something survives the cut, so a two segment name can be reduced to one"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+            if sep in candidate:
+'''
+new = '''
+            if True:
+'''
+
+[[rows]]
+id = "D6_repeat_widened_to_prefix"
+description = "AMBIGUITY MEANS IDENTITY is inverted: a trailing segment that merely BEGINS with the lead counts as a repeat"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+        if lead and stem.endswith(sep + lead):
+'''
+new = '''
+        if lead and parts[-1].startswith(lead):
+'''
+
+[[rows]]
+id = "D7_dedupe_title_argument_from_the_stem"
+description = "dedupe's tag-confirmed rule is fed the filename body instead of the title tag, which is the collapse this unit undid, one layer down"
+file = "src/cratekit/core/naming.py"
+surface = "maintainer"
+old = '''
+    deduped = dedupe_stem(spec.stem, spec.title, spec.album, sep=template.segment_sep)
+'''
+new = '''
+    deduped = dedupe_stem(spec.stem, spec.stem, spec.album, sep=template.segment_sep)
+'''
+
+# ---------------------------------------------------------------------------
+# E. The byte budget. Truncation went from unreachable to live in this unit,
+#    because a carried body is longer than a tag body.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "E1_budget_bypassed"
+description = "The fitted stem is discarded and the deduped one is returned, so nothing is ever shortened to the path ceiling"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+    return replace(spec, stem=fitted)
+'''
+new = '''
+    return replace(spec, stem=deduped)
+'''
+
+[[rows]]
+id = "E2_hash_source_dropped"
+description = "The truncation hash is taken from the deduped stem rather than the original, so two sources that dedupe alike also hash alike"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+        hash_source=spec.stem,
+'''
+new = '''
+        hash_source=None,
+'''
+
+[[rows]]
+id = "E3_budget_min_becomes_max"
+description = "The two ceilings are combined with max rather than min, so the looser one wins"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+    max_stem = min(
+'''
+new = '''
+    max_stem = max(
+'''
+
+[[rows]]
+id = "E4_path_separator_byte_dropped"
+description = "The path separator's byte is no longer counted against the path budget"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+        + 1  # the path separator
+'''
+new = '''
+        + 0  # the path separator
+'''
+
+[[rows]]
+id = "E5_truncation_tail_not_reserved"
+description = "The disambiguating tail's bytes are not reserved, so the assembled name overshoots the ceiling by its length"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+    avail = max_stem - len(tail)
+'''
+new = '''
+    avail = max_stem
+'''
+
+[[rows]]
+id = "E6_dangling_trim_dropped"
+description = "A byte cut may end mid phrase, on a space, a dash or an open bracket"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+    visible = trim_dangling(truncated) or truncated.strip() or "x"
+'''
+new = '''
+    visible = truncated or "x"
+'''
+
+[[rows]]
+id = "E7_filename_ceiling_dropped"
+description = "Only the total path budget is enforced; the per filename ceiling stops constraining anything"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+        budget.filename_max_bytes - fixed_name,
+'''
+new = '''
+        budget.path_budget_bytes - fixed_path,
+'''
+
+# ---------------------------------------------------------------------------
+# F. normalize_spec and render_all, the engine seam where each surface's body
+#    reaches its own output. This is where the shell's decision is either
+#    honoured or undone.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "F1_normalize_stem_dropped"
+description = "The engine stops stripping a head off the stem, so idempotency over the crash window depends on the shell alone"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+    stem = strip_head(spec.stem, template=template)
+'''
+new = '''
+    stem = spec.stem
+'''
+
+[[rows]]
+id = "F2_normalize_title_dropped"
+description = "The engine stops stripping a head off the title, so a second head compounds on the tag"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+    title = strip_head(spec.title, template=template) if spec.title else spec.title
+'''
+new = '''
+    title = spec.title
+'''
+
+[[rows]]
+id = "F3_body_tag_preference_flipped"
+description = "The tag body prefers the filename's stem over the title, which is A2 reproduced inside the engine"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+    body_tag = spec.title if spec.title else spec.stem
+'''
+new = '''
+    body_tag = spec.stem if spec.stem else spec.title
+'''
+
+[[rows]]
+id = "F4_body_tag_fallback_dropped"
+description = "The tag body has no fallback at all, so a spec with no title renders None into the tag"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+    body_tag = spec.title if spec.title else spec.stem
+'''
+new = '''
+    body_tag = spec.title
+'''
+
+[[rows]]
+id = "F5_body_tag_truthiness_becomes_identity"
+description = "R-171's proposed fix applied as a mutation: a PRESENT but empty title stops inheriting the filename body"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+    body_tag = spec.title if spec.title else spec.stem
+'''
+new = '''
+    body_tag = spec.title if spec.title is not None else spec.stem
+'''
+
+[[rows]]
+id = "F6_filename_prefers_the_title_body"
+description = "R-168 reproduced one file over: the FILENAME is rendered from the title body when there is one, inside the engine rather than in the shell"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+        filename=head + spec.stem + spec.suffix,
+'''
+new = '''
+        filename=head + (spec.title or spec.stem) + spec.suffix,
+'''
+
+[[rows]]
+id = "F7_library_name_split_from_the_tag"
+description = "The library name is derived from the stem rather than from the rendered title tag, so the marker can go missing from one surface only"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+old = '''
+        library_name=title_tag,
+'''
+new = '''
+        library_name=head + spec.stem,
+'''
+
+# ---------------------------------------------------------------------------
+# Rows considered and not run.
+# ---------------------------------------------------------------------------
+
+[[dropped]]
+id = "C2_audio_extension_case_fold_dropped"
+description = "Drop .lower() from the AUDIO_EXTS membership test in _plan_for"
+reason = "ranked below the cap: pre-dates U41, untouched by this diff, and the extension filter has no bearing on what a body is composed from"
+
+[[dropped]]
+id = "C8_apply_parent_dir_blanked"
+description = "Pass an empty parent_dir into naming.build from the apply pass, so the budget is measured against the wrong directory"
+reason = "ranked below the cap: the budget arithmetic is already covered by E3 through E7, and the plan pass carries the identical call"
+
+[[dropped]]
+id = "C9_plan_iteration_order_unsorted"
+description = "Drop sorted() from the rglob in _plan_for"
+reason = "ranked below the cap and deliberately not run: the result would be filesystem order dependent, so a death or a zero would not be reproducible, which METHOD's timing rule forbids in spirit"
+
+[[dropped]]
+id = "G1_pad_head_key_span_widened"
+description = "Splice the whole leading match rather than the key's own span in naming.pad_head"
+reason = "ranked below the cap: U39 owns pad_head, its independent table already measured it, and this unit does not touch the head"
+
+[[dropped]]
+id = "G2_camelot_end_anchor_dropped"
+description = "Remove the trailing anchor from _CAMELOT_RE"
+reason = "ranked below the cap: already measured at zero by the U39 independent pass and filed as R-167; re-running it buys a second copy of a known number"
+
+[[dropped]]
+id = "H1_sanitize_segment_slash_rule_dropped"
+description = "Stop folding a slash to a dash in sanitize_segment"
+reason = "ranked below the cap: it is a body helper this unit does not reach, since _spec_for never calls it and dedupe only uses it on the tag-confirmed branch that this verb cannot enter with album unset"

@@ -9318,3 +9318,176 @@ target before the gate rather than discovering it during the rename.
 
 **Closes when:** a collision is detected while the plan is built, or the apply
 pass reports a skipped rename as something other than ok.
+
+## R-173. Closed on discovery: the central guard passed on an empty plan
+
+**Found by** the U41 independent adversarial pass, 2026-08-25. **Fixed the same
+day rather than filed**, and recorded here because the shape is worth keeping.
+
+`test_a_rename_never_replaces_the_body_with_the_title_tag` was the test the
+brief asked for by name and the one mutation row `R8` is killed by. Its entire
+body was a loop over the planned moves with no assertion outside it, so an
+implementation whose plan pass proposed nothing satisfied it. Driven by the
+reviewer with a plugin replacing `_plan_for` with an empty plan: the test
+passed. Its own sibling asserts `len(moves) == 1` and it did not.
+
+**Why it is recorded although it is fixed.** Four reviewers read this test
+before the independent pass and none saw it, including two that examined its
+assertions closely enough to argue about whether the first one was redundant.
+A guard that runs zero times reports the same green as a guard that holds. The
+fix is one line, `assert len(moves) == 3`, and it was verified by re-running the
+reviewer's own empty plan plugin and requiring a failure.
+
+**Closes when:** closed 2026-08-25, in the same round it was found.
+
+## R-174. Nothing pins the collision guard, and removing it destroys audio
+
+**Found by** the U41 independent adversarial pass, 2026-08-25.
+
+`naming.claim_target` is what stops two files renaming onto one name. Removing
+it kills 0 of 6266. The reviewer drove the mutated tree: two 8430 byte files
+became one 8430 byte file and both originals were gone. Composites on the same
+loop kill 7 and 4, so the loop is held and this specific guard is not.
+
+**Measured cost.** None today, because the guard is present and correct. The
+cost is that its removal is invisible to the suite, on the one code path in this
+verb that can destroy a track rather than merely misname it.
+
+**Why it is not fixed here.** It predates U41 and this diff neither adds nor
+widens it. A test needs two files that render to one name, which is the same
+fixture R-172 needs, and both belong in a unit that owns the collision path.
+
+**Closes when:** a test drives two files onto one target and fails when
+`claim_target` is removed.
+
+## R-175. A head only name is now a fixed point
+
+**Found by** the U41 independent adversarial pass, 2026-08-25, driven on both
+halves.
+
+The pre U41 verb could produce a filename that is a head and nothing else,
+`01A - 124 - .flac`, when the title tag's body was empty. The reviewer restored
+that code in memory and confirmed it produces exactly that. Handed such a file,
+the reviewed verb proposes nothing, because the body now comes from the filename
+and the filename has no body. The tag may still hold the title, and the verb no
+longer reads it for the body, so the file cannot be healed by this pass.
+
+**Measured cost.** A file already damaged by the old behaviour stays damaged.
+Whether any such file exists is UNMEASURED: the population would have to be
+counted on the library volume and it was disconnected before this was found.
+The verb never creates this state, so the population is bounded by whatever the
+pre U41 code did before anybody ran it, which on this machine is likely zero.
+
+**Why it is not fixed here.** Healing it means reading the body from the tag
+when the filename has none, which is a narrow exception to the decision this
+unit just took, and it should be taken deliberately rather than bolted on. It
+also cannot be justified until the population is known.
+
+**Closes when:** the population is counted with the volume mounted, and either a
+recovery path is added or the count is recorded as zero.
+
+## R-176. Two more shell layers are fully masked by the engine, and R-170 is narrower than filed
+
+**Found by** the U41 independent adversarial pass, 2026-08-25.
+
+Rows `A3`, `A4` and `A7` each kill 0 of 6266 and each is byte identical to the
+shipped tree on every input driven. They are the two `strip_head` calls in
+`_spec_for` and the `or path.stem` title fallback. This is R-170's class
+reproduced twice more: the shell does work the engine repeats.
+
+**It also corrects R-170.** That entry says the shell's strip is redundant. The
+reviewer drove stacked heads and found the claim holds at one and two and FAILS
+AT THREE, where the shell's strip and the engine's two normalizations do not
+reach the same fixed point. R-170 stands as a redundancy finding and its
+"identical on every shape" wording is too strong.
+
+**Measured cost.** None driven. Three stacked heads is not a shape any producer
+in this repository creates.
+
+**Why it is not fixed here.** Same reason as R-170: the fix belongs in the
+engine, wants its own mutation coverage, and the volume is disconnected.
+
+**Closes when:** the engine normalizes once, and the shell stops repeating it.
+
+## R-177. dedupe_stem's two structural guards mask each other
+
+**Found by** the U41 independent adversarial pass, 2026-08-25.
+
+`dedupe_stem`'s structural rule has two conditions. Rows `D2` and `D5` remove
+one each, both kill 0, and neither alone changes any output. Applied TOGETHER
+the reviewer drove `"Song - Song"` collapsing to `"Song"`.
+
+**Measured cost.** None today. The pair is what METHOD's "remove each guard
+layer alone" rule is written for, and it is the case that rule cannot catch:
+each layer is covered by the other, so single layer mutation reports both as
+untested and the composite reports them as held.
+
+**Why it is not fixed here.** `dedupe_stem` is engine code this unit does not
+touch. It became reachable here, which is why the reviewer scoped it in.
+
+**Closes when:** a test drives the two condition case, or the rule is written so
+one condition carries it.
+
+## R-178. Four more write path guards kill zero, each with a driven difference
+
+**Found by** the U41 independent adversarial pass, 2026-08-25.
+
+Rows `C5`, `E2`, `E6` and `D4` each kill 0 of 6266, and the reviewer drove each
+to a real behavioural difference rather than accepting the zero: a failed rename
+leaves a zero byte phantom track, two stems that dedupe alike hash alike, a
+truncation cut lands on a trailing space before the tilde, and a stem that both
+starts and ends with the separator loses its tail.
+
+**Measured cost.** None today; every one is a correct guard with nothing
+watching it. The phantom track is the one worth a person's attention, because it
+leaves a file on disk that no plan will ever mention again.
+
+**Why it is not fixed here.** All four are pre existing engine and write path
+guards, untouched by this diff.
+
+**Closes when:** each has a test, or the ledger records a decision not to.
+
+## R-179. A mutation table is a measurement of one commit
+
+**Found by** the U41 independent adversarial pass, 2026-08-25.
+
+`docs/mutation/u41-author-full.md` was measured at `fe47197` and states a
+baseline of 6262 collected. The unit's tip is `79b172f` and collects 6266,
+because a later round added four tests and changed an assertion in a test the
+table credits with a kill. At the tip, `R8` kills 8 rather than the 5 the table
+records.
+
+**Measured cost.** A reader takes the table's numbers as describing the unit and
+they describe its first commit. The solutions doc inherited the same five and
+has been corrected to eight with the reason.
+
+**Why it is not fixed here.** Re-measuring the author's table at the tip would
+overwrite a real measurement with a later one and lose the record of what was
+true when it was taken. The independent table at the tip is committed alongside
+it and is the current number.
+
+**Closes when:** a mutation table names the commit it was measured at in its own
+header, so the two cannot be confused.
+
+## R-180. The measurements that decided this unit cannot be re-derived
+
+**Found by** the U41 independent adversarial pass, 2026-08-25.
+
+The 53 and 25 and 1 percent grammar split, the 149 of 150 sample, and the sixty
+file end to end drive are the evidence the whole design rests on, and they ship
+as prose in a docstring, a commit message and a ledger entry. No script and no
+raw output is committed, and the volume is disconnected, so none of it can be
+re-derived or checked this session.
+
+**Measured cost.** Nobody can audit the numbers that decided what the body is
+for. They were real when taken and there is no artifact proving it.
+
+**Why it is not fixed here.** The scripts name the library volume by absolute
+path, which `scripts/scan_repo.py` refuses in a shipped artifact, so committing
+them as written would redden the battery. This entry proved that on its own
+first draft, which named the volume in this very paragraph and failed the scan.
+Committing them properly means taking the library root from configuration, which
+is a small piece of work rather than a copy.
+
+**Closes when:** a committed script takes the library root from config and can
+reproduce the grammar survey, and its output is committed beside the numbers.

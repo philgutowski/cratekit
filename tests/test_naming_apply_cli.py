@@ -300,7 +300,13 @@ def test_a_rename_never_replaces_the_body_with_the_title_tag(configured):
     for name in names:
         _track(folder, name, title="Song")
     template = _template(configured)
-    for frm, to in _moves(_plan(folder)):
+    moves = _moves(_plan(folder))
+    # Without this the whole guard is a loop with no assertion outside it, so an
+    # implementation that proposes NO rename satisfies it vacuously. Driven by
+    # the independent pass, which passed this test against a plan pass stubbed
+    # to return nothing. All three fixtures are unpadded, so all three move.
+    assert len(moves) == 3, f"expected three renames, got {moves!r}"
+    for frm, to in moves:
         before = naming.strip_head(Path(frm).stem, template=template)
         after = naming.strip_head(Path(to).stem, template=template)
         assert after != "Song", (

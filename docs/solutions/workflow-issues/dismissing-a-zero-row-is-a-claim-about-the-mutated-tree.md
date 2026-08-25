@@ -496,7 +496,10 @@ closed by writing a test against the code. The real library was measured first,
 read only: 53 percent of names carry `Title - Artist - Album`, 25 percent carry
 `Artist - Title`, and one percent have a body equal to the title tag. That
 measurement decided what the body is for, the decision was taken by a person,
-and only then were tests written to assert it. `R8` now dies five times, killed
-by tests that assert the decided rule. The gap between the two attempts is the
+and only then were tests written to assert it. `R8` now dies EIGHT times at the unit's tip, killed by tests that assert the
+decided rule. The author's own table recorded five, because it was measured
+at the unit's first commit and a later round added tests; the independent
+pass re-measured at the tip. A table is a measurement of one commit, and
+saying which commit is part of the measurement. The gap between the two attempts is the
 whole learning: the first closure took its expected value from the code and
 lasted one day, the second took it from the subject and settled the question.
