@@ -1,9 +1,10 @@
 # Restart: Cratekit
 
 **Last session 2026-08-25.** U39 merged and pushed after an independent review
-returned CLEAN. Board audit exit 0, 40 units, 38 done, 2 ready. **The pending
-register is EMPTY**, and the open units are issue 29 (attended, do not take)
-and #58 (U40).
+returned CLEAN, then a live data loss defect was found in the verb it repairs
+and filed as U41. Board audit exit 0, 41 units, 38 done, 3 ready. **The pending
+register is EMPTY**, and the open units are issue 29 (attended, do not take),
+#58 (U40) and #59 (U41). **Take U41 first**, and the section below says why.
 
 ## Do this first
 
@@ -30,8 +31,8 @@ Main's tip subject names this file's own restart commit. **No hash is written
 here on purpose**, since this file is part of the commit it would be naming.
 Check the subject and `git status -sb` for the ahead or behind count instead.
 
-**Thirty eight units are done.** The last measured suite was **6257 passed and 1
-skipped**. **Main's highest residual is R-167.** Append only.
+**Thirty eight units are done.** The last measured suite was **6256 passed and 1
+skipped**. **Main's highest residual is R-168.** Append only.
 
 ## What the last session did
 
@@ -46,6 +47,15 @@ closed with four tests rather than filed, then re-measured: every row now dies,
 each killed by the one test written for it. R-166 and R-167 were filed, both
 maintainer facing and neither from that diff.
 
+**One of those four closures was then withdrawn, and it matters more than the
+other three.** `R8_stem_source_swapped` was closed with a test asserting a
+file's body comes from the title tag. Driven afterwards against the real
+library, that is the truncating answer: filenames carry `Artist - Title` or
+`Title - Artist - Album` while the tag holds the title alone, so 149 of 150
+sampled files out of 9867 lose text under a rename. The test was removed, R8 is
+a zero death row again on purpose, R-168 carries the measurement, and **U41
+(#59)** owns the fix.
+
 **The learning worth carrying, and it is about the review method itself.** The
 review dismissed one zero row as unkillable because the file already equalled
 its own rendered target. That was true of the unmutated tree and false under
@@ -55,7 +65,7 @@ says an author's own table is a draft rather than a result. The same holds one
 level up: **a reviewer's reason for leaving a zero row at zero is itself an
 unverified claim, and it gets driven like everything else here.**
 
-## The one open unit, and why the board is wrong about it
+## The open units, and why the board is wrong about the first one
 
 `board.py next` says **Take #29**. Do not take it. Ready is a statement about
 DEPENDENCIES and not about who can do the work, and all seven of U29's blockers
@@ -95,8 +105,10 @@ amending the plan's row 18 cell in DJ_tools at merge time because the drift
 check couples the two trees. Row 32's Defer was strengthened: the CLI must be
 complete for any user on its own, recorded in `CUT.md`.
 
-**U39 merged 2026-08-25 and row 16's note is now true.** U40 (#58) is the only
-takeable unit on the board.
+**U39 merged 2026-08-25 and row 16's note is now true.** U40 (#58) and U41 (#59)
+are the takeable units. **U41 should go first**, because `name.apply` is the
+padding sweep U29's cutover would run over the real library, and until U41 lands
+that sweep destroys the artist on almost every file.
 
 ## What else is open, and none of it is the queue
 
@@ -118,7 +130,7 @@ backfill the rest of the ledger onto the board.**
   to act on it. **Do not backfill.**
 - **Residual numbers are APPEND ONLY.** Main's numbers never move; an incoming
   branch's residuals take fresh numbers above main's highest. **Main's highest is
-  R-167.**
+  R-168.**
 - **The pending register is empty.** `tests/test_pending_units.py` now carries a
   test that says so out loud, because an emptily parametrized countdown is
   SKIPPED by pytest and a silent skip is the exact hazard that file warns about.
@@ -132,13 +144,27 @@ backfill the rest of the ledger onto the board.**
   which issue it is BEFORE writing the merge commit.
 - **Do not touch** U30's board state, U20, R-9, A1, A2, or `.worktrees/conformance`.
 
-## Ten things that will bite you
+## Twelve things that will bite you
 
 **A REVIEWER'S REASON FOR LEAVING A ZERO ROW AT ZERO IS ITSELF A CLAIM.** U39's
 independent pass called one row unkillable because the file already equalled its
 own rendered target. True of the unmutated tree, false under the mutation, which
 is the only state that decides it, and that row was the direction that lost data.
 An author's table is a draft; so is a reviewer's dismissal. Drive it.
+
+**AND SO IS A CLOSURE, WHICH COST MORE.** A test written to make a zero row die,
+whose expected value was read off what the code already does rather than off a
+decision about what it should do, is not a guard. It is a characterization of
+the defect wearing a guard's costume, and it converts an open question into a
+green assertion nobody will revisit. That is how R-168 hid for a day inside a
+row reported as closed. Decide the correct behaviour from something other than
+the code under test, or leave the row at zero and say why.
+
+**`board.py sync` CAN REPORT A CORRECTION IT DID NOT MAKE.** On 2026-08-25 it
+printed "Corrected 2 item(s)" for a new issue it never added to the project, and
+the next audit failed identically. Re-running it does not help. Add the item with
+`gh project item-add 2 --owner philgutowski --url <issue url>`, then sync for the
+derived status. Always re-audit after a sync rather than trusting its output.
 
 **Scan the whole pushed RANGE for closing keywords, not the merge commit**, and
 run it as a GATE that stops the push. Never write a closing keyword next to an
