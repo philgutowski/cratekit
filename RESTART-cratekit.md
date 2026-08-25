@@ -1,9 +1,9 @@
 # Restart: Cratekit
 
-**Last session 2026-08-24.** U27 and U28 merged and pushed, the cutover
-dispositions audited, and two new units queued. Board audit exit 0, 40 units,
-37 done, 3 ready. **The pending register is EMPTY**, and the open units are
-issue 29 (attended, do not take), #57 (U39) and #58 (U40).
+**Last session 2026-08-25.** U39 merged and pushed after an independent review
+returned CLEAN. Board audit exit 0, 40 units, 38 done, 2 ready. **The pending
+register is EMPTY**, and the open units are issue 29 (attended, do not take)
+and #58 (U40).
 
 ## Do this first
 
@@ -30,26 +30,30 @@ Main's tip subject names this file's own restart commit. **No hash is written
 here on purpose**, since this file is part of the commit it would be naming.
 Check the subject and `git status -sb` for the ahead or behind count instead.
 
-**Thirty seven units are done.** The last measured suite was **6239 passed and 1
-skipped**. **Main's highest residual is R-164.** Append only.
+**Thirty eight units are done.** The last measured suite was **6257 passed and 1
+skipped**. **Main's highest residual is R-167.** Append only.
 
-## What the last session compounded
+## What the last session did
 
-Two learnings were filed, both in `docs/solutions/workflow-issues/`, and both
-came out of an adversarial review returning BLOCKING on a unit whose own battery
-was green.
+U39 merged at `31bf91f`. The naming engine writes the padded Camelot form at
+write time, and `name.apply` recovers the head from the filename first and the
+title second instead of destroying it. Read `docs/u39-naming-review.md` for the
+independent pass and its postscript.
 
-- `adding-the-first-caller-makes-you-the-owner-of-its-unreviewed-defects.md`,
-  from U27. A restore whose every transfer failed exited OK, and the callee had
-  shipped that way for as long as nothing called it.
-- `a-checker-that-reimplements-what-it-checks-drifts-and-stays-green.md`, from
-  U28. It also extends `CONCEPTS.md`'s Guard entry with a third axis, whether a
-  guard consults the real subject or a model of it.
+The pass returned CLEAN and its 22 rows found six zero death rows the author's
+14 did not. Four of them sat on branches of U39's own new code, and they were
+closed with four tests rather than filed, then re-measured: every row now dies,
+each killed by the one test written for it. R-166 and R-167 were filed, both
+maintainer facing and neither from that diff.
 
-The second one flags one thing for a human to decide rather than doing it:
-`docs/METHOD.md`'s "What a green suite cannot see" list has four items, and this
-learning is a fifth of exactly that shape. METHOD is the auto loaded contract, so
-a compound run does not edit it.
+**The learning worth carrying, and it is about the review method itself.** The
+review dismissed one zero row as unkillable because the file already equalled
+its own rendered target. That was true of the unmutated tree and false under
+the mutation, which is the only state that decides whether a row is killable,
+and that row turned out to be the direction that loses data. METHOD already
+says an author's own table is a draft rather than a result. The same holds one
+level up: **a reviewer's reason for leaving a zero row at zero is itself an
+unverified claim, and it gets driven like everything else here.**
 
 ## The one open unit, and why the board is wrong about it
 
@@ -88,9 +92,11 @@ permanently parked in the fallback bucket. Phillip decided both: **U39 (#57)**
 fixes padding and `name.apply`, row 16 stays Cut and its note becomes true;
 **U40 (#58)** builds the retag verb and flips row 18 to Module, which requires
 amending the plan's row 18 cell in DJ_tools at merge time because the drift
-check couples the two trees. Both are on the board as Ready. Row 32's Defer was
-strengthened: the CLI must be complete for any user on its own, recorded in
-`CUT.md`.
+check couples the two trees. Row 32's Defer was strengthened: the CLI must be
+complete for any user on its own, recorded in `CUT.md`.
+
+**U39 merged 2026-08-25 and row 16's note is now true.** U40 (#58) is the only
+takeable unit on the board.
 
 ## What else is open, and none of it is the queue
 
@@ -112,7 +118,7 @@ backfill the rest of the ledger onto the board.**
   to act on it. **Do not backfill.**
 - **Residual numbers are APPEND ONLY.** Main's numbers never move; an incoming
   branch's residuals take fresh numbers above main's highest. **Main's highest is
-  R-164.**
+  R-167.**
 - **The pending register is empty.** `tests/test_pending_units.py` now carries a
   test that says so out loud, because an emptily parametrized countdown is
   SKIPPED by pytest and a silent skip is the exact hazard that file warns about.
@@ -126,7 +132,13 @@ backfill the rest of the ledger onto the board.**
   which issue it is BEFORE writing the merge commit.
 - **Do not touch** U30's board state, U20, R-9, A1, A2, or `.worktrees/conformance`.
 
-## Nine things that will bite you
+## Ten things that will bite you
+
+**A REVIEWER'S REASON FOR LEAVING A ZERO ROW AT ZERO IS ITSELF A CLAIM.** U39's
+independent pass called one row unkillable because the file already equalled its
+own rendered target. True of the unmutated tree, false under the mutation, which
+is the only state that decides it, and that row was the direction that lost data.
+An author's table is a draft; so is a reviewer's dismissal. Drive it.
 
 **Scan the whole pushed RANGE for closing keywords, not the merge commit**, and
 run it as a GATE that stops the push. Never write a closing keyword next to an
