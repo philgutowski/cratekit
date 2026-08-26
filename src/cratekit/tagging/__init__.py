@@ -7,6 +7,7 @@ CLI when a later worker runs the queued job.
 
 from __future__ import annotations
 
+from cratekit.tagging.retag import retag_folder
 from cratekit.tagging.tag import Searcher, SearchHit, tag_folder
 
-__all__ = ["SearchHit", "Searcher", "tag_folder"]
+__all__ = ["SearchHit", "Searcher", "retag_folder", "tag_folder"]

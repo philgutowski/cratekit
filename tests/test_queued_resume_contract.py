@@ -193,23 +193,40 @@ def _approve_and_queue(verb: list[str], gate: str) -> tuple[str, str]:
     return run_id, queued["data"]["job_id"]
 
 
+#: Stands in for a path under the CONFIGURED library, substituted once the
+#: fixture has built one. A literal here would be a real path on somebody's
+#: machine (R1), and the parametrisation is read before any fixture runs.
+LIBRARY_FOLDER = "<library>"
+
+
+def _resolved(verb: list[str]) -> list[str]:
+    root = config.load().library.root
+    return [str(root / "Music") if part == LIBRARY_FOLDER else part for part in verb]
+
+
 @pytest.mark.parametrize(
     "verb, gate",
     [
         (["export", "playlist", "crate-export"], "export.playlist.confirm"),
         (["sync", "favorites"], "sync.favorites.confirm"),
+        (["tag", "retag", LIBRARY_FOLDER], "tag.retag.confirm"),
     ],
-    ids=["export.playlist", "sync.favorites"],
+    ids=["export.playlist", "sync.favorites", "tag.retag"],
 )
 def test_the_resume_the_job_driver_spawns_can_actually_proceed(installed, verb, gate):
     """The one check the static guards cannot make: does the dispatcher accept it.
 
-    Both of these verbs shipped broken and both were driven to a permanent exit
+    Two of these verbs shipped broken and both were driven to a permanent exit
     10 on 2026-08-23. Asserting the argv equals a list is a unit test of a list.
     Running the real ``argv_for`` output through the real dispatcher is the only
     thing that can tell a resume that works from one refused for ever.
+
+    ``tag.retag`` joined on 2026-08-26, in the unit that landed it rather than in
+    a later sweep, because a verb arriving with this combination is exactly the
+    fourth verb the file's own docstring says a hardcoded list of three would miss.
     """
     del installed
+    verb = _resolved(verb)
     _run_id, job_id = _approve_and_queue(verb, gate)
 
     with jobs.open_store() as store:

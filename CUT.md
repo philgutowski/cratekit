@@ -13,7 +13,7 @@ noticed this existed" look identical in a diff six months later.
 | Source entry point | Why it is not ported |
 |---|---|
 | `dj-split-genre-folders` | A one-time migration between two specific genre folders in one person's library. Its own docstring says so. The declared taxonomy plus the tree writers do this generically. |
-| `dj-genre-research` | The other half of that same one-time migration. The lookup engine inside it is kept and folds into tagging; the verb is not. |
+| `dj-genre-research` | The other half of that same one-time migration. The lookup engine inside it is kept and folds into tagging; the verb is not. Still cut after Feature Inventory row 18 flipped from Cut to Module on 2026-08-26: `crate tag retag` claims that row and neither of these two scripts. Row 18 was "Electronica retag passes", one person's cleanup, and what U40 built is the general capability, correcting any value the user's own taxonomy declares too coarse to be a final tag. These two scripts stay cut because each is a migration between two named folders in one library, which is a different thing from a capability. |
 | `dj-create-vox-playlists` | The sub-playlists it creates are declared by the taxonomy and written by the tree writers, so creating them is no longer a separate act. |
 
 ## Deferred

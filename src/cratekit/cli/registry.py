@@ -263,7 +263,15 @@ FEATURES: tuple[Feature, ...] = (
     Feature(15, "duplicate audit", "module"),
     Feature(16, "camelot padding pass", "cut"),
     Feature(17, "filename and path repair", "module"),
-    Feature(18, "one-off retag passes", "cut"),
+    #: Flipped from Cut on 2026-08-26 (U40), and the plan's own row 18 cell was
+    #: amended in the same sitting because the parity check drift-tests the two
+    #: trees against each other. The Cut justification was "one-time personal
+    #: cleanups", and a 2026-08-24 audit falsified it: tagging is fill-if-empty by
+    #: construction, so a mis-tagged arrival routes to the fallback bucket and no
+    #: verb can ever look a better answer up. That is a permanent hole in a shipped
+    #: workflow rather than one person's migration, and the title says the general
+    #: capability rather than the decision this unit reverses.
+    Feature(18, "genre correction for a tag already too coarse", "module"),
     Feature(19, "streamed-track playlist scan", "cut"),
     Feature(20, "intake aging report", "module"),
     Feature(21, "favourite label registry and sweeps", "module"),
@@ -859,6 +867,59 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"files"}),
         destructive=True,
         doctor_checks=("binary.ffmpeg",),
+    ),
+    Entry(
+        name="tag.retag",
+        summary="replace a genre too coarse to be a final tag with a specific one",
+        module="cratekit.tagging.retag_cli",
+        builder="build",
+        handler_key="tag.retag",
+        feature_rows=(18,),
+        #: NO SOURCE SCRIPT. ``dj-split-genre-folders`` and ``dj-genre-research``
+        #: stay cut in ``CUT.md`` and this verb does not resurrect either: both
+        #: were one-time migrations between two named folders in one library, and
+        #: the lookup engine inside the second one folded into tagging already.
+        #: Claiming them here would reopen two decisions this unit did not reverse.
+        source_scripts=(),
+        #: Gated by ``repair`` rather than by a module of its own. A corrective
+        #: pass over metadata the library ALREADY holds is the same job
+        #: ``repair.paths`` does for a location the library already recorded, and
+        #: the slim install is "bring music in and route it", where correcting what
+        #: is already there is a second job a person opts into. A module gating one
+        #: verb would also put a switch in every user's configuration that means
+        #: nothing to anyone who has not met this exact failure.
+        module_id="repair",
+        argv_builder="retag_argv",
+        long_running=True,
+        emits=frozenset({"job_state"}),
+        output_schema="job_state/1",
+        #: Both surfaces. The file's genre tag is rewritten through
+        #: ``core.tags.write_genre`` and the row's ``GenreID`` is relinked through
+        #: ``write.metadata.plan_genre_retag`` under the ``RETAG_GENRE`` policy,
+        #: which owns that column outright because this pass runs only over values
+        #: the taxonomy declares unusable as a final tag.
+        writes=frozenset({"files", "db_metadata"}),
+        adjudicates=True,
+        destructive=True,
+        doctor_checks=("library.mounted", "rekordbox.pins"),
+        gates=(
+            GateSpec(
+                name="tag.retag.confirm",
+                options=("apply", "abort"),
+                prompt="Correct the genre on these files?",
+                #: EXPLICIT, and the reason is the resume rather than the blast
+                #: radius. This verb queues, so the confirmed work runs in a
+                #: detached child; R34's separate recorded act is what gives that
+                #: child a run to name, and ``tests/test_queued_resume_contract.py``
+                #: derives its guard from exactly this combination. An ordinary
+                #: gate would put the verb outside that guard while leaving the
+                #: same permanent-stall shape in place, since a resume argv carries
+                #: no inline answer either.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
     ),
     Entry(
         name="name.apply",

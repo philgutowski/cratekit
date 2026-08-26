@@ -1411,6 +1411,12 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "intake.playlist": ["https://example.invalid/playlist"],
         "intake.file": [str(library / "no-such-track.flac")],
         "tag.folder": [str(library / "Music")],
+        # U40. Same convention as tag.folder: a folder under the CONFIGURED
+        # library. It is empty here, so the selection is empty and the confirm
+        # gate is asked against the digest of a plan with nothing in it, which is
+        # still a plan a person can abort. Queueing needs no database, which is
+        # what lets a verb declaring db_metadata exit OK on this fixture.
+        "tag.retag": [str(library / "Music")],
         "name.apply": [],
         "repair.paths": [],
         # U25. Folder verbs take a path under the configured library. Calibrate

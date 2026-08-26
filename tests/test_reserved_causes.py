@@ -4676,7 +4676,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # so they moved from the reserved-only side to the both side and left this
     # union unchanged. Population 130 to 131, non-reserved UNCHANGED at 107,
     # reserved half 23 to 24.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (131, 107, 24)
+    # Re-pinned on U40, 2026-08-26. ONE slug, named rather than counted:
+    # tag-retag-folder-unknown, which the genre correction verb raises when it is
+    # handed an empty folder. It sits in cause.REASONS and NOT in the reserved
+    # table, exactly as its sibling export-playlist-unknown does, so the reserved
+    # half does not move. Population 131 to 132, non-reserved 107 to 108,
+    # reserved half UNCHANGED at 24.
+    #
+    # THE SLUG EXISTED IN THE TREE BEFORE IT EXISTED HERE, and that is worth one
+    # line because it is what this pin caught. ``cause.refuse`` raises
+    # ``UnknownReason`` for an undeclared slug, so the verb's empty-folder branch
+    # would have raised a KeyError at the boundary instead of refusing. No test in
+    # the unit drove that branch; this population count is what reported it.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (132, 108, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4729,7 +4741,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # non-keys UNCHANGED at 181. The one that joined is `restore-transfer-failed`,
     # differenced as SETS against `origin/main` the same way, and it is a KEY on
     # both sides, so the non-key half does not move with it. Nothing left.
-    assert (len(literals), len(literals - set(causes))) == (311, 181), (
+    # Re-pinned on U40, 2026-08-26: 311 to 318 distinct, 181 to 187 non-keys.
+    # SEVEN literals joined and NOTHING left, differenced as SETS against
+    # `origin/main`'s own `src` tree extracted into a scratch directory rather
+    # than inferred from the totals moving by seven, because a module joining
+    # while another leaves reads identically in a count. Named:
+    # `tag-retag-folder-unknown`, which is a KEY on this side and is why the
+    # non-key half moves by six rather than seven; and six that are not causes at
+    # all, `coarse-genre`, the review item kind, plus `no-genre`,
+    # `genre-specific`, `no-answer`, `answer-too-coarse` and `declined-in-review`,
+    # the reason markers on a retag result. They are the same shape as `has-genre`
+    # and `no-hit`, the tagging result markers the U37 re-pin above names.
+    assert (len(literals), len(literals - set(causes))) == (318, 187), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -4865,7 +4888,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # exactly one module joined, none left, and the named side stayed at 21 with the
     # without-own half at 8. The also-holds-an-integer half stays 15: the module
     # holds no bare integer at all.
-    assert (len(literal_holders), len(literal_both)) == (74, 15), (
+    # Re-pinned on U40, 2026-08-26: 74 to 75 holders. tagging/retag_cli.py joined,
+    # naming config-unusable the way every other shell does, refused-by-policy for
+    # an entry declaring no plan-digested gate, and tag-retag-folder-unknown for an
+    # empty folder argument. Differenced as SETS against origin/main's own src tree
+    # extracted into a scratch directory, the same way as every entry above:
+    # exactly one module joined and none left. The also-holds-an-integer half stays
+    # 15, because the module holds no bare integer at all. tagging/retag.py is NOT
+    # in the set: its six new kebab literals are result markers rather than causes,
+    # which is why the distinct population moved by seven and the holder set by one.
+    assert (len(literal_holders), len(literal_both)) == (75, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
