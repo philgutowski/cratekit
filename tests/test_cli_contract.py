@@ -2315,6 +2315,49 @@ def test_every_declared_module_toggle_is_used_by_at_least_one_verb():
     )
 
 
+def test_a_verb_carrying_a_resume_argv_builder_declares_that_it_queues():
+    """THE DIRECTION THAT REMOVES ANOTHER FILE'S COVERAGE, found 2026-08-26.
+
+    ``tests/test_queued_resume_contract.py`` derives its guarded set from
+    ``long_running`` AND ``argv_builder``, which is what makes every guard there
+    cover a verb nobody thought to list. It also means dropping ``long_running``
+    from an entry silently removes that verb from all of them: that suite goes
+    green with three fewer tests and nothing says so. A U40 mutation removing
+    exactly that flag killed nothing and only shrank the collected count.
+
+    IT LIVES HERE RATHER THAN BESIDE THE GUARDS IT PROTECTS, and the placement is
+    the point. In that file the mutation moves the collected count, because the
+    parametrisation shrinks with it, so the row can never be measured as a clean
+    death. This file's parametrisations key on ``landed``, so its count is
+    unmoved and the death is countable. It is a registry invariant, which is what
+    this file holds.
+
+    ``Entry.__post_init__`` already refuses the other direction, a long-running
+    verb with no builder. This is the implication that has no home there, because
+    the type cannot argue about intent: an ``argv_builder`` exists for exactly one
+    purpose, turning a frozen payload back into a command line for the child the
+    job driver spawns, so a verb declaring one and not declaring ``long_running``
+    is either mislabelled or carrying a builder nothing will ever call.
+
+    Measured over the registry on 2026-08-26: 21 entries declare ``long_running``
+    and every one declares a builder, so the implication holds in the tree today
+    and this is what stops it drifting.
+    """
+    carriers = [entry for entry in registry.ENTRIES if entry.argv_builder]
+    assert len(carriers) >= 20, (
+        f"only {len(carriers)} entries declare a resume argv builder, which is "
+        f"far below the 21 measured when this guard landed; either the registry "
+        f"shrank a great deal or this guard has stopped deriving anything"
+    )
+    mislabelled = sorted(entry.name for entry in carriers if not entry.long_running)
+    assert not mislabelled, (
+        f"these verbs declare a resume argv builder and do not declare "
+        f"long_running: {mislabelled}. Either the builder is dead code, or the "
+        f"verb queues and has just dropped out of every derived guard in "
+        f"tests/test_queued_resume_contract.py"
+    )
+
+
 def test_no_verb_claims_a_module_the_profile_layer_does_not_declare():
     known = set(profiles.MODULES) | profiles.ALWAYS_AVAILABLE
     claimed = {entry.module_id for entry in registry.entries()} - {None}

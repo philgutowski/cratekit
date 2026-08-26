@@ -175,7 +175,12 @@ def select(root: Path, *, declared: taxonomy.Taxonomy) -> Selection:
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in AUDIO_EXTS:
             continue
-        current = (tags.read_genre_from_file(path) or "").strip()
+        # NOT STRIPPED HERE, and the missing call is deliberate. ``tags.read_tag``
+        # already trims every value it returns, at ``core/tags.py:489``, so a
+        # strip here was dead code: a mutation removing it killed nothing because
+        # no input can reach it padded. A second normalization beside the one that
+        # owns it is two opinions that agree until one of them moves.
+        current = tags.read_genre_from_file(path) or ""
         if not current:
             # tag.folder's, under fill-if-empty. See the module docstring.
             passed.append(Passed(path=path, reason=NO_GENRE))

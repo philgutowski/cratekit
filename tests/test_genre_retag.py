@@ -150,17 +150,23 @@ def test_a_folder_that_is_not_there_selects_nothing_rather_than_raising(tmp_path
     assert retag.select(tmp_path / "absent", declared=TAXONOMY) == retag.Selection()
 
 
-def test_a_catch_all_carrying_whitespace_is_selected_and_recorded_trimmed(folder, silence):
-    """THE TRIM IS ON THE RECORDED VALUE, NOT ON THE SELECTION, and the two are
-    easy to confuse into one assertion that holds for both.
+def test_a_padded_catch_all_reaches_the_selection_already_trimmed(folder, silence):
+    """WHY THIS PASS DOES NO TRIMMING OF ITS OWN, pinned where somebody would add
+    one back.
 
-    ``is_too_coarse_as_source`` strips before it compares, so a padded catch-all
-    is selected whether or not this pass trims. What the trim decides is what the
-    candidate CARRIES, which is what the plan shows a person and what the review
-    payload records. Untrimmed, one library ends up with two spellings of one
-    genre in the queue and a person answers the same question twice.
+    The obvious guard, stripping the value `select` reads, is dead code:
+    `tags.read_tag` trims every value it returns, so no input can reach the
+    selection padded and a mutation removing a strip here killed nothing. That
+    measurement is what this test records. The candidate's `current` is what the
+    plan shows a person and what the review payload stores, so it matters that it
+    is trimmed; it just is not this module's job to trim it, and doing it twice is
+    two opinions that agree until one of them moves.
     """
     path = place(folder, silence, "padded", f"  {CATCH_ALL} ")
+    assert tags.read_genre_from_file(path) == CATCH_ALL, (
+        "core.tags stopped trimming, so this pass is now reading padded values "
+        "and needs its own normalization back"
+    )
 
     selection = retag.select(folder, declared=TAXONOMY)
 

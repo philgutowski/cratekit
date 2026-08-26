@@ -1,9 +1,13 @@
 # Restart: Cratekit
 
-**Last session 2026-08-25.** U39 and U41 both merged and pushed, each after an
-independent adversarial pass returned CLEAN. Board audit exit 0, 41 units, 39
-done, 2 ready. **The pending register is EMPTY**, and the open units are issue
-29 (attended, do not take) and #58 (U40), which is the only takeable one.
+**Last session 2026-08-26.** U40 merged and pushed. Board audit exit 0, 41
+units, 40 done. **The pending register is EMPTY.**
+
+**THERE IS NO TAKEABLE UNIT LEFT.** `board.py next` will name issue 29 and issue
+29 is attended, Phillip's to perform against the live library, which an agent
+cannot touch by standing constraint. Read "What is actually left" below before
+picking anything up, because the next piece of work on this repository is a
+decision rather than a queue entry.
 
 ## Do this first
 
@@ -14,7 +18,8 @@ done, 2 ready. **The pending register is EMPTY**, and the open units are issue
    tell you to take it.
 2. `CLAUDE.md` is the session contract.
 3. This file for the current wave state. `docs/HANDOFF.md` is the longer
-   narrative.
+   narrative and its "State" section has been stale since U27; trust this file
+   and `board.py` over it.
 
 Older `wave-state-*.md` files are history. Read one for the reasoning behind a
 rule, never to find out how to work.
@@ -30,91 +35,77 @@ Main's tip subject names this file's own restart commit. **No hash is written
 here on purpose**, since this file is part of the commit it would be naming.
 Check the subject and `git status -sb` for the ahead or behind count instead.
 
-**Thirty nine units are done.** The last measured suite was **6265 passed and 1
-skipped**. **Main's highest residual is R-180.** Append only.
+**Forty units are done.** The last measured suite was **SUITE_COUNT**. **Main's
+highest residual is R-186.** Append only.
 
 ## What the last session did
 
-U39 merged at `31bf91f`. The naming engine writes the padded Camelot form at
-write time, and `name.apply` recovers the head from the filename first and the
-title second instead of destroying it. Read `docs/u39-naming-review.md` for the
-independent pass and its postscript.
+U40 built `crate tag retag`, the verb that can correct a genre that is already
+wrong. `tag.folder` is fill-if-empty by construction, so a file arriving with a
+vendor catch-all is skipped by every tagging verb, routes to the fallback bucket
+and stays there for ever. The selection is the user's own taxonomy through
+`is_too_coarse_as_source`, never a list in code, and two refusals hold it: an
+answer that is itself too coarse is never written, and a file with NO genre is
+never selected even though the predicate calls the empty string too coarse,
+because that state is `tag.folder`'s under a different ownership policy.
 
-The pass returned CLEAN and its 22 rows found six zero death rows the author's
-14 did not. Four of them sat on branches of U39's own new code, and they were
-closed with four tests rather than filed, then re-measured: every row now dies,
-each killed by the one test written for it. R-166 and R-167 were filed, both
-maintainer facing and neither from that diff.
+Feature Inventory row 18 moved from Cut to Module, and the plan's own row 18
+cell was amended in DJ_tools at `1e041cb` in the same sitting. **Those two trees
+are coupled and the coupling is deliberate**: `tests/test_cutover_parity.py`
+drift checks `registry.FEATURES` against the plan whenever DJ_tools is checked
+out beside this repository, so editing either side alone leaves main red. If a
+future unit moves a disposition, it moves both.
 
-**One of those four closures was then withdrawn, and it matters more than the
-other three.** `R8_stem_source_swapped` was closed with a test asserting a
-file's body comes from the title tag. Driven afterwards against the real
-library, that is the truncating answer: filenames carry `Artist - Title` or
-`Title - Artist - Album` while the tag holds the title alone, so 149 of 150
-sampled files out of 9867 lose text under a rename. The test was removed, R8 is
-a zero death row again on purpose, R-168 carries the measurement, and **U41
-(#59)** owns the fix.
+Read `docs/mutation/u40-author-full.md` and `docs/mutation/u40-author-round-2.md`
+for the measurements. Six residuals are filed, R-181 through R-186.
 
-**The learning worth carrying, and it is about the review method itself.** The
-review dismissed one zero row as unkillable because the file already equalled
-its own rendered target. That was true of the unmutated tree and false under
-the mutation, which is the only state that decides whether a row is killable,
-and that row turned out to be the direction that loses data. METHOD already
-says an author's own table is a draft rather than a result. The same holds one
-level up: **a reviewer's reason for leaving a zero row at zero is itself an
-unverified claim, and it gets driven like everything else here.**
+**R-186 is the one to read.** `write/metadata.resolve_genre_id` defaults the
+soft-delete marker to the permissive answer, which is the shape
+`trees.soft_delete_marker` refuses by having no default. U40 did not write that
+line and U40 is what gave it a caller: `plan_genre_retag` had no caller anywhere
+in `src` before this unit, so the defect was dormant and is now reachable from a
+verb a person types. The mechanism was driven; the producer was not, and METHOD's
+do-not-touch section assigns that line to the parked conformance branch, which is
+why it is filed rather than fixed.
 
-## The open units, and why the board is wrong about the first one
+## What is actually left, and none of it is on the board
 
-`board.py next` says **Take #29**. Do not take it. Ready is a statement about
-DEPENDENCIES and not about who can do the work, and all seven of U29's blockers
-are now closed, which is the only reason it says Ready.
+**Issue 29, the cutover.** Attended, per workflow, against the live library.
+Not an agent's. METHOD says why in its do-not-touch section and the reason does
+not expire.
 
-U29 is the cutover and retirement of the live system. Its own brief says
-**attended per workflow, do not batch cutovers**, and it requires each
-replacement to run correctly **on the live library at least once**. The live
-rekordbox database is off limits by standing constraint, so an agent can prepare
-for U29 and cannot perform it. `docs/METHOD.md` now says this in the do-not-touch
-section rather than just naming the unit, so the reasoning does not have to be
-rediscovered.
+**Five Feature Inventory rows with no landed verb and NO ISSUE OWNING THEM.**
+This is the part a `board.py next` reading will not show you:
 
-**What is already prepared for it.** `tests/test_cutover_parity.py` is the parity
-table U29's own test scenario asks for. Rewritten 2026-08-24: it now derives
-everything from `registry.FEATURES`, which carries each row's plan disposition,
-instead of vendoring a second copy of the inventory. A row is backlog only if its
-disposition is owed (core, module, reshaped) and no LANDED verb covers it, and a
-drift check compares the transcribed dispositions against the plan when DJ_tools
-is checked out beside this repo.
+| row | title | awaiting verb | declared in |
+|---|---|---|---|
+| 6 | vendored concurrent downloader | `acquire.download` | U15, CLOSED |
+| 7 | fallback lossy acquisition | `acquire.audit`, `acquire.download` | U15, CLOSED |
+| 29 | set builder | `setbuild` | U35, CLOSED |
+| 30 | set recording mastering | `master` | U35, CLOSED |
+| 31 | library backup | `backup.run` | U35, CLOSED |
 
-**The cutover backlog is FIVE of thirty seven rows**, 6, 7, 29, 30 and 31, each
-awaiting a declared verb: `acquire.download`, `acquire.audit`, `setbuild`,
-`master`, `backup.run`.
+Every one of those verbs still carries a `planned_in` marker naming a unit whose
+issue is CLOSED. Four more verbs are in the same state and are NOT in the
+backlog, because another landed verb covers their row: `session.ack` and
+`session.release` (U8, row 12), `analyze.vocals` and `metadata.mytags-vocals`
+(U25, row 10). So nine declared verbs have no module, and five of them are the
+whole of what stands between this repository and a mechanically possible
+cutover. `tests/test_cutover_parity.py` derives that table and
+`test_the_cutover_is_not_yet_possible_and_says_why` fails on the day it empties.
 
-The other five rows the first version reported as backlog were never backlog.
-The plan dispositioned 16, 18 and 19 Cut and 23 and 32 Defer on 2026-08-01, and
-the old test's vendored copy dropped the disposition column, so it reported
-settled decisions as open questions. A session's audit of all five (2026-08-24)
-confirmed 19, 23 and 32 and overturned two: 16's justification was false in the
-tree (the naming engine does not pad, and `name.apply` strips the head off any
-file it renames, driven and confirmed), and 18 leaves mis-tagged arrivals
-permanently parked in the fallback bucket. Phillip decided both: **U39 (#57)**
-fixes padding and `name.apply`, row 16 stays Cut and its note becomes true;
-**U40 (#58)** builds the retag verb and flips row 18 to Module, which requires
-amending the plan's row 18 cell in DJ_tools at merge time because the drift
-check couples the two trees. Row 32's Defer was strengthened: the CLI must be
-complete for any user on its own, recorded in `CUT.md`.
+**Building any of them is a DECISION, not a queue item.** Do not create issues
+for them without Phillip saying so, and do not build one off the board.
 
-**U39 and U41 both merged 2026-08-25.** Row 16's note is true and the padding
-sweep is safe to run: `name.apply` derives the head and carries each surface's
-body, so it no longer truncates a name to its title tag. **U40 (#58) is the only
-takeable unit.**
+**The residual ledger.** 186 entries, none of them queued. R-183 is the one with
+product consequences: nothing in `src` claims a job item, so no long-running
+verb's work is executed by shipped code. `crate tag retag` queues like every
+other one and the engine behind it has no caller in `src`, exactly as
+`tag.folder`'s has none.
 
-## What else is open, and none of it is the queue
-
-Every other open issue is the residual ledger or an attended chore: #38 through
-#54 are residual issues from a single batch created on 2026-08-02, and A1 (#49)
-and A2 (#50) are attended chores. **Do not take a residual issue and do not
-backfill the rest of the ledger onto the board.**
+**The parked conformance branch**, with its `write/metadata.py:195` defect live
+on main. Out of scope until Phillip says otherwise. R-186 records what U40
+changed about its reachability.
 
 ## The branches
 
@@ -129,7 +120,7 @@ backfill the rest of the ledger onto the board.**
   to act on it. **Do not backfill.**
 - **Residual numbers are APPEND ONLY.** Main's numbers never move; an incoming
   branch's residuals take fresh numbers above main's highest. **Main's highest is
-  R-180.**
+  R-186.**
 - **The pending register is empty.** `tests/test_pending_units.py` now carries a
   test that says so out loud, because an emptily parametrized countdown is
   SKIPPED by pytest and a silent skip is the exact hazard that file warns about.
@@ -143,15 +134,47 @@ backfill the rest of the ledger onto the board.**
   which issue it is BEFORE writing the merge commit.
 - **Do not touch** U30's board state, U20, R-9, A1, A2, or `.worktrees/conformance`.
 
-## Thirteen things that will bite you
+## Sixteen things that will bite you
+
+**`board.py start N` TAKES THE ISSUE NUMBER AND WILL HAPPILY START THE WRONG
+ONE.** This session ran `board.py start 40` for U40, which branched on issue #40,
+a residual from the 2026-08-02 batch, and marked it In Progress. It refuses a
+dirty tree and a blocked unit and it does not refuse a non unit. U40 is #58 and
+U38 is #51. Look the number up with `board.py next` or `gh issue list` and read
+the title back before you type it. Recovering is three steps: `git checkout
+main`, delete the branch, `board.py sync` to recompute the status it changed.
+
+**A WEAK ASSERTION PASSES FOR TWO MECHANISMS AND READS AS A GUARD.** U40's test
+that the database plan is built from what was WRITTEN asserted an empty change
+list. Planning from the selection instead also produces an empty change list, by
+a different route: the refused row enters the plan with its genre stringified
+from `None`, the lookup for a genre named "None" resolves to nothing, and the row
+comes back SKIPPED rather than changed. One mutation, two mechanisms, one green
+test. Assert what must NOT have happened on the other path, not only what did not
+happen on this one.
+
+**A PROPERTY BUILT INLINE IN A HANDLER IS UNREACHABLE RATHER THAN UNTESTED.**
+`tag.retag`'s plan digest was computed inside the handler, so the property that
+matters most about it, that it is a function of what the person was shown, could
+only be driven through a configured machine, a job store and a gate. A mutation
+replacing it with a constant killed nothing. Pulling `plan_for` out as a pure
+function made it a three line test. When a mutation of a load bearing expression
+kills zero, ask whether anything CAN reach it before writing a composite.
+
+**A DERIVED POPULATION CAN SILENTLY SHRINK, AND THE COLLECTED COUNT IS THE ONLY
+WITNESS.** `tests/test_queued_resume_contract.py` derives its guarded set from
+`long_running` AND `argv_builder`. Removing `long_running` from an entry removes
+that verb from every guard in the file, and the suite goes green with three fewer
+tests. `mutate.py` refused to call it a zero because the collected count moved,
+which is the whole reason that check exists. Any test file that parametrizes over
+a derived population owes a guard on the population's own membership, not only on
+its non emptiness.
 
 **A GUARD THAT RUNS ZERO TIMES REPORTS THE SAME GREEN AS ONE THAT HOLDS.** U41's
 central test was a loop over the planned moves with no assertion outside it, so
-an implementation proposing no rename passed it. Four reviewers read that test,
-two of them arguing about whether its first assertion was redundant, and the
-independent pass found it by stubbing the plan pass empty. Any test whose whole
-body is a `for` over a computed collection owes an assertion on that collection's
-length, and R-173 is the worked case.
+an implementation proposing no rename passed it. Any test whose whole body is a
+`for` over a computed collection owes an assertion on that collection's length,
+and R-173 is the worked case.
 
 **A REVIEWER'S REASON FOR LEAVING A ZERO ROW AT ZERO IS ITSELF A CLAIM.** U39's
 independent pass called one row unkillable because the file already equalled its
@@ -167,6 +190,27 @@ green assertion nobody will revisit. That is how R-168 hid for a day inside a
 row reported as closed. Decide the correct behaviour from something other than
 the code under test, or leave the row at zero and say why.
 
+**ADDING THE FIRST CALLER MAKES YOU THE OWNER OF THE CALLEE'S DEFECTS.** U40 was
+the first caller of `write/metadata` anywhere in `src` and inherited two: an
+operation nobody registered decides SKIP_UNOWNED for every change, so a sweep
+that skipped `enable` would write nothing, raise nothing and report a clean run;
+and R-186's permissive soft-delete default. Run `git grep -n "<function>" -- src`
+before you write the call. Two hits, a `def` and an `__all__` entry, means the
+failure paths are now yours.
+
+**A POPULATION PIN CAN CATCH WHAT NO TEST OF YOURS DOES.** U40's empty-folder
+branch raised a refusal slug `cause.REASONS` did not declare, so `refuse` would
+have raised `UnknownReason` at the boundary instead of refusing. Nothing in the
+unit's own suite typed an empty folder. `tests/test_reserved_causes.py`'s literal
+population count is what reported it. When that file fails, look at what joined
+before you move the number.
+
+**RE-PINNING A POPULATION MEANS NAMING WHAT MOVED, NOT MATCHING A COUNT.**
+Difference the two SETS against `origin/main`'s own tree extracted into a scratch
+directory. U40 moved three pins in one test and each one names the members that
+joined; U28 moved a holder count without moving the literal count, which a pin
+watching totals alone reads as nothing happening.
+
 **`board.py sync` CAN REPORT A CORRECTION IT DID NOT MAKE.** On 2026-08-25 it
 printed "Corrected 2 item(s)" for a new issue it never added to the project, and
 the next audit failed identically. Re-running it does not help. Add the item with
@@ -176,8 +220,6 @@ derived status. Always re-audit after a sync rather than trusting its output.
 **Scan the whole pushed RANGE for closing keywords, not the merge commit**, and
 run it as a GATE that stops the push. Never write a closing keyword next to an
 issue number, even to quote one; backticks do not defuse it.
-
-**A unit's issue number does NOT reliably match its unit number.** U38 is #51.
 
 **A COUNTDOWN DISCHARGE IS THREE EDITS IN ONE COMMIT.** The register is empty
 now, so the next one to open is also the next one to get this wrong. Also:
@@ -193,18 +235,6 @@ debt that is paid. That is R-158, and it is why `path:skills` never fired.
 **Every agent gets its own worktree, its own venv and its own scratch directory.
 None of that isolates the PROCESS TABLE.** Kill by PID. Build venvs with
 `/opt/homebrew/bin/python3.12`. Never symlink a venv.
-
-**Reconcile the collected count by IDENTIFIER, under `LC_ALL=C`, against the
-UNION of both sides.** A total moving by the right amount is not a reconciliation.
-
-**A FINDING'S MECHANISM HAS TO BE DRIVEN, NOT ONLY ITS EXISTENCE**, and so does
-its CAUSE. Both of U28's blocking findings were driven again locally before being
-acted on, and doing so corrected the reported count on one of them.
-
-**Re-pinning a population means naming what moved, not matching a count.** Name
-the module by differencing the two SETS against `origin/main`'s own `src` tree
-extracted into a scratch directory. U28 moved the holder count without moving the
-literal count, which a pin watching totals alone would read as nothing happening.
 
 **A CHECKER THAT REIMPLEMENTS THE THING IT CHECKS WILL DRIFT FROM IT.** U28's
 skill lint hand rolled a token walker doing three of argparse's jobs and checked
