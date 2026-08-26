@@ -2325,12 +2325,22 @@ def test_a_verb_carrying_a_resume_argv_builder_declares_that_it_queues():
     green with three fewer tests and nothing says so. A U40 mutation removing
     exactly that flag killed nothing and only shrank the collected count.
 
-    IT LIVES HERE RATHER THAN BESIDE THE GUARDS IT PROTECTS, and the placement is
-    the point. In that file the mutation moves the collected count, because the
-    parametrisation shrinks with it, so the row can never be measured as a clean
-    death. This file's parametrisations key on ``landed``, so its count is
-    unmoved and the death is countable. It is a registry invariant, which is what
-    this file holds.
+    IT LIVES HERE RATHER THAN BESIDE THE GUARDS IT PROTECTS, and the reason is
+    NOT the one this docstring first gave. The first version claimed this file's
+    parametrisations key on ``landed`` so the collected count would be unmoved and
+    the death countable. That was wrong and the third mutation round measured it
+    wrong: ``test_conformance_5_long_work_is_queued_rather_than_run_inline`` at
+    ``:1913`` parametrises over exactly this flag, so removing it still drops a
+    case and the count still moves, from 532 to 531.
+
+    THE HONEST STATEMENT IS THAT NO CLEAN MEASUREMENT EXISTS for a registry flag
+    a parametrisation keys on. Wherever the guard lives, removing the flag removes
+    parametrised cases somewhere, and ``mutate.py`` will report drift rather than a
+    zero, which is correct of it and cannot be designed around. What moving the
+    guard here actually bought is smaller and real: the drift went from three
+    cases to one, and the row now NAMES this test among its kills instead of
+    reporting nothing at all. It belongs here regardless, because it is a registry
+    invariant and that is what this file holds.
 
     ``Entry.__post_init__`` already refuses the other direction, a long-running
     verb with no builder. This is the implication that has no home there, because
