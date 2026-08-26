@@ -87,6 +87,18 @@ knew were there, and a model's silence produces no failing test. Deriving the SE
 a guard quantifies over is a separate question from deriving its JUDGMENT, and
 satisfying the first says nothing about the second.
 
+A fourth axis is what the assertion OBSERVES, and it decides whether a guard
+holds anything at all. An assertion pins an observation and not the mechanism
+that produced it, so where several code paths reach the same observable value the
+guard is satisfied by all of them and distinguishes none. An absence is the
+value most exposed to this, because refusing early, refusing late, and never
+arriving all look alike from the end of the pipeline. The repair is to assert
+where the thing was stopped rather than only that it is missing: name the
+register that caught it when the correct behaviour leaves a trace, and require
+every parallel register to be empty when it leaves none. A result carrying
+several registers is the warning sign, since zeroing one says nothing about its
+siblings.
+
 When such a guard offers remedies for its own failure, the remedies are driven
 rather than reasoned about, and a remedy that makes the guard report MORE is
 propagating rather than converging. When every offered remedy terminates in
@@ -186,10 +198,22 @@ failed measurement, it is not a measurement: deleting an argument whose value
 equals the callee's own default, swapping a constant for another name bound to the
 same value, and reordering operations that commute all leave the two trees
 behaving identically, so the zero is correct and says nothing about any guard.
-The two causes of a zero render the same and are told apart only by reading the
-mutated site, never by counting. They also want opposite fixes, since a real zero
+A real zero and an inert one render the same and are told apart only by reading
+the mutated site, never by counting. They also want opposite fixes, since a real zero
 is answered with a test and an inert one can only be answered with a better
 mutation, because no test can distinguish two trees that behave the same.
+
+There is a THIRD cause, and it is the one that looks least like a problem. The
+two trees behave differently, a guard for the property exists, it runs, and it
+still kills nothing, because the value its assertion observes is one both trees
+produce by different routes. The commonest shape is an assertion on an absence,
+an empty collection, a count of zero, a field left unchanged, since many paths
+arrive at the same nothing and a mutation only has to reach one of the others.
+This cause is separated from the first two by reading the ASSERTION rather than
+the mutated site, and it is answered by strengthening the existing guard rather
+than by writing a new one or a better mutation. Being able to state the assertion
+that would kill a row proves the row is not inert; it does not prove the
+assertion discriminates.
 
 Reading the site is necessary and not sufficient, because the judgment is about
 behaviour UNDER the mutation rather than about the line as it stands. An argument
