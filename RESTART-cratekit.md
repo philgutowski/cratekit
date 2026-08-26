@@ -34,18 +34,22 @@ rule, never to find out how to work.
 
 ## Main, verify before trusting it
 
-    git log --oneline -1                        # subject below, and pushed
+    git status -sb                              # no ahead or behind count
     git status --porcelain                      # empty
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 0
 
-**Main's tip is U43's MERGE COMMIT, not a separate restart commit,** and that is
-a change from what this line said through U40. This file now travels inside the
-unit branch that updates it, so there is no trailing docs commit to name. The
-subject to expect is "merge: the setbuild shell, and the anchor that is a path
-rather than a title". **No hash is written here on purpose**, since this file is
-part of the commit it would be naming. Check the subject and `git status -sb` for
-the ahead or behind count instead.
+**DO NOT VERIFY MAIN BY ITS TIP SUBJECT.** This line used to say the tip names
+this file's own restart commit, and that was true only while the file was updated
+by a docs commit made after the merge. U43 folded it into the unit branch, so the
+tip became the merge commit, and the very next docs commit made it something else
+again. A rule that names a subject is a rule that is wrong the next time anybody
+commits.
+
+What actually answers "is main what this file describes": `git status -sb` shows
+no ahead or behind count, `git status --porcelain` is empty, the suite matches
+the number below, and `board.py audit` exits 0. **No hash is written here on
+purpose**, since this file is part of the commit it would be naming.
 
 **Forty one of forty five units are done.** The last measured suite was **6354
 passed and 1 skipped**. **Main's highest residual is R-190.** Append only.
