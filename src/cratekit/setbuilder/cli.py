@@ -123,7 +123,10 @@ def build(parser, entry) -> None:
         type=positive_count,
         default=None,
         metavar="N",
-        help="how many ranked companions to return, or picks per side with --role",
+        help=(
+            "cap the ranked companions, or the picks per side with --role; the "
+            "suggested sequence ships whole even when it exceeds the cap"
+        ),
     )
     parser.add_argument(
         "--role",
@@ -270,8 +273,18 @@ def plan_for(
         {**entry, "position": placed.get(id(scored))}
         for entry, scored in zip(rendered["pool"], ordered, strict=True)
     ]
+    # THREE COUNTS RATHER THAN ONE, because the arithmetic between them is
+    # surprising and a surface that hides it invites the wrong reading. ``pool``
+    # is what ``--count`` caps. ``sequence`` is drawn from the FULL ranked list
+    # rather than from the capped pool, so a sequence pick can sit outside the
+    # cap and still ship, which is deliberate: truncating the recommendation to
+    # honour a cap on the alternatives would be the worse answer. ``count`` is
+    # therefore the size of the union and can exceed the cap. Reporting only the
+    # union would leave a person asking for two and receiving five with nothing
+    # in the payload explaining why.
     totals = {
         "count": len(items),
+        "pool": len(plan.pool),
         "sequence": len(plan.sequence),
         "payload_version": rendered["payload_version"],
         "anchor": rendered["anchor"],

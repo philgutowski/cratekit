@@ -160,6 +160,28 @@ def test_the_anchor_is_in_the_digest_even_when_the_companions_are_identical(inde
     assert first["digest"] != second["digest"]
 
 
+def test_two_plans_over_the_same_anchor_and_different_companions_digest_apart(index):
+    """The other half of the digest, and it was a zero row.
+
+    The test above pins that the anchor is IN the digest. Nothing pinned that the
+    items are, so a digest computed over the anchor alone passed the whole suite:
+    two entirely different sets of recommendations for one anchor would have
+    carried one identity. Found by mutation.
+    """
+    anchor = anchor_of(index)
+    full = setbuild_cli.plan_for(anchor, index, declared=TAXONOMY)
+    narrowed = setbuild_cli.plan_for(anchor, index[:3], declared=TAXONOMY)
+
+    assert full["items"] != narrowed["items"], (
+        "the two indexes produced the same items, so this measures nothing"
+    )
+    assert full["totals"]["anchor"] == narrowed["totals"]["anchor"], (
+        "the anchor moved as well, so the digest could be telling the two apart "
+        "on the anchor and this would not notice"
+    )
+    assert full["digest"] != narrowed["digest"]
+
+
 def test_the_same_anchor_and_index_always_digest_the_same(index):
     first = setbuild_cli.plan_for(anchor_of(index), index, declared=TAXONOMY)
     second = setbuild_cli.plan_for(anchor_of(index), tuple(reversed(index)), declared=TAXONOMY)
@@ -172,15 +194,46 @@ def test_a_role_narrows_the_answer_to_one_side(index):
     assert all(item["role"] in ("before", "either") for item in plan["items"])
 
 
-def test_a_count_caps_the_companions(index):
-    plan = setbuild_cli.plan_for(anchor_of(index), index, declared=TAXONOMY, count=2)
-    assert plan["totals"]["count"] == len(plan["items"])
-    # The sequence is drawn from the whole ranked list rather than from the
-    # capped pool, so the item count is the cap plus whatever the sequence
-    # contributed that the cap excluded. Asserting the cap holds on the pool half
-    # is what this measures; asserting on the total would be asserting on a sum.
-    pool_only = [item for item in plan["items"] if item["position"] is None]
-    assert len(pool_only) <= 2
+@pytest.fixture
+def wide_index():
+    """An index with more compatible companions than any default returns.
+
+    THE EIGHT-TRACK FIXTURE ABOVE CANNOT MEASURE A CAP, and that is why this one
+    exists. It yields five compatible companions, which is fewer than
+    ``DEFAULT_POOL``, so ``pool[:2]`` and ``pool[:8]`` union with the same
+    four-entry sequence to the same five items and a cap assertion over it holds
+    whether the cap is applied or not. Found by mutation: dropping ``count`` on
+    the way to the engine killed nothing.
+    """
+    keys = ("8A", "8B", "7A", "9A")
+    return (
+        track("Alder", "Anchor Work", "8A", 124.0, energy=6),
+        *(
+            track(f"Tree{n:02d}", f"Companion {n:02d}", keys[n % len(keys)], 124.0, energy=n)
+            for n in range(1, 11)
+        ),
+    )
+
+
+def test_a_count_caps_the_companions(wide_index):
+    """The cap reaches the engine, and its effect is reported rather than implied.
+
+    ``pool`` is the number the cap governs. ``count`` is the size of the union
+    with the sequence and can exceed the cap, because the sequence is drawn from
+    the full ranked list and ships whole. Both are asserted, so a change to
+    either the cap or the union rule is reported.
+    """
+    capped = setbuild_cli.plan_for(anchor_of(wide_index), wide_index, declared=TAXONOMY, count=2)
+    uncapped = setbuild_cli.plan_for(anchor_of(wide_index), wide_index, declared=TAXONOMY)
+
+    assert uncapped["totals"]["pool"] > capped["totals"]["pool"], (
+        "the fixture yields too few companions for a cap to be observable, so "
+        "this measures nothing"
+    )
+    assert capped["totals"]["pool"] == 2
+    assert uncapped["totals"]["pool"] == setbuilder.DEFAULT_POOL
+    assert len(capped["items"]) < len(uncapped["items"])
+    assert capped["totals"]["count"] == len(capped["items"])
 
 
 def test_the_payload_validates_against_the_declared_plan_surface(index):
@@ -243,6 +296,31 @@ def test_the_anchor_is_found_by_path_and_never_by_title():
         "positional has changed and this file should say the new one"
     )
     assert setbuild_cli.anchor_in_index(Path("/library/orig.flac"), index) is original
+
+
+def test_an_anchor_spelled_through_a_symlink_still_resolves(tmp_path):
+    """The second pass in anchor_in_index, which was a zero row.
+
+    The index records the path the walk produced, which is the configured root
+    joined with a relative path and is not resolved. A person can reasonably hand
+    the verb the same file spelled through a symlinked mount, and on macOS the
+    two spellings of a temporary directory differ by a ``/private`` prefix all on
+    their own. Nothing exercised that, so deleting the whole fallback killed
+    nothing and a real user's paste would have been told their track is not in
+    their library.
+    """
+    real = tmp_path / "real"
+    (real / "Music").mkdir(parents=True)
+    audio = real / "Music" / "anchor.flac"
+    audio.touch()
+    link = tmp_path / "linked"
+    link.symlink_to(real, target_is_directory=True)
+
+    indexed = track("Alder", "Anchor Work", "8A", path=str(audio))
+    through_link = link / "Music" / "anchor.flac"
+
+    assert through_link != audio, "the two spellings are identical, so this proves nothing"
+    assert setbuild_cli.anchor_in_index(through_link, (indexed,)) is indexed
 
 
 def test_an_anchor_the_index_does_not_hold_is_absent_rather_than_approximated():
@@ -346,8 +424,11 @@ def place(library, silence):
     head, which is the state a real analyzed file is in.
     """
 
-    def put(artist, title, key, bpm, *, energy=None, vox=None, name=None) -> Path:
-        head = f"{key} - {bpm:g} - {title}"
+    def put(artist, title, key, bpm, *, energy=None, vox=None, name=None, marker="") -> Path:
+        # The marker goes immediately AFTER the head, which is where the renamer
+        # writes it and the only position where the declared template's marker
+        # rule has any effect. See the lossy-companion test.
+        head = f"{key} - {bpm:g} - {marker + ' ' if marker else ''}{title}"
         path = library / "Music" / f"{name or f'{artist} - {head}'}.flac"
         shutil.copy2(silence, path)
         assert tags.write_tags(
@@ -428,11 +509,18 @@ def test_a_library_holding_only_the_anchor_is_an_empty_plan_and_not_a_failure(
     assert document["data"]["items"] == []
     assert document["data"]["totals"] == {
         "count": 0,
+        "pool": 0,
         "sequence": 0,
         "payload_version": setbuilder.PAYLOAD_VERSION,
         "anchor": document["data"]["totals"]["anchor"],
     }
     assert document["data"]["digest"], "an empty plan still has an identity"
+    # THE OUTCOME AND NOT ONLY THE STATUS, because NO_OP also exits zero and the
+    # status alone could not tell the two apart. Found by mutation: making an
+    # empty plan report NO_OP killed nothing, and the difference is what a
+    # consumer reads to decide whether the question was answered or skipped. It
+    # was answered; "nothing here mixes with it" is a result.
+    assert document["outcome"] == "ok"
 
 
 def test_the_verb_writes_nothing_at_all(configured, place):
@@ -495,6 +583,51 @@ def test_an_anchor_outside_the_library_refuses_before_any_scan(configured, tmp_p
 
     assert code == int(ExitCode.PRECONDITION)
     assert document["cause"]["reason"] == "setbuild-anchor-outside-library"
+
+
+def test_an_unreachable_library_refuses_rather_than_reporting_an_unindexed_anchor(
+    configured, place
+):
+    """A library that is not there is not a library holding nothing.
+
+    Without the root check the scan walks a directory that does not exist, finds
+    no files, and every anchor comes back "not in the library index", which tells
+    a person with an unmounted volume that their track is missing. That is
+    METHOD's named cost of a clean report over state the tool could not read, and
+    it was a zero row: nothing drove a missing root.
+    """
+    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
+    shutil.rmtree(configured.library.root)
+
+    code, document = envelope_of(["setbuild", str(anchor)])
+
+    assert code == int(ExitCode.LIBRARY_UNAVAILABLE)
+    assert document["cause"]["reason"] == "library-root-absent"
+
+
+def test_a_lossy_marked_companion_comes_back_with_a_clean_title(configured, place):
+    """The template's marker declaration, which was a zero row.
+
+    The renamer writes the marker immediately after the head, so a marked file's
+    title tag reads "08A - 124 - [MP3] Anchor Work". With the marker declared the
+    head parser strips it and the clean title is "Anchor Work"; without it the
+    title keeps the marker and the match key gains a token, which is the exact
+    defect the engine's own docstring says the declared template was adopted to
+    close. Nothing in the suite carried a marked fixture, so dropping the marker
+    from this shell's template killed nothing.
+
+    THE MARKER'S POSITION IS THE WHOLE TEST. The first attempt at this fixture put
+    it at the END of the title, where it changes nothing either way, and would
+    have been a guard that passes under the mutation it was written to catch.
+    """
+    marker = configured.naming.lossy_marker
+    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
+    place("Birch", "Lossy Companion", "08A", 124, energy=4, marker=marker)
+
+    _, document = envelope_of(["setbuild", str(anchor)])
+
+    titles = {item["title"] for item in document["data"]["items"]}
+    assert "Lossy Companion" in titles, f"the marker survived into the title: {titles}"
 
 
 def test_an_empty_anchor_refuses_through_the_dispatcher(configured):
