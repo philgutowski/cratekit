@@ -1235,6 +1235,16 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # ``run_restore`` never read a return code, so this is the slug the
         # reading now raises under.
         "restore-transfer-failed": ExitCode.PRECONDITION,
+        # ── U40's refusal, appended for the reason every block above gives ─────
+        #
+        # The genre correction verb was invoked with an empty folder. PRECONDITION
+        # rather than USAGE for exactly the reason ``export-playlist-unknown``
+        # above gives: the parser accepted the invocation, because an empty string
+        # is a valid argument to a positional that takes one, and status 2 belongs
+        # to the argument parser and to nothing else. Refused rather than defaulted
+        # to the working directory, because the verb is destructive and a default
+        # here would sweep whatever the person happened to be standing in.
+        "tag-retag-folder-unknown": ExitCode.PRECONDITION,
     }
 )
 

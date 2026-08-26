@@ -1411,6 +1411,12 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "intake.playlist": ["https://example.invalid/playlist"],
         "intake.file": [str(library / "no-such-track.flac")],
         "tag.folder": [str(library / "Music")],
+        # U40. Same convention as tag.folder: a folder under the CONFIGURED
+        # library. It is empty here, so the selection is empty and the confirm
+        # gate is asked against the digest of a plan with nothing in it, which is
+        # still a plan a person can abort. Queueing needs no database, which is
+        # what lets a verb declaring db_metadata exit OK on this fixture.
+        "tag.retag": [str(library / "Music")],
         "name.apply": [],
         "repair.paths": [],
         # U25. Folder verbs take a path under the configured library. Calibrate
@@ -2306,6 +2312,59 @@ def test_every_declared_module_toggle_is_used_by_at_least_one_verb():
     assert not unused, (
         f"declared modules no verb is gated by: {unused}. Either a verb is "
         f"missing its module_id or the toggle should not exist."
+    )
+
+
+def test_a_verb_carrying_a_resume_argv_builder_declares_that_it_queues():
+    """THE DIRECTION THAT REMOVES ANOTHER FILE'S COVERAGE, found 2026-08-26.
+
+    ``tests/test_queued_resume_contract.py`` derives its guarded set from
+    ``long_running`` AND ``argv_builder``, which is what makes every guard there
+    cover a verb nobody thought to list. It also means dropping ``long_running``
+    from an entry silently removes that verb from all of them: that suite goes
+    green with three fewer tests and nothing says so. A U40 mutation removing
+    exactly that flag killed nothing and only shrank the collected count.
+
+    IT LIVES HERE RATHER THAN BESIDE THE GUARDS IT PROTECTS, and the reason is
+    NOT the one this docstring first gave. The first version claimed this file's
+    parametrisations key on ``landed`` so the collected count would be unmoved and
+    the death countable. That was wrong and the third mutation round measured it
+    wrong: ``test_conformance_5_long_work_is_queued_rather_than_run_inline`` at
+    ``:1913`` parametrises over exactly this flag, so removing it still drops a
+    case and the count still moves, from 532 to 531.
+
+    THE HONEST STATEMENT IS THAT NO CLEAN MEASUREMENT EXISTS for a registry flag
+    a parametrisation keys on. Wherever the guard lives, removing the flag removes
+    parametrised cases somewhere, and ``mutate.py`` will report drift rather than a
+    zero, which is correct of it and cannot be designed around. What moving the
+    guard here actually bought is smaller and real: the drift went from three
+    cases to one, and the row now NAMES this test among its kills instead of
+    reporting nothing at all. It belongs here regardless, because it is a registry
+    invariant and that is what this file holds.
+
+    ``Entry.__post_init__`` already refuses the other direction, a long-running
+    verb with no builder. This is the implication that has no home there, because
+    the type cannot argue about intent: an ``argv_builder`` exists for exactly one
+    purpose, turning a frozen payload back into a command line for the child the
+    job driver spawns, so a verb declaring one and not declaring ``long_running``
+    is either mislabelled or carrying a builder nothing will ever call.
+
+    Measured over the registry on 2026-08-26: 21 entries declare ``long_running``
+    and every one declares a builder, so the implication holds in the tree today
+    and this is what stops it drifting.
+    """
+    carriers = [entry for entry in registry.ENTRIES if entry.argv_builder]
+    assert len(carriers) >= 20, (
+        f"only {len(carriers)} entries declare a resume argv builder, which is "
+        f"far below the 21 measured when this guard landed; either the registry "
+        f"shrank a great deal or this guard has stopped deriving anything"
+    )
+    mislabelled = sorted(entry.name for entry in carriers if not entry.long_running)
+    assert not mislabelled, (
+        f"these verbs declare a resume argv builder and do not declare "
+        f"long_running: {mislabelled}. Either the builder is dead code, or the "
+        f"verb queues and has just dropped out of every derived guard in "
+        f"tests/test_queued_resume_contract.py"
     )
 
 

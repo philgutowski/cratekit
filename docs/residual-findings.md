@@ -9491,3 +9491,172 @@ is a small piece of work rather than a copy.
 
 **Closes when:** a committed script takes the library root from config and can
 reproduce the grammar survey, and its output is committed beside the numbers.
+
+## R-181. A genre lookup is resolved once per row rather than once per name
+
+**Found by** U40's own review of the seam it became the first caller of,
+2026-08-26.
+
+`write/metadata.plan_genre_retag` calls `resolve_genre_id` inside its loop, so a
+sweep over N rows issues N `get_genre` queries even when every row wants one of
+five genres. `tagging/retag.plan_library` is the first caller and inherits it.
+The three sibling planners in that module do not have the shape, because neither
+`plan_title_padding` nor `plan_rating_backfill` performs a lookup at all.
+
+**Measured cost.** None observed. It is a query count on a local SQLite file, so
+the cost is proportional to the sweep rather than to the library, and a person
+retagging a folder is retagging tens to hundreds of files. Nothing incorrect
+happens.
+
+**Why it is not fixed here.** The fix belongs in `plan_genre_retag`, which is a
+shipped function this unit calls rather than one it wrote, and memoizing it
+changes nothing a person can see. Under the merge bar this is a residual by the
+severity floor rather than by reachability: it IS reachable and it IS this
+unit's, and there is no user facing cost to name.
+
+**Closes when:** `plan_genre_retag` resolves each distinct genre name once, or
+somebody measures a sweep large enough for the difference to be visible.
+
+## R-182. A review item is addressed by the file's absolute path
+
+**Found by** U40 while designing the identity, 2026-08-26, and recorded rather
+than solved because there is nothing better available at that layer.
+
+`tagging/retag.identity_for` returns `{"path": str(path)}`, and
+`review.item_id_for` hashes that into the item identifier. Move the library, or
+rename a folder above the file, and every open item about it is orphaned: the
+next run offers a fresh question and the person's earlier answer stays in the
+queue attached to a path that no longer exists.
+
+**Measured cost.** A person who adjudicated a batch and then reorganised their
+folders is asked the same questions again, and the old items linger unresolved.
+Nothing is written wrongly and nothing is lost.
+
+**Why it is not fixed here.** A bare audio file carries no identifier this pass
+could use instead, and the pass deliberately runs before any library row is
+matched so that a folder with no rows at all can still be corrected. Keying on a
+content id would make the verb useless on exactly the arrivals it exists for.
+The deletion and path-repair queues address items the same way, so this is the
+queue's shape rather than this verb's.
+
+**Closes when:** the review queue can re-address an item whose path moved, which
+is one mechanism serving at least three producers.
+
+## R-183. Nothing in `src` executes a queued job's work, and this unit adds another
+
+**Found by** U40 while wiring the long-running shape, 2026-08-26.
+
+`crate tag retag` queues a job exactly as `tag.folder`, `route.resort`,
+`export.playlist` and every other long-running verb does. `jobs.spawn`
+re-invokes the CLI with the resume argv, the handler sees `--job` and calls
+`jobs.reconcile`, and the job is reported. No code path in `src` claims a job
+item and runs the engine behind it: `git grep -n "next_claim\|claims(" src`
+outside `core/jobs.py` returns nothing, and `jobs.claim` at
+`src/cratekit/core/jobs.py:769` has no caller in the package. So
+`tagging.retag.retag_folder` has no caller in `src`, exactly as
+`tagging.tag.tag_folder` has none.
+
+**Measured cost.** A person who confirms a retag gets a job identifier and a
+queued state, and the work does not happen. The same is true of every other
+queued verb today, so this is the product's state rather than a regression this
+unit introduces.
+
+**Why it is not fixed here.** Building the worker is a unit of its own and it is
+one worker for the whole queued family, not one per verb. Building it inside
+this unit would either bind it to one handler key, which is the wrong shape, or
+expand this unit into the job execution layer, which no brief assigns to it.
+
+**Closes when:** a worker claims job items and dispatches by handler key, and
+every long-running verb's engine has a caller in `src`.
+
+## R-184. `plan_genre_retag` drops a row whose wanted genre is empty with no skip
+
+**Found by** U40's first-caller drive of `write/metadata`, 2026-08-26.
+
+`plan_genre_retag` reads `wanted = genres.get(content_id)` and `continue`s on a
+falsy value with no `Skipped` entry. A row absent from the mapping and a row
+present with an empty string are therefore indistinguishable in the plan, and
+both read as "this row was not part of the operation".
+
+**Measured cost.** None today, and the reason is what makes this a residual
+rather than a finding: `retag.plan_library` is the only caller and it builds the
+mapping from `outcome.written`, whose `written` field is non-empty by
+construction wherever it is set. The empty-string input is not reachable from
+any producer this unit ships, which is condition 3 of the merge bar failing
+rather than the severity floor.
+
+**Why it is not fixed here.** Distinguishing the two would mean deciding whether
+an empty wanted value is a caller defect worth raising on, and that decision
+belongs with a caller that can actually produce one.
+
+**Closes when:** a second caller can produce an empty wanted value, or
+`plan_genre_retag` refuses one at the boundary.
+
+## R-185. The file write and the database plan are two acts with nothing spanning them
+
+**Found by** U40 while splitting the pass from the plan, 2026-08-26.
+
+`retag_folder` writes each corrected genre onto the file as it goes.
+`plan_library` and `apply_library` run afterwards over what was written, and the
+commit is the caller's. A run interrupted between the two leaves files corrected
+on disk and rows still pointing at the old genre.
+
+**Measured cost.** The library disagrees with the files until the next run. That
+next run does converge: the files now carry specific genres, so the selection
+skips them and the database half is not re-planned either, which means the rows
+stay wrong until somebody re-runs a routing pass over them.
+
+**Why it is not fixed here.** Making the two atomic means holding a database
+write session open across a network lookup per file, which is the opposite of
+what the guarded writer's session rules are built for, and it would hold the
+lock for the whole length of a long sweep. The ordering is deliberate: the file
+is the durable record a person can see, and the row is derived from it.
+
+**Closes when:** the pass records what it wrote to a resumable ledger the
+database half reads, so an interrupted run can finish the second act without
+re-running the first.
+
+## R-186. The genre lookup defaults the soft-delete marker, and U40 is what gave it a caller
+
+**Found by** U40's first-caller sweep of `write/metadata`, 2026-08-26, and filed
+rather than fixed because `docs/METHOD.md`'s do-not-touch section names this
+line and assigns it to the parked conformance branch.
+
+`write/metadata.resolve_genre_id` at `src/cratekit/write/metadata.py:195` reads
+`getattr(row, "rb_local_deleted", 0)`. Zero is the PERMISSIVE answer, so a genre
+row that cannot report the marker is treated as live. That is the exact shape
+`write/trees.ContentRow.deleted` refuses by having no default, and whose one
+implementation is `trees.soft_delete_marker`, which raises rather than assuming.
+Two readers of the same column in one repository, one refusing and one
+defaulting.
+
+**Driven, and the two halves are different measurements.** The MECHANISM was
+driven on 2026-08-26 against the real function with two stand-in bindings: a
+genre row with no `rb_local_deleted` attribute at all, and one carrying `None`.
+Both resolve to the row's identifier, so both would be linked as a live genre.
+The PRODUCER was not driven. Whether pyrekordbox can hand this function a genre
+row that omits or nulls that column is unmeasured here, and the live database is
+off limits by standing constraint, so this session could not find out. Saying
+"nothing produces it" would be the wrong sentence; nothing was driven that
+produces it, and nothing was tried.
+
+**What U40 changed about it.** Nothing in the line. `plan_genre_retag` was
+`resolve_genre_id`'s only caller and itself had no caller anywhere in `src`, so
+the defect was dormant. `tagging/retag.plan_library` is now a caller a person
+reaches through `crate tag retag`, which is the condition the corpus entry
+"adding the first caller makes you the owner of its unreviewed defects" turns
+into ownership. It is filed rather than acted on only because condition 3 of the
+merge bar is unmet: the input's producer could not be driven.
+
+**Measured cost if the producer exists.** A track is linked to a genre row the
+user deleted. Routing then places it by a genre that is not in the library's
+live taxonomy, and the retag reports success.
+
+**Why it is not fixed here.** METHOD's do-not-touch section names
+`write/metadata.py:195` as the parked branch's, and that branch is out of scope
+until Phillip says otherwise. Landing a second fix on the same line from a
+different branch is how the two come to disagree at the merge.
+
+**Closes when:** `resolve_genre_id` reads the marker through
+`trees.soft_delete_marker`, or somebody drives a binding that omits the column
+and the finding is promoted or dismissed on the measurement.

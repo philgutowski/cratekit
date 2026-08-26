@@ -1,0 +1,47 @@
+name = "u40-author-round-3"
+pass_kind = "light"
+
+# ROUND 3. Two rows round two could not settle, and neither was a coverage gap.
+#
+# S5 was a user facing zero and the answer was that the guard was DEAD CODE.
+# `tags.read_tag` trims every value it returns at `core/tags.py:489`, so nothing
+# can reach `select` padded and the strip could never have fired. It is deleted
+# rather than reclassified, and `T1` below measures the normalization that
+# actually does the work, on the module that owns it.
+#
+# R8 was a collect error twice, and the SECOND one was not the same as the first.
+# Its guard lived in `tests/test_queued_resume_contract.py`, whose parametrisation
+# derives from the very flag the mutation removes, so the collected count moved
+# with the guard and no death was countable. The guard moved to
+# `tests/test_cli_contract.py`, whose parametrisations key on `landed`, and this
+# re-measures it there.
+
+[[rows]]
+id = "N0_null_control"
+description = "A comment reworded and nothing else. Must kill zero, or the baseline is red and every number below it is noise."
+file = "src/cratekit/tagging/retag.py"
+old = '''LAYER: modules.'''
+new = '''LAYER: modules layer.'''
+
+[[rows]]
+id = "T1_reader_does_not_trim"
+description = "The composite for the deleted S5 strip: stop trimming in core.tags.read_tag, the module that actually owns the normalization, and show what a padded value costs the retag pass"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+old = '''        return str(value).strip() or None'''
+new = '''        return str(value) or None'''
+
+[[rows]]
+id = "R8_not_long_running"
+description = "Re-measured against the moved guard. Declaring the sweep short removes the verb from every derived guard in the resume contract; the guard that catches it now lives where the collected count does not move with it"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''        argv_builder="retag_argv",
+        long_running=True,'''
+new = '''        argv_builder="retag_argv",'''
+
+[[dropped]]
+id = "S5_no_strip"
+description = "Stop trimming the genre read off the file in select()"
+reason = "NOT A GUARD AND NO LONGER PRESENT. Two rounds measured it at zero, and the reason is that `tags.read_tag` already trims every value it returns, so no input can reach `select` padded. Driven directly on 2026-08-26: writing a genre of '  Electronica ' through the real writer and reading it back through the real reader returns 'Electronica'. The strip is deleted rather than paired with a composite, because a composite would have documented dead code instead of removing it. T1 above is the composite that matters, on the module that owns the normalization."

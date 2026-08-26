@@ -1,0 +1,139 @@
+{
+  "name": "u40-author-round-3",
+  "pass_kind": "light",
+  "branch": "unit/u40-genre-retag-for-mis-tagged-arrivals",
+  "head": "46b2e56",
+  "when": "2026-08-26 16:44 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 6319,
+  "baseline_exit": 0,
+  "pytest_runs": 9,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/tagging/retag.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/tagging/retag.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "124bb3ddbde4f42a",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 6319,
+    "baseline_collected": 6319,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "N0_null_control",
+      "description": "A comment reworded and nothing else. Must kill zero, or the baseline is red and every number below it is noise.",
+      "file": "src/cratekit/tagging/retag.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "25346e2faea86fab",
+      "subset": [
+        "tests/test_genre_retag.py"
+      ],
+      "subset_reason": "test files importing cratekit.tagging.retag",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 6319,
+      "baseline_collected": 6319,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "LAYER: modules.",
+      "new": "LAYER: modules layer."
+    },
+    {
+      "id": "T1_reader_does_not_trim",
+      "description": "The composite for the deleted S5 strip: stop trimming in core.tags.read_tag, the module that actually owns the normalization, and show what a padded value costs the retag pass",
+      "file": "src/cratekit/core/tags.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "eeaf53a30e2f0553",
+      "subset": [
+        "tests/modules/test_tools.py",
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adoption.py",
+        "tests/test_adoption_hardware.py",
+        "tests/test_genre_retag.py",
+        "tests/test_match_states.py",
+        "tests/test_naming_apply_cli.py",
+        "tests/test_rebuild.py",
+        "tests/test_tags.py"
+      ],
+      "subset_reason": "test files importing cratekit.core.tags",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1297,
+      "baseline_collected": 1297,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_genre_retag.py::test_a_padded_catch_all_reaches_the_selection_already_trimmed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return str(value).strip() or None",
+      "new": "        return str(value) or None"
+    },
+    {
+      "id": "R8_not_long_running",
+      "description": "Re-measured against the moved guard. Declaring the sweep short removes the verb from every derived guard in the resume contract; the guard that catches it now lives where the collected count does not move with it",
+      "file": "src/cratekit/cli/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5214457ae1da5683",
+      "subset": [
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "collect-error",
+      "deaths": 1,
+      "collected": 531,
+      "baseline_collected": 532,
+      "collect_drift": true,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_a_verb_carrying_a_resume_argv_builder_declares_that_it_queues"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "collection changed: 531 collected against a baseline of 532. A file that fails to collect takes its tests with it and the run still looks green, so this is not a zero.",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        argv_builder=\"retag_argv\",\n        long_running=True,",
+      "new": "        argv_builder=\"retag_argv\","
+    }
+  ],
+  "dropped": [
+    {
+      "id": "S5_no_strip",
+      "description": "Stop trimming the genre read off the file in select()",
+      "reason": "NOT A GUARD AND NO LONGER PRESENT. Two rounds measured it at zero, and the reason is that `tags.read_tag` already trims every value it returns, so no input can reach `select` padded. Driven directly on 2026-08-26: writing a genre of '  Electronica ' through the real writer and reading it back through the real reader returns 'Electronica'. The strip is deleted rather than paired with a composite, because a composite would have documented dead code instead of removing it. T1 above is the composite that matters, on the module that owns the normalization."
+    }
+  ]
+}

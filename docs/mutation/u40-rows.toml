@@ -1,0 +1,530 @@
+name = "u40-author-table"
+pass_kind = "full"
+
+# U40's author table. METHOD is explicit that this is a DRAFT rather than a
+# result: every fix agent on this project has run its own table honestly and
+# still missed guards its own round created, because it mutates what it believes
+# it changed. Measured gaps between an author's table and an independent one on
+# this repository: 10 against 17, 39 against 49, 49 against 83.
+#
+# Scope: the round's own diff. The three files this unit adds or edits are
+# src/cratekit/tagging/retag.py, src/cratekit/tagging/retag_cli.py and the new
+# registry entry, plus a fixed sample of the two seams this unit becomes the
+# first caller of.
+
+# ── The null control ────────────────────────────────────────────────────────
+[[rows]]
+id = "N0_null_control"
+description = "A comment reworded and nothing else. Must kill zero, or the baseline is red and every death below is noise."
+file = "src/cratekit/tagging/retag.py"
+old = '''LAYER: modules.'''
+new = '''LAYER: modules layer.'''
+
+# ── Selection ───────────────────────────────────────────────────────────────
+[[rows]]
+id = "S1_blank_selected"
+description = "Drop the blank-genre exclusion, so a file with no genre becomes this verb's candidate as well as tag.folder's"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''        if not current:
+            # tag.folder's, under fill-if-empty. See the module docstring.
+            passed.append(Passed(path=path, reason=NO_GENRE))
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "S2_specific_selected"
+description = "Invert the too-coarse predicate, so a curated genre is selected and a catch-all is not"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''        if not declared.is_too_coarse_as_source(current):'''
+new = '''        if declared.is_too_coarse_as_source(current):'''
+
+[[rows]]
+id = "S3_unsorted_walk"
+description = "Walk the folder unsorted, so the plan digest depends on directory order"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''    for path in sorted(root.rglob("*")):'''
+new = '''    for path in root.rglob("*"):'''
+
+[[rows]]
+id = "S4_missing_folder"
+description = "Remove the not-a-directory guard, so an absent folder raises instead of selecting nothing"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''    if not root.is_dir():
+        return Selection()
+'''
+new = ""
+
+[[rows]]
+id = "S5_no_strip"
+description = "Stop stripping the genre read off the file, so a padded catch-all fails the predicate"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''        current = (tags.read_genre_from_file(path) or "").strip()'''
+new = '''        current = tags.read_genre_from_file(path) or ""'''
+
+[[rows]]
+id = "S6_plan_drops_current"
+description = "Drop the current value from the plan row, so the person confirms a list of paths with nothing to judge"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''        {"path": str(candidate.path), "current": candidate.current}'''
+new = '''        {"path": str(candidate.path)}'''
+
+# ── The pass ────────────────────────────────────────────────────────────────
+[[rows]]
+id = "P1_rejected_reasked"
+description = "Drop the suppressed branch, so an item a person settled AGAINST is looked up and written anyway"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''            if item.suppressed:
+                results.append(
+                    RetagResult(
+                        path=candidate.path,
+                        current=candidate.current,
+                        reason=DECLINED_IN_REVIEW,
+                        item_id=item_id,
+                    )
+                )
+                continue
+'''
+new = ""
+
+[[rows]]
+id = "P2_verdict_ignored"
+description = "Never read the recorded verdict, so every run re-asks the searcher a question a person answered"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''            answer = accepted_genre(item)'''
+new = '''            answer = ""'''
+
+[[rows]]
+id = "P3_coarse_answer_written"
+description = "Drop the refusal, so a lookup that returns another catch-all launders it onto the file"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''        if declared.is_too_coarse_as_source(answer):
+            results.append(
+                _ask(
+                    store,
+                    candidate,
+                    reason=ANSWER_TOO_COARSE,
+                    proposed=answer,
+                    declared=declared,
+                    handler_key=handler_key,
+                )
+            )
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "P4_decline_not_queued"
+description = "Drop the decline branch, so a searcher that answered nothing writes an empty genre instead of asking"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''        if not answer:
+            results.append(
+                _ask(
+                    store,
+                    candidate,
+                    reason=NO_ANSWER,
+                    proposed="",
+                    declared=declared,
+                    handler_key=handler_key,
+                )
+            )
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "P5_verdict_not_checked"
+description = "Accept a REJECTED item's option as an answer, so a rejection reads as an acceptance"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''    if item.verdict is not review.Verdict.ACCEPTED or not item.option:'''
+new = '''    if not item.option:'''
+
+[[rows]]
+id = "P6_option_id_as_genre"
+description = "Return the bucket identifier rather than its display name, so the tag written is an id"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''        detail = option.detail or {}
+        return str(detail.get("genre") or option.summary or "").strip()'''
+new = '''        return str(option.option_id).strip()'''
+
+[[rows]]
+id = "P7_coarse_offered"
+description = "Offer every bucket including the fallback, so a person can choose the catch-all the write then refuses"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''        if not declared.is_too_coarse_as_source(bucket.display)'''
+new = '''        if bucket.display'''
+
+[[rows]]
+id = "P8_identity_key"
+description = "Address a review item by a different key, so every item already in the queue is orphaned"
+file = "src/cratekit/tagging/retag.py"
+old = '''    return {"path": str(path)}'''
+new = '''    return {"file": str(path)}'''
+
+[[rows]]
+id = "P9_settled_counted_as_asked"
+description = "Count any result carrying an item id as an open question, so a decision a person already made is reported back to them as work waiting"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''            if result.item_id and result.reason in {NO_ANSWER, ANSWER_TOO_COARSE}'''
+new = '''            if result.item_id and not result.written'''
+
+[[rows]]
+id = "P10_resolved_not_read"
+description = "Read only unresolved items out of the queue, so a settled verdict is invisible and re-asked"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''        for item in review.iter_items(store, predicate=predicate, include_resolved=True)'''
+new = '''        for item in review.iter_items(store, predicate=predicate)'''
+
+# ── The database half ───────────────────────────────────────────────────────
+[[rows]]
+id = "D1_plan_from_selection"
+description = "Plan from every result rather than from what was written, so a refused file's row is retagged anyway"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''    written = outcome.written'''
+new = '''    written = outcome.results'''
+
+[[rows]]
+id = "D2_ambiguous_written"
+description = "Take the first of two live rows on one location instead of surfacing the collision"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''        if match.outcome is not trees.MatchOutcome.MATCHED or match.content_id is None:'''
+new = '''        if match.content_id is None and not match.content_ids:'''
+
+[[rows]]
+id = "D3_zip_not_strict"
+description = "Drop strict from the zip pairing results with matches, so a length mismatch silently truncates"
+file = "src/cratekit/tagging/retag.py"
+old = '''    for result, match in zip(written, matches, strict=True):'''
+new = '''    for result, match in zip(written, matches):'''
+
+[[rows]]
+id = "D4_absent_row_silent"
+description = "Drop the row-absent skips, so a matched row the caller did not supply vanishes from the plan"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''    if absent:
+        plan = metadata.Plan(
+            plan.owner,
+            plan.changes,
+            plan.skipped + tuple(metadata.Skipped(cid, "row-absent") for cid in absent),
+        )
+'''
+new = ""
+
+[[rows]]
+id = "D5_no_enable"
+description = "Do not register the operation, so every change decides SKIP_UNOWNED and the sweep reports a clean run over a library it did not touch"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''    metadata.enable((metadata.RETAG_GENRE,))
+    metadata.assert_within_policy(library_plan.plan)'''
+new = '''    metadata.assert_within_policy(library_plan.plan)'''
+
+[[rows]]
+id = "D6_no_policy_assert"
+description = "Drop the policy refusal, so a plan naming an unowned field writes nothing and reports success"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''    metadata.enable((metadata.RETAG_GENRE,))
+    metadata.assert_within_policy(library_plan.plan)
+    return metadata.write_plan(library_plan.plan, mapped)'''
+new = '''    metadata.enable((metadata.RETAG_GENRE,))
+    return metadata.write_plan(library_plan.plan, mapped)'''
+
+[[rows]]
+id = "D7_unmatched_dropped"
+description = "Do not surface a written file no row claims, so a half-applied sweep reports as a full one"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''            unmatched.append(
+                Unmatched(
+                    path=str(result.path),
+                    outcome=str(match.outcome.value),
+                    content_ids=tuple(match.content_ids),
+                )
+            )
+            continue'''
+new = '''            continue'''
+
+[[rows]]
+id = "D8_contested_last_wins"
+description = "Let a second file claiming one row overwrite the first, so whichever came last decides the row and the report names both as written"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''        if content_id in claimed_by:
+            contested.add(content_id)
+            unmatched.append(
+                Unmatched(path=str(result.path), outcome="contested", content_ids=(content_id,))
+            )
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "D9_contested_first_still_written"
+description = "Remove only the second layer, so the second claimant is surfaced and the FIRST one is still written to the contested row"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''    for content_id in sorted(contested):
+        genres.pop(content_id, None)
+        unmatched.append(
+            Unmatched(path=claimed_by[content_id], outcome="contested", content_ids=(content_id,))
+        )
+'''
+new = ""
+
+# ── The seams this unit becomes the first caller of ─────────────────────────
+[[rows]]
+id = "F1_resolve_takes_first_row"
+description = "First caller sample: take the first genre row rather than the first ACTIVE one, so a soft-deleted namesake masks a live genre"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''    for row in db.get_genre(Name=genre_name):
+        if not getattr(row, "rb_local_deleted", 0):
+            return row.ID
+    return None'''
+new = '''    for row in db.get_genre(Name=genre_name):
+        return row.ID
+    return None'''
+
+[[rows]]
+id = "F2_genre_unknown_silent"
+description = "First caller sample: drop the genre-unknown skip, so an unresolvable answer disappears from the plan"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''        if genre_id is None:
+            skipped.append(Skipped(content_id, "genre-unknown", wanted))
+            continue'''
+new = '''        if genre_id is None:
+            continue'''
+
+[[rows]]
+id = "F3_policy_owns_more"
+description = "First caller sample: widen the RETAG_GENRE policy to a second column"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''            fields=MappingProxyType({"GenreID": rb_writer.Ownership.OWNED}),'''
+new = '''            fields=MappingProxyType(
+                {"GenreID": rb_writer.Ownership.OWNED, "Rating": rb_writer.Ownership.OWNED}
+            ),'''
+
+[[rows]]
+id = "F4_tombstone_indexed"
+description = "First caller sample: stop dropping tombstones from the active row index, so a removed track claims its location"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+old = '''    for row in rows:
+        if row.deleted:
+            continue
+        resolved = _comparable(row.recorded, root=root, prefix_map=prefix_map)'''
+new = '''    for row in rows:
+        resolved = _comparable(row.recorded, root=root, prefix_map=prefix_map)'''
+
+# ── The shell ───────────────────────────────────────────────────────────────
+[[rows]]
+id = "C1_gate_by_position"
+description = "Take gates[0] rather than the gate declared against the plan, so a reordered tuple answers the wrong question"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_cli_contract.py", "tests/test_queued_resume_contract.py"]
+old = '''    for spec in ctx.entry.gates:
+        if spec.digest_source == PLAN:
+            return spec'''
+new = '''    for spec in ctx.entry.gates:
+        return spec'''
+
+[[rows]]
+id = "C2_no_gate_no_refusal"
+description = "Return None instead of refusing when the entry declares no plan gate, so a destructive sweep runs unconfirmed"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_cli_contract.py", "tests/test_queued_resume_contract.py"]
+old = '''    raise refuse(
+        "refused-by-policy",
+        "this verb is destructive and its registry entry declares no decision "
+        "made against the plan, so there is nothing for a person to confirm",
+        remedy=Remedy.REPORT_DEFECT,
+        origin=("tagging", "retag_cli"),
+        detail={"verb": ctx.entry.name},
+    )'''
+new = '''    return None'''
+
+[[rows]]
+id = "C3_resume_without_run"
+description = "Drop --run from the resume argv, so the job driver's child meets the explicit gate with nothing recorded and stalls for ever"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py"]
+old = '''    resume = ["--run", str(gate_run)] if gate_run else []'''
+new = '''    resume = []'''
+
+[[rows]]
+id = "C4_resume_always_runs"
+description = "Emit --run even when no gate run is frozen, so a job from an older build hands its child an empty run identifier"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py"]
+old = '''    resume = ["--run", str(gate_run)] if gate_run else []
+    return [*resume, "tag", "retag", folder, "--job", job.job_id]'''
+new = '''    return ["--run", str(gate_run), "tag", "retag", folder, "--job", job.job_id]'''
+
+[[rows]]
+id = "C5_abort_queues"
+description = "Ignore the abort answer, so a person who declined gets the sweep queued anyway"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_queued_resume_contract.py"]
+old = '''    if option == "abort":'''
+new = '''    if option == "never-chosen":'''
+
+[[rows]]
+id = "C6_constant_digest"
+description = "Digest a constant rather than the selection, so a decision approved over forty files also approves a hundred and forty"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_queued_resume_contract.py"]
+old = '''        "digest": digest_of({"kind": "tag.retag", "folder": folder, "items": items}),'''
+new = '''        "digest": digest_of({"kind": "tag.retag"}),'''
+
+[[rows]]
+id = "C7_gate_run_under_intake_name"
+description = "Freeze the gate run under a locally spelled key, which is the confusion jobs.GATE_RUN_KEY exists to end"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py"]
+old = '''            payload={"folder": folder, jobs.GATE_RUN_KEY: ctx.run.run_id},'''
+new = '''            payload={"folder": folder, "run_id": ctx.run.run_id},'''
+
+[[rows]]
+id = "C8_empty_folder_accepted"
+description = "Drop the empty-folder refusal, so the verb sweeps the current working directory"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_queued_resume_contract.py"]
+old = '''    if not folder:
+        raise refuse(
+            "tag-retag-folder-unknown",
+            "tag retag needs the folder whose genres it should correct",
+            steps=("pass the folder after the verb",),
+            origin=("tagging", "retag_cli"),
+        )
+'''
+new = ""
+
+# ── The registry declaration ────────────────────────────────────────────────
+[[rows]]
+id = "R1_gate_not_explicit"
+description = "Make the confirm gate ordinary, which drops the verb out of the queued-resume guard entirely"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_queued_resume_contract.py", "tests/test_genre_retag.py"]
+old = '''                explicit=True,
+                digest_source="plan",'''
+new = '''                digest_source="plan",'''
+
+[[rows]]
+id = "R3_ungated"
+description = "Drop the module toggle, so a Module row ships on in the slim profile (R5)"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''        module_id="repair",
+        argv_builder="retag_argv",'''
+new = '''        argv_builder="retag_argv",'''
+
+[[rows]]
+id = "R4_no_db_surface"
+description = "Stop declaring the database write, so the verb never asks the concurrent-writer question its work raises"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''        writes=frozenset({"files", "db_metadata"}),
+        adjudicates=True,'''
+new = '''        writes=frozenset({"files"}),
+        adjudicates=True,'''
+
+[[rows]]
+id = "R5_row_unclaimed"
+description = "Claim no feature row, so row 18 becomes a Module the product owes and no verb cites"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_cutover_parity.py"]
+old = '''        feature_rows=(18,),'''
+new = '''        feature_rows=(),'''
+
+[[rows]]
+id = "R6_row_still_cut"
+description = "Leave row 18 dispositioned Cut while a verb claims it, which is the coupling across two trees"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_cutover_parity.py"]
+old = '''    Feature(18, "genre correction for a tag already too coarse", "module"),'''
+new = '''    Feature(18, "genre correction for a tag already too coarse", "cut"),'''
+
+[[rows]]
+id = "R7_not_destructive"
+description = "Declare the verb non-destructive, so the destructive-session gates never bind to it (KTD24)"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''        doctor_checks=("library.mounted", "rekordbox.pins"),
+        gates=(
+            GateSpec(
+                name="tag.retag.confirm",'''
+new = '''        destructive=False,
+        doctor_checks=("library.mounted", "rekordbox.pins"),
+        gates=(
+            GateSpec(
+                name="tag.retag.confirm",'''
+
+[[rows]]
+id = "R8_not_long_running"
+description = "Declare the sweep short, so it runs inline in the invocation instead of on the job engine"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_queued_resume_contract.py"]
+old = '''        argv_builder="retag_argv",
+        long_running=True,'''
+new = '''        argv_builder="retag_argv",'''
+
+[[dropped]]
+id = "R2_no_digest_source"
+description = "Declare no digest source on the confirm gate, so the decision is made against no artifact and cannot go stale"
+reason = "dropped to stay at the 45 row cap. C1 already mutates the handler's own search for the gate declared against the plan, which is the code that reads this field, and R1 measures the same declaration's other half. This row would have measured the registry's contract suite rather than this round's code."
+
+[[dropped]]
+id = "P9_handler_key_dropped"
+description = "Offer a review item with no handler key, so the queue cannot say which verb asked"
+reason = "dropped to stay at the 45 row cap, and ranked below every row above it because the cost is maintainer facing: a person reading the queue loses the provenance column and every decision still lands correctly. P9 was reassigned to the settled-versus-asked row, which has a user facing cost."
+
+[[dropped]]
+id = "X1_every_other_bucket_field"
+description = "Mutate each remaining Bucket field the offer does not read"
+reason = "ranked below the cap: options_for reads id and display only, and P6 and P7 already measure both. The other fields are not on this unit's path at all."
+
+[[dropped]]
+id = "X2_doctor_checks"
+description = "Change the declared doctor checks on the new entry"
+reason = "ranked below the cap: the checks are a declaration this unit copies from repair.paths, which writes the same surface. Nothing in this round's code reads them, so a row here measures the contract suite rather than the round."
+
+[[dropped]]
+id = "X3_review_offer_idempotence"
+description = "Break review.offer's already-present branch"
+reason = "ranked below the cap: U11's own suite owns that function and this unit is not its first caller, four modules in src already offer into the queue. F1 to F4 spend the first-caller sample where this unit IS first, which is write.metadata and the row index."
