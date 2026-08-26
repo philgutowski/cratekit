@@ -1,17 +1,21 @@
 # Restart: Cratekit
 
-**Last session 2026-08-26.** U40 merged and pushed. Board audit exit 0, **45
-units, 40 done, 5 ready**. **The pending register is EMPTY.**
+**Last session 2026-08-26.** U43 merged and pushed. Board audit exit 0, **45
+units, 41 done, 4 ready**. **The pending register is EMPTY.**
 
 **`board.py next` WILL SAY "Take #29" AND YOU MUST NOT.** Issue 29 is attended,
 Phillip's to perform against the live library, which an agent cannot touch by
 standing constraint. It ranks first only because it is the one unit with a
-dependent. **The four takeable units are #60, #61, #62 and #63**, and they are
-all Ready, all independent of each other, and each releases nothing, which is why
+dependent. **The three takeable units are #60, #62 and #63**, and they are all
+Ready, all independent of each other, and each releases nothing, which is why
 they rank below an untakeable unit.
 
-**Take #61 first if you are taking one.** It is the only one of the four that
-writes nothing at all.
+**Take #62 next if you are taking one.** It is the smallest of the three: one
+verb over one engine, where #60 is two verbs over one module and #63 also has to
+publish the backup age the write session consults. All three QUEUE, unlike #61,
+so each of them needs an argv builder and has to satisfy the resume contract.
+Read U43's shell first, `src/cratekit/setbuilder/cli.py`, then
+`src/cratekit/tagging/retag_cli.py` for the queueing half U43 did not need.
 
 ## Do this first
 
@@ -39,51 +43,57 @@ Main's tip subject names this file's own restart commit. **No hash is written
 here on purpose**, since this file is part of the commit it would be naming.
 Check the subject and `git status -sb` for the ahead or behind count instead.
 
-**Forty of forty five units are done.** The last measured suite was **6318 passed
-and 1 skipped**. **Main's highest residual is R-186.** Append only.
+**Forty one of forty five units are done.** The last measured suite was **6354
+passed and 1 skipped**. **Main's highest residual is R-190.** Append only.
 
 ## What the last session did
 
-U40 built `crate tag retag`, the verb that can correct a genre that is already
-wrong. `tag.folder` is fill-if-empty by construction, so a file arriving with a
-vendor catch-all is skipped by every tagging verb, routes to the fallback bucket
-and stays there for ever. The selection is the user's own taxonomy through
-`is_too_coarse_as_source`, never a list in code, and two refusals hold it: an
-answer that is itself too coarse is never written, and a file with NO genre is
-never selected even though the predicate calls the empty string too coarse,
-because that state is `tag.folder`'s under a different ownership policy.
+U43 built `crate setbuild`, the shell over the set-building engine U35 landed.
+It is a pure read: no database, no job, no byte written.
 
-Feature Inventory row 18 moved from Cut to Module, and the plan's own row 18
-cell was amended in DJ_tools at `1e041cb` in the same sitting. **Those two trees
-are coupled and the coupling is deliberate**: `tests/test_cutover_parity.py`
-drift checks `registry.FEATURES` against the plan whenever DJ_tools is checked
-out beside this repository, so editing either side alone leaves main red. If a
-future unit moves a disposition, it moves both.
+**THE ANCHOR IS A PATH UNDER THE LIBRARY, NOT A TYPED TITLE**, and that decision
+is the unit. The engine's `resolve_anchor` fuzzy matches a typed string, and
+`token_set_ratio` scores a subset at 100, so an exact query naming a track and
+that track plus a version suffix are indistinguishable and `extractOne` returns
+whichever it met first. Driven, not argued. A path is also what every other
+file-taking verb accepts, so a test hands it something under the configured
+library rather than a real path off somebody's machine (R1). The cost, stated
+rather than hidden: an unowned anchor and a supplied Camelot key cannot be
+expressed at all, and both exist to serve a web lookup this product does not
+ship.
 
-Read `docs/mutation/u40-author-full.md` and its round two and round three
-companions for the measurements: 58 rows over three rounds, and the second and
-third are where the value was. Six residuals are filed, R-181 through R-186.
+**IT WRITES NO CACHE, AND THAT IS THE OTHER DECISION THE BRIEF ASKED FOR.**
+`build_index` accepts a `cache_path` and `config` declares
+`setbuilder_index_cache` waiting for one. Passing it would be a `files` write
+from an entry declaring none, and declaring one makes the verb destructive by
+`Entry.__post_init__`'s own invariant, which binds the library lock, the backup
+acknowledgment and the volume identity assertion to a read-only recommender.
+Filed as R-188 rather than paid for quietly.
 
-**R-186 is the one to read.** `write/metadata.resolve_genre_id` defaults the
-soft-delete marker to the permissive answer, which is the shape
-`trees.soft_delete_marker` refuses by having no default. U40 did not write that
-line and U40 is what gave it a caller: `plan_genre_retag` had no caller anywhere
-in `src` before this unit, so the defect was dormant and is now reachable from a
-verb a person types. The mechanism was driven; the producer was not, and METHOD's
-do-not-touch section assigns that line to the parked conformance branch, which is
-why it is filed rather than fixed.
+Read `docs/mutation/u43-author-light.md` and its round two companion: 25 rows
+then 10, and **round two is where the value was**, as it was for U40. Round one
+left five user-facing zeros and every one of them was a real gap. Four residuals
+are filed, R-187 through R-190.
+
+**THE VERIFICATION GAP, STATED BECAUSE NOBODY ELSE WILL SAY IT.** Both tables are
+the AUTHOR'S. No independent verifier ran, because the session was instructed not
+to spawn one. METHOD asks a light pass to be run by an agent that did not write
+the code, and the measured gaps between an author's table and an independent one
+on this project are 10 against 17, 39 against 49, and 49 against 83. Every zero
+in those two tables reads as "the author could not kill it", never as "nothing
+can". If a later session wants a cheap high-yield target, this unit is one.
 
 ## What is left
 
-**The four new units, #60 to #63.** Each is a command-line SHELL over an engine
-that already shipped, and together they clear the whole cutover backlog. Created
-2026-08-26 on Phillip's decision, after the U40 handoff found five Feature
-Inventory rows uncovered with no issue owning any of them.
+**Three of the four new units, #60, #62 and #63.** Each is a command-line SHELL
+over an engine that already shipped, and together they clear the rest of the
+cutover backlog. Created 2026-08-26 on Phillip's decision, after the U40 handoff
+found five Feature Inventory rows uncovered with no issue owning any of them.
 
 | issue | unit | verb(s) | row(s) | engine that already exists |
 |---|---|---|---|---|
 | #60 | U42 | `acquire.download`, `acquire.audit` | 6, 7 | `src/cratekit/acquire/download.py` and siblings |
-| #61 | U43 | `setbuild` | 29 | `src/cratekit/modules/tools/setbuilder.py` |
+| ~~#61~~ | ~~U43~~ | `setbuild` | 29 | DONE 2026-08-26, `src/cratekit/setbuilder/cli.py` |
 | #62 | U44 | `master` | 30 | `src/cratekit/modules/tools/mastering.py` |
 | #63 | U45 | `backup.run` | 31 | `src/cratekit/modules/tools/backup.py` |
 
@@ -93,16 +103,23 @@ both served by `acquire.download` in one module, `cratekit.acquire.cli`, and the
 would create two units that must land together, which is the hazard the countdown
 machinery exists to prevent.
 
-**Why they existed as a gap at all.** Every one of those verbs still carries a
+**THE THREE THAT ARE LEFT ALL QUEUE, AND U43 DID NOT.** Every one of them is
+`long_running`, so each needs an `argv_builder` and has to satisfy the resume
+contract, and a gate answered inside a queued verb has to freeze its gate run or
+the respawned child meets the gate with nothing recorded. `retag_argv` in
+`src/cratekit/tagging/retag_cli.py` is the worked example and its docstring says
+why. U43's shell is the model for the read-only half and for nothing else.
+
+**Why they existed as a gap at all.** Every one of the remaining verbs carries a
 `planned_in` marker naming a unit whose issue is CLOSED: U15 and U35 landed the
 engines and never landed the shells. Four more verbs are in the same state and
 are NOT in the backlog, because another landed verb covers their row:
 `session.ack` and `session.release` (U8, row 12), `analyze.vocals` and
-`metadata.mytags-vocals` (U25, row 10). So nine declared verbs have no module and
-five of them are what stands between this repository and a mechanically possible
-cutover. `tests/test_cutover_parity.py` derives that and
+`metadata.mytags-vocals` (U25, row 10). Eight declared verbs now have no module,
+down from nine, and four of them are what stands between this repository and a
+mechanically possible cutover. `tests/test_cutover_parity.py` derives that and
 `test_the_cutover_is_not_yet_possible_and_says_why` fails on the day it empties,
-which is the day #60 to #63 are all done.
+which is the day #60, #62 and #63 are all done.
 
 **A UNIT ISSUE IS IDENTIFIED BY ITS `unit` LABEL, NOT BY ITS TITLE.** `board.py`
 reads `"unit" in labels` at `scripts/board.py:113`. All four of these were created
@@ -116,12 +133,14 @@ Not an agent's. METHOD says why in its do-not-touch section and the reason does
 not expire. It stays first in `board.py next` because ranking is by transitive
 reach and it is the only unit with a dependent.
 
-**The residual ledger.** 186 entries, none of them queued. R-183 is the one with
-product consequences: nothing in `src` claims a job item, so no long-running
-verb's work is executed by shipped code. `crate tag retag` queues like every
-other one and the engine behind it has no caller in `src`, exactly as
-`tag.folder`'s has none. Three of the four new units queue too, so this gets
-worse before somebody fixes it.
+**The residual ledger.** 190 numbers, 189 entries, none of them queued. R-183 is
+the one with product consequences: nothing in `src` claims a job item, so no
+long-running verb's work is executed by shipped code. `crate setbuild` is the
+first verb in a while that is UNAFFECTED by it, because it does not queue at all,
+and all three units left do queue, so this gets worse before somebody fixes it.
+Of U43's four, **R-187 is the one to read**: the engine's fuzzy anchor lookup
+returns the wrong track for an exact query, driven, and it stays a residual only
+because two candidate producers were driven and neither reaches it.
 
 **The parked conformance branch**, with its `write/metadata.py:195` defect live
 on main. Out of scope until Phillip says otherwise. R-186 records what U40
@@ -140,7 +159,7 @@ changed about its reachability.
   to act on it. **Do not backfill.**
 - **Residual numbers are APPEND ONLY.** Main's numbers never move; an incoming
   branch's residuals take fresh numbers above main's highest. **Main's highest is
-  R-186.**
+  R-190.**
 - **The pending register is empty.** `tests/test_pending_units.py` now carries a
   test that says so out loud, because an emptily parametrized countdown is
   SKIPPED by pytest and a silent skip is the exact hazard that file warns about.
@@ -154,7 +173,34 @@ changed about its reachability.
   which issue it is BEFORE writing the merge commit.
 - **Do not touch** U30's board state, U20, R-9, A1, A2, or `.worktrees/conformance`.
 
-## Seventeen things that will bite you
+## Twenty things that will bite you
+
+**A FIXTURE CAN SIT WHERE THE THING IT TESTS CANNOT MATTER, AND IT LOOKS
+IDENTICAL TO A GUARD.** U43 wrote a lossy-marked fixture to close a zero row and
+put the marker at the END of the title. The renamer writes it immediately AFTER
+the head, and only there does the head parser strip it, so the guard would have
+passed under the very mutation it was written to catch and the row would have
+been reported closed. Caught by driving both positions before writing the
+assertion, and pinned afterwards by a row that MOVES the marker to a position the
+parser ignores: if the guard survives that, its fixture is in the dead position.
+When you write a test to kill a zero, add a row that breaks the test's own
+premise, not only the code's.
+
+**A CAP CAN LAND ON ONE CONTRIBUTOR AND THE OUTPUT BOUNDARY WIDENS IT BACK.**
+`--count 2` returned five items, because `build_plan` caps the pool while the
+sequence is drawn from the FULL ranked list and was then unioned back in. The
+test asserting the cap passed, because the fixture yielded fewer companions than
+the default and both branches produced the same five. Two defects wearing one
+green: a fixture too small to discriminate, and a surface whose arithmetic was
+invisible. `totals` now reports `pool` beside `count`.
+
+**A REGISTRY FLAG A PARAMETRISATION KEYS ON REPORTS AS A COLLECT ERROR, AND THAT
+IS THE CORRECT READING.** Restoring `planned_in` on a landed entry moves the
+collected count by two, three landed-only conformance cases leaving and one
+countdown case arriving. `mutate.py` refuses to call it a zero and names twelve
+kills. Read the kills and say what the drift was; do not chase a clean number.
+
+## The seventeen that were already here
 
 **`board.py start N` TAKES THE ISSUE NUMBER AND WILL HAPPILY START THE WRONG
 ONE.** This session ran `board.py start 40` for U40, which branched on issue #40,

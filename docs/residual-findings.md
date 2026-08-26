@@ -9660,3 +9660,123 @@ different branch is how the two come to disagree at the merge.
 **Closes when:** `resolve_genre_id` reads the marker through
 `trees.soft_delete_marker`, or somebody drives a binding that omits the column
 and the finding is promoted or dismissed on the measurement.
+
+---
+
+## R-187. The engine's fuzzy anchor lookup cannot tell a title from that title plus a version suffix
+
+**Found by** U43 while deciding the setbuild verb's positional argument,
+2026-08-26. Filed rather than fixed because its input is not reachable from any
+shipped verb.
+
+`setbuilder.find_in_index` at
+`src/cratekit/modules/tools/setbuilder.py:705` matches with
+`fuzz.token_set_ratio`, which scores a subset at 100. So an exact query naming a
+track scores identically against that track and against any longer title
+containing its tokens, and `process.extractOne` returns whichever it met first,
+which is index order. `MATCH_THRESHOLD` is 90 and does not help: both candidates
+are at 100.
+
+**Driven, 2026-08-26.** An index holding `Alder - Anchor Work (Extended Mix)`
+followed by `Alder - Anchor Work`, queried with the exact string
+`Alder - Anchor Work`, returns the Extended Mix. The engine's own comment on
+that threshold says building a set around the wrong anchor is worse than
+refusing to build one, because every pick after it is internally consistent and
+therefore looks right. This is that failure, reached without a typo.
+
+**The producer was NOT driven, and the reachability is what keeps this a
+residual.** `find_in_index` has one caller, `resolve_anchor`, which has one
+caller, `build_set`. Measured with `git grep -n "build_set\|resolve_anchor" --
+src` on 2026-08-26: no module under `src` calls either. `crate setbuild`
+deliberately resolves its anchor by path against the index and composes
+`build_pool`, `rank` and `build_plan` itself, so nothing a person can type
+reaches this code. Two candidate producers were driven and neither produces it;
+that is a different sentence from "nothing produces it", and only the first one
+was measured.
+
+**Closes when:** either a caller for the fuzzy lookup ships, at which point this
+becomes blocking and needs a tie break that prefers an exact match on the
+comparison key before falling back to the fuzzy score, or the lookup is deleted
+along with the web-enrichment seam it exists to serve.
+
+---
+
+## R-188. A declared state file has no writer, so every set costs a full library scan
+
+**Found by** U43, 2026-08-26, as the consequence of the cache decision that
+unit's brief asked to make explicitly.
+
+`config.StateFile(key="setbuilder_index_cache")` at
+`src/cratekit/core/config.py:1622` declares a library-scoped cache whose own
+`why` says the whole-library tag scan it avoids "costs minutes per run on a
+library of this size". `build_index` accepts the `cache_path` that would fill
+it. Nothing in `src` passes one.
+
+**Why this unit did not fix it.** `Entry.__post_init__` in
+`src/cratekit/cli/registry.py:184` makes anything declaring
+`writes={"files"}` destructive by definition, and the destructive-session gates
+bind to that flag. Passing a cache path would either be a `files` write from a
+verb whose entry declares none, which is the divergence, or would require
+declaring one, which binds a read-only recommender to the library lock, the
+backup acknowledgment and the volume identity assertion. Neither is a shell
+unit's call.
+
+**Measured, not estimated as a cost:** unmeasured. No timing was taken against a
+real library, because the live library is off limits by standing constraint and
+the fixture libraries here hold single-figure track counts. The state file's own
+text is the only claim about the size of this, and it is the source system's
+claim rather than this product's measurement.
+
+**Closes when:** somebody decides whether a state-file write is a `writes`
+surface at all. A `state` member alongside `files` would let a read-only verb
+declare a cache without inheriting the destructive gates, and that is a registry
+decision rather than a verb's.
+
+---
+
+## R-189. Six sites build the name template from config independently
+
+**Found by** U43 while writing the sixth, 2026-08-26.
+
+`core.naming` takes configuration as parameters and imports none, which is
+deliberate and stated in its own module docstring. The consequence is that every
+consumer constructs its own `NameTemplate` from `cfg.naming.lossy_marker`.
+Measured on 2026-08-26 with `grep -rn 'MarkerRule(field="lossy"' src`: six sites,
+in `write/naming_cli.py`, `cli/reports.py`, `intake/repair.py`,
+`intake/ingest.py`, `acquire/match_cli.py` and now `setbuilder/cli.py`.
+
+**The cost is a class rather than a live defect.** A field added to the declared
+name shape, or a second marker rule, reaches whichever of the six the author
+remembered. Nothing compares them, and a template that differs by a marker
+parses a marked title differently, which U43's own H4 mutation row measures: with
+the marker declared a clean title is `Anchor Work`, without it the title keeps
+the marker and the match key gains a token. No two of the six were found to
+disagree today.
+
+**Closes when:** the construction lives in one place both halves read, most
+plausibly a `template_for(cfg)` in `core.naming`, which is a same-layer import
+and would not violate the rule that keeps configuration out of that module's
+own logic.
+
+---
+
+## R-190. The plan surface has no field for the input a plan was computed for
+
+**Found by** U43, 2026-08-26, while fitting a set plan into `plan/1`.
+
+`output._PAYLOAD_FIELDS["plan"]` declares exactly `digest`, `items`, `totals`
+and `chunk`, and `payload_problems` rejects any fifth key. A set plan's most
+important fact after the recommendations is the anchor they were computed for:
+what was resolved, whether the library owns it, its key and its tempo. It is not
+an item, because it is not a recommendation. `totals` is the surface's only
+plan-level object, so `setbuild` carries the anchor inside it, beside three
+counts.
+
+**The cost is legibility rather than correctness.** Nothing is lost and nothing
+is wrong; a consumer reading `totals` finds an object that is mostly counts and
+one thing that is not. Every other plan-emitting verb in the product answers
+about a scope that needs no naming, so none of them has met this.
+
+**Closes when:** either `plan/1` gains a `subject` field and a major bump, which
+`output.py` says in its own error text is a decision rather than an oversight, or
+a second verb meets the same shape and the pair makes the case.

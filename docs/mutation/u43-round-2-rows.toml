@@ -1,0 +1,137 @@
+name = "u43-author-round-2"
+pass_kind = "light"
+
+# ROUND 2. The five user facing zeros from round one, re-measured against the
+# guards written for them, plus three rows that probe whether those guards are
+# guards or characterizations.
+#
+# EVERY ROW HERE IS A RE-MEASUREMENT OF THE SAME MUTATION, byte for byte the one
+# round one ran, so the numbers are comparable. A guard that closes a zero by
+# changing what the mutation is would be measuring a different experiment.
+#
+# R1 is NOT re-run. It is drift rather than a zero: restoring planned_in moves
+# the parametrised population by two, three landed-only conformance cases leaving
+# and one countdown case arriving, so no clean death count exists for it and
+# chasing one is what RESTART's entry on registry flags says not to do. It named
+# twelve kills in round one and that is the reading.
+
+[[rows]]
+id = "N0_null_control"
+description = "A comment reworded and nothing else. Must kill zero, or the baseline is red and every number below it is noise."
+file = "src/cratekit/setbuilder/cli.py"
+old = '''Layer: modules.'''
+new = '''Layer: the modules layer.'''
+
+# ── the five re-measurements ──────────────────────────────────────────────────
+
+[[rows]]
+id = "A2_no_resolved_second_pass"
+description = "ROUND ONE: zero. Drop the resolved second pass in anchor_in_index, so a path spelled through a symlink or a different absolute form never matches"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    try:
+        resolved = path.resolve()
+    except OSError:
+        return None
+    for track in index:
+        if not track.path:
+            continue
+        try:
+            if Path(track.path).resolve() == resolved:
+                return track
+        except OSError:
+            continue
+    return None'''
+new = '''    return None'''
+
+[[rows]]
+id = "P2_items_absent_from_digest"
+description = "ROUND ONE: zero. The digest stops covering the items, so two entirely different sets of recommendations for one anchor carry one identity"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''        "digest": digest_of({"kind": "setbuild", "anchor": rendered["anchor"], "items": items}),'''
+new = '''        "digest": digest_of({"kind": "setbuild", "anchor": rendered["anchor"]}),'''
+
+[[rows]]
+id = "P6_count_ignored"
+description = "ROUND ONE: zero. The count flag is dropped on the way to the engine, so the pool is always the default eight"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    plan = setbuilder.build_plan(ranked, resolved, count=count, role=role)'''
+new = '''    plan = setbuilder.build_plan(ranked, resolved, count=None, role=role)'''
+
+[[rows]]
+id = "H2_empty_is_a_no_op"
+description = "ROUND ONE: zero. A plan with no companions reports NO_OP rather than OK, which tells a consumer nothing happened when the question was answered"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    return ctx.envelope(data=plan, outcome=Outcome.OK)'''
+new = '''    return ctx.envelope(
+        data=plan, outcome=Outcome.OK if plan["items"] else Outcome.NO_OP
+    )'''
+
+[[rows]]
+id = "H3_missing_root_not_refused"
+description = "ROUND ONE: zero. The configured library root is no longer checked before the scan, so an unmounted volume scans zero files and every anchor comes back unindexed"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    if not root.is_dir():'''
+new = '''    if root.is_dir() and False:'''
+
+[[rows]]
+id = "H4_template_loses_the_marker"
+description = "ROUND ONE: zero. The name template stops declaring the lossy marker, so a marked file's clean title keeps the marker and its match key gains a token"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    return NameTemplate(markers=(MarkerRule(field="lossy", literal=cfg.naming.lossy_marker),))'''
+new = '''    return NameTemplate()'''
+
+# ── whether the new guards are guards, or characterizations wearing the costume ─
+
+[[rows]]
+id = "V1_pool_total_is_the_union"
+description = "totals reports the union size where it says pool, which is the wrong number and the one a reader would otherwise have to derive. The round-one arithmetic surprise is exactly this confusion, so the new count guard owes a death here"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''        "pool": len(plan.pool),'''
+new = '''        "pool": len(items),'''
+
+[[rows]]
+id = "V2_marker_position_moved"
+description = "The marker rule is declared with a separator that puts it somewhere the head parser does not strip. If the lossy guard passes this, its fixture is in a position where the declaration cannot matter, which is the mistake the first attempt at it made"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    return NameTemplate(markers=(MarkerRule(field="lossy", literal=cfg.naming.lossy_marker),))'''
+new = '''    return NameTemplate(markers=(MarkerRule(field="lossy", literal="[NOTAMARKER]"),))'''
+
+[[rows]]
+id = "V3_root_check_reports_instead_of_refusing"
+description = "The missing root produces an empty plan and an OK exit rather than a refusal, which is the clean-report-over-unreadable-state shape rather than the crash shape. A guard that only catches the crash is not the guard this row needs"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    if not root.is_dir():
+        raise refuse('''
+new = '''    if not root.is_dir():
+        return ctx.envelope(
+            data=plan_for(
+                setbuilder.Track(
+                    artist="", title="", key="", bpm=None, genre="",
+                    energy=None, vox=None, voxgender=None, match="",
+                ),
+                (),
+                declared=taxonomy.default_taxonomy(),
+            ),
+            outcome=Outcome.OK,
+        )
+    if False:
+        raise refuse('''
+
+[[dropped]]
+id = "D5_rerun_the_eighteen_killed_rows"
+description = "Re-measure round one's eighteen killing rows"
+reason = "Not re-run on purpose. METHOD scopes a round to its own diff, and round two's diff is six guards and one totals field. A killing row does not become less killing because a guard was added beside it, and re-running eighteen of them would spend the whole light-pass cap on numbers already measured. The cap is 25 and this round uses 10."
+
+[[dropped]]
+id = "D6_independent_pass"
+description = "An independent verifier's own table over this unit"
+reason = "NOT RUN, AND THIS IS THE GAP IN THIS UNIT'S VERIFICATION RATHER THAN A ROW THAT DID NOT FIT. METHOD asks a light pass to be run by an agent that did not write the code, and this session was instructed not to spawn one. Both tables here are the author's. The measured gaps between an author's table and an independent one on this project are 10 against 17, 39 against 49 and 49 against 83, so every zero below reads as 'the author could not kill it' and never as 'nothing can'."
