@@ -1,0 +1,103 @@
+name = "u40-author-round-2"
+pass_kind = "light"
+
+# ROUND 2. Every row here was left unsettled by `u40-author-full.md`: six zeros,
+# one collect error, and one row the driver refused. Nothing that was KILLED in
+# round one is re-run, because a re-measurement of a settled row buys nothing and
+# METHOD caps a pass rather than rewarding volume.
+#
+# Two rows from round one are NOT here and are dropped rather than re-measured,
+# with the reasons in the `dropped` block at the bottom.
+
+[[rows]]
+id = "N0_null_control"
+description = "A comment reworded and nothing else. Must kill zero, or the baseline is red and every number below it is noise."
+file = "src/cratekit/tagging/retag.py"
+old = '''LAYER: modules.'''
+new = '''LAYER: modules layer.'''
+
+[[rows]]
+id = "S5_no_strip"
+description = "Round one zero, now guarded. Stop trimming the genre read off the file, so the candidate CARRIES the padded spelling into the plan and into the review payload"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''        current = (tags.read_genre_from_file(path) or "").strip()'''
+new = '''        current = tags.read_genre_from_file(path) or ""'''
+
+[[rows]]
+id = "S4_missing_folder"
+description = "Round one zero, RECLASSIFIED to maintainer facing rather than paired with a composite. Remove the not-a-directory guard"
+file = "src/cratekit/tagging/retag.py"
+old = '''    if not root.is_dir():
+        return Selection()
+'''
+new = ""
+
+[[rows]]
+id = "P5_verdict_not_checked"
+description = "Round one zero, now guarded directly. Accept a REJECTED item's chosen option as an answer, so every rejection reads as an acceptance"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''    if item.verdict is not review.Verdict.ACCEPTED or not item.option:'''
+new = '''    if not item.option:'''
+
+[[rows]]
+id = "P8_identity_key"
+description = "Round one zero, now guarded. Address a review item by a different key, so every item any earlier build offered is orphaned"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''    return {"path": str(path)}'''
+new = '''    return {"file": str(path)}'''
+
+[[rows]]
+id = "D1_plan_from_selection"
+description = "Round one zero, and the most useful row in the table. Plan from every result rather than from what was written; the assertion that missed it asserted an empty change list, which the mutation also produces by a different mechanism"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''    written = outcome.written'''
+new = '''    written = outcome.results'''
+
+[[rows]]
+id = "D3_zip_not_strict"
+description = "Round one zero, maintainer facing, ONE LINE and no composite per METHOD. Drop strict from the zip pairing results with matches"
+file = "src/cratekit/tagging/retag.py"
+old = '''    for result, match in zip(written, matches, strict=True):'''
+new = '''    for result, match in zip(written, matches):'''
+
+[[rows]]
+id = "C6_constant_digest"
+description = "Round one zero, unreachable until the plan came out of the handler. Digest a constant rather than the folder and its selection"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_cli_contract.py", "tests/test_queued_resume_contract.py"]
+old = '''        "digest": digest_of({"kind": "tag.retag", "folder": folder, "items": items}),'''
+new = '''        "digest": digest_of({"kind": "tag.retag"}),'''
+
+[[rows]]
+id = "C6b_folder_out_of_digest"
+description = "The half a rows-only digest would still pass: keep the selection in the digest and drop the folder, so two different empty folders are one decision"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_cli_contract.py", "tests/test_queued_resume_contract.py"]
+old = '''        "digest": digest_of({"kind": "tag.retag", "folder": folder, "items": items}),'''
+new = '''        "digest": digest_of({"kind": "tag.retag", "items": items}),'''
+
+[[rows]]
+id = "R8_not_long_running"
+description = "Round one COLLECT ERROR rather than a zero, and the error was the finding. Declaring the sweep short removes the verb from every derived guard in the resume contract, so the suite loses three tests and goes green"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_queued_resume_contract.py"]
+old = '''        argv_builder="retag_argv",
+        long_running=True,'''
+new = '''        argv_builder="retag_argv",'''
+
+[[dropped]]
+id = "R7_not_destructive"
+description = "Declare the verb non-destructive, so the destructive-session gates never bind to it (KTD24)"
+reason = "NOT MEASURABLE AS A MUTATION, and that is the answer rather than a gap. `registry.Entry.__post_init__` refuses any entry that writes files and does not declare destructive, so the mutation raises ValueError at import and takes the whole test file out of collection. Round one recorded it as a collect error for exactly that reason. The refusal itself is driven by tests/test_cli_contract.py:1143, which hands the constructor `writes={'files'}` with no destructive flag and asserts the message. A row that cannot be applied measures the type system, not the suite."
+
+[[dropped]]
+id = "R1_gate_not_explicit"
+description = "Make the confirm gate ordinary, which drops the verb out of the queued-resume guard entirely"
+reason = "REFUSED BY THE DRIVER in round one with a collected count of 0, because the `explicit=True,` line it anchors on is not unique in registry.py and mutate.py refuses an ambiguous match before writing anything rather than mutating the wrong site. Re-anchoring it uniquely would take the whole GateSpec block, which is what R8 above already mutates one field of. Dropped rather than re-anchored because the property it would measure, that this verb sits inside the resume guard's derived population, is exactly what R8 measures from the other flag of the same pair."

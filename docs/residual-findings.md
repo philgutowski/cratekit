@@ -9615,3 +9615,48 @@ is the durable record a person can see, and the row is derived from it.
 **Closes when:** the pass records what it wrote to a resumable ledger the
 database half reads, so an interrupted run can finish the second act without
 re-running the first.
+
+## R-186. The genre lookup defaults the soft-delete marker, and U40 is what gave it a caller
+
+**Found by** U40's first-caller sweep of `write/metadata`, 2026-08-26, and filed
+rather than fixed because `docs/METHOD.md`'s do-not-touch section names this
+line and assigns it to the parked conformance branch.
+
+`write/metadata.resolve_genre_id` at `src/cratekit/write/metadata.py:195` reads
+`getattr(row, "rb_local_deleted", 0)`. Zero is the PERMISSIVE answer, so a genre
+row that cannot report the marker is treated as live. That is the exact shape
+`write/trees.ContentRow.deleted` refuses by having no default, and whose one
+implementation is `trees.soft_delete_marker`, which raises rather than assuming.
+Two readers of the same column in one repository, one refusing and one
+defaulting.
+
+**Driven, and the two halves are different measurements.** The MECHANISM was
+driven on 2026-08-26 against the real function with two stand-in bindings: a
+genre row with no `rb_local_deleted` attribute at all, and one carrying `None`.
+Both resolve to the row's identifier, so both would be linked as a live genre.
+The PRODUCER was not driven. Whether pyrekordbox can hand this function a genre
+row that omits or nulls that column is unmeasured here, and the live database is
+off limits by standing constraint, so this session could not find out. Saying
+"nothing produces it" would be the wrong sentence; nothing was driven that
+produces it, and nothing was tried.
+
+**What U40 changed about it.** Nothing in the line. `plan_genre_retag` was
+`resolve_genre_id`'s only caller and itself had no caller anywhere in `src`, so
+the defect was dormant. `tagging/retag.plan_library` is now a caller a person
+reaches through `crate tag retag`, which is the condition the corpus entry
+"adding the first caller makes you the owner of its unreviewed defects" turns
+into ownership. It is filed rather than acted on only because condition 3 of the
+merge bar is unmet: the input's producer could not be driven.
+
+**Measured cost if the producer exists.** A track is linked to a genre row the
+user deleted. Routing then places it by a genre that is not in the library's
+live taxonomy, and the retag reports success.
+
+**Why it is not fixed here.** METHOD's do-not-touch section names
+`write/metadata.py:195` as the parked branch's, and that branch is out of scope
+until Phillip says otherwise. Landing a second fix on the same line from a
+different branch is how the two come to disagree at the merge.
+
+**Closes when:** `resolve_genre_id` reads the marker through
+`trees.soft_delete_marker`, or somebody drives a binding that omits the column
+and the finding is promoted or dismissed on the measurement.

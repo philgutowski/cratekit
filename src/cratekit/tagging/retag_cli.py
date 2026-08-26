@@ -80,6 +80,28 @@ def _plan_gate(ctx):
     )
 
 
+def plan_for(folder: str, declared) -> dict:
+    """The plan this verb shows and the digest its decision is recorded against.
+
+    PURE, AND SEPARATE FROM THE HANDLER ON PURPOSE. Built inline, the digest could
+    only be reached through a configured machine, a job store and a gate, so the
+    one property that matters most about it, that it is a function of what the
+    person was shown, was measurable only by driving the whole verb. A mutation
+    replacing it with a constant killed no test.
+
+    THE FOLDER IS IN THE DIGEST as well as the rows. Two different empty folders
+    are two different decisions: approving a sweep of one is not approving a sweep
+    of the other, and without the folder both would digest identically and a
+    decision recorded against one would satisfy the gate for the other.
+    """
+    items = retag.plan_items(retag.select(Path(folder), declared=declared))
+    return {
+        "digest": digest_of({"kind": "tag.retag", "folder": folder, "items": items}),
+        "items": items,
+        "totals": {"count": len(items)},
+    }
+
+
 def build(parser, entry) -> None:
     """Declare the surface. ``entry`` is untyped so this layer does not name it."""
     del entry
@@ -129,13 +151,7 @@ def retag_genres(ctx) -> Envelope:
             origin=("tagging", "retag_cli"),
         )
     cfg = _load()
-    declared = taxonomy.default_taxonomy()
-    items = retag.plan_items(retag.select(Path(folder), declared=declared))
-    plan = {
-        "digest": digest_of({"kind": "tag.retag", "folder": folder, "items": items}),
-        "items": items,
-        "totals": {"count": len(items)},
-    }
+    plan = plan_for(folder, taxonomy.default_taxonomy())
     option = ctx.gate.require(_plan_gate(ctx), digest=plan["digest"])
     if option == "abort":
         return ctx.envelope(
@@ -156,4 +172,4 @@ def retag_genres(ctx) -> Envelope:
         return ctx.envelope(data=_reported(store, job))
 
 
-__all__ = ["build", "retag_argv", "retag_genres"]
+__all__ = ["build", "plan_for", "retag_argv", "retag_genres"]

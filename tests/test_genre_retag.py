@@ -150,6 +150,24 @@ def test_a_folder_that_is_not_there_selects_nothing_rather_than_raising(tmp_path
     assert retag.select(tmp_path / "absent", declared=TAXONOMY) == retag.Selection()
 
 
+def test_a_catch_all_carrying_whitespace_is_selected_and_recorded_trimmed(folder, silence):
+    """THE TRIM IS ON THE RECORDED VALUE, NOT ON THE SELECTION, and the two are
+    easy to confuse into one assertion that holds for both.
+
+    ``is_too_coarse_as_source`` strips before it compares, so a padded catch-all
+    is selected whether or not this pass trims. What the trim decides is what the
+    candidate CARRIES, which is what the plan shows a person and what the review
+    payload records. Untrimmed, one library ends up with two spellings of one
+    genre in the queue and a person answers the same question twice.
+    """
+    path = place(folder, silence, "padded", f"  {CATCH_ALL} ")
+
+    selection = retag.select(folder, declared=TAXONOMY)
+
+    assert [c.path for c in selection.candidates] == [path]
+    assert selection.candidates[0].current == CATCH_ALL
+
+
 def test_the_selection_is_sorted_so_one_unchanged_folder_digests_the_same_twice(
     folder, silence
 ):
@@ -288,6 +306,49 @@ def test_a_rejected_verdict_leaves_the_file_alone_and_asks_nobody(folder, silenc
     assert searcher.asked == []
     assert tags.read_genre_from_file(path) == CATCH_ALL
     assert [r.reason for r in outcome.results] == [retag.DECLINED_IN_REVIEW]
+
+
+def test_a_rejected_items_chosen_option_is_not_an_answer(folder, silence, store):
+    """``accepted_genre`` reads the VERDICT, not just the option, and this is the
+    drive that separates the two.
+
+    A person can reject an item and still have chosen a candidate along the way,
+    so an option is present on a REJECTED item. A reader that took the option and
+    skipped the verdict would turn every rejection into an acceptance, and the
+    pass-level test cannot see it, because ``retag_folder`` checks ``suppressed``
+    first and never reaches this function on that path.
+    """
+    path = place(folder, silence, "track", CATCH_ALL)
+    option = review.Option(option_id="deep", summary=SPECIFIC, detail={"genre": SPECIFIC})
+    offered = review.offer(
+        store,
+        queue=review.Queue.GENRE,
+        kind=retag.KIND,
+        identity=retag.identity_for(path),
+        payload={"path": str(path)},
+        options=(option,),
+        handler_key=retag.HANDLER_KEY,
+    )
+    rejected = review.resolve(
+        store, offered.item_id, review.Verdict.REJECTED, option="deep", actor="a-person"
+    )
+
+    assert rejected.option == "deep", "the fixture recorded no option, so this is vacuous"
+    assert retag.accepted_genre(rejected) == ""
+
+
+def test_a_review_item_is_addressed_by_the_file_path_under_that_exact_name(tmp_path):
+    """THE KEY NAME IS PINNED, and no same-run test can pin it.
+
+    ``review.item_id_for`` hashes this mapping, so renaming the key changes every
+    item identifier. Within one run both halves rename together and everything
+    stays self-consistent, which is why every other test here passes either way.
+    What breaks is across builds: every question a person already answered becomes
+    unreachable and is asked again under a new identifier. R-182 records the
+    related cost of the VALUE moving; this pins the NAME.
+    """
+    path = tmp_path / "track.flac"
+    assert retag.identity_for(path) == {"path": str(path)}
 
 
 def test_the_offered_candidates_are_the_declared_buckets_and_never_a_catch_all():
@@ -453,6 +514,37 @@ def test_the_plan_digest_changes_when_the_selection_changes(folder, silence):
     assert before != after
 
 
+def test_the_shell_digests_the_selection_and_the_folder_rather_than_a_constant(
+    folder, silence, tmp_path
+):
+    """THE PROPERTY THAT WAS UNREACHABLE UNTIL THE PLAN CAME OUT OF THE HANDLER.
+
+    Built inline, the digest could only be driven through a configured machine, a
+    job store and a gate, so a mutation replacing it with a constant killed
+    nothing. Both halves are asserted because both are decisions: the rows, so a
+    person who approved forty files has not approved a hundred and forty, and the
+    folder, so a decision recorded over one empty folder does not satisfy the gate
+    for a different one.
+    """
+    from cratekit.tagging import retag_cli
+
+    empty_one = tmp_path / "EmptyOne"
+    empty_two = tmp_path / "EmptyTwo"
+    empty_one.mkdir()
+    empty_two.mkdir()
+    place(folder, silence, "one", CATCH_ALL)
+    before = retag_cli.plan_for(str(folder), TAXONOMY)
+    place(folder, silence, "two", CATCH_ALL)
+    after = retag_cli.plan_for(str(folder), TAXONOMY)
+
+    assert before["totals"]["count"] == 1 and after["totals"]["count"] == 2
+    assert before["digest"] != after["digest"], "a wider selection digests the same"
+    assert (
+        retag_cli.plan_for(str(empty_one), TAXONOMY)["digest"]
+        != retag_cli.plan_for(str(empty_two), TAXONOMY)["digest"]
+    ), "two different empty folders digest alike, so the folder is not in the digest"
+
+
 def test_the_plan_carries_the_current_value_so_the_person_sees_what_is_being_replaced(
     folder, silence
 ):
@@ -530,6 +622,16 @@ def test_the_plan_is_built_from_what_was_written_and_never_from_the_selection(tm
     retag.apply_library(planned, mapped)
 
     assert planned.plan.changes == ()
+    # THE SKIP LIST IS THE ASSERTION THAT MATTERS, and asserting only the empty
+    # change list is what let a mutation of this exact line survive. Planning from
+    # the selection puts the refused row in the plan with its genre stringified
+    # from None, the lookup for a genre named "None" resolves to nothing, and the
+    # row comes back SKIPPED rather than changed. So the change list is empty for
+    # the wrong reason and the weaker assertion holds for both implementations.
+    assert planned.plan.skipped == (), (
+        "the refused file reached the plan and was rejected by the genre lookup "
+        "rather than never entering it, so the plan is built from the selection"
+    )
     assert mapped["1"].GenreID is None
 
 

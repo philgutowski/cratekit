@@ -76,6 +76,40 @@ def test_the_population_this_file_guards_is_not_empty():
     )
 
 
+def test_a_verb_carrying_a_resume_argv_builder_declares_that_it_queues():
+    """THE DIRECTION THAT REMOVES THIS FILE'S OWN COVERAGE, found 2026-08-26.
+
+    ``QUEUED_GATED`` is derived from ``long_running`` AND ``argv_builder``, which
+    is what makes every guard here cover a verb nobody thought to list. It also
+    means dropping ``long_running`` from an entry silently removes that verb from
+    all of them: the suite goes green with three fewer tests and nothing says so.
+    A U40 mutation removing exactly that flag was measured and killed nothing; it
+    only shrank the collected count, which is the shape ``mutate.py`` refuses to
+    read as a zero and which no ordinary run would have reported at all.
+
+    ``Entry.__post_init__`` already refuses the other direction, a long-running
+    verb with no builder. This is the implication that has no home there, because
+    the type cannot argue about intent: an ``argv_builder`` exists for exactly one
+    purpose, turning a frozen payload back into a command line for the child the
+    job driver spawns, so a verb declaring one and not declaring ``long_running``
+    is either mislabelled or carrying a builder nothing will ever call.
+
+    Measured over the registry on 2026-08-26: 21 entries declare ``long_running``
+    and every one declares a builder, so the implication holds in the tree today
+    and this is what stops it drifting.
+    """
+    carriers = [entry for entry in registry.ENTRIES if entry.argv_builder]
+    assert len(carriers) >= len(QUEUED_GATED), (
+        "no entry declares a resume argv builder, so this guard is vacuous"
+    )
+    mislabelled = sorted(entry.name for entry in carriers if not entry.long_running)
+    assert not mislabelled, (
+        f"these verbs declare a resume argv builder and do not declare "
+        f"long_running: {mislabelled}. Either the builder is dead code, or the "
+        f"verb queues and has just dropped out of every derived guard in this file"
+    )
+
+
 @pytest.mark.parametrize("entry", QUEUED_GATED, ids=lambda e: e.name)
 def test_a_queued_gated_verb_emits_the_run_its_decision_was_recorded_against(entry):
     """The resume argv must carry the gate run as the root ``--run`` flag.
