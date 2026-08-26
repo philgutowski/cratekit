@@ -4688,7 +4688,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # ``UnknownReason`` for an undeclared slug, so the verb's empty-folder branch
     # would have raised a KeyError at the boundary instead of refusing. No test in
     # the unit drove that branch; this population count is what reported it.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (132, 108, 24)
+    #
+    # Re-pinned on U43, 2026-08-26. THREE slugs, named rather than counted:
+    # setbuild-anchor-unknown, setbuild-anchor-outside-library and
+    # setbuild-anchor-not-indexed, which are the set builder's three refusals.
+    # Measured by differencing this branch's REASONS literal against the one in
+    # origin/main's own tree extracted to a scratch directory, rather than by
+    # subtracting one total from another: three joined, none left. None of the
+    # three is in the reserved table, exactly as their siblings
+    # export-playlist-unknown and tag-retag-folder-unknown are not, so the
+    # reserved half does not move. Population 132 to 135, non-reserved 108 to
+    # 111, reserved half UNCHANGED at 24.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (135, 111, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4752,7 +4763,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # `genre-specific`, `no-answer`, `answer-too-coarse` and `declined-in-review`,
     # the reason markers on a retag result. They are the same shape as `has-genre`
     # and `no-hit`, the tagging result markers the U37 re-pin above names.
-    assert (len(literals), len(literals - set(causes))) == (318, 187), (
+    # Re-pinned on U43, 2026-08-26: 318 to 321 distinct, non-keys UNCHANGED at
+    # 187. THREE literals joined and NOTHING left, differenced as SETS against
+    # `origin/main`'s own `src` tree extracted into a scratch directory rather
+    # than inferred from the total moving by three. Named:
+    # `setbuild-anchor-unknown`, `setbuild-anchor-outside-library` and
+    # `setbuild-anchor-not-indexed`. All three are KEYS on this side, which is why
+    # the non-key half does not move at all: the set builder's shell introduces no
+    # cause-shaped literal that is not a declared cause.
+    assert (len(literals), len(literals - set(causes))) == (321, 187), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -4897,7 +4916,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # 15, because the module holds no bare integer at all. tagging/retag.py is NOT
     # in the set: its six new kebab literals are result markers rather than causes,
     # which is why the distinct population moved by seven and the holder set by one.
-    assert (len(literal_holders), len(literal_both)) == (75, 15), (
+    # Re-pinned on U43, 2026-08-26: 75 to 76 holders. setbuilder/cli.py joined,
+    # naming config-unusable the way every other shell does, library-root-absent
+    # for a configured root that is not a directory, and its own three anchor
+    # refusals. Differenced as SETS by repointing this module's PACKAGE_ROOT at
+    # origin/main's own src tree extracted into a scratch directory, the same way
+    # as every entry above: exactly one module joined and none left. The
+    # also-holds-an-integer half stays 15, because the module's only bare integers
+    # are a sequence start and a minimum count, both far below the reserved range.
+    # The named halves did NOT move, staying at 8 and 21, because every cause this
+    # module names it names as a literal rather than through a symbol, so the
+    # comparison just below widened for the eleventh time out of eleven.
+    assert (len(literal_holders), len(literal_both)) == (76, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

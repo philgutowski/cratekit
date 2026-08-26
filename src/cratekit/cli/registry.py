@@ -1459,7 +1459,12 @@ ENTRIES: tuple[Entry, ...] = (
         module_id="setbuilder",
         emits=frozenset({"plan"}),
         output_schema="plan/1",
-        planned_in="U35",
+        # U43 LANDED IT. ``cratekit.setbuilder.cli`` ships the shell over the
+        # engine U35 landed, so the marker is gone and the conformance properties
+        # drive this entry rather than skipping it. It declares no write surface
+        # and that is load bearing: ``writes={"files"}`` would make it
+        # destructive by the invariant above, which is why the verb passes no
+        # cache path to ``build_index``.
     ),
     Entry(
         name="master",
