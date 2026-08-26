@@ -336,6 +336,68 @@ def test_an_accepted_answer_that_is_itself_a_catch_all_is_still_refused(
     ]
 
 
+def test_a_file_settled_against_every_candidate_is_not_counted_as_an_open_question(
+    folder, silence, store
+):
+    """A REJECTED item carries an item id, because the item is what settled it.
+
+    So "has an id and was not written" counts a decision as a question, and a
+    report built on it tells a person there is work waiting that they already
+    did. This is the drive that separates the two, and the assertion on the
+    written half is what stops it passing against a pass that reports nothing.
+    """
+    settled = place(folder, silence, "settled", CATCH_ALL)
+    open_one = place(folder, silence, "open", CATCH_ALL)
+    retag.retag_folder(folder, searcher=answering({}), declared=TAXONOMY, store=store)
+    item = next(
+        i
+        for i in review.list_items(store, queue=str(review.Queue.GENRE)).items
+        if i.payload["path"] == str(settled)
+    )
+    review.resolve(store, item.item_id, review.Verdict.REJECTED, actor="a-person")
+
+    outcome = retag.retag_folder(
+        folder, searcher=answering({}), declared=TAXONOMY, store=store
+    )
+
+    assert {r.path for r in outcome.asked} == {open_one}
+    assert {r.path for r in outcome.results} == {settled, open_one}
+    assert outcome.written == ()
+
+
+def test_every_result_carries_a_reason_or_a_written_genre_and_never_both():
+    """The invariant RetagResult's own docstring states, asserted over the type
+    rather than left as prose. A result carrying both would let a report count one
+    file twice, once as corrected and once as outstanding.
+    """
+    cases = (
+        retag.RetagResult(path=Path("a"), current=CATCH_ALL, written=SPECIFIC),
+        retag.RetagResult(path=Path("b"), current=CATCH_ALL, reason=retag.NO_ANSWER),
+    )
+    assert len(cases) == 2, "the case table is empty, so this proves nothing"
+    for case in cases:
+        assert bool(case.written) != bool(case.reason)
+
+
+def test_the_item_id_this_pass_computes_is_the_one_the_queue_stores(folder, silence, store):
+    """TWO COMPUTATIONS OF ONE FACT, held to agreeing.
+
+    ``retag_folder`` derives an item id from ``review.item_id_for`` to look a
+    verdict up, and ``review.offer`` derives it again from the same identity when
+    it inserts. Both normalize the identity, and if that normalization ever
+    diverged the pass would look up an id the queue does not hold and re-ask a
+    settled question for ever, with the suite green because each half is correct
+    on its own.
+    """
+    path = place(folder, silence, "track", CATCH_ALL)
+    retag.retag_folder(folder, searcher=answering({}), declared=TAXONOMY, store=store)
+
+    stored = review.list_items(store, queue=str(review.Queue.GENRE)).items[0]
+    computed = review.item_id_for(review.Queue.GENRE, retag.KIND, retag.identity_for(path))
+
+    assert stored.item_id == computed
+
+
 def test_a_pass_with_no_store_reports_what_it_could_not_settle(folder, silence):
     """A pass driven without a queue reports the reason rather than pretending it
     settled the file. The result carries no item id, which is how a caller tells

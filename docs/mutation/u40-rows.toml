@@ -175,6 +175,14 @@ old = '''    return {"path": str(path)}'''
 new = '''    return {"file": str(path)}'''
 
 [[rows]]
+id = "P9_settled_counted_as_asked"
+description = "Count any result carrying an item id as an open question, so a decision a person already made is reported back to them as work waiting"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+old = '''            if result.item_id and result.reason in {NO_ANSWER, ANSWER_TOO_COARSE}'''
+new = '''            if result.item_id and not result.written'''
+
+[[rows]]
 id = "P10_resolved_not_read"
 description = "Read only unresolved items out of the queue, so a settled verdict is invisible and re-asked"
 file = "src/cratekit/tagging/retag.py"

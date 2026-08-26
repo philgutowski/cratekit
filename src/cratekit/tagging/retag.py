@@ -140,8 +140,19 @@ class RetagOutcome:
 
     @property
     def asked(self) -> tuple[RetagResult, ...]:
-        """Results that put a question in the review queue rather than writing."""
-        return tuple(result for result in self.results if result.item_id and not result.written)
+        """Results that put a question in the review queue on THIS run.
+
+        A file settled against every candidate carries an item id too, because the
+        item is what settled it, so "has an id and was not written" would count a
+        decision as an open question and a report would tell a person there is
+        work waiting for them that they already did. The reason is what separates
+        the two, not the presence of an identifier.
+        """
+        return tuple(
+            result
+            for result in self.results
+            if result.item_id and result.reason in {NO_ANSWER, ANSWER_TOO_COARSE}
+        )
 
 
 # ---------------------------------------------------------------------------
