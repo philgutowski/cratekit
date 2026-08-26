@@ -505,6 +505,16 @@ old = '''        argv_builder="retag_argv",
 new = '''        argv_builder="retag_argv",'''
 
 [[dropped]]
+id = "R2_no_digest_source"
+description = "Declare no digest source on the confirm gate, so the decision is made against no artifact and cannot go stale"
+reason = "dropped to stay at the 45 row cap. C1 already mutates the handler's own search for the gate declared against the plan, which is the code that reads this field, and R1 measures the same declaration's other half. This row would have measured the registry's contract suite rather than this round's code."
+
+[[dropped]]
+id = "P9_handler_key_dropped"
+description = "Offer a review item with no handler key, so the queue cannot say which verb asked"
+reason = "dropped to stay at the 45 row cap, and ranked below every row above it because the cost is maintainer facing: a person reading the queue loses the provenance column and every decision still lands correctly. P9 was reassigned to the settled-versus-asked row, which has a user facing cost."
+
+[[dropped]]
 id = "X1_every_other_bucket_field"
 description = "Mutate each remaining Bucket field the offer does not read"
 reason = "ranked below the cap: options_for reads id and display only, and P6 and P7 already measure both. The other fields are not on this unit's path at all."
