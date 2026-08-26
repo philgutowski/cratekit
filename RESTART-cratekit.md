@@ -1,13 +1,17 @@
 # Restart: Cratekit
 
-**Last session 2026-08-26.** U40 merged and pushed. Board audit exit 0, 41
-units, 40 done. **The pending register is EMPTY.**
+**Last session 2026-08-26.** U40 merged and pushed. Board audit exit 0, **45
+units, 40 done, 5 ready**. **The pending register is EMPTY.**
 
-**THERE IS NO TAKEABLE UNIT LEFT.** `board.py next` will name issue 29 and issue
-29 is attended, Phillip's to perform against the live library, which an agent
-cannot touch by standing constraint. Read "What is actually left" below before
-picking anything up, because the next piece of work on this repository is a
-decision rather than a queue entry.
+**`board.py next` WILL SAY "Take #29" AND YOU MUST NOT.** Issue 29 is attended,
+Phillip's to perform against the live library, which an agent cannot touch by
+standing constraint. It ranks first only because it is the one unit with a
+dependent. **The four takeable units are #60, #61, #62 and #63**, and they are
+all Ready, all independent of each other, and each releases nothing, which is why
+they rank below an untakeable unit.
+
+**Take #61 first if you are taking one.** It is the only one of the four that
+writes nothing at all.
 
 ## Do this first
 
@@ -35,8 +39,8 @@ Main's tip subject names this file's own restart commit. **No hash is written
 here on purpose**, since this file is part of the commit it would be naming.
 Check the subject and `git status -sb` for the ahead or behind count instead.
 
-**Forty units are done.** The last measured suite was **SUITE_COUNT**. **Main's
-highest residual is R-186.** Append only.
+**Forty of forty five units are done.** The last measured suite was **6318 passed
+and 1 skipped**. **Main's highest residual is R-186.** Append only.
 
 ## What the last session did
 
@@ -56,8 +60,9 @@ drift checks `registry.FEATURES` against the plan whenever DJ_tools is checked
 out beside this repository, so editing either side alone leaves main red. If a
 future unit moves a disposition, it moves both.
 
-Read `docs/mutation/u40-author-full.md` and `docs/mutation/u40-author-round-2.md`
-for the measurements. Six residuals are filed, R-181 through R-186.
+Read `docs/mutation/u40-author-full.md` and its round two and round three
+companions for the measurements: 58 rows over three rounds, and the second and
+third are where the value was. Six residuals are filed, R-181 through R-186.
 
 **R-186 is the one to read.** `write/metadata.resolve_genre_id` defaults the
 soft-delete marker to the permissive answer, which is the shape
@@ -68,40 +73,55 @@ verb a person types. The mechanism was driven; the producer was not, and METHOD'
 do-not-touch section assigns that line to the parked conformance branch, which is
 why it is filed rather than fixed.
 
-## What is actually left, and none of it is on the board
+## What is left
+
+**The four new units, #60 to #63.** Each is a command-line SHELL over an engine
+that already shipped, and together they clear the whole cutover backlog. Created
+2026-08-26 on Phillip's decision, after the U40 handoff found five Feature
+Inventory rows uncovered with no issue owning any of them.
+
+| issue | unit | verb(s) | row(s) | engine that already exists |
+|---|---|---|---|---|
+| #60 | U42 | `acquire.download`, `acquire.audit` | 6, 7 | `src/cratekit/acquire/download.py` and siblings |
+| #61 | U43 | `setbuild` | 29 | `src/cratekit/modules/tools/setbuilder.py` |
+| #62 | U44 | `master` | 30 | `src/cratekit/modules/tools/mastering.py` |
+| #63 | U45 | `backup.run` | 31 | `src/cratekit/modules/tools/backup.py` |
+
+**FOUR ISSUES FOR FIVE ROWS, AND THE ARITHMETIC IS DELIBERATE.** Rows 6 and 7 are
+both served by `acquire.download` in one module, `cratekit.acquire.cli`, and the
+`planned_in` countdown keys on the MODULE rather than the verb. Splitting them
+would create two units that must land together, which is the hazard the countdown
+machinery exists to prevent.
+
+**Why they existed as a gap at all.** Every one of those verbs still carries a
+`planned_in` marker naming a unit whose issue is CLOSED: U15 and U35 landed the
+engines and never landed the shells. Four more verbs are in the same state and
+are NOT in the backlog, because another landed verb covers their row:
+`session.ack` and `session.release` (U8, row 12), `analyze.vocals` and
+`metadata.mytags-vocals` (U25, row 10). So nine declared verbs have no module and
+five of them are what stands between this repository and a mechanically possible
+cutover. `tests/test_cutover_parity.py` derives that and
+`test_the_cutover_is_not_yet_possible_and_says_why` fails on the day it empties,
+which is the day #60 to #63 are all done.
+
+**A UNIT ISSUE IS IDENTIFIED BY ITS `unit` LABEL, NOT BY ITS TITLE.** `board.py`
+reads `"unit" in labels` at `scripts/board.py:113`. All four of these were created
+without it and were invisible to `next` and to `audit` while looking perfectly
+correct on the board, because the title regex at `:50` is only used to name a
+branch. If you create a unit issue by hand, `gh issue edit N --add-label unit`
+then `board.py sync`, then re-audit.
 
 **Issue 29, the cutover.** Attended, per workflow, against the live library.
 Not an agent's. METHOD says why in its do-not-touch section and the reason does
-not expire.
-
-**Five Feature Inventory rows with no landed verb and NO ISSUE OWNING THEM.**
-This is the part a `board.py next` reading will not show you:
-
-| row | title | awaiting verb | declared in |
-|---|---|---|---|
-| 6 | vendored concurrent downloader | `acquire.download` | U15, CLOSED |
-| 7 | fallback lossy acquisition | `acquire.audit`, `acquire.download` | U15, CLOSED |
-| 29 | set builder | `setbuild` | U35, CLOSED |
-| 30 | set recording mastering | `master` | U35, CLOSED |
-| 31 | library backup | `backup.run` | U35, CLOSED |
-
-Every one of those verbs still carries a `planned_in` marker naming a unit whose
-issue is CLOSED. Four more verbs are in the same state and are NOT in the
-backlog, because another landed verb covers their row: `session.ack` and
-`session.release` (U8, row 12), `analyze.vocals` and `metadata.mytags-vocals`
-(U25, row 10). So nine declared verbs have no module, and five of them are the
-whole of what stands between this repository and a mechanically possible
-cutover. `tests/test_cutover_parity.py` derives that table and
-`test_the_cutover_is_not_yet_possible_and_says_why` fails on the day it empties.
-
-**Building any of them is a DECISION, not a queue item.** Do not create issues
-for them without Phillip saying so, and do not build one off the board.
+not expire. It stays first in `board.py next` because ranking is by transitive
+reach and it is the only unit with a dependent.
 
 **The residual ledger.** 186 entries, none of them queued. R-183 is the one with
 product consequences: nothing in `src` claims a job item, so no long-running
 verb's work is executed by shipped code. `crate tag retag` queues like every
 other one and the engine behind it has no caller in `src`, exactly as
-`tag.folder`'s has none.
+`tag.folder`'s has none. Three of the four new units queue too, so this gets
+worse before somebody fixes it.
 
 **The parked conformance branch**, with its `write/metadata.py:195` defect live
 on main. Out of scope until Phillip says otherwise. R-186 records what U40
@@ -134,7 +154,7 @@ changed about its reachability.
   which issue it is BEFORE writing the merge commit.
 - **Do not touch** U30's board state, U20, R-9, A1, A2, or `.worktrees/conformance`.
 
-## Sixteen things that will bite you
+## Seventeen things that will bite you
 
 **`board.py start N` TAKES THE ISSUE NUMBER AND WILL HAPPILY START THE WRONG
 ONE.** This session ran `board.py start 40` for U40, which branched on issue #40,
@@ -168,7 +188,19 @@ that verb from every guard in the file, and the suite goes green with three fewe
 tests. `mutate.py` refused to call it a zero because the collected count moved,
 which is the whole reason that check exists. Any test file that parametrizes over
 a derived population owes a guard on the population's own membership, not only on
-its non emptiness.
+its non emptiness, and `tests/test_cli_contract.py` now carries that one.
+
+**AND A REGISTRY FLAG A PARAMETRISATION KEYS ON CANNOT BE MEASURED CLEANLY AT
+ALL.** This is the correction to the entry above, and it is written down because
+the first attempt at it was a confident wrong justification of exactly METHOD's
+fourth pattern. Moving the guard to a file whose count "does not move" does not
+work: `test_conformance_5_long_work_is_queued_rather_than_run_inline` parametrises
+over `long_running` too, so the count still moved, 532 to 531. Wherever such a
+guard lives, removing the flag drops parametrised cases somewhere and the driver
+reports drift rather than a death. What the move actually bought is smaller and
+real: three cases of drift became one, and the row now NAMES its kill instead of
+reporting nothing. Do not chase a zero-drift measurement for a flag like this;
+read the named kills and say what the drift was.
 
 **A GUARD THAT RUNS ZERO TIMES REPORTS THE SAME GREEN AS ONE THAT HOLDS.** U41's
 central test was a loop over the planned moves with no assertion outside it, so
