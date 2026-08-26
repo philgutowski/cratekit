@@ -39,9 +39,13 @@ rule, never to find out how to work.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 0
 
-Main's tip subject names this file's own restart commit. **No hash is written
-here on purpose**, since this file is part of the commit it would be naming.
-Check the subject and `git status -sb` for the ahead or behind count instead.
+**Main's tip is U43's MERGE COMMIT, not a separate restart commit,** and that is
+a change from what this line said through U40. This file now travels inside the
+unit branch that updates it, so there is no trailing docs commit to name. The
+subject to expect is "merge: the setbuild shell, and the anchor that is a path
+rather than a title". **No hash is written here on purpose**, since this file is
+part of the commit it would be naming. Check the subject and `git status -sb` for
+the ahead or behind count instead.
 
 **Forty one of forty five units are done.** The last measured suite was **6354
 passed and 1 skipped**. **Main's highest residual is R-190.** Append only.
