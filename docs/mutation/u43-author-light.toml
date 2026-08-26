@@ -1,0 +1,302 @@
+name = "u43-author-light"
+pass_kind = "light"
+
+# U43, the setbuild shell. LIGHT PASS, 25 rows, which is METHOD's classification
+# for a read-only surface: this verb opens no database, queues no job and writes
+# no byte. Scoped to this round's own diff plus a fixed sample of the engine's
+# existing guards, because landing the first caller of
+# `cratekit.modules.tools.setbuilder` in `src` makes that module's failure paths
+# this unit's.
+#
+# THIS IS AN AUTHOR'S TABLE AND THEREFORE A DRAFT. No independent verifier was
+# run for this unit. METHOD's measured gaps between an author's table and an
+# independent one are 10 against 17, 39 against 49 and 49 against 83, so the
+# right reading of every zero below is "the author could not kill it", not
+# "nothing can".
+
+# ── the baseline ──────────────────────────────────────────────────────────────
+
+[[rows]]
+id = "N0_null_control"
+description = "A comment reworded and nothing else. Must kill zero, or the baseline is red and every number below it is noise."
+file = "src/cratekit/setbuilder/cli.py"
+old = '''Layer: modules.'''
+new = '''Layer: the modules layer.'''
+
+# ── the anchor lookup, which is the whole reason the positional is a path ──────
+
+[[rows]]
+id = "A1_first_track_wins"
+description = "anchor_in_index returns the first indexed track instead of the one at the path, which is exactly what the fuzzy lookup this design replaces does when a version suffix is present"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    wanted = str(path)
+    for track in index:
+        if track.path == wanted:
+            return track'''
+new = '''    wanted = str(path)
+    for track in index:
+        if track.path or wanted:
+            return track'''
+
+[[rows]]
+id = "A2_no_resolved_second_pass"
+description = "Drop the resolved second pass in anchor_in_index, so a path spelled through a symlink or a different absolute form never matches"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    try:
+        resolved = path.resolve()
+    except OSError:
+        return None
+    for track in index:
+        if not track.path:
+            continue
+        try:
+            if Path(track.path).resolve() == resolved:
+                return track
+        except OSError:
+            continue
+    return None'''
+new = '''    return None'''
+
+[[rows]]
+id = "A3_containment_not_checked"
+description = "anchor_path stops checking that the anchor is inside the library, so a path walking out with .. is scanned for and refused as unindexed rather than refused as outside"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    if not _within(candidate, root):'''
+new = '''    if _within(candidate, root) and False:'''
+
+[[rows]]
+id = "A4_empty_anchor_defaults"
+description = "anchor_path stops refusing an empty anchor, which turns it into the library root and asks the index for a directory"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    if not anchor:
+        raise refuse('''
+new = '''    if anchor and not anchor:
+        raise refuse('''
+
+# ── the count guard, which the engine's own slice is why it exists ────────────
+
+[[rows]]
+id = "C1_no_lower_bound"
+description = "positive_count stops refusing zero and negatives, so build_plan's pool[: count or DEFAULT_POOL] silently turns 0 into 8 and -1 into a dropped last companion"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    value = int(text)
+    if value < 1:
+        raise ValueError(f"{text!r} is not a positive count")
+    return value'''
+new = '''    return int(text)'''
+
+[[rows]]
+id = "C2_bound_off_by_one"
+description = "The bound is loosened by one rather than removed, so zero passes and negatives do not. A guard whose constant can be moved without a death is a guard that pins nothing."
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    if value < 1:'''
+new = '''    if value < 0:'''
+
+# ── plan_for, the pure function the whole payload comes out of ────────────────
+
+[[rows]]
+id = "P1_anchor_absent_from_digest"
+description = "The digest stops covering the anchor, so two plans over the same companions and different anchors are indistinguishable"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''        "digest": digest_of({"kind": "setbuild", "anchor": rendered["anchor"], "items": items}),'''
+new = '''        "digest": digest_of({"kind": "setbuild", "items": items}),'''
+
+[[rows]]
+id = "P2_items_absent_from_digest"
+description = "The digest stops covering the items, so a plan and a completely different plan over the same anchor digest identically"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''        "digest": digest_of({"kind": "setbuild", "anchor": rendered["anchor"], "items": items}),'''
+new = '''        "digest": digest_of({"kind": "setbuild", "anchor": rendered["anchor"]}),'''
+
+[[rows]]
+id = "P3_pool_leads_the_items"
+description = "The pool leads and the sequence follows, so the recommendation is no longer at the top of the array a consumer reads"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    ordered = list(plan.sequence) + [s for s in plan.pool if id(s) not in placed]'''
+new = '''    ordered = [s for s in plan.pool if id(s) not in placed] + list(plan.sequence)'''
+
+[[rows]]
+id = "P4_no_positions_at_all"
+description = "Every item reports position null, so the suggested sequence is not recoverable from the payload"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''        {**entry, "position": placed.get(id(scored))}'''
+new = '''        {**entry, "position": None}'''
+
+[[rows]]
+id = "P5_role_ignored"
+description = "The role flag is dropped on the way to the engine, so --role before answers with both sides"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    plan = setbuilder.build_plan(ranked, resolved, count=count, role=role)'''
+new = '''    plan = setbuilder.build_plan(ranked, resolved, count=count, role=None)'''
+
+[[rows]]
+id = "P6_count_ignored"
+description = "The count flag is dropped on the way to the engine, so the pool is always the default eight"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    plan = setbuilder.build_plan(ranked, resolved, count=count, role=role)'''
+new = '''    plan = setbuilder.build_plan(ranked, resolved, count=None, role=role)'''
+
+[[rows]]
+id = "P7_vox_threshold_ignored"
+description = "The vocal threshold is dropped on the way to the ranker, which makes the fifth ranking signal permanently neutral and its whole weight dead"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''        vox_threshold=vox_threshold,
+    )
+    plan = setbuilder.build_plan'''
+new = '''        vox_threshold=None,
+    )
+    plan = setbuilder.build_plan'''
+
+[[rows]]
+id = "P8_anchor_not_owned"
+description = "The Anchor is built unowned, which drops its track and with it the genre, energy and vocal signals AND the exclusion that keeps the anchor out of its own pool"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''        owned=True,
+        track=anchor,'''
+new = '''        owned=False,
+        track=None,'''
+
+[[rows]]
+id = "P9_totals_lose_the_anchor"
+description = "The resolved anchor is dropped from totals, which is the only place the closed plan surface has for it, so a consumer cannot tell what the plan was computed for"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''        "anchor": rendered["anchor"],
+    }
+    return {'''
+new = '''    }
+    return {'''
+
+# ── the handler, and the two decisions it holds ───────────────────────────────
+
+[[rows]]
+id = "H1_the_cache_is_written"
+description = "build_index is handed the declared cache path, which is a files write from a verb whose registry entry declares none and would make it destructive by the registry's own invariant"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    index = setbuilder.build_index(root, template=_template(cfg))'''
+new = '''    index = setbuilder.build_index(
+        root, template=_template(cfg), cache_path=root / "setbuilder_index.json"
+    )'''
+
+[[rows]]
+id = "H2_empty_is_a_no_op"
+description = "A plan with no companions reports NO_OP rather than OK, which tells a consumer nothing happened when the question was answered"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    return ctx.envelope(data=plan, outcome=Outcome.OK)'''
+new = '''    return ctx.envelope(
+        data=plan, outcome=Outcome.OK if plan["items"] else Outcome.NO_OP
+    )'''
+
+[[rows]]
+id = "H3_missing_root_not_refused"
+description = "The configured library root is no longer checked before the scan, so an unmounted volume scans zero files and every anchor comes back unindexed"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    if not root.is_dir():'''
+new = '''    if root.is_dir() and False:'''
+
+[[rows]]
+id = "H4_template_loses_the_marker"
+description = "The name template stops declaring the lossy marker, so a marked file's clean title keeps the marker and its head parses differently"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    return NameTemplate(markers=(MarkerRule(field="lossy", literal=cfg.naming.lossy_marker),))'''
+new = '''    return NameTemplate()'''
+
+# ── the registry and the cause table ──────────────────────────────────────────
+
+[[rows]]
+id = "R1_marker_restored"
+description = "The planned_in marker is put back on the setbuild entry, which withdraws the verb from every conformance property that only drives landed entries"
+file = "src/cratekit/cli/registry.py"
+surface = "maintainer"
+old = '''        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        # U43 LANDED IT.'''
+new = '''        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        planned_in="U35",
+        # U43 LANDED IT.'''
+
+[[rows]]
+id = "R2_undeclared_refusal_slug"
+description = "setbuild-anchor-not-indexed leaves cause.REASONS, so refuse raises UnknownReason at the boundary instead of refusing"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+old = '''        "setbuild-anchor-not-indexed": ExitCode.PRECONDITION,'''
+new = ''''''
+
+# ── the engine, sampled because this unit is its first caller in src ──────────
+
+[[rows]]
+id = "E1_anchor_is_its_own_companion"
+description = "build_pool stops excluding the anchor by match key, so the best companion for a track is itself"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''        if anchor_match and track.match == anchor_match:
+            continue'''
+new = '''        if anchor_match and track.match != anchor_match:
+            pass'''
+
+[[rows]]
+id = "E2_tempo_band_dropped"
+description = "in_band returns True for everything, so a track a hundred BPM away enters the pool on its key alone"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''    if anchor_bpm is None:
+        return True
+    if candidate_bpm is None:
+        return False'''
+new = '''    if anchor_bpm is None or candidate_bpm is None:
+        return True'''
+
+[[rows]]
+id = "E3_tempo_serialized_as_bpm"
+description = "as_payload spells the tempo key the way the Vorbis tag dialect does, which is one splat from handing a tempo to a tag writer and seeding a grid at half or double time (R17)"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''            "tempo": plan.anchor.bpm,'''
+new = '''            "bpm": plan.anchor.bpm,'''
+
+# ── considered and not run ────────────────────────────────────────────────────
+
+[[dropped]]
+id = "A5_relative_against_the_process"
+description = "A relative anchor is taken against the working directory instead of the library root"
+reason = "THE TWENTY-SIXTH ROW, cut to the light pass cap, and cut on information value rather than on importance. It is a certain kill: test_a_relative_anchor_is_taken_against_the_library_and_not_the_process asserts exactly that resolution, was written in the same sitting as the guard, and would have reported a number nobody could be surprised by. The rows kept in its place are ones whose outcome was genuinely unknown, P2 above especially."
+
+[[dropped]]
+id = "D1_find_in_index_threshold"
+description = "Lower MATCH_THRESHOLD in the engine's fuzzy anchor lookup"
+reason = "RANKED BELOW THE CAP BECAUSE NOTHING IN src REACHES IT. find_in_index is called only from resolve_anchor, which is called only from build_set, and no module under src calls either: this shell resolves by path. A row here would measure the engine's own suite and say nothing about the shipped verb. The mis-resolution it would probe is filed as a residual with its reachability stated."
+
+[[dropped]]
+id = "D2_energy_order_unknown_first"
+description = "Sort unknown energy first rather than last in _energy_order"
+reason = "Ranked below the cap: same guard family as E1 and E2, which are measured, and the sequence-ordering property it touches is already exercised by P3 and P4 from the shell's side. A light pass caps at 25 and this was the twenty-sixth."
+
+[[dropped]]
+id = "D3_weights_do_not_sum"
+description = "Move a Weights coefficient so the five no longer sum to one"
+reason = "Ranked below the cap: Weights.__post_init__ raises on construction, so the mutation is a collect error rather than a death, and mutate.py would report drift instead of a number. The coefficient-mutation rule METHOD asks for is served by C2 instead, which moves a bound by one rather than removing it."
+
+[[dropped]]
+id = "D4_second_template_copy"
+description = "Change the lossy marker literal in write/naming_cli.py rather than in this shell"
+reason = "Ranked below the cap and it belongs to a different unit. H4 measures this shell's own copy. That six sites in src construct the same template independently is filed as a residual rather than measured here, because a row proving the sixth copy drifts would be a row about naming_cli's guards."

@@ -1417,6 +1417,15 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # still a plan a person can abort. Queueing needs no database, which is
         # what lets a verb declaring db_metadata exit OK on this fixture.
         "tag.retag": [str(library / "Music")],
+        # U43. The anchor is a path under the CONFIGURED library, for the R1
+        # reason every file verb above gives, and it is deliberately absent, so
+        # the verb must refuse with a code from the vocabulary rather than with a
+        # traceback. An absent anchor and an empty index are the same state here
+        # and the same refusal: this fixture's library holds no audio at all, so
+        # nothing could be indexed even if the file were there. The OK path over
+        # a library that does hold the anchor is driven in
+        # tests/test_setbuilder_cli.py, where the audio fixtures live.
+        "setbuild": [str(library / "Music" / "no-such-anchor.aiff")],
         "name.apply": [],
         "repair.paths": [],
         # U25. Folder verbs take a path under the configured library. Calibrate

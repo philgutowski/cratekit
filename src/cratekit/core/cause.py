@@ -1245,6 +1245,24 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # to the working directory, because the verb is destructive and a default
         # here would sweep whatever the person happened to be standing in.
         "tag-retag-folder-unknown": ExitCode.PRECONDITION,
+        # ── U43's refusals, appended for the reason every block above gives ────
+        #
+        # The set builder was invoked with an empty anchor. PRECONDITION rather
+        # than USAGE on the same argument ``tag-retag-folder-unknown`` makes: the
+        # parser accepted the invocation, because an empty string is a valid
+        # argument to a positional that takes one.
+        "setbuild-anchor-unknown": ExitCode.PRECONDITION,
+        # The anchor resolves outside the configured library root. A separate
+        # slug from the one below rather than folded into it, because the two
+        # remedies are different acts: this one is "you named a file somewhere
+        # else", and that one is "the file is here and the index cannot use it".
+        "setbuild-anchor-outside-library": ExitCode.PRECONDITION,
+        # The anchor is inside the library and the index does not hold it: it is
+        # absent, it is not audio, or it carries no Camelot key from either its
+        # tag or its name. One slug for the three, because the index is what
+        # decides ownership and a track it does not hold cannot be ranked
+        # against, whichever of the three reasons put it outside.
+        "setbuild-anchor-not-indexed": ExitCode.PRECONDITION,
     }
 )
 

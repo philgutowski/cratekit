@@ -1,0 +1,339 @@
+{
+  "name": "u43-author-round-2",
+  "pass_kind": "light",
+  "branch": "unit/u43-the-setbuild-command-line-shell-row-29",
+  "head": "d285a46",
+  "when": "2026-08-26 21:13 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 6355,
+  "baseline_exit": 0,
+  "pytest_runs": 14,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/setbuilder/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/setbuilder/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "fa9880b36256f983",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 6355,
+    "baseline_collected": 6355,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "N0_null_control",
+      "description": "A comment reworded and nothing else. Must kill zero, or the baseline is red and every number below it is noise.",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "42b9197a90e5bfd6",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 6355,
+      "baseline_collected": 6355,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "Layer: modules.",
+      "new": "Layer: the modules layer."
+    },
+    {
+      "id": "A2_no_resolved_second_pass",
+      "description": "ROUND ONE: zero. Drop the resolved second pass in anchor_in_index, so a path spelled through a symlink or a different absolute form never matches",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d2fc5cbe8844a8a3",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_an_anchor_spelled_through_a_symlink_still_resolves"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    try:\n        resolved = path.resolve()\n    except OSError:\n        return None\n    for track in index:\n        if not track.path:\n            continue\n        try:\n            if Path(track.path).resolve() == resolved:\n                return track\n        except OSError:\n            continue\n    return None",
+      "new": "    return None"
+    },
+    {
+      "id": "P2_items_absent_from_digest",
+      "description": "ROUND ONE: zero. The digest stops covering the items, so two entirely different sets of recommendations for one anchor carry one identity",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "88857426a7376587",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_two_plans_over_the_same_anchor_and_different_companions_digest_apart"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"digest\": digest_of({\"kind\": \"setbuild\", \"anchor\": rendered[\"anchor\"], \"items\": items}),",
+      "new": "        \"digest\": digest_of({\"kind\": \"setbuild\", \"anchor\": rendered[\"anchor\"]}),"
+    },
+    {
+      "id": "P6_count_ignored",
+      "description": "ROUND ONE: zero. The count flag is dropped on the way to the engine, so the pool is always the default eight",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2108a4ba9de48f92",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_a_count_caps_the_companions"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    plan = setbuilder.build_plan(ranked, resolved, count=count, role=role)",
+      "new": "    plan = setbuilder.build_plan(ranked, resolved, count=None, role=role)"
+    },
+    {
+      "id": "H2_empty_is_a_no_op",
+      "description": "ROUND ONE: zero. A plan with no companions reports NO_OP rather than OK, which tells a consumer nothing happened when the question was answered",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9f4e3e0af5a5fc0d",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_a_library_holding_only_the_anchor_is_an_empty_plan_and_not_a_failure"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return ctx.envelope(data=plan, outcome=Outcome.OK)",
+      "new": "    return ctx.envelope(\n        data=plan, outcome=Outcome.OK if plan[\"items\"] else Outcome.NO_OP\n    )"
+    },
+    {
+      "id": "H3_missing_root_not_refused",
+      "description": "ROUND ONE: zero. The configured library root is no longer checked before the scan, so an unmounted volume scans zero files and every anchor comes back unindexed",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "54ac0f6480a70557",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_an_unreachable_library_refuses_rather_than_reporting_an_unindexed_anchor"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not root.is_dir():",
+      "new": "    if root.is_dir() and False:"
+    },
+    {
+      "id": "H4_template_loses_the_marker",
+      "description": "ROUND ONE: zero. The name template stops declaring the lossy marker, so a marked file's clean title keeps the marker and its match key gains a token",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b55f93c761b08f23",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_a_lossy_marked_companion_comes_back_with_a_clean_title"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return NameTemplate(markers=(MarkerRule(field=\"lossy\", literal=cfg.naming.lossy_marker),))",
+      "new": "    return NameTemplate()"
+    },
+    {
+      "id": "V1_pool_total_is_the_union",
+      "description": "totals reports the union size where it says pool, which is the wrong number and the one a reader would otherwise have to derive. The round-one arithmetic surprise is exactly this confusion, so the new count guard owes a death here",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8af0590c942ad952",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_a_count_caps_the_companions"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"pool\": len(plan.pool),",
+      "new": "        \"pool\": len(items),"
+    },
+    {
+      "id": "V2_marker_position_moved",
+      "description": "The marker rule is declared with a separator that puts it somewhere the head parser does not strip. If the lossy guard passes this, its fixture is in a position where the declaration cannot matter, which is the mistake the first attempt at it made",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2153520c5863e3ad",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_a_lossy_marked_companion_comes_back_with_a_clean_title"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return NameTemplate(markers=(MarkerRule(field=\"lossy\", literal=cfg.naming.lossy_marker),))",
+      "new": "    return NameTemplate(markers=(MarkerRule(field=\"lossy\", literal=\"[NOTAMARKER]\"),))"
+    },
+    {
+      "id": "V3_root_check_reports_instead_of_refusing",
+      "description": "The missing root produces an empty plan and an OK exit rather than a refusal, which is the clean-report-over-unreadable-state shape rather than the crash shape. A guard that only catches the crash is not the guard this row needs",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "454de6a41edd7f7a",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_an_unreachable_library_refuses_rather_than_reporting_an_unindexed_anchor"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not root.is_dir():\n        raise refuse(",
+      "new": "    if not root.is_dir():\n        return ctx.envelope(\n            data=plan_for(\n                setbuilder.Track(\n                    artist=\"\", title=\"\", key=\"\", bpm=None, genre=\"\",\n                    energy=None, vox=None, voxgender=None, match=\"\",\n                ),\n                (),\n                declared=taxonomy.default_taxonomy(),\n            ),\n            outcome=Outcome.OK,\n        )\n    if False:\n        raise refuse("
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D5_rerun_the_eighteen_killed_rows",
+      "description": "Re-measure round one's eighteen killing rows",
+      "reason": "Not re-run on purpose. METHOD scopes a round to its own diff, and round two's diff is six guards and one totals field. A killing row does not become less killing because a guard was added beside it, and re-running eighteen of them would spend the whole light-pass cap on numbers already measured. The cap is 25 and this round uses 10."
+    },
+    {
+      "id": "D6_independent_pass",
+      "description": "An independent verifier's own table over this unit",
+      "reason": "NOT RUN, AND THIS IS THE GAP IN THIS UNIT'S VERIFICATION RATHER THAN A ROW THAT DID NOT FIT. METHOD asks a light pass to be run by an agent that did not write the code, and this session was instructed not to spawn one. Both tables here are the author's. The measured gaps between an author's table and an independent one on this project are 10 against 17, 39 against 49 and 49 against 83, so every zero below reads as 'the author could not kill it' and never as 'nothing can'."
+    }
+  ]
+}
