@@ -146,6 +146,30 @@ def test_runtime_derived_identity_catches_a_bare_name():
     )
 
 
+@pytest.mark.parametrize(
+    "written",
+    ["SomeSpecificDrive", "SOMESPECIFICDRIVE", "somespecificdrive", "SomeSpecificdrive"],
+)
+def test_identity_token_matches_whatever_case_it_was_written_in(written):
+    """Case was a silent hole in this check until 2026-08-27.
+
+    A fixture in ``tests/test_deletion.py`` carried the author's real drive name
+    spelled in upper case while ``.scan-identity`` declared it in mixed case. The
+    suite was green and the scan exited zero for weeks, because the token search
+    was case sensitive. The drive is one drive to the person reading the line and
+    to the case insensitive filesystem it mounts on, so it must be one token here.
+
+    This is why the fix belongs on THIS check and not on ``PLACEHOLDER_SEGMENTS``,
+    which enumerates its own case variants by hand. That set permits, so a variant
+    it misses is a loud false positive somebody fixes. This one denies, so a
+    variant it misses is a pass that nobody ever sees.
+    """
+    problems = scan.portability_violations(
+        f"the {written} volume must be mounted", identity_tokens={"SomeSpecificDrive"}
+    )
+    assert problems and "personal identifier" in problems[0]
+
+
 def test_identity_can_be_declared_rather_than_only_detected(tmp_path):
     """The detected tier alone would make the guard depend on what is plugged in.
 

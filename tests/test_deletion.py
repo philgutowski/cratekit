@@ -4468,7 +4468,7 @@ def _mapped_volume(cfg, tmp_path, *, active=50, removed=20):
     Returns the volume path, the prefix rule, the binding, and the removed rows,
     with the pass already baselined so the removals are the only outstanding work.
     """
-    volume = tmp_path / "Volumes" / "EP_DJ_LIBRARY"
+    volume = tmp_path / "Volumes" / "PORTABLE"
     volume.mkdir(parents=True)
     live = _elsewhere(active)
     gone = _removed_elsewhere(removed)
@@ -4561,7 +4561,7 @@ def test_a_genuine_unmount_still_answers_unresolved_on_every_row(cfg, tmp_path):
     the reference set, which is why F1's repair had to be additional rather than
     a change to this test.
     """
-    volume = tmp_path / "Volumes" / "EP_DJ_LIBRARY"
+    volume = tmp_path / "Volumes" / "PORTABLE"
     rule = [locations.PrefixRule(RECORDED_ELSEWHERE, str(volume))]
     rows = [
         library.RemovedRow(

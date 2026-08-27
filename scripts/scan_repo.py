@@ -263,8 +263,21 @@ def portability_violations(text: str, *, identity_tokens: set[str] | None = None
             continue
         problems.append(f"account identifier (email address) {address!r}")
 
+    # Matched case INSENSITIVELY. A volume declared as ``EP_Style_Name`` and
+    # written as ``EP_STYLE_NAME`` is the same drive to the person reading it and
+    # to the case insensitive filesystem it is mounted on, and it was a silent
+    # miss here until 2026-08-27: a test fixture carried the author's real drive
+    # name in upper case through a green suite and a passing scan.
+    #
+    # This is the opposite risk direction from ``PLACEHOLDER_SEGMENTS`` above,
+    # which enumerates its case variants by hand and should stay that way. That
+    # set PERMITS, so a variant it misses becomes a noisy false positive. This
+    # check DENIES, so a variant it misses becomes a silent pass, and a guard
+    # that fails silently is the one shape this module exists to not be.
     for token in sorted(identity_tokens or ()):
-        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(token)}(?![A-Za-z0-9_])", text):
+        if re.search(
+            rf"(?<![A-Za-z0-9_]){re.escape(token)}(?![A-Za-z0-9_])", text, re.IGNORECASE
+        ):
             problems.append(
                 f"personal identifier {token!r} (a declared or detected account, "
                 f"machine, or volume name); shipped artifacts name no person, "
