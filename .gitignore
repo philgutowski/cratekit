@@ -54,3 +54,6 @@ docs/backlog.md
 # Agent worktrees
 .claude/worktrees/
 .worktrees/
+
+# Compound Engineering local scratch
+.context/compound-engineering/
