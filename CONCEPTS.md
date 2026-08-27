@@ -242,6 +242,23 @@ guard itself. A table measures what its fixtures can observe, so independence of
 the reviewer does not reach this one: an independent reviewer writes rows against
 the same fixtures.
 
+There is a FIFTH cause, and it is not a diagnostic signature at all, it is how a
+plain real zero gets made and mistaken for closed. The row is not inert, no
+assertion anywhere aims at the property, and the fixture was always capable of
+reaching the state that would kill it. What happened is that a new guard broke
+an EXISTING test's stand-in, and the stand-in was edited just enough to satisfy
+the guard's precondition rather than to exercise it, so the old test goes back
+to green. The edit reads as coverage, because a test that reaches the guarded
+code now passes, and the read is wrong, because that test's own assertion was
+never about the guard and the edit's whole purpose was defensive. It is told
+apart from the third and the fourth by asking a question neither needs: is
+there an assertion for this property anywhere in the suite at all, rather than
+whether the one that exists is well aimed or well placed. It is answered the
+way any real zero is, by writing the assertion, and the moment to write it is
+the moment the fixture was edited, not later: touching a shared fixture to keep
+an unrelated test green under a new guard is the signal that the guard still
+owes its own test.
+
 Reading the site is necessary and not sufficient, because the judgment is about
 behaviour UNDER the mutation rather than about the line as it stands. An argument
 that a row could not be killed has to say what the mutated tree does with some
