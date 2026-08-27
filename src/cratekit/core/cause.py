@@ -1263,6 +1263,38 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # decides ownership and a track it does not hold cannot be ranked
         # against, whichever of the three reasons put it outside.
         "setbuild-anchor-not-indexed": ExitCode.PRECONDITION,
+        # ── U44's refusals, appended for the reason every block above gives ────
+        #
+        # WHY THESE ARRIVE SO LATE, since the mastering engine shipped in U35.
+        # ``cli/exit_codes.py`` has reserved all seven since that unit, and this
+        # registry never declared one, because U35 landed no CALLER that could
+        # raise one. ``Cause.__post_init__`` refuses a slug this mapping does not
+        # declare, so until U44 every mastering refusal reaching the dispatcher
+        # would have been converted to ``internal-error``, and a person whose
+        # recording was not where they said it was would have been told to report
+        # a defect. A reserved code with no registry entry is not half a
+        # vocabulary; it is a refusal that cannot be raised.
+        #
+        # ALL SEVEN ARE PRECONDITION, matching the reservation each already
+        # carries. Six of the seven share that code for the reason the reserved
+        # table states: a recording named on the command line, the container it
+        # is in, and the archive slot beside it are all preconditions THIS verb
+        # declares, and each is undone by a different act. The slug keeps them
+        # apart where that is read, which is the envelope.
+        #
+        # DO NOT ADD ``restore-transfer-failed`` HERE. It sits interleaved among
+        # the mastering reservations in ``cli/exit_codes.py``, between
+        # ``archive-verify-failed`` and ``encoder-missing``, and it is already
+        # declared above under U27's block. Copying that file's block by line
+        # range rather than by slug duplicates the key, and a duplicate is
+        # resolved silently by whichever line comes last.
+        "source-missing": ExitCode.PRECONDITION,
+        "source-unsupported": ExitCode.PRECONDITION,
+        "output-exists": ExitCode.PRECONDITION,
+        "archive-holds-a-different-recording": ExitCode.PRECONDITION,
+        "archive-verify-failed": ExitCode.PRECONDITION,
+        "encoder-missing": ExitCode.PRECONDITION,
+        "encoder-failed": ExitCode.PRECONDITION,
     }
 )
 
