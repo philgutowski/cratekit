@@ -1058,6 +1058,27 @@ def test_joining_split_parts_quotes_a_path_containing_an_apostrophe(tmp_path):
     assert "it''s part one.wav" in written["text"]
 
 
+def test_a_join_that_exits_zero_and_writes_nothing_refuses_rather_than_returning(tmp_path):
+    """Closes B3 in ``docs/mutation/u44-author.md``.
+
+    The test above adapted its stand-in to the check U44 added and asserted
+    nothing about the check itself, so the guard could be removed and the file
+    stayed green. This is the row's premise: a zero exit status over no output is
+    a refusal, not a path.
+    """
+    part = tmp_path / "part.wav"
+    part.write_bytes(b"")
+    destination = tmp_path / "joined.wav"
+
+    def silent_success(command):
+        return mastering.CommandResult(returncode=0)
+
+    with pytest.raises(mastering.MasteringRefused) as excinfo:
+        mastering.concatenate([part], destination, runner=silent_success)
+    assert excinfo.value.refusal is mastering.Refusal.ENCODER_FAILED
+    assert not destination.exists()
+
+
 def test_the_mastering_payload_carries_a_version(tmp_path):
     report = mastering.master(_synth_wav(tmp_path))
     payload = mastering.as_payload(report)

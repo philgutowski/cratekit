@@ -1,0 +1,218 @@
+name = "u44-author"
+pass_kind = "light"
+
+# ── The archive path. METHOD asks this to be weighted, because archive_source
+#    is the whole guard between this verb and data loss. Four rows: the verify,
+#    the collision refusal, the ordering, and the digest itself.
+
+[[rows]]
+id = "A1_archive_verify_dropped"
+description = "Drop the post-copy digest verification, so a corrupt archive is reported safe"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    shutil.copy2(source, destination)
+    if digest(destination) != source_digest:'''
+new = '''    shutil.copy2(source, destination)
+    if False:'''
+
+[[rows]]
+id = "A2_archive_collision_skips"
+description = "Restore the source system's behaviour: an existing archive entry is skipped rather than verified"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    if destination.exists():
+        if digest(destination) == source_digest:
+            return destination'''
+new = '''    if destination.exists():
+        return destination'''
+
+[[rows]]
+id = "A3_archive_after_the_first_pass"
+description = "Move the archive AFTER the probe, so a crash between them leaves no verified copy"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    archived_to = None
+    if archive:
+        archived_to = archive_source(
+            source, archive_dir or (source.parent / ARCHIVE_DIRNAME)
+        )
+
+    probe = probe_source(source, runner=runner, ffprobe=ffprobe)'''
+new = '''    probe = probe_source(source, runner=runner, ffprobe=ffprobe)
+
+    archived_to = None
+    if archive:
+        archived_to = archive_source(
+            source, archive_dir or (source.parent / ARCHIVE_DIRNAME)
+        )'''
+
+[[rows]]
+id = "A4_digest_reads_first_chunk_only"
+description = "Digest only the first chunk, so two sets differing later in the file hash identically"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''        while True:
+            block = handle.read(chunk)
+            if not block:
+                break
+            hasher.update(block)'''
+new = '''        hasher.update(handle.read(chunk))'''
+
+# ── This unit's own new guard, the one the round was written around.
+
+[[rows]]
+id = "B1_output_unread"
+description = "Drop the post-encode output check, restoring the success report over a file that is not there"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    _wrote_or_refuse(target, "normalize-and-encode")
+    return Report('''
+new = '''    return Report('''
+
+[[rows]]
+id = "B2_output_existence_only"
+description = "Check existence but not size, so a zero-byte encode still reports a saving of 1.0"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    if not target.exists() or target.stat().st_size == 0:'''
+new = '''    if not target.exists():'''
+
+[[rows]]
+id = "B3_concat_output_unread"
+description = "Drop the same check from the join, one function over"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    _wrote_or_refuse(destination, "join")
+    return destination'''
+new = '''    return destination'''
+
+# ── The shell's own decisions.
+
+[[rows]]
+id = "C1_empty_output_dir_not_normalized"
+description = "Stop normalizing an empty --output-dir, so the queueing path and the resume disagree on the destination"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''        OUTPUT_DIR: output_dir or None,'''
+new = '''        OUTPUT_DIR: output_dir,'''
+
+[[rows]]
+id = "C2_argv_drops_overwrite"
+description = "Drop --overwrite from the resume argv, so a respawned child meets the refusal the first run was told to ignore"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''    if payload.get(OVERWRITE):
+        argv.append("--overwrite")'''
+new = ''''''
+
+[[rows]]
+id = "C3_argv_drops_output_dir"
+description = "Drop --output-dir from the resume argv, so the child writes the master somewhere the person did not ask for"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''    if output_dir:
+        argv += ["--output-dir", str(output_dir)]'''
+new = ''''''
+
+[[rows]]
+id = "C4_refusal_not_translated"
+description = "Let MasteringRefused escape, so every engine refusal reaches the person as internal-error"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''    except mastering.MasteringRefused as exc:
+        raise refuse(
+            str(exc.refusal),
+            exc.detail,
+            origin=("master", "cli"),
+            detail={"path": str(exc.path) if exc.path is not None else None},
+        ) from exc'''
+new = '''    except ZeroDivisionError as exc:
+        raise refuse(
+            str(exc),
+            "unreachable",
+            origin=("master", "cli"),
+        ) from exc'''
+
+[[rows]]
+id = "C5_empty_recording_accepted"
+description = "Accept an empty positional, so the verb queues a job over no recording at all"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''    if not recording:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C6_overwrite_always_true"
+description = "Freeze overwrite as always true, so every run replaces an existing master without being asked to"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''        OVERWRITE: bool(overwrite),'''
+new = '''        OVERWRITE: True,'''
+
+[[rows]]
+id = "C7_output_dir_ignored_at_the_work"
+description = "Ignore the frozen output directory, so the master lands beside the source whatever was asked for"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''            output_dir=Path(output_dir) if output_dir else None,'''
+new = '''            output_dir=None,'''
+
+# ── The registry declaration, and the null control.
+
+[[rows]]
+id = "D1_registry_drops_long_running"
+description = "Remove long_running from the master entry, which should shrink two derived populations"
+file = "src/cratekit/cli/registry.py"
+surface = "maintainer"
+old = '''        argv_builder="master_argv",
+        long_running=True,
+        emits=frozenset({"job_state"}),
+        output_schema="job_state/1",
+        writes=frozenset({"files"}),
+        destructive=True,
+        doctor_checks=("binary.ffmpeg",),'''
+new = '''        argv_builder="master_argv",
+        emits=frozenset({"job_state"}),
+        output_schema="job_state/1",
+        writes=frozenset({"files"}),
+        destructive=True,
+        doctor_checks=("binary.ffmpeg",),'''
+
+[[rows]]
+id = "D2_reason_slug_removed"
+description = "Remove source-missing from the closed reason registry, so the shell's own refusal cannot be built"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+old = '''        "source-missing": ExitCode.PRECONDITION,'''
+new = ''''''
+
+[[rows]]
+id = "Z0_null_control"
+description = "The null control: rename a local with no behavioural effect. Must kill zero, or the driver is contaminated"
+file = "src/cratekit/master/cli.py"
+surface = "maintainer"
+old = '''    payload = job.payload or {}
+    argv = ["master", str(payload.get(SOURCE) or "")]'''
+new = '''    frozen = job.payload or {}
+    payload = frozen
+    argv = ["master", str(payload.get(SOURCE) or "")]'''
+
+[[dropped]]
+id = "E1_settings_validation"
+description = "Halve the drift-window bound coefficient in Settings.__post_init__"
+reason = "ranked below the cap: the shell exposes no settings flag, so no input this unit adds can reach the validator. It is U35's guard over U35's surface."
+
+[[dropped]]
+id = "E2_parse_loudness_last_block"
+description = "Take the FIRST JSON block rather than the last in parse_loudness"
+reason = "ranked below the cap: same reason as E1. The shell passes stderr through untouched and adds no caller that can vary which block arrives."
+
+[[dropped]]
+id = "E3_encoder_args_dither"
+description = "Drop the triangular dither from the sixteen-bit branch of encoder_args"
+reason = "ranked below the cap: an audio-quality guard with no assertion this unit adds, and the shell cannot select the branch. Measured by U35 or not at all."
+
+[[dropped]]
+id = "E4_sample_argument_entry"
+description = "Point the master entry in _sample_arguments at a path outside the configured library"
+reason = "ranked below the cap: it would measure the R1 convention rather than this unit's code, and the same guard already covers twenty other verbs."

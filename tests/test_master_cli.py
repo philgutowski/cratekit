@@ -91,13 +91,13 @@ def _entry() -> registry.Entry:
     return next(e for e in registry.ENTRIES if e.name == "master")
 
 
-def _recording(tmp_path: Path, name: str = "REC001.wav") -> Path:
+def _recording(tmp_path: Path, name: str = "REC001.wav", *, seconds: int = 1) -> Path:
     """A real container, so the digest assertions are over real audio bytes."""
     require_ffmpeg()
     out = tmp_path / name
     proc = subprocess.run(
         ["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-         "-t", "1", str(out)],
+         "-t", str(seconds), str(out)],
         capture_output=True, text=True,
     )
     assert proc.returncode == 0 and out.exists(), proc.stderr[-400:]
@@ -464,3 +464,67 @@ def test_the_output_directory_is_honoured_and_never_the_source(tmp_path):
     assert Path(reported["output"]).parent == elsewhere
     assert Path(reported["output"]) != source
     assert reported["output"].endswith(mastering.OUTPUT_SUFFIX)
+
+
+# ---------------------------------------------------------------------------
+# Round two: the two archive-path zeros the author's table left
+# ---------------------------------------------------------------------------
+
+
+def test_a_corrupt_archive_copy_refuses_and_leaves_no_false_safety_copy(tmp_path, monkeypatch):
+    """Closes A1 in ``docs/mutation/u44-author.md``, and drives ``archive-verify-failed``.
+
+    With the post-copy digest comparison dropped, a copy that does not match the
+    source is reported as the safety copy the rest of the run depends on. No
+    filesystem here corrupts a write on demand, so the copy itself is stood in
+    for: a ``copy2`` that writes the source and then one byte more.
+    """
+    source = _recording(tmp_path)
+    before = mastering.digest(source)
+
+    def corrupting_copy2(src, dst, **kwargs):
+        Path(dst).write_bytes(Path(src).read_bytes() + b"\x00")
+        return dst
+
+    monkeypatch.setattr(mastering.shutil, "copy2", corrupting_copy2)
+
+    with pytest.raises(CratekitError) as excinfo:
+        master_cli.run_master(
+            master_cli.frozen_payload(str(source), None, False), runner=_encoder()
+        )
+
+    cause = excinfo.value.cause
+    assert cause.reason == "archive-verify-failed"
+    assert cause.code is ExitCode.PRECONDITION
+    assert not (tmp_path / mastering.ARCHIVE_DIRNAME / source.name).exists(), (
+        "a copy that failed verification was left where a later run would trust it"
+    )
+    assert mastering.digest(source) == before
+    assert not mastering.output_path(source).exists(), "the run proceeded without a verified archive"
+
+
+def test_an_impostor_matching_the_first_chunk_is_still_a_different_recording(tmp_path):
+    """Closes A4. The digest must read the whole file, not its first chunk.
+
+    THE PREMISE IS ASSERTED, per the fixture-position lesson: the source has to
+    be longer than one digest chunk, or an impostor identical up to that chunk is
+    identical full stop and the row it exists to kill cannot matter.
+    """
+    source = _recording(tmp_path, seconds=8)
+    chunk = 1 << 20
+    assert source.stat().st_size > chunk, "the fixture sits where the guard cannot matter"
+
+    archive = tmp_path / mastering.ARCHIVE_DIRNAME
+    archive.mkdir()
+    impostor = archive / source.name
+    impostor.write_bytes(source.read_bytes()[:chunk] + b"a different set after the first chunk")
+    impostor_digest = mastering.digest(impostor)
+
+    with pytest.raises(CratekitError) as excinfo:
+        master_cli.run_master(
+            master_cli.frozen_payload(str(source), None, False), runner=_encoder()
+        )
+
+    assert excinfo.value.cause.reason == "archive-holds-a-different-recording"
+    assert mastering.digest(impostor) == impostor_digest
+    assert not mastering.output_path(source).exists()
