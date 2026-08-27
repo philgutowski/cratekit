@@ -80,8 +80,17 @@ Filed as R-188 rather than paid for quietly.
 
 Read `docs/mutation/u43-author-light.md` and its round two companion: 25 rows
 then 10, and **round two is where the value was**, as it was for U40. Round one
-left five user-facing zeros and every one of them was a real gap. Four residuals
-are filed, R-187 through R-190.
+was **17 killed, 7 zero, 1 collect error** by the table's own verdict column. One
+zero is the null control, so six are real, all six are user facing, and all six
+were closed in round two. Four residuals are filed, R-187 through R-190.
+
+**THOSE COUNTS WERE WRONG IN THREE PLACES BEFORE THIS LINE WAS WRITTEN**, and the
+correction is recorded rather than quietly applied because it is the ordinary way
+a wrong figure becomes the record. `d285a46` says "18 killed, one collect drift,
+and six zeros of which one is the null control", the merge commit repeats it, and
+`docs/mutation/u43-round-2-rows.toml`'s header says "five user facing zeros" while
+the file defines six re-measurements. The tables were right the whole time; only
+the prose around them was wrong. Read a verdict column, never a commit message.
 
 **THE VERIFICATION GAP, STATED BECAUSE NOBODY ELSE WILL SAY IT.** Both tables are
 the AUTHOR'S. No independent verifier ran, because the session was instructed not
