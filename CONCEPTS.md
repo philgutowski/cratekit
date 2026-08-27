@@ -99,6 +99,16 @@ every parallel register to be empty when it leaves none. A result carrying
 several registers is the warning sign, since zeroing one says nothing about its
 siblings.
 
+A fifth axis is what the FIXTURE can reach, and it sits underneath the fourth. An
+assertion can be well aimed and still hold nothing when the inputs it runs on never
+put the system into the state the claim is about, because a guard distinguishes only
+the behaviours its fixture can provoke. The tell is that such a guard fails RED on
+correct code before it is ever green, which is indistinguishable from an ordinary
+wrong expectation, and the ordinary repair converts it into a characterization. The
+remedies are to place the fixture where the code that writes the thing places it,
+and to assert the fixture's own precondition inside the test, so a fixture that
+later shrinks below the bound it was sized for reports instead of passing.
+
 When such a guard offers remedies for its own failure, the remedies are driven
 rather than reasoned about, and a remedy that makes the guard report MORE is
 propagating rather than converging. When every offered remedy terminates in
@@ -214,6 +224,23 @@ the mutated site, and it is answered by strengthening the existing guard rather
 than by writing a new one or a better mutation. Being able to state the assertion
 that would kill a row proves the row is not inert; it does not prove the
 assertion discriminates.
+
+There is a FOURTH cause, and it sits underneath the third rather than beside it.
+The two trees behave differently, a guard exists, its assertion is well aimed, and
+the row still kills nothing because the FIXTURE never puts the system into the
+state where the mutated line could change anything. It is separated from the third
+by reading the FIXTURE rather than the assertion, and it has two spellings: a value
+placed where the code under test cannot reach it, so its presence and absence read
+the same, and a population smaller than the bound under test, so a limit holds
+whether or not it is applied. A guard written for such a row fails RED on correct
+code first, which is the trap, because the ordinary repair for a red assertion is
+to expect whatever the code produced, and on such a fixture that value is the only
+value any tree produces. It is answered by moving the fixture to where the code
+that writes the thing puts it, and then by a row that mutates what the FIXTURE
+depends on rather than what the guard covers, since only that row can falsify the
+guard itself. A table measures what its fixtures can observe, so independence of
+the reviewer does not reach this one: an independent reviewer writes rows against
+the same fixtures.
 
 Reading the site is necessary and not sufficient, because the judgment is about
 behaviour UNDER the mutation rather than about the line as it stands. An argument
