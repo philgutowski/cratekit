@@ -1481,7 +1481,19 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"files"}),
         destructive=True,
         doctor_checks=("binary.ffmpeg",),
-        planned_in="U35",
+        # U44 LANDED IT. ``cratekit.master.cli`` ships the shell over the engine
+        # U35 landed, so the marker is gone and the conformance properties drive
+        # this entry rather than skipping it.
+        #
+        # THE FLAGS BELOW ARE WHAT THE MARKER WAS HIDING. ``writes={"files"}``
+        # makes the verb destructive by the invariant above, and it declares NO
+        # gate: the run writes a new file, archives the original with a verified
+        # digest, and refuses rather than replacing a master somebody kept, so
+        # there is no decision for a person to make. ``--overwrite`` is the one
+        # path where something is lost, and the flag is itself the explicit act,
+        # which is why no gate sits behind it. ``long_running`` binds
+        # ``master_argv``, and that builder carries no ``--run`` precisely
+        # because there is no gate whose decision would need a run to name.
     ),
     Entry(
         name="backup.run",
