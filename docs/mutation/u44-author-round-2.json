@@ -1,0 +1,130 @@
+{
+  "name": "u44-author-round-2",
+  "pass_kind": "light",
+  "branch": "relay/62",
+  "head": "f6ef7a1",
+  "when": "2026-08-27 15:56 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 6383,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/modules/tools/mastering.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/modules/tools/mastering.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "7b124df1178219b8",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 6383,
+    "baseline_collected": 6383,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_archive_verify_dropped",
+      "description": "Drop the post-copy digest verification, so a corrupt archive is reported safe",
+      "file": "src/cratekit/modules/tools/mastering.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d8a3e52cce545681",
+      "subset": [
+        "tests/modules/test_tools.py",
+        "tests/test_master_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.modules.tools.mastering",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 151,
+      "baseline_collected": 151,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_master_cli.py::test_a_corrupt_archive_copy_refuses_and_leaves_no_false_safety_copy"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    shutil.copy2(source, destination)\n    if digest(destination) != source_digest:",
+      "new": "    shutil.copy2(source, destination)\n    if False:"
+    },
+    {
+      "id": "A4_digest_reads_first_chunk_only",
+      "description": "Digest only the first chunk, so two sets differing later in the file hash identically",
+      "file": "src/cratekit/modules/tools/mastering.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "999e3b4ed00ff404",
+      "subset": [
+        "tests/modules/test_tools.py",
+        "tests/test_master_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.modules.tools.mastering",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 151,
+      "baseline_collected": 151,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_master_cli.py::test_an_impostor_matching_the_first_chunk_is_still_a_different_recording"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        while True:\n            block = handle.read(chunk)\n            if not block:\n                break\n            hasher.update(block)",
+      "new": "        hasher.update(handle.read(chunk))"
+    },
+    {
+      "id": "B3_concat_output_unread",
+      "description": "Drop the same check from the join, one function over",
+      "file": "src/cratekit/modules/tools/mastering.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7c66a40bf232b468",
+      "subset": [
+        "tests/modules/test_tools.py",
+        "tests/test_master_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.modules.tools.mastering",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 151,
+      "baseline_collected": 151,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_tools.py::test_a_join_that_exits_zero_and_writes_nothing_refuses_rather_than_returning"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _wrote_or_refuse(destination, \"join\")\n    return destination",
+      "new": "    return destination"
+    }
+  ],
+  "dropped": []
+}
