@@ -1045,6 +1045,13 @@ def test_joining_split_parts_quotes_a_path_containing_an_apostrophe(tmp_path):
     def runner(command):
         listing = Path(command.argv[command.argv.index("-i") + 1])
         written["text"] = listing.read_text()
+        # THE STAND-IN WRITES THE DESTINATION, because a real ffmpeg does and
+        # U44 made ``concatenate`` read its own output. Before that, a zero exit
+        # status was taken as proof the join happened and the path was returned
+        # unread, so this runner could report success over a file that was never
+        # created. Leaving the write out here would make the fixture assert that
+        # the join is unchecked, which is the behaviour that was removed.
+        Path(command.argv[-1]).write_bytes(b"joined")
         return mastering.CommandResult(returncode=0)
 
     mastering.concatenate([part], tmp_path / "joined.wav", runner=runner)

@@ -603,6 +603,7 @@ def master(
         # a volume fills up between one run and the next.
         intermediate.unlink(missing_ok=True)
 
+    _wrote_or_refuse(target, "normalize-and-encode")
     return Report(
         source=source,
         output=target,
@@ -639,6 +640,44 @@ def _run_or_refuse(runner: Runner, command: Command) -> CommandResult:
             f"the {command.label} stage failed: {result.stderr.strip()[-400:]}",
         )
     return result
+
+
+def _wrote_or_refuse(target: Path, label: str) -> None:
+    """A zero exit status is a CLAIM about the output, so check the output.
+
+    U44 DROVE THIS RATHER THAN ARGUING IT. An encoder that exits 0 and writes
+    nothing left ``master`` returning a Report whose ``output`` named a file that
+    was not there, whose ``output_bytes`` was 0 because the construction below
+    falls back to zero when the target is missing, and whose ``size_reduction``
+    was therefore 1.0. The shell rendered that as a success: a master that saved
+    one hundred percent of the source's bytes. Two of METHOD's named user facing
+    costs at once, told something false and shown a clean report over state the
+    tool could not read.
+
+    THE READING IS HERE RATHER THAN IN THE CALLER, which is the placement the
+    corpus entry on first callers argues for: the caller that found it is one
+    caller, and the checking path covers every future one. It is the same shape
+    as ``run_restore``'s unread return codes, one module over in this package,
+    and the same fix.
+
+    REACHABLE, AND NAMED. ``core.binaries`` reads ``CRATEKIT_BIN_FFMPEG`` before
+    PATH, so the program that answers these commands is a value the user sets.
+    ``override_problem`` rejects one that is not executable and cannot reject one
+    that runs and does nothing useful, which is the state a wrapper script, a
+    stub, or a build missing the flac encoder is in.
+
+    An empty file is treated as no file. A zero-byte FLAC is not a master, and
+    reporting a saving of exactly 1.0 over one is the same false claim.
+    """
+    if not target.exists() or target.stat().st_size == 0:
+        raise MasteringRefused(
+            Refusal.ENCODER_FAILED,
+            f"the {label} stage reported success and produced no output at "
+            f"{target}. The source is unchanged and its archive is intact, so "
+            f"nothing was lost; check that the encoder on PATH, or the one named "
+            f"by CRATEKIT_BIN_FFMPEG, is a working ffmpeg with FLAC support.",
+            path=target,
+        )
 
 
 def concatenate(
@@ -688,6 +727,13 @@ def concatenate(
         )
     finally:
         listing.unlink(missing_ok=True)
+    # THE SAME SHAPE ONE FUNCTION OVER, found by sweeping for it rather than by
+    # anybody reporting it (METHOD's fifth pattern). This branch also read a zero
+    # exit status as proof that the join happened and returned a path it never
+    # looked at, so a caller would go on to master a file that is not there. It
+    # has no caller in ``src`` today, which is what kept it quiet, and that is
+    # exactly the condition the first-caller rule says not to trust.
+    _wrote_or_refuse(destination, "join")
     return destination
 
 
