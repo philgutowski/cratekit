@@ -1045,10 +1045,38 @@ def test_joining_split_parts_quotes_a_path_containing_an_apostrophe(tmp_path):
     def runner(command):
         listing = Path(command.argv[command.argv.index("-i") + 1])
         written["text"] = listing.read_text()
+        # THE STAND-IN WRITES THE DESTINATION, because a real ffmpeg does and
+        # U44 made ``concatenate`` read its own output. Before that, a zero exit
+        # status was taken as proof the join happened and the path was returned
+        # unread, so this runner could report success over a file that was never
+        # created. Leaving the write out here would make the fixture assert that
+        # the join is unchecked, which is the behaviour that was removed.
+        Path(command.argv[-1]).write_bytes(b"joined")
         return mastering.CommandResult(returncode=0)
 
     mastering.concatenate([part], tmp_path / "joined.wav", runner=runner)
     assert "it''s part one.wav" in written["text"]
+
+
+def test_a_join_that_exits_zero_and_writes_nothing_refuses_rather_than_returning(tmp_path):
+    """Closes B3 in ``docs/mutation/u44-author.md``.
+
+    The test above adapted its stand-in to the check U44 added and asserted
+    nothing about the check itself, so the guard could be removed and the file
+    stayed green. This is the row's premise: a zero exit status over no output is
+    a refusal, not a path.
+    """
+    part = tmp_path / "part.wav"
+    part.write_bytes(b"")
+    destination = tmp_path / "joined.wav"
+
+    def silent_success(command):
+        return mastering.CommandResult(returncode=0)
+
+    with pytest.raises(mastering.MasteringRefused) as excinfo:
+        mastering.concatenate([part], destination, runner=silent_success)
+    assert excinfo.value.refusal is mastering.Refusal.ENCODER_FAILED
+    assert not destination.exists()
 
 
 def test_the_mastering_payload_carries_a_version(tmp_path):

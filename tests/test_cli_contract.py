@@ -1426,6 +1426,17 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # a library that does hold the anchor is driven in
         # tests/test_setbuilder_cli.py, where the audio fixtures live.
         "setbuild": [str(library / "Music" / "no-such-anchor.aiff")],
+        # U44. A recording under the CONFIGURED library, for the R1 reason every
+        # file verb above gives, and deliberately absent. Unlike setbuild beside
+        # it, this one exits OK rather than refusing, and the difference is the
+        # point: the verb QUEUES, and queueing freezes the path without reading
+        # it. A stat in the handler would refuse here on a fixture that has no
+        # ffmpeg either, on a machine where the work would have run fine once
+        # claimed. The cost, that a mistyped path is reported queued rather than
+        # refused, is filed as a residual. The refusal over an absent recording
+        # is driven in tests/test_master_cli.py, on the work path where a person
+        # meets it.
+        "master": [str(library / "Music" / "no-such-recording.wav")],
         "name.apply": [],
         "repair.paths": [],
         # U25. Folder verbs take a path under the configured library. Calibrate

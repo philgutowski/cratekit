@@ -9780,3 +9780,132 @@ about a scope that needs no naming, so none of them has met this.
 **Closes when:** either `plan/1` gains a `subject` field and a major bump, which
 `output.py` says in its own error text is a decision rather than an oversight, or
 a second verb meets the same shape and the pair makes the case.
+
+---
+
+## R-191. The queueing path exits OK on a recording that is not there
+
+**Found by** U44 while writing the handler, 2026-08-27, and filed as a
+consequence of `R-183` rather than as a decision of this unit's own.
+
+`crate master <path>` freezes the path into the job payload and never stats it.
+That is deliberate and the handler's comment says why: queueing needs neither
+the file nor ffmpeg, and a stat in the handler would refuse on a machine where
+the work would have run fine later, which is the split R3 asked for. The engine
+does check, `mastering.master` refuses `source-missing` at PRECONDITION as its
+first act, and `tests/test_master_cli.py` drives that on the work path.
+
+**Measured, 2026-08-27, against a configured library with no database, an
+empty PATH and no such file.** `crate master Music/REC0001.WAV --output json`
+exits 0 in 199 ms with `state: queued`, a job identifier, and `cause: null`.
+The path was confirmed never statted. So a person who mistypes a path is told a
+job was queued, and because nothing in `src` claims a job item (`R-183`), the
+refusal the engine would raise is never raised by anything. The person learns
+of the typo when they go looking for a master that does not exist.
+
+**Why it is not fixed here.** The refusal exists and is on the right path. What
+is missing is the worker that would reach it, and that is `R-183`'s closure, not
+this verb's. Adding a stat to the handler would repair the symptom for one verb
+by breaking the property every queued verb shares, and would still leave a
+mistyped path on a machine whose volume is not yet mounted refused at queue
+time for a run that would have succeeded.
+
+**Closes when:** `R-183` closes and a job over an absent recording reports the
+engine's `source-missing` as its cause. The test to write on that day asserts
+the reported cause rather than the queueing exit status.
+
+---
+
+## R-192. `encoder-missing` is reachable from the shell and no test drives it
+
+**Found by** U44 while closing its verification list, 2026-08-27.
+
+`mastering.Refusal` has seven members. Six are raised by a test on this
+branch: `source-missing`, `source-unsupported`, `output-exists`,
+`archive-holds-a-different-recording`, `encoder-failed` and, since round two,
+`archive-verify-failed`. The seventh, `encoder-missing`, is raised at
+`src/cratekit/modules/tools/mastering.py:555` when `binaries.resolve` cannot
+find ffmpeg or ffprobe, and again at `:716` for the join. No test in
+`tests/test_master_cli.py` or `tests/modules/test_tools.py` reaches either
+site; `tests/test_reserved_causes.py` only checks that the slug reserves
+PRECONDITION.
+
+**It is reachable, and the drive is cheap.** An empty PATH with no
+`CRATEKIT_BIN_FFMPEG` set makes `binaries.resolve` raise, and `run_master`
+would translate the member through the same `except` that
+`C4_refusal_not_translated` measured at eight kills. The reason it was not
+written is sequence rather than difficulty: the gap was noticed after the
+mutation tables were measured, and a test added after a table is a test the
+table never saw. It is recorded here so the next round measures it rather than
+inheriting an assumption.
+
+**Cost, stated.** If the translation ever stopped covering this member, a
+machine without ffmpeg would be told to file a defect against this program
+rather than to install an encoder. Today nothing distinguishes the members
+inside the `except`, so the exposure is to a future edit rather than a live
+defect.
+
+**Closes when:** a test drives `encoder-missing` through `run_master` with an
+empty PATH, and a mutation row that removes the `binaries.resolve` guard
+reports a kill.
+
+---
+
+## R-193. A split recording has no route through this verb, and its predecessor is invisible
+
+**Found by** U44 while settling the verb's input shape, 2026-08-27, and
+deferred as an open product question rather than decided.
+
+The XDJ-RX3 splits a long set into several files, and the source system's
+`master_set.sh` ships `--concat` for exactly that case. The engine has
+`concatenate` at `src/cratekit/modules/tools/mastering.py:683`, and since U44 it
+reads its own output. Nothing in `src` calls it: `git grep -n "concatenate("
+-- src` returns its definition and three `np.concatenate` calls in
+`analysis/vocal.py`, which are a different function. `crate master` takes one
+positional, so a person whose set arrived as three files gets three masters and
+keeps using the script, while Feature Inventory row 30 reads as covered.
+
+**Two facts make the gap invisible from inside the repository.** The entry
+declares no `source_scripts`, where `backup.run` declares `backup.sh`, and
+`master_set.sh` is absent from `tests/fixtures/dj_tools_scripts.txt`, whose
+second block exists for workflows that are not console scripts. So no test can
+notice that this verb has a predecessor, let alone that the predecessor did
+something this verb does not.
+
+**Why it is not fixed here.** Adding `--concat` widens the declared surface,
+which the tracker told this unit not to redesign, and the planning
+recommendation was to keep this verb at one positional and give the join its
+own verb. That is Phillip's call and it has not been made.
+
+**Closes when:** either a join verb ships and `concatenate` gains a caller, or
+the decision is recorded that split recordings are joined outside this product.
+Whichever way it goes, the entry should name `master_set.sh` as its
+`source_scripts` and the fixture should list it, so the next gap of this shape
+is visible.
+
+---
+
+## R-194. The loudness target is not exposed, so a person who needs a different one edits source
+
+**Found by** U44 while settling the flag surface, 2026-08-27, and deferred as
+the second open product question.
+
+`Settings.target_lufs` defaults to minus fourteen at
+`src/cratekit/modules/tools/mastering.py:124`, and the engine's own comment
+records that this suits general playback while a louder target suits platforms
+that normalise upward. `Settings` is constructed exactly once in `src`, as
+`DEFAULT_SETTINGS`, and `crate master` passes nothing into it. The source
+system's script ships `-t` for this.
+
+**Cost, stated.** A person mastering for a platform with a different target has
+no route but editing the module. Nothing is wrong with the master that is
+produced; it is produced to a target the person could not choose.
+
+**Why it is not fixed here.** The same reason as `R-193`: it widens the declared
+surface, and the recommendation on the table is to expose `--target-lufs`
+alone, freeze it in the payload and carry it in `master_argv`, leaving the other
+four knobs at their defaults. That is a decision rather than a fix.
+
+**Closes when:** the flag ships with its payload key and argv round trip driven
+by the resume contract, or the decision is recorded that one target is the
+product's position.

@@ -1,21 +1,24 @@
 # Restart: Cratekit
 
-**Last session 2026-08-26.** U43 merged and pushed. Board audit exit 0, **45
-units, 41 done, 4 ready**. **The pending register is EMPTY.**
+**Last session 2026-08-27.** U44 merged and pushed. Board audit exit 0, **45
+units, 42 done, 3 ready**. **The pending register is EMPTY.**
 
 **`board.py next` WILL SAY "Take #29" AND YOU MUST NOT.** Issue 29 is attended,
 Phillip's to perform against the live library, which an agent cannot touch by
 standing constraint. It ranks first only because it is the one unit with a
-dependent. **The three takeable units are #60, #62 and #63**, and they are all
-Ready, all independent of each other, and each releases nothing, which is why
-they rank below an untakeable unit.
+dependent. **The two takeable units are #60 and #63**, and they are both
+Ready, independent of each other, and each releases nothing, which is why they
+rank below an untakeable unit.
 
-**Take #62 next if you are taking one.** It is the smallest of the three: one
-verb over one engine, where #60 is two verbs over one module and #63 also has to
-publish the backup age the write session consults. All three QUEUE, unlike #61,
-so each of them needs an argv builder and has to satisfy the resume contract.
-Read U43's shell first, `src/cratekit/setbuilder/cli.py`, then
-`src/cratekit/tagging/retag_cli.py` for the queueing half U43 did not need.
+**Take #63 next if you are taking one.** It is one verb over one engine, where
+#60 is two verbs over one module. Both QUEUE and neither declares a gate, so
+U44's shell, `src/cratekit/master/cli.py`, is now the closest model: a queueing
+handler with no gate, a frozen payload built by one function, an argv builder
+that rebuilds every frozen flag, and the work as a module level function the
+suite can drive without a job store. `src/cratekit/tagging/retag_cli.py` is the
+model only if the verb you are building answers a gate, because that one has to
+freeze its gate run. #63 additionally has to publish the backup age the write
+session consults; read that half of the brief before assuming the shape.
 
 ## Do this first
 
@@ -51,58 +54,59 @@ no ahead or behind count, `git status --porcelain` is empty, the suite matches
 the number below, and `board.py audit` exits 0. **No hash is written here on
 purpose**, since this file is part of the commit it would be naming.
 
-**Forty one of forty five units are done.** The last measured suite was **6354
-passed and 1 skipped**. **Main's highest residual is R-190.** Append only.
+**Forty two of forty five units are done.** The last measured suite was
+**6382 passed and 1 skipped**. **Main's highest residual is R-194.** Append only.
 
 ## What the last session did
 
-U43 built `crate setbuild`, the shell over the set-building engine U35 landed.
-It is a pure read: no database, no job, no byte written.
+U44 built `crate master`, the shell over the mastering engine U35 landed. It
+QUEUES, which U43 did not, and it declares no gate, so it is the worked example
+for the two units left. Feature Inventory row 30 now reads as covered, and the
+sentence after that one matters more: **`R-183` still means nobody can run the
+work.** The verb freezes a payload and enqueues a job, and nothing in `src`
+claims a job item, so a person who types `crate master REC001.WAV` gets a job
+identifier and no master. That is the product's state for every queued verb,
+and this unit added one more to it rather than changing it.
 
-**THE ANCHOR IS A PATH UNDER THE LIBRARY, NOT A TYPED TITLE**, and that decision
-is the unit. The engine's `resolve_anchor` fuzzy matches a typed string, and
-`token_set_ratio` scores a subset at 100, so an exact query naming a track and
-that track plus a version suffix are indistinguishable and `extractOne` returns
-whichever it met first. Driven, not argued. A path is also what every other
-file-taking verb accepts, so a test hands it something under the configured
-library rather than a real path off somebody's machine (R1). The cost, stated
-rather than hidden: an unowned anchor and a supplied Camelot key cannot be
-expressed at all, and both exist to serve a web lookup this product does not
-ship.
+**THE SHELL EXPOSES NO WAY TO SKIP THE ARCHIVE**, and that is the unit's first
+decision. The engine's `master` takes `archive=False` and the source script
+ships `--no-archive`. Neither is offered, no payload key carries one, and KTD2
+in the plan says the capability is dropped rather than defaulted, because a flag
+that skips the safety copy turns a recoverable operation into a destructive
+one. Do not add it while fixing anything.
 
-**IT WRITES NO CACHE, AND THAT IS THE OTHER DECISION THE BRIEF ASKED FOR.**
-`build_index` accepts a `cache_path` and `config` declares
-`setbuilder_index_cache` waiting for one. Passing it would be a `files` write
-from an entry declaring none, and declaring one makes the verb destructive by
-`Entry.__post_init__`'s own invariant, which binds the library lock, the backup
-acknowledgment and the volume identity assertion to a read-only recommender.
-Filed as R-188 rather than paid for quietly.
+**THE ENGINE REPORTED SUCCESS OVER AN OUTPUT THAT WAS NOT THERE**, and U44 owns
+that finding because it was the first caller. A stand-in ffmpeg that exits 0 on
+the encode and writes nothing left `master` returning a report whose
+`output_bytes` was 0 and whose `size_reduction` was 1.0, rendered as a master
+that saved every byte of the source. The fix is `_wrote_or_refuse` on the
+CHECKING path inside `mastering.master`, so every future caller is covered, and
+the same shape was found one function over in `concatenate` by sweeping for it.
+The stand-in had to dispatch on its own argv to reach the encode at all; a
+stand-in that answers every stage the same way refuses for a missing loudness
+measurement long before the defect is reachable.
 
-Read `docs/mutation/u43-author-light.md` and its round two companion: 25 rows
-then 10, and **round two is where the value was**, as it was for U40. Round one
-was **17 killed, 7 zero, 1 collect error** by the table's own verdict column. One
-zero is the null control, so six are real, all six are user facing, and all six
-were closed in round two. Four residuals are filed, R-187 through R-190.
+Read `docs/mutation/u44-author.md` and its round two companion. Round one was
+**12 killed, 1 collect error, 3 zero** by the verdict column, with the null
+control at zero, and all three zeros were user facing and on the guards the
+round was written around: the archive verify, the digest, and the join's output
+check. Round two closed them with one test each. Four residuals are filed,
+R-191 through R-194, and R-191 is the one with the measured cost: an absent
+recording queues in 199 ms with exit 0.
 
-**THOSE COUNTS WERE WRONG IN THREE PLACES BEFORE THIS LINE WAS WRITTEN**, and the
-correction is recorded rather than quietly applied because it is the ordinary way
-a wrong figure becomes the record. `d285a46` says "18 killed, one collect drift,
-and six zeros of which one is the null control", the merge commit repeats it, and
-`docs/mutation/u43-round-2-rows.toml`'s header says "five user facing zeros" while
-the file defines six re-measurements. The tables were right the whole time; only
-the prose around them was wrong. Read a verdict column, never a commit message.
+**A TEST THAT ADAPTS ITS FIXTURE TO A NEW GUARD IS NOT A TEST OF THE GUARD.**
+The join's only test was updated when `concatenate` started reading its output,
+so that its stand-in writes the destination, and it asserted nothing about the
+check itself. Under `B3_concat_output_unread` the file stayed green. A comment
+saying "U44 made this read its output" sat directly above the fixture change.
+Read the assertion, not the comment.
 
-**THE VERIFICATION GAP, STATED BECAUSE NOBODY ELSE WILL SAY IT.** Both tables are
-the AUTHOR'S. No independent verifier ran, because the session was instructed not
-to spawn one. METHOD asks a light pass to be run by an agent that did not write
-the code, and the measured gaps between an author's table and an independent one
-on this project are 10 against 17, 39 against 49, and 49 against 83. Every zero
-in those two tables reads as "the author could not kill it", never as "nothing
-can". If a later session wants a cheap high-yield target, this unit is one.
+**THE VERIFICATION GAP, STATED AGAIN.** Both tables are the AUTHOR'S. No
+independent verifier ran. Every zero reads as "the author could not kill it".
 
 ## What is left
 
-**Three of the four new units, #60, #62 and #63.** Each is a command-line SHELL
+**Two of the four new units, #60 and #63.** Each is a command-line SHELL
 over an engine that already shipped, and together they clear the rest of the
 cutover backlog. Created 2026-08-26 on Phillip's decision, after the U40 handoff
 found five Feature Inventory rows uncovered with no issue owning any of them.
@@ -111,7 +115,7 @@ found five Feature Inventory rows uncovered with no issue owning any of them.
 |---|---|---|---|---|
 | #60 | U42 | `acquire.download`, `acquire.audit` | 6, 7 | `src/cratekit/acquire/download.py` and siblings |
 | ~~#61~~ | ~~U43~~ | `setbuild` | 29 | DONE 2026-08-26, `src/cratekit/setbuilder/cli.py` |
-| #62 | U44 | `master` | 30 | `src/cratekit/modules/tools/mastering.py` |
+| ~~#62~~ | ~~U44~~ | `master` | 30 | DONE 2026-08-27, `src/cratekit/master/cli.py` |
 | #63 | U45 | `backup.run` | 31 | `src/cratekit/modules/tools/backup.py` |
 
 **FOUR ISSUES FOR FIVE ROWS, AND THE ARITHMETIC IS DELIBERATE.** Rows 6 and 7 are
@@ -120,23 +124,25 @@ both served by `acquire.download` in one module, `cratekit.acquire.cli`, and the
 would create two units that must land together, which is the hazard the countdown
 machinery exists to prevent.
 
-**THE THREE THAT ARE LEFT ALL QUEUE, AND U43 DID NOT.** Every one of them is
-`long_running`, so each needs an `argv_builder` and has to satisfy the resume
-contract, and a gate answered inside a queued verb has to freeze its gate run or
-the respawned child meets the gate with nothing recorded. `retag_argv` in
-`src/cratekit/tagging/retag_cli.py` is the worked example and its docstring says
-why. U43's shell is the model for the read-only half and for nothing else.
+**THE TWO THAT ARE LEFT BOTH QUEUE.** Each is `long_running`, so each needs an
+`argv_builder` and has to satisfy the resume contract. `master_argv` in
+`src/cratekit/master/cli.py` is the worked example for a verb with no gate. A
+gate answered inside a queued verb has to freeze its gate run or the respawned
+child meets the gate with nothing recorded; `retag_argv` in
+`src/cratekit/tagging/retag_cli.py` is the example for that. U43's shell is the
+model for the read-only half and for nothing else.
 
 **Why they existed as a gap at all.** Every one of the remaining verbs carries a
 `planned_in` marker naming a unit whose issue is CLOSED: U15 and U35 landed the
 engines and never landed the shells. Four more verbs are in the same state and
 are NOT in the backlog, because another landed verb covers their row:
 `session.ack` and `session.release` (U8, row 12), `analyze.vocals` and
-`metadata.mytags-vocals` (U25, row 10). Eight declared verbs now have no module,
-down from nine, and four of them are what stands between this repository and a
-mechanically possible cutover. `tests/test_cutover_parity.py` derives that and
+`metadata.mytags-vocals` (U25, row 10). Seven declared verbs now have no module,
+down from eight, and three of them are what stands between this repository and
+a mechanically possible cutover: the parity backlog holds rows 6, 7 and 31.
+`tests/test_cutover_parity.py` derives that and
 `test_the_cutover_is_not_yet_possible_and_says_why` fails on the day it empties,
-which is the day #60, #62 and #63 are all done.
+which is the day #60 and #63 are both done.
 
 **A UNIT ISSUE IS IDENTIFIED BY ITS `unit` LABEL, NOT BY ITS TITLE.** `board.py`
 reads `"unit" in labels` at `scripts/board.py:113`. All four of these were created
@@ -150,14 +156,17 @@ Not an agent's. METHOD says why in its do-not-touch section and the reason does
 not expire. It stays first in `board.py next` because ranking is by transitive
 reach and it is the only unit with a dependent.
 
-**The residual ledger.** 190 numbers, 189 entries, none of them queued. R-183 is
+**The residual ledger.** 194 numbers, 193 entries, none of them queued. R-183 is
 the one with product consequences: nothing in `src` claims a job item, so no
-long-running verb's work is executed by shipped code. `crate setbuild` is the
-first verb in a while that is UNAFFECTED by it, because it does not queue at all,
-and all three units left do queue, so this gets worse before somebody fixes it.
-Of U43's four, **R-187 is the one to read**: the engine's fuzzy anchor lookup
-returns the wrong track for an exact query, driven, and it stays a residual only
-because two candidate producers were driven and neither reaches it.
+long-running verb's work is executed by shipped code. `crate master` joined that
+family on 2026-08-27 and R-191 puts a measured number on what it costs: an
+absent recording queues with exit 0, and the engine's refusal is never raised by
+anything. Both units left queue too, so this gets worse before somebody fixes
+it. Of U43's four, **R-187 is the one to read**: the engine's fuzzy anchor
+lookup returns the wrong track for an exact query, driven, and it stays a
+residual only because two candidate producers were driven and neither reaches
+it. Of U44's four, R-193 and R-194 are product forks waiting on Phillip, not
+defects.
 
 **The parked conformance branch**, with its `write/metadata.py:195` defect live
 on main. Out of scope until Phillip says otherwise. R-186 records what U40
@@ -176,7 +185,7 @@ changed about its reachability.
   to act on it. **Do not backfill.**
 - **Residual numbers are APPEND ONLY.** Main's numbers never move; an incoming
   branch's residuals take fresh numbers above main's highest. **Main's highest is
-  R-190.**
+  R-194.**
 - **The pending register is empty.** `tests/test_pending_units.py` now carries a
   test that says so out loud, because an emptily parametrized countdown is
   SKIPPED by pytest and a silent skip is the exact hazard that file warns about.
@@ -190,7 +199,15 @@ changed about its reachability.
   which issue it is BEFORE writing the merge commit.
 - **Do not touch** U30's board state, U20, R-9, A1, A2, or `.worktrees/conformance`.
 
-## Twenty things that will bite you
+## Twenty one things that will bite you
+
+**A TEST THAT ADAPTS ITS FIXTURE TO A NEW GUARD IS NOT A TEST OF THE GUARD.**
+U44 added an output check to `concatenate` and updated the join's one test so
+its stand-in wrote the destination, with a comment explaining why. The
+mutation row that removed the check killed nothing, because the test asserted
+only the quoting of an apostrophe. When you touch a fixture to keep a test
+green under a new guard, that is the signal to write the assertion the guard
+owes, in the same sitting.
 
 **A FIXTURE CAN SIT WHERE THE THING IT TESTS CANNOT MATTER, AND IT LOOKS
 IDENTICAL TO A GUARD.** U43 wrote a lossy-marked fixture to close a zero row and

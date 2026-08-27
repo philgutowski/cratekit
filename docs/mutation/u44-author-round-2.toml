@@ -1,0 +1,42 @@
+name = "u44-author-round-2"
+pass_kind = "light"
+
+# U44 round two. The three user facing zeros from docs/mutation/u44-author.md,
+# re-measured after one closing test each. A1 and A4 are the archive path,
+# which METHOD asks this unit to weight; B3 is the join, whose only test had
+# adapted its fixture to the new guard without asserting the guard existed.
+# Same text as round one, so a kill here is the closing test and nothing else.
+#
+# AUTHOR'S TABLE, no independent verifier ran. Read every zero as "the author
+# could not kill it".
+
+[[rows]]
+id = "A1_archive_verify_dropped"
+description = "Drop the post-copy digest verification, so a corrupt archive is reported safe"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    shutil.copy2(source, destination)
+    if digest(destination) != source_digest:'''
+new = '''    shutil.copy2(source, destination)
+    if False:'''
+
+[[rows]]
+id = "A4_digest_reads_first_chunk_only"
+description = "Digest only the first chunk, so two sets differing later in the file hash identically"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''        while True:
+            block = handle.read(chunk)
+            if not block:
+                break
+            hasher.update(block)'''
+new = '''        hasher.update(handle.read(chunk))'''
+
+[[rows]]
+id = "B3_concat_output_unread"
+description = "Drop the same check from the join, one function over"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    _wrote_or_refuse(destination, "join")
+    return destination'''
+new = '''    return destination'''

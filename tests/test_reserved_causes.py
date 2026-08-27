@@ -2116,10 +2116,19 @@ CODES = {"rclone-" "missing": 30}
 
 # ── A second opinion about a slug only the CLOSED REGISTRY reserves ─────────
 #
-# ``core.cause.REASONS`` gives a code to sixty one slugs and this table repeats
-# one of them, so sixty of the registry's reservations are outside the reserved
-# table entirely. A module contradicting one of those is the same defect as a
-# module contradicting this table.
+# ``core.cause.REASONS`` gives a code to one hundred and twenty eight slugs and
+# this table repeats seventeen of them, so one hundred and eleven of the
+# registry's reservations are outside the reserved table entirely. A module
+# contradicting one of those is the same defect as a module contradicting this
+# table.
+#
+# THESE THREE NUMBERS WERE MEASURED, and the two they replace had drifted a long
+# way. This comment said sixty one, one and sixty, which were the values when it
+# was written and were already wrong by sixty, by nine and by fifty one before
+# U44 appended anything. Derive them rather than reading them here: the counts
+# are ``len(REASONS)``, ``len(set(REASONS) & set(reserved_codes.RESERVED_CAUSES))``
+# and the difference. U44's seven mastering slugs are the last to move them, and
+# they moved the first two only, because all seven were already reserved.
 #
 # THE SIXTEEN SHAPES BELOW ARE WHAT THE TIERS COST. Round four accepted only an
 # ``ExitCode`` member or a conversion round one for these sixty keys, on the
@@ -4120,9 +4129,11 @@ def declared_causes() -> frozenset[str]:
       for its own brand new causes is seen the moment the module declares them;
     * the closed reason registry, ``core.cause.REASONS``, which
       ``cli/exit_codes.py``'s own docstring calls "the other mapping in this
-      repository that gives a slug a code". Sixty of its sixty one slugs are
-      outside the reserved table, so a module contradicting one of them is the
-      same defect as a module contradicting this table.
+      repository that gives a slug a code". One hundred and eleven of its one
+      hundred and twenty eight slugs are outside the reserved table, so a module
+      contradicting one of them is the same defect as a module contradicting
+      this table. Both figures are measured; the pair this line used to carry,
+      sixty and sixty one, had drifted by fifty one and by sixty.
 
     A fourth arrives per file rather than here: a cause-shaped string a source
     declares in its own enum, which ``ReservedCodeTable`` adds as it reads.
@@ -4927,7 +4938,21 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # The named halves did NOT move, staying at 8 and 21, because every cause this
     # module names it names as a literal rather than through a symbol, so the
     # comparison just below widened for the eleventh time out of eleven.
-    assert (len(literal_holders), len(literal_both)) == (76, 15), (
+    # Re-pinned on U44, 2026-08-27: 76 to 77 holders. master/cli.py joined,
+    # naming config-unusable the way every other shell does and source-missing
+    # for an empty recording argument. Differenced as SETS by repointing this
+    # module's PACKAGE_ROOT at origin/main's own src tree extracted into a
+    # scratch directory, the same way as every entry above: exactly one module
+    # joined and none left. The also-holds-an-integer half stays 15, because the
+    # module holds no bare integer at all. The named halves did NOT move,
+    # staying at 21 and 8, because both causes it names it names as literals, so
+    # the comparison just below widened for the twelfth time out of twelve.
+    # modules/tools/mastering.py is NOT in the set and did not join it despite
+    # this unit editing it: its refusals are Refusal enum members reached through
+    # a symbol, and the seven slugs U44 added to core.cause.REASONS were already
+    # in that module's own tree. A pin that watched the edited files rather than
+    # the derived set would have expected a second module here.
+    assert (len(literal_holders), len(literal_both)) == (77, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
