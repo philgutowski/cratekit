@@ -131,9 +131,14 @@ two things in two modules.
 - **Never write a beat grid.** Not a tempo element, not a BPM tag, not an
   average-BPM field, not an ANLZ grid, in any container. Two suites enforce this
   across five surfaces. Absolute.
-- **The live rekordbox database is off limits.** Never open, copy, or name it. A
-  unit needing a real database makes a disposable copy in a temporary directory.
-  Never launch rekordbox or its background agent.
+- **The live rekordbox database is protected, not untouchable.** The default is
+  hands off, and a unit needing a real database makes a disposable copy in a
+  temporary directory rather than reaching for the live one. The exception is the
+  backup feature, whose whole job is to capture that file: it may read and copy
+  the live database, but only with both `rekordbox` and `rekordboxAgent`
+  confirmed gone, only into a new dated destination, and never in place. Writing
+  to the live database outside a gated destructive session stays forbidden, and
+  nothing here ever launches rekordbox or its background agent.
 - **DJ_tools is read-only for code.** It is the live system until each workflow's
   replacement is proven. Its `docs/` are the exception.
 - **Do not symlink `.venv` into a worktree.** The editable install names the main
