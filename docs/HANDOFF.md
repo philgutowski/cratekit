@@ -1086,11 +1086,15 @@ issue. That last shape is R-13's failure and is live three times over already.
    names its remediation, and the wizard may propose but only an explicit named
    decision records. Re-validating a pin against a real write is the author's
    deliberate act and never a number an agent edits.
-2. **The vendored downloader has never been smoke-tested end to end.** Clone,
-   install, authorize, download one track, confirm the file carries no tempo tag.
-   That last check is the only end-to-end proof of the beatgrid patch, and the
-   upstream wrote a tempo tag in three containers before it was patched. It needs
-   Tidal authorization at the machine, so it is an attended step.
+2. **The vendored downloader was smoke-tested end to end on 2026-08-28 (A1).**
+   Authorize, download one track, confirm the file carries no tempo tag: done on
+   both the MP4 and the FLAC surface, and neither file carried `BPM`, `TBPM` or
+   `tmpo`. That is the only end-to-end proof of the beatgrid patch there is, and
+   it holds. The run surfaced three residuals, R-195 to R-197: the adapter never
+   pushes the ffmpeg path, the provider now serves lossy audio to the device-flow
+   client both tools log in with, and the adapter's `fetch` builds the downloader
+   without the events it needs. The second reaches the live DJ_tools pipeline,
+   whose newest FLAC is dated 2026-07-09.
 3. **Naming decisions recorded rather than resolved.** `authenticate-provider`,
    `reauthenticate` and `reauthenticate-provider` may be one idea; all three keep
    their original slugs because a slug is persisted inside a stored cause.

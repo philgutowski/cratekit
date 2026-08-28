@@ -16,6 +16,7 @@ This file is the inventory and the replacement procedure.
 | Component | `tidal-dl-ng` |
 | Vendored version | **0.33.0** |
 | Vendored on | 2026-08-01 |
+| Smoke-tested end to end | **2026-08-28** (A1): authorize, download, no tempo tag on the MP4 or the FLAC surface. Residuals R-195 to R-197 |
 | Location | `src/cratekit/_vendor/tidal_dl_ng/` |
 | Import root | `cratekit._vendor.tidal_dl_ng` |
 | Licence | **AGPL-3.0-only** |

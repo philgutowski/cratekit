@@ -9909,3 +9909,99 @@ four knobs at their defaults. That is a decision rather than a fix.
 **Closes when:** the flag ships with its payload key and argv round trip driven
 by the resume contract, or the decision is recorded that one target is the
 product's position.
+
+## R-195. The adapter never tells the downloader where ffmpeg is, so a lossless run lands lossy with doctor reporting green
+
+**Found by** A1, the attended smoke test of the vendored downloader,
+2026-08-28.
+
+`crate doctor` reported `[ok] binary.ffmpeg: /opt/homebrew/bin/ffmpeg`, and the
+first track still landed as a 320k AAC `.m4a`. The vendored tool does not look at
+`PATH`. It consults only its own `path_binary_ffmpeg` setting, whose factory
+default is the empty string, and when that is empty `Download.__init__`
+(`src/cratekit/_vendor/tidal_dl_ng/download.py:162`) flips `extract_flac` and
+`video_convert_mp4` off and logs one warning through a logger the adapter
+discards. `tool_settings()` in `src/cratekit/acquire/vendored.py:74` pushes
+`quality_audio`, `download_base_path` and `format_track`, and nothing else, so a
+real Cratekit run degrades the same way. Setting the key by hand and downloading
+again produced the FLAC.
+
+**Cost, stated.** Doctor answers a different question from the one the tool
+asks. Doctor asks whether ffmpeg exists on this machine; the tool asks whether it
+was told the path. The two agree only on a machine where somebody has already
+run the vendored CLI's `cfg` by hand, which is how this machine looked until the
+test reset it, and which is exactly the state that would have hidden the defect.
+
+**Why it is not fixed here.** A1 is an attended verification, not a unit, and
+the fix belongs to the adapter's settings mapping with a test that pins the
+fourth key. The value to push is the one `core/binaries.py` resolves, so doctor
+and the tool answer from one lookup.
+
+**Closes when:** `tool_settings()` carries `path_binary_ffmpeg` from the
+binaries resolver, `verify_applied` checks it, and a test asserts the pushed set
+has four keys.
+
+## R-196. The provider serves lossy audio to the device-flow client, and neither the vendored tool nor the adapter can log in any other way
+
+**Found by** A1, 2026-08-28, and it reaches past this repository.
+
+With `path_binary_ffmpeg` set, the same track still came down as AAC. The
+account is PREMIUM with `highestSoundQuality: HI_RES`. The session asked for
+`LOSSLESS` through `config.quality`, and `playbackinfopostpaywall` answered
+`HIGH` every time, for `LOSSLESS` and for `HI_RES_LOSSLESS` alike. The live
+DJ_tools token, issued 2026-08-01 against the same `tidalapi` 0.8.11 and the same
+client id, got `HIGH` for the same track in the same minute. The newest FLAC the
+live pipeline ever produced is dated 2026-07-09.
+
+A PKCE login on the same account, same track, same minute, was served
+`LOSSLESS` as a 16 bit 44.1 kHz FLAC over a DASH manifest, and the vendored
+`Download` class landed it. So the cause is the client, not the account, the
+settings, or the patches: the provider now gates lossless behind the PKCE client
+that `tidalapi` documents as the route to hi-res, and the device-linking client
+both tools use has been quietly demoted to lossy at some point after July 9.
+
+Three facts make this a code problem rather than a login problem. The vendored
+CLI has no PKCE path; `Tidal.login()` in `config.py` calls `login_oauth_simple`
+and carries the PKCE call as a comment. `token_persist()` writes four keys and
+drops `is_pkce`, so a PKCE token written by that code would be reloaded as a
+device-flow one and refreshed against the wrong client. And the adapter calls
+`login_token()` with PKCE off (`src/cratekit/acquire/vendored.py:217`).
+
+**Cost, stated.** Every download through the current path is lossy and nothing
+says so. The lossless rule is enforced at the setting and never at the file, so
+the product's central promise fails silently. The live system has been failing
+it since July.
+
+**Why it is not fixed here.** It is a unit's worth of work across the adapter,
+the vendored token persistence, and the login verb's contract, and it is a
+decision about which login the product offers. The one-line guard that IS cheap,
+refusing to accept a landed file whose codec is not lossless when the policy is
+lossless, belongs beside it.
+
+**Closes when:** the adapter authenticates through PKCE, or through a session
+file that records `is_pkce`, and a post-landing check refuses a lossy file under
+a lossless policy. The DJ_tools note is separate and is owed to that repository.
+
+## R-197. The adapter's fetch constructs the downloader without the events and progress it requires, so the first real call crashes
+
+**Found by** A1, 2026-08-28, while driving `Download` directly to land the FLAC.
+
+`_VendoredSource.fetch()` at `src/cratekit/acquire/vendored.py:254` builds
+`Download(tidal_obj, path_base, fn_logger)`. The vendored CLI builds it with
+`event_abort`, `event_run`, `progress` and `progress_overall` as well
+(`cli.py:250`). Without the events, `Download.item()` dies on its first line,
+`self.event_abort.is_set()` on `None`. With the events and without the progress
+objects it returns `(False, path)` and logs nothing, because the progress bar is
+touched inside the download and the failure is swallowed. With all four it
+downloads.
+
+**Cost, stated.** `fetch` is the one method the offline suite cannot exercise
+and is marked `pragma: no cover` for that reason, which is also why this
+survived every green battery. The adapter has never fetched a file.
+
+**Why it is not fixed here.** Same as R-195: an attended item records, a unit
+fixes. The fix is small and the test for it is the hard part, since it needs a
+fake `Download` that asserts the constructor's keyword set.
+
+**Closes when:** `fetch` passes both events and a disabled `rich` `Progress`
+pair, and a test pins the constructor call.
