@@ -57,6 +57,24 @@ often than their authors realize, since each side of a collision has its own
 reason to write one, so a merge reads both branches' records rather than only the
 one it is standing on.
 
+## Acquisition
+
+### Adapter
+A boundary component that wraps exactly one download tool or streaming
+provider behind a declared contract, so a different tool can be substituted
+through configuration alone when a provider integration breaks. The contract
+exists because no third-party tool is guaranteed to keep working: an adapter
+promises an exhaustive, typed outcome at two scales rather than an exit code a
+caller has to interpret — per track, exactly one of acquired, permanently
+unavailable, transiently unavailable, or refused by policy; per invocation,
+exactly one of ok, authentication failed, or broken.
+
+An adapter's lifecycle is authenticate once, then per track offer, apply
+policy, fetch, pace. Authenticating establishes a session; it is a separate
+fact from whether that session is then served what was actually requested, and
+an adapter's own settings check confirms only the request, never the artifact
+the wrapped tool produced from it.
+
 ## Verification
 
 ### Guard
