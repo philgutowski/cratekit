@@ -1,0 +1,98 @@
+{
+  "name": "u42-author-round-2",
+  "pass_kind": "light",
+  "branch": "unit/u42-the-two-acquire-command-line-shells-rows",
+  "head": "bf2b8a9",
+  "when": "2026-08-29 02:01 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 6414,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/acquire/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/acquire/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d36491790cbf0276",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 6414,
+    "baseline_collected": 6414,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C2_unknown_defaults_lossless",
+      "description": "Classify an unrecognised suffix as lossless instead of 'other'",
+      "file": "src/cratekit/acquire/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9b2716d06151c332",
+      "subset": [
+        "tests/test_acquire_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.acquire.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_cli.py::test_non_audio_files_are_not_reported"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return \"other\"",
+      "new": "    return \"lossless\""
+    },
+    {
+      "id": "R2_handler_lookup_imports",
+      "description": "Make by_handler_key import the module, which is what the rewritten guard forbids",
+      "file": "src/cratekit/cli/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a52d14b179b34516",
+      "subset": [
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 540,
+      "baseline_collected": 540,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_a_handler_key_resolves_without_importing_the_module"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "def by_handler_key(key: str) -> Entry:",
+      "new": "def by_handler_key(key: str) -> Entry:\n    import importlib\n\n    importlib.import_module(\"cratekit.acquire.cli\")"
+    }
+  ],
+  "dropped": []
+}

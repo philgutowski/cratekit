@@ -967,7 +967,12 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"files"}),
         destructive=True,
         doctor_checks=("credential.provider", "binary.ffmpeg"),
-        planned_in="U15",
+        # U42 LANDED IT. The marker was U15's, and U15 shipped the ENGINES in
+        # ``cratekit.acquire`` without ever shipping a shell, so this entry named
+        # a closed unit while rows 6 and 7 sat uncovered in the cutover backlog.
+        # The verb declares no gate, and ``cratekit.acquire.cli`` argues why in
+        # its module docstring rather than leaving the absence to be read as an
+        # oversight the next person quietly corrects.
     ),
     Entry(
         name="acquire.audit",
@@ -978,7 +983,7 @@ ENTRIES: tuple[Entry, ...] = (
         feature_rows=(7,),
         emits=frozenset({"review_set"}),
         output_schema="review_set/1",
-        planned_in="U15",
+        # U42 LANDED IT, beside the verb above and for the same reason.
     ),
     Entry(
         name="match.run",
