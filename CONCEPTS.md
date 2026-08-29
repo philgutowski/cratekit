@@ -143,6 +143,30 @@ remedies are to place the fixture where the code that writes the thing places it
 and to assert the fixture's own precondition inside the test, so a fixture that
 later shrinks below the bound it was sized for reports instead of passing.
 
+A sixth axis is whether the guard was ever in a POSITION to fail, and it is the
+one the five above can all be satisfied while missing. Two things put a guard
+outside that position. The first is a subject that does not exist: a guard naming
+a thing the project has not built yet asserts something about an absence the
+project is guaranteeing for it, so it passes on a fact about what has not been
+written rather than on the property it claims, and it goes on doing so until the
+day that thing lands. The second is ambient state the process already holds. A
+guard that compares a snapshot before an action against a snapshot after it can
+only distinguish anything if the action could still change that state, and a
+process wide cache which everything running earlier has already filled cannot
+change again. Restating such a guard as a difference is the natural repair for
+the first problem and no repair at all for the second, so the two are worth
+separating: a difference is a measurement only where the thing could have
+differed.
+
+The remedy differs by which one applies. A named subject that has not landed
+either goes in the pending register, where it is a countdown, or is replaced by a
+subject derived from the tree, so no unbuilt name appears in the guard at all.
+Ambient state is answered by moving the measurement into the state the claim is
+actually about, which usually means a fresh process rather than one the suite has
+already warmed, because the state a claim describes and the state a suite runs in
+are different worlds and an assertion evaluated in the second is not evidence
+about the first.
+
 When such a guard offers remedies for its own failure, the remedies are driven
 rather than reasoned about, and a remedy that makes the guard report MORE is
 propagating rather than converging. When every offered remedy terminates in
@@ -180,6 +204,14 @@ that no guard actually cites gates nothing, and is an unenforced countdown weari
 the costume of an enforced one. A future obligation that cannot be stated as a
 missing thing the suite can name is not a register entry at all and belongs in a
 coordination note, which is the weaker instrument on purpose.
+
+The register covers only what was registered, and nothing detects the guard that
+should have used it and did not. A guard naming a subject that has not landed,
+written without an entry, is not a countdown and is not visible as a hole: it
+simply passes, for as long as the subject is missing, and its first failure is
+the day somebody lands that subject. So the register's coverage is a fact about
+author discipline rather than a property the suite enforces, and a guard that
+names any unbuilt thing is the moment to reach for it.
 
 ### Planned verb
 A command the registry names before the module that implements it exists. The

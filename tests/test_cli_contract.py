@@ -1285,15 +1285,17 @@ def test_a_handler_key_resolves_without_importing_the_module():
         from cratekit.cli import registry
 
         leaked = {}
+        walked = 0
         for entry in registry.entries():
             if not entry.landed:
                 continue
+            walked += 1
             before = set(sys.modules)
             assert registry.by_handler_key(entry.handler_key) is entry
             added = sorted(m for m in set(sys.modules) - before if m.startswith("cratekit"))
             if added:
                 leaked[entry.handler_key] = added
-        print(json.dumps({"leaked": leaked, "checked": len(registry.entries())}))
+        print(json.dumps({"leaked": leaked, "walked": walked}))
         """
     )
     finished = subprocess.run(
@@ -1304,7 +1306,13 @@ def test_a_handler_key_resolves_without_importing_the_module():
     )
     assert finished.returncode == 0, finished.stderr
     result = json.loads(finished.stdout.strip().splitlines()[-1])
-    assert result["checked"] > 0, "the probe walked no entries, so it measured nothing"
+    assert result["walked"] > 0, (
+        "the probe walked no entries, so it measured nothing. COUNTED FROM THE "
+        "LOOP, not from len(registry.entries()): the loop skips unlanded verbs, "
+        "so the registry total would be a non-empty number in a build where every "
+        "verb was skipped, which is a vacuity guard with the same defect as the "
+        "guard this test replaced"
+    )
     assert result["leaked"] == {}, (
         f"resolving a handler key imported a cratekit module: {result['leaked']}. "
         f"The supervisor validates a queued job's handler before it spawns, so a "
