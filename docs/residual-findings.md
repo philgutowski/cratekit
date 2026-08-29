@@ -10005,3 +10005,119 @@ fake `Download` that asserts the constructor's keyword set.
 
 **Closes when:** `fetch` passes both events and a disabled `rich` `Progress`
 pair, and a test pins the constructor call.
+
+## R-198. Nothing calls the job driver, so every long-running verb queues work the product never runs
+
+**Found:** during U42, 2026-08-28, while landing the two acquisition shells and
+asking what "row 6 is covered" actually buys.
+
+`cratekit.core.jobs.drive` is the loop that claims a job's items, runs a handler
+against each, commits artifacts and records failures. It has NO CALLER ANYWHERE
+IN `src`. Verified with `git grep -n "drive" -- src`, which returns its own
+definition at `core/jobs.py:1181`, two strings naming it in causes it raises, and
+nothing else. The only driver that ever calls it is `tests/job_worker.py`.
+
+The path a person actually takes ends one step short of it. A long-running verb
+enqueues and reports. `crate job resume <id>` reconciles, then `jobs.spawn`
+launches the child that `argv_builder` describes. That child re-enters the same
+verb with `--job <id>`, takes the `if ctx.args.job:` branch, reconciles, reports
+the job, and exits.
+
+SIXTEEN resume branches across fifteen modules, and NONE of them calls `drive`.
+Measured by walking the package with `ast` and reading each `if` whose test names
+`ctx.args.job`, rather than by reading the first two and generalising: the first
+draft of this entry said twelve, named a list from memory, and was wrong in both
+the count and the membership. The sixteen are in `acquire/cli.py` (this unit),
+`adopt/apply_cli.py`, `adopt/scan_cli.py`, `analysis/cli.py` (two),
+`cli/rebuild.py`, `export/cli.py`, `favorites/cli.py`, `intake/cli.py` (two),
+`label/cli.py`, `master/cli.py`, `sync/cli.py`, `tagging/cli.py`,
+`tagging/retag_cli.py` and `write/routing_cli.py`. So a queued job cycles between
+reported and respawned and its items stay `pending` for ever.
+
+**Why it is filed under this unit rather than under the fifteen.** U42 is the unit
+that cleared Feature Inventory rows 6 and 7 from the cutover backlog, and row 6
+is "vendored concurrent downloader". `tests/test_cutover_parity.py` now says the
+row has a covering verb, and it does: `acquire.download` is landed, reachable
+from the command line, and declares the row. What the parity table asserts is
+that a verb exists for the row, which is exactly what it was built to assert and
+is a weaker claim than the cutover needs. The downloader itself is still not
+reachable end to end, and neither is tagging, analysis, export, or adoption.
+Recording it here is what keeps the difference between the two claims visible
+when U29 reads the table and sees every row green.
+
+**Not fixed here, deliberately.** The missing half is a handler registry: a map
+from `handler_key` to the function `drive` should call per item, plus the site
+that calls `drive` with it. That is a seam decision about where handlers are
+declared and how they are imported lazily, and KTD26's whole scheme rests on the
+supervisor validating a key without importing the module, so the registry has to
+be a third thing rather than an import. It is a unit, not a fix, and it is one
+that touches all sixteen sites at once. Doing it inside a shell unit for two of
+them would land the seam in the wrong place and by the wrong author.
+
+**What is genuinely at stake, stated rather than left implied.** This is a
+cutover blocker and not a cosmetic gap. U29 requires each replacement workflow to
+run correctly on the live library at least once, and no queued workflow can run
+at all today. The parity table will not catch it, because the parity table
+measures verbs.
+
+**A consequence worth naming, because U42's brief expected otherwise.** That
+brief made this unit "the first caller of everything in `src/cratekit/acquire/`
+except `match.py`" and asked for a driven failure path on an engine function the
+unit newly reached. It reached none. The grep it asked for was run and found
+three functions with exactly a definition and an export line and no caller at
+all, `download.acquire_paced`, `adapter.dispatch_invocation` and
+`adapter_names`, plus `download.acquire_concurrently` whose only caller is
+`acquire_paced` and is therefore dormant behind it. `acquire_paced` is precisely
+the function an acquisition worker would call.
+
+The shell does not call it, because the shell freezes and queues and the brief
+itself says the worker binds the live adapter. So the first-caller obligation did
+not transfer to this unit; it transfers to whoever lands the handler binding this
+entry is about, and `acquire_paced` stays a shipped, never driven function until
+then. Said here rather than left as a quietly unmet test scenario, because "no
+engine failure path was driven" reads as an omission unless the reason is
+recorded.
+
+**Closes when:** a unit lands the handler binding and one verb's queued work runs
+to completion through `crate job resume`, driven rather than asserted. That unit
+inherits the first-caller reading of `acquire_paced` and
+`acquire_concurrently` described above.
+
+## R-199. `Entry.destructive` is read by nothing, and its own validation message says the gates bind to it
+
+**Found:** during U42, 2026-08-28, while deciding whether `acquire.download`
+should declare a confirm gate.
+
+`registry.Entry.destructive` is validated against `writes` at
+`cli/registry.py:184`, and the refusal it raises reads: "anything that writes
+files or deletes is destructive by definition (KTD24); the destructive-session
+gates bind to that flag, so a verb that lies here runs without them." The second
+clause is not true of this build. `git grep -n "\.destructive\b" -- src` returns
+exactly one hit, that validation line itself. No dispatcher, no context, and no
+gate consults the flag.
+
+What actually happens is sound and is a different mechanism: the modules that
+touch the volume open a session themselves. `write/trees.py`, `write/
+routing_pass.py`, `deletion/run.py` and `adopt/apply_cli.py` each call
+`core.session` directly, so the acknowledgment and the backup age are asserted by
+the code doing the destruction rather than by the declaration describing it.
+
+The cost is not a hole in the gates, it is a sentence that will be believed. A
+person reading that message concludes the flag is load bearing and that declaring
+it buys protection. It buys a consistency check against `writes` and nothing
+else. This repository has now recorded twice that a false claim in a place every
+reader trusts is its own failure class, and a refusal message is exactly such a
+place.
+
+**Not fixed here, deliberately.** The honest repair is one of two things and
+neither belongs to a shell unit: either bind the flag to something, by having the
+dispatcher assert the session for a destructive verb, which is a real behavioural
+change across every destructive verb in the product; or reword the message to say
+what is true, that the flag is a declaration the registry checks for consistency
+and that the session is opened by the code that touches the volume. The second is
+a one line change and is still not this unit's to make unilaterally, because the
+first is the option somebody may prefer and rewording it forecloses the question
+quietly.
+
+**Closes when:** either the flag is consulted by the code that opens a session,
+or the message stops claiming that it is.

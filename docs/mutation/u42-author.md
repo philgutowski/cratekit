@@ -429,3 +429,55 @@ def by_handler_key(key: str) -> Entry:
     importlib.import_module("cratekit.acquire.cli")
 ```
 
+
+---
+
+## Round two: both zero rows resolved, 2026-08-28
+
+Neither zero was a guard that holds nothing. Both were tests that could not reach
+the guard, which is what a zero on a user facing surface is supposed to make you
+go and look at. Re-measured in `u42-author-round-2.md`, one kill each.
+
+**`C2_unknown_defaults_lossless`, 0 to 1.** The row reverts `classify`'s unknown
+suffix from `other` to `lossless`. It killed nothing, subset and promoted full
+suite alike, because `test_non_audio_files_are_not_reported` held `cover.jpg`,
+`.DS_Store` and `notes.txt` and none of them carries the lossy marker, so all
+three take the same path under either answer. The file that actually reaches the
+guard is artwork named after its track, `Artist - Title [MP3].jpg`, which the
+mutation reports as a lossless file wearing a lossy marker. The test now holds
+one and the row kills.
+
+**`R2_handler_lookup_imports`, 0 to 1, and this one mattered.** The row inserts a
+real `importlib.import_module` into `by_handler_key`, and the guard this unit had
+rewritten earlier the same day did not notice. The reason is the same shape as
+the defect that rewrite was for: by the time the conformance suite runs, the
+feature modules are already in `sys.modules`, so importing a cached module adds
+nothing and a difference over `sys.modules` has nothing to differ against. A
+difference is only a measurement where the thing could have differed. The
+property is now measured in a fresh interpreter that has imported the registry
+and nothing else, which is the state the supervisor is genuinely in when it
+validates a queued job's handler.
+
+The in process copy in `tests/test_jobs.py` was removed rather than restated,
+because a second empty measurement beside the real one is worse than none.
+
+**Collected count, reconciled by identifier rather than by total.** 6473 to 6414.
+Fifty nine parametrised cases of
+`test_a_handler_key_resolves_without_importing_the_module` and one duplicate in
+`tests/test_jobs.py` were removed, and one subprocess test was added. Every
+removed identifier is accounted for and nothing else left. The fifty nine were
+each an empty measurement, proven so by this table, so the trade is fifty nine
+vacuous assertions for one that kills.
+
+## `R1_planned_marker_returns`: the collection delta, reconciled
+
+The driver flagged this row `collect-error` on 627 collected against a baseline
+of 630, and was right to refuse to read it as a clean result. Reconciled by
+identifier rather than by total: four parametrisations over `LANDED` legitimately
+cease to exist when the verb stops being landed
+(`test_a_handler_key_resolves_without_importing_the_module`, and conformance 1, 2
+and 3, each at `[acquire.download]`), and one appears,
+`test_a_planned_verb_whose_module_has_landed_must_lose_its_marker[acquire.download]`.
+Net minus three. No test FILE failed to collect, so the seven kills are real and
+the row is a genuine kill with an explained delta rather than a masked zero. The
+restore was verified against `git show HEAD:src/cratekit/cli/registry.py`.
