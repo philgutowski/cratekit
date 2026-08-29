@@ -1,6 +1,7 @@
 ---
 title: "A false claim in the auto loaded contract compounds silently, because every session begins by believing it"
 date: 2026-08-14
+last_updated: 2026-08-28
 category: workflow-issues
 module: CLAUDE.md
 problem_type: workflow_issue
@@ -119,6 +120,109 @@ true by enforcement. A residual is written into a markdown file by hand and has 
 such gate, so the residual half of the sentence decayed the moment somebody wrote
 a finding and did not also open an issue. Which is to say: nobody had to do
 anything wrong.
+
+## A second occurrence, 2026-08-28: the commit that wrote this document also wrote the next false universal
+
+`e0387d9` landed the guard and the first rewrite of the board section, 36
+minutes before `54440a1`, titled "docs: the contract is the one file where a
+false sentence compounds silently", which is the commit that wrote THIS
+document. Its own body records touching `CLAUDE.md`'s backfill rationale one
+more time: "CLAUDE.md's backfill rationale named the wrong surface: board.py
+next filters to units, so what floods is the project board's Ready column."
+That sentence is the one this section is about. The commit documenting the
+danger of an unchecked universal in this file wrote a fresh, unchecked
+universal into this file, in the same commit, and the claim below has carried
+no checker since:
+
+> `board.py next` filters to units and would be unaffected, so the damage is
+> to the view a person reads rather than to the tool.
+
+(`CLAUDE.md:44`, current text as of this writing.)
+
+**The measurement.** `board.py next`'s ready list is genuinely filtered to
+units: `ready = [n for n in graph.values() if n["unit"] and not n["closed"]
+and not n["open_deps"]]` (`scripts/board.py:267`). A residual or attended issue
+never appears as a candidate. But the sentence claims the tool is
+`unaffected`, and the ranking that orders those candidates is a second
+computation the sentence does not distinguish from the first. `build_graph`
+gives every issue, unit or not, a `deps` list, taking it from `parse_deps` for
+a unit and from `closes_with` for anything else in one ternary line
+(`scripts/board.py:121`). Reverse edges are built from that combined pool with
+no unit filter (`scripts/board.py:129` to `:132`), and the transitive reach score walks those
+edges the same way, again with no unit filter, counting every open issue the
+closure reaches: `node["reach"] = len({n for n in seen if not
+by_number[n]["closed"]})` (`scripts/board.py:145`). `cmd_next` sorts the
+filtered ready list by that score (`scripts/board.py:277`,
+`key=lambda n: (-n["reach"], ...)`) and prints it as `f"releases
+{node['reach']} open unit(s)"` (`scripts/board.py:295`), asserting a filter
+that the candidate list has and the score does not.
+
+**The concrete case.** Issue #39, `R-2: Four live portability and layering
+violations in the source repository`, carries the `residual` label, not
+`unit`, and its body reads `**Closes with:** #29 (U29)`. Because #39 is not a
+unit, `build_graph` takes its `deps` from `closes_with`, giving it a `deps`
+edge onto #29 exactly as though #39 were a unit depending on #29. That edge
+became a reverse `unblocks` edge on #29, and #29's reach became 1. On
+2026-08-28, `board.py next` ranked `#29 U29: Cutover and retirement` first,
+`releases 1 open unit(s)`, ahead of `#60 U42` and `#63 U45`, both real units at
+0 reach. Issue #29's own body opens `**Blocked.**`, and its verification
+scenario, "the parity table is generated from the CLI verb inventory and
+fails when a row has no covering verb," cannot pass until both #60 and #63
+land. `board.py next` never surfaced either as the reason #29 was not
+actually next. Running `tests/test_cutover_parity.py`'s `backlog()` and
+`titles()` directly, independent of the issue graph entirely, gave the true
+remaining rows (6, 7, and 31, covered by #60 and #63), which is what caught
+the wrong pick before any branch was cut.
+
+**Driven, not assumed: the reach defect is real and is not what decided this
+pick.** Rebuilding `board.py`'s graph with the reach closure scoped to
+unit-type nodes only, so #39's edge can no longer contribute, still ranks #29
+first. Its reach drops to 0, tying #60 and #63, and the sort's tiebreak,
+`key=lambda n: (-n["reach"], -len(n["unblocks"]), n["number"])`
+(`scripts/board.py:277`), falls through to ascending issue number: 29 is
+lower than 60 and 63. The decisive defect is one level up. `#29`'s own
+`Depends on` line never names `#60` or `#63` at all, so `open_deps` is empty
+for it and `board.py` has no way to know it is blocked on them, because
+nothing told it so. U29's issue predates the discovery of U42 and U45 (both
+found later, "discovered while handing off" per their own issue bodies) and
+its dependency line was never amended to add them. So this session's actual
+near miss was a stale dependency declaration on #29 itself, and the reach
+computation's own defect, real and worth fixing on its own claim's merits, is
+a second, independent thing that happened to be true at the same time rather
+than the cause of the wrong pick.
+
+**Fourteen days unchecked, same as the first claim, same file, same
+mechanism.** `54440a1` landed 2026-08-14. This was found 2026-08-28. Nothing
+in the battery evaluates it, for the identical reason `CONCEPTS.md`'s
+`Battery` entry already gives for the first claim: `scan_repo.py` reads every
+tracked file for machine specific paths and secrets, not for whether a
+sentence about the codebase is true. `board.py audit` checks that a residual
+issue's title still names the finding its number points at
+(`repointed_residuals`, `scripts/board.py:404`); it does not check that a
+residual's dependency edge, which is a legitimate and needed mechanism for
+sequencing a fix behind the unit it depends on, cannot also distort that
+unit's ranking. Nobody wrote a guard for this sentence when it was written,
+because writing the sentence did not feel like writing a claim. It read like
+an aside explaining why backfilling residuals onto the board is safe. It is
+also, independently, an unqualified statement about what a specific function
+computes, and this document exists because that is exactly the kind of
+sentence this file cannot afford to leave unchecked.
+
+**Still open, unlike the first occurrence.** The first false claim got both a
+corrected sentence and a guard (`repointed_residuals`). This one has neither.
+`scripts/board.py:145`'s reach computation still counts every open issue
+reachable through `unblocks`, unit or not, and `CLAUDE.md:44` still asserts
+the tool is unaffected. A fix needs to do one of two things, not describe a
+third: filter the reach closure to unit-labeled nodes (change
+`scripts/board.py:145` or the edges feeding it), or rewrite the sentence to
+say what is actually true today, "the candidate list is filtered to units;
+the score that ranks them is not." Either fix corrects the claim; neither
+would have caught #29 on its own, since the driven check above shows its
+dependency line, not its reach score, was the thing that was actually stale.
+Checked against the other two homes this document already found for the
+first claim's wording: as of 2026-08-28, neither `docs/BOARD.md` nor
+`docs/HANDOFF.md` restates the `unaffected` claim, so this one has a single
+home rather than three.
 
 ## Guidance
 
@@ -527,6 +631,14 @@ document was the thing that was wrong.
 
 ## Related
 
+- **Its own second occurrence, above.** `CLAUDE.md:44`'s "`board.py next`
+  filters to units and would be unaffected" was written by `54440a1`, the very
+  commit that wrote this document, and stood unchecked for 14 days until
+  issue #39's dependency edge on #29 falsified it (`scripts/board.py:145`,
+  `:295`). Recorded in place rather than as a separate document, per the
+  corpus-first rule this project's compounding tooling uses: the two are the
+  same mechanism in the same file, and a second document would only need to
+  point back here.
 - `docs/solutions/workflow-issues/a-rewrite-is-not-a-re-measurement-of-the-claim-inside-it.md`,
   written the same day. **This is the pair, and they should be read together.**
   Both are about unverified prose that no check evaluates, and both were falsified

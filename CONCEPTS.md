@@ -24,6 +24,22 @@ board is recomputed rather than remembered. Ranking is by how much of the
 remaining build a unit releases, counted transitively, so a unit whose single
 dependent gates a whole phase outranks one with several dead end dependents.
 
+That transitive count currently reaches through every open issue a dependency
+edge leads to, not only units. A residual or an attended item that names a unit
+as what it closes still counts toward that unit's rank, even though neither is
+board work by the paragraph below. So a unit's ranked position is not yet a pure
+measure of build released.
+
+Ready and blocked being derived from a unit's own declared dependencies cuts
+both ways. It is what keeps the board from being hand maintained, and it is
+also the board's one blind spot: a unit whose declared dependencies are all
+closed derives as ready even when its own verification depends on a unit that
+was never added to that declaration. The derived state cannot catch that, by
+construction, since a declaration is the only input it has. The check that
+catches it is reading the unit's own written verification criteria for a
+blocker its dependency list does not name, not trusting the derived ready or
+blocked state.
+
 WHAT BELONGS ON IT is a separate question from how it derives, and the two were
 confused for weeks. The board carries WORK: units, and the attended chores that are
 somebody's to do. It does not carry the register of known and accepted problems,
