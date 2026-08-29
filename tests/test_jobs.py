@@ -683,35 +683,20 @@ def test_every_landed_long_running_verb_actually_exposes_the_builder_it_declares
     assert not missing, f"declared argv builders that do not exist: {missing}"
 
 
-def test_resolving_a_handler_key_imports_nothing(queue, cfg):
-    """KTD26: validation must not pull a feature module into the supervisor.
-
-    MEASURED AS A DIFFERENCE, and named ``acquire.download`` as its subject until
-    U42, exactly as the copy of this guard in ``tests/test_cli_contract.py`` did.
-    That verb was chosen because its module did not exist, so ``not in
-    sys.modules`` held for a reason unrelated to the property being asserted. The
-    day U42 landed ``cratekit.acquire.cli``, an earlier drive in the same session
-    imported it and BOTH copies failed on a lookup that had imported nothing.
-
-    One defect in two files is why this docstring repeats the other one: the fix
-    went into the conformance suite first and this copy was found by the full
-    battery rather than by looking, which is METHOD's implied fifth pattern, "a
-    fix round fixes the instance it was handed and reproduces the class one file
-    over". The population is walked here too, so neither copy has a hand-picked
-    subject left to expire.
-    """
-    from cratekit.cli import registry  # noqa: PLC0415
-
-    for entry in registry.entries():
-        if not entry.landed:
-            continue
-        before = set(sys.modules)
-        assert registry.by_handler_key(entry.handler_key) is entry
-        assert set(sys.modules) - before == set(), (
-            f"resolving {entry.handler_key!r} imported a module; the supervisor "
-            f"validates a queued job's handler before it spawns, so a lookup that "
-            f"imports pulls the feature module into the supervisor's own process"
-        )
+# THE HANDLER-KEY IMPORT PROPERTY LIVES IN tests/test_cli_contract.py NOW, and a
+# copy of it stood here until U42 removed this one. Both copies named
+# ``acquire.download`` as their subject and asserted its module was not in
+# ``sys.modules``, which held only because the module was unimplemented. When U42
+# landed it, both failed on the same day on a lookup that had imported nothing,
+# and the second copy was found by the full battery rather than by looking, which
+# is METHOD's implied fifth pattern.
+#
+# Restating it here as well would have put a second weak measurement beside the
+# real one: the property is about a CLEAN interpreter, which a test running late
+# in this suite cannot be, and a mutation table proved the in-process form empty.
+# What this file genuinely owes is the SUPERVISOR'S path, which the two tests
+# below already drive: an unknown handler and a verb that has not landed both
+# refuse before anything is imported.
 
 
 def test_a_job_queued_for_a_handler_this_build_does_not_register_refuses(queue, cfg):

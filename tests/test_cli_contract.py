@@ -34,6 +34,7 @@ import json
 import os
 import subprocess
 import sys
+import textwrap
 from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
@@ -1252,33 +1253,62 @@ ALL_ENTRIES = list(registry.entries())
 LANDED = [e for e in ALL_ENTRIES if e.landed]
 
 
-@pytest.mark.parametrize("entry", LANDED, ids=lambda e: e.name)
-def test_a_handler_key_resolves_without_importing_the_module(entry):
+def test_a_handler_key_resolves_without_importing_the_module():
     """KTD26: the engine validates a queued job's handler BEFORE spawning.
 
-    Validating by import would pull the module into the engine's own process,
-    which is exactly what the lazy-import scheme exists to prevent.
+    Validating by import would pull the feature module into the supervisor's own
+    process, which is exactly what the lazy-import scheme exists to prevent.
 
-    MEASURED AS A DIFFERENCE, and named ``acquire.download`` as its single
-    subject until U42. That verb was chosen because its module did not exist, so
-    ``not in sys.modules`` held for a reason that had nothing to do with the
-    property: the day the module landed, an earlier drive in the same session
-    imported it and the assertion failed on a lookup that had imported nothing.
-    A subject picked for being unimplemented is a subject that expires the day
-    somebody implements it.
+    MEASURED IN A CLEAN INTERPRETER, and this is the third shape of this test.
+    It named ``acquire.download`` as its single subject until U42, chosen because
+    its module did not exist, so ``not in sys.modules`` held for a reason that had
+    nothing to do with the property; the day the module landed, an earlier drive
+    in the same session imported it and the assertion failed on a lookup that had
+    imported nothing.
 
-    So the claim is stated as what it always meant, that the LOOKUP adds no
-    module, and it is walked over every landed verb rather than asserted about
-    one. Already-imported is then irrelevant, which is what makes this
-    order-independent, and the next verb is covered without this file being
-    edited (P3).
+    It was then restated in-process as a DIFFERENCE across every landed verb, and
+    a mutation table proved that version empty. Inserting a real
+    ``importlib.import_module`` into ``by_handler_key`` killed ZERO tests, subset
+    and promoted full suite alike, because by the time the suite reaches this
+    file the feature modules are already in ``sys.modules`` and importing a
+    cached module adds nothing to measure. A difference is only a measurement
+    where the thing could have differed.
+
+    So the property is measured where it is actually claimed: a fresh interpreter
+    that has imported the registry and NOTHING else, the state the supervisor is
+    genuinely in when it validates a queued job's handler. One subprocess covers
+    every landed verb, so no hand-picked subject remains to expire.
     """
-    before = set(sys.modules)
-    assert registry.by_handler_key(entry.handler_key) is entry
-    assert set(sys.modules) - before == set(), (
-        f"resolving the handler key {entry.handler_key!r} imported a module; the "
-        f"job engine validates a handler before it spawns, so a lookup that "
-        f"imports pulls the verb into the engine's own process"
+    probe = textwrap.dedent(
+        """
+        import json, sys
+        from cratekit.cli import registry
+
+        leaked = {}
+        for entry in registry.entries():
+            if not entry.landed:
+                continue
+            before = set(sys.modules)
+            assert registry.by_handler_key(entry.handler_key) is entry
+            added = sorted(m for m in set(sys.modules) - before if m.startswith("cratekit"))
+            if added:
+                leaked[entry.handler_key] = added
+        print(json.dumps({"leaked": leaked, "checked": len(registry.entries())}))
+        """
+    )
+    finished = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+    )
+    assert finished.returncode == 0, finished.stderr
+    result = json.loads(finished.stdout.strip().splitlines()[-1])
+    assert result["checked"] > 0, "the probe walked no entries, so it measured nothing"
+    assert result["leaked"] == {}, (
+        f"resolving a handler key imported a cratekit module: {result['leaked']}. "
+        f"The supervisor validates a queued job's handler before it spawns, so a "
+        f"lookup that imports pulls the feature module into its own process"
     )
 
 

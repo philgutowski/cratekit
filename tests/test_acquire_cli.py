@@ -322,14 +322,27 @@ def test_a_music_directory_that_does_not_exist_is_empty_rather_than_an_error(tmp
 
 
 def test_non_audio_files_are_not_reported(tmp_path):
-    """A music directory holds artwork, playlists and system files. None are findings."""
+    """A music directory holds artwork, playlists and system files. None are findings.
+
+    THE MARKED ARTWORK IS THE HALF THAT MATTERS, and the first version of this
+    test did not have it. Cover art is routinely named after the track it belongs
+    to, so ``Artist - Title [MP3].jpg`` sits beside ``Artist - Title [MP3].mp3``
+    in a real library. Without that file here, mutating ``classify``'s unknown
+    suffix from ``other`` to ``lossless`` killed NOTHING, promoted to the full
+    suite and still killed nothing: the three unmarked files below take the same
+    path either way, so the guard looked untested because the test never reached
+    it. With the marked one, the mutation reports a JPEG as a lossless file
+    wearing a lossy marker, which is a finding about a file that is not audio.
+    """
     root = tmp_path / "Music"
     root.mkdir()
     (root / "cover.jpg").write_bytes(b"x")
     (root / ".DS_Store").write_bytes(b"x")
     (root / "notes.txt").write_bytes(b"x")
+    (root / "Artist - Title [MP3].jpg").write_bytes(b"x")
 
-    assert _kinds(root, policy=LosslessPolicy.STRICT) == {}
+    for policy in LosslessPolicy:
+        assert _kinds(root, policy=policy) == {}, policy
 
 
 def test_a_directory_it_cannot_list_is_reported(tmp_path):
