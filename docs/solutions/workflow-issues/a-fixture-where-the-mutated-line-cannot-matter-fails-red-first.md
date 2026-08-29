@@ -441,9 +441,11 @@ otherwise have to catch it.
 - [Asserting an absence pins the observation and not the mechanism, so two implementations can both satisfy it](asserting-an-absence-pins-the-observation-and-not-the-mechanism.md).
   The nearest neighbour, and the doc that named this one's territory in advance
   without capturing it. It states the family in a sentence, "the assertion, the
-  fixture, or the observation window can each collapse the two trees onto one
-  outcome, and only the mechanism differs", and closes that paragraph with "This doc
-  is the assertion branch". This is the fixture branch. That passage also names the
+  fixture, or the guard's position to fail at all can each collapse the two trees
+  onto one outcome, and only the mechanism differs", and closes that paragraph with
+  "This doc is the assertion branch". This is the fixture branch. The third term
+  read "the observation window" when this doc was written and was renamed on
+  2026-08-29; the quote here follows the current sentence. That passage also names the
   two fixture instances that went uncaptured: U27's `adopt.apply` row `S3`, where the
   narrowed analysis watch still covered a grid file the fixture had written inside
   the narrowed root, fixed by moving the grid directly under the library root
@@ -463,11 +465,14 @@ otherwise have to catch it.
   than the code. This one says a closure is not trustworthy even when its expected
   value IS correctly decided, if the fixture cannot distinguish the two trees at all.
 
-  **Read these four as a set.** The table cannot tell a gap from an inert row
-  (2026-08-23), a dismissal of a zero is an unverified claim (2026-08-25), an
-  assertion that kills nothing may be correctly aimed and still not discriminate
-  (2026-08-26), and the fixture the assertion runs on may never reach the state where
-  the mutated line could matter (2026-08-27).
+  **The set this doc belongs to is listed there, and only there.** This copy of the
+  list was removed on 2026-08-29 after the two copies drifted, one saying three and
+  the other four, which is one list kept in two places doing exactly what this
+  directory documents lists doing. The canonical enumeration sits beside the
+  taxonomy sentence in
+  [asserting an absence pins the observation](asserting-an-absence-pins-the-observation-and-not-the-mechanism.md),
+  because that is the file a new branch's author already opens in order to quote
+  the taxonomy, so appending a member is one edit rather than N.
 - [Adding the first caller to an existing function makes you the owner of its unreviewed defects](adding-the-first-caller-makes-you-the-owner-of-its-unreviewed-defects.md).
   U43's other inheritance, and a pointer rather than a relationship. U43 was the
   first caller of `cratekit.modules.tools.setbuilder` anywhere in `src` and took on

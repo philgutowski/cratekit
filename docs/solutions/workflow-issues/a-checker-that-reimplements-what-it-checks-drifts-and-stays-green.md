@@ -182,7 +182,7 @@ building both presets and driving a verb one of them excludes.
 
 **Check what the repository already drives before you build a second model of
 it.** `tests/test_cli_contract.py` has driven every landed registry entry through
-the real dispatcher since long before U28, and `_sample_arguments` at `:1293`
+the real dispatcher since long before U28, and `_sample_arguments` at `:1349`
 already carried the answer to four of the five defective command shapes.
 
 **Keep the anti vacuity guard next to the checker, because a checker with nothing
@@ -286,8 +286,8 @@ verdict were never once compared, and a suite cannot compare them by getting
 bigger.
 
 THE CORRECT MODEL ALREADY EXISTED IN THE SAME TEST TREE, WRITTEN DOWN, AND THE
-SECOND MODEL DID NOT CONSULT IT. `tests/test_cli_contract.py:1441` through
-`:1443` give exactly the three verbs an export path:
+SECOND MODEL DID NOT CONSULT IT. `tests/test_cli_contract.py:1534` through
+`:1536` give exactly the three verbs an export path:
 
 ```python
         "audit.coverage": [str(library / "no-such-export.xml")],
@@ -295,10 +295,10 @@ SECOND MODEL DID NOT CONSULT IT. `tests/test_cli_contract.py:1441` through
         "report.library": [str(library / "no-such-export.xml")],
 ```
 
-`:1308` gives `run.show` a run identifier, and `_sample_arguments`'s own
-docstring at `:1293` opens "Enough POSITIONAL arguments to drive one verb". The
+`:1364` gives `run.show` a run identifier, and `_sample_arguments`'s own
+docstring at `:1349` opens "Enough POSITIONAL arguments to drive one verb". The
 fifth shape is in that file too. `test_conformance_1_structured_output_is_actually_emitted`
-at `:1278` builds its argv as
+at `:1334` builds its argv as
 
 ```python
     argv = ["--output", "json", *_sample_decisions(entry), *entry.path, *_sample_arguments(entry)]
@@ -361,7 +361,7 @@ credits it with, so neither weakens the finding.
 
 A THIRD CORRECTION, TO A LABEL RATHER THAN A NUMBER. The two "3"s in this
 project's vocabulary are different rules and this learning touches both, so do
-not let one stand in for the other. `docs/METHOD.md:161` pattern 3 is "a fix that
+not let one stand in for the other. `docs/METHOD.md:163` pattern 3 is "a fix that
 lands on the performing path instead of the checking path". Seam decisions Part 5
 P3 is "audit by walking, not by enumerating". This learning is neither, it is the
 judgment axis described in Guidance, and it is closest to P4 and P2.

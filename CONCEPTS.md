@@ -81,7 +81,7 @@ provider behind a declared contract, so a different tool can be substituted
 through configuration alone when a provider integration breaks. The contract
 exists because no third-party tool is guaranteed to keep working: an adapter
 promises an exhaustive, typed outcome at two scales rather than an exit code a
-caller has to interpret — per track, exactly one of acquired, permanently
+caller has to interpret, per track, exactly one of acquired, permanently
 unavailable, transiently unavailable, or refused by policy; per invocation,
 exactly one of ok, authentication failed, or broken.
 
@@ -338,6 +338,19 @@ what they believe they changed; a reviewer's reason for leaving a zero at zero i
 a draft in the same way, and independence from the code buys better measurements
 without buying better reasoning.
 
+There is a SIXTH cause, and unlike the fifth it does present as an ordinary zero.
+The row is not inert, an assertion for the property exists and is well aimed, and
+the fixture is capable of reaching the state. What is missing is that the guard was
+never in a POSITION to fail: either it names a subject the project has not built,
+so it passes on an absence the project is guaranteeing for it, or it compares a
+snapshot of state the running process already holds, so the mutation changes
+nothing the snapshot can see. It is told apart from the third and fourth by asking
+neither whether the assertion is well aimed nor whether the fixture can reach the
+state, but whether anything about the mutated tree could have reached the
+assertion differently. The remedies differ by which half applies and are set out
+under Guard's sixth axis, and the two are worth separating because restating such
+a guard as a difference repairs the first and does nothing whatever for the second.
+
 Every batch already contains one deliberate inert row, the null control, which the
 driver writes and which must kill nothing or the apparatus rather than the code is
 broken. It is the concept implemented and, until it was named here, never named.
@@ -347,6 +360,19 @@ not yet a zero and is promoted to a full run before it is reported. That promoti
 is what makes inertness expensive rather than merely misleading, since a row that
 could not have moved still costs a whole suite. Row counts are capped by the depth
 of the pass, and a truncation that nobody logged reads as coverage.
+
+### Composite
+The paired row a zero on a user facing guard owes: a second mutation aimed at the
+thing the guard protects, reported beside the zero, so the pair shows what the
+guard does hold rather than arguing it in prose.
+
+It exists because a zero and an explanation are not the same evidence. A guard
+whose removal kills nothing may still be load bearing, and the only way to say so
+in the table's own currency is to measure the neighbouring thing and show that it
+moves. A zero on a maintainer facing guard owes no composite, because such a row
+can never block on its own and the pair would buy documentation rather than a
+decision. The distinction between the two surfaces is therefore not cosmetic: it
+decides what a zero costs to leave standing.
 
 ### Pinned population
 A count the suite recomputes from the tree on every run and asserts as an exact

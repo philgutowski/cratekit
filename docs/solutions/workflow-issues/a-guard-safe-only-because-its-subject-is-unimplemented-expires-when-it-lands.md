@@ -469,24 +469,36 @@ is to keep them import free.
 
 ## Related
 
-**This is the observation window branch.**
+**This is the position-to-fail branch, and the name is a correction of this
+document's own first draft.**
 `docs/solutions/workflow-issues/asserting-an-absence-pins-the-observation-and-not-the-mechanism.md`
-states the family taxonomy at `:106` through `:110`, that "the assertion, the
-fixture, or the observation window can each collapse the two trees onto one
-outcome, and only the mechanism differs", and closes it with "This doc is the
-assertion branch".
+states the family taxonomy at `:108` through `:110`, and closes it with "This doc
+is the assertion branch".
 `docs/solutions/workflow-issues/a-fixture-where-the-mutated-line-cannot-matter-fails-red-first.md`
-answers at `:446` with "This is the fixture branch". The third branch was named in
-that sentence and never written. Stage two is it: the assertion was correct and
-the registry was the real one, and the interpreter had already imported everything
-the difference was measuring before the assertion ran.
+answers with "This is the fixture branch". The third term used to read "the
+observation window", and stage two is that: the assertion was correct and the
+registry was the real one, and the interpreter had already imported everything the
+difference was measuring before the assertion ran.
 
-**And the taxonomy needs a fourth collapser, which stage one is.** The SUBJECT can
-collapse the two trees on its own, and it is not a special case of the other
-three. The assertion was well formed, the fixture was the real registry, and the
-observation window was irrelevant, because the module the guard named did not
-exist. Nothing in the corpus covered a guard whose named subject is unimplemented
-before this.
+**Stage one is NOT a fourth collapser, and the first draft of this section said it
+was.** That draft argued the SUBJECT collapses the two trees on its own because
+the assertion was well formed, the fixture was the real registry, and the
+observation window was irrelevant. It contradicted this document's own Guidance
+two sections up, which says an absence assertion "is satisfied by every route to
+that absence, and 'the file was never written' is a route". That is the assertion
+branch, in this document's own words. Well formed and DISCRIMINATING are the two
+different things the assertion branch exists to separate, and stage one's
+assertion was the first without being the second.
+
+What is genuinely shared between the two stages is narrower and better named: in
+neither was the guard ever in a POSITION to fail. The taxonomy's third term was
+renamed to that on 2026-08-29 rather than growing a fourth, which also makes it
+agree with `CONCEPTS.md`'s Guard entry, whose sixth axis had arrived at the same
+carve independently and separates the two on the remedy: restating a guard as a
+difference repairs an unlanded subject and does nothing at all for warmed ambient
+state. Recorded here rather than quietly corrected, because a document arguing
+that a careful restatement can be as empty as the thing it replaced should show
+its own.
 
 - `docs/solutions/workflow-issues/asserting-an-absence-pins-the-observation-and-not-the-mechanism.md`
   is the nearest neighbour and the parent that named this territory in advance.
@@ -528,21 +540,24 @@ before this.
   could go red. This learning is the harder version, because there a guard could
   not be written and here one WAS written and still could not go red.
 
-  **That document needs a narrowing it has not yet received, and this paragraph
-  is deliberately not claiming otherwise.** Its lines 260 through 263 reassure the
+  **That document has now received the narrowing, applied by the 2026-08-29
+  refresh rather than by this capture.** Its lines 260 through 263 reassured the
   reader that a universal about CODE is the safe kind, because "falsifying it
   requires somebody to write an import, which is an act, which is reviewable, and
   which a guard can be written against". U42 is the counterexample, and it lands
   in that sentence's own register, since the example it reaches for is itself an
   import property. Here the guard WAS written, the act happened, the act was
   reviewable, and the guard stayed green, so the reassurance holds only where the
-  guard's subject exists. Writing that narrowing into the sibling is a
-  cross-document edit and belongs to a refresh rather than to this capture, so it
-  is recommended and not performed. An earlier draft of this paragraph stated that
-  the narrowing had been recorded there. It had not, and no text in that file
-  mentions this learning. That draft was an unbacked claim of a reciprocal edit,
-  which is the same defect this whole document is about, caught by a grounding
-  check rather than by re-reading.
+  guard's subject exists. The narrowing is now in that file, dated and pointing
+  back here.
+
+  The history is worth keeping. An earlier draft of this paragraph claimed the
+  narrowing had already been recorded there when no text in that file mentioned
+  this learning at all, which was an unbacked claim of a reciprocal edit and is the
+  same defect this whole document is about. A grounding check caught it, the
+  paragraph was rewritten to say the edit was recommended and not performed, and
+  the refresh then performed it. Three states, one paragraph, and only the middle
+  one was ever true.
 
 **The mechanism for this existed and was not used.** `tests/_pending.py` is the
 register built precisely for a guard whose subject has not landed yet, and neither

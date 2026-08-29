@@ -262,6 +262,26 @@ importable without the optional dependencies" is also a universal, but falsifyin
 it requires somebody to write an import, which is an act, which is reviewable, and
 which a guard can be written against.
 
+**NARROWED 2026-08-29, and the counterexample landed in this paragraph's own
+register.** The last clause is the reassuring half and it holds only where the
+guard's SUBJECT exists. U42 is the case that breaks it: a guard had been written
+against exactly this class of import property, the act happened, the act was
+reviewable, and the guard stayed green anyway, because the module it named had
+never been built and a module that does not exist is absent from `sys.modules`
+whatever any code does. So it passed for eleven units on a fact about what had not
+been written. Then the obvious repair, restating it as a difference over
+`sys.modules`, was ALSO green and ALSO empty, because by the time the suite
+reached it the interpreter had already imported everything the difference was
+measuring. Only a mutation table could see either. Read
+`docs/solutions/workflow-issues/a-guard-safe-only-because-its-subject-is-unimplemented-expires-when-it-lands.md`,
+which is that learning.
+
+The correction to make here is small and it is not "a guard cannot be written".
+It is that writing one is not the end of the question. A guard against a universal
+about code is only load bearing once its subject exists and once the process it
+runs in could still show the difference, and until both hold it is prose that
+happens to execute.
+
 **State the RULE rather than the census, or make the census checkable.** This is
 the fix and it generalizes. A census is a count at a moment. A rule is a
 disposition that stays true as the count changes.

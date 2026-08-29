@@ -164,7 +164,7 @@ The consequence is a specific misreading, and round one made it. `kills=0` on
 into whichever register the round writes to and points the next round at work
 that does not exist. It also hides the real work. The reason the row was inert is
 that `src/cratekit/modules/reports/duplicates.py:101` spells `HANDLER_KEY =
-"audit.duplicates"` and `src/cratekit/cli/registry.py:988` spells
+"audit.duplicates"` and `src/cratekit/cli/registry.py:1074` spells
 `handler_key="audit.duplicates"` on the entry named at `:984`, and nothing in the
 suite compared them. That drift is silent when it happens, because the review
 queue accepts items under any key and an item filed under a key no verb name
@@ -222,7 +222,7 @@ The new text, with the argument deleted:
 ```
 
 `ctx.entry` is the registry entry named `audit.duplicates`
-(`src/cratekit/cli/registry.py:984`), whose `handler_key` is the string
+(`src/cratekit/cli/registry.py:1070`), whose `handler_key` is the string
 `"audit.duplicates"` (`:988`). The callee is
 `src/cratekit/modules/reports/duplicates.py:310`, whose parameter is
 `handler_key: str = HANDLER_KEY` (`:315`), and `HANDLER_KEY` is the string

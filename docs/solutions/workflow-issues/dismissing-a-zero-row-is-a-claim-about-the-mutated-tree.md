@@ -172,7 +172,7 @@ is exactly plus four.
 
 The row that was dismissed was the one that loses data.
 
-`_spec_for` computes the lossy flag at `src/cratekit/write/naming_cli.py:80`:
+`_spec_for` computes the lossy flag at `src/cratekit/write/naming_cli.py:98`:
 
 ```python
         lossy=marker in path.stem or marker in title,
@@ -269,7 +269,7 @@ it. The dismissal was aimed at the destructive one.
 
 The reason neither row was pinned is worth stating plainly, because it is the
 shape that generalizes. The only shipped test touching that line,
-`tests/test_naming_apply_cli.py:133`
+`tests/test_naming_apply_cli.py:134`
 (`test_the_plan_and_the_apply_agree_on_a_marked_file`), puts the marker in BOTH
 operands at once:
 
@@ -345,7 +345,7 @@ saying it could not have one.
 in `2cb5d08` ("test(naming): pin the three branches the shipped fixtures never
 disagreed on") and `a73deab` ("test(naming): pin the marker's other operand, the
 one that loses data"), both reachable from `main` through the merge `31bf91f`.
-The test that closes `K2` is `tests/test_naming_apply_cli.py:230`:
+The test that closes `K2` is `tests/test_naming_apply_cli.py:350`:
 
 ```python
 def test_a_marker_in_the_filename_alone_is_not_stripped_off(configured):
@@ -366,7 +366,7 @@ and the reason it discriminates is that the mutated tree proposes a rename here
 while the original proposes nothing. An empty plan is a real assertion, not the
 absence of one, whenever a mutation can make the plan non empty.
 
-Its sibling at `tests/test_naming_apply_cli.py:218` closes `K1` from the other
+Its sibling at `tests/test_naming_apply_cli.py:338` closes `K1` from the other
 side, and its docstring names why the pair was needed at all: "the only other
 test of that ``or`` puts it in BOTH at once, so it cannot say which operand
 carries the case."
@@ -435,17 +435,17 @@ inference from the wrong tree.
   what a zero row becomes when it is accepted rather than closed.
 - `docs/u39-naming-review.md`, the independent review. Finding 1 at the "lossy
   marker's OR" section is the dismissal, scenario G at `:125` is where it is
-  stated, and the postscript at `:422` is the correction and the re-measurement.
+  stated, and the postscript at `:429` is the correction and the re-measurement.
 - `docs/mutation/u39-naming-independent.md`, the 22 row table: `K1` at `:452`,
   `K2` at `:477`, the summary at `:27` and `:28`, and the "Zero rows and what
   they owe" section at `:38`. `docs/mutation/u39-author-full.md` is the author's
   fourteen rows for contrast.
 - `src/cratekit/write/naming_cli.py:48`, `_spec_for` and its docstring, the
-  shared builder both passes now use, with the lossy expression at `:80`.
+  shared builder both passes now use, with the lossy expression at `:98`.
 - `src/cratekit/core/naming.py:328`, the stripper docstring on match keys;
   `:141`, `MARKED_FLAGS`; `:679`, `_render_markers` and the R21 refusal that
   makes marking mandatory.
-- `tests/test_naming_apply_cli.py:133`, the pre-existing test that set both
+- `tests/test_naming_apply_cli.py:134`, the pre-existing test that set both
   operands at once, and `:218` and `:230`, the pair that separated them.
 - Issue #57, the unit's brief. Merge commit `31bf91f`, "merge: the padded form
   at write time, and the head that survives a rename", with the tests in

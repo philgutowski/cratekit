@@ -105,9 +105,22 @@ genuinely differs, and the test's FIXTURE makes both trees observe the same thin
 grid file the fixture had written inside the narrowed root; and U39's naming
 fixtures, which used the same body on both surfaces and so hid a defect that
 would have stripped the artist from roughly 9,800 real files). The honest framing
-of the family is one sentence: **the assertion, the fixture, or the observation
-window can each collapse the two trees onto one outcome, and only the mechanism
-differs.** This doc is the assertion branch.
+of the family is one sentence: **the assertion, the fixture, or the guard's
+position to fail at all can each collapse the two trees onto one outcome, and only
+the mechanism differs.** The third covers both a guard whose named subject the
+project has not built yet and a guard measuring a difference over state the
+process already holds, since neither could have gone red whatever the code did.
+This doc is the assertion branch.
+
+The third term read "the observation window" until 2026-08-29. It was renamed
+because that phrase was never defined anywhere, so each new doc in the family
+renegotiated what it covered, and one of them concluded the unlanded subject
+needed a FOURTH collapser. It does not: an absence assertion is satisfied by every
+route to that absence and "the module was never built" is a route, which is this
+doc's own branch. What genuinely sits outside the first two is the question of
+whether the guard could have gone red at all, which is the shape `CONCEPTS.md`'s
+Guard entry arrived at independently as its sixth axis, and the rename adopts it
+so the corpus and the vocabulary file say one thing.
 
 ## Guidance
 
@@ -441,10 +454,23 @@ one you were thinking about.
   dismissed; here the row was correctly read as a real gap and the open question
   was why an assertion that looked like a guard was not one.
 
-  **Read these three as a set.** The table cannot tell a gap from an inert row
-  (2026-08-23), a dismissal of a zero is an unverified claim (2026-08-25), and an
-  assertion that kills nothing may be correctly aimed and still not discriminate
-  (2026-08-26).
+  **Read these six as a set, and this is the canonical list.** The table cannot
+  tell a gap from an inert row (2026-08-23), a dismissal of a zero is an unverified
+  claim (2026-08-25), an assertion that kills nothing may be correctly aimed and
+  still not discriminate (2026-08-26), the fixture the assertion runs on may never
+  reach the state where the mutated line could matter (2026-08-27), a fixture edited
+  to keep a suite green is not evidence the new guard is tested (2026-08-27), and
+  the guard may never have been in a position to fail, because its named subject
+  was never built or because the process already held what the difference was
+  measuring (2026-08-28).
+
+  THE LIST LIVES HERE AND NOWHERE ELSE, decided 2026-08-29. A second copy stood in
+  the fixture branch and the two had already drifted, one saying three and the other
+  four, because appending a member means editing every copy. One copy is one edit
+  per branch, in the file whose taxonomy sentence a new branch's author is already
+  opening in order to quote it. Adjacent but deliberately not a member:
+  [a checker that reimplements what it checks](a-checker-that-reimplements-what-it-checks-drifts-and-stays-green.md),
+  which is a guard that models its subject rather than a cause of a zero row.
 - [A count that moved by the right amount is not a measurement of what moved](a-count-that-moved-by-the-right-amount-is-not-a-measurement-of-what-moved.md).
   The same shape one register over. There a total that moved by the expected
   delta was taken as a measurement of which members moved, and a member leaving
