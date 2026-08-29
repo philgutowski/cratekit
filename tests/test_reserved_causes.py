@@ -4782,7 +4782,25 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # `setbuild-anchor-not-indexed`. All three are KEYS on this side, which is why
     # the non-key half does not move at all: the set builder's shell introduces no
     # cause-shaped literal that is not a declared cause.
-    assert (len(literals), len(literals - set(causes))) == (321, 187), (
+    # Re-pinned on U42, 2026-08-28: 321 to 326 distinct, 187 to 192 non-keys.
+    # FIVE literals joined and NOTHING left, differenced as SETS against
+    # `origin/main`'s own `src` tree extracted into a scratch directory rather
+    # than inferred from the total moving by five. Named: `lossy-under-strict`,
+    # `lossy-unmarked`, `marked-lossless`, `format-undecided` and
+    # `path-unreadable`, the five finding kinds the acquisition audit reports.
+    # None is a cause, which is why both halves move together by the same five.
+    #
+    # THIS PIN IS WHAT CAUGHT THE RENAME, and it is worth saying because the
+    # number is otherwise just a number. The audit's strict-policy kind was
+    # written as `lossy-refused` first, and that string is a declared CAUSE key
+    # raised by `intake.pipeline.acquire_lossy_or_refuse` for the same policy at
+    # acquisition time. So the first measurement here read four joined literals
+    # with one of them a key, which is the signature of a payload kind wearing a
+    # cause slug: one symbol meaning two things in two modules, which METHOD
+    # lists among the things a green suite cannot see. Nothing else in the
+    # battery noticed. It was renamed to `lossy-under-strict`, and the fifth
+    # literal appearing on the non-key side is the rename being visible.
+    assert (len(literals), len(literals - set(causes))) == (326, 192), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -4952,7 +4970,21 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # a symbol, and the seven slugs U44 added to core.cause.REASONS were already
     # in that module's own tree. A pin that watched the edited files rather than
     # the derived set would have expected a second module here.
-    assert (len(literal_holders), len(literal_both)) == (77, 15), (
+    # Re-pinned on U42, 2026-08-28: 77 to 78 holders. acquire/cli.py joined,
+    # naming config-unusable the way every other shell does. Differenced as SETS
+    # by repointing this module's PACKAGE_ROOT at origin/main's own src tree
+    # extracted into a scratch directory, the same way as every entry above:
+    # exactly one module joined and none left. The also-holds-an-integer half
+    # stays 15, measured rather than assumed, because the module holds no bare
+    # integer at all. The named halves did NOT move, staying at 21 and 8,
+    # because the one cause it names it names as a literal, so the comparison
+    # just below widened for the thirteenth time out of thirteen.
+    #
+    # The five finding kinds this module also adds are NOT causes and do not
+    # reach this population, which is the distinction the rename above is about:
+    # a module holding five cause-shaped literals that are not causes is exactly
+    # the shape this pin exists to make visible rather than absorb.
+    assert (len(literal_holders), len(literal_both)) == (78, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

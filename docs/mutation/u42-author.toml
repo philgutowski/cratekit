@@ -1,0 +1,161 @@
+name = "u42-author"
+pass_kind = "light"
+
+# U42, author's own table. METHOD is explicit that this is a DRAFT rather than a
+# result: every fix agent on this project has run its table honestly and still
+# missed guards its own round created, because it mutates what it believes it
+# changed. Scoped to this round's diff, which is one new module, one registry
+# edit, and one rewritten conformance guard.
+
+# ── the walk, and the finding this unit was held on ──────────────────────────
+
+[[rows]]
+id = "W1_onerror_hook"
+description = "Revert the walk to Path.rglob, which swallows the PermissionError"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_cli.py"]
+old = '''    for dirpath, _dirnames, filenames in os.walk(root, onerror=note):
+        here = Path(dirpath)
+        for name in filenames:
+            path = here / name'''
+new = '''    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        if True:'''
+
+[[rows]]
+id = "W2_unreadable_reported"
+description = "Collect the unreadable directories and then never report them"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    found += [_item(path, root, "path-unreadable") for path in unreadable]'''
+new = ""
+
+[[rows]]
+id = "W3_onerror_silent"
+description = "Keep os.walk but make the error hook a no-op, the half-fix"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''        unreadable.append(Path(exc.filename) if exc.filename else root)'''
+new = '''        return None'''
+
+# ── the classification ───────────────────────────────────────────────────────
+
+[[rows]]
+id = "C1_undecided_derived"
+description = "Empty the undecided remainder, so an MP4 container falls out as 'other'"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''UNDECIDED_EXTS: frozenset[str] = frozenset(naming.AUDIO_EXTS) - LOSSLESS_EXTS - LOSSY_EXTS'''
+new = '''UNDECIDED_EXTS: frozenset[str] = frozenset()'''
+
+[[rows]]
+id = "C2_unknown_defaults_lossless"
+description = "Classify an unrecognised suffix as lossless instead of 'other'"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    return "other"'''
+new = '''    return "lossless"'''
+
+[[rows]]
+id = "C3_strict_consults_the_marker"
+description = "Make strict behave like the permissive policy, admitting a marked lossy file"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''                if policy is LosslessPolicy.STRICT:
+                    found.append(_item(path, root, "lossy-under-strict"))
+                elif marker and not marked:'''
+new = '''                if policy is LosslessPolicy.STRICT and marker and not marked:
+                    found.append(_item(path, root, "lossy-under-strict"))
+                elif marker and not marked:'''
+
+[[rows]]
+id = "C4_marked_lossless_dropped"
+description = "Stop reporting a lossless file that wears the lossy marker"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''            elif marked:
+                found.append(_item(path, root, "marked-lossless"))'''
+new = '''            elif False:
+                found.append(_item(path, root, "marked-lossless"))'''
+
+[[rows]]
+id = "C5_empty_marker_matches_everything"
+description = "Drop the empty-marker guard, so '' in stem marks every file"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''            marked = bool(marker) and marker in path.stem'''
+new = '''            marked = marker in path.stem'''
+
+# ── the payload ──────────────────────────────────────────────────────────────
+
+[[rows]]
+id = "P1_unresolved_from_the_page"
+description = "Report zero outstanding regardless of what the walk found"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''            "unresolved": len(found),'''
+new = '''            "unresolved": 0,'''
+
+[[rows]]
+id = "P2_relative_path_leaks_the_root"
+description = "Report the absolute path, putting a real directory layout in the payload (R1)"
+file = "src/cratekit/acquire/cli.py"
+surface = "maintainer"
+old = '''        where = str(path.relative_to(root))'''
+new = '''        where = str(path)'''
+
+# ── the queued verb ──────────────────────────────────────────────────────────
+
+[[rows]]
+id = "Q1_argv_drops_the_job"
+description = "Resume argv without the job identifier, so the child queues a second job"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    return ["acquire", "download", wanted, "--job", job.job_id]'''
+new = '''    return ["acquire", "download", wanted]'''
+
+[[rows]]
+id = "Q2_payload_loses_the_list"
+description = "Freeze an empty list path, so the resumed worker acquires nothing"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''            payload={"list": str(ctx.args.list)},'''
+new = '''            payload={"list": ""},'''
+
+# ── the registry, and the conformance guard this round rewrote ───────────────
+
+[[rows]]
+id = "R1_planned_marker_returns"
+description = "Restore planned_in on acquire.download, which is the state that hid rows 6 and 7"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_acquire_cli.py", "tests/test_cutover_parity.py", "tests/test_cli_contract.py"]
+old = '''        doctor_checks=("credential.provider", "binary.ffmpeg"),
+        # U42 LANDED IT.'''
+new = '''        doctor_checks=("credential.provider", "binary.ffmpeg"),
+        planned_in="U15",
+        # U42 LANDED IT.'''
+
+[[rows]]
+id = "R2_handler_lookup_imports"
+description = "Make by_handler_key import the module, which is what the rewritten guard forbids"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''def by_handler_key(key: str) -> Entry:'''
+new = '''def by_handler_key(key: str) -> Entry:
+    import importlib
+
+    importlib.import_module("cratekit.acquire.cli")'''
+
+[[dropped]]
+id = "C6_lossless_exts_membership"
+description = "Move .wav from LOSSLESS_EXTS to LOSSY_EXTS"
+reason = "ranked below C1 and C2, which measure the same partition from the side that can fail silently; a membership swap is caught by the partition test in one line and buys no information the two rows above do not already carry"
+
+[[dropped]]
+id = "P3_queue_constant"
+description = "Change AUDIT_QUEUE to a different literal"
+reason = "maintainer surface with no consumer in this build; the constant exists so a later consumer can scope a set, and nothing yet reads it, so a zero here would document an absence rather than measure a guard"

@@ -1123,18 +1123,6 @@ def test_a_profile_that_switches_a_module_off_removes_its_verbs(configured):
     assert full.parse_args(["analyze", "demo"])._entry is entry
 
 
-def test_a_handler_key_resolves_without_importing_the_module():
-    """KTD26: the engine validates a queued job's handler BEFORE spawning.
-
-    Validating by import would pull the module into the engine's own process,
-    which is exactly what the lazy-import scheme exists to prevent.
-    """
-    target = registry.entry("acquire.download")
-    assert target.module not in sys.modules
-    assert registry.by_handler_key("acquire.download") is target
-    assert target.module not in sys.modules
-
-
 @pytest.mark.parametrize(
     "kwargs, expected",
     [
@@ -1264,6 +1252,36 @@ ALL_ENTRIES = list(registry.entries())
 LANDED = [e for e in ALL_ENTRIES if e.landed]
 
 
+@pytest.mark.parametrize("entry", LANDED, ids=lambda e: e.name)
+def test_a_handler_key_resolves_without_importing_the_module(entry):
+    """KTD26: the engine validates a queued job's handler BEFORE spawning.
+
+    Validating by import would pull the module into the engine's own process,
+    which is exactly what the lazy-import scheme exists to prevent.
+
+    MEASURED AS A DIFFERENCE, and named ``acquire.download`` as its single
+    subject until U42. That verb was chosen because its module did not exist, so
+    ``not in sys.modules`` held for a reason that had nothing to do with the
+    property: the day the module landed, an earlier drive in the same session
+    imported it and the assertion failed on a lookup that had imported nothing.
+    A subject picked for being unimplemented is a subject that expires the day
+    somebody implements it.
+
+    So the claim is stated as what it always meant, that the LOOKUP adds no
+    module, and it is walked over every landed verb rather than asserted about
+    one. Already-imported is then irrelevant, which is what makes this
+    order-independent, and the next verb is covered without this file being
+    edited (P3).
+    """
+    before = set(sys.modules)
+    assert registry.by_handler_key(entry.handler_key) is entry
+    assert set(sys.modules) - before == set(), (
+        f"resolving the handler key {entry.handler_key!r} imported a module; the "
+        f"job engine validates a handler before it spawns, so a lookup that "
+        f"imports pulls the verb into the engine's own process"
+    )
+
+
 @pytest.mark.parametrize("entry", ALL_ENTRIES, ids=lambda e: e.name)
 def test_conformance_1_structured_output(entry):
     if not entry.emits:
@@ -1352,6 +1370,17 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # real list and a real library is driven in tests/test_match_states.py,
         # which is where the fixtures for it live.
         "match.run": [str(library / "no-such-list.txt")],
+        # U42. Download takes a list under the CONFIGURED library, for the R1
+        # reason every file verb here gives, and it is deliberately absent. It
+        # still exits OK, and the difference from match.run beside it is the
+        # point: this verb QUEUES, and queueing freezes the path without reading
+        # it, so an absent list is refused by the worker that reads it rather
+        # than by the shell that files it. Audit takes no positional at all: an
+        # empty music directory is the state this fixture is genuinely in, and
+        # the verb must still emit a well-formed review set and exit OK rather
+        # than treating nothing to report as a failure.
+        "acquire.download": [str(library / "no-such-list.txt")],
+        "acquire.audit": [],
         # U23. The census takes no positional argument at all: a taxonomy
         # declares exactly one routing tree by stable identifier, so a flag
         # naming one would be a second opinion about a value the template
