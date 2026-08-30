@@ -47,7 +47,7 @@ import pytest
 from cratekit import cli
 from cratekit.backup import cli as backup_cli
 from cratekit.cli import registry
-from cratekit.core import backup_facts, config, jobs, profiles, session
+from cratekit.core import backup_facts, binaries, config, jobs, profiles, session
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.tools import backup
@@ -133,15 +133,30 @@ def rclone(monkeypatch, tmp_path) -> Path:
 
 @pytest.fixture
 def no_rclone(monkeypatch, tmp_path):
-    """A machine with no rclone at all, built rather than hoped for.
+    """A machine with no rclone at all, built rather than hoped for, and ASSERTED.
 
-    The override is pointed at a path that does not exist and PATH is emptied, so
-    the absence is a property of the fixture rather than of whoever is running the
-    suite. A test that merely assumed this laptop has no rclone would pass here
-    and report nothing on a machine that does.
+    THE MECHANISM IS THE PER-BINARY OVERRIDE AND NOT PATH, which is worth saying
+    because the first draft of this fixture emptied PATH as well and read as
+    though the two worked together. ``core.binaries.find`` reads the override
+    first and returns None for a set-but-broken one "rather than falling through
+    to PATH", so the override alone decides it. Emptying PATH would not have been
+    enough on its own either: ``find`` consults the fallback directories after
+    PATH, and a developer machine with rclone in one of them would have handed
+    the plan a real program while this fixture claimed there was none.
+
+    THE PRECONDITION IS ASSERTED RATHER THAN ASSUMED. That is the same discipline
+    ``tests/test_pending_units.py`` enforces by forbidding a constructed skip:
+    when a test needs a state the environment may not provide, assert it, so an
+    environment that cannot produce it reports rather than passes quietly. Here
+    the failure mode is specific and it is silent, since a run that found a real
+    rclone would build a real plan and the refusal under test would simply not
+    occur.
     """
     monkeypatch.setenv("CRATEKIT_BIN_RCLONE", str(tmp_path / "absent" / "rclone"))
-    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    assert binaries.find("rclone") is None, (
+        "rclone is still resolvable, so the refusal these tests drive would "
+        "never be reached and they would pass over a plan that was really built"
+    )
 
 
 def _entry() -> registry.Entry:
@@ -168,6 +183,25 @@ def _answering(returncode: int, *, stdout: str = "", stderr: str = ""):
         return backup.CommandResult(returncode=returncode, stdout=stdout, stderr=stderr)
 
     runner.seen = seen  # type: ignore[attr-defined]
+    return runner
+
+
+def _failing_on(label: str):
+    """A runner that fails only the commands carrying one label.
+
+    Selective rather than uniform, because a runner that fails everything cannot
+    produce the outcome that matters most here: one portion completing while the
+    other does not. The label is matched WHOLE against ``Command.label`` rather
+    than by substring, for the reason the engine gives for naming its labels as
+    constants at all, that two spellings of one label make the preview and the run
+    disagree about which command they are looking at.
+    """
+
+    def runner(command: backup.Command) -> backup.CommandResult:
+        if command.label == label:
+            return backup.CommandResult(returncode=1, stderr="connection refused")
+        return backup.CommandResult(returncode=0)
+
     return runner
 
 
@@ -722,3 +756,122 @@ def test_the_shell_never_writes_the_backup_fact_itself():
         "the walk found no call to ages either, so it is matching nothing and the "
         "assertion above is vacuous"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Round two: one test per user facing zero the round one table found
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Every test below exists because `docs/mutation/u45-round-1.md` reported a
+# guard this file did not hold. They are grouped rather than filed beside their
+# subjects so that the round is visible as a round: a later reader can see what
+# the author's own table could not kill, which is the number METHOD says an
+# author's table is actually for.
+
+
+def test_the_transfer_failure_says_no_age_was_published(cfg, rclone):
+    """The sentence, not only the slug, because the sentence is what a person acts on.
+
+    Round one row ``C7_failed_detail_dropped`` reworded this message and killed
+    nothing: every assertion in this file read the reason and none read what the
+    refusal actually told anybody. The message is the only place the run says the
+    fact file was left alone, which is the difference between "try again" and
+    "your library is not backed up and the tool knows it".
+
+    Asserted by MEANING rather than by quoting the sentence whole, so a rewording
+    that keeps the claim passes and one that drops the claim fails. Quoting it
+    whole would be a guard that forbids this wording rather than this promise.
+    """
+    with pytest.raises(CratekitError) as excinfo:
+        backup_cli.perform_backup(
+            {}, runner=_answering(1, stderr="connection refused"), now=MOMENT
+        )
+    message = excinfo.value.cause.message
+    assert "backup age" in message and "published" in message, message
+    assert "files" in message and "database" in message, (
+        f"the refusal does not say which portions failed: {message}"
+    )
+
+
+def test_the_report_carries_the_age_number_and_not_only_the_state(cfg, rclone):
+    """The number R15's warning quotes, which round one found nothing asserted.
+
+    Row ``A3_age_seconds_always_none`` replaced every reported age with None and
+    killed nothing: the acknowledgment drive asserts the seconds it reads back
+    through the session, and this file never asserted the same value on the verb's
+    OWN report. A report whose state says known and whose age is absent describes a
+    library nobody can say anything about the freshness of.
+
+    Driven at a moment an hour after the run rather than at the run's own instant,
+    because zero is the one value a broken implementation and a correct one agree
+    on, and the first draft of the guard above measured exactly that.
+    """
+    backup_cli.perform_backup({}, now=MOMENT)
+    later = backup_cli.published_ages(cfg, now=MOMENT + timedelta(hours=1))
+    assert [row["state"] for row in later] == ["known", "known"], later
+    assert all(row["age_seconds"] == 3600.0 for row in later), later
+    assert all(row["completed_at"] == MOMENT.isoformat() for row in later), later
+
+
+def test_a_resume_reports_the_queued_job_rather_than_filing_a_second(cfg):
+    """The ``--job`` branch, which round one found undriven.
+
+    Row ``H3_resume_branch_dropped`` made every invocation enqueue and killed
+    nothing, because every drive in this file queued a first backup and none
+    continued one. The cost is specific: the job engine respawns a queued verb as a
+    child carrying ``--job``, so a handler that always enqueues files a NEW backup
+    on every respawn, the queue grows without bound, and the original never
+    advances.
+
+    The store is counted as well as the identifier, because a handler that
+    enqueued a second job and then reported the first would satisfy the identifier
+    assertion alone.
+    """
+    code, first = _drive(["backup", "run"])
+    assert code == int(ExitCode.OK), first
+    job_id = first["data"]["job_id"]
+
+    code, second = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), second
+    assert second["data"]["job_id"] == job_id, (
+        "the resume filed a second backup rather than reporting the one queued"
+    )
+    with jobs.open_store() as store:
+        assert len(jobs.list_jobs(store)) == 1, (
+            "a second job exists, so every respawn of this verb would add another"
+        )
+
+
+def test_the_outcome_answers_not_ok_when_a_portion_failed(cfg, rclone):
+    """``BackupOutcome.ok``, which round one found nothing anywhere asserts as False.
+
+    Row ``E5_outcome_ok_widened`` changed the property from ``all`` to ``any`` and
+    killed nothing. This file asserts ``report["ok"] is True`` twice and never the
+    other value, and the reason it cannot is worth stating rather than working
+    around: :func:`refusal_for` raises whenever a portion failed, which is exactly
+    the condition that makes ``ok`` false, so no report this shell can emit ever
+    carries ``ok: false``. That is recorded as a residual.
+
+    So the property is driven where it is reachable, on the ENGINE's own return
+    value, which this unit is the first caller of. Both directions, because ``all``
+    and ``any`` agree on every outcome where nothing failed.
+    """
+    plan = backup.plan_backup(cfg, now=MOMENT)
+
+    both_fine = backup.run_backup(
+        cfg, plan, runner=_answering(0), now=MOMENT, publish=False
+    )
+    assert both_fine.ok is True, both_fine
+
+    one_failed = backup.run_backup(
+        cfg,
+        plan,
+        runner=_failing_on(backup.SNAPSHOT_DATABASE),
+        now=MOMENT,
+        publish=False,
+    )
+    assert one_failed.ok is False, (
+        "a portion whose transfer came back non zero left the outcome reporting ok, "
+        "so any caller deciding on that field would report a failed backup as done"
+    )
+    assert [p.ran for p in one_failed.portions] == [True, False], one_failed
