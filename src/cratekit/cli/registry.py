@@ -1514,7 +1514,22 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"job_state"}),
         output_schema="job_state/1",
         doctor_checks=("library.mounted", "binary.rclone"),
-        planned_in="U35",
+        # U45 LANDED IT. ``cratekit.backup.cli`` ships the shell over the engine
+        # U35 landed, so the marker is gone and the conformance properties drive
+        # this entry rather than skipping it.
+        #
+        # WHY THE MARKER OUTLIVED THE UNIT IT NAMED. U35 landed the ENGINE and no
+        # shell, and this entry went on naming a closed issue, so the board showed
+        # nothing owed while row 31 sat uncovered. That is the same shape the
+        # acquisition rows sat in until U42, and it is why ``planned_in`` is
+        # reconciled against ``tests/_pending.PENDING`` rather than trusted.
+        #
+        # IT DECLARES NO GATE, and that is argued in the shell's own docstring
+        # rather than here: the run adds a mirror and a dated archive, replaces
+        # nothing a person kept, and writes no database row, so ``writes`` stays
+        # empty and the verb is not destructive. ``long_running`` binds
+        # ``backup_argv``, and that builder carries no ``--run`` precisely because
+        # there is no gate whose decision would need a run to name.
     ),
     Entry(
         name="skills.install",

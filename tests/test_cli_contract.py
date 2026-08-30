@@ -1504,6 +1504,18 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # is driven in tests/test_master_cli.py, on the work path where a person
         # meets it.
         "master": [str(library / "Music" / "no-such-recording.wav")],
+        # U45. No positional argument at all: the whole plan comes off the
+        # configured destinations, so a flag naming one would be a second opinion
+        # about a value the wizard already recorded. It exits OK on this fixture,
+        # which has no rclone binary and no backup remote, and that is the point
+        # rather than an accident: the verb QUEUES, and queueing resolves no
+        # binary, reads no process table and stats no volume. A plan built in this
+        # handler would refuse here on a machine where the work would have run
+        # fine once claimed, and the entry's two doctor checks are what tell a
+        # person about rclone and the volume before they type the verb. The
+        # refusals over a missing rclone and over a failed transfer are driven in
+        # tests/test_backup_cli.py, on the work path where a person meets them.
+        "backup.run": [],
         "name.apply": [],
         "repair.paths": [],
         # U25. Folder verbs take a path under the configured library. Calibrate

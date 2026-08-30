@@ -319,7 +319,12 @@ still live on main.
 
 **U29 is on this list for a reason that will not expire, so it is stated rather
 than left as a name.** Its six other blockers are closed and U28 closes the last,
-so the board will show it Ready. It is still not an agent's unit and no amount of
+so the board will show it Ready. **U45 cleared row 31, the last owed Feature
+Inventory row without a landed verb, so the cutover backlog is now EMPTY and the
+cutover is mechanically possible.** That changes nothing here.
+`tests/test_cutover_parity.py` flipped its headline assertion on that merge and
+its new one says the same thing in the other direction: mechanically possible is
+not done. It is still not an agent's unit and no amount of
 building makes it one: its own brief says "attended per workflow, do not batch
 cutovers", and it requires each replacement to run correctly ON THE LIVE LIBRARY
 at least once. The live rekordbox database is off limits by standing constraint,

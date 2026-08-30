@@ -253,20 +253,41 @@ def test_the_backlog_is_every_owed_row_without_a_landed_verb():
     )
 
 
-def test_the_cutover_is_not_yet_possible_and_says_why():
-    """The headline U29 answers, asserted so it cannot be assumed either way.
+def test_the_cutover_is_mechanically_possible_and_says_what_is_left():
+    """The headline U29 answers, and it FLIPPED on U45, 2026-08-29.
 
-    When this test starts failing, every owed inventory row has a landed verb and
-    the cutover is mechanically possible. It is still attended, and it still has
-    to be run against the live library one workflow at a time, which is a person's
-    job.
+    This test used to assert the opposite, and its own docstring named the day it
+    would fail: "when this test starts failing, every owed inventory row has a
+    landed verb". It failed on the U45 branch, which landed the backup shell and
+    cleared row 31, the last owed row with no landed verb. The assertion was
+    turned around rather than deleted, because the property is still worth
+    holding in the other direction: a row that later loses its verb, or a
+    disposition that changes to an owed one, has to reopen the backlog loudly.
+
+    ANTI-VACUITY IS THE WHOLE DIFFICULTY NOW, and it was not before. An empty
+    backlog is what completion looks like, and it is also what a broken derivation
+    looks like: an ``OWED`` set that stopped matching any disposition spelling, or
+    a covering map that claimed every row, produces an empty dict just as readily.
+    So the emptiness is never asserted alone. It is asserted beside the two
+    populations it is a statement about, and neither of those may be empty.
+
+    WHAT THIS PASSING DOES NOT SETTLE. Mechanically possible is not done. U29 is
+    attended, one workflow at a time, against the live library, which is a
+    person's job and not an agent's for a reason that does not expire.
+    ``docs/METHOD.md``'s do-not-touch note is where that is argued.
     """
-    assert backlog(), (
-        "every owed Feature Inventory row now has a landed verb. The cutover is "
-        "mechanically possible: U29's remaining work is attended, one workflow at "
-        "a time, against the live library. Update docs/METHOD.md's do-not-touch "
-        "note, which explains why U29 is not an agent's unit."
+    owed = {row for row, disposition in dispositions().items() if disposition in OWED}
+    covered = covering_verbs()
+    assert owed, (
+        "no inventory row is owed at all, so an empty backlog is a statement "
+        "about nothing; the OWED spellings no longer match any disposition"
     )
+    assert covered, "no row has a landed verb, so the covering map derived nothing"
+    assert backlog() == {}, (
+        f"these owed rows still have no landed verb, so the cutover is not "
+        f"mechanically possible: {sorted(backlog())}"
+    )
+    assert owed <= set(covered), sorted(owed - set(covered))
 
 
 def test_the_parity_table_renders_for_a_person():
@@ -288,4 +309,25 @@ def test_the_parity_table_renders_for_a_person():
         lines.append(f"{number:3d}  {disposition[number]:9}  {rows[number][:40]:40}  {state}")
     rendered = "\n".join(lines)
     assert rendered.count("\n") + 1 == len(rows)
-    assert "AWAITING" in rendered, "the backlog is empty, see the test above"
+    # Re-pointed on U45, 2026-08-29. This asserted "AWAITING" was PRESENT, which
+    # was the render-side statement of the backlog being non-empty. Row 31 was the
+    # last one, so the marker is now absent and the assertion is the other way
+    # round. NO COVERING VERB is asserted separately rather than folded in: the
+    # two states are different failures, one being a row whose verb is declared
+    # and not landed and the other a row nothing declares at all, and only the
+    # second of those means an inventory row that no unit owns.
+    assert "AWAITING" not in rendered, (
+        "an owed row's verb is declared and not landed, so the cutover backlog is "
+        "no longer empty; see the test above"
+    )
+    assert "NO COVERING VERB" not in rendered, (
+        "an owed inventory row is cited by no verb at all, so no unit owns it"
+    )
+    # Every owed row names a verb rather than a marker, which is the same claim
+    # taken off the RENDER rather than off the derivation the two assertions above
+    # share with it. A render built from a stale copy of either map would satisfy
+    # them and still print a table that does not describe this build.
+    for number, disposition in sorted(dispositions().items()):
+        if disposition in OWED:
+            assert sorted(covered.get(number, [])), number
+            assert ", ".join(sorted(covered[number])) in rendered, number

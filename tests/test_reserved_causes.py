@@ -4710,7 +4710,24 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # export-playlist-unknown and tag-retag-folder-unknown are not, so the
     # reserved half does not move. Population 132 to 135, non-reserved 108 to
     # 111, reserved half UNCHANGED at 24.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (135, 111, 24)
+    #
+    # Re-pinned on U45, 2026-08-29. TWO slugs, named rather than counted:
+    # backup-transfer-failed and backup-nothing-ran, which are the backup shell's
+    # whole-run verdict over the engine's per-portion report. Measured by
+    # differencing this branch's declared_causes against the one derived from
+    # origin/main's own tree in a scratch worktree, rather than by subtracting one
+    # total from another: exactly two joined, none left. Neither is in the
+    # reserved table, exactly as their siblings export-playlist-unknown,
+    # tag-retag-folder-unknown and the three setbuild-anchor slugs are not, so the
+    # reserved half does not move. Population 135 to 137, non-reserved 111 to 113,
+    # reserved half UNCHANGED at 24.
+    #
+    # WHY NEITHER JOINS THE ENGINE'S Refusal ENUM, since eight backup slugs are
+    # there already. Every member of that enum is a reason ONE PORTION will not
+    # run, decided before anything is attempted, and run_backup reports those per
+    # portion rather than raising. These two are the whole run's verdict over that
+    # report, which is a command line's decision rather than an engine's.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (137, 113, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4800,7 +4817,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # lists among the things a green suite cannot see. Nothing else in the
     # battery noticed. It was renamed to `lossy-under-strict`, and the fifth
     # literal appearing on the non-key side is the rename being visible.
-    assert (len(literals), len(literals - set(causes))) == (326, 192), (
+    # Re-pinned on U45, 2026-08-29: 326 to 328 distinct, non-keys UNCHANGED at
+    # 192. TWO literals joined and NOTHING left, differenced as SETS against
+    # `origin/main`'s own `src` tree extracted into a scratch worktree rather than
+    # inferred from the total moving by two. Named: `backup-transfer-failed` and
+    # `backup-nothing-ran`. Both are KEYS on this side, which is why the non-key
+    # half does not move at all: the backup shell introduces no cause-shaped
+    # literal that is not a declared cause. The two ways it names an EXISTING
+    # cause, `backup-facts-unreadable` and `config-unusable`, were already
+    # literals in the tree, in `core/session.py` and in every other shell, so the
+    # distinct total does not see them either.
+    assert (len(literals), len(literals - set(causes))) == (328, 192), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -4984,7 +5011,26 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # reach this population, which is the distinction the rename above is about:
     # a module holding five cause-shaped literals that are not causes is exactly
     # the shape this pin exists to make visible rather than absorb.
-    assert (len(literal_holders), len(literal_both)) == (78, 15), (
+    # Re-pinned on U45, 2026-08-29: 78 to 79 holders. backup/cli.py joined,
+    # naming config-unusable the way every other shell does plus the three
+    # backup-prefixed slugs it raises. Differenced as SETS by repointing this
+    # module's PACKAGE_ROOT at origin/main's own src tree extracted into a scratch
+    # worktree, the same way as every entry above: exactly one module joined and
+    # none left. The also-holds-an-integer half stays 15, measured by differencing
+    # that set too rather than assumed, because the module holds no bare integer
+    # at all. The named halves did NOT move, staying at 21 and 8, and that was
+    # measured rather than inferred: both causes the shell declares it names as
+    # literals, and the engine refusals it re-raises travel through
+    # ``str(exc.refusal)``, which resolves to a Refusal member and not to a
+    # declared cause name. So the comparison just below widened for the
+    # fourteenth time out of fourteen.
+    #
+    # modules/tools/backup.py is NOT in the set and did not join it despite this
+    # unit becoming its first caller: it declares its refusals as enum members
+    # reached through a symbol, and this unit edits none of them. A pin that
+    # watched the touched files rather than the derived set would have expected a
+    # second module here.
+    assert (len(literal_holders), len(literal_both)) == (79, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
