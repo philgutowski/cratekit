@@ -1,7 +1,8 @@
 # Restart: Cratekit
 
 **Last session 2026-08-29.** U45 merged and pushed. Board audit exit 0, **45
-units, 44 done, 1 blocked**. **The pending register is EMPTY.**
+units, 44 done, 1 READY, 0 blocked**, and the one that is Ready is the one you
+must not take. **The pending register is EMPTY.**
 
 **THE CUTOVER BACKLOG IS EMPTY AND THE CUTOVER IS MECHANICALLY POSSIBLE.** U45
 cleared Feature Inventory row 31, the last owed row without a landed verb.
