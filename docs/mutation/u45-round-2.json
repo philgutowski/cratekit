@@ -1,0 +1,161 @@
+{
+  "name": "u45-round-2",
+  "pass_kind": "full",
+  "branch": "unit/u45-the-backup-run-shell-and-the-age-the-wri",
+  "head": "2548aca",
+  "when": "2026-08-30 03:07 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 6441,
+  "baseline_exit": 0,
+  "pytest_runs": 8,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/backup/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/backup/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d0e3df3c44e5ca83",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 6441,
+    "baseline_collected": 6441,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C7_failed_detail_dropped",
+      "description": "Reword the transfer-failed message so it no longer says a destructive session still sees the previous age",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a788772c8e99f22a",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.backup.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 25,
+      "baseline_collected": 25,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_the_transfer_failure_says_no_age_was_published"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            + \". No backup age was published for that portion, so a destructive \"\n            \"session still sees whatever the last successful run left\",",
+      "new": "            + \". The run stopped there.\","
+    },
+    {
+      "id": "A3_age_seconds_always_none",
+      "description": "Report no age number even for a known portion, so the value R15's warning quotes never reaches the report",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cb002e212279cbc4",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.backup.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 25,
+      "baseline_collected": 25,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_the_report_carries_the_age_number_and_not_only_the_state"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"age_seconds\": entry.age.total_seconds() if entry.age is not None else None,",
+      "new": "            \"age_seconds\": None,"
+    },
+    {
+      "id": "H3_resume_branch_dropped",
+      "description": "Always enqueue, so --job files a second backup rather than reporting the one already queued",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8f6405ed2772b769",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.backup.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 25,
+      "baseline_collected": 25,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_resume_reports_the_queued_job_rather_than_filing_a_second"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if ctx.args.job:\n            return ctx.envelope(data=_reported(store, jobs.reconcile(store, ctx.args.job)))",
+      "new": "        if False:\n            return ctx.envelope(data=_reported(store, jobs.reconcile(store, ctx.args.job)))"
+    },
+    {
+      "id": "E5_outcome_ok_widened",
+      "description": "Answer ok when ANY portion is fine rather than all of them",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "edf90599fb529108",
+      "subset": [
+        "tests/modules/test_tools.py",
+        "tests/test_backup_cli.py",
+        "tests/test_process_guard.py",
+        "tests/test_restore.py",
+        "tests/test_restore_cli.py",
+        "tests/test_write_session.py"
+      ],
+      "subset_reason": "test files importing cratekit.modules.tools.backup",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 412,
+      "baseline_collected": 412,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_the_outcome_answers_not_ok_when_a_portion_failed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return all(p.refusal is not None or p.ran for p in self.portions)",
+      "new": "        return any(p.refusal is not None or p.ran for p in self.portions)"
+    }
+  ],
+  "dropped": []
+}

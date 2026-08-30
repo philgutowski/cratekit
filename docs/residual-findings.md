@@ -10121,3 +10121,116 @@ quietly.
 
 **Closes when:** either the flag is consulted by the code that opens a session,
 or the message stops claiming that it is.
+
+---
+
+## R-200. A failed archive prune reaches no report, so dated folders can accumulate with nothing saying so
+
+**Found:** during U45, 2026-08-29, while becoming the first caller of
+`run_backup` in `src` and asking what its returned `PortionOutcome.results`
+carries that the shell does not read.
+
+`run_backup` reads every return code that DECIDES a portion: each transferring
+command's result is compared against zero and the portion stops on the first non
+zero, which is what `ran` then reports. The archive prune is the one class it
+deliberately does not fail on, and `_prune_archive`'s docstring argues that
+correctly: by the time it runs, the mirror in the same portion has completed, so
+the backup the person asked for exists, and a stale folder using remote space is
+a smaller problem than reporting a completed backup as failed and having them run
+the whole transfer again.
+
+What that argument does not cover is REPORTING. `run_backup`'s prune branch does
+`results += _prune_archive(...)` and then `continue`, so the listing's return code
+is never compared to anything, and `_prune_archive` returns early on a failed
+listing having pruned nothing. The results are carried on `PortionOutcome.results`
+and `outcome_payload` does not render them, so `cratekit.backup.cli` has nothing
+to report even if it read them. A person whose remote refuses `lsf` gets a
+successful backup and a fresh published age, both of which are true, and no
+indication that the rotation has stopped. Dated archive folders then accumulate
+for as long as the condition lasts.
+
+**Why it was not fixed here.** Failing the portion from the shell would overrule
+the engine's decision from the wrong layer, which is METHOD's pattern 3 inverted.
+Reporting it needs a new key in `outcome_payload`, and that payload belongs to
+`cratekit.modules.tools.backup` rather than to this unit's shell. The shell
+records why it drops `results` in a comment at the call site instead, which is
+what the first-caller learning asks of a returned value nobody inspects.
+
+**Cost, stated rather than measured:** unbounded remote storage growth with no
+signal. NOT DRIVEN, and this line is the measurement discipline rather than
+modesty: driving it means an rclone stand-in that fails `lsf` and succeeds at
+`sync`, and the finding is about the absence of a report rather than about a
+behaviour a drive would show.
+
+**Closes when:** `outcome_payload` carries the prune's outcome per portion, or
+`run_backup` reads the listing's return code and records a warning the shell can
+render.
+
+---
+
+## R-201. The destructive session fixes the unreadable-fact remedy at repair, discarding the permission answer the exception carries
+
+**Found:** during U45, 2026-08-29, while writing `published_ages` and reading
+`core.session._shown_ages` beside it to make sure both answer from one source.
+
+`backup_facts.Remedy` declares THREE members, and its own docstring says why the
+third exists: "a file this account may not open and a file whose contents are
+damaged are two conditions with opposite fixes, and one token over both told a
+user to repair or reset the record of when their music was last protected in
+order to fix a permission". `read_facts` raises `GRANT_PATH_ACCESS` for a
+permission error and `REPAIR_BACKUP_FACTS` for a damaged one, and it distinguishes
+them at the raise site.
+
+Three consumers read that exception. `cli/doctor.py:1600` carries the remedy
+through with `Remedy(str(exc.remedy))`. `cratekit.backup.cli.published_ages`, new
+in this unit, does the same. `core/session.py:1046` does not: it writes
+`remedy=Remedy.REPAIR_BACKUP_FACTS` unconditionally, so a person whose
+configuration directory this account cannot traverse is told to repair or reset a
+file that is very likely intact, in the refusal standing immediately before the
+riskiest operation in the product.
+
+**Why it was not fixed here.** This unit is not the first caller of anything on
+that path: `session` and `doctor` both read `backup_facts` on `main`, so the
+finding does not become reachable because of this branch and the merge bar's third
+condition does not turn it into a blocker. It is a one line change in `core` on a
+branch whose diff is otherwise a new package, and folding it in would put a core
+session edit inside a commit nobody would look for it in.
+
+**Closes when:** `core/session.py`'s `_shown_ages` carries `exc.remedy` the way
+its two sibling consumers already do.
+
+---
+
+## R-202. `BackupOutcome.ok` can only ever be true in a report the backup shell emits
+
+**Found:** during U45, 2026-08-29, while closing mutation row `E5_outcome_ok_widened`,
+which widened the property from `all` to `any` and killed zero tests.
+
+`outcome_payload` renders `ok` into the payload `cratekit.backup.cli.perform_backup`
+returns, and `perform_backup` calls `refusal_for` before building that payload.
+`refusal_for` raises whenever any portion has `ran=False` with no refusal on it,
+which is exactly and only the condition that makes `BackupOutcome.ok` false: `ok`
+is `all(p.refusal is not None or p.ran ...)`, so a portion that refused satisfies
+it and a portion that ran satisfies it, leaving the failed portion as the sole
+falsifier. Every report that survives to be returned therefore carries `ok: true`,
+and a consumer reading that field learns nothing it did not already learn from the
+call not raising.
+
+**Why it was not fixed here.** Two remedies and neither is this unit's. Dropping
+the key means editing `outcome_payload`, which is the ENGINE's report shape and is
+also rendered by nothing else today, so removing it is a change to a public payload
+made from a shell. Reporting a partial run as `ok: false` instead of refusing means
+reversing `refusal_for`'s decision, and that decision is argued: a person told a
+backup succeeded stops looking, so a failed portion earns an exit code rather than
+a field.
+
+**What it is NOT.** Not a wrong value. Every `ok: true` this shell emits is true.
+The finding is that the field is not load bearing, so a reader who trusts it as
+the run's verdict is trusting the exit code twice.
+
+**Cost:** a consumer that branches on `data["ok"]` rather than on the exit status
+has a branch that never runs, and would keep passing if the classifier broke.
+Driven only as the mutation row: nothing in `src` or `tests` reads the field.
+
+**Closes when:** either the key leaves `outcome_payload`, or something reachable
+can produce a report carrying `ok: false`.

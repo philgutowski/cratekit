@@ -1295,6 +1295,30 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "archive-verify-failed": ExitCode.PRECONDITION,
         "encoder-missing": ExitCode.PRECONDITION,
         "encoder-failed": ExitCode.PRECONDITION,
+        # ── U45's refusals, appended for the reason every block above gives ────
+        #
+        # THE BACKUP SHELL'S TWO, and neither belongs in the engine's ``Refusal``
+        # enum. Every member of that enum is a reason ONE PORTION will not run,
+        # decided before anything is attempted, and ``run_backup`` reports those
+        # per portion rather than raising because a mirror that completed while
+        # the database was skipped is a successful mirror. These two are the
+        # opposite altitude: they are the WHOLE RUN's verdict over that per
+        # portion report, which is a command line's decision rather than an
+        # engine's, and the layer that owns an exit code is the layer that owns
+        # them. ``cratekit.backup.cli.refusal_for`` is the only raise site.
+        #
+        # PRECONDITION for both, on the same judgement
+        # ``restore-transfer-failed`` above is given: a remote that was reachable
+        # enough to plan against and then was not is not a defect in this
+        # program, and neither is a machine that has not been set up yet.
+        "backup-transfer-failed": ExitCode.PRECONDITION,
+        # NOT reserved in ``cli/exit_codes.py``, deliberately, and the same is
+        # true of the entry above. The eight backup slugs that ARE reserved there
+        # are the engine's enum members, and the reservation table is where a
+        # module's own declared vocabulary is pinned to a code. A shell refusal
+        # belongs here alone, exactly as ``export-playlist-unknown``,
+        # ``tag-retag-folder-unknown`` and the three ``setbuild-anchor`` slugs do.
+        "backup-nothing-ran": ExitCode.PRECONDITION,
     }
 )
 
