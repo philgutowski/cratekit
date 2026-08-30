@@ -144,7 +144,7 @@ and to assert the fixture's own precondition inside the test, so a fixture that
 later shrinks below the bound it was sized for reports instead of passing.
 
 A sixth axis is whether the guard was ever in a POSITION to fail, and it is the
-one the five above can all be satisfied while missing. Two things put a guard
+one the five above can all be satisfied while missing. Three things put a guard
 outside that position. The first is a subject that does not exist: a guard naming
 a thing the project has not built yet asserts something about an absence the
 project is guaranteeing for it, so it passes on a fact about what has not been
@@ -153,10 +153,21 @@ day that thing lands. The second is ambient state the process already holds. A
 guard that compares a snapshot before an action against a snapshot after it can
 only distinguish anything if the action could still change that state, and a
 process wide cache which everything running earlier has already filled cannot
-change again. Restating such a guard as a difference is the natural repair for
-the first problem and no repair at all for the second, so the two are worth
-separating: a difference is a measurement only where the thing could have
-differed.
+change again. The third is a second, correct guard standing between the entry
+point under test and the value, deciding the identical condition the value
+depends on. Unlike the first two, this cause is POSITIONAL rather than global:
+the value can still differ somewhere in the system, just not from the entry
+point being driven, because the intervening guard has already turned every
+input that would separate the two outcomes into an early exit before the value
+is ever computed from it. The tell is the same condition appearing twice in one
+call path, once as a raise-or-continue decision and once as a value read
+downstream of it; reading the two side by side, rather than assuming a guard and
+a value it precedes are unrelated concerns, is what surfaces it. Restating such
+a guard as a difference is the natural repair for the first problem and no
+repair at all for the second or third, so all three are worth separating: a
+difference is a measurement only where the thing could have differed, and an
+entry point is a measurement only where the intervening guard has not already
+decided it.
 
 The remedy differs by which one applies. A named subject that has not landed
 either goes in the pending register, where it is a countdown, or is replaced by a
@@ -165,7 +176,11 @@ Ambient state is answered by moving the measurement into the state the claim is
 actually about, which usually means a fresh process rather than one the suite has
 already warmed, because the state a claim describes and the state a suite runs in
 are different worlds and an assertion evaluated in the second is not evidence
-about the first.
+about the first. A positional foreclosure is answered by moving the measurement
+to an entry point below the intervening guard, where the excluded input space is
+still reachable; when no such entry point exists anywhere in the tree, the value
+is unreachable-as-false everywhere the guard runs, which is a finding about the
+design rather than a gap in the guard, and is recorded rather than chased.
 
 When such a guard offers remedies for its own failure, the remedies are driven
 rather than reasoned about, and a remedy that makes the guard report MORE is
@@ -341,15 +356,21 @@ without buying better reasoning.
 There is a SIXTH cause, and unlike the fifth it does present as an ordinary zero.
 The row is not inert, an assertion for the property exists and is well aimed, and
 the fixture is capable of reaching the state. What is missing is that the guard was
-never in a POSITION to fail: either it names a subject the project has not built,
-so it passes on an absence the project is guaranteeing for it, or it compares a
-snapshot of state the running process already holds, so the mutation changes
-nothing the snapshot can see. It is told apart from the third and fourth by asking
-neither whether the assertion is well aimed nor whether the fixture can reach the
-state, but whether anything about the mutated tree could have reached the
-assertion differently. The remedies differ by which half applies and are set out
-under Guard's sixth axis, and the two are worth separating because restating such
-a guard as a difference repairs the first and does nothing whatever for the second.
+never in a POSITION to fail: it names a subject the project has not built, so it
+passes on an absence the project is guaranteeing for it; it compares a snapshot of
+state the running process already holds, so the mutation changes nothing the
+snapshot can see; or a second, correct guard standing earlier in the same call
+path already decides the identical condition, so the entry point under test can
+never carry the input that would separate the two trees, even though the value
+could still differ from a different entry point. It is told apart from the third
+and fourth by asking neither whether the assertion is well aimed nor whether the
+fixture can reach the state, but whether anything reachable FROM WHERE THE ROW WAS
+DRIVEN could have reached the assertion differently. The remedies differ by which
+cause applies and are set out under Guard's sixth axis, and the three are worth
+separating because restating such a guard as a difference repairs the first,
+moving the measurement to a fresh process repairs the second, and moving it below
+the intervening guard repairs the third, and none of the three remedies touches
+either of the other two causes.
 
 Every batch already contains one deliberate inert row, the null control, which the
 driver writes and which must kill nothing or the apparatus rather than the code is
