@@ -753,8 +753,18 @@ def test_a_missing_encoder_reports_that_refusal_rather_than_an_internal_defect(
     assert item.cause is not None and item.cause.reason == "encoder-missing"
 
 
-def test_a_report_naming_a_file_that_is_not_there_fails_the_item(configured, monkeypatch):
-    """The engine's return value is READ, not dropped."""
+def test_an_encode_that_produces_nothing_reaches_the_item_as_the_engines_own_cause(
+    configured, monkeypatch
+):
+    """An encoder that reports success and writes nothing.
+
+    THE CAUSE IS ASSERTED, not just the failure, and that is what this test is for.
+    The handler carried its own "the reported file is not there" check until this
+    was driven; the check killed zero tests because the engine refuses first, and
+    an unreachable branch is a finding rather than a guard. What a person actually
+    sees is ``encoder-failed`` with the engine's remediation, and this is what says
+    so.
+    """
     source = _recording(configured.library.root)
     job_id = _queued(source)
     monkeypatch.setattr(mastering, "subprocess_runner", _encoder(encode_writes=False))
@@ -763,6 +773,9 @@ def test_a_report_naming_a_file_that_is_not_there_fails_the_item(configured, mon
 
     assert code != int(ExitCode.OK)
     assert not mastering.output_path(source).exists()
+    item = _items(job_id)[0]
+    assert item.cause is not None and item.cause.reason == "encoder-failed"
+    assert "FileNotFoundError" not in item.cause.message
 
 
 def test_a_handler_that_raises_an_undeclared_error_fails_the_item_not_the_driver(

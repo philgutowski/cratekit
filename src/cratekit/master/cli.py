@@ -336,25 +336,32 @@ def handle(job, item, cfg) -> jobs.Produced:
 
     staged_into = staging_dir(final, job.job_id, item.ordinal)
     reported = run_master(
-        {SOURCE: str(source), OUTPUT_DIR: str(staged_into), OVERWRITE: True},
+        # OVERWRITE STAYS FALSE IN STAGING, and the clearing above is what makes
+        # that safe. Passing True here instead also works and is worse: it is a
+        # second mechanism covering the same leftover, so removing the clear
+        # changed nothing a test could see. A guard covered by another guard is a
+        # guard nothing covers, measured as a zero row on 2026-09-01.
+        {SOURCE: str(source), OUTPUT_DIR: str(staged_into), OVERWRITE: False},
         # Resolved at CALL time, not bound at definition time, so a test can put a
         # stand-in encoder in front of it. ``run_master``'s own default is bound
         # when this module is imported and cannot be reached any other way.
         runner=mastering.subprocess_runner,
     )
-    staged = Path(str(reported["output"]))
-    if not staged.is_file():
-        # The return value is READ rather than dropped. A report naming a file
-        # that is not there would otherwise be committed as an artifact nothing
-        # can open, and "done" is exactly what a resume trusts.
-        raise refuse(
-            "internal-error",
-            f"the mastering engine reported {staged} and nothing is there",
-            remedy=Remedy.REPORT_DEFECT,
-            origin=("master", "cli"),
-            detail={"item_id": item.item_id, "reported": str(staged)},
-        )
-    return jobs.Produced(staged=staged, final=final)
+    # THE REPORT IS READ FOR THE PATH, and there is no check behind it, which is a
+    # decision rather than an omission. A check that the reported file exists was
+    # written here first and then measured: it killed zero tests, because
+    # ``mastering.master`` already refuses ``encoder-failed`` when the encode
+    # reports success and produces nothing, so the branch was unreachable through
+    # the only caller there is. An unreachable branch with a test that cannot drive
+    # it is worse than no branch, so it is gone and the engine's own refusal is
+    # what a person sees.
+    #
+    # The path itself comes off the report rather than from a second call to
+    # ``output_path``. A mutation cannot tell those apart, since they agree by
+    # construction; the reason is the one this module's docstring already gives,
+    # that two name builders for one file is how an in-place write arrives later
+    # from the copy nobody updated.
+    return jobs.Produced(staged=Path(str(reported["output"])), final=final)
 
 
 __all__ = [

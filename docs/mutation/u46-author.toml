@@ -1,0 +1,163 @@
+name = "u46-author"
+pass_kind = "light"
+
+# U46's whole value is that queued work runs, so a guard that would not notice
+# the binding being removed is not a guard. The rows below take out each load
+# bearing piece of the seam one at a time: the declaration, the no-import answer,
+# the refuse-before-import ordering, the frozen configuration, the item the
+# driver claims, the call to the driver itself, and the handler's two checks.
+
+[[rows]]
+id = "H1_binding_removed"
+description = "Unbind master, so no verb in the build has a handler at all"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+old = '''    "master": "cratekit.master.cli:handle",'''
+new = ""
+
+[[rows]]
+id = "H2_is_known_always_true"
+description = "Claim every handler key is bound, including the eighteen that are not"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+old = '''    return key in HANDLERS'''
+new = '''    return True'''
+
+[[rows]]
+id = "H3_import_before_refusing"
+description = "Import the declared module before checking the key is real, defeating KTD26"
+file = "src/cratekit/cli/handlers.py"
+surface = "maintainer"
+old = '''def is_known(key: str) -> bool:'''
+new = '''def is_known(key: str) -> bool:
+    importlib.import_module("cratekit.master.cli")'''
+
+[[rows]]
+id = "H4_unbound_reason_silent"
+description = "Stop saying why a queued verb has no worker"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+old = '''    return HANDLERS_NOT_YET_BOUND.get(key)'''
+new = '''    return None'''
+
+[[rows]]
+id = "H5_fresh_config"
+description = "Hand the handler a freshly loaded configuration instead of the frozen one"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+old = '''    frozen = jobs.frozen_config(job)'''
+new = '''    frozen = config.load()'''
+
+[[rows]]
+id = "H6_no_drive_call"
+description = "Return an empty result rather than driving the job"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+old = '''    return jobs.drive(store, job.job_id, handle, root=root, current_config=current)'''
+new = '''    return jobs.DriveResult(job=job)'''
+
+[[rows]]
+id = "H7_no_drift"
+description = "Never compute drift, so a moved configuration is silently chosen between"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+old = '''        current: config.Config | None = config.load()'''
+new = '''        current: config.Config | None = None'''
+
+[[rows]]
+id = "H8_drift_wording_dropped"
+description = "Report drift without naming what moved"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+old = '''                f"configuration changed since this job was queued; it runs against "
+                f"the frozen copy. Changed: {', '.join(keys)}"'''
+new = '''                f"the frozen configuration was used for this run"'''
+
+[[rows]]
+id = "M1_no_items_enqueued"
+description = "Queue the recording with no item, so the driver has nothing to claim"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''            item_ids=(str(payload[SOURCE]),),'''
+new = ""
+
+[[rows]]
+id = "M2_resume_does_not_drive"
+description = "Report the queued job on resume without running any of it, which is the state R-198 describes"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''                _, warnings = ctx.run_job(store, job)
+                job = jobs.get(store, job.job_id)'''
+new = ""
+
+[[rows]]
+id = "M3_payload_source_not_item"
+description = "Read the recording from the payload rather than from the item the driver claimed"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''    source = Path(str(item.item_id or payload.get(SOURCE) or ""))'''
+new = '''    source = Path(str(payload.get(SOURCE) or item.item_id or ""))'''
+
+[[rows]]
+id = "M4_no_destination_check"
+description = "Drop the handler's output-exists check, letting a commit replace a master somebody kept"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''    if source.is_file() and final.exists() and not payload.get(OVERWRITE):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M5_encode_at_destination"
+description = "Point the engine straight at the destination, so a killed encode poisons the resume"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''        {SOURCE: str(source), OUTPUT_DIR: str(staged_into), OVERWRITE: True},'''
+new = '''        {SOURCE: str(source), OUTPUT_DIR: output_dir, OVERWRITE: True},'''
+
+[[rows]]
+id = "M6_staging_not_cleared"
+description = "Leave a previous attempt's leftovers in the staging directory"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''    if directory.exists():
+        shutil.rmtree(directory)'''
+new = ""
+
+[[rows]]
+id = "M7_report_not_read"
+description = "Commit the engine's reported output without checking the file is there"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''    if not staged.is_file():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M8_relative_path_frozen"
+description = "Freeze the recording as typed, so a child in another directory masters another file"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''        SOURCE: str(Path(recording).absolute()) if recording else recording,'''
+new = '''        SOURCE: recording,'''
+
+[[rows]]
+id = "J1_worker_state_unreported"
+description = "Report every job as having a worker, including the eighteen that do not"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+old = '''        "worker": "bound" if handlers.is_known(job.handler_key) else "none",'''
+new = '''        "worker": "bound",'''
+
+[[dropped]]
+id = "H9_declaration_separator"
+description = "Accept a declaration with no colon rather than refusing it"
+reason = "ranked below the cap: the same refusal family as H3, which is measured, and its only reachable input is a table this repository writes by hand"
+
+[[dropped]]
+id = "M9_staging_dirname"
+description = "Rename the staging directory constant"
+reason = "ranked below the cap: a name with no behaviour attached; M5 and M6 measure what staging actually buys"
+
+[[dropped]]
+id = "C1_context_run_job_removed"
+description = "Delete Context.run_job so no verb can reach the driver"
+reason = "ranked below the cap: strictly weaker than M2, which removes the only call to it and is measured"
