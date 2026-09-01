@@ -203,7 +203,7 @@ def test_the_partial_encode_a_kill_leaves_behind_is_in_staging_not_at_the_destin
 
     final = mastering.output_path(stalled_source)
     assert not final.exists(), "a killed encode left a partial file at the destination"
-    staging = final.parent / master_cli.STAGING_DIRNAME / job.job_id
+    staging = final.parent / master_cli.MASTER_STAGING_DIRNAME / job.job_id
     partial = list(staging.rglob(final.name))
     assert partial, f"nothing was staged under {staging}"
     assert partial[0].read_bytes() == b"half an encode"

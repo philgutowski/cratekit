@@ -621,7 +621,7 @@ def test_the_encode_lands_in_staging_and_is_committed_rather_than_written_in_pla
     monkeypatch.setattr(mastering, "subprocess_runner", watching)
     _drive(["master", str(source), "--job", job_id])
 
-    staging = master_cli.STAGING_DIRNAME
+    staging = master_cli.MASTER_STAGING_DIRNAME
     assert any(staging in target for target in seen), seen
     assert not any(
         target == str(mastering.output_path(source)) for target in seen
@@ -635,7 +635,7 @@ def test_a_partial_file_left_in_staging_does_not_refuse_the_next_attempt(
     source = _recording(configured.library.root)
     job_id = _queued(source)
     final = mastering.output_path(source)
-    stale = final.parent / master_cli.STAGING_DIRNAME / job_id / "0"
+    stale = final.parent / master_cli.MASTER_STAGING_DIRNAME / job_id / "0"
     stale.mkdir(parents=True)
     (stale / final.name).write_bytes(b"half an encode")
 
@@ -811,3 +811,93 @@ def test_a_job_show_says_when_a_queued_verb_has_no_worker(configured):
     code, envelope = _drive(["job", "show", other.job_id])
     assert envelope["data"]["progress"]["worker"] == "none"
     assert "R-203" in envelope["data"]["progress"]["worker_reason"]
+
+
+def test_a_relative_output_dir_is_frozen_absolute_too(configured, tmp_path, monkeypatch):
+    """The directory needs it as much as the recording does.
+
+    ``master_argv`` rebuilds ``--output-dir`` from the payload verbatim, and the
+    child inherits the RESUMING process's working directory, so a relative one
+    sends the master somewhere the person did not ask for and reports success.
+    """
+    monkeypatch.chdir(configured.library.root)
+    (configured.library.root / "out").mkdir()
+    job_id = _queued(Path("REC001.wav"), "--output-dir", "out")
+
+    with jobs.open_store() as store:
+        payload = jobs.get(store, job_id).payload
+    assert payload[master_cli.OUTPUT_DIR] == str(configured.library.root / "out")
+    assert Path(payload[master_cli.OUTPUT_DIR]).is_absolute()
+
+
+def test_a_relative_recording_masters_the_same_file_when_the_resume_runs_elsewhere(
+    configured, tmp_path, monkeypatch
+):
+    """The drive, not just the freeze. Queue from one directory, resume from another."""
+    source = _recording(configured.library.root)
+    monkeypatch.chdir(configured.library.root)
+    job_id = _queued(Path(source.name))
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
+    code, envelope = _drive(["master", source.name, "--job", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    item = _items(job_id)[0]
+    assert item.state == jobs.ItemState.DONE
+    assert item.artifact == str(mastering.output_path(source))
+    assert Path(item.artifact).is_file()
+
+
+def test_nothing_is_created_beside_a_destination_for_a_recording_that_is_not_there(
+    configured
+):
+    """``source-missing`` promises nothing was read and nothing was written."""
+    source = configured.library.root / "Sets" / "nope.wav"
+    job_id = _queued(source)
+
+    _drive(["master", str(source), "--job", job_id])
+
+    assert not source.parent.exists(), (
+        "a staging tree was built beside a destination for a recording that "
+        "does not exist, which falsifies the refusal's own remediation"
+    )
+    assert _items(job_id)[0].cause.reason == "source-missing"
+
+
+def test_a_configuration_that_moved_reaches_the_person_as_a_warning_on_the_resume(
+    configured, tmp_path, monkeypatch
+):
+    """Drift, driven through the verb's own envelope rather than through the driver.
+
+    The two halves are each covered elsewhere. What nothing measured until this is
+    the wiring between them: a resume that dropped its warnings would report a run
+    against a configuration the person had already changed, silently.
+    """
+    source = _recording(configured.library.root)
+    job_id = _queued(source)
+
+    moved = config.from_dict(
+        {
+            "schema_version": config.CURRENT_SCHEMA_VERSION,
+            "library": {
+                "root": str(configured.library.root),
+                "volume_id": "F1E2-D3C4",
+                "db_path": str(configured.library.root / "db" / "master.db"),
+            },
+            "paths": {"download_staging": str(tmp_path / "moved-staging")},
+            "profile": {"name": "full"},
+        }
+    )
+    config.save(moved)
+    config.reset_cache()
+
+    monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
+    code, envelope = _drive(["master", str(source), "--job", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    codes = [warning["code"] for warning in envelope.get("warnings", [])]
+    assert "config-drift" in codes, envelope.get("warnings")
+    assert _items(job_id)[0].state == jobs.ItemState.DONE

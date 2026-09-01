@@ -50,21 +50,25 @@ from pathlib import Path
 from typing import Callable, Mapping
 
 from cratekit.core import config, jobs
-from cratekit.core.cause import CratekitError, refuse
+from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
 
 #: What a handler is: it receives the job, the one item it must do, and the
 #: configuration that job was FROZEN against. The configuration is a parameter
 #: rather than something the handler loads, because KTD9 closes exactly the resume
 #: bug that reloading reintroduces and a handler holding a fresh config is that
-#: defect wearing a new hat. The parameter removes the need to load one; only the
-#: guard in ``tests/test_handlers.py`` removes the ability.
+#: defect wearing a new hat. The parameter removes the NEED to load one. It does
+#: not remove the ability, and neither does the guard in ``tests/test_handlers.py``
+#: that goes with it: that guard reads three spellings of the reload and says so,
+#: and it cannot see one reached through a helper. Stated at both ends rather than
+#: at neither, because a guard described as closing a hole it only narrows is the
+#: thing a later reader trusts.
 #:
 #: The configuration is spelled as a forward reference because the guard in
 #: ``tests/test_config.py`` refuses any module-level binding that reaches into
 #: ``config``, and it is right to: it cannot tell an annotation from a snapshot,
 #: and a snapshot is the defect that guard exists for.
-Handler = Callable[[jobs.Job, jobs.Item, "config.Config"], "jobs.Produced | None"]
+ItemHandler = Callable[[jobs.Job, jobs.Item, "config.Config"], "jobs.Produced | None"]
 
 #: ``handler_key`` to ``"dotted.module:function"``. Strings, never functions.
 HANDLERS: Mapping[str, str] = {
@@ -121,7 +125,10 @@ def unbound_reason(key: str) -> str | None:
     """
     if is_known(key):
         return None
-    return HANDLERS_NOT_YET_BOUND.get(key)
+    return HANDLERS_NOT_YET_BOUND.get(key) or (
+        f"{key!r} is not a handler key this build declares at all, so the job was "
+        f"queued by a different build or under a verb that has since been removed"
+    )
 
 
 def drift_warnings(keys: "tuple[str, ...]") -> tuple[dict[str, str], ...]:
@@ -160,7 +167,7 @@ def _declaration(key: str) -> str:
         ) from None
 
 
-def resolve(key: str) -> Handler:
+def resolve(key: str) -> ItemHandler:
     """The function that runs one item of a job queued under ``key``.
 
     The ONLY import in this module, and it happens after the key is known to be
@@ -230,9 +237,18 @@ def run_job(store: jobs.JobStore, job: jobs.Job, *, root: Path | None = None) ->
     # DRIFT IS COMPUTED, NOT ENFORCED. A configuration that cannot be loaded at
     # all is not a reason to refuse to finish work that was already queued and
     # frozen, so the drift report is dropped rather than the run.
+    #
+    # OSError IS IN THE TUPLE FOR A REASON THIS PACKAGE ALREADY PAID FOR.
+    # ``config.load`` stats the file before reading it and converts only
+    # ``FileNotFoundError``, so a stat under a directory this account cannot
+    # traverse raises ``PermissionError`` and no ``ConfigError`` at all.
+    # ``cli.__init__._membership`` records that exact incident: the same call, the
+    # same narrow except, and a traceback out of ``crate --help``. Here it would
+    # abort a job that was queued and frozen precisely so it would not need the
+    # current configuration.
     try:
         current: config.Config | None = config.load()
-    except (config.ConfigError, CratekitError):
+    except (config.ConfigError, OSError):
         current = None
 
     return jobs.drive(store, job.job_id, handle, root=root, current_config=current)
@@ -241,7 +257,7 @@ def run_job(store: jobs.JobStore, job: jobs.Job, *, root: Path | None = None) ->
 __all__ = [
     "HANDLERS",
     "HANDLERS_NOT_YET_BOUND",
-    "Handler",
+    "ItemHandler",
     "drift_warnings",
     "is_known",
     "resolve",

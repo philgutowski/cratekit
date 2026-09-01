@@ -333,57 +333,131 @@ def json_roundtrip(cfg: config.Config) -> dict:
 # ---------------------------------------------------------------------------
 
 
+#: Every spelling of "load the configuration fresh" this guard recognises. A
+#: checker that models its target's grammar only ever knows the spellings somebody
+#: thought of, so the ones it does NOT know are named in the docstring below rather
+#: than left for a reader to discover by writing one.
+_RELOAD_ATTRS = frozenset({"load", "load_from_path"})
+
+
+def _reload_calls(tree: ast.AST, *, aliases: frozenset[str]) -> list[str]:
+    """Calls in ``tree`` that reload configuration, by any spelling this knows.
+
+    Three, and each is a different node shape: ``config.load()`` reads as an
+    attribute on a name, ``cfg.load()`` the same once ``aliases`` carries the alias
+    the module actually bound, and a bare ``load()`` after
+    ``from cratekit.core.config import load`` reads as a plain name with no
+    attribute at all. The first was the only one the first version of this guard
+    knew.
+    """
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        callee = node.func
+        if (
+            isinstance(callee, ast.Attribute)
+            and callee.attr in _RELOAD_ATTRS
+            and isinstance(callee.value, ast.Name)
+            and callee.value.id in aliases
+        ):
+            found.append(f"{callee.value.id}.{callee.attr}")
+        elif isinstance(callee, ast.Name) and callee.id in aliases | _RELOAD_ATTRS:
+            found.append(callee.id)
+    return found
+
+
+def _config_aliases(tree: ast.AST) -> frozenset[str]:
+    """Every local name in ``tree`` that refers to the configuration module.
+
+    Derived from the module's own imports rather than assumed to be ``config``,
+    because ``import cratekit.core.config as cfg`` binds a different name for the
+    identical thing and a guard that only knows one of them is a guard the next
+    author walks around without meaning to.
+    """
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").endswith(
+            "cratekit.core"
+        ):
+            names |= {a.asname or a.name for a in node.names if a.name == "config"}
+        elif isinstance(node, ast.Import):
+            names |= {
+                a.asname or a.name.split(".")[0]
+                for a in node.names
+                if a.name == "cratekit.core.config"
+            }
+    return frozenset(names)
+
+
 def test_no_declared_handler_loads_a_fresh_configuration():
     """The guard that makes the frozen-config parameter more than a convention.
 
-    A three-argument handler can still call ``config.load()`` in its body; the
-    signature removes the NEED, not the ability. This is what removes the ability,
-    and it is derived from the table rather than from a list of modules.
+    A three-argument handler can still load a configuration in its body; the
+    signature removes the NEED, not the ability. This narrows the ability, and the
+    verb matters: this is a CHECKER THAT MODELS ITS TARGET'S GRAMMAR, so it knows
+    the spellings it was taught and no others. It reads three, listed in
+    ``_reload_calls``. What it cannot see is an indirection, a handler that calls a
+    helper in its own module which loads underneath it. Said here because the first
+    version of this guard claimed to remove the ability outright while recognising
+    exactly one spelling, and a false claim in a place a reader trusts is its own
+    failure class in this repository.
+
+    The population is derived from the table rather than from a list of modules.
     """
     problems: list[str] = []
     for key, declaration in handlers.HANDLERS.items():
         dotted, _, attribute = declaration.partition(":")
         path = SRC_ROOT / (dotted.replace(".", "/") + ".py")
         assert path.is_file(), f"{key} declares {dotted}, which is not a module file"
-        for node in ast.walk(ast.parse(path.read_text())):
+        tree = ast.parse(path.read_text())
+        aliases = _config_aliases(tree)
+        for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef) or node.name != attribute:
                 continue
-            for inner in ast.walk(node):
-                if (
-                    isinstance(inner, ast.Call)
-                    and isinstance(inner.func, ast.Attribute)
-                    and inner.func.attr == "load"
-                    and isinstance(inner.func.value, ast.Name)
-                    and inner.func.value.id == "config"
-                ):
-                    problems.append(f"{key}: {declaration} calls config.load")
+            for spelling in _reload_calls(node, aliases=aliases):
+                problems.append(f"{key}: {declaration} calls {spelling}")
     assert not problems, (
         "a handler runs against the configuration frozen when its job was queued "
         f"(KTD9); reloading is the resume bug that closes: {problems}"
     )
 
 
-def test_the_fresh_configuration_guard_catches_a_handler_that_reloads(tmp_path):
-    """The guard proved against a handler that does the thing, not just asserted."""
-    source = textwrap.dedent(
+@pytest.mark.parametrize(
+    "body",
+    [
+        "from cratekit.core import config\n\ndef handle(job, item, cfg):\n    return config.load()\n",
+        "import cratekit.core.config as cfg\n\ndef handle(job, item, c):\n    return cfg.load()\n",
+        "from cratekit.core.config import load\n\ndef handle(job, item, cfg):\n    return load()\n",
+        "from cratekit.core import config\n\ndef handle(job, item, cfg):\n    return config.load_from_path('x')\n",
+    ],
+    ids=["dotted", "aliased-module", "bare-name", "load-from-path"],
+)
+def test_the_fresh_configuration_guard_catches_every_spelling_it_claims(body):
+    """The guard proved against handlers that do the thing, not just asserted.
+
+    One case per spelling the docstring above claims to recognise, because a
+    checker's claim about its own coverage is exactly the thing that drifts.
+    """
+    tree = ast.parse(textwrap.dedent(body))
+    found = [
+        spelling
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "handle"
+        for spelling in _reload_calls(node, aliases=_config_aliases(tree))
+    ]
+    assert found, "the guard would not notice this handler reloading"
+
+
+def test_the_fresh_configuration_guard_does_not_fire_on_a_handler_that_behaves():
+    """P7: a guard that fires on correct code trains people to route around it."""
+    body = textwrap.dedent(
         """
         from cratekit.core import config
 
         def handle(job, item, cfg):
-            return config.load()
+            return cfg.paths.download_staging
         """
     )
-    found = []
-    for node in ast.walk(ast.parse(source)):
-        if not isinstance(node, ast.FunctionDef) or node.name != "handle":
-            continue
-        for inner in ast.walk(node):
-            if (
-                isinstance(inner, ast.Call)
-                and isinstance(inner.func, ast.Attribute)
-                and inner.func.attr == "load"
-                and isinstance(inner.func.value, ast.Name)
-                and inner.func.value.id == "config"
-            ):
-                found.append(inner)
-    assert found, "the guard above would not notice a handler that reloads"
+    tree = ast.parse(body)
+    assert not _reload_calls(tree, aliases=_config_aliases(tree))

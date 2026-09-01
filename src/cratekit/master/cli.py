@@ -130,17 +130,22 @@ def frozen_payload(recording: str, output_dir: str | None, overwrite: bool) -> d
     the freeze makes the two agree by construction rather than by both remembering
     to test the same falsy value.
 
-    THE RECORDING IS MADE ABSOLUTE HERE, and that is the same defect one level
-    up. ``jobs.spawn`` starts the child with the RESUMING process's working
-    directory, which need not be the one the person queued from, so a relative
-    path freezes an instruction that means different files in different
-    directories. ``Path.absolute`` is lexical: it resolves nothing, follows no
-    link, and stats nothing, so it leaves the deliberate decision below not to
-    read the file at queue time exactly as it was.
+    BOTH PATHS ARE MADE ABSOLUTE HERE, and that is the same defect one level up.
+    ``jobs.spawn`` starts the child with the RESUMING process's working directory,
+    which need not be the one the person queued from, so a relative path freezes
+    an instruction that means different files in different directories. The
+    DIRECTORY needs it exactly as much as the recording does: ``master_argv``
+    rebuilds ``--output-dir`` from this payload verbatim, so a relative one sends
+    the master somewhere the person did not ask for and reports success for it,
+    which is the failure the paragraph above is already about.
+
+    ``Path.absolute`` is lexical: it resolves nothing, follows no link, and stats
+    nothing, so it leaves the deliberate decision below not to read the file at
+    queue time exactly as it was.
     """
     return {
         SOURCE: str(Path(recording).absolute()) if recording else recording,
-        OUTPUT_DIR: output_dir or None,
+        OUTPUT_DIR: str(Path(output_dir).absolute()) if output_dir else None,
         OVERWRITE: bool(overwrite),
     }
 
@@ -269,7 +274,13 @@ def run_master(payload: dict[str, Any], *, runner=mastering.subprocess_runner) -
 #: DESTINATION's own parent rather than a temp directory, because the engine's
 #: commit is an ``os.replace`` and that is atomic only within one filesystem, and
 #: a mastered set is measured in gigabytes.
-STAGING_DIRNAME = ".cratekit-master-staging"
+#:
+#: NOT ``STAGING_DIRNAME``, which is what this was called first. That name is
+#: already taken by ``cratekit.cli.setup``, where it means ``"Downloads"``, the
+#: acquisition staging directory a person configures. One symbol meaning two
+#: things in two modules is the defect ``docs/METHOD.md`` says to go looking for
+#: once the suite is green, and these two mean nothing like each other.
+MASTER_STAGING_DIRNAME = ".cratekit-master-staging"
 
 
 def staging_dir(final: Path, job_id: str, ordinal: int) -> Path:
@@ -284,7 +295,7 @@ def staging_dir(final: Path, job_id: str, ordinal: int) -> Path:
     when the file is this queue's own corpse. In here it is just this attempt's
     leftovers.
     """
-    directory = final.parent / STAGING_DIRNAME / job_id / str(ordinal)
+    directory = final.parent / MASTER_STAGING_DIRNAME / job_id / str(ordinal)
     if directory.exists():
         shutil.rmtree(directory)
     config._mkdir_private(directory)
@@ -334,7 +345,20 @@ def handle(job, item, cfg) -> jobs.Produced:
             detail={"path": str(final)},
         )
 
-    staged_into = staging_dir(final, job.job_id, item.ordinal)
+    # NOTHING IS CREATED FOR A RECORDING THAT IS NOT THERE. ``source-missing``
+    # reserves the remediation "name a recording that exists; nothing was read and
+    # nothing was written", and building a staging tree first would falsify the
+    # second half. It also matters when the destination's own parent is a volume
+    # that is not mounted: the mkdir would either fail with an error about a
+    # directory the person never named, or succeed against the mount point and
+    # write into the empty directory underneath it. So the staging tree is built
+    # only once the source is known to exist, and the engine still owns the
+    # refusal itself.
+    staged_into = (
+        staging_dir(final, job.job_id, item.ordinal)
+        if source.is_file()
+        else final.parent
+    )
     reported = run_master(
         # OVERWRITE STAYS FALSE IN STAGING, and the clearing above is what makes
         # that safe. Passing True here instead also works and is worse: it is a
@@ -365,7 +389,7 @@ def handle(job, item, cfg) -> jobs.Produced:
 
 
 __all__ = [
-    "STAGING_DIRNAME",
+    "MASTER_STAGING_DIRNAME",
     "build",
     "frozen_payload",
     "handle",

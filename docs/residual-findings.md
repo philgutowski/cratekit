@@ -10403,11 +10403,15 @@ from the store, or the seam grows a foreground mode a test can call.
 with `os.replace` and nothing removes the directory. So every mastered recording
 leaves one empty hidden directory tree beside itself, for ever.
 
-**Measured cost.** Untidiness in the person's own set recordings folder, and
-nothing else. No data is lost, nothing is misreported, and the directory is dot
-prefixed so it does not appear in an ordinary listing. It is condition 2 of the
-merge bar failing rather than the severity floor: there is no named user facing
-cost of the kind the bar asks for.
+**Measured cost, and it is two different sizes.** After a job that SUCCEEDS the
+leftover is an empty hidden directory tree, which is untidiness and nothing else.
+After a job that is killed and then abandoned rather than resumed, the leftover is
+that attempt's partial encode, and a mastered set is measured in gigabytes. The
+second case is the one worth the entry. Nothing is lost and nothing is misreported
+either way, and the directory is dot prefixed so it does not appear in an ordinary
+listing, which is also why nobody would find it. Recorded as a residual rather than
+held as a finding because it was not driven to a named user facing cost of the kind
+the merge bar asks for: no test fills a disk.
 
 **Why the obvious fix is not obvious.** The handler cannot do it: it returns
 BEFORE the commit, so at the moment it could delete the directory the file is
@@ -10420,4 +10424,98 @@ the layout.
 
 **Closes when:** the commit side removes an emptied staging directory, which puts
 the decision with the code that knows the file has moved, or the engine grows a
-staged-output mode that needs no directory of its own.
+staged-output mode that needs no directory of its own. Either remedy has to reclaim
+an ABANDONED job's tree as well, which the commit side never reaches, so the
+abandoned case probably wants a sweep somewhere a person can invoke.
+
+---
+
+## R-207. A signal during a foreground resume is recorded as an item failure, not an interrupt
+
+**Found:** during U46's adversarial review, 2026-09-01. Reasoned from the source
+rather than driven, which is why it is here.
+
+`jobs.drive` checks its interrupt flag between items and again before a commit,
+and both checks sit AFTER the two `except` arms that handle a raising handler. A
+signal delivered while a handler is running therefore reaches the handler's own
+subprocess first: `mastering.subprocess_runner` does not start a new session, so a
+Ctrl-C at the terminal goes to ffmpeg too, the encode dies, and the handler raises
+`encoder-failed`. `drive` records that as the ITEM's cause and moves on, so the
+row says the encoder failed when what happened is that a person pressed Ctrl-C.
+
+**Why it is a residual rather than a finding.** Both remedies are edits to
+`jobs.drive` or to the engine's subprocess launch, and neither belongs to the unit
+that adds the first caller: the loop's shape is the contract this unit was told not
+to reimplement or amend. It was also not driven. `tests/test_job_seam.py` kills
+with SIGKILL, which by construction can never reach an interrupt checkpoint, so no
+test in this repository has ever delivered a real SIGINT to a driver running a real
+handler. Under the merge bar that is condition 1 failing, and "it was not driven"
+is the honest reason rather than a severity judgment.
+
+**Newly reachable, and that is why it is recorded now.** Before this unit no verb
+called `drive`, so no person could be inside it to interrupt.
+
+**Cost:** an interrupted master is reported as an encoder failure with the
+encoder's remediation, which sends a person to check their ffmpeg install for
+something they did themselves. The item is resumable either way.
+
+**Closes when:** `drive` consults the interrupt flag before treating a handler
+exception as an item failure, and a test delivers a real SIGINT to a driver
+running a real handler.
+
+---
+
+## R-208. Two jobs mastering one recording race on an archive slot the job id does not scope
+
+**Found:** during U46's adversarial review, 2026-09-01. Reasoned from the source.
+
+The staging directory this unit adds is scoped by job id and item ordinal, so two
+drivers cannot collide there. `mastering.archive_source` is not: it copies the
+source to `<source parent>/<ARCHIVE_DIRNAME>/<source name>` and verifies the copy's
+digest, and that path is a function of the recording alone. Two jobs queued for one
+recording can be driven concurrently under two different driver locks, and both
+will write that one slot.
+
+**Why it is a residual.** The fix is in the engine, `archive_source`, which would
+have to publish atomically the way `config.atomic_write_bytes` already does in this
+repository: copy to a sibling temporary name, verify, then `os.replace`. That is an
+engine change on a branch whose diff is otherwise a new seam. It was also not
+driven: nothing in the suite runs two drivers over one recording.
+
+**Cost, bounded honestly.** The archive is a copy of a source that is never
+modified, and each writer writes the same bytes, so the realistic outcome is
+wasted work rather than a corrupt archive. The bad case is a reader that sees a
+partially written copy and fails its digest verification, which refuses the run
+rather than losing anything.
+
+**Closes when:** `archive_source` publishes atomically, and a test drives two
+concurrent jobs over one recording.
+
+---
+
+## R-209. A crash between the artifact commit and the row flip strands a master behind output-exists
+
+**Found:** during U46's review, 2026-09-01.
+
+`jobs.drive` commits an artifact and then flips the item's row to done, in that
+order and deliberately: a row that flips first and a machine that dies second
+would claim an artifact that does not exist. The window on the other side is real
+too. A crash between `commit_artifact` returning and `complete_item` committing
+leaves the mastered file at its destination and the item still claimed. The next
+resume redoes that item, `master_cli.handle` finds the destination occupied, and
+refuses `output-exists`, telling the person that replacing it would discard a
+master they may have kept, when the file is this job's own completed work.
+
+**Why it is a residual.** Closing it needs the queue to know which job produced a
+given final path, which nothing records. The remedies are a provenance marker
+written atomically with the rename, or a wider transaction across the commit and
+the row flip, and both are changes to `core/jobs.py`'s ordering contract rather
+than to this unit's handler. It was not driven: no test kills a process inside
+that window.
+
+**Cost:** the person is told something false about a file, and must pass
+`--overwrite` or move the file to finish a job that had already done the work.
+Nothing is lost. The window is one `os.replace` plus one sqlite commit wide.
+
+**Closes when:** a resumed item can tell its own completed output from a file
+somebody kept, and a test kills a driver inside that window.
