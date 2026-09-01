@@ -59,12 +59,12 @@ def _summary(store: jobs.JobStore, job: jobs.Job) -> dict[str, Any]:
     answered from the declaration tables alone, which is what keeps a listing from
     importing every feature module (KTD26).
     """
-    unbound = handlers.unbound_reason(job.handler_key)
+    bound = handlers.is_known(job.handler_key)
     return {
         "job_id": job.job_id,
         "handler": job.handler_key,
-        "worker": "bound" if handlers.is_known(job.handler_key) else "none",
-        "worker_reason": unbound,
+        "worker": "bound" if bound else "none",
+        "worker_reason": None if bound else handlers.unbound_reason(job.handler_key),
         "state": str(job.state),
         "stage": job.stage,
         "attempts": job.attempts,

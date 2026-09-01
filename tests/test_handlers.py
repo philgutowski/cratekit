@@ -17,9 +17,6 @@ adds next month is inside the assertion the day it lands.
 from __future__ import annotations
 
 import ast
-import json
-import subprocess
-import sys
 import textwrap
 from pathlib import Path
 
@@ -28,6 +25,7 @@ import pytest
 from cratekit.cli import handlers, registry
 from cratekit.core import config, jobs
 from cratekit.core.cause import CratekitError
+from tests import _import_probe
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -167,7 +165,7 @@ def test_resolving_a_handler_key_imports_nothing_a_supervisor_does_not_need():
     the package ``__init__``. So: one clean process, and the only thing measured is
     what each individual ``is_known`` call pulled in.
     """
-    probe = textwrap.dedent(
+    measured = _import_probe.run_probe(
         """
         import json, sys
         from cratekit.cli import handlers, registry
@@ -189,13 +187,7 @@ def test_resolving_a_handler_key_imports_nothing_a_supervisor_does_not_need():
         print(json.dumps({"walked": walked, "leaked": leaked}))
         """
     )
-    done = subprocess.run(
-        [sys.executable, "-c", probe], capture_output=True, text=True, cwd=REPO_ROOT
-    )
-    assert done.returncode == 0, done.stderr
-    measured = json.loads(done.stdout)
-    assert measured["walked"] > 0, "the probe walked no keys, so it measured nothing"
-    assert measured["leaked"] == {}, measured["leaked"]
+    _import_probe.assert_no_leak(measured, what="answering whether a handler key is known")
 
 
 # ---------------------------------------------------------------------------

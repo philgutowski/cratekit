@@ -29,10 +29,12 @@ from cratekit.cli import handlers
 from cratekit.core import config, jobs
 from cratekit.master import cli as master_cli
 from cratekit.modules.tools import mastering
+from tests import job_worker
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
 WORKER = Path(__file__).resolve().parent / "job_worker.py"
+
 
 def fake_binaries(tmp_path: Path) -> tuple[Path, Path]:
     """Two executables NAMED ffmpeg and ffprobe, so the stand-in can tell them apart.
@@ -135,37 +137,6 @@ def _states(db: Path, job_id: str) -> dict[str, jobs.ItemState]:
         return {Path(i.item_id).stem: i.state for i in jobs.items(store, job_id)}
 
 
-def _local_encoder(ledger: Path):
-    """The same stand-in the worker installs, for the in-process second pass."""
-
-    def run(command):
-        argv = list(command.argv)
-        if argv[0].endswith("ffprobe"):
-            return mastering.CommandResult(
-                returncode=0, stdout="sample_rate=44100\nsample_fmt=s16\n"
-            )
-        if "-f" in argv and "null" in argv:
-            return mastering.CommandResult(returncode=0, stderr=_LOUDNORM)
-        target = Path(argv[-1])
-        if "pcm_s24le" in argv:
-            target.write_bytes(b"intermediate")
-            return mastering.CommandResult(returncode=0)
-        with open(ledger, "a") as handle:
-            handle.write(target.name[: -len(mastering.OUTPUT_SUFFIX)] + "\n")
-            handle.flush()
-        target.write_bytes(b"x" * 64)
-        return mastering.CommandResult(returncode=0, stderr=_LOUDNORM)
-
-    return run
-
-
-_LOUDNORM = (
-    '{"input_i": "-20.0", "input_lra": "5.0", "input_tp": "-3.0", '
-    '"input_thresh": "-30.0", "target_offset": "0.5", "output_i": "-14.0", '
-    '"output_lra": "5.0", "output_tp": "-1.0"}'
-)
-
-
 def test_a_driver_killed_inside_the_real_handler_resumes_redoing_exactly_that_item(
     queued, monkeypatch
 ):
@@ -195,7 +166,7 @@ def test_a_driver_killed_inside_the_real_handler_resumes_redoing_exactly_that_it
     # The second pass runs here, in this process, through the same seam.
     second = root / "second.log"
     second.write_text("")
-    monkeypatch.setattr(mastering, "subprocess_runner", _local_encoder(second))
+    monkeypatch.setattr(mastering, "subprocess_runner", job_worker.seam_encoder(second))
     with jobs.open_store(db) as store:
         result = handlers.run_job(store, jobs.get(store, job.job_id), root=root)
 

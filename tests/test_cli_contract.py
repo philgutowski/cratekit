@@ -34,7 +34,6 @@ import json
 import os
 import subprocess
 import sys
-import textwrap
 from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
@@ -55,6 +54,7 @@ from cratekit.core.exit_codes import (
     band_of,
     meaning_of,
 )
+from tests import _import_probe
 from tests import doctor_machines as machines
 from tests._source_guards import constructs_a_csv_writer
 
@@ -1279,7 +1279,7 @@ def test_a_handler_key_resolves_without_importing_the_module():
     genuinely in when it validates a queued job's handler. One subprocess covers
     every landed verb, so no hand-picked subject remains to expire.
     """
-    probe = textwrap.dedent(
+    result = _import_probe.run_probe(
         """
         import json, sys
         from cratekit.cli import registry
@@ -1298,26 +1298,7 @@ def test_a_handler_key_resolves_without_importing_the_module():
         print(json.dumps({"leaked": leaked, "walked": walked}))
         """
     )
-    finished = subprocess.run(
-        [sys.executable, "-c", probe],
-        capture_output=True,
-        text=True,
-        cwd=str(REPO_ROOT),
-    )
-    assert finished.returncode == 0, finished.stderr
-    result = json.loads(finished.stdout.strip().splitlines()[-1])
-    assert result["walked"] > 0, (
-        "the probe walked no entries, so it measured nothing. COUNTED FROM THE "
-        "LOOP, not from len(registry.entries()): the loop skips unlanded verbs, "
-        "so the registry total would be a non-empty number in a build where every "
-        "verb was skipped, which is a vacuity guard with the same defect as the "
-        "guard this test replaced"
-    )
-    assert result["leaked"] == {}, (
-        f"resolving a handler key imported a cratekit module: {result['leaked']}. "
-        f"The supervisor validates a queued job's handler before it spawns, so a "
-        f"lookup that imports pulls the feature module into its own process"
-    )
+    _import_probe.assert_no_leak(result, what="resolving a handler key")
 
 
 @pytest.mark.parametrize("entry", ALL_ENTRIES, ids=lambda e: e.name)

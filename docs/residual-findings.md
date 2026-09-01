@@ -10390,3 +10390,34 @@ strip is exactly the process boundary.
 
 **Closes when:** one test drives `crate job resume` and then reads a done item
 from the store, or the seam grows a foreground mode a test can call.
+
+---
+
+## R-206. The mastering handler's staging directory is never removed once the job succeeds
+
+**Found:** during U46, 2026-09-01, by the simplification pass over this unit's own diff.
+
+`master_cli.handle` encodes into
+`<destination parent>/.cratekit-master-staging/<job_id>/<ordinal>/` and returns a
+`Produced` naming the file inside it. `jobs.commit_artifact` moves the file out
+with `os.replace` and nothing removes the directory. So every mastered recording
+leaves one empty hidden directory tree beside itself, for ever.
+
+**Measured cost.** Untidiness in the person's own set recordings folder, and
+nothing else. No data is lost, nothing is misreported, and the directory is dot
+prefixed so it does not appear in an ordinary listing. It is condition 2 of the
+merge bar failing rather than the severity floor: there is no named user facing
+cost of the kind the bar asks for.
+
+**Why the obvious fix is not obvious.** The handler cannot do it: it returns
+BEFORE the commit, so at the moment it could delete the directory the file is
+still in it. Cleaning the whole staging root instead is not safe, because two jobs
+can drive concurrently under different driver locks and both can write into one
+destination folder, so a sweep of the root would delete another job's in flight
+encode. Cleaning only this job's earlier ordinals is safe and is a half measure: it
+leaves the last item's directory behind and adds a second place that reasons about
+the layout.
+
+**Closes when:** the commit side removes an emptied staging directory, which puts
+the decision with the code that knows the file has moved, or the engine grows a
+staged-output mode that needs no directory of its own.

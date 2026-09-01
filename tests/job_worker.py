@@ -72,20 +72,23 @@ def run_drive(db: Path, job_id: str, root: Path, ledger: Path, stall: str) -> in
     return 0
 
 
-def run_seam(db: Path, job_id: str, root: Path, ledger: Path, stall: str) -> int:
-    """Drive one job through the SHIPPED seam, stalling inside the real handler.
+def seam_encoder(ledger: Path, *, stall: str = "", marker_dir: Path | None = None):
+    """The stand-in encoder both halves of the seam kill test use.
 
-    The stand-in encoder is installed on the module attribute the handler reads at
-    call time, which is the same seam ``tests/test_master_cli.py`` uses. It records
-    the source it was asked to master and then sleeps if that source is the one the
-    parent means to kill, so the process dies with a claim held and a partial file
-    in the job's staging directory, which is exactly the state the resume has to
-    survive.
+    ONE FACTORY RATHER THAN TWO COPIES. The parent test drives the second pass in
+    process and this module drives the first in a process it is about to lose, so
+    the two run in different interpreters and cannot share a closure. They can
+    share this, and a second hand-copied dispatch is one that drifts from the first
+    and then measures something slightly else while both stay green.
+
+    Each item's name is recorded before anything else happens to it, flushed, so an
+    attempt that dies mid encode is still counted. With ``stall`` set the encoder
+    writes a partial file, drops a marker the parent watches for, and then sleeps
+    until it is killed.
     """
-    from cratekit.cli import handlers
     from cratekit.modules.tools import mastering
 
-    def encoder(command):
+    def run(command):
         argv = list(command.argv)
         if argv[0].endswith("ffprobe"):
             return mastering.CommandResult(
@@ -104,14 +107,28 @@ def run_seam(db: Path, job_id: str, root: Path, ledger: Path, stall: str) -> int
         # ran rather than as a harness that never matched.
         name = target.name[: -len(mastering.OUTPUT_SUFFIX)]
         _append(ledger, name)
-        if name == stall:
+        if stall and name == stall and marker_dir is not None:
             target.write_bytes(b"half an encode")
-            (root / f"stalled-{stall}").write_text("here")
+            (marker_dir / f"stalled-{stall}").write_text("here")
             time.sleep(STALL_SECONDS)
         target.write_bytes(b"x" * 64)
         return mastering.CommandResult(returncode=0, stderr=LOUDNORM)
 
-    mastering.subprocess_runner = encoder
+    return run
+
+
+def run_seam(db: Path, job_id: str, root: Path, ledger: Path, stall: str) -> int:
+    """Drive one job through the SHIPPED seam, stalling inside the real handler.
+
+    The stand-in encoder is installed on the module attribute the handler reads at
+    call time, which is the same seam ``tests/test_master_cli.py`` uses. The process
+    then dies with a claim held and a partial file in the job's staging directory,
+    which is exactly the state the resume has to survive.
+    """
+    from cratekit.cli import handlers
+    from cratekit.modules.tools import mastering
+
+    mastering.subprocess_runner = seam_encoder(ledger, stall=stall, marker_dir=root)
     with jobs.open_store(db) as store:
         handlers.run_job(store, jobs.get(store, job_id), root=root)
     return 0
