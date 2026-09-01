@@ -191,6 +191,21 @@ governs a guard that is a faithful checker. A guard that reimplements its subjec
 is a third state, neither correct nor merely too narrow, and replacing it with
 the real thing is not the forbidden widening.
 
+### Layer
+A rank assigned to every module, from the foundation up through the CLI, that a
+dependency-direction guard enforces in two independent ways: an import may only
+point to its own layer or a lower one, and separately, a lower layer may not
+name a higher layer's vocabulary as a string either, because a string handed to
+a dynamic import is the same upward dependency the import rule forbids, just
+invisible to an import-graph walk.
+
+*Avoid:* treating the string-naming rule as redundant with the import rule, or
+as a loophole the import rule leaves open. They are independent checks enforced
+by independent logic; a table built to dodge the import rule by holding its
+targets as plain strings still trips the naming rule when those strings are a
+verb name or a feature-module package name, and a fix that satisfies one does
+not satisfy the other.
+
 ### Beat grid
 The rekordbox-authored timing map for a track. This product never writes one. A
 wrong grid is worse than no grid, because a folded tempo moves every cue and
@@ -438,8 +453,8 @@ the verb's own name.
 
 *Avoid:* treating a known handler key as a runnable one. Whether the build
 declares a key is a question about the CLI registry; whether the build has a
-FUNCTION behind it is a question about the handler table, and eighteen keys
-answer yes to the first and no to the second.
+FUNCTION behind it is a question about the handler table, and most declared
+keys today answer yes to the first and no to the second.
 
 ### Handler
 The function that does one item's work. It receives the job, the item, and the
