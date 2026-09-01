@@ -40,6 +40,16 @@ catches it is reading the unit's own written verification criteria for a
 blocker its dependency list does not name, not trusting the derived ready or
 blocked state.
 
+Ready is silent about who may perform the work, which is a second blind spot and
+not the same one. A unit that only a person can carry out, because it has to run
+against the live library, derives as ready like any other once its dependencies
+close, and the queue then recommends it. The status vocabulary does have a
+separate attended state, but a unit reaches that state by carrying the attended
+label rather than by being attended in fact, so an attended unit nobody labelled
+is indistinguishable from available work. A ready queue holding nothing takeable
+is therefore not a statement that the build is finished, and the register of
+known and accepted problems is where the rest of that answer lives.
+
 WHAT BELONGS ON IT is a separate question from how it derives, and the two were
 confused for weeks. The board carries WORK: units, and the attended chores that are
 somebody's to do. It does not carry the register of known and accepted problems,
