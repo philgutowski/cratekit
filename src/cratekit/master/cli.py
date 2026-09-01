@@ -43,6 +43,7 @@ Layer: modules.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -128,9 +129,17 @@ def frozen_payload(recording: str, output_dir: str | None, overwrite: bool) -> d
     invocation, two destinations, decided by which process ran it. Normalizing at
     the freeze makes the two agree by construction rather than by both remembering
     to test the same falsy value.
+
+    THE RECORDING IS MADE ABSOLUTE HERE, and that is the same defect one level
+    up. ``jobs.spawn`` starts the child with the RESUMING process's working
+    directory, which need not be the one the person queued from, so a relative
+    path freezes an instruction that means different files in different
+    directories. ``Path.absolute`` is lexical: it resolves nothing, follows no
+    link, and stats nothing, so it leaves the deliberate decision below not to
+    read the file at queue time exactly as it was.
     """
     return {
-        SOURCE: recording,
+        SOURCE: str(Path(recording).absolute()) if recording else recording,
         OUTPUT_DIR: output_dir or None,
         OVERWRITE: bool(overwrite),
     }
@@ -186,16 +195,35 @@ def master_recording(ctx) -> Envelope:
     cfg = _load()
     with jobs.open_store() as store:
         if ctx.args.job:
-            return ctx.envelope(data=_reported(store, jobs.reconcile(store, ctx.args.job)))
+            # RECONCILE FIRST. A resume arrives after something stopped, and a
+            # claim left behind by a driver that died is state the queue cannot
+            # see for itself.
+            job = jobs.reconcile(store, ctx.args.job)
+            warnings: tuple[dict[str, str], ...] = ()
+            if job.is_open():
+                # The step that was missing until U46. Everything above this line
+                # already worked; nothing below it ever ran an item. A total
+                # failure raises out of here rather than reaching the report,
+                # which is correct: the engine has already recorded the job as
+                # failed and the refusal carries the item's own cause.
+                _, warnings = ctx.run_job(store, job)
+                job = jobs.get(store, job.job_id)
+            return ctx.envelope(data=_reported(store, job), warnings=warnings)
         # THE RECORDING IS NOT STATTED HERE, deliberately. Queueing needs neither
         # the file nor ffmpeg, and a stat in this handler would make the verb
         # refuse on a machine where the work would have run fine later. The cost
-        # is that a mistyped path is reported as queued rather than refused; it is
-        # recorded as a residual rather than paid for quietly.
+        # is that a mistyped path is reported as queued rather than refused; the
+        # handler is where it is discovered, and it arrives there as the engine's
+        # own ``source-missing`` on the item's row.
+        payload = frozen_payload(recording, ctx.args.output_dir, ctx.args.overwrite)
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
-            payload=frozen_payload(recording, ctx.args.output_dir, ctx.args.overwrite),
+            payload=payload,
+            # ONE RECORDING IS ONE ITEM. Without it the queue holds a job with
+            # nothing to claim, and the driver reports an empty success over work
+            # it never did.
+            item_ids=(str(payload[SOURCE]),),
             cfg=cfg,
         )
         return ctx.envelope(data=_reported(store, job))
@@ -237,10 +265,105 @@ def run_master(payload: dict[str, Any], *, runner=mastering.subprocess_runner) -
     return mastering.as_payload(report)
 
 
+#: Where a queued encode is written before it is put in place. Under the
+#: DESTINATION's own parent rather than a temp directory, because the engine's
+#: commit is an ``os.replace`` and that is atomic only within one filesystem, and
+#: a mastered set is measured in gigabytes.
+STAGING_DIRNAME = ".cratekit-master-staging"
+
+
+def staging_dir(final: Path, job_id: str, ordinal: int) -> Path:
+    """The staging directory for one item of one job, cleared and recreated.
+
+    CLEARED, because whatever is in it belongs to an attempt that did not finish.
+    That is the whole reason the encode is staged: ffmpeg is invoked with ``-y``
+    and writes straight at whatever target it is given, so a run killed mid encode
+    leaves a partial file behind. At the real destination that partial file is
+    permanent damage, since the next resume meets ``output-exists`` and the
+    refusal tells the person that replacing it would discard a master they kept,
+    when the file is this queue's own corpse. In here it is just this attempt's
+    leftovers.
+    """
+    directory = final.parent / STAGING_DIRNAME / job_id / str(ordinal)
+    if directory.exists():
+        shutil.rmtree(directory)
+    config._mkdir_private(directory)
+    return directory
+
+
+def handle(job, item, cfg) -> jobs.Produced:
+    """Master one queued recording. The per-item worker behind ``handler_key`` master.
+
+    THE DESTINATION IS CHECKED HERE AND THE ENCODE HAPPENS ELSEWHERE, which is the
+    only part of this that is not a thin call. ``mastering.master`` refuses
+    ``output-exists`` against whatever directory it is writing into, so staging the
+    encode would move that guard off the real destination and let the commit
+    replace a master somebody kept. The check therefore comes up to the caller,
+    using the engine's OWN name builder rather than a second one, which is the rule
+    this module's docstring already states about ``output_path``.
+
+    IT IS GUARDED ON THE SOURCE EXISTING so that a missing recording still gets the
+    engine's own ``source-missing`` diagnosis in the engine's own order, rather
+    than a destination complaint about a file that was never going to be read.
+
+    ``cfg`` is the configuration this job was FROZEN against (KTD9). Mastering
+    reads nothing from it today; it is a parameter rather than something this
+    function loads so that the day it does, it cannot load a fresh one.
+    """
+    del cfg
+    payload = dict(job.payload or {})
+    # THE ITEM NAMES THE RECORDING, not the payload. They hold the same value for
+    # a job this shell queued, since it freezes one recording and enqueues it as
+    # the one item, and reading the payload instead is still wrong: it makes every
+    # item of a multi-item job master the SAME file, and the second one onwards
+    # then fails ``output-exists`` against the first one's output. Measured that
+    # way once, on the four-item job in ``tests/test_job_seam.py``. The item is
+    # what ``drive`` claims and the item is the unit of work.
+    source = Path(str(item.item_id or payload.get(SOURCE) or ""))
+    output_dir = payload.get(OUTPUT_DIR)
+    final = mastering.output_path(
+        source, output_dir=Path(str(output_dir)) if output_dir else None
+    )
+    if source.is_file() and final.exists() and not payload.get(OVERWRITE):
+        raise refuse(
+            str(mastering.Refusal.OUTPUT_EXISTS),
+            f"{final} already exists. Replacing it silently would discard a "
+            f"master that may already have been kept, and the settings that "
+            f"produced it are not recorded anywhere.",
+            origin=("master", "cli"),
+            detail={"path": str(final)},
+        )
+
+    staged_into = staging_dir(final, job.job_id, item.ordinal)
+    reported = run_master(
+        {SOURCE: str(source), OUTPUT_DIR: str(staged_into), OVERWRITE: True},
+        # Resolved at CALL time, not bound at definition time, so a test can put a
+        # stand-in encoder in front of it. ``run_master``'s own default is bound
+        # when this module is imported and cannot be reached any other way.
+        runner=mastering.subprocess_runner,
+    )
+    staged = Path(str(reported["output"]))
+    if not staged.is_file():
+        # The return value is READ rather than dropped. A report naming a file
+        # that is not there would otherwise be committed as an artifact nothing
+        # can open, and "done" is exactly what a resume trusts.
+        raise refuse(
+            "internal-error",
+            f"the mastering engine reported {staged} and nothing is there",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=("master", "cli"),
+            detail={"item_id": item.item_id, "reported": str(staged)},
+        )
+    return jobs.Produced(staged=staged, final=final)
+
+
 __all__ = [
+    "STAGING_DIRNAME",
     "build",
     "frozen_payload",
+    "handle",
     "master_argv",
     "master_recording",
     "run_master",
+    "staging_dir",
 ]

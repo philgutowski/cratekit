@@ -10,6 +10,11 @@ Three modes, one per property that needs a second process:
 
 ``drive``  run the item loop, stalling forever on a named item so the parent can
            kill it at a chosen point.
+``seam``   the same, but through ``cratekit.cli.handlers.run_job`` and the real
+           ``master`` handler, so the process that dies is running SHIPPED code
+           rather than a handler written beside the test. The two are different
+           claims: ``drive`` proves the engine's resume guarantee, ``seam`` proves
+           the binding does not lose it on the way through.
 ``claim``  claim items as fast as possible with no driver lock, so two of these
            racing prove the claim transaction is what serializes them.
 ``hold``   take the driver lock and wait, so the parent can test that a live
@@ -29,6 +34,15 @@ from cratekit.core import jobs
 #: Long enough that the parent always wins the race and kills it first, short
 #: enough that a bug in the parent fails the suite instead of hanging it.
 STALL_SECONDS = 120
+
+#: The one loudnorm report the ``seam`` mode's stand-in encoder answers every
+#: measure pass with. Same block as ``tests/test_master_cli.py``: without it the
+#: measurement is empty and the apply stage refuses long before an encode is built.
+LOUDNORM = (
+    '{"input_i": "-20.0", "input_lra": "5.0", "input_tp": "-3.0", '
+    '"input_thresh": "-30.0", "target_offset": "0.5", "output_i": "-14.0", '
+    '"output_lra": "5.0", "output_tp": "-1.0"}'
+)
 
 
 def _append(ledger: Path, line: str) -> None:
@@ -55,6 +69,51 @@ def run_drive(db: Path, job_id: str, root: Path, ledger: Path, stall: str) -> in
 
     with jobs.open_store(db) as store:
         jobs.drive(store, job_id, handle, root=root)
+    return 0
+
+
+def run_seam(db: Path, job_id: str, root: Path, ledger: Path, stall: str) -> int:
+    """Drive one job through the SHIPPED seam, stalling inside the real handler.
+
+    The stand-in encoder is installed on the module attribute the handler reads at
+    call time, which is the same seam ``tests/test_master_cli.py`` uses. It records
+    the source it was asked to master and then sleeps if that source is the one the
+    parent means to kill, so the process dies with a claim held and a partial file
+    in the job's staging directory, which is exactly the state the resume has to
+    survive.
+    """
+    from cratekit.cli import handlers
+    from cratekit.modules.tools import mastering
+
+    def encoder(command):
+        argv = list(command.argv)
+        if argv[0].endswith("ffprobe"):
+            return mastering.CommandResult(
+                returncode=0, stdout="sample_rate=44100\nsample_fmt=s16\n"
+            )
+        if "-f" in argv and "null" in argv:
+            return mastering.CommandResult(returncode=0, stderr=LOUDNORM)
+        target = Path(argv[-1])
+        if "pcm_s24le" in argv:
+            target.write_bytes(b"intermediate")
+            return mastering.CommandResult(returncode=0)
+        # The encode's target is named for the SOURCE plus the engine's output
+        # suffix, so the recording's own name is what comes back out. Keying the
+        # stall on ``target.stem`` instead compares "three" against
+        # "three_mastered" and never fires, which reads as a handler that never
+        # ran rather than as a harness that never matched.
+        name = target.name[: -len(mastering.OUTPUT_SUFFIX)]
+        _append(ledger, name)
+        if name == stall:
+            target.write_bytes(b"half an encode")
+            (root / f"stalled-{stall}").write_text("here")
+            time.sleep(STALL_SECONDS)
+        target.write_bytes(b"x" * 64)
+        return mastering.CommandResult(returncode=0, stderr=LOUDNORM)
+
+    mastering.subprocess_runner = encoder
+    with jobs.open_store(db) as store:
+        handlers.run_job(store, jobs.get(store, job_id), root=root)
     return 0
 
 
@@ -90,6 +149,8 @@ def main(argv: list[str]) -> int:
     mode = argv[0]
     if mode == "drive":
         return run_drive(Path(argv[1]), argv[2], Path(argv[3]), Path(argv[4]), argv[5])
+    if mode == "seam":
+        return run_seam(Path(argv[1]), argv[2], Path(argv[3]), Path(argv[4]), argv[5])
     if mode == "claim":
         return run_claim(Path(argv[1]), argv[2], Path(argv[3]), Path(argv[4]))
     if mode == "hold":

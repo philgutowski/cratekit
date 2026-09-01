@@ -1,0 +1,250 @@
+"""The job HANDLER registry: which function runs one queued item, resolved late.
+
+``cratekit.core.jobs.drive`` is the loop that claims a job's items, runs a handler
+against each, commits artifacts and records failures. Until this module landed it
+had no caller anywhere in ``src``: every long-running verb froze its configuration,
+queued, and reported, and ``crate job resume`` respawned a child that reported the
+same job again. The items stayed ``pending`` for ever. That is residual R-198, and
+this file is the half that was missing.
+
+**WHY THE TABLE IS STRINGS AND NOT IMPORTS.** KTD26 has the job engine re-invoke
+``crate`` as a subprocess rather than importing handlers, precisely so a process
+that is merely listing or validating jobs does not pull every feature module in
+through the back door and walk around the lazy-import stubs. A registry built as a
+package of imports defeats the property the scheme exists for, and it defeats it
+silently: the table still looks lazy while the import already happened at module
+scope. :mod:`cratekit.modules.tools` states the same rule for the same reason. So
+each entry below names its implementation as a dotted ``module:function`` string,
+and :func:`resolve` is the ONLY place an import happens.
+
+The ordering in :func:`resolve` is the one :func:`cratekit.cli.jobs.argv_for`
+already established: look the key up, refuse, and only then import the one module
+that owns it. Every line above the import is a line the supervisor runs against a
+key it does not trust.
+
+**WHY THIS IS NOT A FIELD ON ``registry.Entry``.** A ``worker: str | None`` field
+validated in ``Entry.__post_init__`` would make a declaration unable to outlive its
+verb by construction, which is genuinely better, and it was rejected for three
+reasons. The absence needs a REASON and a residual number, which is a second field
+``Entry`` has no room for. ``ENTRIES`` is appended to by every unit, so a field
+carrying eighteen ``None`` values invites the next author to leave it ``None``
+without noticing. And the unbound reason is data the reporting surface reads, not a
+validation message. Keeping the binding and the absence in one small table beside
+the registry says both things in one readable place.
+
+**WHY THE DRIVER LIVES HERE RATHER THAN IN ``core``.** Issue #64 asked for
+``core/handlers.py`` and the layering guard refuses it twice: a core module may not
+import :mod:`cratekit.cli.registry`, and it may not hold a string that is a verb
+name or that names a feature package, which every handler key and every declaration
+below is. The verbs cannot import this module either, for the mirrored reason: a
+verb is modules-ranked and this is CLI-ranked. They reach :func:`run_job` through
+``Context.run_job`` instead, which is the one route the ladder allows.
+
+Layer: cli.
+"""
+
+from __future__ import annotations
+
+import importlib
+from pathlib import Path
+from typing import Callable, Mapping
+
+from cratekit.core import config, jobs
+from cratekit.core.cause import CratekitError, refuse
+from cratekit.core.exit_codes import Remedy
+
+#: What a handler is: it receives the job, the one item it must do, and the
+#: configuration that job was FROZEN against. The configuration is a parameter
+#: rather than something the handler loads, because KTD9 closes exactly the resume
+#: bug that reloading reintroduces and a handler holding a fresh config is that
+#: defect wearing a new hat. The parameter removes the need to load one; only the
+#: guard in ``tests/test_handlers.py`` removes the ability.
+#:
+#: The configuration is spelled as a forward reference because the guard in
+#: ``tests/test_config.py`` refuses any module-level binding that reaches into
+#: ``config``, and it is right to: it cannot tell an annotation from a snapshot,
+#: and a snapshot is the defect that guard exists for.
+Handler = Callable[[jobs.Job, jobs.Item, "config.Config"], "jobs.Produced | None"]
+
+#: ``handler_key`` to ``"dotted.module:function"``. Strings, never functions.
+HANDLERS: Mapping[str, str] = {
+    "master": "cratekit.master.cli:handle",
+}
+
+#: ``handler_key`` to why this build runs nothing for it. Every landed
+#: long-running verb is in exactly one of these two mappings, and
+#: ``tests/test_handlers.py`` derives that population from the registry rather
+#: than listing it, so a verb added later without a handler fails the suite
+#: instead of failing at somebody's queue.
+HANDLERS_NOT_YET_BOUND: Mapping[str, str] = {
+    "job.resume": (
+        "the resume verb itself: it spawns the child that drives a job, and is "
+        "never queued under its own key"
+    ),
+    "acquire.download": "no worker yet, R-203",
+    "adopt.apply": "no worker yet, R-203",
+    "adopt.scan": "no worker yet, R-203",
+    "analyze.restamp": "no worker yet, R-203",
+    "analyze.run": "no worker yet, R-203",
+    "backup.run": "no worker yet, R-203",
+    "delete.review": "no worker yet, R-203",
+    "export.playlist": "no worker yet, R-203",
+    "intake.playlist": "no worker yet, R-203",
+    "intake.set": "no worker yet, R-203",
+    "label.import": "no worker yet, R-203",
+    "rebuild": "no worker yet, R-203",
+    "route.resort": "no worker yet, R-203",
+    "sync.all": "no worker yet, R-203",
+    "sync.favorites": "no worker yet, R-203",
+    "sync.labels": "no worker yet, R-203",
+    "tag.folder": "no worker yet, R-203",
+    "tag.retag": "no worker yet, R-203",
+}
+
+
+def is_known(key: str) -> bool:
+    """Whether this build has a handler for ``key``, WITHOUT importing anything.
+
+    This is the supervising question, asked by a process that may be doing nothing
+    more than listing jobs. Answering it by import would load every feature module
+    into that process, which is the whole thing KTD26 exists to prevent.
+    """
+    return key in HANDLERS
+
+
+def unbound_reason(key: str) -> str | None:
+    """Why ``key`` has no worker in this build, or ``None`` when it has one.
+
+    Reported rather than hidden. Before this seam every queued verb was equally
+    broken, which at least taught the user that queues do not run; one working
+    verb and nineteen silent ones would teach the opposite.
+    """
+    if is_known(key):
+        return None
+    return HANDLERS_NOT_YET_BOUND.get(key)
+
+
+def drift_warnings(keys: "tuple[str, ...]") -> tuple[dict[str, str], ...]:
+    """The one wording for "your configuration moved and this run did not" (KTD9).
+
+    A warning rather than a refusal. The job runs against its frozen inputs
+    whatever this says; what the person needs is to know that the setting they
+    just edited is not the setting this run is using. It lives here rather than in
+    each reporting site because two sentences for one fact is how the two come to
+    disagree, and one of them is then wrong about which copy a run used.
+    """
+    if not keys:
+        return ()
+    return (
+        {
+            "code": "config-drift",
+            "message": (
+                f"configuration changed since this job was queued; it runs against "
+                f"the frozen copy. Changed: {', '.join(keys)}"
+            ),
+        },
+    )
+
+
+def _declaration(key: str) -> str:
+    try:
+        return HANDLERS[key]
+    except KeyError:
+        raise refuse(
+            "internal-error",
+            f"this build declares no handler for {key!r}, so a job queued under "
+            f"it has nothing to run its items",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=("cli.handlers",),
+            detail={"handler": key},
+        ) from None
+
+
+def resolve(key: str) -> Handler:
+    """The function that runs one item of a job queued under ``key``.
+
+    The ONLY import in this module, and it happens after the key is known to be
+    real, for the one module that owns it.
+    """
+    declaration = _declaration(key)
+    dotted, separator, attribute = declaration.partition(":")
+    if not separator or not dotted or not attribute:
+        raise refuse(
+            "internal-error",
+            f"the handler declared for {key!r} is {declaration!r}, which is not "
+            f"a 'module:function' declaration",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=("cli.handlers",),
+            detail={"handler": key, "declaration": declaration},
+        )
+    module = importlib.import_module(dotted)
+    found = getattr(module, attribute, None)
+    if found is None:
+        raise refuse(
+            "internal-error",
+            f"the handler declared for {key!r} names {attribute!r} in {dotted}, "
+            f"and that module has no such member",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=("cli.handlers",),
+            detail={"handler": key, "declaration": declaration},
+        )
+    if not callable(found):
+        raise refuse(
+            "internal-error",
+            f"the handler declared for {key!r} names {attribute!r} in {dotted}, "
+            f"and that member is not callable",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=("cli.handlers",),
+            detail={"handler": key, "declaration": declaration},
+        )
+    return found
+
+
+def run_job(store: jobs.JobStore, job: jobs.Job, *, root: Path | None = None) -> jobs.DriveResult:
+    """Run one job's queued items to completion. The ONE caller of ``jobs.drive``.
+
+    Three steps and nothing else. Resolve the handler, read the frozen
+    configuration ONCE and bind it, then delegate. The loop's shape is the
+    engine's contract and is documented on :func:`cratekit.core.jobs.drive`: the
+    driver lock first, orphaned claims released once, the interrupt flag checked
+    between items and before a commit, an artifact durable before its row flips to
+    done, and a total failure recorded as failed rather than returned as an empty
+    success. Reimplementing any of that here would be a second opinion about a
+    rule that already has an owner.
+
+    IT DOES NOT ALWAYS RETURN. When items were attempted and none succeeded,
+    ``drive`` records the job as failed and then raises ``no-evidence``, so a
+    caller that always expects a ``DriveResult`` is wrong about the common failure
+    path of a one-item job.
+
+    THE FROZEN CONFIGURATION IS READ OFF THE JOB, never loaded. KTD9 closes the
+    recorded resume bug where a queued run re-resolved its configuration and could
+    empty its own output.
+    """
+    handler = resolve(job.handler_key)
+    frozen = jobs.frozen_config(job)
+
+    def handle(driven: jobs.Job, item: jobs.Item) -> "jobs.Produced | None":
+        return handler(driven, item, frozen)
+
+    # DRIFT IS COMPUTED, NOT ENFORCED. A configuration that cannot be loaded at
+    # all is not a reason to refuse to finish work that was already queued and
+    # frozen, so the drift report is dropped rather than the run.
+    try:
+        current: config.Config | None = config.load()
+    except (config.ConfigError, CratekitError):
+        current = None
+
+    return jobs.drive(store, job.job_id, handle, root=root, current_config=current)
+
+
+__all__ = [
+    "HANDLERS",
+    "HANDLERS_NOT_YET_BOUND",
+    "Handler",
+    "drift_warnings",
+    "is_known",
+    "resolve",
+    "run_job",
+    "unbound_reason",
+]

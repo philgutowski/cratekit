@@ -5030,7 +5030,23 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # reached through a symbol, and this unit edits none of them. A pin that
     # watched the touched files rather than the derived set would have expected a
     # second module here.
-    assert (len(literal_holders), len(literal_both)) == (79, 15), (
+    # Re-pinned on U46, 2026-09-01: 79 to 80 holders. cli/handlers.py joined,
+    # naming internal-error as a literal at its four refusal sites, which is what
+    # every registry-shaped lookup in this package raises for a key the build does
+    # not declare. Differenced as SETS by repointing this module's PACKAGE_ROOT at
+    # origin/main's own src tree extracted into a scratch directory, the same way
+    # as every entry above: exactly one module joined and none left. The
+    # also-holds-an-integer half stays 15, measured by differencing that set too
+    # rather than assumed, because the module holds no bare integer at all. The
+    # named halves did NOT move, staying at 21 and 8, and that was measured rather
+    # than inferred: the module names its one cause as a literal. So the
+    # comparison just below widened for the fifteenth time out of fifteen.
+    #
+    # master/cli.py is NOT a new holder despite this unit adding two refusal sites
+    # to it: it was already in the set, and the output-exists slug its new handler
+    # raises travels through ``str(mastering.Refusal.OUTPUT_EXISTS)``, which
+    # resolves to an enum member and not to a literal at all.
+    assert (len(literal_holders), len(literal_both)) == (80, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
