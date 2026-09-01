@@ -9569,6 +9569,14 @@ expand this unit into the job execution layer, which no brief assigns to it.
 **Closes when:** a worker claims job items and dispatches by handler key, and
 every long-running verb's engine has a caller in `src`.
 
+**Measured on U46, 2026-09-01, and this entry stays OPEN.** The first clause is
+met: `cratekit.cli.handlers.run_job` claims a job's items through `jobs.drive` and
+dispatches by handler key. The second is not, and one binding cannot meet it. One
+of twenty landed queued verbs has an engine with a caller in `src`; the other
+eighteen are `R-203` and `job.resume` is exempt by role. Recorded here rather than
+by rewriting the closing condition, because the condition is right and it is the
+progress that is partial.
+
 ## R-184. `plan_genre_retag` drops a row whose wanted genre is empty with no skip
 
 **Found by** U40's first-caller drive of `write/metadata`, 2026-08-26.
@@ -9814,6 +9822,15 @@ time for a run that would have succeeded.
 engine's `source-missing` as its cause. The test to write on that day asserts
 the reported cause rather than the queueing exit status.
 
+**Measured on U46, 2026-09-01.** The second half is now driven:
+`tests/test_master_cli.py::test_a_missing_recording_reports_the_engines_own_cause_on_the_item`
+queues a recording that does not exist, re-enters the verb with `--job`, and reads
+`source-missing` off the ITEM's row. The job's own cause is
+`unavailable-transient` and the envelope carries `no-evidence`, each wrapping it,
+which is where a reader looking for the slug on the job would not have found it.
+This does not close the entry: it turns on `R-183`, which U46 narrows and does not
+close, so this stays open on its first clause alone.
+
 ---
 
 ## R-192. `encoder-missing` is reachable from the shell and no test drives it
@@ -9848,6 +9865,13 @@ defect.
 **Closes when:** a test drives `encoder-missing` through `run_master` with an
 empty PATH, and a mutation row that removes the `binaries.resolve` guard
 reports a kill.
+
+**Half measured on U46, 2026-09-01.** The first clause is driven, through the
+override the resolver actually reads rather than by replacing the resolver:
+`tests/test_master_cli.py::test_a_missing_encoder_reports_that_refusal_rather_than_an_internal_defect`
+points `CRATEKIT_BIN_FFMPEG` at a path that is not there, drives a queued job, and
+reads `encoder-missing` off the item's row. The mutation row is not written, so
+this stays open on its second clause.
 
 ---
 
@@ -10083,6 +10107,19 @@ to completion through `crate job resume`, driven rather than asserted. That unit
 inherits the first-caller reading of `acquire_paced` and
 `acquire_concurrently` described above.
 
+**Measured on U46, 2026-09-01. This entry is CLOSED.** `src/cratekit/cli/handlers.py`
+declares `handler_key` to `"module:function"` as inert strings, resolves one with
+a single lazy import, and holds the one call to `jobs.drive` in the package,
+asserted by an `ast` walk rather than a text search. `crate master` queues one
+item and re-entering the verb with `--job` runs it to `done`, read back from the
+store. The branch count in this entry was also wrong by the time it was read: an
+`ast` walk finds seventeen branches in fifteen modules, because `backup/cli.py`
+joined when U45 landed. The population that matters is the registry's twenty
+landed `long_running` entries rather than the branches, and the eighteen that stay
+unbound are `R-203`. The first-caller obligation this entry transfers did NOT
+transfer, because U46 binds `master` rather than acquisition, and the reason is
+`R-204`.
+
 ## R-199. `Entry.destructive` is read by nothing, and its own validation message says the gates bind to it
 
 **Found:** during U42, 2026-08-28, while deciding whether `acquire.download`
@@ -10234,3 +10271,122 @@ Driven only as the mutation row: nothing in `src` or `tests` reads the field.
 
 **Closes when:** either the key leaves `outcome_payload`, or something reachable
 can produce a report carrying `ok: false`.
+
+---
+
+## R-203. Eighteen queued verbs still have no worker, and the one that does now makes that visible
+
+**Found:** during U46, 2026-09-01, while binding the first handler.
+
+`registry.ENTRIES` holds twenty landed `long_running` entries. `master` is bound
+by this unit and `job.resume` is exempt by role, since it is the verb that spawns
+the child rather than a verb whose work is queued. The other eighteen remain what
+R-198 described: a queue with nothing behind it. They are `acquire.download`,
+`adopt.apply`, `adopt.scan`, `analyze.restamp`, `analyze.run`, `backup.run`,
+`delete.review`, `export.playlist`, `intake.playlist`, `intake.set`,
+`label.import`, `rebuild`, `route.resort`, `sync.all`, `sync.favorites`,
+`sync.labels`, `tag.folder` and `tag.retag`.
+
+**The population is the registry, not the resume branches, and the two are
+genuinely different.** An `ast` walk finds seventeen `if ctx.args.job` branches in
+fifteen modules. `sync/cli.py` carries one branch serving three handler keys, and
+`delete.review` is a landed queued entry with no branch at all, which is R-149.
+The first draft of this unit's plan sized the exemption list from the branch count
+and was wrong by three. Anything that quantifies over queued verbs derives the set
+from `registry.ENTRIES`.
+
+**Not fixed here, deliberately.** Binding the rest is not mechanical, which is the
+claim worth recording because the shape of the seam invites the opposite
+conclusion. The call site is one line and every verb already has it available
+through `Context.run_job`. What is not one line is the two decisions each verb
+owes: what its items ARE, and what its per item worker does. Only `analysis/cli.py`
+and now `master/cli.py` pass `item_ids` to `enqueue` at all, so sixteen of the
+eighteen would queue a job with nothing to claim and drive would report an empty
+success over work it never did. And several have no worker to write yet at all:
+`adopt.scan` needs a collection reader that has not landed, `acquire.download`
+would newly reach an adapter that R-195, R-196 and R-197 say has never fetched a
+file, and `sync.all` carries R-130's unregistered obligation about run identity.
+
+**Cost:** the same as R-198's for eighteen verbs, with one change. `crate job list`
+and `crate job show` now carry a `worker` field derived from the declaration table
+without importing anything, so a queued job that will never run says so. Before
+this unit every queued verb was equally broken, which at least taught a person
+that queues do not run; one working verb and eighteen silent ones would have
+taught the opposite.
+
+**Closes when:** every landed `long_running` entry is in `HANDLERS` and
+`HANDLERS_NOT_YET_BOUND` is empty. `tests/test_handlers.py` fails the day a new
+queued verb is in neither, so this cannot quietly grow.
+
+---
+
+## R-204. The acquisition first caller obligation did not transfer, and why
+
+**Found:** during U46, 2026-09-01, while choosing which verb to bind.
+
+R-198 recorded that `download.acquire_paced`, `adapter.dispatch_invocation` and
+`adapter.adapter_names` ship with a definition and an export line and no caller,
+that `download.acquire_concurrently` is dormant behind `acquire_paced`, and that
+the first caller obligation for all four transfers to whoever binds the handler.
+Re-run on this branch, `git grep -n` for each still returns definitions, export
+lines and docstring mentions only. This unit does not bind `acquire.download`, so
+the obligation stays where R-198 left it.
+
+**Why acquisition was not the verb bound.** It is what issue #64 suggested. R-197
+records that `AcquireAdapter.fetch` is marked `pragma: no cover`, has never
+fetched a file, and dies on its first line because the downloader is constructed
+without the events it requires; R-195 records that the adapter never tells the
+downloader where ffmpeg is, so a lossless run lands lossy with doctor reporting
+green; R-196 records that the provider serves lossy audio to the only login flow
+either the vendored tool or the adapter can perform. All three are recorded as
+residuals precisely because nothing calls that path. Binding the acquisition
+handler makes their input reachable, and under `docs/METHOD.md`'s merge bar a
+residual whose reachability a branch creates is blocking on that branch. That is
+three critical findings this unit would have had to fix to merge, which is a
+different unit.
+
+**What DID transfer, and was discharged.** `master_cli.run_master` had no caller
+in `src` either, and binding `master` made this unit its first. Its failure paths
+were read rather than assumed and three are now driven end to end through the
+queue: `source-missing`, `output-exists`, and `encoder-failed`, the last of which
+R-192 records as reachable and undriven. Reading its return value produced two
+findings, both fixed: the handler read the recording from the job payload rather
+than from the item the driver claimed, which made every item of a multi item job
+master the same file, and it carried a check the engine already makes.
+
+**Cost:** `acquire_paced` and the three functions behind it stay shipped and never
+driven, and the widest workflow in the product still cannot run.
+
+**Closes when:** a unit binds `acquire.download`'s handler, and takes R-195,
+R-196 and R-197 with it.
+
+---
+
+## R-205. No test sees the whole `crate job resume` path in one piece
+
+**Found:** during U46, 2026-09-01, while writing the end to end proof.
+
+The path a person travels is `crate job resume <id>`, which reconciles, retries a
+terminal job, and calls `jobs.spawn` with the argv `argv_for` builds. `spawn`
+starts that child with `start_new_session=True` and its output goes to a log, so a
+test cannot observe the child's effect on the queue as part of the parent's call.
+
+Both halves are proved and the join is not. `tests/test_jobs.py` proves the spawn
+happens and carries the built argv; `tests/test_master_cli.py` proves that argv,
+re-entered in process, drives the job from `pending` to `done` with the item row
+read back from the store. What nothing asserts is that one `crate job resume`
+invocation ends with a done item.
+
+**Why it was not fixed here.** Closing it means either waiting on a detached child
+from a test, which makes the suite depend on a timeout, or adding a foreground
+mode to `spawn`, which is a change to the KTD26 seam made for a test's benefit.
+Neither belongs to the unit that binds the first handler.
+
+**Cost:** a defect that lives only in the join, such as `argv_for` building a
+command line the verb no longer accepts, would pass this suite.
+`tests/test_queued_resume_contract.py` narrows it: it feeds the real `argv_for`
+output back through the real dispatcher for every gated queued verb. The uncovered
+strip is exactly the process boundary.
+
+**Closes when:** one test drives `crate job resume` and then reads a done item
+from the store, or the seam grows a foreground mode a test can call.
