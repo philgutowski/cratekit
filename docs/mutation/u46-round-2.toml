@@ -1,0 +1,54 @@
+name = "u46-round-2"
+pass_kind = "light"
+
+# Round one left three rows unmeasured or unclosed. This re-measures them.
+#
+# M2 was a COLLECT ERROR, not a zero: deleting the two lines left an ``if`` with
+# an empty body, so both test files failed to parse and took their tests with
+# them. The row is reworded to substitute ``pass``, which is the state R-198
+# actually describes, a resume branch that reports and runs nothing.
+#
+# M6 measured zero because the handler passed ``OVERWRITE: True`` into the
+# staging directory, which is a second mechanism covering the same leftover. The
+# handler now passes False and the clearing is the only thing standing between a
+# killed attempt's partial file and the next attempt. Re-measured here.
+#
+# M7's subject no longer exists. The handler carried a "the file the engine
+# reported is not there" check; the row killed zero tests, and driving it showed
+# why: ``mastering.master`` refuses ``encoder-failed`` when the encode reports
+# success and produces nothing, so the branch was unreachable through the only
+# caller there is. The branch is deleted and the engine's own refusal is asserted
+# instead. M7B measures that refusal reaching the item row.
+
+[[rows]]
+id = "M2_resume_does_not_drive"
+description = "Report the queued job on resume without running any of it, which is the state R-198 describes"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''                _, warnings = ctx.run_job(store, job)
+                job = jobs.get(store, job.job_id)'''
+new = '''                pass'''
+
+[[rows]]
+id = "M6_staging_not_cleared"
+description = "Leave a previous attempt's partial encode in the staging directory"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''    if directory.exists():
+        shutil.rmtree(directory)'''
+new = ""
+
+[[rows]]
+id = "M7B_engine_refusal_swallowed"
+description = "Translate the engine's encoder-failed into a generic internal defect"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''            str(exc.refusal),
+            exc.detail,'''
+new = '''            "internal-error",
+            "the mastering engine refused",'''
+
+[[dropped]]
+id = "M10_report_path_recomputed"
+description = "Derive the staged path with output_path instead of reading it off the engine's report"
+reason = "expected inert and dropped rather than run: the two agree by construction, so no test can tell them apart. The reason to read the report is the one this module's docstring already gives, that two name builders for one file is how an in-place write arrives later. Recorded so the absence is visible rather than read as coverage"

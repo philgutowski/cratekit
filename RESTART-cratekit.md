@@ -1,8 +1,30 @@
 # Restart: Cratekit
 
-**Last session 2026-08-29.** U45 merged and pushed. Board audit exit 0, **45
-units, 44 done, 1 READY, 0 blocked**, and the one that is Ready is the one you
-must not take. **The pending register is EMPTY.**
+**Last session 2026-09-01.** U46 landed on `relay/64`, taken from the board as
+issue #64 rather than from the unit sequence: it is a residual somebody decided to
+act on, which is what moves a residual onto the board. **The pending register is
+still EMPTY.**
+
+**U46 CLOSED R-198 AND DID NOT CLOSE R-183.** `cratekit.core.jobs.drive` now has
+one caller in `src`, `cratekit.cli.handlers.run_job`, and `crate master` runs a
+queued item from `pending` to `done` through shipped code. R-183 asks that EVERY
+long running verb's engine have a caller, and one binding does not meet that: of
+the registry's twenty landed `long_running` entries, one is bound, `job.resume` is
+exempt by role, and eighteen are `R-203`. `crate job list` and `crate job show`
+now say which. R-204 records why the acquisition binding, and the first caller
+obligation that travels with it, was not this unit's. R-205 through R-209 are the
+resume path no test sees in one piece, the staging directory a successful master
+leaves behind, and three findings the review reasoned out but did not drive.
+**Main's highest residual is now R-209.**
+
+**The population to reason about is the REGISTRY, not the resume branches.** An
+`ast` walk finds seventeen `if ctx.args.job` branches in fifteen modules, and that
+is a different set: `sync/cli.py` carries one branch serving three handler keys and
+`delete.review` is a landed queued entry with no branch at all. The first draft of
+U46's plan sized its exemption list from the branches and was wrong by three.
+
+**Before U46, board audit was exit 0 with 45 units, 44 done, 1 READY, 0 blocked**,
+and the one that is Ready is the one you must not take.
 
 **THE CUTOVER BACKLOG IS EMPTY AND THE CUTOVER IS MECHANICALLY POSSIBLE.** U45
 cleared Feature Inventory row 31, the last owed row without a landed verb.
@@ -52,9 +74,9 @@ what this file describes": `git status -sb` shows no ahead or behind count,
 `board.py audit` exits 0. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Forty four of forty five units are done.** The last measured suite was
-**6440 passed and 1 skipped**. **Main's highest residual is R-202.**
-Append only.
+**Forty four of forty five units are done, plus U46 off the residual ledger.**
+The last measured suite was **6483 passed and 1 skipped**. **Main's highest
+residual is R-209.** Append only.
 
 ## What the last session did
 
@@ -133,10 +155,11 @@ against 17, 39 against 49, and 49 against 83.
 
 **Only U29, and it is not an agent's.** See the top of this file.
 
-**The residual ledger.** 202 numbers, 201 entries, none of them queued. R-198 is still the one with
-the widest product consequence: nothing in `src` calls `jobs.drive`, so no
-long-running verb's work is executed by shipped code. `backup.run` joined that
-family on 2026-08-29 and is the seventeenth. U45's own two are R-200, a failed
+**The residual ledger.** 209 numbers, 208 entries, none of them queued. R-198 is
+CLOSED: `cratekit.cli.handlers.run_job` calls `jobs.drive` and `crate master` runs
+a queued item to done. **R-203 inherits its consequence for the other eighteen
+queued verbs**, and `crate job show` now reports which of them have no worker.
+U46's own residuals are R-203 through R-209. U45's own two are R-200, a failed
 archive prune that reaches no report at all, and R-201, `core/session.py`
 discarding the `grant-path-access` remedy that `backup_facts` raises for a
 permission and that `doctor` and the new shell both carry through.
@@ -158,7 +181,7 @@ changed about its reachability.
   to act on it. **Do not backfill.**
 - **Residual numbers are APPEND ONLY.** Main's numbers never move; an incoming
   branch's residuals take fresh numbers above main's highest. **Main's highest is
-  R-202.**
+  R-209.**
 - **The pending register is empty.** `tests/test_pending_units.py` now carries a
   test that says so out loud, because an emptily parametrized countdown is
   SKIPPED by pytest and a silent skip is the exact hazard that file warns about.

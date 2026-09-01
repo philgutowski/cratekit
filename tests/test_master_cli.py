@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 
 from cratekit import cli
-from cratekit.cli import output, registry
+from cratekit.cli import handlers, output, registry
 from cratekit.core import config, jobs, profiles
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
@@ -196,12 +196,22 @@ def test_an_empty_recording_refuses_from_the_vocabulary(configured):
     assert envelope["cause"]["reason"] == "source-missing"
 
 
-def test_naming_a_job_reports_it_rather_than_queueing_a_second(configured):
-    code, first = _drive(["master", str(configured.library.root / "a.wav")])
+def test_naming_a_job_reports_it_rather_than_queueing_a_second(configured, monkeypatch):
+    """Still one job after a resume, and now the resume also DOES the work.
+
+    Rewritten for U46 rather than left alone. Before the handler binding a resume
+    reconciled and reported, so any recording worked; now it claims the item and
+    masters it, so this needs a real one and a stand-in encoder. The claim the test
+    was written for, that naming a job continues it instead of queueing a second,
+    is unchanged and is still what the last assertion measures.
+    """
+    source = _recording(configured.library.root)
+    monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
+    code, first = _drive(["master", str(source)])
     assert code == int(ExitCode.OK)
     job_id = first["data"]["job_id"]
 
-    code, again = _drive(["master", str(configured.library.root / "a.wav"), "--job", job_id])
+    code, again = _drive(["master", str(source), "--job", job_id])
     assert code == int(ExitCode.OK), again
     assert again["data"]["job_id"] == job_id
     with jobs.open_store() as store:
@@ -528,3 +538,366 @@ def test_an_impostor_matching_the_first_chunk_is_still_a_different_recording(tmp
     assert excinfo.value.cause.reason == "archive-holds-a-different-recording"
     assert mastering.digest(impostor) == impostor_digest
     assert not mastering.output_path(source).exists()
+
+
+# ---------------------------------------------------------------------------
+# U46: the queued work is actually run
+#
+# Everything above this line drives ``run_master`` directly, which is the engine
+# side. These drive the QUEUE: enqueue through the real dispatcher, then re-enter
+# the verb with ``--job`` the way the child a resume spawns does, and read the
+# item's row back from the store rather than inferring it from an exit status.
+# ---------------------------------------------------------------------------
+
+
+def _queued(source: Path, *extra: str) -> str:
+    code, envelope = _drive(["master", str(source), *extra])
+    assert code == int(ExitCode.OK), envelope
+    return envelope["data"]["job_id"]
+
+
+def _items(job_id: str) -> tuple[jobs.Item, ...]:
+    with jobs.open_store() as store:
+        return jobs.items(store, job_id)
+
+
+def test_queueing_a_recording_gives_the_driver_one_item_to_claim(configured):
+    """Without this the queue holds a job with nothing in it, and drive succeeds
+    over work it never did."""
+    source = configured.library.root / "REC001.wav"
+    job_id = _queued(source)
+
+    items = _items(job_id)
+    assert [i.item_id for i in items] == [str(source)]
+    assert items[0].state == jobs.ItemState.PENDING
+
+
+def test_a_relative_recording_is_frozen_absolute_so_the_child_masters_the_same_file(
+    configured, tmp_path, monkeypatch
+):
+    """The child inherits the RESUMING process's directory, not the queueing one."""
+    monkeypatch.chdir(configured.library.root)
+    job_id = _queued(Path("REC001.wav"))
+
+    with jobs.open_store() as store:
+        payload = jobs.get(store, job_id).payload
+    assert payload[master_cli.SOURCE] == str(configured.library.root / "REC001.wav")
+    assert Path(payload[master_cli.SOURCE]).is_absolute()
+
+
+def test_a_queued_recording_runs_from_pending_to_done_through_the_resume_branch(
+    configured, monkeypatch
+):
+    """The whole point of U46. Read from the store, not from the exit code."""
+    source = _recording(configured.library.root)
+    job_id = _queued(source)
+    monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
+
+    code, envelope = _drive(["master", str(source), "--job", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    item = _items(job_id)[0]
+    assert item.state == jobs.ItemState.DONE
+    assert item.artifact == str(mastering.output_path(source))
+    assert Path(item.artifact).is_file()
+    with jobs.open_store() as store:
+        assert jobs.get(store, job_id).state is jobs.JobState.SUCCEEDED
+
+
+def test_the_encode_lands_in_staging_and_is_committed_rather_than_written_in_place(
+    configured, monkeypatch
+):
+    """The staging directory is why a killed encode does not poison the resume."""
+    source = _recording(configured.library.root)
+    job_id = _queued(source)
+    seen: list[str] = []
+
+    encoder = _encoder()
+
+    def watching(command):
+        seen.append(str(command.argv[-1]))
+        return encoder(command)
+
+    monkeypatch.setattr(mastering, "subprocess_runner", watching)
+    _drive(["master", str(source), "--job", job_id])
+
+    staging = master_cli.MASTER_STAGING_DIRNAME
+    assert any(staging in target for target in seen), seen
+    assert not any(
+        target == str(mastering.output_path(source)) for target in seen
+    ), "the encoder was pointed straight at the destination"
+
+
+def test_a_partial_file_left_in_staging_does_not_refuse_the_next_attempt(
+    configured, monkeypatch
+):
+    """The failure that made a killed master job permanently unresumable."""
+    source = _recording(configured.library.root)
+    job_id = _queued(source)
+    final = mastering.output_path(source)
+    stale = final.parent / master_cli.MASTER_STAGING_DIRNAME / job_id / "0"
+    stale.mkdir(parents=True)
+    (stale / final.name).write_bytes(b"half an encode")
+
+    monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
+    code, envelope = _drive(["master", str(source), "--job", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    assert _items(job_id)[0].state == jobs.ItemState.DONE
+
+
+def test_a_missing_recording_reports_the_engines_own_cause_on_the_item(configured):
+    """Closes the half of R-191 that a driven job can close.
+
+    The item carries ``source-missing``. The JOB carries the engine's partial
+    failure cause, and the envelope carries ``no-evidence``, because a one-item
+    job whose item failed is a TOTAL failure and the driver refuses to report an
+    empty success. All three are asserted rather than one, because a reader who
+    knows only the envelope would look for the slug in the wrong place.
+    """
+    source = configured.library.root / "nope.wav"
+    job_id = _queued(source)
+
+    code, envelope = _drive(["master", str(source), "--job", job_id])
+
+    assert code != int(ExitCode.OK)
+    assert envelope["cause"]["reason"] == "no-evidence"
+    item = _items(job_id)[0]
+    assert item.state == jobs.ItemState.FAILED
+    assert item.cause is not None and item.cause.reason == "source-missing"
+    with jobs.open_store() as store:
+        assert jobs.get(store, job_id).state is jobs.JobState.FAILED
+
+
+def test_a_failed_job_stays_resumable_and_the_second_attempt_redoes_that_item(
+    configured, monkeypatch
+):
+    """Reopening is ``job resume``'s act, and driving is this verb's.
+
+    The two halves are asserted separately because the split is easy to read the
+    wrong way round. Re-entering the verb on a job the engine has already recorded
+    as failed REPORTS it: a terminal job is not re-driven, and ``jobs.drive``
+    refuses one outright. What reopens it is ``crate job resume``, which calls
+    ``jobs.retry`` and then spawns the child that arrives here. This drives
+    ``retry`` directly rather than the spawning verb, because the child that verb
+    starts is detached and the item's row is what this measures.
+    """
+    source = configured.library.root / "REC001.wav"
+    job_id = _queued(source)
+    _drive(["master", str(source), "--job", job_id])
+    assert _items(job_id)[0].state == jobs.ItemState.FAILED
+
+    code, reported = _drive(["master", str(source), "--job", job_id])
+    assert code == int(ExitCode.OK), reported
+    assert _items(job_id)[0].state == jobs.ItemState.FAILED
+
+    _recording(configured.library.root)
+    monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
+    with jobs.open_store() as store:
+        jobs.retry(store, job_id)
+    code, envelope = _drive(["master", str(source), "--job", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    assert _items(job_id)[0].state == jobs.ItemState.DONE
+
+
+def test_an_existing_master_is_refused_before_the_engine_runs(configured, monkeypatch):
+    """The check the handler had to take over, because the encode now stages."""
+    source = _recording(configured.library.root)
+    final = mastering.output_path(source)
+    final.write_bytes(b"a master somebody kept")
+
+    ran: list[str] = []
+    monkeypatch.setattr(
+        mastering, "subprocess_runner", lambda command: ran.append("ran") or (_ for _ in ()).throw(AssertionError("the engine ran"))
+    )
+    job_id = _queued(source)
+    code, envelope = _drive(["master", str(source), "--job", job_id])
+
+    assert code != int(ExitCode.OK)
+    assert ran == [], "the destination check happened after the engine started"
+    item = _items(job_id)[0]
+    assert item.cause is not None and item.cause.reason == "output-exists"
+    assert final.read_bytes() == b"a master somebody kept"
+
+
+def test_overwrite_reaches_the_handler_and_replaces_the_previous_master(
+    configured, monkeypatch
+):
+    source = _recording(configured.library.root)
+    final = mastering.output_path(source)
+    final.write_bytes(b"the previous master")
+    monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
+
+    job_id = _queued(source, "--overwrite")
+    code, envelope = _drive(["master", str(source), "--overwrite", "--job", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    assert final.read_bytes() != b"the previous master"
+
+
+def test_a_missing_encoder_reports_that_refusal_rather_than_an_internal_defect(
+    configured, monkeypatch
+):
+    """R-192's drive. Cheap once something calls this path at all."""
+    source = _recording(configured.library.root)
+    job_id = _queued(source)
+
+    # Through the OVERRIDE the resolver actually reads, rather than by replacing
+    # the resolver. A stand-in that raises would prove this test can raise.
+    monkeypatch.setenv("CRATEKIT_BIN_FFMPEG", str(configured.library.root / "no-ffmpeg"))
+    code, envelope = _drive(["master", str(source), "--job", job_id])
+
+    assert code != int(ExitCode.OK)
+    item = _items(job_id)[0]
+    assert item.cause is not None and item.cause.reason == "encoder-missing"
+
+
+def test_an_encode_that_produces_nothing_reaches_the_item_as_the_engines_own_cause(
+    configured, monkeypatch
+):
+    """An encoder that reports success and writes nothing.
+
+    THE CAUSE IS ASSERTED, not just the failure, and that is what this test is for.
+    The handler carried its own "the reported file is not there" check until this
+    was driven; the check killed zero tests because the engine refuses first, and
+    an unreachable branch is a finding rather than a guard. What a person actually
+    sees is ``encoder-failed`` with the engine's remediation, and this is what says
+    so.
+    """
+    source = _recording(configured.library.root)
+    job_id = _queued(source)
+    monkeypatch.setattr(mastering, "subprocess_runner", _encoder(encode_writes=False))
+
+    code, envelope = _drive(["master", str(source), "--job", job_id])
+
+    assert code != int(ExitCode.OK)
+    assert not mastering.output_path(source).exists()
+    item = _items(job_id)[0]
+    assert item.cause is not None and item.cause.reason == "encoder-failed"
+    assert "FileNotFoundError" not in item.cause.message
+
+
+def test_a_handler_that_raises_an_undeclared_error_fails_the_item_not_the_driver(
+    configured, monkeypatch
+):
+    source = configured.library.root / "REC001.wav"
+    job_id = _queued(source)
+
+    def exploding(job, item, cfg):
+        raise RuntimeError("something nobody declared")
+
+    monkeypatch.setattr(handlers, "resolve", lambda key: exploding)
+    code, envelope = _drive(["master", str(source), "--job", job_id])
+
+    assert code != int(ExitCode.OK)
+    item = _items(job_id)[0]
+    assert item.state == jobs.ItemState.FAILED
+    assert item.cause is not None and item.cause.reason == "internal-error"
+
+
+def test_a_job_show_says_when_a_queued_verb_has_no_worker(configured):
+    """One verb working and nineteen silent is worse than all of them silent."""
+    source = configured.library.root / "REC001.wav"
+    job_id = _queued(source)
+
+    code, envelope = _drive(["job", "show", job_id])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["progress"]["worker"] == "bound"
+    assert envelope["data"]["progress"]["worker_reason"] is None
+
+    with jobs.open_store() as store:
+        other = jobs.enqueue(store, handler_key="rebuild", payload={}, cfg=configured)
+    code, envelope = _drive(["job", "show", other.job_id])
+    assert envelope["data"]["progress"]["worker"] == "none"
+    assert "R-203" in envelope["data"]["progress"]["worker_reason"]
+
+
+def test_a_relative_output_dir_is_frozen_absolute_too(configured, tmp_path, monkeypatch):
+    """The directory needs it as much as the recording does.
+
+    ``master_argv`` rebuilds ``--output-dir`` from the payload verbatim, and the
+    child inherits the RESUMING process's working directory, so a relative one
+    sends the master somewhere the person did not ask for and reports success.
+    """
+    monkeypatch.chdir(configured.library.root)
+    (configured.library.root / "out").mkdir()
+    job_id = _queued(Path("REC001.wav"), "--output-dir", "out")
+
+    with jobs.open_store() as store:
+        payload = jobs.get(store, job_id).payload
+    assert payload[master_cli.OUTPUT_DIR] == str(configured.library.root / "out")
+    assert Path(payload[master_cli.OUTPUT_DIR]).is_absolute()
+
+
+def test_a_relative_recording_masters_the_same_file_when_the_resume_runs_elsewhere(
+    configured, tmp_path, monkeypatch
+):
+    """The drive, not just the freeze. Queue from one directory, resume from another."""
+    source = _recording(configured.library.root)
+    monkeypatch.chdir(configured.library.root)
+    job_id = _queued(Path(source.name))
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
+    code, envelope = _drive(["master", source.name, "--job", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    item = _items(job_id)[0]
+    assert item.state == jobs.ItemState.DONE
+    assert item.artifact == str(mastering.output_path(source))
+    assert Path(item.artifact).is_file()
+
+
+def test_nothing_is_created_beside_a_destination_for_a_recording_that_is_not_there(
+    configured
+):
+    """``source-missing`` promises nothing was read and nothing was written."""
+    source = configured.library.root / "Sets" / "nope.wav"
+    job_id = _queued(source)
+
+    _drive(["master", str(source), "--job", job_id])
+
+    assert not source.parent.exists(), (
+        "a staging tree was built beside a destination for a recording that "
+        "does not exist, which falsifies the refusal's own remediation"
+    )
+    assert _items(job_id)[0].cause.reason == "source-missing"
+
+
+def test_a_configuration_that_moved_reaches_the_person_as_a_warning_on_the_resume(
+    configured, tmp_path, monkeypatch
+):
+    """Drift, driven through the verb's own envelope rather than through the driver.
+
+    The two halves are each covered elsewhere. What nothing measured until this is
+    the wiring between them: a resume that dropped its warnings would report a run
+    against a configuration the person had already changed, silently.
+    """
+    source = _recording(configured.library.root)
+    job_id = _queued(source)
+
+    moved = config.from_dict(
+        {
+            "schema_version": config.CURRENT_SCHEMA_VERSION,
+            "library": {
+                "root": str(configured.library.root),
+                "volume_id": "F1E2-D3C4",
+                "db_path": str(configured.library.root / "db" / "master.db"),
+            },
+            "paths": {"download_staging": str(tmp_path / "moved-staging")},
+            "profile": {"name": "full"},
+        }
+    )
+    config.save(moved)
+    config.reset_cache()
+
+    monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
+    code, envelope = _drive(["master", str(source), "--job", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    codes = [warning["code"] for warning in envelope.get("warnings", [])]
+    assert "config-drift" in codes, envelope.get("warnings")
+    assert _items(job_id)[0].state == jobs.ItemState.DONE

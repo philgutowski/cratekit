@@ -32,7 +32,7 @@ import argparse
 import importlib
 from typing import TYPE_CHECKING, Any, Sequence
 
-from cratekit.cli import registry
+from cratekit.cli import handlers, registry
 from cratekit.cli.output import Envelope
 from cratekit.core import config, jobs
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
@@ -49,10 +49,22 @@ NO_SINGLE_JOB = ""
 
 
 def _summary(store: jobs.JobStore, job: jobs.Job) -> dict[str, Any]:
-    """One job flattened for the payload, progress included."""
+    """One job flattened for the payload, progress and worker state included.
+
+    ``worker`` is the honest half of an unfinished cutover. Most queued verbs
+    still have no function behind their handler key, so their jobs sit for ever
+    while reporting cleanly. Before anything was bound that was at least uniform,
+    and a person could learn that queues do not run; with one verb working and the
+    rest silent the same report invites the opposite conclusion. The question is
+    answered from the declaration tables alone, which is what keeps a listing from
+    importing every feature module (KTD26).
+    """
+    bound = handlers.is_known(job.handler_key)
     return {
         "job_id": job.job_id,
         "handler": job.handler_key,
+        "worker": "bound" if bound else "none",
+        "worker_reason": None if bound else handlers.unbound_reason(job.handler_key),
         "state": str(job.state),
         "stage": job.stage,
         "attempts": job.attempts,
@@ -165,18 +177,7 @@ def _drift_warning(job: jobs.Job) -> tuple[dict[str, str], ...]:
         current = config.load()
     except config.ConfigError:
         return ()
-    keys = jobs.drift(job, current)
-    if not keys:
-        return ()
-    return (
-        {
-            "code": "config-drift",
-            "message": (
-                f"configuration changed since this job was queued; it runs against "
-                f"the frozen copy. Changed: {', '.join(keys)}"
-            ),
-        },
-    )
+    return handlers.drift_warnings(jobs.drift(job, current))
 
 
 # ---------------------------------------------------------------------------

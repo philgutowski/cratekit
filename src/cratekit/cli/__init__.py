@@ -97,6 +97,34 @@ class Context:
             resumable=resumable,
         )
 
+    def run_job(self, store, job):
+        """Run one queued job's items here, in this process.
+
+        THE ONLY ROUTE A VERB HAS TO THE DRIVER, and it is a method rather than an
+        import for a reason the layering guard enforces. A verb module is
+        modules-ranked and :mod:`cratekit.cli.handlers` is CLI-ranked, so a verb
+        that imported it directly would be reaching upward, which
+        ``tests/test_layering.py`` refuses whether the import is at module scope or
+        inside the function body. ``Context`` is already the one object every verb
+        holds, so the driver arrives the same way the envelope does.
+
+        Returns the ``cratekit.core.jobs.DriveResult`` and the drift warnings the
+        verb should put on its envelope, together, so a verb never has to spell
+        the drift wording itself. EXCEPT when every attempted item failed: the
+        engine records the job as failed and raises there, which is the common
+        failure path for a job with one item.
+
+        THE IMPORT IS INSIDE THE METHOD and it is not a laziness preference. This
+        package's ``__init__`` is imported by ``cratekit.core.jobs`` for the output
+        envelope, and ``handlers`` imports ``cratekit.core.jobs``, so a
+        module-scope import here is a cycle that leaves ``core.jobs`` half built
+        for anything that imports it first. A worker script is exactly that.
+        """
+        from cratekit.cli import handlers
+
+        result = handlers.run_job(store, job)
+        return result, handlers.drift_warnings(result.drifted)
+
 
 Handler = Callable[[Context], Envelope]
 

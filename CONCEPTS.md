@@ -408,6 +408,61 @@ and what left at each merge. When the members are literals in the tree, each is
 asked of git against the pre-merge commit; when a walk derives them, the same
 walk is run over the pre-merge tree and the two sets are differenced.
 
+## Queued work
+
+### Job
+One unit of long running work that outlives the process that queued it. A verb
+freezes the whole configuration it will run against, records the work as a job,
+and reports. Nothing about the work happens at that moment. The job carries a
+handler key, a frozen payload, the configuration's own bytes, and its state; it
+does not carry a function.
+
+*Avoid:* reading "the job ran" as "the work happened". A job is reported,
+respawned, claimed and driven, and only the last of those does anything.
+
+### Item
+One claimable piece of a job, identified by a stable identifier the queueing verb
+supplies and ordered so a resumed run walks the same sequence. The item is the
+unit of work, and a handler reads the recording, folder, or track from the ITEM
+rather than from the job's payload. Reading it from the payload is how every item
+of a multi item job comes to do the same piece of work.
+
+A job with no items is not an error. The driver reports it as a success over
+nothing, which is exactly what a verb that queues without items produces.
+
+### Handler key
+The stable string a job stores instead of a function, so a process can validate,
+list, or rebuild the command line for a queued job without importing the module
+that would do the work (KTD26). Every verb declares one, and for every verb it is
+the verb's own name.
+
+*Avoid:* treating a known handler key as a runnable one. Whether the build
+declares a key is a question about the CLI registry; whether the build has a
+FUNCTION behind it is a question about the handler table, and eighteen keys
+answer yes to the first and no to the second.
+
+### Handler
+The function that does one item's work. It receives the job, the item, and the
+configuration the job was frozen against, and returns what it produced or nothing.
+It is declared as a `"module:function"` string and resolved lazily, at the moment
+the driver needs it, which is the only import in the chain.
+
+A handler runs against the FROZEN configuration, handed to it rather than loaded.
+Loading a fresh one is the resume bug KTD9 closes, reintroduced.
+
+### Driver
+Here, the loop that claims a job's items and runs the handler against each,
+taking the driver lock first, releasing an orphaned claim once, checking the
+interrupt flag between items and before a commit, making an artifact durable
+before the row flips to done, and recording a total failure as failed rather than
+returning it as an empty success. One function owns all of that and it is not
+reimplemented by callers.
+
+*Avoid:* the other driver. `docs/METHOD.md` uses the same word for the MUTATION
+driver, the script that reverts a guard at a time and counts the deaths. The two
+share nothing. When either could be meant, say "the job driver" or "the mutation
+driver".
+
 ## Sync
 
 ### Sync watermark
