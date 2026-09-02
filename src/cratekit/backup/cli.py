@@ -87,6 +87,7 @@ Layer: modules.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from typing import Any
 
@@ -534,11 +535,14 @@ def perform_backup(
         # it is to add a member to ``backup_facts.Portion`` without teaching the
         # planner about it, and a KeyError naming the portion is a better answer
         # there than a run that quietly does one half.
-        plan = backup.BackupPlan(
-            stamp=plan.stamp,
-            archive_keep=plan.archive_keep,
-            portions=(plan.portion(portion),),
-        )
+        #
+        # ``replace`` RATHER THAN A CONSTRUCTOR CALL, and the comment above is why:
+        # naming ``stamp`` and ``archive_keep`` again here would be the second copy
+        # it warns about, in the one function that rebuilds the plan. A field added
+        # to ``BackupPlan`` later rides through this untouched, where a constructor
+        # call would silently drop it and narrow the run in a way no test asks
+        # about.
+        plan = replace(plan, portions=(plan.portion(portion),))
     outcome = backup.run_backup(cfg, plan, runner=runner, now=now, dry_run=dry_run)
     # ``PortionOutcome.results`` IS DROPPED, AND HERE IS WHY, because the
     # first-caller learning says a returned value nobody inspects is the same
@@ -623,10 +627,16 @@ def handle(job, item, cfg) -> "jobs.Produced | None":
     targeted.
     """
     named = str(item.item_id or "")
-    declared = tuple(str(entry) for entry in backup_facts.Portion)
     try:
         portion = backup_facts.Portion(named)
     except ValueError:
+        # THE SAME FUNCTION THAT QUEUED THE ITEMS names them in the refusal, so
+        # what the message calls the declared portions is what a job would
+        # actually have been given. Re-deriving the set here would be the second
+        # declaration ``backup_items`` exists to prevent, and the copy that goes
+        # stale is the one in the error path, which nobody reads until the day it
+        # is wrong.
+        declared = backup_items()
         raise refuse(
             "internal-error",
             f"this job's item is {named!r}, which is not a backup portion this "
