@@ -83,6 +83,131 @@ class FakeSource:
         self.processed.append(candidate.identity)
 
 
+class OfferingSource(FakeSource):
+    """A source whose ``process`` offers for a decision rather than acquiring.
+
+    ``LabelSource`` is the real one: it calls ``review.offer``, which queues an
+    item and hands it back with a verdict of ``None``. Nothing has landed in the
+    library, so a run over this source must leave no intake file and no
+    watermark behind. Declared as a class attribute rather than set on an
+    instance because that is where the real source declares it, and a test that
+    patched it per instance would not prove the class carries it.
+    """
+
+    acquires = False
+
+
+def test_an_offering_source_writes_no_intake_file(cfg):
+    """R-140. A completed offer is not an acquisition and must not claim one."""
+    store = watermarks.WatermarkStore(cfg)
+    staging = Path(cfg.paths.download_staging)
+    registry = artifacts.ArtifactRegistry(cfg)
+    source = OfferingSource(
+        "labels",
+        [_candidate("r1", "3"), _candidate("r2", "2"), _candidate("r3", "1")],
+    )
+
+    result = run.increment(
+        source,
+        owned=set(),
+        limit=10,
+        watermarks=store,
+        artifacts=registry,
+        run_id="run-offer-1",
+        staging=staging,
+    )
+
+    assert result.shortfall is None
+    assert result.processed == ("r1", "r2", "r3")
+    # Asserted at the path the increment would have used, computed here from the
+    # same helper the increment calls. A directory that happens to be empty
+    # proves nothing about which file was skipped.
+    target = run.intake_path(staging, "run-offer-1")
+    assert not target.exists()
+    assert registry.intake_eligible([target]) == []
+
+
+def test_an_offering_run_leaves_the_source_watermark_unset(cfg):
+    """Read back from the store, because an unadvanced cursor is the claim."""
+    store = watermarks.WatermarkStore(cfg)
+    source = OfferingSource("labels", [_candidate("r1", "3")])
+
+    run.increment(
+        source,
+        owned=set(),
+        limit=10,
+        watermarks=store,
+        artifacts=artifacts.ArtifactRegistry(cfg),
+        run_id="run-offer-2",
+        staging=Path(cfg.paths.download_staging),
+    )
+
+    assert store.read("labels") is None
+
+
+def test_an_acquiring_source_still_writes_the_intake_file_and_advances(cfg):
+    """The default is pinned beside the new branch, so it cannot drift silently."""
+    store = watermarks.WatermarkStore(cfg)
+    staging = Path(cfg.paths.download_staging)
+    source = FakeSource("playlists", [_candidate("p1", "3"), _candidate("p2", "2")])
+    assert not hasattr(source, "acquires"), (
+        "this double must NOT declare the attribute; it is what proves a source "
+        "written before the declaration existed still acquires"
+    )
+
+    result = run.increment(
+        source,
+        owned=set(),
+        limit=10,
+        watermarks=store,
+        artifacts=artifacts.ArtifactRegistry(cfg),
+        run_id="run-acquire-1",
+        staging=staging,
+    )
+
+    assert result.shortfall is None
+    target = run.intake_path(staging, "run-acquire-1")
+    assert target.exists()
+    assert "p1" in target.read_text(encoding="utf-8")
+    assert store.read("playlists").cursor == "p1"
+
+
+def test_one_run_records_only_the_acquiring_source_of_a_mixed_pair(cfg):
+    """One intake file, and an offer does not get to put its identities in it."""
+    store = watermarks.WatermarkStore(cfg)
+    staging = Path(cfg.paths.download_staging)
+    staging.mkdir(parents=True, exist_ok=True)
+    acquiring = FakeSource("playlists", [_candidate("p1", "1")])
+    offering = OfferingSource("labels", [_candidate("l1", "1")])
+
+    results = run.run_independent(
+        [acquiring, offering],
+        owned=set(),
+        limit=10,
+        watermarks=store,
+        artifacts=artifacts.ArtifactRegistry(cfg),
+        run_id="run-mixed",
+        staging=staging,
+    )
+
+    assert results["labels"].shortfall is None
+    assert results["playlists"].shortfall is None
+    importables = list(staging.glob("*_synced.xml"))
+    assert len(importables) == 1
+    text = importables[0].read_text(encoding="utf-8")
+    assert "p1" in text
+    assert "l1" not in text
+    assert store.read("playlists") is not None
+    assert store.read("labels") is None
+
+
+def test_the_label_source_declares_that_it_does_not_acquire():
+    """Asserted on the class, so an instance cannot be what carries the promise."""
+    from cratekit.label import sweep
+
+    assert sweep.LabelSource.acquires is False
+
+
 def test_errors_leave_the_watermark_unchanged_and_report_the_shortfall(cfg):
     store = watermarks.WatermarkStore(cfg)
     source = FakeSource(

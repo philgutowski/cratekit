@@ -568,3 +568,287 @@ def test_the_strict_catalogue_raises_on_a_method_outside_the_protocol():
     with pytest.raises(AssertionError) as excinfo:
         strict.delete_playlist
     assert "delete_playlist" in str(excinfo.value)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U52 / R-135: a catalogue that could not be read is not a catalogue with
+# nothing in it.
+#
+# The pair below is the shape the watermark-as-date-floor note describes. The
+# outcome tests are named after the mechanism, and the adversarial one,
+# ``test_one_working_listing_with_no_releases_still_reports_empty``, is the test
+# a literal reading of "an empty listing must raise" would turn red. An
+# exhausted crawl is genuinely empty and has to stay that way, or every quiet
+# label becomes an error and R-135 is traded for its mirror image.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class UnpageableArtist:
+    """A listing method that exists and refuses pagination arguments.
+
+    The client shape ``listing.ListingNotPaginated`` is written for: a version
+    that dropped the ``limit`` and ``offset`` keywords. The wrapper raises rather
+    than taking the one page it could serve, and this is the object that drives
+    it out of a crawl.
+    """
+
+    def get_albums(self):
+        return []
+
+
+class RaisingArtist:
+    """A listing method that pages correctly and fails at the provider.
+
+    The other half of the crawl's failure surface. ``listing.fetch_with_retry``
+    re-raises this exception once its retries are spent, so what reaches the
+    sweep is the PROVIDER's own type rather than anything this codebase defines.
+    """
+
+    def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Album]:
+        del limit, offset
+        raise RuntimeError("provider 503")
+
+
+def _impatient_crawl(monkeypatch) -> None:
+    """Run the real crawl with its retry backoff collapsed, and nothing else.
+
+    ``listing.fetch_with_retry`` retries ANY exception, deliberately and for a
+    reason its own docstring gives, and its ladder sleeps thirty one real
+    seconds before re-raising. That includes the ``ListingNotPaginated`` a method
+    that cannot page raises, which is never going to succeed on attempt five.
+    ``list_for_label`` exposes no seam to shorten the ladder and should not grow
+    one for a test.
+
+    So the retry COUNT is shortened here and nothing else is substituted. The
+    pagination wrapper, the exception types and the conversion under test all run
+    exactly as shipped, which is the difference between shortening a timer and
+    replacing the mechanism.
+    """
+    from cratekit.label import crawl
+
+    real = crawl.releases
+
+    def impatient(artist, **kwargs):
+        kwargs.setdefault("max_retries", 0)
+        return real(artist, **kwargs)
+
+    monkeypatch.setattr(crawl, "releases", impatient)
+
+
+class SilentArtist:
+    """An artist object exposing neither listing method the crawl tries.
+
+    ``listing.artist_releases`` skips a missing method with a ``continue``, so
+    this object produces an empty list from a catalogue that was never read.
+    That is the R-135 producer this unit closes, and the empty list it still
+    produces one layer down is asserted below rather than assumed.
+    """
+
+
+class AlbumsOnlyArtist:
+    """ONE working listing method over a catalogue that really has nothing.
+
+    The case that must keep reporting empty. It is the reason the fix is a check
+    on the artist object and on the crawl's exceptions, and not a rule that an
+    empty release list is an error.
+    """
+
+    def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Album]:
+        del limit, offset
+        return []
+
+
+def _label_source(cfg, name: str, **kwargs):
+    """One registered favourite label and a ``LabelSource`` over it."""
+    from cratekit.label import registry as labels
+    from cratekit.label import sweep
+
+    store = labels.RegistryStore()
+    label_id = store.add(name, match=name.lower())
+    source = sweep.LabelSource(cfg, registry=store.load(), **kwargs)
+    return label_id, source
+
+
+def _increment(cfg, source):
+    return run.increment(
+        source,
+        owned=set(),
+        limit=10,
+        watermarks=watermarks.WatermarkStore(cfg),
+        artifacts=artifacts.ArtifactRegistry(cfg),
+        run_id="run-unreadable",
+        staging=Path(cfg.paths.download_staging),
+    )
+
+
+def test_a_listing_that_cannot_be_paged_raises_instead_of_reporting_empty(
+    cfg, monkeypatch
+):
+    """R-135. The crawl's own exception becomes a LookupFailure, cause intact."""
+    from cratekit.acquire import listing
+    from cratekit.label import registry as labels
+    from cratekit.label import sweep
+
+    _impatient_crawl(monkeypatch)
+    store = labels.RegistryStore()
+    label_id = store.add("Diynamic", match="diynamic")
+
+    with pytest.raises(run.LookupFailure) as excinfo:
+        sweep.list_for_label(
+            cfg,
+            store.load().by_id(label_id),
+            artist=UnpageableArtist(),
+            verify=_always_confirm,
+        )
+
+    assert "Diynamic" in str(excinfo.value)
+    # The original is reachable rather than swallowed, so a person debugging
+    # gets the client's own words and not only this layer's summary.
+    cause = excinfo.value.__cause__
+    assert isinstance(cause, listing.ListingNotPaginated)
+    assert isinstance(cause.__cause__, TypeError)
+
+
+def test_a_provider_error_out_of_the_crawl_is_not_an_empty_catalogue(cfg, monkeypatch):
+    """The wrap is not narrowed to the one exception type this layer knows.
+
+    ``ListingNotPaginated`` is Cratekit's own, and it is the exception a reader
+    of ``listing`` notices first. The one that actually reaches a person is the
+    PROVIDER's, re-raised by ``fetch_with_retry`` once the ladder is spent, and
+    its type is whatever the installed client version raises. A conversion that
+    only knew the first would report an unreadable catalogue as empty.
+    """
+    from cratekit.label import registry as labels
+    from cratekit.label import sweep
+
+    _impatient_crawl(monkeypatch)
+    store = labels.RegistryStore()
+    label_id = store.add("Innervisions", match="innervisions")
+
+    with pytest.raises(run.LookupFailure) as excinfo:
+        sweep.list_for_label(
+            cfg,
+            store.load().by_id(label_id),
+            artist=RaisingArtist(),
+            verify=_always_confirm,
+        )
+
+    assert isinstance(excinfo.value.__cause__, RuntimeError)
+    assert "503" in str(excinfo.value.__cause__)
+
+
+def test_an_artist_exposing_no_listing_method_raises_rather_than_crawling_nothing(cfg):
+    """The producer is one layer down, and this pins BOTH halves of it."""
+    from cratekit.label import crawl, sweep
+    from cratekit.label import registry as labels
+
+    silent = SilentArtist()
+    # The wrapper's silence is the thing being closed, so it is asserted rather
+    # than described. It skips each missing method and returns an empty list from
+    # an object it never read.
+    assert crawl.releases(silent) == []
+
+    store = labels.RegistryStore()
+    label_id = store.add("Rekids", match="rekids")
+    with pytest.raises(run.LookupFailure) as excinfo:
+        sweep.list_for_label(
+            cfg,
+            store.load().by_id(label_id),
+            artist=silent,
+            verify=_always_confirm,
+        )
+    message = str(excinfo.value)
+    assert "Rekids" in message
+    for method in crawl.LISTING_METHODS:
+        assert method in message
+
+
+def test_one_working_listing_with_no_releases_still_reports_empty(cfg):
+    """The adversarial half. A quiet label must not become an error.
+
+    ``AlbumsOnlyArtist`` exposes one method the crawl can page and it answers
+    with nothing, which is an exhausted crawl rather than an unread one. A fix
+    that raised on an empty release list would pass every test above and turn
+    this one red, which is the whole reason it is here.
+    """
+    label_id, source = _label_source(
+        cfg,
+        "Quiet Imprint",
+        artists={},
+        verify=_always_confirm,
+    )
+    source.artists = {label_id: AlbumsOnlyArtist()}
+
+    result = _increment(cfg, source)
+
+    assert result.shortfall == "empty"
+    assert result.processed == ()
+
+
+def test_an_unreadable_listing_stops_the_increment_at_the_lookup(cfg, monkeypatch):
+    """Named where the run stopped, not merely that nothing came out of it."""
+    from cratekit.core.cause import CratekitError
+
+    _impatient_crawl(monkeypatch)
+    label_id, source = _label_source(
+        cfg,
+        "Hotflush",
+        artists={},
+        verify=_always_confirm,
+    )
+    source.artists = {label_id: RaisingArtist()}
+
+    with pytest.raises(CratekitError) as excinfo:
+        _increment(cfg, source)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "sync-source-lookups-failed"
+    assert cause.detail["source_id"] == "labels"
+    # The refusal has to say a listing failed rather than that a catalogue was
+    # empty, because those two send a person to different places.
+    assert "empty" not in cause.message or "not a verified empty" in cause.message
+
+
+def test_a_label_the_catalogue_cannot_resolve_stops_the_increment(cfg):
+    """The path ``list_for_label`` never sees, driven end to end.
+
+    ``LabelSource.list_recent`` resolves the artist object BEFORE
+    ``list_for_label`` is reached, so a fix that lived only in the checking
+    function would leave this label silently skipped and the run reported empty.
+    ``UnreadableCatalogue`` raises where the protocol says it must.
+    """
+    from cratekit.core.cause import CratekitError
+    from tests.label_fakes import UnreadableCatalogue
+
+    catalogue = UnreadableCatalogue()
+    label_id, source = _label_source(cfg, "Ostgut Ton", catalogue=catalogue)
+
+    with pytest.raises(CratekitError) as excinfo:
+        _increment(cfg, source)
+
+    assert excinfo.value.cause.reason == "sync-source-lookups-failed"
+    # The catalogue was genuinely asked, so the refusal is about a failed read
+    # and not about a label that was never looked up.
+    assert catalogue.asked_for == [label_id]
+
+
+def test_a_registered_label_with_no_artist_object_refuses_rather_than_skipping(cfg):
+    """The bare ``continue`` this unit removed, asserted as gone.
+
+    A favourite label the source cannot get an artist object for was skipped
+    silently, so a registry of five labels and five missing objects produced a
+    sweep that reported it had looked and found nothing new.
+    """
+    from cratekit.core.cause import CratekitError
+
+    _label_source_id, source = _label_source(
+        cfg,
+        "Life and Death",
+        artists={},
+        verify=_always_confirm,
+    )
+
+    with pytest.raises(CratekitError) as excinfo:
+        _increment(cfg, source)
+
+    assert excinfo.value.cause.reason == "sync-source-lookups-failed"
