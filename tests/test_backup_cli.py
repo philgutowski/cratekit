@@ -1639,7 +1639,9 @@ def test_an_unwritable_fact_file_says_which_file_rather_than_report_defect(cfg, 
     assert str(backup_facts.path_for(cfg)) in caught.value.cause.detail["path"]
 
 
-def test_the_ages_reported_are_the_ones_this_job_published(cfg, rclone, tmp_path):
+def test_the_ages_reported_are_the_ones_this_job_published(
+    cfg, rclone, tmp_path, monkeypatch
+):
     """The envelope describes THIS job, so it reads the job's own configuration.
 
     ``config.state_path`` resolves the fact file under the configured library, so a
@@ -1647,8 +1649,24 @@ def test_the_ages_reported_are_the_ones_this_job_published(cfg, rclone, tmp_path
     the one the item wrote. Reading the live one would answer a question nobody
     asked, in the same envelope that reports the job.
 
-    Driven by moving the library between queue and resume, which is the only way
-    the two readings can differ.
+    THE DIVERGENCE HAS TO COME FROM THE CONFIGURATION FILE, and the first two
+    drafts of this test got that wrong in two different ways. Both are recorded
+    because the second was not obvious.
+
+    The first draft changed only the saved file while the ``cfg`` fixture's
+    ``CRATEKIT_LIBRARY_ROOT`` was still set. That fixture's own docstring says why
+    it could not work: ``from_dict`` relocates a configured root onto whatever the
+    environment says, so both readings stayed on the original library. Measured as
+    a zero row on 2026-09-02.
+
+    The second draft moved the environment variable too, and that is worse than
+    useless because ``jobs.frozen_config`` rebuilds through the SAME
+    ``config.from_dict``. The override therefore relocates a frozen configuration's
+    root exactly as it relocates a live one, and the two agree again. That is a
+    real property of the override rather than a defect, and it is the reason this
+    test unsets the variable instead: what is frozen against relocation is
+    everything the file says, and the library root under an explicit override is
+    not.
     """
     _, queued = _drive(["backup", "run"])
     job_id = queued["data"]["job_id"]
@@ -1657,8 +1675,31 @@ def test_the_ages_reported_are_the_ones_this_job_published(cfg, rclone, tmp_path
 
     elsewhere = tmp_path / "another-library"
     (elsewhere / "Music").mkdir(parents=True)
-    config.save(replace(cfg, library=replace(cfg.library, root=elsewhere)))
+    (elsewhere / "db").mkdir(parents=True)
+    monkeypatch.delenv(config.ENV_LIBRARY_ROOT)
+    # THE DATABASE MOVES WITH THE ROOT because the configuration refuses to save
+    # otherwise: KTD21b requires the database under the library root, since the
+    # only atomic commit available is a rename and a rename is atomic within one
+    # filesystem. Relocating one without the other is not a state this product
+    # lets a person reach, so a test that built it would be measuring a shape the
+    # validator forbids.
+    config.save(
+        replace(
+            cfg,
+            library=replace(
+                cfg.library, root=elsewhere, db_path=elsewhere / "db" / "master.db"
+            ),
+        )
+    )
     config.reset_cache()
+    assert config.load().library.root == elsewhere, (
+        "the live configuration still names the original library, so the two "
+        "readings cannot differ and this test would pass either way"
+    )
+    assert not backup_facts.path_for(config.load()).exists(), (
+        "the relocated library already has a fact file, so a live read would "
+        "find ages there and the test would not distinguish the two sources"
+    )
 
     code, again = _drive(["backup", "run", "--job", job_id])
     assert code == int(ExitCode.OK), again
