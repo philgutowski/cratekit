@@ -489,3 +489,82 @@ def test_import_one_label_returns_the_unowned_confirmed_set(cfg):
         owned={"owned"},
     )
     assert [item.identity for item in found.candidates] == ["fresh"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U52: the catalogue provider seam
+#
+# The seam is the one place the label package reads a provider through, and no
+# shipped build fills it. These four tests hold the two halves of that: the
+# refusals a person actually meets today, and the guard that keeps the stand-in
+# the suite substitutes from growing a method the protocol never declared.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_with_no_provider_session_the_catalogue_seam_names_the_credential(cfg):
+    """Distinguishable from the no-adapter refusal, because doctor can fix one."""
+    from cratekit.core import secrets
+    from cratekit.core.cause import CratekitError
+    from cratekit.label import catalogue
+
+    with pytest.raises(CratekitError) as excinfo:
+        catalogue.resolve(cfg)
+    cause = excinfo.value.cause
+    assert cause.reason == "credential-missing"
+    assert cause.detail["credential"] == str(secrets.Credential.PROVIDER_SESSION)
+
+
+def test_with_a_session_recorded_the_catalogue_seam_refuses_that_nothing_is_bound(cfg):
+    """The credential is real here, recorded through the module that owns it.
+
+    Recorded rather than monkeypatched, because the point of the second refusal
+    is that it survives a person doing everything right. The keychain is an
+    in-memory dictionary for the whole suite, so this writes the presence index
+    the way a login would and reads it back through the shipped function.
+    """
+    from cratekit.core import secrets
+    from cratekit.core.cause import CratekitError
+    from cratekit.label import catalogue
+
+    secrets.set_json(secrets.Credential.PROVIDER_SESSION, {"token": "recorded"})
+    assert secrets.exists(str(secrets.Credential.PROVIDER_SESSION))
+
+    with pytest.raises(CratekitError) as excinfo:
+        catalogue.resolve(cfg)
+    cause = excinfo.value.cause
+    assert cause.reason == "label-catalogue-unbound"
+    assert cause.remediation is not None
+    # The words matter as much as the slug. A build with no adapter has not
+    # reached a provider at all, so a message about anything being unreachable
+    # would send a person to their network over a gap in this software.
+    assert "adapter" in cause.message
+    assert "unreachable" not in cause.message
+
+
+def test_the_catalogue_seam_answers_bound_without_reading_a_credential(cfg, monkeypatch):
+    """Asked at enqueue, where the answer is still useful, so it must not raise."""
+    from cratekit.core import secrets
+    from cratekit.label import catalogue
+
+    del cfg
+
+    def _refuse_to_be_asked(name: str) -> bool:
+        raise AssertionError(
+            f"bound() read the credential {name!r}. It is asked before a person "
+            f"commits to the work and answers about this build, not this machine"
+        )
+
+    monkeypatch.setattr(secrets, "exists", _refuse_to_be_asked)
+    assert catalogue.bound() is False
+
+
+def test_the_strict_catalogue_raises_on_a_method_outside_the_protocol():
+    """A caller cannot even NAME a provider read the seam does not declare."""
+    from tests.label_fakes import PROTOCOL_METHODS, StrictCatalogue
+
+    strict = StrictCatalogue()
+    for method in sorted(PROTOCOL_METHODS):
+        assert callable(getattr(strict, method))
+    with pytest.raises(AssertionError) as excinfo:
+        strict.delete_playlist
+    assert "delete_playlist" in str(excinfo.value)

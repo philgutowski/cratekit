@@ -4753,7 +4753,26 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # doctor already has a remedy for. A second slug meaning the same thing would
     # have made a person who has not logged in read a different sentence
     # depending on which verb discovered it.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (142, 118, 24)
+    #
+    # Re-pinned on U52, 2026-09-02. THREE slugs, named rather than counted:
+    # label-catalogue-unbound, which is this build having no catalogue adapter to
+    # hand the label package; label-registry-empty, which is a sweep asked for
+    # with no favourite label registered; and label-sweep-incomplete, which is an
+    # item that could not offer all of a label's releases and failed rather than
+    # completing. Measured by parsing the REASONS mapping literal out of both
+    # cause.py files, this branch's and main's own extracted into a scratch
+    # directory, and differencing the two SETS rather than adding three to the
+    # old total: exactly three joined and none left. None of the three is in the
+    # reserved table, exactly as their siblings export-playlist-unknown,
+    # tag-retag-folder-unknown and the five U51 slugs above are not, so the
+    # reserved half does not move. Population 142 to 145, non-reserved 118 to
+    # 121, reserved half UNCHANGED at 24.
+    #
+    # WHY THE MISSING CREDENTIAL IS NOT A FOURTH, for the reason the paragraph
+    # directly above gives about the outbound seam. label.catalogue.resolve
+    # raises TWO refusals and only one of them is new: no session stored reuses
+    # credential-missing, which this vocabulary already declares.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (145, 121, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4878,7 +4897,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # describes a refusal: a warning that a playlist named a track the collection
     # does not carry is an advisory on a job that queued successfully, and every
     # declared cause is instead a reason something did NOT happen.
-    assert (len(literals), len(literals - set(causes))) == (339, 198), (
+    # Re-pinned on U52, 2026-09-02: 339 to 342 distinct, non-keys UNCHANGED at
+    # 198. THREE literals joined and NOTHING left, differenced as SETS by
+    # repointing this module's PACKAGE_ROOT at main's own src tree extracted into
+    # a scratch directory rather than inferred from the total moving by three.
+    # All three are the causes named at the population assertion above, so they
+    # are KEYS on this side and the non-key half does not move at all: the
+    # catalogue seam introduces no cause-shaped literal that is not a declared
+    # cause. The protocol it declares carries no slug of any kind, because it is
+    # a type rather than a table.
+    assert (len(literals), len(literals - set(causes))) == (342, 198), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5137,7 +5165,21 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # declared cause, on purpose: the warning names the cause the job will end
     # with. Two names for that would let the warning and the failure describe one
     # outcome differently, which is the defect, not the fix.
-    assert (len(literal_holders), len(literal_both)) == (84, 15), (
+    # Re-pinned on U52, 2026-09-02: 84 to 85 holders. ONE module joined and none
+    # left, and it is a new file. label/catalogue.py names credential-missing for
+    # a provider session nothing recorded and label-catalogue-unbound for a build
+    # with no adapter to hand the label package. Differenced as SETS by
+    # repointing this module's PACKAGE_ROOT at main's own src tree extracted into
+    # a scratch directory, the same way as every entry above. The
+    # also-holds-an-integer half stays 15, measured by differencing that set too
+    # rather than assumed, because the module holds no bare integer at all. The
+    # named halves did NOT move, staying at 21 and 8, and that was measured
+    # rather than inferred: every cause it names it names as a literal, and the
+    # Remedy and Scope members it reaches through symbols resolve to remediation
+    # tokens rather than to declared causes, exactly as modules/outbound/
+    # account.py's do. So the comparison just below widened for the seventeenth
+    # time out of seventeen.
+    assert (len(literal_holders), len(literal_both)) == (85, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
