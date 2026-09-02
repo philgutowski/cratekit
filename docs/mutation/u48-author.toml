@@ -1,0 +1,174 @@
+name = "u48-author"
+pass_kind = "light"
+
+# U48 mutation rows. Two reporting fixes, so the rows revert the REPORT rather
+# than the behaviour: this unit changed nothing about what gets backed up, and a
+# row that mutated the transfer would be measuring U45's guards over again.
+#
+# Scoped to this unit's own diff plus a fixed sample of the prune guards it sits
+# beside. Rows considered and not run are logged at the bottom.
+
+# ── The prune's classification, which is the whole of the first fix ─────────
+
+[[rows]]
+id = "P1_listing_classification_dropped"
+description = "A failed listing returns no warning, so the rotation stops silently again"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    if result.returncode != 0:
+        return out, {
+            "code": ARCHIVE_LISTING_FAILED,'''
+new = '''    if result.returncode != 0:
+        return out, None
+    if result.returncode != 0:
+        return out, {
+            "code": ARCHIVE_LISTING_FAILED,'''
+
+[[rows]]
+id = "P2_purge_classification_dropped"
+description = "Failed purges return no warning, so folders survive with nothing saying so"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    if unremoved:
+        return out, {
+            "code": ARCHIVE_PURGE_FAILED,'''
+new = '''    if False:
+        return out, {
+            "code": ARCHIVE_PURGE_FAILED,'''
+
+[[rows]]
+id = "P3_two_codes_collapsed_to_one"
+description = "One code over both conditions, which is the discriminator this unit split"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''ARCHIVE_PURGE_FAILED = "archive-purge-failed"'''
+new = '''ARCHIVE_PURGE_FAILED = "archive-listing-failed"'''
+
+[[rows]]
+id = "P4_warning_not_recorded_on_the_portion"
+description = "run_backup reads the classification and drops it instead of carrying it"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''                results += pruned
+                if warning is not None:
+                    warnings.append(warning)
+                continue'''
+new = '''                results += pruned
+                continue'''
+
+[[rows]]
+id = "P5_payload_key_dropped"
+description = "The engine records the condition and its own payload does not render it"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''                "warnings": [dict(warning) for warning in entry.warnings],'''
+new = ""
+
+[[rows]]
+id = "P6_purge_count_not_named"
+description = "The purge message drops how many folders survived it"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''                f"the archive rotation did not finish: {unremoved} dated folder(s) "'''
+new = '''                f"the archive rotation did not finish: some dated folder(s) "'''
+
+[[rows]]
+id = "P7_listing_message_reworded"
+description = "Reword the listing message, not append: the suite asserts with `in`"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''                f"nothing was removed and dated archive folders will accumulate "
+                f"until it succeeds. The backup itself completed"'''
+new = '''                f"nothing was removed and the rotation will stay stopped "
+                f"until it succeeds. The backup itself completed"'''
+
+# ── The rehearsal fold ──────────────────────────────────────────────────────
+
+[[rows]]
+id = "P8_rehearsal_starts_purging"
+description = "The dry run passes purge on, so a preview deletes archives"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''                    purge=not dry_run,'''
+new = '''                    purge=True,'''
+
+[[rows]]
+id = "P9_purge_defaults_off"
+description = "The suppression flag defaults to off, so a real run stops rotating"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    purge: bool = True,'''
+new = '''    purge: bool = False,'''
+
+[[rows]]
+id = "P10_warnings_dropped_from_a_failed_portion"
+description = "A portion that failed carries no warnings, which is unreachable while the prune is last"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "maintainer"
+old = '''                    detail=f"{entry.portion.value} portion failed: {failed.stderr.strip()[-400:]}",
+                    results=tuple(results),
+                    warnings=tuple(warnings),'''
+new = '''                    detail=f"{entry.portion.value} portion failed: {failed.stderr.strip()[-400:]}",
+                    results=tuple(results),'''
+
+# ── The prune guards this unit sits beside, a fixed sample ──────────────────
+
+[[rows]]
+id = "E1_listing_return_code_inverted"
+description = "Existing guard: purge on a failed listing and report a good one as failed"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    result = runner(listing)
+    out.append(result)
+    if result.returncode != 0:'''
+new = '''    result = runner(listing)
+    out.append(result)
+    if result.returncode == 0:'''
+
+[[rows]]
+id = "E2_retention_ignored"
+description = "Existing guard: prune every dated folder rather than keeping `keep` of them"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    for stale in names[: max(0, len(names) - keep)]:'''
+new = '''    for stale in names:'''
+
+# ── The remedy carry, both directions ───────────────────────────────────────
+
+[[rows]]
+id = "S1_remedy_fixed_at_repair"
+description = "The session names the repair token again, which is the defect this unit closed"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''            remedy=Remedy(str(exc.remedy)),'''
+new = '''            remedy=Remedy.REPAIR_BACKUP_FACTS,'''
+
+[[rows]]
+id = "S2_remedy_fixed_at_grant"
+description = "The same defect mirrored: hard code the permission token over every condition"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''            remedy=Remedy(str(exc.remedy)),'''
+new = '''            remedy=Remedy.GRANT_PATH_ACCESS,'''
+
+# ── Considered and not run ──────────────────────────────────────────────────
+
+[[dropped]]
+id = "P11_warnings_field_default_shared"
+description = "Give PortionOutcome.warnings a shared mutable default instead of a factory"
+reason = "a frozen slots dataclass rejects a mutable default at class definition, so the row cannot run rather than measuring nothing"
+
+[[dropped]]
+id = "P12_payload_key_reordered"
+description = "Move the warnings key above detail in outcome_payload"
+reason = "inert by inspection: dict ordering is not asserted anywhere, so the row is shape one of the three the corpus names and would report a zero that says nothing"
+
+[[dropped]]
+id = "C1_shell_comment_reverted"
+description = "Restore the shell comment that conceded the prune was unreported"
+reason = "a comment is invisible to the interpreter and to an AST walk, so this is the null control wearing a description; the real control is the driver's own"
+
+[[dropped]]
+id = "E3_prune_after_a_failed_mirror"
+description = "Let the prune run when the mirror in its portion failed"
+reason = "ranked below the cap: measured at U45 and untouched by this diff, and E1 and E2 already sample the same guard family"
