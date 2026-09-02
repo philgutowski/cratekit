@@ -224,20 +224,23 @@ def queue_warnings() -> tuple[dict[str, str], ...]:
 
 
 def _queue(ctx, *, payload: dict, item_ids: tuple[str, ...]) -> Envelope:
-    """Queue one label job, or report the job already queued under ``--job``.
+    """Queue one label job. The QUEUEING path only; a resume never reaches here.
 
     ``item_ids`` IS A REQUIRED ARGUMENT rather than one defaulting to empty, and
-    the default is what this unit removed. ``jobs.drive`` transitions a job whose
+    the default is what U52 removed. ``jobs.drive`` transitions a job whose
     item count is zero straight to SUCCEEDED, because nothing was attempted and
     nothing failed, so a shared helper that let a caller forget its items was one
     keyword away from a clean report over work the product never did. Each verb
     now has to say what its job is made of, and each says it in a different way:
     the sweep from the registry, the import from the entry it already resolved.
+
+    IT USED TO REPORT A RESUME TOO, and :func:`_resume` took that half over when
+    the workers were bound. The branch is gone rather than left beside a second
+    one: a resume now drives, and two functions that both answer ``--job`` is how
+    one of them keeps answering it by reporting.
     """
     cfg = _load()
     with jobs.open_store() as store:
-        if ctx.args.job:
-            return ctx.envelope(data=_reported(store, jobs.reconcile(store, ctx.args.job)))
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
@@ -246,6 +249,112 @@ def _queue(ctx, *, payload: dict, item_ids: tuple[str, ...]) -> Envelope:
             cfg=cfg,
         )
         return ctx.envelope(data=_reported(store, job), warnings=queue_warnings())
+
+
+def _refuse_an_itemless_job(store, job) -> None:
+    """Refuse to drive a label job with no items, rather than succeeding at it.
+
+    THE JOB THIS CATCHES WAS QUEUED BY A BUILD THAT COULD NOT RUN IT. Before U52
+    both label verbs called ``enqueue`` with no ``item_ids`` at all, and the queue
+    is a durable file whose schema this unit does not change, so a person who
+    upgrades still has those jobs sitting in it. Binding the handlers is what
+    makes them drivable, and driving one is the exact hazard: ``jobs.drive``
+    transitions a job whose item count is zero straight to SUCCEEDED, because
+    nothing was attempted and nothing failed. The person resumes a sweep filed
+    weeks ago and is told it succeeded, over a registry nothing was read from.
+
+    A REFUSAL RATHER THAN A REPAIR. Filling the items in from today's registry
+    would be the friendlier answer and it is the wrong one: the payload was frozen
+    by a build with a different idea of what a label job is, and inventing items
+    for it here would run work under a configuration snapshot nobody checked
+    against this shape. Filing a new job costs a command and is honest.
+
+    IT IS THE THIRD SPELLING OF ONE REFUSAL, and that is named rather than
+    hidden. ``src/cratekit/backup/cli.py``'s ``_refuse_an_empty_job`` and
+    ``src/cratekit/modules/outbound/shell.py``'s inline version say the same
+    thing, and the only place that could own it for all three is the job engine,
+    where the check belongs to ``drive`` itself. Changing that engine is outside
+    this branch by its own stop conditions, so the duplication is accepted here
+    and recorded, rather than paid for with a change to the one function every
+    queued verb in the product runs through.
+    """
+    if jobs.items(store, job.job_id):
+        return
+    raise refuse(
+        "internal-error",
+        f"job {job.job_id} has no items to run, so driving it would report a "
+        f"success over work it never did. It was queued by a build that did not "
+        f"record what its items were",
+        remedy=Remedy.REPORT_DEFECT,
+        origin=("label.cli",),
+        detail={"job_id": job.job_id},
+    )
+
+
+def _resume(ctx, job_id: str) -> Envelope:
+    """Continue the label job named on ``--job``, and report how it ended.
+
+    ONE OWNER FOR BOTH VERBS, which is a decision rather than an accident of
+    factoring. The sweep and the import differ in what they queue and in nothing
+    at all about how a queued job is continued: neither declares a gate, neither
+    reads its payload here, and both report the same ``job_state/1`` envelope.
+    Each guard below is a defect somebody already shipped, and a second copy is
+    how one of them gets repaired while the other keeps the bug. U51
+    landed a shared owner for the same shape in ``modules/outbound/shell.py`` on
+    exactly that reasoning.
+
+    THAT FUNCTION IS NOT REUSED, and KTD8 says why: it calls ``ctx.gate.require``
+    unconditionally and computes its digest from the fixed outbound triple of
+    playlist, export and tracks. Neither label verb declares a gate and neither
+    carries those payload keys, so reusing it would mean teaching it that its own
+    contract is optional. Two fragments are lifted, not the function.
+
+    RECONCILE FIRST. A resume arrives after something stopped, and a claim left
+    behind by a driver that died is state the queue cannot see for itself.
+
+    THE LIVE CONFIGURATION IS NOT LOADED HERE. The job carries the configuration
+    it was frozen against and ``handlers.run_job`` reads it off the job, so a
+    resume that loaded one would be able to refuse over a setting this run does
+    not use. Drift against the current file is computed by the driver, which
+    already tolerates a configuration that cannot be read at all.
+
+    THE REGISTRY IS NOT READ HERE EITHER. The job's items were frozen when it was
+    queued, so a label registered since then must not decide whether an existing
+    job may be continued, and an emptied registry must not refuse to continue one
+    whose items are all still sitting in the queue. The worker asks the registry
+    per item, which is where a label that has since been removed is answered for.
+    """
+    with jobs.open_store() as store:
+        job = jobs.reconcile(store, job_id)
+        warnings: tuple[dict[str, str], ...] = ()
+        if job.is_open():
+            _refuse_an_itemless_job(store, job)
+            # A job every one of whose items failed raises out of here rather than
+            # reaching the report, which is correct: the engine has already
+            # recorded the job as failed and the refusal carries the item's own
+            # cause nested inside it.
+            _, warnings = ctx.run_job(store, job)
+            job = jobs.get(store, job.job_id)
+        # A JOB THAT ENDED BADLY IS NOT AN OK EXIT, and this is the only place
+        # that can say so. ``jobs.drive`` raises only when EVERY attempted item
+        # failed, so a sweep where one label offered and another could not be
+        # listed returns normally with the job recorded failed, and without this
+        # the verb exits 0 over half a sweep.
+        #
+        # IT SITS OUTSIDE THE ``is_open`` BRANCH. ``backup/cli.py``'s own comment
+        # records that putting it inside was its first draft's bug: a job already
+        # FAILED on entry is not open, so the drive is skipped and the check would
+        # be skipped with it, and the second ask about a half failed job exits 0
+        # for ever after. ``master/cli.py``'s resume branch has no re-raise at all,
+        # which is R-225 and is the thing this is deliberately not a copy of.
+        #
+        # ANY CLOSED JOB CARRYING A CAUSE, not FAILED alone. A run stopped with a
+        # signal is CANCELLED and carries the cause ``jobs.cancel`` builds; the
+        # narrower predicate was measured on 2026-09-02 as exit 0 over a job with
+        # 0 of 3 items done. SUCCEEDED carries no cause and is unaffected.
+        if not job.is_open() and job.cause is not None:
+            raise CratekitError(job.cause)
+        return ctx.envelope(data=_reported(store, job), warnings=warnings)
 
 
 def sweep_items(held: labels.Registry) -> tuple[str, ...]:
@@ -292,17 +401,28 @@ def _sweep_items_or_refuse() -> tuple[str, ...]:
 
 
 def sync_labels(ctx) -> Envelope:
+    # THE RESUME IS ANSWERED FIRST, so the registry is read only on the queueing
+    # path. It is a structural guarantee rather than a rule to remember: nothing
+    # below this line runs for a job that already exists, so a label registered
+    # since a job was queued cannot decide whether that job may be continued.
+    if ctx.args.job:
+        return _resume(ctx, ctx.args.job)
     run_id = getattr(ctx.args, "run_id", None) or ctx.run.run_id
-    # THE REGISTRY IS READ ONLY ON THE QUEUEING PATH. A resume reports the job it
-    # was named, whose items were frozen when that job was queued, so loading the
-    # registry there would let a label registered since then decide whether an
-    # existing job may be looked at, and an emptied registry would refuse to
-    # report a job whose items are all still sitting in the queue.
-    items = () if ctx.args.job else _sweep_items_or_refuse()
-    return _queue(ctx, payload={"source_id": "labels", "run_id": run_id}, item_ids=items)
+    return _queue(
+        ctx,
+        payload={"source_id": "labels", "run_id": run_id},
+        item_ids=_sweep_items_or_refuse(),
+    )
 
 
 def import_label(ctx) -> Envelope:
+    # THE SAME ORDER, and it moves one refusal for this verb: a resume no longer
+    # refuses ``label-unknown`` for a label removed since the job was queued. That
+    # is the correct place to lose it. The job holds one frozen item, and the
+    # worker asks the registry for exactly that identifier, so the same condition
+    # is still refused, per item, where a person is told which label it was.
+    if ctx.args.job:
+        return _resume(ctx, ctx.args.job)
     held = labels.RegistryStore().load()
     entry = held.resolve(ctx.args.name)
     if entry is None:
@@ -357,11 +477,118 @@ def run_increment(
     )
 
 
+def handle(job, item, cfg) -> jobs.Produced | None:
+    """Sweep one queued favourite label. The per item worker behind BOTH keys.
+
+    THE ITEM NAMES THE LABEL, never the payload. That is the first defect U46's
+    end to end drive surfaced, and ``master/cli.py`` and ``favorites/cli.py`` both
+    carry the comment: a handler reading its subject from the payload makes every
+    item of a multi item job do the same work. A sweep of five favourite labels
+    would sweep one label five times, and for this verb the payload does not even
+    carry a label, so it would sweep nothing five times and report five items done.
+
+    THE REGISTRY IS LOADED WITH A PLAIN ``RegistryStore()``, AND THE REASON IS
+    COUNTER-INTUITIVE ENOUGH TO WRITE DOWN (KTD6). Every other store in this
+    package takes the frozen configuration, and this one takes none because there
+    is none to take: ``RegistryStore.__init__`` calls
+    ``config.state_path("label_intent")`` with NO configuration argument, and
+    ``config.state_path`` returns ``installation_state_dir() / relative`` for any
+    entry declaring ``root=StateRoot.INSTALLATION`` before it ever looks at a
+    ``Config``. ``label_intent`` is one of those. So passing ``cfg`` would resolve
+    the identical path, and a test that moved the library root to prove this
+    worker respects its frozen configuration would be proving nothing. R17 is
+    pinned on the review store instead, which is library scoped and genuinely
+    moves. The remaining hazard on this side is ``CRATEKIT_STATE_DIR``, which no
+    frozen configuration can pin, and it is recorded rather than papered over.
+
+    THE REGISTRY CAN MOVE BETWEEN ENQUEUE AND DRIVE, so a queued identifier it no
+    longer holds is refused rather than swept as an empty registry. The item is
+    frozen; the registry is a live document another verb edits.
+
+    THE CATALOGUE IS LOOKED UP ON THE MODULE AT CALL TIME rather than bound into
+    this scope by the import at the top of the file, which is what lets a test
+    substitute the seam. ``modules/outbound/account.py`` states the same contract
+    for the outbound half, and ``label/catalogue.py`` states it for this one.
+
+    AN EMPTY OWNED SET (KTD9), because no producer of owned identities exists on
+    the labels path anywhere in ``src``. ``scope.scoped`` and ``list_for_label``
+    both filter on membership in the set they are handed, so this is not ownership
+    filtering happening in the wrong order, it is ownership filtering not
+    happening: a sweep offers releases the library may already hold. Stated here
+    and recorded as a residual rather than left for a reader to infer from a
+    literal.
+
+    NOTHING IS PRODUCED. The sweep writes no file: it OFFERS into the review
+    queue, which is the durable record, so there is no artifact to commit and the
+    envelope stays exactly ``job_state/1`` (KTD7). ``LabelSource.acquires`` is
+    False, so the increment writes no intake file and moves no watermark either.
+    """
+    label_id = str(item.item_id or "")
+    entry = labels.RegistryStore().load().by_id(label_id)
+    if entry is None:
+        raise refuse(
+            "label-unknown",
+            f"this job was queued for the favourite label {label_id!r} and the "
+            f"registry no longer holds it, so there is nothing to sweep; a label "
+            f"that was removed after the job was filed is not a label with "
+            f"nothing new",
+            steps=(
+                f"re-add it with: crate label registry add {label_id}",
+                "or cancel this job, since its items name labels you removed",
+            ),
+            origin=("label.cli",),
+            detail={"label_id": label_id, "job_id": job.job_id},
+        )
+
+    payload = dict(job.payload or {})
+    result = run_increment(
+        cfg,
+        # ``cfg`` REACHES THE REVIEW STORE THROUGH THIS OBJECT. ``increment``
+        # calls ``LabelSource.process`` without a store, and ``process`` then
+        # opens one against ``self.cfg``, so the configuration handed here is the
+        # one the offers are written under. That is the whole of R17 on this path.
+        sweep.LabelSource(
+            cfg,
+            registry=labels.Registry(labels={entry.label_id: entry}),
+            catalogue=catalogue.resolve(cfg),
+        ),
+        owned=set(),
+        limit=labels.effective_limit(entry),
+        # THE RUN ID FALLS BACK TO THE JOB, so a sweep queued outside ``sync all``
+        # still has one. R29 is why the payload's is preferred: two sources queued
+        # by one sync share an intake run, and an id invented per item would split
+        # what a person imports into as many files as the job has labels.
+        run_id=str(payload.get("run_id") or job.job_id),
+    )
+    if result.errors:
+        raise refuse(
+            "label-sweep-incomplete",
+            f"the sweep of {entry.name!r} could not offer "
+            f"{len(result.errors)} of the releases it listed "
+            f"({'; '.join(result.errors)}); the offers it did make are already in "
+            f"the review queue and this label was not swept in full",
+            # THE RAISE SITE OWNS THE REMEDY. ``core/cause.py``'s ``REASONS`` maps
+            # a slug to an exit code and carries no remedy at all, and the answer
+            # here is another attempt at this job rather than the class default:
+            # the round was partial, the successful offers are durable, and a
+            # resume redoes only the items that failed.
+            remedy=Remedy.RESUME_JOB,
+            origin=("label.cli",),
+            detail={
+                "label_id": entry.label_id,
+                "offered": len(result.processed),
+                "failed": len(result.errors),
+            },
+        )
+    return None
+
+
 __all__ = [
     "build_harvest",
     "build_import",
     "build_registry",
     "build_sync",
+    "handle",
     "harvest_playlist",
     "import_label",
     "label_import_argv",

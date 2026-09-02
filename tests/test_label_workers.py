@@ -1,4 +1,4 @@
-"""U4: neither label verb can queue a job with nothing to claim.
+"""U4 and U5: the two label verbs queue real items and then run them.
 
 WHAT THIS FILE GUARDS THAT NO OTHER SUITE CAN. ``cratekit.core.jobs.drive``
 transitions a job whose item count is zero straight to SUCCEEDED, because
@@ -7,10 +7,10 @@ with no ``item_ids`` at all, so a person who queued a sweep and later resumed it
 was told it succeeded over a registry nothing was read from.
 ``tests/modules/test_labels.py`` proves the sweep engine keeps its promises when
 called directly and has always passed, because nothing in ``src`` queued an item
-for it to claim. This file is about the enqueue: that the registry decides the
-items, that an empty registry refuses instead of queueing, and that a person is
-told the catalogue seam is unbound at the one moment the information is still
-useful to them.
+for it to claim. This file is about the enqueue and the binding: that the
+registry decides the items, that an empty registry refuses instead of queueing,
+that a person is told the catalogue seam is unbound at the one moment the
+information is still useful to them, and that a queued job now actually runs.
 
 THE ITEMS ARE READ BACK FROM THE STORE rather than inferred from the envelope.
 The envelope is exactly ``job_state/1``, four keys and no item list, so the only
@@ -19,20 +19,38 @@ by the ABSENCE of a job row rather than by the exception alone: a verb that
 queued first and refused afterwards would raise the same cause and leave the
 empty job sitting in the queue for a later resume to succeed at.
 
-NOTHING HERE DRIVES A JOB. U4 is the enqueue half; the worker, the bindings and
-the resume branch are U5's, and the two handler keys are still unbound while this
-file is written.
+THE CATALOGUE IS ALWAYS A STAND IN, and it is the ONLY thing substituted. No
+adapter ships in this build, so every drive below puts a fake in front of
+``cratekit.label.catalogue.resolve`` on the module attribute, which is the
+substitution that module's docstring contracts for. The real dispatcher, the
+real queue, the real handler resolution, the real driver and the real sweep
+engine are all in the path, because the property under test is the binding
+rather than the fake.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
-from cratekit.core import config, jobs
+from cratekit.cli import handlers, registry
+from cratekit.core import config, jobs, review
 from cratekit.core.exit_codes import ExitCode
-from cratekit.label import catalogue
+from cratekit.label import catalogue, sweep
+from cratekit.label import cli as label_cli
 from tests.cli_drive import drive
+from tests.label_fakes import (
+    FakeCatalogue,
+    FakePagedArtist,
+    FakeRelease,
+    UnreadableCatalogue,
+    catalogue_factory,
+)
 from tests.test_config import valid_data
+
+SWEEP_KEY = "sync.labels"
+IMPORT_KEY = "label.import"
 
 #: Three display names whose slugs are distinct and are not the names, so an
 #: item carrying a display name fails here rather than passing by coincidence
@@ -77,6 +95,95 @@ def queued_items(job_id: str) -> list[str]:
 def queue_is_empty() -> bool:
     with jobs.open_store() as store:
         return not jobs.list_jobs(store)
+
+
+#: One catalogue's worth of releases per label, with identifiers that carry the
+#: label they belong to. That is what makes the per item assertions below able to
+#: fail: a worker that swept the same label twice would produce one label's
+#: identifiers where two are expected, rather than the same count of anonymous
+#: rows.
+RELEASES = {
+    "hotflush-recordings": ("hf-1", "hf-2"),
+    "ostgut-ton": ("ot-1",),
+    "kompakt": ("ko-1",),
+}
+
+
+def readable(*label_ids: str) -> FakeCatalogue:
+    """A catalogue that can list exactly these labels, keyed as the seam keys it."""
+    return FakeCatalogue(
+        artists={
+            label_id: FakePagedArtist(
+                [FakeRelease(release_id) for release_id in RELEASES[label_id]]
+            )
+            for label_id in label_ids
+        }
+    )
+
+
+def bind(monkeypatch, fake: FakeCatalogue) -> FakeCatalogue:
+    """Put ``fake`` in front of the provider seam for this test.
+
+    On the MODULE ATTRIBUTE rather than on an imported name, because that is what
+    ``cratekit.label.catalogue``'s docstring contracts for and what the worker
+    looks up at call time. A worker that bound ``resolve`` into its own scope at
+    import time would not see this and would meet the real unbound seam.
+    """
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    return fake
+
+
+def queued_job(verb: list[str]) -> str:
+    """Queue through the real verb and return the job identifier."""
+    code, envelope = drive(verb)
+    assert code == int(ExitCode.OK), envelope
+    return envelope["data"]["job_id"]
+
+
+def item_states(job_id: str) -> dict[str, str]:
+    with jobs.open_store() as store:
+        return {item.item_id: str(item.state) for item in jobs.items(store, job_id)}
+
+
+def item_causes(job_id: str) -> dict[str, str | None]:
+    """Each item's OWN cause, which is not the same thing as the job's.
+
+    ``jobs.drive`` records the failing item's cause on the item row and then, when
+    every attempted item failed, raises ``no-evidence`` with that cause nested as
+    ``inner``. So the envelope a person sees names the evidence rule and the row
+    names what actually went wrong, and a test asserting the worker's refusal has
+    to read the row.
+    """
+    with jobs.open_store() as store:
+        return {
+            item.item_id: (item.cause.reason if item.cause is not None else None)
+            for item in jobs.items(store, job_id)
+        }
+
+
+def job_state(job_id: str) -> str:
+    with jobs.open_store() as store:
+        return str(jobs.get(store, job_id).state)
+
+
+def job_is_open(job_id: str) -> bool:
+    with jobs.open_store() as store:
+        return jobs.get(store, job_id).is_open()
+
+
+def offers(cfg: config.Config) -> dict[str, str]:
+    """The label-release queue under ``cfg``, as release identity to label id.
+
+    Keyed on the identity rather than counted, because a count cannot tell one
+    label swept twice from two labels swept once, and that is exactly the defect
+    the per item worker exists to avoid.
+    """
+    with review.open_store(cfg) as store:
+        page = review.list_items(store, queue=str(review.Queue.LABEL_RELEASE))
+    return {
+        str(item.payload.get("identity")): str(item.payload.get("label_id"))
+        for item in page.items
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -256,3 +363,328 @@ def test_the_warning_rides_the_envelope_rather_than_the_job_state_payload(instal
     assert code == int(ExitCode.OK), queued
     assert set(queued["data"]) == {"job_id", "state", "cause", "progress"}
     assert queued.get("warnings")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4. The bindings themselves
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_both_label_keys_report_a_bound_worker_rather_than_a_reason_they_have_none():
+    """``crate job show``'s worker field, at the source it is derived from.
+
+    Asked through ``handlers`` rather than through a verb, because the answer is
+    given WITHOUT importing the feature module (KTD26) and driving a verb would
+    import it and prove nothing about that property.
+    """
+    for key in (SWEEP_KEY, IMPORT_KEY):
+        assert handlers.is_known(key), key
+        assert handlers.unbound_reason(key) is None, key
+        assert callable(handlers.resolve(key)), key
+
+
+def test_neither_label_key_is_recorded_as_unbound_now_that_both_are_bound():
+    """Deleting the exemption is the other half of adding the binding.
+
+    A key in both tables would make ``unbound_reason`` answer with a sentence
+    about a worker that exists, which is the reporting surface telling a person
+    their job will not run while it does.
+    """
+    for key in (SWEEP_KEY, IMPORT_KEY):
+        assert key not in handlers.HANDLERS_NOT_YET_BOUND, key
+        assert key in handlers.HANDLERS, key
+
+
+def test_the_two_bound_keys_are_the_ones_the_registry_declares():
+    """Derived, so a renamed handler key fails here rather than at a queue."""
+    declared = {
+        entry.handler_key
+        for entry in registry.ENTRIES
+        if entry.landed and entry.long_running
+    }
+    assert {SWEEP_KEY, IMPORT_KEY} <= declared
+
+
+def test_one_worker_serves_both_label_keys():
+    """The sweep and the import differ in how many items they queue, not in work.
+
+    Asserted as identity rather than as two declarations that look alike, because
+    two functions doing the same thing is how the item-not-payload rule gets fixed
+    in one of them.
+    """
+    assert handlers.resolve(SWEEP_KEY) is handlers.resolve(IMPORT_KEY)
+    assert handlers.resolve(SWEEP_KEY) is label_cli.handle
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. A queued sweep runs
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_sweep_runs_every_one_of_its_labels_from_pending_to_done(
+    installed, monkeypatch
+):
+    """The whole point of the unit, read back from the queue rather than the exit code."""
+    del installed
+    register(*LABELS[:2])
+    bind(monkeypatch, readable(*SLUGS[:2]))
+    job_id = queued_job(["sync", "labels"])
+    assert set(item_states(job_id).values()) == {str(jobs.ItemState.PENDING)}
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    assert item_states(job_id) == {slug: str(jobs.ItemState.DONE) for slug in SLUGS[:2]}
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+
+
+def test_each_item_sweeps_its_own_label_and_not_one_named_by_the_payload(
+    installed, monkeypatch
+):
+    """The first defect U46's end to end drive surfaced, pinned on the label path.
+
+    A handler that took its subject from the payload would make every item of a
+    multi item job do the SAME work, so the assertion is on which releases were
+    offered rather than on how many. Two labels with different catalogues produce
+    two disjoint sets of identifiers, and a worker reading the payload cannot
+    produce both of them however many items it runs.
+    """
+    register(*LABELS[:2])
+    catalogue_fake = bind(monkeypatch, readable(*SLUGS[:2]))
+    job_id = queued_job(["sync", "labels"])
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+
+    assert offers(installed) == {
+        "hf-1": "hotflush-recordings",
+        "hf-2": "hotflush-recordings",
+        "ot-1": "ostgut-ton",
+    }
+    assert catalogue_fake.asked_for == list(SLUGS[:2])
+
+
+def test_an_import_runs_its_one_item_to_done_through_the_same_worker(
+    installed, monkeypatch
+):
+    """The second key, driven through the real dispatcher rather than by calling handle."""
+    del installed
+    register(LABELS[2])
+    bind(monkeypatch, readable(SLUGS[2]))
+    job_id = queued_job(["label", "import", "Kompakt"])
+    code, resumed = drive(["label", "import", "Kompakt", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    assert item_states(job_id) == {SLUGS[2]: str(jobs.ItemState.DONE)}
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+
+
+def test_the_resume_envelope_is_exactly_job_state_and_nothing_beside_it(
+    installed, monkeypatch
+):
+    """KTD7: no artifact, no per verb detail, four keys.
+
+    ``tests.cli_drive.drive`` already validates every envelope against the
+    declared schema, and U51 shipped an undeclared key on this exact surface, so
+    the positive half is asserted here too.
+    """
+    del installed
+    register(LABELS[0])
+    bind(monkeypatch, readable(SLUGS[0]))
+    job_id = queued_job(["sync", "labels"])
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    assert set(resumed["data"]) == {"job_id", "state", "cause", "progress"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. What a failing round does
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_catalogue_that_cannot_be_listed_fails_the_item_and_the_job(
+    installed, monkeypatch
+):
+    """R-135 through the binding: an unreadable listing is not a quiet label.
+
+    THE CAUSE IS READ OFF THE ITEM ROW. When every attempted item fails
+    ``jobs.drive`` records the item's cause on the row and then raises
+    ``no-evidence`` with it nested as ``inner``, so the envelope names the
+    evidence rule and only the row names the lookup failure. Both are asserted,
+    because a build that reported the sweep as SUCCEEDED with an empty result is
+    the state this closes.
+    """
+    del installed
+    register(LABELS[0])
+    bind(monkeypatch, UnreadableCatalogue())
+    job_id = queued_job(["sync", "labels"])
+    code, failed = drive(["sync", "labels", "--job", job_id])
+    assert code != int(ExitCode.OK), failed
+    assert item_causes(job_id) == {SLUGS[0]: "sync-source-lookups-failed"}
+    assert job_state(job_id) == str(jobs.JobState.FAILED)
+    assert failed["cause"]["reason"] == "no-evidence"
+
+
+def test_an_increment_that_could_not_offer_every_release_fails_the_item(
+    installed, monkeypatch
+):
+    """A partial round FAILS rather than completing, which is a decision.
+
+    ``run.increment`` reports per candidate errors in a result it still returns,
+    so a worker that only looked at ``processed`` would mark the item done having
+    offered some of the label. The person's remedy is another attempt at the same
+    job, which is why the refusal carries ``resume-job`` rather than the exit
+    code's own default.
+    """
+    del installed
+    register(LABELS[0])
+    bind(monkeypatch, readable(SLUGS[0]))
+
+    def refusing_offer(store, candidate, **kwargs):
+        del store, kwargs
+        raise RuntimeError(f"the review queue rejected {candidate.identity}")
+
+    monkeypatch.setattr(sweep, "offer_release", refusing_offer)
+    job_id = queued_job(["sync", "labels"])
+    code, failed = drive(["sync", "labels", "--job", job_id])
+    assert code != int(ExitCode.OK), failed
+    assert item_causes(job_id) == {SLUGS[0]: "label-sweep-incomplete"}
+    assert job_state(job_id) == str(jobs.JobState.FAILED)
+
+
+def test_a_label_the_registry_no_longer_holds_refuses_rather_than_sweeping_nothing(
+    installed, monkeypatch
+):
+    """The registry can move between enqueue and drive, and the items cannot.
+
+    The queue froze an identifier; the registry is a live document a person edits
+    with another verb. A worker that resolved nothing and swept an empty registry
+    would report the job done having read no label at all.
+    """
+    del installed
+    register(*LABELS[:2])
+    bind(monkeypatch, readable(*SLUGS[:2]))
+    job_id = queued_job(["sync", "labels"])
+    code, removed = drive(["label", "registry", "remove", LABELS[0]])
+    assert code == int(ExitCode.OK), removed
+
+    code, failed = drive(["sync", "labels", "--job", job_id])
+    assert code != int(ExitCode.OK), failed
+    causes = item_causes(job_id)
+    assert causes[SLUGS[0]] == "label-unknown"
+    assert causes[SLUGS[1]] is None
+    assert item_states(job_id)[SLUGS[1]] == str(jobs.ItemState.DONE)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. The resume branch
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_job_carrying_no_items_refuses_on_resume_and_is_left_open(installed):
+    """A job frozen by a build before U52, met by the build that can drive it.
+
+    REFUSED RATHER THAN REPAIRED, and the job is deliberately left open: filling
+    items into a payload frozen by a build with a different idea of the job would
+    run work under a configuration snapshot nobody checked. Driving it instead
+    would report a clean success, because ``jobs.drive`` transitions a job whose
+    item count is zero straight to SUCCEEDED.
+    """
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key=SWEEP_KEY,
+            payload={"source_id": "labels"},
+            cfg=installed,
+            item_ids=(),
+        )
+    code, refused = drive(["sync", "labels", "--job", job.job_id])
+    assert code == int(ExitCode.INTERNAL), refused
+    assert refused["cause"]["reason"] == "internal-error"
+    assert job.job_id in refused["cause"]["message"]
+    assert job_is_open(job.job_id), (
+        "the refusal drove the job anyway, so a later resume would report a "
+        "success over work nothing did"
+    )
+
+
+def test_a_second_resume_of_a_failed_sweep_still_does_not_exit_ok(
+    installed, monkeypatch
+):
+    """R-225, and the placement that decides it.
+
+    The re-raise sits OUTSIDE the ``is_open`` branch. A job already FAILED on
+    entry is not open, so the drive is skipped, and a re-raise written inside the
+    branch would be skipped with it: the first ask answers "failed" and every ask
+    after it exits 0 over the same unfinished work. ``master/cli.py``'s resume
+    branch has no re-raise at all, which is what this asserts was not copied.
+    """
+    del installed
+    register(LABELS[0])
+    bind(monkeypatch, UnreadableCatalogue())
+    job_id = queued_job(["sync", "labels"])
+    assert drive(["sync", "labels", "--job", job_id])[0] != int(ExitCode.OK)
+
+    code, again = drive(["sync", "labels", "--job", job_id])
+    assert code != int(ExitCode.OK), again
+    assert again["cause"]["reason"] == "unavailable-transient"
+    assert job_state(job_id) == str(jobs.JobState.FAILED)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. The frozen configuration reaches the worker
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_worker_offers_into_the_library_its_job_was_queued_for(
+    installed, tmp_path, monkeypatch
+):
+    """R17 and KTD9, on a path the worker genuinely resolves against ``cfg``.
+
+    The review queue is LIBRARY scoped, so ``config.state_path`` puts it under the
+    configured library and a worker holding a live configuration would offer into
+    a different library from the one its job was queued for. The favourite label
+    registry cannot prove this and is not asked to: it is installation scoped and
+    ``RegistryStore`` takes no configuration at all (KTD6).
+
+    THE DIVERGENCE HAS TO COME FROM THE FILE. ``config.from_dict`` applies
+    environment overrides unconditionally and ``jobs.frozen_config`` rebuilds
+    through it, so with ``CRATEKIT_LIBRARY_ROOT`` still set both readings relocate
+    onto the variable and agree whatever the saved file says. The variable is
+    therefore unset, and the database moves WITH the root because KTD21b refuses
+    to save one without the other. Recorded in
+    ``docs/solutions/workflow-issues/a-frozen-config-is-frozen-against-the-file-not-against-an-env-override.md``.
+    """
+    register(LABELS[0])
+    bind(monkeypatch, readable(SLUGS[0]))
+    job_id = queued_job(["sync", "labels"])
+
+    elsewhere = tmp_path / "another-library"
+    (elsewhere / "Music").mkdir(parents=True)
+    (elsewhere / "db").mkdir(parents=True)
+    monkeypatch.delenv(config.ENV_LIBRARY_ROOT)
+    config.save(
+        replace(
+            installed,
+            library=replace(
+                installed.library,
+                root=elsewhere,
+                db_path=elsewhere / "db" / "master.db",
+            ),
+        )
+    )
+    config.reset_cache()
+    live = config.load()
+    assert live.library.root == elsewhere, (
+        "the live configuration still names the queued library, so the two "
+        "readings cannot differ and this test would pass either way"
+    )
+    assert not review.queue_path(live).exists(), (
+        "the relocated library already holds a review queue, so an offer written "
+        "there would be indistinguishable from one written to the frozen library"
+    )
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
+    assert not review.queue_path(live).exists(), (
+        "the worker opened the review store against the CURRENT configuration, "
+        "so the offers landed in a library this job was never queued for"
+    )

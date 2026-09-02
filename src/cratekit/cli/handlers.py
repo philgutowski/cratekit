@@ -74,8 +74,14 @@ ItemHandler = Callable[[jobs.Job, jobs.Item, "config.Config"], "jobs.Produced | 
 HANDLERS: Mapping[str, str] = {
     "backup.run": "cratekit.backup.cli:handle",
     "export.playlist": "cratekit.export.cli:handle",
+    # ONE WORKER UNDER TWO KEYS, which the string table makes ordinary rather than
+    # special: the sweep and the import differ in how many favourite labels they
+    # queue and in nothing about how one is swept, and the worker takes its label
+    # from the item either way.
+    "label.import": "cratekit.label.cli:handle",
     "master": "cratekit.master.cli:handle",
     "sync.favorites": "cratekit.favorites.cli:handle",
+    "sync.labels": "cratekit.label.cli:handle",
 }
 
 #: ``handler_key`` to why this build runs nothing for it. Every landed
@@ -96,11 +102,9 @@ HANDLERS_NOT_YET_BOUND: Mapping[str, str] = {
     "delete.review": "no worker yet, R-203",
     "intake.playlist": "no worker yet, R-203",
     "intake.set": "no worker yet, R-203",
-    "label.import": "no worker yet, R-203",
     "rebuild": "no worker yet, R-203",
     "route.resort": "no worker yet, R-203",
     "sync.all": "no worker yet, R-203",
-    "sync.labels": "no worker yet, R-203",
     "tag.folder": "no worker yet, R-203",
     "tag.retag": "no worker yet, R-203",
 }
