@@ -262,19 +262,19 @@ RESERVATIONS: tuple[Reservation, ...] = (
     # see the obligation.
     #
     # 32 IS MEASURED RATHER THAN CHOSEN, which is what this table's rule asks:
-    # agree with the landed conversion. core.session catches every
-    # BackupFactsUnreadable at one site, src/cratekit/core/session.py:1042, and
-    # re-raises it with remedy REPAIR_BACKUP_FACTS without reading the
-    # exception's own remedy at all. Measured on the merged tree: both siblings
-    # above answer 32, so this token's landed code today is 32 and reserving
-    # anything else would reserve a conversion that does not happen.
+    # agree with the landed conversion. Both siblings above answer 32, and the
+    # code has not moved since.
     #
-    # That flattening is itself a finding and is filed as a residual rather than
-    # repaired here: the remedy correction landed on the raising path while the
-    # consuming path still replaces it, so a person whose directory is unreadable
-    # is told to repair or reset the very record the raise site was changed to
-    # stop blaming. Repairing that changes refusal behaviour no verifier drove,
-    # which is not a merge's work.
+    # WHAT MOVED IS THE REASON, and it is worth saying because the number stayed
+    # the same while the argument under it was replaced. This note used to
+    # measure 32 from a defect: core.session caught every BackupFactsUnreadable
+    # at one site and re-raised it naming REPAIR_BACKUP_FACTS without reading the
+    # exception's own remedy at all, so grant-path-access never reached a
+    # refusal from that path and the only landed answer was its siblings'. U48
+    # closed that on 2026-09-02: the session now carries the exception's remedy
+    # the way cli.doctor and the backup shell already did, so this token is
+    # reachable from three consumers rather than two. It still answers 32,
+    # because the siblings that decided the number are unchanged.
     Reservation(
         cause="grant-path-access",
         code=ExitCode.ACK_REQUIRED,

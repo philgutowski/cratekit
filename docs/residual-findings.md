@@ -2877,6 +2877,19 @@ own token, so the conversion has only to pass `exc.remedy` through.
 
 **Closes when:** `_shown_ages` forwards `exc.remedy` instead of naming a token.
 
+**Item 2 closed by U48, 2026-09-02.** `_shown_ages` now writes
+`remedy=Remedy(str(exc.remedy))`, the way `cli/doctor.py` and the backup shell
+already did, so the session is the third consumer of that exception rather than
+the one that flattened it. All three tokens are driven through `read_facts` in
+`tests/test_write_session.py` rather than through hand built exceptions, because
+the finding is that a field is discarded and a hand built exception can carry a
+field the code path never produces: a permission error answers
+`GRANT_PATH_ACCESS`, a damaged file still answers `REPAIR_BACKUP_FACTS`, and a
+newer `schema_version` answers `UPGRADE_CRATEKIT`, which is the case this entry
+argues from first. R-201 records the same defect from the permission side and
+was written later without noticing this one; it closes on the same commit, and
+the two are one finding rather than two. The rest of R-56 is untouched.
+
 **3. The reservation table has no consumer in `src/`.** Only tests import
 `cratekit.cli.exit_codes`. All 22 reserved causes still reach `except Exception`
 and exit 1 today, and the two source guards forbid a second table rather than

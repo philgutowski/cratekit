@@ -1023,12 +1023,19 @@ def _converted_exception_types() -> set[type]:
     WHAT THIS STILL CANNOT PROVE, and the residual
     "The conversion proof shows that a conversion exists, not that it keeps anything"
     records it. A conversion that EXISTS
-    is not a conversion that is lossless. ``core/session.py`` catches
-    ``BackupFactsUnreadable``, reads ``exc.path`` and hardcodes the remedy,
-    discarding the one the exception carried, which is item 2 of the residual
-    "Five accepted findings from the U38 reviews". That handler
-    satisfies this proof and should, because the alternative is a rule about
-    which attributes a handler must read, and that is a rule a refactor breaks.
+    is not a conversion that is lossless. The worked example was
+    ``core/session.py``, which caught ``BackupFactsUnreadable``, read
+    ``exc.path`` and then named the remedy itself, discarding the one the
+    exception carried; that was item 2 of the residual
+    "Five accepted findings from the U38 reviews", and U48 closed it, so the
+    example is now a HISTORICAL one rather than a live reading of the tree.
+
+    The hole it illustrated did not close with it. That handler satisfied this
+    proof while losing a field, and it still would, because the alternative is a
+    rule about which attributes a handler must read, and that is a rule a
+    refactor breaks. Do not read the closure as evidence this check got
+    stronger: nothing here would notice the next handler that does the same
+    thing.
     """
     found: set[type] = set()
     modules, _ = imported_package_modules()
