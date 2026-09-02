@@ -27,6 +27,7 @@ ultimately about keeping those apart.
 from __future__ import annotations
 
 import ast
+import functools
 import stat
 import sys
 import types
@@ -1309,9 +1310,7 @@ def test_the_adapter_authenticates_with_pkce_on():
         )
 
 
-def test_a_device_flow_session_is_refused_with_a_remedy_that_has_a_procedure(
-    settings, tmp_path, monkeypatch
-):
+def test_a_device_flow_session_is_refused_with_a_remedy_that_has_a_procedure():
     """A refusal whose remedy has nowhere to go is worse than the lossy download.
 
     Every session in the keychain before this unit was minted by the device flow,
@@ -1336,12 +1335,19 @@ class _FakeDownload:
 
     seen: dict[str, object] = {}
 
-    def __init__(self, **kwargs: object) -> None:
+    def __init__(self, *, landed: tuple[bool, str] = (True, ""), **kwargs: object) -> None:
+        # ``landed`` is consumed here and never recorded, so ``seen`` holds
+        # exactly the keywords ``fetch`` passed and nothing the test added.
         type(self).seen = dict(kwargs)
-        self.landed = (True, "/staging/1234.flac")
+        self.landed = landed
 
     def item(self, **_kwargs: object) -> tuple[bool, str]:
         return self.landed
+
+
+def _landing(landed: tuple[bool, str]):
+    """A downloader class that reports one fixed landing."""
+    return functools.partial(_FakeDownload, landed=landed)
 
 
 def _fetch_with_fake(settings, tmp_path, landed=None):
@@ -1353,16 +1359,13 @@ def _fetch_with_fake(settings, tmp_path, landed=None):
     """
     if landed is None:
         landed = (True, str(synth_container(tmp_path, ".flac")))
-
-    class Landing(_FakeDownload):
-        def __init__(self, **kwargs: object) -> None:
-            super().__init__(**kwargs)
-            self.landed = landed
-
     source = vendored._VendoredSource(
-        settings, tmp_path / "token.json", session=_ToolSession({}), downloader=Landing
+        settings,
+        tmp_path / "token.json",
+        session=_ToolSession({}),
+        downloader=_landing(landed),
     )
-    return source, Landing
+    return source, _FakeDownload
 
 
 def test_the_downloader_gets_every_argument_the_vendored_cli_passes(settings, tmp_path):
@@ -1374,15 +1377,7 @@ def test_the_downloader_gets_every_argument_the_vendored_cli_passes(settings, tm
     source, fake = _fetch_with_fake(settings, tmp_path)
     source.fetch(TrackRequest(key="1234"), settings.download_staging)
 
-    assert set(fake.seen) == {
-        "tidal_obj",
-        "path_base",
-        "fn_logger",
-        "event_abort",
-        "event_run",
-        "progress",
-        "progress_overall",
-    }
+    assert set(fake.seen) == vendored.DOWNLOADER_ARGUMENTS
 
 
 def test_the_run_event_is_set_and_the_abort_event_is_clear(settings, tmp_path):
@@ -1575,11 +1570,6 @@ def test_a_lossy_landing_refuses_the_track_and_lets_the_run_continue(
     aac = synth_container(tmp_path, ".m4a")
     codec = vendored.codec_of(aac)[0]
 
-    class Landing(_FakeDownload):
-        def __init__(self, **kwargs: object) -> None:
-            super().__init__(**kwargs)
-            self.landed = (True, str(aac))
-
     # The OFFER says lossless and the FILE is not. That gap is the whole defect:
     # the rule was enforced where the request was made and never where the file
     # was accepted.
@@ -1589,7 +1579,7 @@ def test_a_lossy_landing_refuses_the_track_and_lets_the_run_continue(
             settings,
             tmp_path / "token.json",
             session=_ToolSession({"1234": _ToolTrack("LOSSLESS")}),
-            downloader=Landing,
+            downloader=_landing((True, str(aac))),
         ),
     ).acquire([TrackRequest(key="1234")])
 
@@ -1616,18 +1606,13 @@ def test_a_lossy_landing_after_a_delisted_track_still_returns_a_contract_result(
     """
     aac = synth_container(tmp_path, ".m4a")
 
-    class Landing(_FakeDownload):
-        def __init__(self, **kwargs: object) -> None:
-            super().__init__(**kwargs)
-            self.landed = (True, str(aac))
-
     source = vendored._VendoredSource(
         settings,
         tmp_path / "token.json",
         session=_ToolSession(
             {"gone": NotFoundError("404 not found"), "1234": _ToolTrack("LOSSLESS")}
         ),
-        downloader=Landing,
+        downloader=_landing((True, str(aac))),
     )
 
     result = vendored.VendoredAdapter(settings, source=source).acquire(

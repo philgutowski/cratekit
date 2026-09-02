@@ -1,8 +1,8 @@
 # Mutation table: u47-author
 
-Measured by `scripts/mutate.py` on 2026-09-02 02:40 UTC, branch `relay/65` at `5b420c3`. Pass kind: full.
+Measured by `scripts/mutate.py` on 2026-09-02 03:00 UTC, branch `relay/65` at `449ccad`. Pass kind: full.
 
-Baseline: green, 6515 collected. pytest invocations for this batch: 5.
+Baseline: green, 6515 collected. pytest invocations for this batch: 7.
 
 Environment: inherited from the calling shell, then added to. Added: PYTHONDONTWRITEBYTECODE=1; PYTHONPATH (the plugin's temp directory, prepended); MUTATE_REPORT_PATH (the plugin's output file). Removed: PYTEST_ADDOPTS (an inherited value would edit the command after the driver built it). Nothing else was scrubbed, because a hand built environment is how a missing binary reddens a baseline and every row after it.
 
@@ -12,14 +12,14 @@ Null control `NULL_CONTROL`: killed 0, collected 6515 against 6515. The control 
 
 | id | file | surface | subset | collected | kills | status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `R197_drop_event_abort` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 158 | 3 | killed |
+| `R197_drop_event_abort` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 159 | 3 | killed |
 | `R197_drop_event_run` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 158 | 3 | killed |
 | `R197_drop_progress` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 158 | 3 | killed |
 | `R197_drop_progress_overall` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 158 | 3 | killed |
 | `R197_event_run_left_clear` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 158 | 1 | killed |
 | `R197_event_abort_preset` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 158 | 1 | killed |
 | `R197_progress_enabled` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 158 | 1 | killed |
-| `R197_argument_set_shrinks` | `src/cratekit/acquire/vendored.py` | maintainer | 2 file(s) | 158 | 2 | killed |
+| `R197_argument_set_shrinks` | `src/cratekit/acquire/vendored.py` | maintainer | 2 file(s) | 159 | 3 | killed |
 | `R195_drop_ffmpeg_key` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 158 | 4 | killed |
 | `R195_push_empty_instead` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 158 | 4 | killed |
 | `R195_swallow_missing_ffmpeg` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 158 | 1 | killed |
@@ -33,7 +33,7 @@ Null control `NULL_CONTROL`: killed 0, collected 6515 against 6515. The control 
 | `R196_persist_reads_the_wrong_symbol` | `src/cratekit/_vendor/tidal_dl_ng/config.py` | user | 2 file(s) | 158 | 2 | killed |
 | `R196_token_model_loses_the_field` | `src/cratekit/_vendor/tidal_dl_ng/model/cfg.py` | user | 2 file(s) | 158 | 4 | killed |
 | `R196_device_flow_returns` | `src/cratekit/_vendor/tidal_dl_ng/config.py` | user | 1 file(s) | 36 | 1 | killed |
-| `CODEC_no_refusal` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 158 | 4 | killed |
+| `CODEC_no_refusal` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 159 | 4 | killed |
 | `CODEC_unreadable_accepted` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 158 | 2 | killed |
 | `CODEC_none_reads_as_unreadable` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 158 | 4 | killed |
 | `CODEC_alac_reads_as_lossy` | `src/cratekit/acquire/vendored.py` | user | 2 file(s) | 158 | 1 | killed |
@@ -64,7 +64,7 @@ Drop event_abort from the downloader construction, the argument whose absence ki
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_adapter_contract.py`, `tests/test_vendor_import.py`
-- Collected: 158 against a baseline of 158
+- Collected: 159 against a baseline of 159
 - Kills: 3 (killed)
 - Killed:
   - `tests/test_adapter_contract.py::test_the_downloader_construction_in_the_source_names_every_argument`
@@ -256,11 +256,12 @@ Remove event_abort from the declared argument set, so the set no longer describe
 - Surface: maintainer
 - Subset: explicit subset from the row
 - Ran: `tests/test_adapter_contract.py`, `tests/test_vendor_import.py`
-- Collected: 158 against a baseline of 158
-- Kills: 2 (killed)
+- Collected: 159 against a baseline of 159
+- Kills: 3 (killed)
 - Killed:
   - `tests/test_adapter_contract.py::test_every_keyword_fetch_passes_exists_on_the_real_downloader`
   - `tests/test_adapter_contract.py::test_the_downloader_construction_in_the_source_names_every_argument`
+  - `tests/test_adapter_contract.py::test_the_downloader_gets_every_argument_the_vendored_cli_passes`
 
 Old text:
 
@@ -635,7 +636,7 @@ Accept whatever landed, which is the state the product shipped in from July: the
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_adapter_contract.py`, `tests/test_vendor_import.py`
-- Collected: 158 against a baseline of 158
+- Collected: 159 against a baseline of 159
 - Kills: 4 (killed)
 - Killed:
   - `tests/test_adapter_contract.py::test_a_lossy_landing_after_a_delisted_track_still_returns_a_contract_result`
@@ -958,42 +959,3 @@ New text:
         return Offer(lossless=quality.upper() == "LOSSLESS", detail=quality)
 ```
 
-
----
-
-## What the author read off this table
-
-**33 rows, 33 killed, no zero row.** The null control killed 0 against a 6515
-collected baseline, which is what makes the rest of these numbers mean anything.
-
-**This is an author's table and is therefore a draft, not a result.** METHOD says
-so and this project has measured the gap: every fix agent here has run its table
-honestly and still missed guards its own round created, because it mutates what
-it believes it changed. Measured gaps between an author's table and an
-independent one on this repository: 10 against 17, 39 against 49, 49 against 83.
-
-**One row was zero on its first measurement and is the most useful row here.**
-`CODEC_suffix_instead_of_container` swaps mutagen's container class for the file
-extension, and on the first run it killed nothing against the full 6514 collected
-suite. The reason is worth writing down because it is not "the guard is
-untested": `mutagen.File()` resolves its class from the EXTENSION as well as the
-header, so for every container this product can land the two spellings agree and
-the mutation is equivalent. WAV is the one exception, and only the one:
-mutagen names the class `WAVE` while the file is called `.wav`. A classifier keyed
-on the suffix would look correct everywhere and refuse a genuine WAV as
-unreadable. The gap was closed rather than documented, with a test that lands a
-real WAV, and the row then killed 1. The zero was a real hole, not an artifact.
-
-**Three rows were considered and dropped**, and each is recorded in the rows file
-with its reason rather than left silent, because a truncation nobody logged reads
-as coverage. None was dropped for budget; all three were ranked below rows that
-measure the same guard family.
-
-**The driver was killed twice mid-row by the harness**, once in each of the first
-two attempts, and both times it left a mutated file on disk AND a poisoned
-`__pycache__`. The second is the one that cost time: the next run read a red
-baseline naming a test that had nothing to do with the change, and
-`PYTHONDONTWRITEBYTECODE=1` does not help, because it stops the driver's own runs
-from writing bytecode and does nothing about what an earlier killed run already
-wrote. Restoring the file is not enough. Purge `__pycache__` as well, and verify
-the restore against `git show HEAD:<path>` rather than against anything on disk.
