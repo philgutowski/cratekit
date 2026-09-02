@@ -1,21 +1,50 @@
 # Restart: Cratekit
 
-**Last session 2026-09-01.** U46 landed on `relay/64`, taken from the board as
-issue #64 rather than from the unit sequence: it is a residual somebody decided to
-act on, which is what moves a residual onto the board. **The pending register is
-still EMPTY.**
+**Last session 2026-09-02.** U52 landed on `relay/70`, taken from the board as
+issue #70. **The pending register is still EMPTY**, `tests/_pending.py` holds
+zero entries and `tests/test_pending_units.py` carries a test that says so out
+loud, because an emptily parametrized countdown is SKIPPED by pytest and a silent
+skip is the exact hazard that file warns about.
 
-**U46 CLOSED R-198 AND DID NOT CLOSE R-183.** `cratekit.core.jobs.drive` now has
-one caller in `src`, `cratekit.cli.handlers.run_job`, and `crate master` runs a
-queued item from `pending` to `done` through shipped code. R-183 asks that EVERY
-long running verb's engine have a caller, and one binding does not meet that: of
-the registry's twenty landed `long_running` entries, one is bound, `job.resume` is
-exempt by role, and eighteen are `R-203`. `crate job list` and `crate job show`
-now say which. R-204 records why the acquisition binding, and the first caller
-obligation that travels with it, was not this unit's. R-205 through R-209 are the
-resume path no test sees in one piece, the staging directory a successful master
-leaves behind, and three findings the review reasoned out but did not drive.
-**Main's highest residual is now R-209.**
+**THE LABEL VERBS RUN, AND NO LABEL WORKFLOW CAN RUN.** Both halves are true at
+once and confusing one for the other is the fastest way to misread this branch.
+`crate sync labels` and `crate label import` now derive real item ids from the
+favourite label registry, queue them, and drive each item through one worker,
+`cratekit.label.cli.handle`, bound under both keys in
+`src/cratekit/cli/handlers.py`. `crate label harvest` was rebuilt and no longer
+raises `label-playlist-unreadable` on every call over a provider it never
+contacted. What none of the three can do is reach a provider: every one of them
+resolves through `src/cratekit/label/catalogue.py`, whose `bound()` returns a
+constant `False` and whose `resolve` raises `credential-missing` or
+`label-catalogue-unbound`. **No implementation of the `Catalogue` protocol exists
+anywhere in `src`**, measured as six references, all of them a definition, an
+export line, an import or an annotation. So a queued label item ends FAILED with
+a named cause instead of sitting pending for ever, and both queueing verbs warn
+at enqueue while the warning is still useful. That is smaller than a working
+sweep and it is the honest version of it. **R-236 is the whole remaining
+distance, and it has no board issue yet.**
+
+**MAIN'S HIGHEST RESIDUAL MOVED, TWICE SINCE THIS FILE LAST SAID SO.** It was
+R-209 after U46. Main carried it to **R-234** through U47, U50 and U51, and U52
+takes it to **R-240**. Append only: main's numbers never move, and an incoming
+branch's residuals take fresh numbers above main's highest. U52 added R-235
+through R-240, CLOSED R-140 and amended four entries without closing any of them,
+R-135, R-137, R-138 and R-139. R-139's amendment follows R-204's "still open"
+shape on purpose: its closing condition is met in the code and is not met for a
+person, and the second half is what the entry is for.
+
+**R-203 IS DOWN TO THIRTEEN.** It was written at eighteen queued verbs with no
+worker, corrected to fifteen on 2026-09-02 after U50 and U51, and binding the two
+label keys takes it to thirteen. **The title still says eighteen deliberately.**
+Nothing in the repository derives from that prose: `tests/test_handlers.py`
+derives the population from `registry.ENTRIES` and fails the day a queued verb is
+in neither handler table, which is why the count in the ledger is a record rather
+than a repair. The thirteen are `acquire.download`, `adopt.apply`, `adopt.scan`,
+`analyze.restamp`, `analyze.run`, `delete.review`, `intake.playlist`,
+`intake.set`, `rebuild`, `route.resort`, `sync.all`, `tag.folder` and
+`tag.retag`. **`sync.all` is one of them and binding `sync.labels` did not change
+that**, because `src/cratekit/sync/cli.py` queues under `ctx.entry.handler_key`,
+which is `sync.all`.
 
 **The population to reason about is the REGISTRY, not the resume branches.** An
 `ast` walk finds seventeen `if ctx.args.job` branches in fifteen modules, and that
@@ -23,27 +52,21 @@ is a different set: `sync/cli.py` carries one branch serving three handler keys 
 `delete.review` is a landed queued entry with no branch at all. The first draft of
 U46's plan sized its exemption list from the branches and was wrong by three.
 
-**Before U46, board audit was exit 0 with 45 units, 44 done, 1 READY, 0 blocked**,
-and the one that is Ready is the one you must not take.
+**Board before the U52 merge: exit 0, 58 units, 50 done, 8 ready, 0 blocked**,
+and the highest ranked Ready is the one you must not take.
 
-**THE CUTOVER BACKLOG IS EMPTY AND THE CUTOVER IS MECHANICALLY POSSIBLE.** U45
-cleared Feature Inventory row 31, the last owed row without a landed verb.
-`tests/test_cutover_parity.py` flipped its headline assertion on that merge:
-`test_the_cutover_is_not_yet_possible_and_says_why` is gone and
-`test_the_cutover_is_mechanically_possible_and_says_what_is_left` stands in its
-place, asserting the emptiness beside the two populations it is a statement
-about so that a broken derivation cannot read as completion.
+**THAT HAS NOT CHANGED ABOUT WHO DOES U29.** Issue 29 is attended, Phillip's to
+perform against the live library one workflow at a time, which an agent cannot
+touch by standing constraint. METHOD's do-not-touch section says so and the reason
+does not expire. **`board.py next` will say "Take #29" and you must not.**
 
-**THAT CHANGES NOTHING ABOUT WHO DOES U29.** Issue 29 is the only unit left and
-it is attended, Phillip's to perform against the live library one workflow at a
-time, which an agent cannot touch by standing constraint. METHOD's do-not-touch
-section says so and the reason does not expire. **`board.py next` will say "Take
-#29" and you must not.**
-
-**There is no takeable unit left on this board.** Every other issue is closed.
-If you are starting a session and want work, it is either U29 with Phillip
-driving, one of the residuals somebody decides to act on, or the parked
-conformance branch once Phillip unparks it.
+**There ARE takeable units now, and that is new.** Six worker binding units sit
+Ready behind U52 and none of them is attended: #71 routing and rebuild, #72
+acquisition, #73 the collection reader and the adopt verbs, #74 the catalogue
+searcher and the tag verbs, #75 recognition and the intake verbs, #76 the
+analysis workers. Each names its own R-203 slice. `board.py next` ranks them all
+at zero released units, so pick by what the product needs rather than by the
+ranking.
 
 ## Do this first
 
@@ -74,95 +97,83 @@ what this file describes": `git status -sb` shows no ahead or behind count,
 `board.py audit` exits 0. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Forty four of forty five units are done, plus U46 off the residual ledger.**
-The last measured suite was **6483 passed and 1 skipped**. **Main's highest
-residual is R-209.** Append only.
+The last measured suite, on `relay/70` with all six U52 commits in, was **6685
+passed and 1 skipped**, run in the foreground from the main checkout's own
+`.venv`. **Main's highest residual is R-240 once this branch merges.** Append
+only.
 
 ## What the last session did
 
-U45 built `crate backup run`, the shell over the backup engine U35 landed, and
-it is the last of the four shells the U40 handoff found missing. Feature
-Inventory row 31 now reads as covered.
+U52 is six commits and it is wider than a call site, on purpose. METHOD's merge
+bar makes a finding whose input a branch makes REACHABLE that branch's to answer,
+and binding these two handlers made four recorded findings reachable at once.
 
-**THE SHELL IS THE SMALL HALF. THE AGE IS THE UNIT.** A destructive write
-session consults the backup age before it lets anything through, so a backup
-shell that runs and does not put the fact where the session looks leaves the
-product refusing destructive work immediately after the person took a backup.
+**THE SEAM CAME FIRST, and it is named `catalogue` rather than `provider`.**
+`cratekit.acquire.provider_session` already owns the word provider for the
+credential and `crate doctor` already reports a `credential.provider` check; one
+symbol meaning two things in two modules is on METHOD's list of what a green
+suite cannot see. The protocol has exactly four members because there are exactly
+four call sites, and **the failure contract is part of the type**: `artist_for`
+and `playlist_for` RAISE and never return `None`, because `LabelSource.list_recent`
+skipped a missing artist with a bare `continue`, so a returned `None` would have
+become a sweep that offered nothing and reported that it looked. Three slugs
+joined `src/cratekit/core/cause.py`: `label-catalogue-unbound`,
+`label-registry-empty` and `label-sweep-incomplete`.
 
-**THE ENGINE ALREADY PUBLISHES IT, so this shell never writes it.**
-`run_backup` calls `backup_facts.record` per portion and only on success. What
-the shell owns is READING IT BACK: `published_ages` re-opens the fact file and
-reports what a session would now see, through `backup_facts.ages`, which is the
-function `core.session._shown_ages` calls. Deriving it from the outcome instead
-would be a second copy of the engine's publish rule living in a different file
-from the rule it copies, and the drift runs in the expensive direction, a report
-saying a portion is backed up over a file that says never-recorded. **Do not
-"simplify" that into a derivation while fixing anything.**
+**THE INCREMENT STOPPED CLAIMING AN ACQUISITION IT DID NOT MAKE.**
+`cratekit.sync.run.Source` gained an `acquires` attribute, `LabelSource` declares
+it `False`, and `increment` returns before the intake append, the artifact
+registration and the watermark advance when it is false. One return rather than
+three guards, deliberately: those three writes are three statements of one claim,
+and a fourth writer added later lands below that return where an offering source
+cannot reach it. **Do not "simplify" that into three guards.** This closed R-140.
 
-**FIRST CALLER.** `git grep -n run_backup -- src` returned the definition, the
-`__all__` entry and a comment before this call was written, so U45 owns the
-engine's unreviewed failure paths under
-`docs/solutions/workflow-issues/adding-the-first-caller-makes-you-the-owner-of-its-unreviewed-defects.md`.
-`run_backup` reads its return codes, so the engine half of the U27 defect is not
-present. The SHELL half is refused explicitly: the report comes from
-`outcome_payload` and the fact file, and `plan_payload` is called nowhere.
+**AN UNREADABLE LISTING NOW RAISES.** `sweep._crawl_or_refuse` turns an artist
+exposing none of the listing methods, and any exception out of the crawl, into
+`run.LookupFailure`, which `increment` converts to `sync-source-lookups-failed`.
+Two of R-135's three producers close there. **The third must NOT be closed.**
+`listing.paginate` treats a `None` first answer as exhaustion, and an EMPTY first
+page from a method that exists is not a producer at all: that is a genuinely
+exhausted crawl and it has to keep reporting empty, or every quiet label becomes
+an error and R-135 has been traded for its mirror image.
 
-**A DEFECT FOUND WHILE WRITING IT AND FIXED HERE.** `cause.refuse` defaults an
-absent remedy to the exit code's class default, which for every backup refusal
-is `run-doctor`, while the reservation table holds `install-binary` for
-`rclone-missing` and `run-setup` for `remote-not-configured`.
-`session/restore_cli._refused` already reads that table for the same exception
-type, and its own mutation table had measured that dropping it kills zero tests.
-The first draft of this shell reproduced it one file over, which is METHOD's
-implied fifth pattern running forwards. `_engine_refusal` reads the table.
+**HARVEST BECAME A COMMAND THAT CAN SUCCEED.** It lists through
+`listing.playlist_tracks`, offers verified names, and emits `review_set/1`. An
+empty playlist is a success reported as `NO_OP`, so a playlist with nothing in it
+stays distinguishable from one that could not be read.
+`label-playlist-unreadable` is raised in exactly one place now, and only after a
+bound provider was asked and failed.
 
-**A FIXTURE THAT NAMED THE WRONG MECHANISM.** `no_rclone` emptied `PATH` and set
-the per-binary override, and read as though the two worked together.
-`binaries.find` returns None for a set-but-broken override BEFORE it consults
-PATH, and consults the fallback directories AFTER it, so the override alone
-decides it and PATH alone would have found the real rclone at
-`/opt/homebrew/bin/rclone` on this machine. The fixture now asserts
-`binaries.find("rclone") is None` rather than assuming it.
+**ONE RESUME OWNER FOR BOTH VERBS, and `outbound/shell.resume` was NOT reused.**
+That function calls `ctx.gate.require` unconditionally and digests the fixed
+outbound triple of playlist, export and tracks; neither label verb declares a
+gate or carries those keys. Two fragments were lifted rather than the function:
+the itemless job refusal and the closed cause re-raise, and the second sits
+OUTSIDE the `is_open` branch. `master`'s resume branch is missing that second
+fragment and must not be copied.
 
-**THE TABLES.** Read `docs/mutation/u45-round-1.md` and its round two companion.
-Round one was 43 rows against a green baseline of 6437 with the null control at
-zero: **36 killed, 5 zero, 2 collect error**. Every guard the round was written
-around held, including the engine's publish path from both sides and the row for
-the reserved-remediation fix above, which matters because a fix nothing would
-notice losing is a fix that comes back.
-
-Four of the five zeros were user facing and round two closed each with one test:
-the refusal MESSAGE (nothing read what the refusal told anybody, only its slug),
-the reported age NUMBER (asserted where the session reads it back, never on the
-verb's own report), the `--job` resume branch (never driven), and
-`BackupOutcome.ok`. The fifth, `H4`, is maintainer facing and gets a line rather
-than a composite. The two collect error rows are the registry ones and report no
-death count, because the mutation is refused at import before a test runs; they
-are not kills.
-
-**`E5` IS THE ONE TO READ, because it could not be closed where it was found.**
-`refusal_for` raises whenever a portion failed, which is exactly the condition
-making `ok` false, so no report this shell can emit ever carries `ok: false`. The
-property was driven on the ENGINE's return value instead, where it is reachable,
-and the field being unfalsifiable in the report is filed as R-202.
-
-**THE VERIFICATION GAP, STATED AGAIN.** Both tables are the AUTHOR'S. No
-independent verifier ran. Every zero reads as "the author could not kill it", and
-METHOD's measured gaps between an author's table and an independent one were 10
-against 17, 39 against 49, and 49 against 83.
+**THE WORKER READS ITS LABEL FROM THE ITEM, never from the payload.** A handler
+that reads its subject from the payload makes every item of a multi item job do
+the same work. That was the first defect U46's end to end drive surfaced and it
+is now written into three modules' docstrings.
 
 ## What is left
 
-**Only U29, and it is not an agent's.** See the top of this file.
+**U29, and it is not an agent's.** See the top of this file.
 
-**The residual ledger.** 209 numbers, 208 entries, none of them queued. R-198 is
-CLOSED: `cratekit.cli.handlers.run_job` calls `jobs.drive` and `crate master` runs
-a queued item to done. **R-203 inherits its consequence for the other eighteen
-queued verbs**, and `crate job show` now reports which of them have no worker.
-U46's own residuals are R-203 through R-209. U45's own two are R-200, a failed
-archive prune that reaches no report at all, and R-201, `core/session.py`
-discarding the `grant-path-access` remedy that `backup_facts` raises for a
-permission and that `doctor` and the new shell both carry through.
+**Six worker binding units, #71 through #76.** Each is a slice of R-203 and each
+inherits whatever its engine's unreviewed failure paths hold, under
+`docs/solutions/workflow-issues/adding-the-first-caller-makes-you-the-owner-of-its-unreviewed-defects.md`.
+R-204 is the worked example of what that costs: U46 declined the acquisition
+binding because three critical residuals sat behind it.
+
+**The adapters.** R-226 is the outbound seam with no `RemoteAccount` and R-236 is
+the label seam with no `Catalogue`. They are separate seams on purpose, sharing a
+credential and not a capability. Both need an attended session against a live
+account, which is why R-144 has stayed open since 2026-08-17.
+
+**The residual ledger.** 240 numbers, 239 entries, and it is a REGISTER of what
+was accepted rather than a queue. Do not backfill it onto the board.
 
 **The parked conformance branch**, with its `write/metadata.py:195` defect live
 on main. Out of scope until Phillip says otherwise. R-186 records what U40
@@ -181,11 +192,10 @@ changed about its reachability.
   to act on it. **Do not backfill.**
 - **Residual numbers are APPEND ONLY.** Main's numbers never move; an incoming
   branch's residuals take fresh numbers above main's highest. **Main's highest is
-  R-209.**
-- **The pending register is empty.** `tests/test_pending_units.py` now carries a
-  test that says so out loud, because an emptily parametrized countdown is
-  SKIPPED by pytest and a silent skip is the exact hazard that file warns about.
-  Re-opening any countdown re-arms the machinery with no edit.
+  R-240.**
+- **The pending register is empty**, and the test that says so is what keeps an
+  empty countdown from reading as a passing one. Re-opening any countdown re-arms
+  the machinery with no edit.
 - **CI does not run the suite and never will on Linux.** A step in the workflow
   must be able to pass. See METHOD.
 - **Use `scripts/mutate.py`.** Do not hand roll a driver. Pass `--repo-root` and
@@ -197,4 +207,7 @@ changed about its reachability.
 - **Re-pinning a population means naming what moved.** Difference the SETS
   against `origin/main`'s own tree in a scratch worktree. A count that moved by
   the right amount is not a measurement of what moved.
+- **Never write a closing keyword next to an issue number in prose**, not even
+  inside backticks and not even to quote one. GitHub reads the text and not the
+  intent. `docs/METHOD.md` records this firing twice.
 - **Do not touch** U30's board state, U20, R-9, A1, A2, or `.worktrees/conformance`.
