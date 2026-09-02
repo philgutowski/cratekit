@@ -8,6 +8,7 @@ run id so two sources queued by ``sync all`` still share one intake file.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from cratekit.cli.output import Envelope
@@ -548,11 +549,23 @@ def harvest_playlist(ctx) -> Envelope:
     found = catalogue.resolve(cfg)
     reference = str(ctx.args.playlist)
     tracks = _playlist_tracks_or_refuse(found, reference)
-    # ONE EXTRACTOR, NAMED ONCE AND PASSED IN. ``from_tracks`` defaults to this
-    # same function, and taking the default while counting the nameless tracks
-    # with a second reference to it is how the two silently come to disagree
-    # about what a candidate name is.
-    extract = harvest.labels_from_copyright
+    # ONE EXTRACTOR, RUN ONCE PER TRACK. ``from_tracks`` defaults to this same
+    # function, and taking the default while counting the nameless tracks with a
+    # second reference to it is how the two silently come to disagree about what
+    # a candidate name is. Counting during the pass ``from_tracks`` already makes
+    # is what keeps that literally one execution per track: the earlier form
+    # iterated the playlist a second time and ran the extractor again on every
+    # track, which asks the same question twice and gives two places for the
+    # answer to change.
+    nameless = 0
+
+    def extract(track) -> Sequence[str]:
+        nonlocal nameless
+        names = harvest.labels_from_copyright(track)
+        if not names:
+            nameless += 1
+        return names
+
     with review.open_store(cfg) as store:
         report = harvest.from_tracks(
             tracks,
@@ -560,7 +573,7 @@ def harvest_playlist(ctx) -> Envelope:
             verify=found.check_label,
             extract=extract,
         )
-    unresolved = len(report.dropped) + sum(1 for track in tracks if not extract(track))
+    unresolved = len(report.dropped) + nameless
     return ctx.envelope(
         data={
             "queue": str(review.Queue.LABEL_RELEASE),

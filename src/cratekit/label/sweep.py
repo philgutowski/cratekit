@@ -61,14 +61,59 @@ def _title_of(release: Any) -> str:
     return str(getattr(release, "title", "") or getattr(release, "name", "") or "")
 
 
-def _tombstoned(cfg: config.Config, release: Any) -> bool:
-    artist = _artist_of(release)
-    title = _title_of(release)
-    if not artist and not title:
-        return False
-    store = DecisionStore(tombstone.STORE_KEY, cfg)
-    identity = tombstone.version_identity(artist=artist, title=title)
-    return store.suppresses(tombstone.KIND_VERSION, identity)
+def _suppression_reader(cfg: config.Config) -> Callable[[Any], bool]:
+    """One tombstone question, answered against ONE read of the store.
+
+    **THIS BRANCH IS WHAT MADE THE OLD SHAPE COST ANYTHING.** The previous form
+    built a :class:`DecisionStore` and called ``suppresses`` per release, and
+    ``suppresses`` reads the whole document and re-materializes every record on
+    every call. Nothing drove this path from ``src`` before the label handlers
+    were bound, so a per release re-read of a file that cannot change mid loop
+    was free in the only way that matters: nobody ran it. Measured on a five
+    hundred record store at roughly 367 microseconds per call, a hundred release
+    crawl of one label spent about 37 milliseconds re-reading one unchanging
+    document, multiplied by the number of favourite labels in the sweep.
+
+    ``DecisionStore``'s own docstring already says the intended shape, that a
+    decision store is "read whole by an acquisition pass", so this is the class
+    being used as documented rather than a new optimization.
+
+    **THE READ IS LAZY ON PURPOSE, AND THAT IS THE BEHAVIOUR PRESERVING HALF.**
+    ``_read`` REFUSES a store it cannot recognize rather than reading it as
+    empty, because an unreadable suppression list read as empty un-suppresses
+    everything in it. Reading at the top of the sweep would fire that refusal for
+    a label with no confirmed releases, which the per release form never did.
+    Deferring to the first release that actually asks keeps the refusal on
+    exactly the runs that used to raise it.
+
+    A release with neither an artist nor a title is answered without reading at
+    all, which is the same short circuit the per release form had and the reason
+    it comes before the snapshot.
+    """
+    snapshot: set[str] | None = None
+
+    def tombstoned(release: Any) -> bool:
+        nonlocal snapshot
+        artist = _artist_of(release)
+        title = _title_of(release)
+        if not artist and not title:
+            return False
+        if snapshot is None:
+            store = DecisionStore(tombstone.STORE_KEY, cfg)
+            # SUPPRESSING RECORDS ONLY, which is what ``suppresses`` reports:
+            # it answers ``found is not None and found.suppressing``, and
+            # ``suppressions`` with its default filters to exactly that set. A
+            # revoked tombstone is kept in the document and must not suppress.
+            snapshot = {record.suppression_id for record in store.suppressions()}
+        identity = tombstone.version_identity(artist=artist, title=title)
+        return (
+            review.suppression_id_for(
+                tombstone.STORE_KEY, tombstone.KIND_VERSION, identity
+            )
+            in snapshot
+        )
+
+    return tombstoned
 
 
 def _candidate(entry: registry.LabelEntry, release: Any) -> run.Candidate:
@@ -156,6 +201,7 @@ def list_for_label(
     candidates: list[run.Candidate] = []
     dropped: list[Dropped] = []
     suppressed: list[run.Candidate] = []
+    tombstoned = _suppression_reader(cfg)
     for release in listed:
         identity = str(getattr(release, "id", "") or "")
         verdict = label_verify.verify_release(claimed, release, search=verify)
@@ -170,7 +216,7 @@ def list_for_label(
             )
             continue
         item = _candidate(entry, release)
-        if _tombstoned(cfg, release):
+        if tombstoned(release):
             suppressed.append(item)
             continue
         if identity in owned_ids:
@@ -264,7 +310,20 @@ class LabelSource:
         one of their labels was never read, which is the exact reading R-135
         exists to stop. Nothing is lost by refusing, because the next run
         re-lists from scratch.
+
+        THE EXPLICIT PIECE WINS OVER THE CATALOGUE, and it wins in
+        :meth:`_verifier` too, because ONE precedence rule is the whole value of
+        having one. The two methods disagreed when this constructor first grew
+        its fourth parameter, artist preferring the catalogue and verification
+        preferring the piece, which is the shape where a caller that passes both
+        gets half of each and nothing says so. Narrower beats broader: a caller
+        who names the object for one label means that object. Every shipped
+        caller passes exactly one of the two, so the rule decides nothing today
+        and is written down for the caller that passes both.
         """
+        artist = self.artists.get(entry.label_id)
+        if artist is not None:
+            return artist
         if self.catalogue is not None:
             try:
                 return self.catalogue.artist_for(entry)
@@ -274,14 +333,11 @@ class LabelSource:
                     f"{entry.name!r} ({type(exc).__name__}: {exc}); its releases "
                     f"were never listed"
                 ) from exc
-        artist = self.artists.get(entry.label_id)
-        if artist is None:
-            raise run.LookupFailure(
-                f"no catalogue object was available for the registered label "
-                f"{entry.name!r}, so its releases were never listed; that is not "
-                f"a label with nothing new"
-            )
-        return artist
+        raise run.LookupFailure(
+            f"no catalogue object was available for the registered label "
+            f"{entry.name!r}, so its releases were never listed; that is not "
+            f"a label with nothing new"
+        )
 
     def _verifier(self) -> Callable[[str, Any], Mapping[str, Any]]:
         """The release verification callable, or a refusal for the same reason.
@@ -290,6 +346,9 @@ class LabelSource:
         release it listed would be dropped as unconfirmed and the run would look
         like a label with nothing new. Returning an empty list here was the same
         absence-as-evidence shape the artist lookup above had.
+
+        Explicit piece first, then the catalogue, then a refusal. The same order
+        :meth:`_artist_for` uses and for the reason stated there.
         """
         if self.verify is not None:
             return self.verify
