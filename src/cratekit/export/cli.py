@@ -42,32 +42,21 @@ from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, jobs
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
-from cratekit.core.exit_codes import Remedy
-from cratekit.modules.outbound import account, artifacts, source
+from cratekit.core.cause import Outcome, refuse
+from cratekit.modules.outbound import account, artifacts, shell, source
 from cratekit.modules.outbound import export as outbound_export
 
-#: Payload keys this build freezes. Named once so the handler, the argv builder
-#: and the digest cannot drift: a key one of them reads and another does not is a
+#: The two payload keys both outbound verbs freeze, spelled once in
+#: :mod:`cratekit.modules.outbound.shell` because the shared resume branch reads
+#: them to rebuild the confirm digest. A key one shell spells differently is a
 #: resume that quietly does different work from the run it continues.
-PLAYLIST = "playlist"
-EXPORT = "export"
+PLAYLIST = shell.PLAYLIST
+EXPORT = shell.EXPORT
+
+#: The remote playlist's display name, frozen so the worker never rebuilds it by
+#: splitting the key. Two name builders for one remote playlist is how it comes
+#: to be created under a name nobody chose.
 NAME = "name"
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("export.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
@@ -104,16 +93,6 @@ def _identity(row: Any) -> str:
     if isinstance(row, dict):
         return str(row.get("identity") or "")
     return str(row)
-
-
-def _reported(store, job, cfg: config.Config) -> dict:
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": jobs.progress(store, job.job_id),
-        "outbound": summary(cfg, job.job_id),
-    }
 
 
 def build(parser, entry) -> None:
@@ -188,92 +167,13 @@ def export_argv(job) -> list[str]:
     return [*argv, "--job", job.job_id]
 
 
-def _queue_warnings(resolved: source.ResolvedPlaylist) -> tuple[dict[str, str], ...]:
-    """What the person should know at the moment they are asked to confirm.
-
-    THE UNBOUND PROVIDER WARNING IS HERE RATHER THAN AT THE REFUSAL, and that is
-    the honest half of deferring the refusal to the worker. Deferring is right
-    for an input that can appear between queueing and running, which is the case
-    ``master`` argues for a recording. A missing adapter cannot appear later
-    without a new build, so a person who is only told at drive time was told at
-    the one moment they could do nothing with it.
-    """
-    warnings: list[dict[str, str]] = []
-    if not account.bound():
-        warnings.append(
-            {
-                "code": "outbound-account-unbound",
-                "message": (
-                    "this build has no streaming provider adapter, so this job "
-                    "will queue and then fail at the provider seam"
-                ),
-            }
-        )
-    if resolved.dangling:
-        warnings.append(
-            {
-                "code": "playlist-track-missing",
-                "message": (
-                    f"{len(resolved.dangling)} track(s) this playlist names are "
-                    f"not in the export's collection and are not queued: "
-                    f"{', '.join(resolved.dangling)}"
-                ),
-            }
-        )
-    if resolved.repeated:
-        warnings.append(
-            {
-                "code": "playlist-track-repeated",
-                "message": (
-                    f"{len(resolved.repeated)} track(s) appear more than once in "
-                    f"this playlist and are queued once: "
-                    f"{', '.join(resolved.repeated)}"
-                ),
-            }
-        )
-    return tuple(warnings)
-
-
 def export_playlist(ctx) -> Envelope:
     """Confirm this playlist, then queue it, or drive the job already queued."""
     spec = ctx.entry.gates[0]
-
     if ctx.args.job:
-        # THE JOB BRANCH READS NOTHING FROM THE EXPORT. Its items are already in
-        # the queue and its identity is already frozen, so re-deriving here would
-        # make a resume refuse over a file the person has since moved, and would
-        # let a regenerated document silently change what a confirmed job does.
-        with jobs.open_store() as store:
-            queued = jobs.get(store, ctx.args.job)
-            payload = queued.payload or {}
-            option = ctx.gate.require(
-                spec,
-                digest=confirm_digest(
-                    str(payload.get(PLAYLIST) or ""), str(payload.get(EXPORT) or "")
-                ),
-            )
-            if option == "abort":
-                return ctx.envelope(
-                    data={"job_id": queued.job_id, "summary": {"queued": False}},
-                    outcome=Outcome.NO_OP,
-                )
-            frozen = jobs.frozen_config(queued)
-            # RECONCILE FIRST. A resume arrives after something stopped, and a
-            # claim left behind by a driver that died is state the queue cannot
-            # see for itself.
-            job = jobs.reconcile(store, ctx.args.job)
-            warnings: tuple[dict[str, str], ...] = ()
-            if job.is_open():
-                _, warnings = ctx.run_job(store, job)
-                job = jobs.get(store, job.job_id)
-            if job.state is jobs.JobState.FAILED and job.cause is not None:
-                # R-225. ``master``'s resume branch reports a half failed job
-                # through a normal envelope and exits OK, so a person whose
-                # export wrote nothing is told it is finished. U50 fixed it for
-                # backup by re-raising the job's own cause; copying the older
-                # branch here would have reproduced the defect in a third verb.
-                raise CratekitError(job.cause)
-            return ctx.envelope(data=_reported(store, job, frozen), warnings=warnings)
+        return shell.resume(
+            ctx, spec, ctx.args.job, digest=confirm_digest, summary=summary
+        )
 
     playlist = str(ctx.args.playlist or "")
     if not playlist:
@@ -288,15 +188,13 @@ def export_playlist(ctx) -> Envelope:
     exported = source.required_path(getattr(ctx.args, "export", None))
     resolved = source.resolve(source.read_library(exported), playlist)
 
-    option = ctx.gate.require(
-        spec, digest=confirm_digest(resolved.key, str(exported))
-    )
+    option = ctx.gate.require(spec, digest=confirm_digest(resolved.key, str(exported)))
     if option == "abort":
         return ctx.envelope(
             data={"playlist": resolved.key, "summary": {"queued": False}},
             outcome=Outcome.NO_OP,
         )
-    cfg = _load()
+    cfg = shell.load_config("export.cli")
     with jobs.open_store() as store:
         job = jobs.enqueue(
             store,
@@ -316,7 +214,8 @@ def export_playlist(ctx) -> Envelope:
             cfg=cfg,
         )
         return ctx.envelope(
-            data=_reported(store, job, cfg), warnings=_queue_warnings(resolved)
+            data=shell.reported(store, job, cfg, summary),
+            warnings=shell.queue_warnings(resolved, noun="track"),
         )
 
 
@@ -394,13 +293,8 @@ def handle(job, item, cfg) -> jobs.Produced:
     the person that it would.
     """
     payload = dict(job.payload or {})
-    reported = run_export_item(payload, str(item.item_id), cfg, account.resolve(cfg))
-    staged = artifacts.write(
-        artifacts.staged_path(cfg, job.job_id, item.ordinal), reported
-    )
-    return jobs.Produced(
-        staged=staged, final=artifacts.final_path(cfg, job.job_id, item.ordinal)
-    )
+    report = run_export_item(payload, str(item.item_id), cfg, account.resolve(cfg))
+    return artifacts.produced(cfg, job, item, report)
 
 
 __all__ = [

@@ -76,6 +76,21 @@ def write(path: Path, payload: dict[str, Any]) -> Path:
     return path
 
 
+def produced(cfg: config.Config, job, item, report: dict[str, Any]) -> jobs.Produced:
+    """Stage one item's report and hand the engine both paths.
+
+    ONE FUNCTION RATHER THAN THE SAME FOUR LINES IN EACH SHELL. The staging and
+    the destination have to agree about the job and the ordinal, and two copies
+    of that agreement is how one of them comes to write where the other does not
+    look. The engine owns the flush-then-rename between the two paths, which is
+    the ordering a handler must not be able to get wrong.
+    """
+    return jobs.Produced(
+        staged=write(staged_path(cfg, job.job_id, item.ordinal), report),
+        final=final_path(cfg, job.job_id, item.ordinal),
+    )
+
+
 def committed(cfg: config.Config, job_id: str) -> tuple[dict[str, Any], ...]:
     """Every committed report for this job, in item order.
 
@@ -108,6 +123,7 @@ __all__ = [
     "STAGING_DIRNAME",
     "committed",
     "final_path",
+    "produced",
     "staged_path",
     "write",
 ]

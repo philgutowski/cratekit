@@ -23,14 +23,11 @@ a guard pointed at a key nothing uses.
 
 from __future__ import annotations
 
-import io
-import json
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from cratekit import cli
 from cratekit.cli import handlers, registry
 from cratekit.core import config, jobs
 from cratekit.core.cause import CratekitError
@@ -40,6 +37,7 @@ from cratekit.favorites import cli as favorites_cli
 from cratekit.modules.outbound import account as account_module
 from cratekit.modules.outbound import artifacts, source
 from tests import outbound_fakes
+from tests.cli_drive import approve_and_queue, drive
 from tests.test_config import valid_data
 
 EXPORT_KEY = "export.playlist"
@@ -83,28 +81,6 @@ def bind(monkeypatch, account) -> None:
 
 def catalog(*indexes: int) -> dict[str, str]:
     return {str(index): f"tid-{index}" for index in indexes}
-
-
-def drive(argv: list[str]) -> tuple[int, dict]:
-    out, err = io.StringIO(), io.StringIO()
-    code = cli.run(["--output", "json", *argv], stdout=out, stderr=err)
-    return code, json.loads(out.getvalue() or "{}")
-
-
-def approve_and_queue(verb: list[str], gate: str) -> tuple[str, str]:
-    """R34's two acts, then the queueing drive. Returns (gate run, job id)."""
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    detail = refused["cause"]["detail"]
-    assert detail["gate"] == gate
-    run_id = refused["run_id"]
-    decided, envelope = drive(
-        ["run", "decide", run_id, gate, detail["options"][0], "--actor", "a-person"]
-    )
-    assert decided == int(ExitCode.OK), envelope
-    code, queued = drive(["--run", run_id, *verb])
-    assert code == int(ExitCode.OK), queued
-    return run_id, queued["data"]["job_id"]
 
 
 def export_verb(exported: Path, playlist: str = outbound_fakes.CRATE) -> list[str]:

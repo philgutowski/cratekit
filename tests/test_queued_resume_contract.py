@@ -31,13 +31,10 @@ substring is not a flag.
 from __future__ import annotations
 
 import importlib
-import io
-import json
 from pathlib import Path
 
 import pytest
 
-from cratekit import cli
 from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry
 from cratekit.core import config, jobs, rb_writer
@@ -45,6 +42,8 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import account as account_module
 from cratekit.modules.outbound import source as outbound_source
 from tests import outbound_fakes
+from tests.cli_drive import approve_and_queue as _approve_and_queue
+from tests.cli_drive import drive as _drive
 from tests.test_cli_contract import UNREACHABLE_GATES
 from tests.test_config import valid_data
 
@@ -196,28 +195,6 @@ def remote(monkeypatch):
     outbound_source.forget_libraries()
     yield account
     outbound_source.forget_libraries()
-
-
-def _drive(argv: list[str]) -> tuple[int, dict]:
-    out, err = io.StringIO(), io.StringIO()
-    code = cli.run(["--output", "json", *argv], stdout=out, stderr=err)
-    return code, json.loads(out.getvalue() or "{}")
-
-
-def _approve_and_queue(verb: list[str], gate: str) -> tuple[str, str]:
-    """R34's two acts, then the queueing drive. Returns (run_id, job_id)."""
-    code, refused = _drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    detail = refused["cause"]["detail"]
-    assert detail["gate"] == gate
-    run_id = refused["run_id"]
-    decided, envelope = _drive(
-        ["run", "decide", run_id, gate, detail["options"][0], "--actor", "a-person"]
-    )
-    assert decided == int(ExitCode.OK), envelope
-    code, queued = _drive(["--run", run_id, *verb])
-    assert code == int(ExitCode.OK), queued
-    return run_id, queued["data"]["job_id"]
 
 
 #: Stands in for a path under the CONFIGURED library, substituted once the

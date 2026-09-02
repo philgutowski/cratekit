@@ -5114,27 +5114,30 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # gate refusal: the condition moved and the cause it raises did not, so a pin
     # watching the touched files rather than the derived set would have expected a
     # second module here.
-    # Re-pinned on U51, 2026-09-02: 81 to 83 holders. TWO modules joined and none
-    # left, and both are new files: modules/outbound/source.py, which names the
+    # Re-pinned on U51, 2026-09-02: 81 to 84 holders. THREE modules joined and
+    # none left, and all three are new files. modules/outbound/source.py names the
     # three ways the outbound item derivation cannot decide what a job's items
-    # are, and modules/outbound/account.py, which names the missing credential
-    # and the missing provider adapter. Differenced as SETS against `main`'s own
-    # src tree read blob by blob rather than inferred from the total moving by
-    # two. The also-holds-an-integer half stays 15: neither module holds a bare
-    # integer anywhere near the reserved range. The named halves did NOT move,
-    # staying at 21 and 8, measured rather than inferred, because every cause
-    # these two name they name as a literal.
+    # are. modules/outbound/account.py names the missing credential and the
+    # missing provider adapter. modules/outbound/shell.py names config-unusable,
+    # which the two outbound verbs used to spell once each, and
+    # outbound-account-unbound as the WARNING code on the queued envelope.
+    # Differenced as SETS by re-deriving this module's own predicate over the
+    # working tree and comparing it against `main`'s, rather than inferred from
+    # the total moving by three. The also-holds-an-integer half stays 15: none of
+    # the three holds a bare integer anywhere near the reserved range. The named
+    # halves did NOT move, staying at 21 and 8, measured rather than inferred.
     #
     # export/cli.py and favorites/cli.py are NOT new holders despite this unit
-    # rewriting both: each already named config-unusable the way every shell
-    # does, and each already held its own refusal. What they gained is
-    # outbound-account-unbound appearing as a WARNING code on the queued
-    # envelope as well as a cause slug, and that is deliberate alignment rather
-    # than the `lossy-refused` collision this file records above: the warning
-    # names the cause the job will end with, so one name for one thing is the
-    # point. Two names would let the warning and the failure describe the same
-    # outcome differently.
-    assert (len(literal_holders), len(literal_both)) == (83, 15), (
+    # rewriting both: each already named export-playlist-unknown or
+    # config-unusable on main.
+    #
+    # ONE OF THE NEW LITERALS IS DELIBERATE ALIGNMENT RATHER THAN THE
+    # `lossy-refused` COLLISION THIS FILE RECORDS ABOVE. shell.py's
+    # outbound-account-unbound is both a warning code on a queued envelope and a
+    # declared cause, on purpose: the warning names the cause the job will end
+    # with. Two names for that would let the warning and the failure describe one
+    # outcome differently, which is the defect, not the fix.
+    assert (len(literal_holders), len(literal_both)) == (84, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

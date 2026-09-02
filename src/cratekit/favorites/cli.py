@@ -36,29 +36,14 @@ from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, jobs
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
-from cratekit.core.exit_codes import Remedy
-from cratekit.modules.outbound import account, artifacts, hearts, source
+from cratekit.core.cause import Outcome, refuse
+from cratekit.modules.outbound import account, artifacts, hearts, shell, source
 
-#: Payload keys this build freezes, named once so the handler, the argv builder
-#: and the digest cannot drift.
-PLAYLIST = "playlist"
-EXPORT = "export"
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("favorites.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
+#: The two payload keys both outbound verbs freeze, spelled once in
+#: :mod:`cratekit.modules.outbound.shell` because the shared resume branch reads
+#: them to rebuild the confirm digest.
+PLAYLIST = shell.PLAYLIST
+EXPORT = shell.EXPORT
 
 
 def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
@@ -76,16 +61,6 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
         already.extend(str(item) for item in report.get("already") or ())
         unmatched.extend(str(item) for item in report.get("unmatched") or ())
     return {"hearted": hearted, "already": already, "unmatched": unmatched}
-
-
-def _reported(store, job, cfg: config.Config) -> dict:
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": jobs.progress(store, job.job_id),
-        "outbound": summary(cfg, job.job_id),
-    }
 
 
 def build_sync(parser, entry) -> None:
@@ -184,78 +159,13 @@ def sync_favorites_argv(job) -> list[str]:
     return [*resume, *argv]
 
 
-def _queue_warnings(resolved: source.ResolvedPlaylist) -> tuple[dict[str, str], ...]:
-    """What the person should know before they confirm. See ``export.cli``."""
-    warnings: list[dict[str, str]] = []
-    if not account.bound():
-        warnings.append(
-            {
-                "code": "outbound-account-unbound",
-                "message": (
-                    "this build has no streaming provider adapter, so this sweep "
-                    "will queue and then fail at the provider seam"
-                ),
-            }
-        )
-    if resolved.dangling:
-        warnings.append(
-            {
-                "code": "playlist-track-missing",
-                "message": (
-                    f"{len(resolved.dangling)} favourite(s) this playlist names "
-                    f"are not in the export's collection and are not queued: "
-                    f"{', '.join(resolved.dangling)}"
-                ),
-            }
-        )
-    if resolved.repeated:
-        warnings.append(
-            {
-                "code": "playlist-track-repeated",
-                "message": (
-                    f"{len(resolved.repeated)} favourite(s) appear more than once "
-                    f"in this playlist and are queued once: "
-                    f"{', '.join(resolved.repeated)}"
-                ),
-            }
-        )
-    return tuple(warnings)
-
-
 def sync_favorites(ctx) -> Envelope:
     """Confirm the remote heart-back, then queue it, or drive the queued sweep."""
     spec = next(gate for gate in ctx.entry.gates if gate.name.endswith(".confirm"))
-
     if ctx.args.job:
-        # The job branch reads nothing from the export: same reason the export
-        # verb gives. Its items are frozen and re-deriving would let a
-        # regenerated document change what a confirmed sweep does.
-        with jobs.open_store() as store:
-            queued = jobs.get(store, ctx.args.job)
-            payload = queued.payload or {}
-            option = ctx.gate.require(
-                spec,
-                digest=confirm_digest(
-                    str(payload.get(PLAYLIST) or ""), str(payload.get(EXPORT) or "")
-                ),
-            )
-            if option == "abort":
-                return ctx.envelope(
-                    data={"job_id": queued.job_id, "summary": {"queued": False}},
-                    outcome=Outcome.NO_OP,
-                )
-            frozen = jobs.frozen_config(queued)
-            job = jobs.reconcile(store, ctx.args.job)
-            warnings: tuple[dict[str, str], ...] = ()
-            if job.is_open():
-                _, warnings = ctx.run_job(store, job)
-                job = jobs.get(store, job.job_id)
-            if job.state is jobs.JobState.FAILED and job.cause is not None:
-                # R-225, and see ``export.cli.export_playlist``: a resume that
-                # reports a half failed sweep through a normal envelope tells a
-                # person their favourites are synced when nothing was hearted.
-                raise CratekitError(job.cause)
-            return ctx.envelope(data=_reported(store, job, frozen), warnings=warnings)
+        return shell.resume(
+            ctx, spec, ctx.args.job, digest=confirm_digest, summary=summary
+        )
 
     exported = source.required_path(getattr(ctx.args, "export", None))
     wanted = str(
@@ -264,15 +174,13 @@ def sync_favorites(ctx) -> Envelope:
     )
     resolved = source.resolve(source.read_library(exported), wanted)
 
-    option = ctx.gate.require(
-        spec, digest=confirm_digest(resolved.key, str(exported))
-    )
+    option = ctx.gate.require(spec, digest=confirm_digest(resolved.key, str(exported)))
     if option == "abort":
         return ctx.envelope(
             data={"playlist": resolved.key, "summary": {"queued": False}},
             outcome=Outcome.NO_OP,
         )
-    cfg = _load()
+    cfg = shell.load_config("favorites.cli")
     run_id = getattr(ctx.args, "run_id", None) or ctx.run.run_id
     with jobs.open_store() as store:
         job = jobs.enqueue(
@@ -294,7 +202,8 @@ def sync_favorites(ctx) -> Envelope:
             cfg=cfg,
         )
         return ctx.envelope(
-            data=_reported(store, job, cfg), warnings=_queue_warnings(resolved)
+            data=shell.reported(store, job, cfg, summary),
+            warnings=shell.queue_warnings(resolved, noun="favourite"),
         )
 
 
@@ -350,13 +259,8 @@ def handle(job, item, cfg) -> jobs.Produced:
     configuration now names another.
     """
     payload = dict(job.payload or {})
-    reported = run_heart_item(payload, str(item.item_id), cfg, account.resolve(cfg))
-    staged = artifacts.write(
-        artifacts.staged_path(cfg, job.job_id, item.ordinal), reported
-    )
-    return jobs.Produced(
-        staged=staged, final=artifacts.final_path(cfg, job.job_id, item.ordinal)
-    )
+    report = run_heart_item(payload, str(item.item_id), cfg, account.resolve(cfg))
+    return artifacts.produced(cfg, job, item, report)
 
 
 __all__ = [
