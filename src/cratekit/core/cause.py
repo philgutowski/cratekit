@@ -1319,6 +1319,46 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # belongs here alone, exactly as ``export-playlist-unknown``,
         # ``tag-retag-folder-unknown`` and the three ``setbuild-anchor`` slugs do.
         "backup-nothing-ran": ExitCode.PRECONDITION,
+        # ── U51's four, appended for the reason every block above gives ────────
+        #
+        # THE THREE DERIVATION REFUSALS. Both outbound verbs decide their items
+        # from a rekordbox collection export, and each of these is a distinct way
+        # that decision cannot be made. They are separate slugs rather than one
+        # because they send a person to three different places: name a file, name
+        # a different playlist, put tracks in the one you named.
+        #
+        # PRECONDITION rather than USAGE for the first, on the judgement
+        # ``export-playlist-unknown`` and ``tag-retag-folder-unknown`` already
+        # made: status 2 belongs to the argument parser, and the parser accepted
+        # an invocation that simply omitted an optional flag.
+        "outbound-export-required": ExitCode.PRECONDITION,
+        # Several playlists in the exported tree carry the name that was typed.
+        # Its own slug rather than a second use of ``export-playlist-unknown``,
+        # because "it is not there" and "there are three of them" are undone by
+        # different acts, and a consumer that had to tell them apart would have
+        # to branch on the message text.
+        "export-playlist-ambiguous": ExitCode.PRECONDITION,
+        # The playlist resolved and carries no track this build can write. THE
+        # ZERO ITEM RULE, at the only place that enforces it: ``core.jobs``
+        # reports a job with no items as SUCCEEDED by design, so a verb that
+        # queued this would report a clean success over work it never did.
+        "export-playlist-empty": ExitCode.PRECONDITION,
+        # No adapter in this build can turn a stored provider credential into an
+        # account the outbound engines write through. DISTINCT FROM
+        # ``credential-missing``, which is the case doctor already diagnoses and
+        # already has a remedy for; this one is the product's own gap and no
+        # amount of authenticating fixes it.
+        #
+        # PRECONDITION rather than INTERNAL, because a build that ships without
+        # a provider adapter is a stated limitation rather than a defect a person
+        # should be told to report.
+        "outbound-account-unbound": ExitCode.PRECONDITION,
+        # The frozen export no longer carries a track this job already queued as
+        # an item. Its own slug rather than a silent skip: an item that reported
+        # done having written nothing is the clean-report-over-unreadable-state
+        # cost ``docs/METHOD.md`` names, and the person's remedy is to export the
+        # collection again and queue a fresh job rather than to resume this one.
+        "outbound-item-absent": ExitCode.PRECONDITION,
     }
 )
 

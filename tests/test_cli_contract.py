@@ -54,7 +54,7 @@ from cratekit.core.exit_codes import (
     band_of,
     meaning_of,
 )
-from tests import _import_probe
+from tests import _import_probe, outbound_fakes
 from tests import doctor_machines as machines
 from tests._source_guards import constructs_a_csv_writer
 
@@ -1575,8 +1575,24 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # U33. Export takes the playlist identifier and queues after its
         # own confirm gate. Favourites sync takes no positional: the
         # confirm is the remote half, separate from any local colour write.
-        "export.playlist": ["crate-export"],
-        "sync.favorites": [],
+        #
+        # U51 GAVE BOTH A REAL EXPORT, and unlike the report verbs above it is
+        # NOT an absent path. The difference is what each verb has to reach.
+        # A report refuses on an unreadable export and that refusal is the whole
+        # behaviour under test here. These two decide their JOB ITEMS from the
+        # document, so an absent one refuses before the confirm gate is reached,
+        # and assertion 3 exists to prove the gate IS reached. The document is
+        # written under the configured library, so no literal path from anybody's
+        # machine enters the repository (R1).
+        "export.playlist": [
+            "crate-export",
+            "--export",
+            str(outbound_fakes.write_export(library / "outbound")),
+        ],
+        "sync.favorites": [
+            "--export",
+            str(outbound_fakes.write_export(library / "outbound")),
+        ],
         # U28. Driven with an explicit target under the configured library rather
         # than with no argument at all, and the difference matters: the default
         # target is the agent skills directory under the REAL home directory of

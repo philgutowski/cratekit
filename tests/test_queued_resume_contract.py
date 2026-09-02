@@ -42,6 +42,9 @@ from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry
 from cratekit.core import config, jobs, rb_writer
 from cratekit.core.exit_codes import ExitCode
+from cratekit.modules.outbound import account as account_module
+from cratekit.modules.outbound import source as outbound_source
+from tests import outbound_fakes
 from tests.test_cli_contract import UNREACHABLE_GATES
 from tests.test_config import valid_data
 
@@ -171,6 +174,30 @@ def installed(tmp_path, monkeypatch):
     return resolved
 
 
+@pytest.fixture
+def remote(monkeypatch):
+    """A streaming account the outbound workers get instead of a live one.
+
+    Its catalogue matches every track the shared export fixture carries, so a
+    driven job reaches done rather than failing at the provider seam. The
+    substitution is on the module attribute the workers look up at CALL time,
+    which is the same seam ``master/cli.py`` uses for its encoder.
+    """
+    account = outbound_fakes.FakeAccount(
+        catalog={str(index): f"tid-{index}" for index in range(1, 6)}
+    )
+    monkeypatch.setattr(
+        account_module, "resolve", outbound_fakes.account_factory(account)
+    )
+    # The parsed export is memoized per process and keyed on its absolute path,
+    # so a suite that writes a different document at a repeated path would read
+    # the previous one. Cleared at both ends rather than trusting tmp_path to
+    # never repeat.
+    outbound_source.forget_libraries()
+    yield account
+    outbound_source.forget_libraries()
+
+
 def _drive(argv: list[str]) -> tuple[int, dict]:
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(["--output", "json", *argv], stdout=out, stderr=err)
@@ -198,22 +225,43 @@ def _approve_and_queue(verb: list[str], gate: str) -> tuple[str, str]:
 #: machine (R1), and the parametrisation is read before any fixture runs.
 LIBRARY_FOLDER = "<library>"
 
+#: Stands in for a collection export written under the configured library, for
+#: the same reason and at the same moment. U51 gave both outbound verbs a
+#: ``--export`` and they decide their job items from it, so the parametrisation
+#: needs a path it cannot know until a fixture exists.
+LIBRARY_EXPORT = "<export>"
+
 
 def _resolved(verb: list[str]) -> list[str]:
     root = config.load().library.root
-    return [str(root / "Music") if part == LIBRARY_FOLDER else part for part in verb]
+    substitutions = {
+        LIBRARY_FOLDER: str(root / "Music"),
+        LIBRARY_EXPORT: str(outbound_fakes.write_export(root / "outbound")),
+    }
+    return [substitutions.get(part, part) for part in verb]
 
 
 @pytest.mark.parametrize(
     "verb, gate",
     [
-        (["export", "playlist", "crate-export"], "export.playlist.confirm"),
-        (["sync", "favorites"], "sync.favorites.confirm"),
+        (
+            [
+                "export",
+                "playlist",
+                outbound_fakes.CRATE,
+                "--export",
+                LIBRARY_EXPORT,
+            ],
+            "export.playlist.confirm",
+        ),
+        (["sync", "favorites", "--export", LIBRARY_EXPORT], "sync.favorites.confirm"),
         (["tag", "retag", LIBRARY_FOLDER], "tag.retag.confirm"),
     ],
     ids=["export.playlist", "sync.favorites", "tag.retag"],
 )
-def test_the_resume_the_job_driver_spawns_can_actually_proceed(installed, verb, gate):
+def test_the_resume_the_job_driver_spawns_can_actually_proceed(
+    installed, verb, gate, remote
+):
     """The one check the static guards cannot make: does the dispatcher accept it.
 
     Two of these verbs shipped broken and both were driven to a permanent exit
@@ -224,8 +272,18 @@ def test_the_resume_the_job_driver_spawns_can_actually_proceed(installed, verb, 
     ``tag.retag`` joined on 2026-08-26, in the unit that landed it rather than in
     a later sweep, because a verb arriving with this combination is exactly the
     fourth verb the file's own docstring says a hardcoded list of three would miss.
+
+    **WHAT U51 CHANGED, AND WHAT IT DELIBERATELY DID NOT.** Two of these three
+    verbs now have a worker, so their resume no longer reconciles and reports; it
+    CLAIMS ITEMS AND RUNS THEM. That makes the exit code below a stronger claim
+    than it was, not a weaker one: before, OK meant the gate was answerable, and
+    now it means the gate was answerable AND the work behind it completed. The
+    ``remote`` fixture substitutes the provider so the run reaches its work
+    without a network; nothing else in the assertion moved, and no assertion was
+    dropped to keep the file green.
     """
     del installed
+    del remote
     verb = _resolved(verb)
     _run_id, job_id = _approve_and_queue(verb, gate)
 
@@ -242,7 +300,9 @@ def test_the_resume_the_job_driver_spawns_can_actually_proceed(installed, verb, 
     assert resumed["data"]["job_id"] == job_id
 
 
-def test_the_favorites_intake_run_and_its_gate_run_are_separate_fields(installed):
+def test_the_favorites_intake_run_and_its_gate_run_are_separate_fields(
+    installed, remote
+):
     """The near miss, pinned. Two runs travel on this verb and they are not one.
 
     ``--run-id`` carries the intake run shared across a sync's sources.
@@ -251,9 +311,18 @@ def test_the_favorites_intake_run_and_its_gate_run_are_separate_fields(installed
     looked like carrying the run. Driving with an explicit, DIFFERENT intake run
     is what makes the two visible as separate fields rather than one value seen
     twice.
+
+    It takes the ``remote`` fixture for the reason the parametrised test above
+    gives: this test ends by driving the rebuilt argv, and since U51 that drives
+    real work rather than a reconcile. Its two assertions about the two runs are
+    untouched, which is the point of the fixture rather than a change to what the
+    test claims.
     """
     del installed
-    code, refused = _drive(["sync", "favorites", "--run-id", "an-intake-run"])
+    del remote
+    exported = str(outbound_fakes.write_export(config.load().library.root / "outbound"))
+    verb = ["sync", "favorites", "--run-id", "an-intake-run", "--export", exported]
+    code, refused = _drive(verb)
     assert code == int(ExitCode.DECISION_REQUIRED)
     gate_run = refused["run_id"]
     assert gate_run != "an-intake-run"
@@ -261,9 +330,7 @@ def test_the_favorites_intake_run_and_its_gate_run_are_separate_fields(installed
         ["run", "decide", gate_run, "sync.favorites.confirm", "sync", "--actor", "a-person"]
     )
     assert decided == int(ExitCode.OK)
-    code, queued = _drive(
-        ["--run", gate_run, "sync", "favorites", "--run-id", "an-intake-run"]
-    )
+    code, queued = _drive(["--run", gate_run, *verb])
     assert code == int(ExitCode.OK), queued
 
     with jobs.open_store() as store:

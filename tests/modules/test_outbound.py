@@ -27,6 +27,8 @@ from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import export, hearts, ledger
 from cratekit.modules.outbound.hearts import REMOVE_FLAGS
+from tests import outbound_fakes
+from tests.outbound_fakes import FakeAccount, FakeColors
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -77,72 +79,6 @@ def cfg(tmp_path, monkeypatch):
     return built
 
 
-class FakeAccount:
-    """A streaming account that records every mutation and never talks to a network."""
-
-    def __init__(
-        self,
-        catalog: dict[str, str] | None = None,
-        *,
-        fail_after: int | None = None,
-    ) -> None:
-        self.catalog = dict(catalog or {})
-        self.hearts: set[str] = set()
-        self.playlists: dict[str, list[str]] = {}
-        self.created: list[str] = []
-        self.added: list[tuple[str, str]] = []
-        self.hearted: list[str] = []
-        self.removed: list[str] = []
-        self.fail_after = fail_after
-        self._writes = 0
-
-    def match_track(self, *, identity: str, isrc: str = "") -> str | None:
-        del isrc
-        return self.catalog.get(identity)
-
-    def add_heart(self, remote_id: str) -> None:
-        self._bump()
-        self.hearts.add(remote_id)
-        self.hearted.append(remote_id)
-
-    def has_heart(self, remote_id: str) -> bool:
-        return remote_id in self.hearts
-
-    def create_playlist(self, name: str) -> str:
-        self._bump()
-        remote_id = f"pl-{len(self.created) + 1}"
-        self.playlists[remote_id] = []
-        self.created.append(name)
-        return remote_id
-
-    def add_to_playlist(self, playlist_id: str, remote_id: str) -> None:
-        self._bump()
-        self.playlists.setdefault(playlist_id, []).append(remote_id)
-        self.added.append((playlist_id, remote_id))
-
-    def playlist_tracks(self, playlist_id: str) -> tuple[str, ...]:
-        return tuple(self.playlists.get(playlist_id, ()))
-
-    def _bump(self) -> None:
-        self._writes += 1
-        if self.fail_after is not None and self._writes > self.fail_after:
-            raise RuntimeError("interrupted outbound write")
-
-
-class FakeColors:
-    """Pink colour store with no clear path."""
-
-    def __init__(self) -> None:
-        self.pink: set[str] = set()
-        self.cleared: list[str] = []
-
-    def color_pink(self, row_id: str) -> None:
-        self.pink.add(row_id)
-
-    def is_pink(self, row_id: str) -> bool:
-        return row_id in self.pink
-
-
 def _defined_functions(root: Path) -> set[str]:
     found: set[str] = set()
     for path in root.rglob("*.py"):
@@ -188,11 +124,27 @@ def test_playlist_export_reports_unmatched_tracks_rather_than_dropping_them(cfg)
     assert account.playlist_tracks(report.remote_id) == ("tid-1",)
 
 
-def test_playlist_export_requires_its_own_confirmation(cfg):
+def test_playlist_export_requires_its_own_confirmation(cfg, tmp_path):
     from tests.test_cli_contract import drive
 
     assert cfg.profile.name == "full"
-    code, out, _err = drive(["--output", "json", "export", "playlist", "crate-one"])
+    # THE EXPORT IS REAL RATHER THAN OMITTED, since U51. This verb now decides
+    # its job items from a collection document, and an absent one refuses
+    # BEFORE the gate. Handing it a real document keeps the claim this test
+    # makes, that the confirmation is reached and is explicit, rather than
+    # letting an earlier refusal stand in for it.
+    exported = outbound_fakes.write_export(tmp_path / "outbound")
+    code, out, _err = drive(
+        [
+            "--output",
+            "json",
+            "export",
+            "playlist",
+            outbound_fakes.CRATE,
+            "--export",
+            str(exported),
+        ]
+    )
     assert code == int(ExitCode.DECISION_REQUIRED)
     envelope = json.loads(out)
     assert envelope["cause"]["detail"]["gate"] == "export.playlist.confirm"
@@ -365,11 +317,14 @@ def test_the_outbound_ledger_survives_a_rollback():
     assert entry.root is config.StateRoot.LIBRARY
 
 
-def test_favorites_confirm_is_separate_from_the_export_confirm(cfg):
+def test_favorites_confirm_is_separate_from_the_export_confirm(cfg, tmp_path):
     from tests.test_cli_contract import drive
 
     assert cfg.profile.name == "full"
-    code, out, _err = drive(["--output", "json", "sync", "favorites"])
+    exported = outbound_fakes.write_export(tmp_path / "outbound")
+    code, out, _err = drive(
+        ["--output", "json", "sync", "favorites", "--export", str(exported)]
+    )
     assert code == int(ExitCode.DECISION_REQUIRED)
     envelope = json.loads(out)
     assert envelope["cause"]["detail"]["gate"] == "sync.favorites.confirm"
