@@ -1,0 +1,229 @@
+name = "u51-item-derivation"
+pass_kind = "light"
+
+# U51's mutation table. The plan's Verification Contract names the item
+# derivation and the two handlers, because those are where this unit's own
+# decisions live: what a job's items ARE, and that a job cannot queue none.
+#
+# The provider engines are deliberately NOT mutated. This unit is their first
+# caller and owns defects it makes reachable, but a table over lines it did not
+# write measures the engine's suite rather than this binding.
+
+[[rows]]
+id = "D1_unknown_playlist"
+description = "Drop the refusal for a playlist name the document does not carry"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''
+    if not matched:
+        raise refuse(
+            "export-playlist-unknown",
+            f"no playlist in {library.path.name} is named {wanted!r}. A folder "
+            f"of that name is not a match either, because a folder holds "
+            f"playlists rather than tracks",
+            steps=(
+                "name the playlist by its display name, or by its full path "
+                "joined with /",
+            ),
+            scope=Scope.RUN,
+            origin=("outbound", "source"),
+            detail={"playlist": wanted},
+        )
+'''
+new = ""
+
+[[rows]]
+id = "D2_ambiguous_playlist"
+description = "Take the first match instead of refusing when several carry the name"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''    if len(matched) > 1:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "D3_empty_playlist"
+description = "THE ZERO ITEM RULE: let a playlist with no writable track queue"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''    if not kept:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "D4_dangling_reported"
+description = "Stop reporting a TrackID the playlist names and the collection lacks"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''            dangling.append(track_id)
+            continue'''
+new = '''            continue'''
+
+[[rows]]
+id = "D5_repeated_deduped"
+description = "Queue a repeated identifier twice instead of once"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''        if track_id in seen:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "D6_export_required"
+description = "Let a verb queue with no export document named"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''    if not text:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "H1_export_item_not_payload"
+description = "The export handler reads the playlist key as its track, not the claimed item"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+old = '''    report = run_export_item(payload, str(item.item_id), cfg, account.resolve(cfg))'''
+new = '''    report = run_export_item(payload, str(payload[PLAYLIST]), cfg, account.resolve(cfg))'''
+
+[[rows]]
+id = "H2_hearts_item_not_payload"
+description = "The sweep handler reads the playlist key as its row, not the claimed item"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+old = '''    report = run_heart_item(payload, str(item.item_id), cfg, account.resolve(cfg))'''
+new = '''    report = run_heart_item(payload, str(payload[PLAYLIST]), cfg, account.resolve(cfg))'''
+
+[[rows]]
+id = "H3_frozen_config_ignored"
+description = "KTD9: the export handler loads a fresh configuration instead of using the frozen one"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+old = '''    report = run_export_item(payload, str(item.item_id), cfg, account.resolve(cfg))'''
+new = '''    report = run_export_item(
+        payload, str(item.item_id), config.load(), account.resolve(cfg)
+    )'''
+
+[[rows]]
+id = "H4_item_absent_silent"
+description = "An item whose track left the frozen export writes nothing and reports done"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+old = '''    if not tracks:
+        raise refuse(
+            "outbound-item-absent",'''
+new = '''    if False:
+        raise refuse(
+            "outbound-item-absent",'''
+
+[[rows]]
+id = "S1_resume_closed_job"
+description = "R-225: report a closed failed or cancelled job through a normal envelope"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+old = '''        if not job.is_open() and job.cause is not None:
+            raise CratekitError(job.cause)'''
+new = ""
+
+[[rows]]
+id = "S2_resume_cancelled_only"
+description = "Narrow the same guard back to FAILED, which is the shape the review found"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+old = '''        if not job.is_open() and job.cause is not None:'''
+new = '''        if job.state is jobs.JobState.FAILED and job.cause is not None:'''
+
+[[rows]]
+id = "S3_empty_job_driven"
+description = "Drive a job with no items, which core.jobs reports as SUCCEEDED"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+old = '''            if not jobs.items(store, job.job_id):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "S4_digest_drops_tracks"
+description = "The confirm digest names the file again instead of the write set"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+old = '''            # THE TRACK SET, not just the file it came from. A path names where
+            # the answer was read; only this names what will be written.
+            "tracks": list(tracks),'''
+new = ""
+
+[[rows]]
+id = "S5_payload_shape"
+description = "Put the outbound summary back at the top level, off the declared schema"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+old = '''        "progress": {
+            **jobs.progress(store, job.job_id),
+            "outbound": dict(summary(cfg, job.job_id)),
+        },'''
+new = '''        "progress": jobs.progress(store, job.job_id),
+        "outbound": dict(summary(cfg, job.job_id)),'''
+
+[[rows]]
+id = "L1_reserve_lock_last"
+description = "Take the ledger lock AFTER the create, which is the ordering that duplicated"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''    lock = _locked(cfg)
+    try:
+        record = _load(cfg)["playlists"].get(playlist_key) or {}
+        recorded = record.get("remote_id")
+        if recorded:
+            return str(recorded), False
+        remote_id = create()
+        _record_playlist_locked(cfg, playlist_key, remote_id)
+        return remote_id, True
+    finally:
+        lock.__exit__(None, None, None)'''
+new = '''    recorded = playlist_remote_id(cfg, playlist_key)
+    if recorded:
+        return str(recorded), False
+    remote_id = create()
+    record_playlist(cfg, playlist_key, remote_id)
+    return remote_id, True'''
+
+[[rows]]
+id = "A1_no_colour_writer"
+description = "Pass a colour writer to the hearts engine from a queued sweep"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+old = '''    report = hearts.heart_back(cfg, remote, candidates, colors=None)'''
+new = '''    report = hearts.heart_back(cfg, remote, candidates)'''
+
+[[rows]]
+id = "A2_default_favorites_playlist"
+description = "Default the sweep to the FOLDER name the live library uses"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''DEFAULT_FAVORITES_PLAYLIST = "All Favorites"'''
+new = '''DEFAULT_FAVORITES_PLAYLIST = "Favorites"'''
+
+[[rows]]
+id = "A1b_colour_writer_passed"
+description = "Pass a REAL colour writer, which A1 could not: colors=None is the engine's own default, so removing the keyword changed nothing"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+pairs_with = "A1_no_colour_writer"
+old = """    report = hearts.heart_back(cfg, remote, candidates, colors=None)"""
+new = """    class _Pink:
+        def color_pink(self, row_id):
+            return None
+
+        def is_pink(self, row_id):
+            return False
+
+    report = hearts.heart_back(cfg, remote, candidates, colors=_Pink())"""
+
+[[dropped]]
+id = "D7_memo_invalidation"
+description = "Drop the per process export memo so every item reparses the document"
+reason = "a performance shape rather than a guard: removing it changes no answer, so a zero row would be correct and would say nothing"
+
+[[dropped]]
+id = "S6_queue_warnings_unbound"
+description = "Drop the unbound provider warning from the queued envelope"
+reason = "ranked below the cap; the same warning family as A2, which is measured, and its branch is now driven by two tests"
+
+[[dropped]]
+id = "L2_record_track_dedup"
+description = "Let record_playlist_track append a remote id it already holds"
+reason = "engine lines this unit did not write and whose input it does not newly reach: apply already filters on playlist_added before calling it"
