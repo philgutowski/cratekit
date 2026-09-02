@@ -31,22 +31,29 @@ SESSIONS DO NOT NEST, and that is enforced rather than advised:
 :func:`cratekit.core.session.session_lock` raises ``SessionComposition`` when one
 is opened inside another in the same process, because the second acquisition can
 never succeed and reporting it as a foreign holder would tell a caller to wait
-for itself. So the ``place`` handed down here COLLECTS the memberships this run
-resolved and writes nothing.
+for itself. So the ``place`` handed down to the loop COLLECTS the memberships
+this run resolved and writes nothing.
 :func:`cratekit.write.trees.write_tree_membership` owns its own session and
 refuses a caller-supplied gates factory, so calling it from inside this one would
-refuse every apply. The collected mapping is returned instead, in the shape
-:func:`cratekit.adopt.apply.membership_plan` produces, so the caller that holds a
-database writes it after this session has closed.
+refuse every apply. Two SEQUENTIAL sessions are not a nesting, and that is what
+:func:`handle` does.
 
-WHAT THIS UNIT DOES NOT LAND, said here rather than discovered by somebody
-watching an apply report zero entries. It does not read the collection. Turning a
-rekordbox library into :class:`cratekit.adopt.scan.CollectionRow` values needs a
-collection reader that no unit in this build lands, which is the same position
-``adopt.scan`` shipped in and says so in the same words. The census this verb
-rebuilds is therefore empty, the plan it digests is the empty plan, and nothing
-is outstanding. The session boundary is real and driven on a synthetic plan in
-``tests/test_adopt_apply_cli.py``; what is absent is the input, not the guard.
+THE COLLECTION READER LANDED IN U55, so the paragraph that used to sit here about
+a census nothing could fill is gone rather than left standing.
+:func:`census` reads the configured database, the plan is a plan about the
+person's own tracks, and :func:`handle` is the worker behind the ``adopt.apply``
+handler key.
+
+WHAT IT STILL DOES NOT DO, said here rather than discovered by somebody watching
+an apply refuse. It writes NO TAG. ``apply_plan``'s ``tag_value`` is left at
+``None``, which is the value that writes nothing, because a tag write is the one
+act no snapshot undoes and this build registers no ``adopt.revert`` verb, so a
+person could not undo one. And its membership write refuses on any library whose
+taxonomy tree has not been cut over to the database, which is every library
+adoption is actually for: nothing in ``src`` calls
+:func:`cratekit.core.tree_registry.record_cutover`, so the refusal names a remedy
+no shipped verb can perform. Both are recorded in ``docs/residual-findings.md``
+with their measured cost.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.scan_cli`` gives at length: a
@@ -56,16 +63,19 @@ layering violation KTD23 refuses, and the output contract is foundation-ranked.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from cratekit.adopt import apply as apply_engine
+from cratekit.adopt import artifacts, collection, scan
 from cratekit.adopt import plan as plan_engine
 from cratekit.adopt.approval import grant
 from cratekit.cli.output import Envelope
-from cratekit.core import config, jobs, session, taxonomy
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
+from cratekit.core import config, jobs, rb_writer, session, taxonomy, tree_registry
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
+from cratekit.write import trees
+from cratekit.write.routing_pass import destination
 
 #: The name this run is recorded under in the session log. It is the verb's own
 #: name because ``assert_gates`` takes one as a parameter rather than deriving
@@ -73,6 +83,15 @@ from cratekit.core.exit_codes import Remedy
 #: one, and a session somebody finds in the log has to say which command opened
 #: it rather than which module did.
 WORKFLOW = "adopt.apply"
+
+#: The payload key holding who answered the approval gate.
+#:
+#: FROZEN BECAUSE THE WORKER CANNOT ASK. ``handle`` receives the job, the item
+#: and the frozen configuration, and no run, while
+#: :func:`cratekit.adopt.approval.grant` refuses an empty actor. Without this key
+#: the only actor a worker could supply is one it invented, and an approval
+#: naming nobody is exactly what R34 forbids.
+ACTOR_KEY = "approved_by"
 
 
 def _load() -> config.Config:
@@ -98,21 +117,37 @@ def _load() -> config.Config:
         ) from exc
 
 
-def census(cfg: config.Config) -> tuple:
-    """The scanned rows this run applies. Empty until a collection reader lands.
+def census(cfg: config.Config, declared: taxonomy.Taxonomy) -> tuple:
+    """The scanned rows this run applies: the person's own collection, classified.
 
-    A FUNCTION RATHER THAN A LITERAL AT THE ONE CALL SITE, because the thing that
-    is missing is worth naming once where a later unit will look for it. It takes
-    the config it will eventually need so that supplying a reader is a change to
-    this body and to nothing that calls it.
+    THE READER LANDED IN U55 AND THIS BODY IS WHAT IT WAS FOR. Everything this
+    docstring used to say about being empty is now false. It reads the configured
+    rekordbox database through :func:`cratekit.adopt.collection.read_collection`,
+    which opens it read only, and hands every live row to
+    :func:`cratekit.adopt.scan.scan_rows`, which stats the file each row records.
+    So this call is the expensive one in an adoption pass and it is where a
+    library with unreachable files takes its time.
 
-    IT RETURNS EMPTY RATHER THAN REFUSING. An apply with nothing to apply is a
-    correct outcome and the state every library is in before its first census; a
-    refusal here would make the verb unreachable and would report a missing
-    feature as a broken machine.
+    AN EMPTY RETURN NOW MEANS AN EMPTY LIBRARY, which is a different fact from
+    the missing feature it used to mean, and the two verbs above report it as
+    such rather than queueing a job with nothing in it.
+
+    ``declared`` IS A PARAMETER AND WAS NOT. Resolving the taxonomy inside here
+    while :func:`current_plan` resolves ``sub`` from the one IT was handed would
+    let one plan entry be built from two taxonomies at once, and
+    ``test_the_tree_comes_off_the_declared_taxonomy_rather_than_a_flag`` drives
+    exactly that call with a modified taxonomy and would have kept passing. That
+    is an assertion measuring nothing while genuinely exercising the code, which
+    is the first thing ``docs/METHOD.md`` says a green suite cannot see.
     """
-    del cfg
-    return ()
+    return tuple(
+        scan.scan_rows(
+            collection.read_collection(cfg),
+            declared,
+            root=cfg.library.root,
+            prefix_map=collection.prefix_rules(cfg),
+        )
+    )
 
 
 def current_plan(cfg: config.Config, declared: taxonomy.Taxonomy) -> plan_engine.AdoptionPlan:
@@ -129,7 +164,9 @@ def current_plan(cfg: config.Config, declared: taxonomy.Taxonomy) -> plan_engine
     declares exactly one routing tree by stable identifier (R19), so an argument
     naming one could only hold that identifier or a mistake.
     """
-    return plan_engine.build_adoption_plan(census(cfg), declared, tree=declared.tree.id)
+    return plan_engine.build_adoption_plan(
+        census(cfg, declared), declared, tree=declared.tree.id
+    )
 
 
 def _reported(store, job) -> dict:
@@ -147,20 +184,76 @@ def _collector(
 ) -> Callable[[plan_engine.PlanEntry, str, str], None]:
     """A ``place`` that records one entry's destination and writes nothing.
 
-    It is handed the display names :mod:`cratekit.adopt.apply` already resolved,
-    and groups by that pair, so what comes back is the mapping
+    IT GROUPS THE ENTRY'S LOCATION, AND IT USED TO GROUP ITS CONTENT IDENTIFIER.
+    This docstring said what it collected was "the mapping
     :func:`cratekit.adopt.apply.membership_plan` produces and
-    :func:`cratekit.write.trees.write_tree_membership` consumes. Building it here
-    rather than calling ``membership_plan`` afterwards keeps the collected set
-    equal to what the loop ACTUALLY reached: an entry the loop failed or skipped
-    is absent from this mapping, where a second derivation from the plan would
-    put it back in.
+    :func:`cratekit.write.trees.write_tree_membership` consumes", and those are
+    two different shapes. ``membership_plan`` groups ``entry.content_id``.
+    ``write_tree_membership`` passes every value of its ``plan`` through
+    :func:`cratekit.write.trees.match_indexed_rows`, which DECODES it as a
+    recorded location and looks it up in an index keyed on resolved paths. A
+    content identifier decodes to nothing, every entry comes back ``UNRESOLVED``,
+    ``added`` stays zero, and ``MembershipReport`` reports a session that wrote
+    nothing as a session that ran. Nothing could see it, because no caller had
+    ever handed one mapping to the other function.
+
+    ``membership_plan`` IS LEFT ALONE. It belongs to :mod:`cratekit.adopt.apply`
+    with its own contract, and changing what it groups from here would be a second
+    opinion about a surface this unit does not own. Recorded as a residual
+    instead.
+
+    IT IS STILL A COLLECTOR RATHER THAN A WRITER, and that is the nesting rule the
+    module docstring gives: ``write_tree_membership`` owns its own session and
+    ``session_lock`` refuses a nested one, so the write happens after this run's
+    session has closed. What comes back is what the loop ACTUALLY reached, which
+    is a different set from what the plan proposes and is reported as such.
     """
 
     def place(entry: plan_engine.PlanEntry, folder: str, sub: str) -> None:
-        into.setdefault((folder, sub), []).append(entry.content_id)
+        if entry.path:
+            into.setdefault((folder, sub), []).append(entry.path)
 
     return place
+
+
+def membership_locations(
+    entries: Sequence[plan_engine.PlanEntry], declared: taxonomy.Taxonomy
+) -> dict[tuple[str, str], list[str]]:
+    """The mapping :func:`cratekit.write.trees.write_tree_membership` actually takes.
+
+    KEYED ON DISPLAY NAMES, VALUED WITH LOCATIONS. It is
+    :func:`cratekit.adopt.apply.membership_plan` with ``entry.path`` where that
+    function has ``entry.content_id``, for the reason :func:`_collector` gives at
+    length.
+
+    DERIVED FROM THE PLAN AND NOT FROM THE RUN, which is what makes a crash
+    survivable. ``apply_plan`` marks the applied ledger inside its own session and
+    the membership write happens after that session closes, so a kill between the
+    two leaves entries marked and unwritten. A mapping built from THIS RUN's
+    applied set is empty on the re-run, which would make that gap permanent; a
+    mapping built from the plan is rewritten in full and ``write_tree_membership``
+    reports the rows already there as ``already_present``. On a first run the two
+    are equal, which ``tests/test_adopt_workers.py`` asserts rather than assumes.
+
+    AN ENTRY WHOSE DESTINATION THE TAXONOMY NO LONGER DECLARES IS SKIPPED rather
+    than raised out of the whole mapping, which is the per-track versus per-pass
+    rule ``membership_plan`` already states and U19 already paid for.
+
+    AN ENTRY WITH NO PATH IS SKIPPED TOO. ``plan.applicable()`` already excludes
+    every disposition that has none, so this is a belt: a ``None`` path would
+    reach ``match_indexed_rows`` as the four character string ``"None"`` and be
+    reported as an unresolved location rather than as a bug.
+    """
+    grouped: dict[tuple[str, str], list[str]] = {}
+    for entry in entries:
+        if not entry.path:
+            continue
+        try:
+            folder, sub = destination(declared, entry.bucket, entry.sub)
+        except KeyError:
+            continue
+        grouped.setdefault((folder, sub), []).append(entry.path)
+    return grouped
 
 
 def apply_outstanding(
@@ -328,31 +421,66 @@ def apply_adoption(ctx) -> Envelope:
     acknowledged a backup, which would make the verb unreachable on exactly the
     machine adoption is for. The session opens in :func:`apply_outstanding`,
     which is the run that touches files.
+
+    ONE ITEM, AND IT IS THE PLAN. The engine's per item resume is not what makes
+    an apply resumable; the applied ledger is, and it is older. One item per
+    entry would put two resume mechanisms on one job and would take one full
+    ``snapshot.capture`` per track, because ``write_tree_membership`` runs one
+    inside its own session. So the item is the plan digest and the zero item rule
+    is enforced HERE, by refusing to create a job at all when the plan has
+    nothing applicable.
+
+    THE APPROVING ACTOR IS FROZEN. The worker gets ``(job, item, cfg)`` and no
+    run, and ``approval.grant`` refuses an empty actor, so the person who
+    answered the gate has to travel in the payload or the approval R34 requires
+    could only be invented by the worker.
     """
     cfg = _load()
     declared = taxonomy.default_taxonomy()
-    plan = current_plan(cfg, declared)
 
+    if ctx.args.job:
+        return _resume(ctx, cfg)
+
+    plan = current_plan(cfg, declared)
     spec = _approval_gate(ctx.entry)
     option = ctx.gate.require(spec, digest=plan.digest())
     if option == "abort":
+        # ``job_id`` IS THE EMPTY STRING RATHER THAN ``None``. ``cli.output``
+        # closes the declared ``job_state/1`` surface with
+        # ``additionalProperties: false`` and requires every field as a string,
+        # so a null failed this verb's own schema. Nothing validated it, which is
+        # why it shipped: the schema fingerprint hashes the DECLARED fields and
+        # the golden envelope is a hand written literal. Recorded as R-234 by U51
+        # and closed here.
+        return ctx.envelope(data=_declined(), outcome=Outcome.NO_OP)
+
+    applicable = plan.applicable()
+    if not applicable:
         return ctx.envelope(
-            data={"job_id": None, "state": "declined", "cause": None, "progress": {}},
+            data=_declined(state="no-op"),
             outcome=Outcome.NO_OP,
+            warnings=(
+                {
+                    "code": "adoption-nothing-applicable",
+                    "message": (
+                        f"this plan holds {len(plan.entries)} track(s) and none of "
+                        f"them can be placed, so there is nothing to queue"
+                    ),
+                },
+            ),
         )
 
     with jobs.open_store() as store:
-        if ctx.args.job:
-            # RECONCILE FIRST. A resume arrives after something stopped, and a
-            # claim left behind by a driver that died is the state the queue
-            # cannot see for itself.
-            return ctx.envelope(data=_reported(store, jobs.reconcile(store, ctx.args.job)))
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
             payload={
                 "tree": plan.tree,
                 "digest": plan.digest(),
+                # WHO ANSWERED, read off the run record rather than off a flag.
+                # R34's whole content is that this class of decision cannot be
+                # typed onto the command that was already running.
+                ACTOR_KEY: _approving_actor(ctx, spec),
                 # FROZEN SO THE APPROVAL SURVIVES THE RESPAWN. See
                 # ``adopt_apply_argv``: the gate is explicit, so a resume on a
                 # fresh run can never be answered and the job would be
@@ -363,9 +491,279 @@ def apply_adoption(ctx) -> Envelope:
                 # this verb and every later one without being edited.
                 jobs.GATE_RUN_KEY: ctx.run.run_id,
             },
+            item_ids=(plan.digest(),),
             cfg=cfg,
         )
         return ctx.envelope(data=_reported(store, job))
+
+
+def _resume(ctx, cfg: config.Config) -> Envelope:
+    """Answer the gate from the frozen plan, then drive the job's one item.
+
+    THE GATE IS ASKED AGAINST THE REBUILT PLAN, exactly as it was on the way in.
+    A digest that has moved meets ``DecisionStale`` here rather than inside the
+    worker, which is the earlier and the better place: nothing has been opened
+    and nothing has been marked.
+
+    RECONCILE BEFORE DRIVING. A resume arrives after something stopped, and a
+    claim left behind by a driver that died is state the queue cannot see for
+    itself.
+
+    IT RAISES ON A JOB THAT DID NOT FINISH rather than reporting one. That is
+    R-225, and the predicate is ANY CLOSED JOB CARRYING A CAUSE rather than
+    FAILED alone: a run stopped with a signal is CANCELLED and carries the cause
+    ``jobs.cancel`` builds, so the narrower predicate exits 0 over an interrupted
+    apply. SUCCEEDED carries no cause and is unaffected.
+    """
+    declared = taxonomy.default_taxonomy()
+    plan = current_plan(cfg, declared)
+    spec = _approval_gate(ctx.entry)
+    if ctx.gate.require(spec, digest=plan.digest()) == "abort":
+        return ctx.envelope(data=_declined(), outcome=Outcome.NO_OP)
+
+    with jobs.open_store() as store:
+        job = jobs.reconcile(store, ctx.args.job)
+        warnings: tuple[dict[str, str], ...] = ()
+        if job.is_open():
+            if not jobs.items(store, job.job_id):
+                raise refuse(
+                    "internal-error",
+                    f"job {job.job_id} has no items to run, so driving it would "
+                    f"report an adoption over a library it never touched. It was "
+                    f"queued by a build that did not record what its items were",
+                    remedy=Remedy.REPORT_DEFECT,
+                    origin=("adopt", "apply_cli"),
+                    detail={"job_id": job.job_id},
+                )
+            _result, warnings = ctx.run_job(store, job)
+            job = jobs.get(store, job.job_id)
+        if not job.is_open() and job.cause is not None:
+            raise CratekitError(job.cause)
+        reported = _reported(store, job)
+        reported["progress"] = {
+            **reported["progress"],
+            "adoption": _summary(cfg, job.job_id),
+        }
+        return ctx.envelope(data=reported, warnings=warnings)
+
+
+def _summary(cfg: config.Config, job_id: str) -> dict:
+    """What this job's committed artifacts say the apply landed.
+
+    READ BACK RATHER THAN ACCUMULATED, so a job continued tomorrow reports what
+    every attempt did and not only what this process saw.
+    """
+    applied: list[str] = []
+    failed: dict[str, str] = {}
+    added = 0
+    already = 0
+    playlists: list[str] = []
+    for report in artifacts.committed(cfg, job_id):
+        applied.extend(str(entry) for entry in report.get("applied") or ())
+        failed.update({str(k): str(v) for k, v in (report.get("failed") or {}).items()})
+        added += int(report.get("added") or 0)
+        already += int(report.get("already_present") or 0)
+        playlists.extend(str(name) for name in report.get("playlists") or ())
+    return {
+        "applied": sorted(set(applied)),
+        "failed": failed,
+        "added": added,
+        "already_present": already,
+        "playlists": sorted(set(playlists)),
+    }
+
+
+def handle(job, item, cfg) -> jobs.Produced:
+    """Apply one queued plan, then write its memberships. The ``adopt.apply`` worker.
+
+    FIVE STEPS, AND THE ORDER IS THE WHOLE DESIGN.
+
+    1. Rebuild the plan from a fresh census. It is NOT frozen: ``jobs.enqueue``
+       freezes the payload and the configuration and neither carries a library.
+    2. Refuse ``decision-stale`` when the rebuilt digest is not the frozen one.
+       Without this the worker would apply a write set the person never saw, and
+       the gate's whole purpose would be answered by a plan that has since moved.
+    3. The MEMBERSHIPS, in a session of their own, BEFORE anything is marked.
+    4. ``apply_outstanding``, which opens the ONE destructive session and marks
+       the applied ledger per entry. It is handed no ``tag_value``, so no tag is
+       written: the tag write is the one act no snapshot undoes, the registry
+       declares no ``adopt.revert`` verb so a person could not undo one, and seven
+       ledger findings against the revert path are unreachable today precisely
+       because nothing writes a tag.
+    5. Commit the artifact, and only then raise if anything failed.
+
+    THE RECOVERABLE WRITE GOES FIRST, AND THAT ORDER WAS MEASURED RATHER THAN
+    REASONED. ``apply_plan``'s own comment argues it for the tag write, and the
+    first draft of this worker had the two the other way round: apply, then write
+    memberships. Driven on 2026-09-02 against a library whose tree had not been
+    cut over, the ledger came back holding every entry while the database held no
+    membership row at all, and the next run then found nothing outstanding. A
+    membership row lives inside the database snapshot and a ledger mark is what
+    suppresses the next attempt, so the write that can be repeated goes first and
+    the mark that stops repetition goes last. A kill between them costs one
+    re-run, which reports every row as ``already_present``.
+
+    THE TWO SESSIONS ARE SEQUENTIAL AND NEVER NESTED.
+    ``write_tree_membership`` owns its own and ``session_lock`` raises
+    ``SessionComposition`` on a nested acquisition, so the membership write cannot
+    happen inside ``apply_outstanding`` and does not need to.
+
+    IT RAISES RATHER THAN RETURNING A REPORT FULL OF FAILURES.
+    ``apply_plan`` catches a ``CratekitError`` from ``place``, records it in
+    ``ApplyReport.failed``, and returns normally, and ``jobs.drive`` fails an item
+    only when the handler RAISES. A worker that returned here would flip the item
+    to done and drive the job to SUCCEEDED over an apply that wrote nothing, which
+    is the clean-report-over-unreadable-state cost ``docs/METHOD.md`` names. The
+    artifact is committed BEFORE the raise, so what happened survives the failure.
+
+    ON A LIBRARY THAT HAS NOT BEEN CUT OVER THIS ALWAYS RAISES, and that is the
+    honest state of this build rather than a defect.
+    ``tree_registry.anchored_root`` refuses a tree still on the bridge, and an
+    unrecorded tree IS on the bridge because ``Registry.mode`` defaults to XML. No
+    shipped verb records a cutover, so on any real library today the refusal is
+    what happens, the applied ledger stays empty because nothing was marked, and
+    the job is resumable for the day the cutover exists.
+    """
+    del item
+    declared = taxonomy.default_taxonomy()
+    plan = current_plan(cfg, declared)
+    frozen_digest = str((job.payload or {}).get("digest") or "")
+    if plan.digest() != frozen_digest:
+        raise refuse(
+            "decision-stale",
+            "the collection has changed since this adoption was approved, so the "
+            "plan this job would apply is not the plan anybody agreed to",
+            steps=("run `crate adopt apply` again and approve the plan as it is now",),
+            origin=("adopt", "apply_cli"),
+            detail={"approved": frozen_digest, "current": plan.digest()},
+        )
+
+    membership = _write_memberships(cfg, plan, declared)
+
+    actor = str((job.payload or {}).get(ACTOR_KEY) or "")
+    report, gathered = apply_outstanding(cfg, plan, declared, actor=actor)
+
+    produced = artifacts.produced(
+        cfg,
+        job,
+        _ITEM_ZERO,
+        {
+            "tree": report.tree,
+            "actor": report.actor,
+            "digest": report.digest,
+            "applied": list(report.applied),
+            "already_applied": list(report.already_applied),
+            "failed": dict(report.failed),
+            "gathered": {f"{folder}/{sub}": rows for (folder, sub), rows in gathered.items()},
+            "added": membership.added,
+            "already_present": membership.already_present,
+            "playlists": list(membership.playlists),
+            "skipped": [match.requested for match in membership.skipped],
+        },
+    )
+    if report.failed:
+        _commit(produced)
+        raise refuse(
+            "adopt-entries-failed",
+            f"{len(report.failed)} of this plan's entries could not be applied: "
+            f"{', '.join(sorted(report.failed))}",
+            steps=("read the committed artifact under the queue root for each entry's reason",),
+            origin=("adopt", "apply_cli"),
+            detail={"failed": sorted(report.failed)},
+        )
+    return produced
+
+
+def _commit(produced: jobs.Produced) -> None:
+    """Make the staged artifact durable before raising past the engine.
+
+    ``jobs.drive`` commits a handler's ``Produced`` only on the path where the
+    handler RETURNS one. A worker that raises therefore loses its report unless it
+    commits first, and losing the report is losing the only record of which
+    entries failed and why.
+    """
+    if produced.staged is not None and produced.final is not None:
+        jobs.commit_artifact(produced.staged, produced.final)
+
+
+def _write_memberships(
+    cfg: config.Config,
+    plan: plan_engine.AdoptionPlan,
+    declared: taxonomy.Taxonomy,
+) -> trees.MembershipReport:
+    """Write the plan's memberships in a session of their own.
+
+    THE HANDLE IS THIS FUNCTION'S OWN AND IT IS A WRITE. ``write_tree_membership``
+    commits through the handle it is given, so this one is opened with
+    ``require_closed=True``: the two-process refusal and the application pin both
+    run before anything opens, which is the open a write is supposed to make. That
+    is stricter than ``cratekit.write.routing_cli``, which writes through a
+    ``require_closed=False`` open; the divergence is deliberate and is recorded
+    rather than copied.
+
+    THE READER'S HANDLE COULD NOT BE REUSED. It is closed before
+    :func:`cratekit.adopt.collection.read_collection` returns, and that module
+    holds no write capable open by construction.
+
+    THE ROWS COME FROM THE READER, which returns
+    :class:`cratekit.adopt.scan.CollectionRow` rather than
+    :class:`cratekit.write.trees.ContentRow`. ``index_active_rows`` reads exactly
+    three attributes, ``content_id``, ``recorded`` and ``deleted``, and both
+    records carry all three, so the substitution is structural and deliberate
+    rather than a type error nobody noticed.
+    """
+    target = rb_writer.live_db_path(cfg)
+    handle = rb_writer.open_db(
+        target,
+        require_closed=True,
+        unlock=rb_writer.unlock_needed(target),
+        cfg=cfg,
+    )
+    try:
+        known = {str(row.ID) for row in handle.get_playlist()}
+        return trees.write_tree_membership(
+            cfg,
+            handle,
+            tree_id=plan.tree,
+            registry=tree_registry.read(cfg),
+            plan=membership_locations(plan.applicable(), declared),
+            rows=collection.read_collection(cfg),
+            root_exists=lambda root_id: root_id in known,
+            # THE LIBRARY ROOT, never empty. The watch it arms is the runtime half
+            # of R17's fifth surface and it watches nothing when nobody names a
+            # root, which reports a clean session either way.
+            analysis_roots=(cfg.library.root,),
+            prefix_map=collection.prefix_rules(cfg),
+        )
+    finally:
+        rb_writer.close_db(handle)
+
+
+class _Item:
+    """The ordinal :mod:`cratekit.adopt.artifacts` needs, for a one item job."""
+
+    def __init__(self, ordinal: int) -> None:
+        self.ordinal = ordinal
+
+
+#: An apply has exactly one item, so its artifact always has ordinal zero.
+_ITEM_ZERO = _Item(0)
+
+
+def _declined(state: str = "declined") -> dict:
+    """The ``job_state`` payload for a run that queued nothing."""
+    return {"job_id": "", "state": state, "cause": None, "progress": {}}
+
+
+def _approving_actor(ctx, spec) -> str:
+    """Who the run record says answered the approval gate.
+
+    OFF THE RECORDED DECISION rather than off ``ctx.gate.actor``, which is the
+    default the CLI carries and is ``"cli"`` for a run nobody decided. R34 asks
+    which ACTOR asserted the decision, and the answer lives on the decision.
+    """
+    decision = ctx.run.decisions.get(spec.name)
+    return decision.actor if decision is not None else ""
 
 
 __all__ = [
@@ -376,4 +774,6 @@ __all__ = [
     "build",
     "census",
     "current_plan",
+    "handle",
+    "membership_locations",
 ]

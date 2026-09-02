@@ -276,6 +276,40 @@ def write_lock_path(cfg: config.Config | None = None) -> Path:
     return config.state_path("write_lock", resolved)
 
 
+#: The first bytes of an UNencrypted SQLite file. A rekordbox 6 database on a
+#: real machine is encrypted and does not start with it, while every disposable
+#: database this suite builds does.
+SQLITE_HEADER = b"SQLite format 3"
+
+
+def unlock_needed(path: Path | str) -> bool:
+    """True when the file at ``path`` is encrypted, so the binding needs the key.
+
+    ASKED OF THE BYTES RATHER THAN ASSUMED EITHER WAY, and both constant answers
+    are wrong somewhere. ``unlock=True`` against a plain file fails on a database
+    a test just built; ``unlock=False`` against a real library fails on every
+    machine adoption is for. ``cratekit.deletion.cli`` already asks it this way
+    and is the only caller that does: ``cratekit.write.routing_cli`` and
+    ``cratekit.cli.converge`` both pass ``unlock=False`` unconditionally.
+
+    A file that cannot be read at all answers True, which is the conservative
+    direction: the open below then fails with the database's own refusal rather
+    than with a guess made here.
+
+    THE HEADER IS THE ONLY THING READ, and its length comes from the constant
+    rather than from a number typed beside it. ``cratekit.deletion.cli`` reads the
+    first sixteen bytes of the whole file through ``read_bytes``, which pulls a
+    multi-gigabyte database into memory to look at fifteen characters, and spells
+    the bound as a bare integer in a module that also names causes, which widens
+    the surface ``tests/test_reserved_causes.py`` watches.
+    """
+    try:
+        with Path(path).open("rb") as handle:
+            return not handle.read(len(SQLITE_HEADER)).startswith(SQLITE_HEADER)
+    except OSError:
+        return True
+
+
 def close_db(db: Any) -> None:
     """Release a database handle COMPLETELY: the session AND the connection pool.
 
@@ -2397,6 +2431,7 @@ __all__ = [
     "RekordboxRunning",
     "RekordboxUnavailable",
     "RunStateVocabulary",
+    "SQLITE_HEADER",
     "add_membership",
     "add_my_tag",
     "assert_app_version",
@@ -2447,6 +2482,7 @@ __all__ = [
     "snapshot_database_in",
     "snapshot_db",
     "snapshot_root",
+    "unlock_needed",
     "write_lock_path",
     "write_metadata_field",
     "write_session_lock",

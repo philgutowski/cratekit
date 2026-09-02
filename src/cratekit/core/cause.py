@@ -1359,6 +1359,23 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # cost ``docs/METHOD.md`` names, and the person's remedy is to export the
         # collection again and queue a fresh job rather than to resume this one.
         "outbound-item-absent": ExitCode.PRECONDITION,
+        # ── U55's two, appended for the reason every block above gives ─────────
+        #
+        # The collection no longer holds the row this scan job already queued as
+        # an item. The sibling of ``outbound-item-absent`` and a separate slug
+        # rather than a reuse, because the two send a person to different places:
+        # that one says export the collection again, this one says the library
+        # itself has moved since the census was queued. PRECONDITION rather than
+        # INTERNAL for the same reason its sibling is: a library that changed
+        # under a queued job is a thing that happens, not a defect to report.
+        "adopt-item-absent": ExitCode.PRECONDITION,
+        # One or more of an approved plan's entries could not be applied. The
+        # apply worker's whole-run verdict over ``ApplyReport.failed``, which
+        # ``apply_plan`` RETURNS rather than raises. Without a slug of its own the
+        # worker would return normally, ``jobs.drive`` would flip the item to
+        # done, and the job would reach SUCCEEDED over an adoption that placed
+        # nothing.
+        "adopt-entries-failed": ExitCode.PRECONDITION,
     }
 )
 
