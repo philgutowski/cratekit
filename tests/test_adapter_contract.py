@@ -1198,6 +1198,99 @@ def test_a_download_the_tool_silently_skipped_is_not_reported_as_a_file():
         vendored.landed_file(False, "", "x")
 
 
+class _PkceSession:
+    """The client's session object, as far as ``token_persist`` reads it."""
+
+    def __init__(self, is_pkce: bool) -> None:
+        self.is_pkce = is_pkce
+        self.token_type = "Bearer"
+        self.access_token = "FAKE-value-1"
+        self.refresh_token = "FAKE-value-2"
+        self.expiry_time = 0.0
+
+
+def _token_round_trip(tmp_path, *, is_pkce: bool):
+    """Write a session through the vendored persistence, then read it back.
+
+    Driven through the real ``token_persist`` and ``read`` rather than by
+    constructing a ``Token``, because the defect R-196 records is a field DROPPED
+    IN THE WRITE, and a read cannot see what was never stored. Building the model
+    directly would assert the dataclass has a field and prove nothing about the
+    code that fills it.
+    """
+    from cratekit._vendor.tidal_dl_ng.config import Tidal
+    from cratekit._vendor.tidal_dl_ng.model.cfg import Token
+
+    holder = Tidal.__new__(Tidal)
+    holder.cls_model = Token
+    holder.data = Token()
+    holder.file_path = str(tmp_path / "token.json")
+    holder.session = _PkceSession(is_pkce)
+    holder.token_persist()
+
+    reader = Tidal.__new__(Tidal)
+    reader.cls_model = Token
+    reader.data = Token()
+    reader.file_path = holder.file_path
+    reader.read(holder.file_path)
+    return reader.data
+
+
+def test_a_persisted_pkce_session_reloads_as_a_pkce_session(tmp_path):
+    """R-196: the write dropped ``is_pkce``, so every PKCE token came back wrong.
+
+    A token reloaded as a device-flow token refreshes against the device-flow
+    client, and that is the client the provider serves lossy audio to.
+    """
+    assert _token_round_trip(tmp_path, is_pkce=True).is_pkce is True
+
+
+def test_a_session_with_no_pkce_marker_reloads_as_a_device_flow_session(tmp_path):
+    """A legacy token stays identifiable rather than being read as PKCE by default."""
+    assert _token_round_trip(tmp_path, is_pkce=False).is_pkce is False
+
+
+def test_the_persisted_flag_survives_the_bool_coercion_in_set_option(tmp_path):
+    """``set_option`` calls ``.lower()`` on any value whose field is a bool.
+
+    ``is_pkce`` is the token model's only bool field, so routing the write
+    through ``set_option`` like its four neighbours raises ``AttributeError`` and
+    the whole persistence call dies. The patch writes through ``self.data``, and
+    this is the test that would go red if somebody tidied it back into line.
+    """
+    assert _token_round_trip(tmp_path, is_pkce=True).is_pkce is True
+
+
+@pytest.mark.parametrize(
+    ("stored", "had", "refused"),
+    [
+        (types.SimpleNamespace(is_pkce=True), True, False),
+        (types.SimpleNamespace(is_pkce=False), True, True),
+        (types.SimpleNamespace(), True, True),
+        (types.SimpleNamespace(is_pkce=True), False, True),
+    ],
+)
+def test_only_a_stored_pkce_session_is_used(stored, had, refused):
+    """The pure half of the login decision, driven without the wrapped tool."""
+    answer = vendored.login_mode(stored, had_stored_session=had)
+    assert (answer is not None) is refused
+
+
+def test_a_device_flow_session_is_refused_with_a_remedy_that_has_a_procedure(
+    settings, tmp_path, monkeypatch
+):
+    """A refusal whose remedy has nowhere to go is worse than the lossy download.
+
+    Every session in the keychain before this unit was minted by the device flow,
+    so this refusal is what every existing user meets first. It names the two
+    steps that produce a session it will accept.
+    """
+    refusal = vendored.login_mode(types.SimpleNamespace(is_pkce=False), had_stored_session=True)
+    assert refusal is not None
+    assert "PKCE" in refusal
+    assert "crate login provider-session --from-file" in vendored.REAUTHORISE_HINT
+
+
 class _FakeDownload:
     """Records how ``fetch`` constructed the wrapped tool's downloader.
 

@@ -430,6 +430,113 @@ PATCH_R17_SOURCE = LinePatch(
 )
 
 
+# ---------------------------------------------------------------------------
+# Patches 8, 9 and 10: the login is PKCE, and the persisted token says so.
+#
+# The provider gates lossless audio behind the PKCE client. The device-linking
+# client this tool uses was demoted to lossy at some point after 2026-07-09, and
+# nothing said so: a PKCE login on the same account, same track, same minute was
+# served LOSSLESS as a 16 bit 44.1 kHz FLAC while the device flow got HIGH for
+# every requested quality (R-196, found by attended item A1 on 2026-08-28).
+#
+# Three edits, each the smallest that makes PKCE reachable. No PKCE handshake is
+# added to this tree: `tidalapi` already ships `Session.login_pkce`, and upstream
+# already carried the call here as a comment beside the one it used.
+# ---------------------------------------------------------------------------
+PATCH_PKCE_TOKEN_FIELD = Patch(
+    relative_path="model/cfg.py",
+    old="    expiry_time: float = 0.0\n",
+    new="""    expiry_time: float = 0.0
+    # Cratekit patch (R-196): whether this token came from a PKCE login.
+    #
+    # Upstream persists four keys and drops this one, so a PKCE token reloads as
+    # a device-flow token and refreshes against the wrong client, which is the
+    # client the provider serves lossy audio to. A field the write never stores
+    # is a field the read cannot see.
+    is_pkce: bool = False
+""",
+    why="a PKCE token that reloads as a device-flow token refreshes against the "
+    "wrong client, and that client is served lossy audio",
+)
+
+PATCH_PKCE_TOKEN_PERSIST = SpanPatch(
+    relative_path="config.py",
+    start="    def token_persist(self) -> None:",
+    end="    def switch_to_atmos_session(self) -> bool:",
+    replacement='''    def token_persist(self) -> None:
+        self.set_option("token_type", self.session.token_type)
+        self.set_option("access_token", self.session.access_token)
+        self.set_option("refresh_token", self.session.refresh_token)
+        self.set_option("expiry_time", self.session.expiry_time)
+        # Cratekit patch (R-196): persist which client minted this session.
+        #
+        # Written through `self.data` rather than `set_option`, because
+        # `set_option` reads the existing value and calls `.lower()` on the
+        # incoming one whenever the field is a bool, so a Python bool raises
+        # AttributeError there. `is_pkce` is this model's only bool field.
+        #
+        # The source is the SESSION's flag, not this object's. `login()` calls
+        # `login_token()` first, which assigns `self.is_pkce` from its own
+        # defaulted argument before any PKCE handshake runs, so reading it here
+        # would record every fresh PKCE login as a device-flow one.
+        self.data.is_pkce = bool(getattr(self.session, "is_pkce", False))
+        self.save()
+
+        # Set restrictive permissions on token file (Unix-based systems only)
+        with contextlib.suppress(OSError, NotImplementedError):
+            os.chmod(self.file_path, 0o600)
+
+''',
+    why="a persisted session must record which client minted it, or the refresh "
+    "goes to the client the provider serves lossy audio to",
+)
+
+PATCH_PKCE_LOGIN = SpanPatch(
+    relative_path="config.py",
+    start="    def login(self, fn_print: Callable) -> bool:",
+    end="    def logout(self):",
+    replacement='''    def login(self, fn_print: Callable) -> bool:
+        # Cratekit patch (R-196): PKCE is the only login this product offers.
+        #
+        # Upstream called `login_oauth_simple` (device linking) and carried the
+        # PKCE call beside it as a comment. The provider now gates lossless audio
+        # behind the PKCE client, so the commented line is the one that works and
+        # the live one silently produced lossy downloads. There is deliberately no
+        # flag to keep the device flow: a flag that preserves it preserves the
+        # defect.
+        #
+        # The reload passes the persisted flag rather than the default, so a
+        # stored PKCE token refreshes against the client that minted it.
+        is_token = self.login_token(do_pkce=bool(getattr(self.data, "is_pkce", False)))
+        result = False
+
+        if is_token:
+            fn_print("Yep, looks good! You are logged in.")
+
+            result = True
+        elif not is_token:
+            fn_print("You either do not have a token or your token is invalid.")
+            fn_print("No worries, we will handle this...")
+            # Login method: PKCE authorization. Required for lossless streaming.
+            self.session.login_pkce(fn_print)
+
+            is_login = self.login_finalize()
+
+            if is_login:
+                fn_print("The login was successful. I have stored your credentials (token).")
+
+                result = True
+            else:
+                fn_print("Something went wrong. Did you login using your browser correctly? May try again...")
+
+        return result
+
+''',
+    why="the device-linking client is served lossy audio, so the only login this "
+    "product offers is PKCE",
+)
+
+
 def rewrite_internal_imports(text: str) -> str:
     """Point the package's absolute self-imports at their vendored location.
 
@@ -556,6 +663,9 @@ def main(argv: list[str]) -> int:
             PATCH_R17_ID3,
             PATCH_R17_MP4,
             PATCH_R17_SOURCE,
+            PATCH_PKCE_TOKEN_FIELD,
+            PATCH_PKCE_TOKEN_PERSIST,
+            PATCH_PKCE_LOGIN,
         ):
             patch.apply(VENDOR_PACKAGE)
 

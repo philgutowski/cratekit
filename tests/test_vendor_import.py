@@ -429,6 +429,68 @@ def test_the_provider_tempo_never_reaches_the_metadata_writer():
     )
 
 
+def _calls_in(function_name: str, module: str) -> set[str]:
+    """Every method name a named function actually EVALUATES, from the syntax tree.
+
+    Over the tree rather than the text, for the reason
+    ``test_version_detection_does_not_read_a_nearby_pyproject`` gives: the patch
+    that removed the device flow explains itself in a comment that names
+    ``login_oauth_simple``, so a substring check on the source would fail on the
+    fix rather than on the defect. Only a name the CODE evaluates counts.
+    """
+    tree = ast.parse((VENDORED_PACKAGE / module).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == function_name:
+            return {
+                inner.func.attr
+                for inner in ast.walk(node)
+                if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)
+            }
+    raise AssertionError(f"{module} no longer defines {function_name}()")
+
+
+def test_the_interactive_login_is_pkce_and_the_device_flow_is_gone():
+    """R-196: the device-linking client is served lossy audio, so it is not offered.
+
+    The provider gates lossless behind the PKCE client. Upstream called
+    ``login_oauth_simple`` and carried the PKCE call beside it as a comment, so
+    the commented line was the working one and the live one silently produced
+    lossy downloads. There is no flag preserving the device flow: a flag that
+    preserved it would preserve the defect.
+    """
+    calls = _calls_in("login", "config.py")
+    assert "login_pkce" in calls, (
+        "the vendored login no longer mints a PKCE session; re-run "
+        "scripts/revendor_downloader.py rather than editing the tree by hand"
+    )
+    assert "login_oauth_simple" not in calls, (
+        "the device-linking login is live again, and the provider serves that "
+        "client lossy audio (R-196)"
+    )
+
+
+def test_the_persisted_token_records_which_client_minted_it():
+    """A field the write never stores is a field the read cannot see.
+
+    Upstream persists four keys and drops ``is_pkce``, so a PKCE token reloads as
+    a device-flow one and refreshes against the client the provider serves lossy.
+    """
+    from cratekit._vendor.tidal_dl_ng.model.cfg import Token
+
+    assert "is_pkce" in Token.__dataclass_fields__, (
+        "the token model dropped is_pkce; re-run scripts/revendor_downloader.py"
+    )
+
+    assigned = set()
+    tree = ast.parse((VENDORED_PACKAGE / "config.py").read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "token_persist":
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.Attribute) and isinstance(inner.ctx, ast.Store):
+                    assigned.add(inner.attr)
+    assert "is_pkce" in assigned, "token_persist writes the four keys again and drops is_pkce"
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # The reductions hold
 # ═══════════════════════════════════════════════════════════════════════════

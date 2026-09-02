@@ -171,6 +171,41 @@ def apply_settings(
 
 _ABSENT = object()
 
+#: What the wrapped tool's stored session must be for this product to use it.
+#: The provider gates lossless audio behind the PKCE client, so a device-flow
+#: session is not a lesser credential, it is one that silently downgrades every
+#: download (R-196).
+REAUTHORISE_HINT = (
+    "mint a new one with the vendored downloader's own login command, then record "
+    "it with `crate login provider-session --from-file`"
+)
+
+
+def login_mode(stored: object, *, had_stored_session: bool) -> str | None:
+    """Why this stored session cannot be used, or None to proceed with PKCE.
+
+    Pure, and a function rather than an ``if`` inside ``authenticate`` for one
+    reason: ``authenticate`` returns early on an injected session and imports the
+    wrapped tool's classes inside itself, so nothing in the offline suite can
+    reach a decision written there. This is the checking path, and it is the half
+    that can be proven.
+
+    A session with no PKCE marker is refused rather than used. The alternative is
+    to load it and let the post-landing codec guard catch the lossy file, which
+    works and is slower, noisier, and names the symptom instead of the cause. The
+    refusal is also what makes the marker load-bearing: a flag nothing reads is a
+    flag that stops being written.
+    """
+    if not had_stored_session:
+        return "there is no stored provider session to authenticate with"
+    if not bool(getattr(stored, "is_pkce", False)):
+        return (
+            "the stored provider session was minted by the device-linking client, "
+            "which the provider serves lossy audio; this product authenticates "
+            "through PKCE only"
+        )
+    return None
+
 
 def is_authentication_failure(exc: BaseException) -> bool:
     """Whether an exception from the wrapped tool means the session was rejected.
@@ -273,8 +308,15 @@ class _VendoredSource:
         tidal.path_base = str(self._token_path.parent)
         tidal.token_from_storage = tidal.read(str(self._token_path))
 
+        refusal = login_mode(tidal.data, had_stored_session=tidal.token_from_storage)
+        if refusal is not None:
+            raise AdapterAuthFailed(
+                f"{refusal}. To fix it, {REAUTHORISE_HINT}.",
+                remedy=Remedy.REAUTHENTICATE_PROVIDER,
+            )
+
         try:
-            authorised = tidal.login_token()
+            authorised = tidal.login_token(do_pkce=True)
         except Exception as exc:  # noqa: BLE001 - translated, never swallowed
             raise AdapterAuthFailed(
                 f"the provider rejected the stored session ({exc})",
@@ -419,6 +461,7 @@ class VendoredAdapter(BaseAdapter):
 __all__ = [
     "DOWNLOADER_ARGUMENTS",
     "QUALITY_BY_POLICY",
+    "REAUTHORISE_HINT",
     "STAGING_TEMPLATE",
     "TOKEN_FILENAME",
     "VendoredAdapter",
@@ -427,6 +470,7 @@ __all__ = [
     "download_events",
     "is_authentication_failure",
     "landed_file",
+    "login_mode",
     "raise_if_session_dead",
     "tool_settings",
 ]

@@ -145,3 +145,10 @@ class Token:
     access_token: str | None = None
     refresh_token: str | None = None
     expiry_time: float = 0.0
+    # Cratekit patch (R-196): whether this token came from a PKCE login.
+    #
+    # Upstream persists four keys and drops this one, so a PKCE token reloads as
+    # a device-flow token and refreshes against the wrong client, which is the
+    # client the provider serves lossy audio to. A field the write never stores
+    # is a field the read cannot see.
+    is_pkce: bool = False
