@@ -447,24 +447,74 @@ def test_renaming_an_unknown_label_refuses(cfg):
     assert excinfo.value.cause.reason == "label-unknown"
 
 
-def test_harvest_of_an_unreadable_playlist_refuses_and_offers_nothing(cfg):
+class HarvestCtx:
+    """A context for the two branches an UNBOUND build must refuse on.
+
+    ``envelope`` raises, which is what the test it replaces used, and it is kept
+    for exactly the two cases where the property still holds: a build with no
+    catalogue adapter never reaches an emit, so a call that emitted here has
+    resolved something it could not have. The branches that DO emit are driven
+    through the real dispatcher in ``tests/test_label_workers.py`` instead,
+    because a context whose envelope raises cannot describe a verb that succeeds.
+    """
+
+    def __init__(self, playlist: str = "https://example.invalid/playlist") -> None:
+        self.args = type("Args", (), {"playlist": playlist})()
+        self.entry = type(
+            "E", (), {"name": "label.harvest", "handler_key": "label.harvest"}
+        )()
+        self.run = type("R", (), {"run_id": "run-h"})()
+
+    def envelope(self, **kwargs):
+        raise AssertionError(
+            "a build with no catalogue adapter emitted a review set, so it "
+            "harvested a playlist through a seam nothing fills"
+        )
+
+
+def test_harvest_on_a_build_with_no_adapter_refuses_that_nothing_is_bound(cfg):
+    """R14, and the false statement this unit removes.
+
+    The old refusal told a person their playlist could not be listed, on every
+    call, having contacted nothing at all. That is a refusal whose stated cause
+    is false, and it sends somebody to check a playlist that is fine. The
+    message assertion is the whole point of the unit rather than a nicety: the
+    slug and the sentence have to agree about which of the two failed.
+    """
+    from cratekit.core import secrets
     from cratekit.core.cause import CratekitError
     from cratekit.label import cli as label_cli
 
-    class Args:
-        playlist = "https://example.invalid/playlist"
-
-    class Ctx:
-        args = Args()
-        entry = type("E", (), {"name": "label.harvest", "handler_key": "label.harvest"})()
-        run = type("R", (), {"run_id": "run-h"})()
-
-        def envelope(self, **kwargs):
-            raise AssertionError("harvest must refuse before it emits")
+    secrets.set_json(secrets.Credential.PROVIDER_SESSION, {"token": "recorded"})
 
     with pytest.raises(CratekitError) as excinfo:
-        label_cli.harvest_playlist(Ctx())
-    assert excinfo.value.cause.reason == "label-playlist-unreadable"
+        label_cli.harvest_playlist(HarvestCtx())
+    cause = excinfo.value.cause
+    assert cause.reason == "label-catalogue-unbound"
+    assert cause.reason != "label-playlist-unreadable"
+    assert "adapter" in cause.message
+    for blamed in ("could not be listed", "could not be read", "unreachable"):
+        assert blamed not in cause.message, cause.message
+    # The half the replaced test protected, kept unweakened: a refusal offers
+    # nothing, so nobody is left with review items over work that never ran.
+    with review.open_store(cfg) as queue:
+        assert list(review.list_items(queue, queue=Queue.LABEL_RELEASE)) == []
+
+
+def test_harvest_with_no_provider_session_refuses_the_credential_instead(cfg):
+    """The other refusal a shipped build gives, and it is a different act to fix.
+
+    A missing credential is the person's to undo and doctor already says how; a
+    missing adapter is this build's own limitation and authenticating again
+    would not move it. Harvest reaches both through one seam, so the pair is
+    asserted here rather than only at ``catalogue.resolve``.
+    """
+    from cratekit.core.cause import CratekitError
+    from cratekit.label import cli as label_cli
+
+    with pytest.raises(CratekitError) as excinfo:
+        label_cli.harvest_playlist(HarvestCtx())
+    assert excinfo.value.cause.reason == "credential-missing"
     with review.open_store(cfg) as queue:
         assert list(review.list_items(queue, queue=Queue.LABEL_RELEASE)) == []
 

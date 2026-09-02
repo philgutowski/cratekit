@@ -93,6 +93,30 @@ class FakePagedArtist:
         return []
 
 
+class FakeTrack:
+    """One playlist track, with or without the copyright string harvest reads.
+
+    ``harvest.labels_from_copyright`` reads ``copyright`` and falls back to
+    ``label``, so a track carrying NEITHER is the shape that yields no candidate
+    name at all. That track is not a dropped name, because no name was ever
+    extracted to drop, and keeping it constructible here is what lets a suite
+    tell "the catalogue said no" apart from "there was nothing to ask about".
+    """
+
+    def __init__(
+        self,
+        track_id: str,
+        *,
+        copyright: str = "",
+        label: str | None = None,
+        title: str = "",
+    ) -> None:
+        self.id = track_id
+        self.copyright = copyright
+        self.label = label
+        self.title = title or f"Track {track_id}"
+
+
 class FakePagedPlaylist:
     """A provider playlist that pages its tracks the way the real client does."""
 
@@ -104,6 +128,23 @@ class FakePagedPlaylist:
     def tracks(self, limit: int | None = None, offset: int = 0) -> list[Any]:
         size = self.page_size if limit is None else limit
         return self._tracks[offset : offset + size]
+
+
+class UnlistablePlaylist:
+    """A playlist object the pagination wrapper cannot list at all.
+
+    It exposes no ``tracks`` method, so ``listing._paged_caller`` raises
+    ``ListingNotPaginated`` at the moment it binds the method, BEFORE the retry
+    ladder is entered. That matters for the suite as much as for the product: a
+    playlist whose ``tracks`` merely refused pagination arguments would be
+    retried five times with a real backoff, and a test driving that shape would
+    sleep thirty one seconds to prove one conversion.
+
+    A resolvable playlist that cannot then be listed is the second half of the
+    unreadable surface, and it is a different failure from a playlist the
+    catalogue could not resolve at all. Both become the same refusal, and having
+    both here is how that claim is proven rather than assumed.
+    """
 
 
 class FakeCatalogue:
@@ -242,7 +283,9 @@ __all__ = [
     "FakePagedArtist",
     "FakePagedPlaylist",
     "FakeRelease",
+    "FakeTrack",
     "StrictCatalogue",
+    "UnlistablePlaylist",
     "UnreadableCatalogue",
     "catalogue_factory",
 ]

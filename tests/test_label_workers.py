@@ -1,4 +1,9 @@
-"""U4 and U5: the two label verbs queue real items and then run them.
+"""U4, U5 and U6: the label verbs queue real items, run them, and harvest.
+
+Harvest is the third verb on the same seam and it queues nothing at all, which
+is why it arrives in this file rather than in a queueing suite of its own: it
+runs in process and its whole behaviour depends on the catalogue substitution
+the two queued verbs already needed. Section 9 holds it.
 
 WHAT THIS FILE GUARDS THAT NO OTHER SUITE CAN. ``cratekit.core.jobs.drive``
 transitions a job whose item count is zero straight to SUCCEEDED, because
@@ -43,7 +48,10 @@ from tests.cli_drive import drive
 from tests.label_fakes import (
     FakeCatalogue,
     FakePagedArtist,
+    FakePagedPlaylist,
     FakeRelease,
+    FakeTrack,
+    UnlistablePlaylist,
     UnreadableCatalogue,
     catalogue_factory,
 )
@@ -688,3 +696,245 @@ def test_the_worker_offers_into_the_library_its_job_was_queued_for(
         "the worker opened the review store against the CURRENT configuration, "
         "so the offers landed in a library this job was never queued for"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 9. Harvest, the verb that can now succeed
+#
+# THE DEFECT THESE REPLACE. ``harvest_playlist`` raised
+# ``label-playlist-unreadable`` on every call and had never listed a playlist,
+# so a person was told their playlist could not be read at a moment when
+# nothing had been contacted. A refusal whose stated cause is false is worse
+# than an honest one, because it sends somebody to check a playlist that is
+# fine.
+#
+# HARVEST QUEUES NOTHING, so nothing below reads the job store. It runs in
+# process, it writes into the review queue, and the queue is the only durable
+# record it leaves; every assertion here therefore reads either the emitted
+# envelope or the review store, and never an exit code alone.
+# ═══════════════════════════════════════════════════════════════════════════
+
+PLAYLIST = "https://example.invalid/playlist/harvest"
+
+#: One imprint the fake catalogue confirms and one it does not. The unconfirmed
+#: name is what makes ``unresolved`` able to fail: a build that reported the
+#: offered count twice would agree with a fixture where everything is confirmed.
+CONFIRMED = "Anjunadeep"
+UNCONFIRMED = "Mystery Distro"
+
+
+def playlist_of(*tracks: FakeTrack) -> FakeCatalogue:
+    """A catalogue holding exactly one readable playlist, at ``PLAYLIST``."""
+    return FakeCatalogue(
+        playlists={PLAYLIST: FakePagedPlaylist(list(tracks))},
+        known_labels={CONFIRMED},
+    )
+
+
+def harvested(cfg: config.Config) -> list[str]:
+    """The label names sitting in the review queue under ``cfg``, in order.
+
+    Read back from the store rather than taken from the envelope, for the reason
+    section 1 gives about items: the envelope is what the verb SAID, and the
+    queue is what a person will actually find waiting for them.
+    """
+    with review.open_store(cfg) as store:
+        page = review.list_items(store, queue=str(review.Queue.LABEL_RELEASE))
+    return [str(item.payload.get("name")) for item in page.items]
+
+
+def run_harvest(reference: str = PLAYLIST) -> tuple[int, dict]:
+    return drive(["label", "harvest", reference])
+
+
+def test_harvest_of_a_readable_playlist_offers_one_item_per_verified_label(
+    installed, monkeypatch
+):
+    """The success branch, which no build has ever reached before this unit.
+
+    Both halves are asserted. The envelope names the queue a consumer should go
+    and read, and the queue itself holds the offer, because a verb that reported
+    a review set and wrote nothing would satisfy either assertion on its own.
+    """
+    bind(monkeypatch, playlist_of(FakeTrack("t1", copyright="2026 Anjunadeep")))
+
+    code, envelope = run_harvest()
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["schema"] == "review_set/1"
+    assert envelope["data"]["queue"] == str(review.Queue.LABEL_RELEASE)
+    assert [item["name"] for item in envelope["data"]["items"]] == [CONFIRMED]
+    assert harvested(installed) == [CONFIRMED]
+
+
+def test_harvest_payload_is_exactly_the_three_declared_review_set_keys(
+    installed, monkeypatch
+):
+    """KTD7's rule on the other surface: no per verb detail beside the contract.
+
+    ``cli.output`` closes ``review_set/1`` with ``additionalProperties: false``
+    and ``tests.cli_drive.drive`` validates every envelope, so an undeclared key
+    already fails. U51 shipped one anyway on ``job_state/1``, which is why the
+    positive half is spelled out rather than left to the validator.
+    """
+    del installed
+    bind(monkeypatch, playlist_of(FakeTrack("t1", copyright="2026 Anjunadeep")))
+
+    code, envelope = run_harvest()
+
+    assert code == int(ExitCode.OK), envelope
+    assert set(envelope["data"]) == {"queue", "items", "unresolved"}
+
+
+def test_a_name_the_catalogue_will_not_confirm_is_counted_and_never_offered(
+    installed, monkeypatch
+):
+    """A copyright string is a heuristic, so an unconfirmed name is not a label."""
+    bind(
+        monkeypatch,
+        playlist_of(
+            FakeTrack("t1", copyright="2026 Anjunadeep"),
+            FakeTrack("t2", copyright="2026 Mystery Distro"),
+        ),
+    )
+
+    code, envelope = run_harvest()
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["unresolved"] == 1
+    assert harvested(installed) == [CONFIRMED]
+    assert UNCONFIRMED not in harvested(installed)
+
+
+def test_a_track_with_no_copyright_string_is_counted_rather_than_dropped_silently(
+    installed, monkeypatch
+):
+    """The track that yields no NAME at all, which is not the same as a drop.
+
+    ``harvest.from_tracks`` records a drop per name the catalogue refused, and a
+    track carrying neither a copyright nor a label credit produces no name for it
+    to refuse. Counting only the drops would report a clean zero over a playlist
+    whose tracks harvest could not read a thing from, which is the shape of every
+    silent-empty defect this branch exists to close.
+    """
+    bind(
+        monkeypatch,
+        playlist_of(
+            FakeTrack("t1", copyright="2026 Anjunadeep"),
+            FakeTrack("t2"),
+        ),
+    )
+
+    code, envelope = run_harvest()
+
+    assert code == int(ExitCode.OK), envelope
+    assert harvested(installed) == [CONFIRMED]
+    assert envelope["data"]["unresolved"] == 1, (
+        "the track carrying no copyright string was dropped silently, so a "
+        "playlist harvest can report nothing wrong having read nothing at all"
+    )
+
+
+def test_an_empty_playlist_offers_nothing_and_reports_zero_rather_than_refusing(
+    installed, monkeypatch
+):
+    """The adversarial half of the unreadable refusal, and the reason it is here.
+
+    A literal reading of "an unreadable playlist must refuse" turns an EMPTY one
+    into an error too, and the two are different facts about the world: one
+    playlist could not be reached and the other genuinely has nothing in it. A
+    build that collapsed them would pass every refusal test above and turn this
+    one red, which is exactly what it is for.
+    """
+    bind(monkeypatch, playlist_of())
+
+    code, envelope = run_harvest()
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["items"] == []
+    assert envelope["data"]["unresolved"] == 0
+    # NO_OP rather than OK, because "harvested nothing" and "harvested four
+    # labels" are both successes and the difference belongs where it can be read.
+    assert envelope["outcome"] == "no_op"
+    assert harvested(installed) == []
+
+
+def test_a_playlist_the_catalogue_cannot_resolve_refuses_that_it_was_unreadable(
+    installed, monkeypatch
+):
+    """R13: the slug is earned, because a BOUND provider was asked and failed.
+
+    ``UnreadableCatalogue`` is credentialled and bound and cannot answer, which
+    is the only condition this cause may be raised for. The refusal carries
+    ``UPSTREAM_UNAVAILABLE``, so a person is sent to the provider rather than to
+    their own installation.
+    """
+    catalogue_fake = bind(monkeypatch, UnreadableCatalogue())
+
+    code, refused = run_harvest()
+
+    assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), refused
+    assert refused["cause"]["reason"] == "label-playlist-unreadable"
+    assert catalogue_fake.playlists_asked_for == [PLAYLIST]
+    # The provider's OWN exception type, carried through. The refusal this unit
+    # replaced raised the same slug and the same code having asked nothing at
+    # all, so the detail is what tells the two builds apart.
+    assert refused["cause"]["detail"]["kind"] == "RuntimeError"
+    assert harvested(installed) == []
+
+
+def test_a_playlist_that_resolves_and_cannot_be_listed_refuses_the_same_way(
+    installed, monkeypatch
+):
+    """The second unreadable shape, which reaches the boundary as another type.
+
+    ``listing.ListingNotPaginated`` is a plain ``RuntimeError`` defined in this
+    codebase, and the provider's own exception re-raised by
+    ``listing.fetch_with_retry`` is whatever the installed client version
+    raises. A translation that only knew one of the two would let the other
+    escape as an unclassified crash, so both are driven.
+    """
+    bind(
+        monkeypatch,
+        FakeCatalogue(playlists={PLAYLIST: UnlistablePlaylist()}),
+    )
+
+    code, refused = run_harvest()
+
+    assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), refused
+    assert refused["cause"]["reason"] == "label-playlist-unreadable"
+    assert refused["cause"]["detail"]["kind"] == "ListingNotPaginated"
+    assert harvested(installed) == []
+
+
+def test_a_cratekit_refusal_from_below_is_not_flattened_into_an_unreadable_playlist(
+    installed, monkeypatch
+):
+    """A failure that is not the provider's must not be reported as the provider's.
+
+    The review queue is a local file, and a queue written at another schema
+    version refuses ``review-schema-mismatch``. Catching every exception at this
+    boundary and calling it an unreadable playlist would blame a reachable
+    provider for a file on this machine, and send a person to check a playlist
+    that is fine, which is the exact defect this unit removes at the top.
+    """
+    del installed
+    from cratekit.core.cause import refuse
+    from cratekit.label import harvest as label_harvest
+
+    bind(monkeypatch, playlist_of(FakeTrack("t1", copyright="2026 Anjunadeep")))
+
+    def refusing_tracks(playlist, **kwargs):
+        del playlist, kwargs
+        raise refuse(
+            "review-schema-mismatch",
+            "the review queue was written by another build",
+            origin=("tests",),
+        )
+
+    monkeypatch.setattr(label_harvest, "playlist_tracks", refusing_tracks)
+
+    code, refused = run_harvest()
+
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "review-schema-mismatch"

@@ -11,10 +11,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from cratekit.cli.output import Envelope
-from cratekit.core import config, jobs
-from cratekit.core.cause import Cause, CratekitError, Remediation, refuse
+from cratekit.core import config, jobs, review
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.label import catalogue, sweep
+from cratekit.label import catalogue, harvest, sweep
 from cratekit.label import registry as labels
 from cratekit.sync import artifacts, run, watermarks
 
@@ -446,14 +446,132 @@ def import_label(ctx) -> Envelope:
     )
 
 
+def _playlist_tracks_or_refuse(found: catalogue.Catalogue, reference: str) -> list:
+    """Resolve and list one playlist, translating a provider failure at the boundary.
+
+    THIS IS WHERE ``label-playlist-unreadable`` IS EARNED, and it is the only
+    place it may be raised from. The cause means one thing: a BOUND provider was
+    asked for this playlist and could not answer. Everything upstream of the
+    ask has already refused with its own cause by the time this runs, which is
+    what makes the sentence below true rather than a guess.
+
+    TWO EXCEPTION SHAPES ARRIVE HERE AND NEITHER IS CRATEKIT'S TO PREDICT.
+    ``listing.fetch_with_retry`` re-raises the PROVIDER's own exception once its
+    retry ladder is spent, and its type is whatever the installed client version
+    raises; ``listing.ListingNotPaginated`` is a plain ``RuntimeError`` this
+    codebase defines for a client that dropped its pagination arguments. A
+    translation narrowed to the type this layer happens to know would let the
+    other escape as an unclassified crash, so the catch is broad and the
+    breadth is bounded by the re-raise directly above it.
+
+    A ``CratekitError`` PASSES THROUGH UNCHANGED, which is the bound. A refusal
+    from further down already names what went wrong, and the failures reachable
+    here are not all the provider's: the review queue is a local file, and one
+    written at another schema version refuses ``review-schema-mismatch``.
+    Flattening that into an unreadable playlist would blame a reachable provider
+    for something on this machine, which is the defect this whole function
+    replaces, rebuilt one layer lower.
+    """
+    try:
+        playlist = found.playlist_for(reference)
+        return harvest.playlist_tracks(playlist)
+    except CratekitError:
+        raise
+    except Exception as exc:
+        raise refuse(
+            "label-playlist-unreadable",
+            f"the playlist {reference!r} could not be listed by the provider "
+            f"({exc}); harvest needs a reachable provider playlist and will not "
+            f"invent labels",
+            steps=("pass a playlist this account can read, then retry",),
+            origin=("label.cli",),
+            detail={"playlist": reference, "kind": type(exc).__name__},
+        ) from exc
+
+
+def _offered(item: review.Item) -> dict:
+    """One offered label projected for the envelope, not the whole record.
+
+    The same shape ``cratekit.cli.review`` lists a queue in, with the label name
+    added because that is the thing a person harvested. ``crate review show`` is
+    where the whole record lives, here as everywhere.
+    """
+    return {
+        "id": item.item_id,
+        "queue": item.queue,
+        "kind": item.kind,
+        "name": str(item.payload.get("name") or ""),
+    }
+
+
 def harvest_playlist(ctx) -> Envelope:
-    raise refuse(
-        "label-playlist-unreadable",
-        f"the playlist {ctx.args.playlist!r} could not be listed; harvest "
-        f"needs a reachable provider playlist and will not invent labels",
-        steps=("pass a playlist this account can read, then retry",),
-        origin=("label.cli",),
-        detail={"playlist": ctx.args.playlist},
+    """Offer the record labels behind a playlist's tracks. Imports nothing.
+
+    IT USED TO REFUSE UNCONDITIONALLY, and the refusal said the playlist could
+    not be listed. Nothing had been contacted, so the sentence was false on
+    every call, and it sent a person to check a playlist that was fine. A
+    refusal whose stated cause is false is worse than an honest one, and the
+    honest ones are what this verb now gives: the seam says whether the
+    capability is built and whether a credential is recorded, and only a bound
+    provider that failed to answer earns ``label-playlist-unreadable``.
+
+    THE CATALOGUE IS LOOKED UP ON THE MODULE AT CALL TIME rather than bound into
+    this scope by the import at the top of the file, on the contract
+    ``label/catalogue.py`` states: that is what lets a test substitute the seam,
+    and this verb runs in process so a substitution actually reaches it. In a
+    shipped build ``resolve`` raises ``credential-missing`` or
+    ``label-catalogue-unbound``, and both of those ARE this unit's delivery as
+    much as the success branch is.
+
+    NO ``--job`` BRANCH AND NO GATE. The registry declares this verb neither
+    ``long_running`` nor gated, and it is right not to: harvest queues nothing,
+    writes no audio and touches no library file. What it produces is review
+    queue rows, which a person decides on later through their own verb.
+
+    ``unresolved`` IS WHAT HARVEST COULD NOT TURN INTO A LABEL, which is a
+    different question from the one ``crate review list`` answers with the same
+    key, and the difference is stated rather than left to a reader. There it is
+    the queue's open backlog; here it is this playlist's own failure to resolve,
+    because a person asking what a harvest achieved is asking about the playlist
+    they named and not about a queue that may hold months of other work. It sums
+    TWO populations, and the second is the one a literal reading loses: the
+    names a bound catalogue refused to confirm, and the tracks that carried no
+    copyright string for a name to be read off at all. ``from_tracks`` cannot
+    see the second, since it only records a drop for a name it was given, so a
+    count taken from ``dropped`` alone would report a clean zero over a playlist
+    nothing could be read from.
+    """
+    cfg = _load()
+    # RESOLVED BEFORE THE PLAYLIST IS TOUCHED, which is what keeps R13 true. An
+    # unbound build must not be able to reach the listing at all, or its refusal
+    # would be about a provider it never had.
+    found = catalogue.resolve(cfg)
+    reference = str(ctx.args.playlist)
+    tracks = _playlist_tracks_or_refuse(found, reference)
+    # ONE EXTRACTOR, NAMED ONCE AND PASSED IN. ``from_tracks`` defaults to this
+    # same function, and taking the default while counting the nameless tracks
+    # with a second reference to it is how the two silently come to disagree
+    # about what a candidate name is.
+    extract = harvest.labels_from_copyright
+    with review.open_store(cfg) as store:
+        report = harvest.from_tracks(
+            tracks,
+            store=store,
+            verify=found.check_label,
+            extract=extract,
+        )
+    unresolved = len(report.dropped) + sum(1 for track in tracks if not extract(track))
+    return ctx.envelope(
+        data={
+            "queue": str(review.Queue.LABEL_RELEASE),
+            "items": [_offered(item) for item in report.offered],
+            "unresolved": unresolved,
+        },
+        # AN EMPTY PLAYLIST IS A SUCCESS, and NO_OP is how it says so without
+        # pretending it found something. A build that refused here would make a
+        # playlist with nothing in it indistinguishable from one that could not
+        # be read, which is the same collapse in the other direction.
+        outcome=Outcome.OK if report.offered else Outcome.NO_OP,
     )
 
 
