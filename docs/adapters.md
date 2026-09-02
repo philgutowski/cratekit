@@ -166,6 +166,12 @@ Step 3 is not tidying. R4's promise is that no provider token sits on disk
 between invocations, and this hop is the one moment that is briefly false.
 Nothing enforces the erase today; R-212 records that gap.
 
+A device-flow token already sitting in that location does not block step 1. The
+patched login reuses a stored session only when it is already PKCE, so the token
+being replaced falls through to the mint rather than being reported as a
+successful login. Without that, this procedure would be a loop on exactly the
+machines that need it.
+
 **What is verified about this procedure and what is not.** Every command above
 was checked to exist and resolve: the vendored app exposes `login`, `crate login`
 accepts `provider-session` with `--from-file`, and a token file's JSON text
