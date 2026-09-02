@@ -1,0 +1,380 @@
+name = "u47-author"
+pass_kind = "full"
+
+# U47's own diff, plus a fixed sample of the guards it sits beside. Scoped to
+# the round's new code per METHOD, because an eighty row sweep of the whole unit
+# is where the budget goes and its yield is concentrated in what changed.
+
+# ---------------------------------------------------------------------------
+# R-197: the four arguments the downloader was never given, and their states
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "R197_drop_event_abort"
+description = "Drop event_abort from the downloader construction, the argument whose absence killed item() on its first line"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''            event_abort=event_abort,
+'''
+new = ""
+
+[[rows]]
+id = "R197_drop_event_run"
+description = "Drop event_run from the downloader construction"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''            event_run=event_run,
+'''
+new = ""
+
+[[rows]]
+id = "R197_drop_progress"
+description = "Drop progress from the downloader construction, half of the pair whose absence swallowed the failure"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''            progress=progress,
+'''
+new = ""
+
+[[rows]]
+id = "R197_drop_progress_overall"
+description = "Drop progress_overall from the downloader construction"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''            progress_overall=progress_overall,
+'''
+new = ""
+
+[[rows]]
+id = "R197_event_run_left_clear"
+description = "Pass event_run unset, the realistic nearby value: every segment worker then waits on something nothing wakes, so the failure is a hang rather than an error"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    event_run = Event()
+    event_run.set()
+    return Event(), event_run'''
+new = '''    event_run = Event()
+    return Event(), event_run'''
+
+[[rows]]
+id = "R197_event_abort_preset"
+description = "Pass event_abort already set, which makes item() return (False, '') before it looks at anything"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    return Event(), event_run'''
+new = '''    aborted = Event()
+    aborted.set()
+    return aborted, event_run'''
+
+[[rows]]
+id = "R197_progress_enabled"
+description = "Render the progress bars, so tool chatter reaches a stream a caller may be parsing (R32)"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    return Progress(disable=True), Progress(disable=True)'''
+new = '''    return Progress(disable=False), Progress(disable=False)'''
+
+[[rows]]
+id = "R197_argument_set_shrinks"
+description = "Remove event_abort from the declared argument set, so the set no longer describes what fetch passes"
+file = "src/cratekit/acquire/vendored.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''        "event_abort",
+'''
+new = ""
+
+# ---------------------------------------------------------------------------
+# R-195: the ffmpeg path the tool is never told
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "R195_drop_ffmpeg_key"
+description = "Drop path_binary_ffmpeg from the settings mapping, which is exactly the state that landed a 320k AAC file with doctor reporting green"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''        "path_binary_ffmpeg": ffmpeg,
+'''
+new = ""
+
+[[rows]]
+id = "R195_push_empty_instead"
+description = "Push the empty string rather than the resolved path, the tool's factory default and the value it reads as do-not-extract-FLAC"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''        "path_binary_ffmpeg": ffmpeg,'''
+new = '''        "path_binary_ffmpeg": "",'''
+
+[[rows]]
+id = "R195_swallow_missing_ffmpeg"
+description = "Treat an unresolvable ffmpeg as an empty path instead of refusing, so an absent encoder arrives as a successful lossy download"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''        raise AdapterBroken(
+            f"the downloader needs ffmpeg to extract lossless audio and it could "
+            f"not be resolved ({exc}); without it this run would land lossy files "
+            f"and report success",
+            remedy=Remedy.INSTALL_ADAPTER,
+        ) from exc'''
+new = '''        ffmpeg = ""'''
+
+[[rows]]
+id = "R195_wrong_remedy"
+description = "Reword the absent-encoder remedy to SWITCH_ADAPTER, which tells the user to change adapters when the answer is to install a binary"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''            remedy=Remedy.INSTALL_ADAPTER,
+        ) from exc'''
+new = '''            remedy=Remedy.SWITCH_ADAPTER,
+        ) from exc'''
+
+[[rows]]
+id = "R195_verify_skips_the_mapping"
+description = "Verify a hand-named pair rather than everything pushed, which is the source system's guard that watched two keys while the tool had more"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    applied = {key: getattr(target, key, _ABSENT) for key in expected}'''
+new = '''    applied = {key: getattr(target, key, _ABSENT) for key in ("quality_audio",)}'''
+
+# ---------------------------------------------------------------------------
+# R-196: PKCE, and the flag the persisted token never carried
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "R196_login_without_pkce"
+description = "Authenticate with PKCE off, which is the call that produced lossy audio for every download since July"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''            authorised = tidal.login_token(do_pkce=True)'''
+new = '''            authorised = tidal.login_token()'''
+
+[[rows]]
+id = "R196_accept_device_flow_session"
+description = "Stop refusing a stored device-flow session, so the product silently downloads lossy audio with it"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    if not bool(getattr(stored, "is_pkce", False)):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R196_absent_marker_reads_as_pkce"
+description = "Default a missing is_pkce to True, so a legacy device-flow token is read as a PKCE one"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    if not bool(getattr(stored, "is_pkce", False)):'''
+new = '''    if not bool(getattr(stored, "is_pkce", True)):'''
+
+[[rows]]
+id = "R196_no_stored_session_proceeds"
+description = "Proceed when there is no stored session at all"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    if not had_stored_session:
+        return "there is no stored provider session to authenticate with"'''
+new = ""
+
+[[rows]]
+id = "R196_token_drops_is_pkce"
+description = "Stop persisting is_pkce, the exact upstream defect: a field the write never stores is a field the read cannot see"
+file = "src/cratekit/_vendor/tidal_dl_ng/config.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''        self.data.is_pkce = bool(getattr(self.session, "is_pkce", False))
+'''
+new = ""
+
+[[rows]]
+id = "R196_persist_reads_the_wrong_symbol"
+description = "Persist this object's is_pkce rather than the session's; login() sets the former False before the PKCE handshake runs, so every fresh PKCE session records as device flow"
+file = "src/cratekit/_vendor/tidal_dl_ng/config.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''        self.data.is_pkce = bool(getattr(self.session, "is_pkce", False))'''
+new = '''        self.data.is_pkce = bool(getattr(self, "is_pkce", False))'''
+
+[[rows]]
+id = "R196_token_model_loses_the_field"
+description = "Remove is_pkce from the Token dataclass"
+file = "src/cratekit/_vendor/tidal_dl_ng/model/cfg.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    is_pkce: bool = False
+'''
+new = ""
+
+[[rows]]
+id = "R196_device_flow_returns"
+description = "Put the device-linking login back, the client the provider serves lossy audio to"
+file = "src/cratekit/_vendor/tidal_dl_ng/config.py"
+surface = "user"
+tests = ["tests/test_vendor_import.py"]
+old = '''            self.session.login_pkce(fn_print)'''
+new = '''            self.session.login_oauth_simple(fn_print)'''
+
+# ---------------------------------------------------------------------------
+# The post-landing codec check
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "CODEC_no_refusal"
+description = "Accept whatever landed, which is the state the product shipped in from July: the rule enforced at the setting and never at the file"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    if not lossless:
+        raise LosslessRefused(
+            f"the provider was asked for lossless audio and the file that landed "
+            f"for {key} is {name}; it is at {path}"
+        )'''
+new = ""
+
+[[rows]]
+id = "CODEC_unreadable_accepted"
+description = "Accept a landing the probe could not read, turning absence of evidence into evidence of losslessness"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    if lossless is None:
+        raise LosslessRefused(
+            f"the file that landed for {key} could not be read as audio ({name}), "
+            f"so this run cannot confirm it is lossless; it is at {path}"
+        )'''
+new = ""
+
+[[rows]]
+id = "CODEC_none_reads_as_unreadable"
+description = "Treat a None codec as unreadable rather than as container-decided, which refuses every genuine FLAC because mutagen exposes info.codec on MP4 alone"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    known = LOSSLESS_BY_CONTAINER.get(container)
+    if known is None:
+        return container, None
+    return container, known'''
+new = '''    return container, None'''
+
+[[rows]]
+id = "CODEC_alac_reads_as_lossy"
+description = "Drop alac from the lossless MP4 codecs, so a genuine ALAC landing is refused"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''MP4_LOSSLESS_CODECS: frozenset[str] = frozenset({"alac"})'''
+new = '''MP4_LOSSLESS_CODECS: frozenset[str] = frozenset()'''
+
+[[rows]]
+id = "CODEC_mp3_reads_as_lossless"
+description = "Flip MP3 to lossless in the container table, a realistic nearby value rather than a deletion"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    "MP3": False,'''
+new = '''    "MP3": True,'''
+
+[[rows]]
+id = "CODEC_suffix_instead_of_container"
+description = "Classify by file suffix rather than by mutagen's container class, which gives the wrong answer for the .m4a this defect produced"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    container = type(handle).__name__'''
+new = '''    container = str(path.suffix).lstrip(".").upper()'''
+
+[[rows]]
+id = "CODEC_policy_ignored"
+description = "Run the check under every policy, so a permitted lossy acquisition is refused too"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    if policy is not LosslessPolicy.STRICT:
+        return path'''
+new = ""
+
+[[rows]]
+id = "CODEC_refusal_drops_the_codec_name"
+description = "Reword the refusal so it no longer names the codec that actually arrived, leaving the reader with a refusal and no fact"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''            f"the provider was asked for lossless audio and the file that landed "
+            f"for {key} is {name}; it is at {path}"'''
+new = '''            f"the file that landed for {key} was refused by the lossless policy"'''
+
+[[rows]]
+id = "CODEC_refused_track_sinks_the_run"
+description = "Escalate a lossy landing to an adapter failure, the shape that raises an uncaught ValueError when a delisted track landed earlier in the same batch"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''        return TrackResult(
+            key=request.key,
+            outcome=TrackOutcome.REFUSED_BY_POLICY,
+            detail=str(exc),
+            remedy=exc.remedy,
+        )'''
+new = '''        raise AdapterBroken(str(exc)) from exc'''
+
+# ---------------------------------------------------------------------------
+# A fixed sample of the guards this unit sits beside, per METHOD
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "SAMPLE_skip_reported_as_a_file"
+description = "Existing guard: trust the tool's (succeeded, path) pair, which made a silent skip and a real download the same observation"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    if not ok:
+        raise RuntimeError(f"the downloader reported no file for {key}")'''
+new = ""
+
+[[rows]]
+id = "SAMPLE_permanence_asked_second"
+description = "Existing guard: ask the authentication heuristic before the permanence question, so a track whose stream token is missing aborts the whole run"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''    if classify_unavailable(exc) is TrackOutcome.UNAVAILABLE_PERMANENT:
+        return
+    if is_authentication_failure(exc):'''
+new = '''    if is_authentication_failure(exc):'''
+
+[[rows]]
+id = "SAMPLE_quality_equality"
+description = "Existing guard: compare the quality string for equality rather than matching, so a new lossless tier upstream starts being refused"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_vendor_import.py"]
+old = '''        return Offer(lossless="LOSSLESS" in quality.upper(), detail=quality)'''
+new = '''        return Offer(lossless=quality.upper() == "LOSSLESS", detail=quality)'''
+
+[[dropped]]
+id = "R197_drop_tidal_obj"
+description = "Drop tidal_obj from the downloader construction"
+reason = "ranked below the cap: it is the one argument the pre-existing code already passed, so the row measures the old behaviour rather than this round's change. The three original arguments are covered as a family by R197_argument_set_shrinks."
+
+[[dropped]]
+id = "CODEC_wave_and_aiff_flipped"
+description = "Flip WAVE and AIFF to lossy in the container table"
+reason = "ranked below the cap: same guard family as CODEC_mp3_reads_as_lossless, which is measured, and neither container is reachable from this provider."
+
+[[dropped]]
+id = "R196_reauthorise_hint_reworded"
+description = "Reword REAUTHORISE_HINT so it no longer names the two steps"
+reason = "ranked below the cap: maintainer-facing string content, and the severity floor says such a row can never block."

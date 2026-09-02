@@ -429,6 +429,43 @@ def test_the_provider_tempo_never_reaches_the_metadata_writer():
     )
 
 
+def test_the_patch_record_names_as_many_patches_as_the_script_applies():
+    """The inventory and the procedure cannot drift apart silently.
+
+    ``vendor/README.md`` is where a re-vendor reads what has to survive the bump,
+    and nothing counted its rows against the patches the script actually applies.
+    A patch added to one and not the other stays green, which is the same shape as
+    a patch that silently becomes a no-op.
+    """
+    readme = (REPO_ROOT / "vendor" / "README.md").read_text(encoding="utf-8")
+    rows = re.findall(r"^\| (\d+) \| ", readme, flags=re.MULTILINE)
+    assert rows, "the vendor patch table changed shape; this guard reads its numbered rows"
+    assert [int(n) for n in rows] == list(range(1, len(rows) + 1)), (
+        "the patch table's row numbers are not a gapless sequence"
+    )
+
+    # Row COUNTS are deliberately not compared. One row legitimately covers
+    # several patch objects (the Atmos credential pair is two), so an equality
+    # here would be a number somebody maintains by hand, which is the drift this
+    # guard exists to catch rather than to create.
+    #
+    # What is compared is the set of vendored FILES the script patches. Every one
+    # of them has to be named in the table, so a patch aimed at a file the record
+    # has never mentioned cannot land undocumented. It does NOT catch a second
+    # patch to a file already listed; that is stated rather than implied.
+    script = (REPO_ROOT / "scripts" / "revendor_downloader.py").read_text(encoding="utf-8")
+    patched_files = set(re.findall(r'relative_path="([^"]+)"', script))
+    assert patched_files, "the revendor script's patch declarations changed shape"
+
+    table = readme[readme.index("### Patches") :]
+    undocumented = sorted(f for f in patched_files if f not in table)
+    assert not undocumented, (
+        f"scripts/revendor_downloader.py patches {undocumented} and vendor/README.md's "
+        f"patch table never names those files; a patch nobody recorded is one the "
+        f"next re-vendor drops silently"
+    )
+
+
 def _calls_in(function_name: str, module: str) -> set[str]:
     """Every method name a named function actually EVALUATES, from the syntax tree.
 

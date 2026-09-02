@@ -1280,6 +1280,35 @@ def test_only_a_stored_pkce_session_is_used(stored, had, refused):
     assert (answer is not None) is refused
 
 
+def test_the_adapter_authenticates_with_pkce_on():
+    """The argument itself, read from the source, because nothing else can see it.
+
+    ``authenticate`` returns early on an injected session and imports the wrapped
+    tool's classes inside itself, so no offline double reaches the ``login_token``
+    call and the keyword is invisible to every runtime test in this file. A
+    mutation table found exactly that: reverting ``do_pkce=True`` to the default
+    killed nothing. This is the guard for it.
+
+    ``do_pkce=False`` is the call that produced lossy audio for every download
+    since July, so the argument is the fix, not decoration.
+    """
+    tree = ast.parse((ACQUIRE_ROOT / "vendored.py").read_text(encoding="utf-8"))
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "login_token"
+    ]
+    assert calls, "the adapter no longer authenticates through login_token"
+    for call in calls:
+        pkce = {kw.arg: kw.value for kw in call.keywords}.get("do_pkce")
+        assert isinstance(pkce, ast.Constant) and pkce.value is True, (
+            "the adapter authenticates with PKCE off; the provider serves that "
+            "client lossy audio (R-196)"
+        )
+
+
 def test_a_device_flow_session_is_refused_with_a_remedy_that_has_a_procedure(
     settings, tmp_path, monkeypatch
 ):
@@ -1460,6 +1489,22 @@ def test_a_real_flac_is_accepted_even_though_mutagen_reports_no_codec(tmp_path):
     name, lossless = vendored.codec_of(flac)
     assert lossless is True, f"a real FLAC classified as {name!r}"
     assert vendored.landed_file(True, str(flac), "1234") == flac
+
+
+def test_the_classifier_reads_mutagens_container_and_not_the_file_extension(tmp_path):
+    """WAV is the case where the two disagree, so it is the case worth pinning.
+
+    Mutagen names the class ``WAVE`` and the file is called ``.wav``. Every other
+    container this product can land spells them the same, so a classifier keyed on
+    the suffix would look correct everywhere else and refuse a genuine WAV as
+    unreadable. A mutation table found this: swapping the container lookup for a
+    suffix lookup killed nothing until this test existed.
+    """
+    wav = synth_container(tmp_path, ".wav")
+    name, lossless = vendored.codec_of(wav)
+    assert name == "WAVE", f"classified by extension rather than by container ({name})"
+    assert lossless is True
+    assert vendored.landed_file(True, str(wav), "1234") == wav
 
 
 def test_a_lossy_landing_is_refused_and_the_refusal_names_the_codec(tmp_path):
