@@ -40,6 +40,7 @@ import io
 import json
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from enum import StrEnum
 from pathlib import Path
 
 import pytest
@@ -1453,3 +1454,70 @@ def test_a_queued_backup_reports_a_bound_worker(cfg):
         f"surface that tells a person whether their job can run says it cannot"
     )
     assert reported["worker_reason"] is None, reported
+
+
+def test_the_item_list_is_derived_from_the_portions_rather_than_written_out(
+    cfg, monkeypatch
+):
+    """P3: the set is derived at run time, or it is a list in disguise.
+
+    WHY THE ENUM IS REPLACED RATHER THAN THE PAIR ASSERTED. A test comparing
+    ``backup_items()`` against ``backup_facts.Portion`` passes for a hand written
+    ``("files", "database")`` too, because the two agree on every build that has
+    exactly the portions this one has. That is what makes the derivation look
+    untested when it is not: measured as a zero row on 2026-09-02, where replacing
+    the comprehension with the literal pair killed nothing across the whole suite.
+
+    So the enum is stood in for. A third portion is what a literal cannot follow,
+    and it is exactly the condition P3 exists for: the planner would build an entry
+    nothing claims, and the queue would run two thirds of a backup with everything
+    green.
+    """
+
+    class ThreePortions(StrEnum):
+        FILES = "files"
+        DATABASE = "database"
+        SETTINGS = "settings"
+
+    monkeypatch.setattr(backup_facts, "Portion", ThreePortions)
+    assert backup_cli.backup_items() == ("files", "database", "settings"), (
+        "the item list did not follow a portion added to the enum, so it is a "
+        "second declaration of the set rather than a reading of it"
+    )
+
+
+def test_the_handler_does_not_fail_an_item_over_the_age_read_back(cfg, rclone):
+    """R16 through the HANDLER, which is the caller the guard is for.
+
+    The work body's own guard is driven above. This drives the seam that uses it:
+    ``handle`` asks for the read back not to happen, and the proof is that a fact
+    file which cannot be read does not turn into a failed item. Measured as a zero
+    row on 2026-09-02 without this test, because nothing drove the handler against
+    an unreadable fact file at all.
+
+    A REHEARSAL, for the reason the work body's test gives at length: in a real run
+    the engine's own publish reads the same file first and fails there, so the two
+    readers cannot be told apart. A dry run publishes nothing, so this read would be
+    the only one.
+    """
+    backup_facts.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
+    backup_facts.path_for(cfg).mkdir()
+
+    job = jobs.Job(
+        job_id="J3",
+        handler_key="backup.run",
+        payload={backup_cli.DRY_RUN: True},
+        config_fingerprint="",
+        config_toml="",
+        library_id="",
+        state=jobs.JobState.RUNNING,
+        created=MOMENT.isoformat(),
+        updated=MOMENT.isoformat(),
+    )
+    item = jobs.Item(
+        job_id="J3", item_id="files", ordinal=0, state=jobs.ItemState.CLAIMED
+    )
+    assert backup_cli.handle(job, item, cfg) is None, (
+        "the handler read the age back, so an unreadable fact file fails an item "
+        "over a rehearsal that copied nothing and every resume repeats it"
+    )

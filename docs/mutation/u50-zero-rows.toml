@@ -1,0 +1,41 @@
+name = "u50-zero-rows"
+pass_kind = "light"
+
+# The three user facing zero rows from `u50-author`, re-measured after the two
+# guards they showed were missing. METHOD says a user facing zero is acceptable
+# only with a composite, and two of these three were a real gap rather than a
+# weak row, so the answer was to close them rather than to pair them.
+#
+# `B2` and `W8` are the same mutations as before, unchanged, so the two numbers
+# are comparable. `W4` is REPLACED, because the first spelling was inert rather
+# than uncovered: reading `payload["portion"]` first with a fallback to the item
+# cannot differ from reading the item, since no payload this build writes carries
+# that key. The mutation below ignores the item outright, which is the defect the
+# original row was reaching for.
+
+[[rows]]
+id = "B2_items_hardcoded_pair"
+description = "Name the two portions instead of deriving them, so a third portion is queued by nobody"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    return tuple(str(portion) for portion in backup_facts.Portion)'''
+new = '''    return ("files", "database")'''
+
+[[rows]]
+id = "W4b_item_ignored_entirely"
+description = "Back up the mirror whatever the item says, so every item of the job does the same half"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    named = str(item.item_id or "")'''
+new = '''    named = str(backup_facts.Portion.FILES)'''
+
+[[rows]]
+id = "W8_read_back_inside_the_item"
+description = "Read the age back under the driver, so an unreadable fact file fails an item over a rehearsal that copied nothing"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''        read_back=False,
+    )
+    return None'''
+new = '''    )
+    return None'''
