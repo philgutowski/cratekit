@@ -10431,6 +10431,17 @@ R-198 described: a queue with nothing behind it. They are `acquire.download`,
 `label.import`, `rebuild`, `route.resort`, `sync.all`, `sync.favorites`,
 `sync.labels`, `tag.folder` and `tag.retag`.
 
+**The population above is the one U46 measured and it is now three entries out of
+date, corrected here rather than rewritten.** U50 bound `backup.run` and U51
+bound `export.playlist` and `sync.favorites`, so FIFTEEN queued verbs have no
+worker as of 2026-09-02: the list above minus those three. The count in this
+entry's title is left at eighteen deliberately, because it names what was true
+when the entry was written and the closing condition below is what decides when
+the entry is done. Nothing in the repository derives from this prose;
+`tests/test_handlers.py` derives the population from `registry.ENTRIES` and fails
+the day a queued verb is in neither table, which is why this correction is a
+record rather than a repair.
+
 **The population is the registry, not the resume branches, and the two are
 genuinely different.** An `ast` walk finds seventeen `if ctx.args.job` branches in
 fifteen modules. `sync/cli.py` carries one branch serving three handler keys, and
@@ -11188,3 +11199,265 @@ script reading the exit code stops looking.
 place both verbs reach, or `master` grows the same three lines, with a test
 driving a partially failed job through each bound verb and asserting the exit
 code.
+
+---
+
+## R-226. No streaming provider adapter ships, so both outbound workers end at the seam
+
+**Found:** during U51, 2026-09-02, by binding the two handlers.
+
+`export.playlist` and `sync.favorites` now queue real items and a driver runs
+them. On any machine this build ships to, every one of those items ends at
+`modules/outbound/account.resolve`, which raises `credential-missing` when no
+provider session is stored and `outbound-account-unbound` when one is: no
+implementation of `modules/outbound/service.RemoteAccount` exists anywhere in
+`src`, verified by grep as a definition, two imports and four parameter
+annotations.
+
+**Measured cost.** Nothing is written to any account, and nothing is lost. What a
+person gets is a job that ends FAILED with a named cause instead of one that sits
+pending for ever, which is smaller than a working export and is the honest
+version of it. The queued envelope carries the warning before they confirm, so
+nobody is asked to approve a write this build cannot perform without being told.
+
+**The substitution the tests use does not reach a real run.** A test replaces
+`account.resolve` on the module and the workers pick it up because they resolve it
+at call time. The child `crate job resume` spawns is a fresh process and inherits
+nothing, so there is no supported way to bind an account outside an in process
+test until an adapter lands.
+
+**Why not fixed here.** Opening a live streaming account is a standing refusal for
+an unattended session, which is the same reason R-144 has stayed open since
+2026-08-17.
+
+**Closes when:** an adapter implements `RemoteAccount`, `account.resolve` returns
+it, and one real playlist and one real hearts sweep run through these two verbs
+against a live account. That is also R-144's closing condition, which this unit
+advances and does not claim.
+
+---
+
+## R-227. The library both outbound verbs read is an export the operator makes by hand
+
+**Found:** during U51, 2026-09-02, as the cost of KTD1.
+
+Neither verb can see the live rekordbox database: it is off limits outside the
+backup feature, and no collection reader against it has landed, which is the
+reason R-203 gives for `adopt.scan` being unbound too. So both verbs take
+`--export PATH` and read a rekordbox collection export through
+`modules/reports/export.read_export_file`.
+
+**Measured cost, and it is an operator cost rather than a data one.** The source
+system's favourites sweep reads the database and runs as one command. Here the
+operator opens rekordbox, exports the collection, and then types the verb, so the
+path to a sweep is one manual step longer than the thing it replaces. A sweep is
+also only as fresh as that export, and NOTHING WARNS WHEN IT IS STALE: an export
+taken last month resolves, queues, and writes, and the run reports success over a
+library that has moved.
+
+**No configured default export path is offered**, deliberately, for the reason
+`cli/reports.py` already gives about its own positional argument: a default makes
+a stale document the silent answer to every question, and a report that is
+confidently wrong is worse than one that refuses.
+
+**Closes when:** a collection reader against the live database lands, or the
+verbs learn to refuse an export older than some declared age.
+
+---
+
+## R-228. A pink row outside the named playlist is not swept
+
+**Found:** during U51, 2026-09-02.
+
+`modules/outbound/hearts.py` opens by describing its input as "pink local
+favourites", and in the source system pink is the operator's standing signal that
+a row should be hearted. `sync.favorites` cannot see pink. A rekordbox collection
+export's `CollectionEntry` carries `track_id`, `name`, `artist`, `location` and
+playlist membership, and no colour, so the verb sweeps membership of a named
+playlist instead, defaulting to `All Favorites`.
+
+**Measured cost.** A row the operator coloured pink by hand, and which is not in
+that playlist, is never hearted at the provider. The two populations overlap
+heavily in the live library because the forward pass files hearted tracks into
+that playlist, which is exactly why this is easy to miss: the sweep looks correct
+on every row that arrived through the forward pass and silently omits the ones
+the operator marked themselves.
+
+**Why not fixed here.** Carrying the colour would mean adding a field to
+`CollectionEntry` in `modules/reports/export.py`, which two report engines and a
+golden suite already read, and that is a change to a shared module rather than to
+this unit's files.
+
+**Also not driven here:** the local colour and My Tag write the verb's registry
+entry still declares. `heart_back` takes a `LocalColors` writer and this shell
+passes `None`, because colouring a row is a write to the live database and belongs
+behind the guarded write session. R-144 recorded that; it is still true.
+
+**Closes when:** `CollectionEntry` carries the track colour and the derivation
+offers pink rows as candidates, or the verb reads the live database inside a
+guarded session.
+
+---
+
+## R-229. The ledger key is a display path, so a rekordbox reorganisation forks the remote playlist
+
+**Found:** during U51, 2026-09-02, while choosing what to freeze.
+
+`modules/outbound/ledger` keys a recorded remote playlist on the `playlist_key`
+its caller supplies, and this unit supplies the resolved DISPLAY PATH, joined with
+`/`. A rekordbox collection export carries no stable playlist identifier, so the
+path is the only identifier there is.
+
+**Measured cost.** Rename a crate, or drag it into a folder, and the next export
+resolves a different key, finds no record, and creates a SECOND remote playlist
+rather than updating the one this library already made. Nothing warns. The first
+playlist stays on the account holding the tracks it had, and the person now has
+two playlists for one crate and has to work out which is current.
+
+**Why not fixed here.** The fixes all need something the format does not have. A
+content based key would fork on the first track added; matching the remote
+playlist by name would adopt a playlist somebody else made; asking the person is a
+gate this verb does not have a shape for.
+
+**Closes when:** the ledger records enough to recognise a renamed crate, or the
+verb offers to adopt a recorded remote playlist whose key no longer resolves.
+
+---
+
+## R-230. One ledger rewrite per track, and one remote listing per track
+
+**Found:** during U51, 2026-09-02, by the efficiency pass over the binding.
+
+An item is one track, which is what makes the engine's resume guarantee worth
+anything and what makes the zero item rule enforceable. The cost is that
+`modules/outbound/export.apply` runs once per track, and each call takes the
+ledger lock, reads the whole JSON document, writes it back, and asks the account
+to list the remote playlist's current contents.
+
+**Measured cost, reasoned rather than driven.** A five hundred track export
+performs five hundred lock, read, serialize and write cycles against a document
+whose `added` array is growing, so the bytes moved are quadratic in the playlist
+length, plus five hundred remote listing calls against a rate limited service. No
+export of that size has run, because no adapter ships, so this is a shape rather
+than a measurement.
+
+**Why not fixed here.** The fix is a job scoped ledger session that holds one lock
+across the item loop, which changes the engine's transaction boundary and would
+need its own unit. Making the per item shape cheaper by batching items would
+undo the two properties it exists for.
+
+**Closes when:** the ledger offers a session a driver can hold across a job's
+items, and `apply` reads the remote playlist's contents once per job.
+
+---
+
+## R-231. A create the ledger cannot record still orphans one remote playlist
+
+**Found:** during U51, 2026-09-02, by the review, and fixed to the point the
+window is narrow rather than closed.
+
+`export.apply` used to read the recorded remote id without a lock, create a
+playlist when there was none, and only then take the lock to record it. A ledger
+that could not be locked or written failed at that last step with a playlist
+already made and nothing remembering it, and under the per item shape EVERY
+SUBSEQUENT ITEM created another one. Driven during this unit's review against a
+state directory the account could not write: one three track export produced
+three remote playlists.
+
+`ledger.reserve_playlist` now takes the lock BEFORE the create, so an unwritable
+ledger refuses `outbound-ledger-unusable` with the account untouched, which is
+the driven case and is closed.
+
+**What remains.** The lock is held and the write itself then fails, from a full
+disk or a device error between `_locked` and `_write`. One remote playlist is
+orphaned and unrecorded, and the next attempt makes another.
+
+**Measured cost of the remainder.** Undriven. It needs an I/O failure in the
+window between acquiring a lock file and completing an atomic write to the same
+directory, which this unit could not produce.
+
+**Why not fixed here.** Closing it needs a create the provider itself can make
+idempotent, or a two phase record that writes an intent before the create and
+resolves it after. The first depends on an adapter that does not exist; the second
+is a ledger format change.
+
+**Closes when:** a create that cannot be recorded leaves something the next
+attempt can find, or the provider offers a create keyed on a caller supplied
+identifier.
+
+---
+
+## R-232. Four copies of the same config-unusable wrapper
+
+**Found:** during U51, 2026-09-02, by the simplification pass.
+
+`modules/outbound/shell.load_config` wraps `config.ConfigError` into a
+`config-unusable` cause with the shell's own origin. `master/cli.py`,
+`backup/cli.py` and this one are the same thirteen lines differing only in the
+origin tuple. U51 removed two of the copies by giving the two outbound verbs one;
+two remain.
+
+**Measured cost.** None to a library. The cost is that a change to how an unusable
+configuration is reported has to be made in three places, and the copy that is
+missed reports it differently.
+
+**Why not fixed here.** The shared home for all four is `core.config`, and both
+remaining copies live in other units' files.
+
+**Closes when:** one function owns the wrap and every shell asks it.
+
+---
+
+## R-233. Two verbs declare write surfaces their workers cannot reach
+
+**Found:** during U51, 2026-09-02, by the review of the registry declarations.
+
+`sync.favorites` declares `writes={"db_tree", "db_metadata", "xml", "files",
+"remote"}` and the doctor checks `rekordbox.closed` and `rekordbox.pins`. Its
+shipped worker writes the remote account and a JSON artifact under the queue root
+and nothing else, because the local colour write is R-228.
+
+**Measured cost. NONE, and it was measured rather than assumed.** `entry.writes`
+and `entry.destructive` are read nowhere in `src` outside `registry.py`, and
+`doctor.requires_check` is an `any()` across every entry, so `rekordbox.closed` is
+already required by `adopt.apply`, `rebuild`, `restore.run` and the routing verbs
+in every profile. No health report changes and no gate changes.
+
+**Why not fixed here.** Narrowing `writes` also drops the obligation to declare
+the cloud sync gate and lets `destructive` fall to False, which is a judgement
+about whether a remote only write should hold the library lock. That judgement
+belongs with the unit that lands the local colour write, since it will need the
+declarations back.
+
+**Closes when:** the local colour write lands and the declaration is true again,
+or the entry is narrowed with the destructive question answered.
+
+---
+
+## R-234. `adopt.apply`'s declined payload fails its own declared schema
+
+**Found:** during U51, 2026-09-02, while fixing the same defect in two other verbs.
+
+`cli/output` closes each declared payload surface with `additionalProperties:
+false` and requires every field. `adopt.apply`'s abort branch returns
+`{"job_id": None, "state": "declined", "cause": None, "progress": {}}`, and
+`payload_problems` reports `'job_id' should be string, got NoneType` for it. The
+same branch in the two outbound verbs carried a different violation and is fixed
+in this unit.
+
+**Measured cost.** A consumer generated from `tests/schemas/job_state.v1.json`
+rejects the envelope `crate adopt apply` emits when somebody declines the
+confirmation. Nothing in the product reads it that way today, so the cost is to a
+consumer that does not exist yet.
+
+**Nothing validated it, which is why it shipped.** The schema fingerprint hashes
+the DECLARED fields rather than an emitted payload, and the golden envelope is a
+hand written literal. `tests/cli_drive.drive` now validates every envelope the
+suites that use it drive, which is what caught the outbound instances; the adopt
+verb is not driven through that helper.
+
+**Why not fixed here.** It is U23's file and this unit does not own its surface.
+
+**Closes when:** the branch emits `""` rather than `None`, or the verb is driven
+through a helper that validates its envelope.
+

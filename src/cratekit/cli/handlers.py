@@ -73,7 +73,9 @@ ItemHandler = Callable[[jobs.Job, jobs.Item, "config.Config"], "jobs.Produced | 
 #: ``handler_key`` to ``"dotted.module:function"``. Strings, never functions.
 HANDLERS: Mapping[str, str] = {
     "backup.run": "cratekit.backup.cli:handle",
+    "export.playlist": "cratekit.export.cli:handle",
     "master": "cratekit.master.cli:handle",
+    "sync.favorites": "cratekit.favorites.cli:handle",
 }
 
 #: ``handler_key`` to why this build runs nothing for it. Every landed
@@ -92,14 +94,12 @@ HANDLERS_NOT_YET_BOUND: Mapping[str, str] = {
     "analyze.restamp": "no worker yet, R-203",
     "analyze.run": "no worker yet, R-203",
     "delete.review": "no worker yet, R-203",
-    "export.playlist": "no worker yet, R-203",
     "intake.playlist": "no worker yet, R-203",
     "intake.set": "no worker yet, R-203",
     "label.import": "no worker yet, R-203",
     "rebuild": "no worker yet, R-203",
     "route.resort": "no worker yet, R-203",
     "sync.all": "no worker yet, R-203",
-    "sync.favorites": "no worker yet, R-203",
     "sync.labels": "no worker yet, R-203",
     "tag.folder": "no worker yet, R-203",
     "tag.retag": "no worker yet, R-203",

@@ -4734,7 +4734,26 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # run, decided before anything is attempted, and run_backup reports those per
     # portion rather than raising. These two are the whole run's verdict over that
     # report, which is a command line's decision rather than an engine's.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (137, 113, 24)
+    #
+    # Re-pinned on U51, 2026-09-02. FIVE slugs, named rather than counted:
+    # outbound-export-required, export-playlist-ambiguous and
+    # export-playlist-empty, which are the three ways the two outbound verbs
+    # cannot decide what their job items are; outbound-account-unbound, which is
+    # this build having no streaming provider adapter to hand a worker; and
+    # outbound-item-absent, which is a frozen export no longer carrying a track
+    # its own job already queued. None of the five is in the reserved table,
+    # exactly as their siblings export-playlist-unknown, tag-retag-folder-unknown
+    # and the three setbuild-anchor slugs are not, so the reserved half does not
+    # move. Population 137 to 142, non-reserved 113 to 118, reserved half
+    # UNCHANGED at 24.
+    #
+    # WHY THE MISSING CREDENTIAL IS NOT A SIXTH. ``outbound.account.resolve``
+    # raises TWO refusals and only one of them is new: no session stored reuses
+    # ``credential-missing``, which this vocabulary already declares and which
+    # doctor already has a remedy for. A second slug meaning the same thing would
+    # have made a person who has not logged in read a different sentence
+    # depending on which verb discovered it.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (142, 118, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4845,7 +4864,21 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # mirror in its portion succeeded is an advisory on a run that completed,
     # and every member of the engine's `Refusal` enum is instead a reason one
     # portion will NOT run, decided before anything is attempted.
-    assert (len(literals), len(literals - set(causes))) == (330, 194), (
+    # Re-pinned on U51, 2026-09-02: 330 to 339 distinct, 194 to 198 non-keys.
+    # NINE literals joined and NOTHING left, differenced as SETS against `main`'s
+    # own `src` tree read blob by blob rather than inferred from the total moving
+    # by nine. FIVE are keys, the causes the two outbound workers raise, and they
+    # are named at the population assertion above. The other FOUR are not causes
+    # and each is worth naming, because a non-cause wearing a cause slug is
+    # exactly the shape the `lossy-refused` incident above was:
+    # `outbound-artifacts` and `outbound-staging` are DIRECTORY names under the
+    # queue root, and `playlist-track-missing` and `playlist-track-repeated` are
+    # WARNING codes on the queued envelope, the same kind of literal as
+    # `config-drift`. None of the four collides with a declared cause, and none
+    # describes a refusal: a warning that a playlist named a track the collection
+    # does not carry is an advisory on a job that queued successfully, and every
+    # declared cause is instead a reason something did NOT happen.
+    assert (len(literals), len(literals - set(causes))) == (339, 198), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5081,7 +5114,30 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # gate refusal: the condition moved and the cause it raises did not, so a pin
     # watching the touched files rather than the derived set would have expected a
     # second module here.
-    assert (len(literal_holders), len(literal_both)) == (81, 15), (
+    # Re-pinned on U51, 2026-09-02: 81 to 84 holders. THREE modules joined and
+    # none left, and all three are new files. modules/outbound/source.py names the
+    # three ways the outbound item derivation cannot decide what a job's items
+    # are. modules/outbound/account.py names the missing credential and the
+    # missing provider adapter. modules/outbound/shell.py names config-unusable,
+    # which the two outbound verbs used to spell once each, and
+    # outbound-account-unbound as the WARNING code on the queued envelope.
+    # Differenced as SETS by re-deriving this module's own predicate over the
+    # working tree and comparing it against `main`'s, rather than inferred from
+    # the total moving by three. The also-holds-an-integer half stays 15: none of
+    # the three holds a bare integer anywhere near the reserved range. The named
+    # halves did NOT move, staying at 21 and 8, measured rather than inferred.
+    #
+    # export/cli.py and favorites/cli.py are NOT new holders despite this unit
+    # rewriting both: each already named export-playlist-unknown or
+    # config-unusable on main.
+    #
+    # ONE OF THE NEW LITERALS IS DELIBERATE ALIGNMENT RATHER THAN THE
+    # `lossy-refused` COLLISION THIS FILE RECORDS ABOVE. shell.py's
+    # outbound-account-unbound is both a warning code on a queued envelope and a
+    # declared cause, on purpose: the warning names the cause the job will end
+    # with. Two names for that would let the warning and the failure describe one
+    # outcome differently, which is the defect, not the fix.
+    assert (len(literal_holders), len(literal_both)) == (84, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
