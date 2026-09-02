@@ -40,6 +40,7 @@ import io
 import json
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from enum import StrEnum
 from pathlib import Path
 
 import pytest
@@ -922,7 +923,7 @@ def test_the_report_carries_the_age_number_and_not_only_the_state(cfg, rclone):
     assert all(row["completed_at"] == MOMENT.isoformat() for row in later), later
 
 
-def test_a_resume_reports_the_queued_job_rather_than_filing_a_second(cfg):
+def test_a_resume_reports_the_queued_job_rather_than_filing_a_second(cfg, rclone):
     """The ``--job`` branch, which round one found undriven.
 
     Row ``H3_resume_branch_dropped`` made every invocation enqueue and killed
@@ -935,6 +936,13 @@ def test_a_resume_reports_the_queued_job_rather_than_filing_a_second(cfg):
     The store is counted as well as the identifier, because a handler that
     enqueued a second job and then reported the first would satisfy the identifier
     assertion alone.
+
+    THE ``rclone`` FIXTURE IS LOAD BEARING NOW AND WAS NOT BEFORE. Until the
+    handler was bound this resume reported the job and ran nothing, so it needed no
+    remote and took none. It drives real portions now, so without the stand-in it
+    reads whatever rclone this laptop happens to have and passes or fails on that.
+    Measured: it failed here on the first run after the binding, against a real
+    rclone and a remote named ``remote:`` that does not exist.
     """
     code, first = _drive(["backup", "run"])
     assert code == int(ExitCode.OK), first
@@ -984,3 +992,721 @@ def test_the_outcome_answers_not_ok_when_a_portion_failed(cfg, rclone):
         "so any caller deciding on that field would report a failed backup as done"
     )
     assert [p.ran for p in one_failed.portions] == [True, False], one_failed
+
+
+# ---------------------------------------------------------------------------
+# U50: the portion is the item, and the item is what the driver claims
+# ---------------------------------------------------------------------------
+
+
+def _labels(runner) -> list[str]:
+    """Every command label the injected runner was asked for, in order."""
+    return [command.label for command in runner.seen]
+
+
+def _running(*names: str):
+    """A process lister answering with these names, for the database gate."""
+    return lambda: tuple(names)
+
+
+def test_a_named_portion_runs_only_its_own_half(cfg):
+    """The narrowing, measured on both portions rather than asserted on one.
+
+    Both directions, because a narrowing that returned the whole plan would still
+    look right from the FILES side alone: the mirror is first in declaration order,
+    so a report naming it appears whether or not the database also ran. The pair is
+    what makes the claim checkable.
+    """
+    files = _answering(0)
+    backup_cli.perform_backup(
+        {}, portion=backup_facts.Portion.FILES, cfg=cfg, runner=files, now=MOMENT
+    )
+    assert _labels(files), "the files portion ran no commands at all"
+    assert backup.SNAPSHOT_DATABASE not in _labels(files), (
+        "a job item claiming the files portion also ran the database snapshot, so "
+        "every item of the job would do the whole backup"
+    )
+
+    database = _answering(0)
+    backup_cli.perform_backup(
+        {}, portion=backup_facts.Portion.DATABASE, cfg=cfg, runner=database, now=MOMENT
+    )
+    assert _labels(database) == [backup.SNAPSHOT_DATABASE], (
+        f"the database portion ran {_labels(database)}, not the snapshot alone"
+    )
+
+
+def test_no_portion_named_still_runs_the_whole_plan(cfg):
+    """The default that keeps every caller older than the binding measuring the same thing."""
+    whole = _answering(0)
+    report = backup_cli.perform_backup({}, cfg=cfg, runner=whole, now=MOMENT)
+    assert backup.SNAPSHOT_DATABASE in _labels(whole), _labels(whole)
+    assert [entry["portion"] for entry in report["portions"]] == ["files", "database"]
+
+
+def test_a_portion_the_engine_refused_fails_rather_than_reporting_a_copy(cfg, rclone):
+    """THE HAZARD THIS FORECLOSES, and it is the reason this unit reversed a decision.
+
+    An item that COMPLETES over a portion nothing copied is done for ever.
+    ``jobs.complete_item`` writes ``done``, and ``jobs.retry`` re-arms only ``failed``
+    and ``claimed`` rows, stating in its own docstring that "Items that are DONE stay
+    done". So a build that suppressed this refusal because the other portion would
+    run would leave a person who quits rekordbox and resumes with nothing happening,
+    for ever, over a job reporting SUCCEEDED and a database that was never copied.
+
+    The refusal carries the portion's RESERVED remediation rather than the class
+    default, which is what makes failing it recoverable: ``quit-rekordbox`` names
+    the thing the person does, after which the resume finishes the backup.
+    """
+    with pytest.raises(CratekitError) as caught:
+        backup_cli.perform_backup(
+            {},
+            portion=backup_facts.Portion.DATABASE,
+            cfg=cfg,
+            runner=_answering(0),
+            now=MOMENT,
+            process_lister=_running("rekordbox"),
+        )
+    assert caught.value.cause.reason == str(backup.Refusal.REKORDBOX_RUNNING)
+    assert caught.value.cause.remediation.remedy is Remedy.QUIT_REKORDBOX, (
+        "the refusal lost its reserved remediation, so a person whose only problem "
+        "is an open application is sent to a diagnostic instead of told to close it"
+    )
+
+
+def test_a_machine_with_no_rclone_fails_every_portion_by_name(cfg, no_rclone):
+    """Nothing ran, so nothing is reported as done, and each item says why itself."""
+    for portion in backup_facts.Portion:
+        with pytest.raises(CratekitError) as caught:
+            backup_cli.perform_backup({}, portion=portion, cfg=cfg, now=MOMENT)
+        assert caught.value.cause.reason == str(backup.Refusal.RCLONE_MISSING)
+        assert caught.value.cause.remediation.remedy is Remedy.INSTALL_BINARY, (
+            "the class default replaced the reserved remedy, so a person with no "
+            "rclone is told to run a diagnostic that would report the same thing"
+        )
+
+
+def test_a_narrowed_portion_whose_transfer_failed_refuses_by_that_portion(cfg, rclone):
+    """One portion's non zero return is that portion's failure and no other's."""
+    with pytest.raises(CratekitError) as caught:
+        backup_cli.perform_backup(
+            {},
+            portion=backup_facts.Portion.DATABASE,
+            cfg=cfg,
+            runner=_failing_on(backup.SNAPSHOT_DATABASE),
+            now=MOMENT,
+        )
+    assert caught.value.cause.reason == "backup-transfer-failed"
+    assert caught.value.cause.detail["portions"] == ["database"], caught.value.cause.detail
+
+
+def test_the_queued_caller_does_not_read_the_age_back_inside_the_item(cfg, rclone):
+    """R16: a condition found AFTER the work completed must not fail the item.
+
+    THE SCENARIO IS A REHEARSAL, AND THE REASON IT HAS TO BE IS WORTH RECORDING,
+    because the wider claim this guard was first written for turned out to be
+    false and was measured here rather than argued. The wider claim was that in a
+    REAL run an unreadable fact file would fail an item whose transfer had already
+    completed. It cannot: ``run_backup`` publishes through ``backup_facts.record``,
+    which reads the file before it writes, so the same unreadable file fails inside
+    the ENGINE first and the portion never reaches this report at all. The two
+    readers fail together because they are the same reader.
+
+    A DRY RUN is where the two come apart, and it is reachable: ``run_backup``
+    sets ``publish`` false for a rehearsal, so nothing reads the fact file on the
+    way through, and the read back would be the only thing that touched it. Under
+    the driver that would fail an item over a rehearsal that copied nothing and
+    changed nothing, and every resume would do it again. So the caller that
+    discards the report asks for the read not to happen.
+
+    Driven with a fact file that is a DIRECTORY, which is one of the three
+    conditions ``BackupFactsUnreadable`` names, so the refusal is the real one
+    rather than a patched stand-in.
+    """
+    backup_facts.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
+    backup_facts.path_for(cfg).mkdir()
+    rehearsal = {backup_cli.DRY_RUN: True}
+
+    report = backup_cli.perform_backup(
+        rehearsal,
+        portion=backup_facts.Portion.FILES,
+        cfg=cfg,
+        runner=_answering(0),
+        now=MOMENT,
+        read_back=False,
+    )
+    assert "ages" not in report, (
+        "the queued caller read the age back, so an unreadable fact file would "
+        "fail an item over a rehearsal that touched nothing"
+    )
+    assert report["dry_run"] is True, report
+
+    with pytest.raises(CratekitError) as caught:
+        backup_cli.perform_backup(
+            rehearsal,
+            portion=backup_facts.Portion.FILES,
+            cfg=cfg,
+            runner=_answering(0),
+            now=MOMENT,
+        )
+    assert caught.value.cause.reason == "backup-facts-unreadable", (
+        "reading the age back stopped refusing, so the guard above measures a "
+        "difference between the two callers that no longer exists"
+    )
+
+
+def test_an_item_naming_something_that_is_not_a_portion_refuses_by_name(cfg):
+    """A job queued by a build with a different portion vocabulary, diagnosed."""
+    job = jobs.Job(
+        job_id="J1",
+        handler_key="backup.run",
+        payload={},
+        config_fingerprint="",
+        config_toml="",
+        library_id="",
+        state=jobs.JobState.RUNNING,
+        created=MOMENT.isoformat(),
+        updated=MOMENT.isoformat(),
+    )
+    item = jobs.Item(
+        job_id="J1", item_id="playlists", ordinal=0, state=jobs.ItemState.CLAIMED
+    )
+    with pytest.raises(CratekitError) as caught:
+        backup_cli.handle(job, item, cfg)
+    assert caught.value.cause.reason == "internal-error"
+    assert "playlists" in caught.value.cause.message
+    for portion in backup_facts.Portion:
+        assert str(portion) in caught.value.cause.message, (
+            "the refusal did not name the portions this build declares, so a "
+            "reader cannot tell what the item should have said"
+        )
+
+
+def test_the_handler_uses_the_configuration_it_was_handed(cfg, tmp_path, rclone):
+    """KTD9 through the handler: the frozen destination, not the one on disk.
+
+    The cost of getting this wrong is specific to backup rather than general: a job
+    queued against one remote and claimed after the person reconfigured their
+    destinations copies the library somewhere they did not ask for, and publishes
+    an age naming a destination the queued run never targeted.
+    """
+    frozen = replace(cfg, backup=replace(cfg.backup, dest="remote:the-frozen-one"))
+    config.save(replace(cfg, backup=replace(cfg.backup, dest="remote:the-later-one")))
+    config.reset_cache()
+
+    job = jobs.Job(
+        job_id="J2",
+        handler_key="backup.run",
+        payload={},
+        config_fingerprint="",
+        config_toml="",
+        library_id="",
+        state=jobs.JobState.RUNNING,
+        created=MOMENT.isoformat(),
+        updated=MOMENT.isoformat(),
+    )
+    item = jobs.Item(
+        job_id="J2", item_id="files", ordinal=0, state=jobs.ItemState.CLAIMED
+    )
+    assert backup_cli.handle(job, item, frozen) is None, (
+        "the handler produced something for the engine to commit, but a backup "
+        "writes to a remote and leaves no local file to put in place"
+    )
+    invoked = rclone.read_text()
+    assert "remote:the-frozen-one" in invoked, invoked
+    assert "remote:the-later-one" not in invoked, (
+        "the handler reached the configuration on disk rather than the one frozen "
+        "on the job, which is the resume bug KTD9 closes"
+    )
+
+
+# ---------------------------------------------------------------------------
+# U50: the queued backup runs, and the queue never reports an empty success
+# ---------------------------------------------------------------------------
+
+
+def _item_states(job_id: str) -> dict[str, str]:
+    """Every item of one job, keyed by portion, READ BACK from the store."""
+    with jobs.open_store() as store:
+        return {item.item_id: str(item.state) for item in jobs.items(store, job_id)}
+
+
+def test_a_backup_job_carries_one_item_per_declared_portion(cfg):
+    """THE ZERO ITEM RULE, which is the hazard binding a worker would otherwise create.
+
+    ``jobs.drive`` transitions a job whose item count is zero straight to SUCCEEDED
+    by design: ``claim`` returns nothing on the first pass, nothing was attempted,
+    nothing failed, and the final branch records success. So a bound handler over an
+    empty item list does not leave the queue stuck the way R-198 describes. It
+    reports a backup that copied nothing, which is strictly worse, because the
+    first teaches a person that queues do not run and the second teaches them they
+    are protected.
+
+    The expectation is DERIVED from the enum rather than written as a pair, so this
+    test cannot pass a build that adds a third portion and forgets to queue it.
+    """
+    code, envelope = _drive(["backup", "run"])
+    assert code == int(ExitCode.OK), envelope
+    states = _item_states(envelope["data"]["job_id"])
+
+    assert states, (
+        "the backup was queued with no items at all, so driving it would report "
+        "SUCCEEDED over a library nothing copied"
+    )
+    assert set(states) == {str(portion) for portion in backup_facts.Portion}, (
+        f"the queued items are {sorted(states)}, which is not the set of portions "
+        f"{[str(p) for p in backup_facts.Portion]} a backup is made of"
+    )
+
+
+def test_queueing_still_needs_nothing_from_the_machine(cfg, no_rclone, monkeypatch):
+    """The items come from the enum, so the property queueing had before survives.
+
+    Stated separately from the fixture-level test above it because this is what
+    the derivation is FOR: items built from ``plan_backup`` would be the more direct
+    answer and would make queueing resolve rclone, read the process table and stat
+    the library root, so a person on an unmounted volume could not even file the
+    job that would have run fine once the volume came back.
+    """
+    monkeypatch.setattr(Path, "is_dir", lambda self: False)
+    code, envelope = _drive(["backup", "run"])
+    assert code == int(ExitCode.OK), envelope
+    assert len(_item_states(envelope["data"]["job_id"])) == len(backup_facts.Portion)
+
+
+def test_a_queued_backup_runs_every_portion_through_the_real_resume(cfg, rclone):
+    """R-198's whole claim, closed for this verb and driven end to end.
+
+    Through the DISPATCHER rather than by calling the handler, because the thing
+    that was missing was never the work body: it was that nothing in ``src`` reached
+    it. The item rows are read back from the store rather than taken off the
+    envelope, so what is asserted is what the queue records rather than what the
+    report says about itself.
+    """
+    code, queued = _drive(["backup", "run"])
+    assert code == int(ExitCode.OK), queued
+    job_id = queued["data"]["job_id"]
+    assert set(_item_states(job_id).values()) == {"pending"}
+
+    code, resumed = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == "succeeded", resumed["data"]
+    assert set(_item_states(job_id).values()) == {"done"}, _item_states(job_id)
+
+    invoked = rclone.read_text()
+    assert "remote:mirror" in invoked and "remote:database-snapshots" in invoked, (
+        "the driven job did not reach both portions, so a resume copies less than "
+        "the backup the person asked for"
+    )
+
+
+def test_the_age_a_driven_run_publishes_is_the_engine_s_and_reaches_the_envelope(
+    cfg, rclone
+):
+    """R9 and R15 together: the engine publishes it, and the shell reports it.
+
+    The fact file is read through ``backup_facts.ages``, which is the function
+    ``core.session._shown_ages`` calls, so what is checked is what a destructive
+    session would see rather than this file's opinion of the format. The envelope
+    is then compared against it rather than asserted on its own, because a resume
+    that rendered a plausible age from the outcome would satisfy an envelope-only
+    assertion while the session still saw ``never-recorded``.
+    """
+    _, queued = _drive(["backup", "run"])
+    job_id = queued["data"]["job_id"]
+    code, resumed = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+
+    published = {
+        str(entry.portion): entry for entry in backup_facts.ages(cfg)
+    }
+    for portion in backup_facts.Portion:
+        assert published[str(portion)].state is backup_facts.AgeState.KNOWN, (
+            f"the {portion} portion ran and published no age, so a destructive "
+            f"session sees a library that has never been backed up"
+        )
+
+    reported = {entry["portion"]: entry for entry in resumed["data"]["ages"]}
+    assert set(reported) == {str(p) for p in backup_facts.Portion}, reported
+    for portion in backup_facts.Portion:
+        assert reported[str(portion)]["state"] == str(backup_facts.AgeState.KNOWN)
+
+
+def test_a_failed_portion_leaves_the_job_resumable_and_redoes_only_that_portion(
+    cfg, rclone, monkeypatch
+):
+    """R11, and THE ROUTE IS THE PART THAT IS EASY TO GET WRONG.
+
+    A job with a failed item ends FAILED, and FAILED is terminal, so neither the
+    ``--job`` branch nor ``jobs.drive`` will touch it again: ``job.is_open()`` is
+    false and the engine refuses to re-drive a recorded answer. ``jobs.retry`` is
+    the only thing that re-arms a failed item, and the shipped verb that calls it
+    is ``crate job resume``, which then spawns a detached child. So the retry is
+    driven here directly and the resume branch runs it, which is the same seam the
+    child would take.
+
+    The second pass is counted rather than assumed. That the mirror is NOT redone
+    is the whole reason the portions are the items, and a test that only checked
+    the database succeeded would pass just as well if both had run again.
+    """
+    def only_the_database_fails(command):
+        if command.label == backup.SNAPSHOT_DATABASE:
+            return backup.CommandResult(returncode=1, stderr="connection refused")
+        return backup.CommandResult(returncode=0)
+
+    monkeypatch.setattr(backup, "subprocess_runner", only_the_database_fails)
+    _, queued = _drive(["backup", "run"])
+    job_id = queued["data"]["job_id"]
+
+    code, failed = _drive(["backup", "run", "--job", job_id])
+    assert code != int(ExitCode.OK), failed
+    assert _item_states(job_id) == {"files": "done", "database": "failed"}, (
+        _item_states(job_id)
+    )
+
+    seen: list[str] = []
+
+    def everything_works(command):
+        seen.append(command.label)
+        return backup.CommandResult(returncode=0)
+
+    monkeypatch.setattr(backup, "subprocess_runner", everything_works)
+    with jobs.open_store() as store:
+        jobs.retry(store, job_id)
+
+    code, resumed = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    assert _item_states(job_id) == {"files": "done", "database": "done"}
+    assert backup.MIRROR not in seen, (
+        f"the retry ran {seen}, so it redid the mirror that had already completed "
+        f"and the per portion item ledger bought nothing"
+    )
+
+
+def test_a_job_in_which_nothing_ran_never_reports_success(cfg, no_rclone):
+    """R13, driven through the dispatcher rather than at the work body.
+
+    Asserted on what ``crate`` exits with and on what the item rows say, because
+    that is where a person meets it. Every item fails, ``jobs.drive`` finds nothing
+    processed, and the job is recorded FAILED before the refusal is raised.
+    """
+    _, queued = _drive(["backup", "run"])
+    job_id = queued["data"]["job_id"]
+
+    code, resumed = _drive(["backup", "run", "--job", job_id])
+    assert code != int(ExitCode.OK), resumed
+    assert set(_item_states(job_id).values()) == {"failed"}, _item_states(job_id)
+    with jobs.open_store() as store:
+        assert str(jobs.get(store, job_id).state) == "failed"
+
+
+def test_the_configuration_the_worker_runs_against_is_the_frozen_one(cfg, rclone):
+    """KTD9 end to end, and the drift the person is told about rather than silently given.
+
+    The destination is what makes this concrete for backup rather than general: a
+    job queued against one remote and claimed after the person reconfigured copies
+    the library somewhere they did not ask for.
+    """
+    _, queued = _drive(["backup", "run"])
+    job_id = queued["data"]["job_id"]
+
+    config.save(replace(cfg, backup=replace(cfg.backup, dest="remote:somewhere-else")))
+    config.reset_cache()
+
+    code, resumed = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    invoked = rclone.read_text()
+    assert "remote:mirror" in invoked, invoked
+    assert "remote:somewhere-else" not in invoked, (
+        "the driven job copied to the destination configured after it was queued, "
+        "which is the resume bug KTD9 closes"
+    )
+    assert any(w["code"] == "config-drift" for w in resumed.get("warnings", [])), (
+        f"the run used the frozen configuration and did not say so: "
+        f"{resumed.get('warnings')}"
+    )
+
+
+def test_a_queued_backup_reports_a_bound_worker(cfg):
+    """R14, asked the way a person asks it rather than of the table.
+
+    ``crate job show`` derives its ``worker`` field from the declaration table
+    without importing anything, which is what lets a supervising process answer
+    "will this job ever run" without pulling every feature module into itself. Until
+    this unit the answer for a backup was ``none``, and R-203 says that field exists
+    precisely so a queued job that will never run says so.
+
+    Driven through the dispatcher rather than asserted on ``handlers.HANDLERS``,
+    because the table having a key and the reporting surface reading it are two
+    facts, and this unit changed only one of them.
+
+    LIVES HERE RATHER THAN IN ``tests/test_handlers.py`` because it needs a real
+    queued backup job, and the configuration and dispatcher fixtures for that are
+    in this file. The population guards that quantify over the registry stay there
+    and needed no edit, which is the property they were built for.
+    """
+    _, queued = _drive(["backup", "run"])
+    code, shown = _drive(["job", "show", queued["data"]["job_id"]])
+    assert code == int(ExitCode.OK), shown
+    reported = shown["data"]["progress"]
+    assert reported["worker"] == "bound", (
+        f"a queued backup still reports {reported.get('worker')!r}, so the "
+        f"surface that tells a person whether their job can run says it cannot"
+    )
+    assert reported["worker_reason"] is None, reported
+
+
+def test_the_item_list_is_derived_from_the_portions_rather_than_written_out(
+    cfg, monkeypatch
+):
+    """P3: the set is derived at run time, or it is a list in disguise.
+
+    WHY THE ENUM IS REPLACED RATHER THAN THE PAIR ASSERTED. A test comparing
+    ``backup_items()`` against ``backup_facts.Portion`` passes for a hand written
+    ``("files", "database")`` too, because the two agree on every build that has
+    exactly the portions this one has. That is what makes the derivation look
+    untested when it is not: measured as a zero row on 2026-09-02, where replacing
+    the comprehension with the literal pair killed nothing across the whole suite.
+
+    So the enum is stood in for. A third portion is what a literal cannot follow,
+    and it is exactly the condition P3 exists for: the planner would build an entry
+    nothing claims, and the queue would run two thirds of a backup with everything
+    green.
+    """
+
+    class ThreePortions(StrEnum):
+        FILES = "files"
+        DATABASE = "database"
+        SETTINGS = "settings"
+
+    monkeypatch.setattr(backup_facts, "Portion", ThreePortions)
+    assert backup_cli.backup_items() == ("files", "database", "settings"), (
+        "the item list did not follow a portion added to the enum, so it is a "
+        "second declaration of the set rather than a reading of it"
+    )
+
+
+def test_the_handler_does_not_fail_an_item_over_the_age_read_back(cfg, rclone):
+    """R16 through the HANDLER, which is the caller the guard is for.
+
+    The work body's own guard is driven above. This drives the seam that uses it:
+    ``handle`` asks for the read back not to happen, and the proof is that a fact
+    file which cannot be read does not turn into a failed item. Measured as a zero
+    row on 2026-09-02 without this test, because nothing drove the handler against
+    an unreadable fact file at all.
+
+    A REHEARSAL, for the reason the work body's test gives at length: in a real run
+    the engine's own publish reads the same file first and fails there, so the two
+    readers cannot be told apart. A dry run publishes nothing, so this read would be
+    the only one.
+    """
+    backup_facts.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
+    backup_facts.path_for(cfg).mkdir()
+
+    job = jobs.Job(
+        job_id="J3",
+        handler_key="backup.run",
+        payload={backup_cli.DRY_RUN: True},
+        config_fingerprint="",
+        config_toml="",
+        library_id="",
+        state=jobs.JobState.RUNNING,
+        created=MOMENT.isoformat(),
+        updated=MOMENT.isoformat(),
+    )
+    item = jobs.Item(
+        job_id="J3", item_id="files", ordinal=0, state=jobs.ItemState.CLAIMED
+    )
+    assert backup_cli.handle(job, item, cfg) is None, (
+        "the handler read the age back, so an unreadable fact file fails an item "
+        "over a rehearsal that copied nothing and every resume repeats it"
+    )
+
+
+# ---------------------------------------------------------------------------
+# U50 review round: what a second look, an old job and a broken fact file do
+# ---------------------------------------------------------------------------
+
+
+def test_asking_twice_about_a_half_failed_backup_answers_the_same_way_twice(
+    cfg, rclone, monkeypatch
+):
+    """The check has to sit OUTSIDE the ``is_open`` branch, and this is why.
+
+    Three reviewers found the same defect in the first draft independently. The
+    re-raise was inside ``if job.is_open():``, which answers the run that CLOSES
+    the job and gets the second look at it wrong: a job already FAILED on entry is
+    not open, so the drive is skipped and the check was skipped with it. The verb
+    then reported the failure once and exited 0 for ever after, over the same half
+    copied library, which is the silence the check exists to break.
+
+    Driven as two identical commands rather than one, because a test that resumes
+    once cannot tell the two placements apart.
+    """
+    monkeypatch.setattr(backup, "subprocess_runner", _failing_on(backup.SNAPSHOT_DATABASE))
+    _, queued = _drive(["backup", "run"])
+    job_id = queued["data"]["job_id"]
+
+    first, _ = _drive(["backup", "run", "--job", job_id])
+    assert first != int(ExitCode.OK)
+
+    second, envelope = _drive(["backup", "run", "--job", job_id])
+    assert second != int(ExitCode.OK), (
+        "the second look at a job that ended FAILED exited OK, so a person who "
+        "runs the command again is told a half copied backup is fine"
+    )
+    assert second == first, (
+        f"the same question got two answers, {first} then {second}"
+    )
+    assert envelope["cause"] is not None, envelope
+
+
+def test_a_job_queued_before_the_worker_existed_refuses_rather_than_succeeding(
+    cfg, rclone
+):
+    """THE UPGRADE HAZARD, and it is the reason this guard is not paranoia.
+
+    Before this unit ``backup_library`` enqueued with no ``item_ids`` at all. The
+    queue is a durable file and this unit does not change its schema version, so a
+    person who upgrades still has those jobs in it, and binding the handler is what
+    makes them drivable. ``jobs.drive`` transitions a job whose item count is zero
+    straight to SUCCEEDED, so driving one reports a backup over a library nothing
+    copied, which is the exact hazard this whole unit is built to prevent arriving
+    by the one door it did not watch.
+
+    The job is built the way the OLD build built it, by calling ``enqueue`` with no
+    items, rather than by deleting rows from a job this build queued. A test that
+    deleted rows would prove the guard reads the ledger; this one proves it catches
+    the shape that actually exists on someone's disk.
+    """
+    with jobs.open_store() as store:
+        stale = jobs.enqueue(
+            store,
+            handler_key="backup.run",
+            payload=backup_cli.frozen_payload(False),
+            cfg=cfg,
+        )
+        assert jobs.items(store, stale.job_id) == (), (
+            "the fixture queued items, so this test no longer builds the shape "
+            "the previous build left behind"
+        )
+
+    code, envelope = _drive(["backup", "run", "--job", stale.job_id])
+    assert code != int(ExitCode.OK), (
+        "a backup job with no items reported success, so an upgrade turns every "
+        "job queued by the old build into a backup that copied nothing"
+    )
+    with jobs.open_store() as store:
+        assert jobs.get(store, stale.job_id).state is jobs.JobState.QUEUED, (
+            "the empty job was driven anyway and is now terminal, so the refusal "
+            "arrived after the damage it exists to prevent"
+        )
+
+
+def test_an_unwritable_fact_file_says_which_file_rather_than_report_defect(cfg, rclone):
+    """The engine publishes THROUGH the fact file and can fail ON it.
+
+    ``run_backup`` calls ``backup_facts.record`` once a portion's commands return
+    zero, and ``record`` reads the file before it writes, so an unparseable file
+    raises with the transfer already done. ``BackupFactsUnreadable`` is a plain
+    ``Exception`` rather than a ``CratekitError``, so under the driver it would land
+    in ``jobs.drive``'s ``except Exception`` and be recorded as ``internal-error``
+    carrying ``report-defect``: a person with one bad file in their state directory
+    told to file a bug against this program, with every retry repeating the whole
+    transfer to reach the same line.
+
+    The item still fails, which is right rather than a compromise: an age that
+    cannot be published is a copy a destructive session cannot see. What is asserted
+    here is that the person is told which file to fix.
+    """
+    backup_facts.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
+    backup_facts.path_for(cfg).mkdir()
+
+    with pytest.raises(CratekitError) as caught:
+        backup_cli.perform_backup(
+            {},
+            portion=backup_facts.Portion.FILES,
+            cfg=cfg,
+            runner=_answering(0),
+            now=MOMENT,
+            read_back=False,
+        )
+    assert caught.value.cause.reason == "backup-facts-unreadable", (
+        f"the publish failure surfaced as {caught.value.cause.reason!r}, which "
+        f"sends a person to file a defect over a file they could repair"
+    )
+    assert caught.value.cause.remediation.remedy is not Remedy.REPORT_DEFECT
+    assert str(backup_facts.path_for(cfg)) in caught.value.cause.detail["path"]
+
+
+def test_the_ages_reported_are_the_ones_this_job_published(
+    cfg, rclone, tmp_path, monkeypatch
+):
+    """The envelope describes THIS job, so it reads the job's own configuration.
+
+    ``config.state_path`` resolves the fact file under the configured library, so a
+    live configuration naming a different library points at a different file from
+    the one the item wrote. Reading the live one would answer a question nobody
+    asked, in the same envelope that reports the job.
+
+    THE DIVERGENCE HAS TO COME FROM THE CONFIGURATION FILE, and the first two
+    drafts of this test got that wrong in two different ways. Both are recorded
+    because the second was not obvious.
+
+    The first draft changed only the saved file while the ``cfg`` fixture's
+    ``CRATEKIT_LIBRARY_ROOT`` was still set. That fixture's own docstring says why
+    it could not work: ``from_dict`` relocates a configured root onto whatever the
+    environment says, so both readings stayed on the original library. Measured as
+    a zero row on 2026-09-02.
+
+    The second draft moved the environment variable too, and that is worse than
+    useless because ``jobs.frozen_config`` rebuilds through the SAME
+    ``config.from_dict``. The override therefore relocates a frozen configuration's
+    root exactly as it relocates a live one, and the two agree again. That is a
+    real property of the override rather than a defect, and it is the reason this
+    test unsets the variable instead: what is frozen against relocation is
+    everything the file says, and the library root under an explicit override is
+    not.
+    """
+    _, queued = _drive(["backup", "run"])
+    job_id = queued["data"]["job_id"]
+    code, resumed = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+
+    elsewhere = tmp_path / "another-library"
+    (elsewhere / "Music").mkdir(parents=True)
+    (elsewhere / "db").mkdir(parents=True)
+    monkeypatch.delenv(config.ENV_LIBRARY_ROOT)
+    # THE DATABASE MOVES WITH THE ROOT because the configuration refuses to save
+    # otherwise: KTD21b requires the database under the library root, since the
+    # only atomic commit available is a rename and a rename is atomic within one
+    # filesystem. Relocating one without the other is not a state this product
+    # lets a person reach, so a test that built it would be measuring a shape the
+    # validator forbids.
+    config.save(
+        replace(
+            cfg,
+            library=replace(
+                cfg.library, root=elsewhere, db_path=elsewhere / "db" / "master.db"
+            ),
+        )
+    )
+    config.reset_cache()
+    assert config.load().library.root == elsewhere, (
+        "the live configuration still names the original library, so the two "
+        "readings cannot differ and this test would pass either way"
+    )
+    assert not backup_facts.path_for(config.load()).exists(), (
+        "the relocated library already has a fact file, so a live read would "
+        "find ages there and the test would not distinguish the two sources"
+    )
+
+    code, again = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), again
+    reported = {entry["portion"]: entry for entry in again["data"]["ages"]}
+    for portion in backup_facts.Portion:
+        assert reported[str(portion)]["state"] == str(backup_facts.AgeState.KNOWN), (
+            f"the {portion} age read back as {reported[str(portion)]['state']}, so "
+            f"the envelope answered from the live library rather than the one this "
+            f"job copied"
+        )

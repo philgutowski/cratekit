@@ -1,0 +1,179 @@
+name = "u50-author"
+pass_kind = "light"
+
+# U50's value is that a QUEUED backup copies the library, so the rows below take
+# out each thing standing between a queued job and that outcome: the items the
+# driver claims, the derivation that produces them, the drive itself, the
+# narrowing that makes an item mean one portion, the verdict that decides an
+# item, the exit code that reports it, the frozen configuration, the runner seam
+# and the read back guard.
+#
+# NOT MEASURED HERE, because docs/mutation/u46-author.md already pinned them:
+# the HANDLERS table and its declaration (H1), the no-import answer (H2, H3),
+# the unbound reason (H4), the frozen configuration inside run_job (H5), the call
+# to the driver (H6), drift (H7, H8) and the worker field on the reporting
+# surface (J1). Re-measuring those would spend the budget on somebody else's
+# guards.
+
+[[rows]]
+id = "B1_no_items_enqueued"
+description = "Queue the backup with no items, so the driver has nothing to claim and reports an empty success"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''            item_ids=backup_items(),'''
+new = ""
+
+[[rows]]
+id = "B2_items_hardcoded_pair"
+description = "Name the two portions instead of deriving them, so a third portion is queued by nobody"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    return tuple(str(portion) for portion in backup_facts.Portion)'''
+new = '''    return ("files", "database")'''
+
+[[rows]]
+id = "B3_items_one_portion_only"
+description = "Queue only the mirror, so the database half of every backup is never claimed"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    return tuple(str(portion) for portion in backup_facts.Portion)'''
+new = '''    return (str(backup_facts.Portion.FILES),)'''
+
+[[rows]]
+id = "B4_resume_does_not_drive"
+description = "Report the queued job on resume without running any of it, which is the state R-198 describes"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''                _, warnings = ctx.run_job(store, job)
+                job = jobs.get(store, job.job_id)'''
+new = ""
+
+[[rows]]
+id = "B5_failed_job_exits_ok"
+description = "Drop the re-raise, so a resume whose mirror completed and whose database failed exits 0"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''                if not job.is_open() and job.cause is not None:
+                    raise CratekitError(job.cause)'''
+new = ""
+
+[[rows]]
+id = "B6_ages_dropped_from_envelope"
+description = "Stop reporting the ages, so a person who just drove a backup cannot see what a destructive session would"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''            reported["ages"] = published_ages(cfg)'''
+new = ""
+
+[[rows]]
+id = "W1_no_narrowing"
+description = "Ignore the portion and run the whole plan for every item, so each item does the whole backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    if portion is not None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "W2_narrow_to_the_wrong_half"
+description = "Always narrow to the mirror, so the database item copies the files again and the database never"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''            portions=(plan.portion(portion),),'''
+new = '''            portions=(plan.portion(backup_facts.Portion.FILES),),'''
+
+[[rows]]
+id = "W3_refusal_suppressed"
+description = "The first draft's rule: complete the item when another portion will run, which records a portion nothing copied as done for ever"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    refusal = refusal_for(outcome)
+    if refusal is not None:
+        raise refusal'''
+new = '''    refusal = refusal_for(outcome)
+    if refusal is not None and not any(
+        entry.refusal is not None for entry in outcome.portions
+    ):
+        raise refusal'''
+
+[[rows]]
+id = "W4_portion_from_the_payload"
+description = "Read the portion from the payload rather than from the item the driver claimed"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    named = str(item.item_id or "")'''
+new = '''    named = str((job.payload or {}).get("portion") or item.item_id or "")'''
+
+[[rows]]
+id = "W5_unknown_portion_unchecked"
+description = "Let an undeclared item name raise out of the coercion rather than refusing by name"
+file = "src/cratekit/backup/cli.py"
+surface = "maintainer"
+old = '''        raise refuse(
+            "internal-error",
+            f"this job's item is {named!r}, which is not a backup portion this "
+            f"build declares. The portions are {', '.join(declared)}",'''
+new = '''        raise refuse(
+            "internal-error",
+            "the item could not be read",'''
+
+[[rows]]
+id = "W6_fresh_config_in_the_handler"
+description = "Load the configuration in the handler rather than using the one frozen on the job (KTD9)"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''        cfg=cfg,
+        # RESOLVED AT CALL TIME, not left to the default, so a test can put a
+        # stand-in in front of it. ``perform_backup``'s own default is bound when
+        # this module is imported and cannot be reached any other way.
+        runner=backup.subprocess_runner,'''
+new = '''        cfg=_load(),
+        runner=backup.subprocess_runner,'''
+
+[[rows]]
+id = "W7_runner_bound_at_definition"
+description = "Let the runner default apply, binding the transfer program at import so a stand-in cannot reach it"
+file = "src/cratekit/backup/cli.py"
+surface = "maintainer"
+old = '''        runner=backup.subprocess_runner,
+        read_back=False,
+    )'''
+new = '''        read_back=False,
+    )'''
+
+[[rows]]
+id = "W8_read_back_inside_the_item"
+description = "Read the age back under the driver, so an unreadable fact file fails an item over a rehearsal that copied nothing"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''        read_back=False,
+    )
+    return None'''
+new = '''    )
+    return None'''
+
+[[rows]]
+id = "W9_handler_returns_an_artifact"
+description = "Return a Produced naming the library root, so the engine tries to commit a path no backup staged"
+file = "src/cratekit/backup/cli.py"
+surface = "maintainer"
+old = '''        read_back=False,
+    )
+    return None'''
+new = '''        read_back=False,
+    )
+    return jobs.Produced(staged=cfg.library.root, final=cfg.library.root)'''
+
+[[dropped]]
+id = "B7_reconcile_dropped"
+description = "Skip jobs.reconcile before the drive, so a claim left by a dead driver is never released"
+reason = "ranked below the cap: jobs.drive releases orphaned claims itself under the driver lock, so removing the shell's reconcile is covered by the engine and would measure U46's guard rather than this unit's"
+
+[[dropped]]
+id = "B8_is_open_guard_dropped"
+description = "Drive without checking job.is_open, so a terminal job is re-driven"
+reason = "ranked below the cap: jobs.drive refuses a terminal state by name, so the shell's guard only chooses which error the person sees and the engine's refusal is already measured elsewhere"
+
+[[dropped]]
+id = "W10_dry_run_flag_dropped"
+description = "Stop putting dry_run on the report"
+reason = "ranked below the cap: the queued path discards the report entirely, which is R-221, so this row would measure the unqueued caller's guard that U45 already landed"
