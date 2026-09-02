@@ -72,6 +72,7 @@ ItemHandler = Callable[[jobs.Job, jobs.Item, "config.Config"], "jobs.Produced | 
 
 #: ``handler_key`` to ``"dotted.module:function"``. Strings, never functions.
 HANDLERS: Mapping[str, str] = {
+    "backup.run": "cratekit.backup.cli:handle",
     "master": "cratekit.master.cli:handle",
 }
 
@@ -90,7 +91,6 @@ HANDLERS_NOT_YET_BOUND: Mapping[str, str] = {
     "adopt.scan": "no worker yet, R-203",
     "analyze.restamp": "no worker yet, R-203",
     "analyze.run": "no worker yet, R-203",
-    "backup.run": "no worker yet, R-203",
     "delete.review": "no worker yet, R-203",
     "export.playlist": "no worker yet, R-203",
     "intake.playlist": "no worker yet, R-203",

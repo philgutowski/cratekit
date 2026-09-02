@@ -226,8 +226,30 @@ def backup_argv(job) -> list[str]:
     return [*argv, "--job", job.job_id]
 
 
+def backup_items() -> tuple[str, ...]:
+    """The items one backup job carries: one per declared portion.
+
+    DERIVED BY ITERATING THE ENUM, never by naming the two portions here. A list
+    in this file is a second declaration of the set ``backup_facts.Portion``
+    already owns, and the two disagree the day somebody adds a third portion:
+    the planner would build an entry nothing claims, and the queue would run two
+    thirds of a backup with a green suite. This is the same rule the seam
+    decisions state as P3, that a name quantifying over a set derives it at run
+    time.
+
+    AND IT IS WHY THE ITEMS ARE NOT DERIVED FROM ``plan_backup``. The plan would
+    be the more direct answer and it cannot be taken: planning resolves rclone,
+    reads the process table and stats the library root, so items built from it
+    would make queueing refuse on a machine where the work would have run fine
+    once claimed. The enum needs nothing from the machine, and ``plan_backup``
+    builds one entry per member on both of its paths, so the item set and the
+    plan's portion set are the same set from the same source.
+    """
+    return tuple(str(portion) for portion in backup_facts.Portion)
+
+
 def backup_library(ctx) -> Envelope:
-    """Freeze the rehearsal flag and queue, or report the job already queued.
+    """Freeze the rehearsal flag and queue, or continue the job already queued.
 
     NOTHING IS PLANNED HERE, deliberately, and the difference from the work body
     below is the whole reason queueing is separate from working. ``plan_backup``
@@ -240,11 +262,57 @@ def backup_library(ctx) -> Envelope:
     cfg = _load()
     with jobs.open_store() as store:
         if ctx.args.job:
-            return ctx.envelope(data=_reported(store, jobs.reconcile(store, ctx.args.job)))
+            # RECONCILE FIRST. A resume arrives after something stopped, and a
+            # claim left behind by a driver that died is state the queue cannot
+            # see for itself.
+            job = jobs.reconcile(store, ctx.args.job)
+            warnings: tuple[dict[str, str], ...] = ()
+            if job.is_open():
+                # The step that was missing until this unit. Everything above this
+                # line already worked; nothing below it ever ran a portion. A job
+                # every one of whose items failed raises out of here rather than
+                # reaching the report, which is correct: the engine has already
+                # recorded the job as failed and the refusal carries the item's
+                # own cause.
+                _, warnings = ctx.run_job(store, job)
+                job = jobs.get(store, job.job_id)
+                # A JOB THAT ENDED FAILED IS NOT AN OK EXIT, and this branch is
+                # the only place that can say so. ``jobs.drive`` raises only when
+                # EVERY attempted item failed; a run where the mirror completed
+                # and the database did not returns normally with the job recorded
+                # failed, so without this the verb exits 0 over half a backup.
+                # That is the merge bar's "a clean report over state the tool
+                # could not read", and it is the same sentence ``refusal_for``
+                # already enforces one layer down: a portion that failed decides
+                # the run even when the other completed, because a person told the
+                # backup succeeded stops looking and the half that failed
+                # published no age.
+                #
+                # THE ENGINE'S OWN CAUSE IS RE-RAISED rather than a new one built
+                # here. It already carries the counts, the retryable flag, the
+                # ``resume-job`` remedy and the failing item's cause nested
+                # inside it, and a second wording for one condition is how the two
+                # come to disagree about which one a run met.
+                if not job.is_open() and job.cause is not None:
+                    raise CratekitError(job.cause)
+            reported = _reported(store, job)
+            # READ BACK HERE AND NOWHERE INSIDE THE ITEM. This is the same call
+            # the work body deliberately does not make under the driver, and the
+            # position is the whole point: an unreadable fact file refuses the
+            # COMMAND here, where the person sees it and the already durable job
+            # keeps its state, instead of failing an item whose transfer
+            # completed and sending every later resume to repeat the transfer.
+            reported["ages"] = published_ages(cfg)
+            return ctx.envelope(data=reported, warnings=warnings)
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
             payload=frozen_payload(ctx.args.dry_run),
+            # ONE PORTION IS ONE ITEM. Without this the queue holds a job with
+            # nothing to claim, and ``jobs.drive`` transitions a job whose item
+            # count is zero straight to SUCCEEDED, so the driver reports a backup
+            # that copied nothing.
+            item_ids=backup_items(),
             cfg=cfg,
         )
         return ctx.envelope(data=_reported(store, job))
@@ -382,10 +450,12 @@ def refusal_for(outcome: backup.BackupOutcome) -> CratekitError | None:
 def perform_backup(
     payload: dict[str, Any],
     *,
+    portion: backup_facts.Portion | None = None,
     cfg: config.Config | None = None,
     runner=backup.subprocess_runner,
     now: datetime | None = None,
     process_lister=None,
+    read_back: bool = True,
 ) -> dict:
     """Do the backup one queued job asks for, and report what actually happened.
 
@@ -394,8 +464,28 @@ def perform_backup(
     properties that matter most about this body, that a failed run publishes no
     age and that the age it does publish is the one the session will read, are
     then drivable without a configured machine, a job store and a claimed item.
-    Nothing in ``src`` claims a job item today (R-198), so built inside the handler
-    this body would have no reachable caller at all.
+
+    ``portion`` NARROWS THE RUN TO ONE HALF, and ``None`` runs the whole plan the
+    way every caller before the handler did. One body rather than two, so the
+    properties above stay drivable through the same function the queue uses; and
+    a default that changes nothing, so the callers and tests that predate the
+    binding keep measuring what they measured.
+
+    ``read_back`` IS OFF FOR THE QUEUED CALLER, and the reason is narrower than
+    the one first written here, which was measured and found false rather than
+    argued. The claim was that a real run's unreadable fact file would fail an item
+    whose transfer had already completed. It cannot: ``run_backup`` publishes
+    through ``backup_facts.record``, which READS the file before it writes, so an
+    unreadable file fails inside the engine first and the portion never reaches
+    this report. The two are the same reader and they fail together.
+
+    WHERE THEY COME APART IS A REHEARSAL. ``run_backup`` publishes nothing for a
+    dry run, so nothing else touches the fact file and this read would be the only
+    one. Under the driver that fails an item over a rehearsal that copied nothing
+    and changed nothing, and every resume repeats it. So the read belongs where a
+    failure refuses the COMMAND instead, which is the shell's own resume branch,
+    and the handler, which discards this report anyway, asks for it not to happen
+    here.
 
     THE ENGINE'S WHOLE-RUN REFUSALS ARE TRANSLATED RATHER THAN LET ESCAPE.
     ``BackupRefused`` is not a ``CratekitError``, so the dispatcher's
@@ -420,12 +510,7 @@ def perform_backup(
     library somewhere they did not ask for, and would publish an age naming a
     destination the queued run never targeted.
 
-    NOTHING PASSES IT TODAY, because ``jobs.drive`` has no caller in ``src``
-    (R-198), so the fallback is what every reachable path takes. The parameter is
-    still here rather than deferred to the unit that binds the handler: the
-    binding is a table of ``handler_key`` to callable, and a work body whose
-    signature cannot accept the frozen configuration makes that unit choose
-    between changing four shells and wiring the bug in.
+    :func:`handle` PASSES IT, and the fallback is what the unqueued callers take.
     """
     cfg = _load() if cfg is None else cfg
     dry_run = bool(payload.get(DRY_RUN))
@@ -435,6 +520,25 @@ def perform_backup(
         raise _engine_refusal(
             exc.refusal, exc.detail, library=str(cfg.library.root)
         ) from exc
+    if portion is not None:
+        # NARROWED RATHER THAN FILTERED AT EXECUTION. ``run_backup`` iterates the
+        # plan it is handed, so a plan holding one portion is how one portion runs
+        # without a second execution path beside the one every other caller uses.
+        # ``archive_keep`` rides the rebuilt plan rather than being passed again,
+        # which is the rule ``BackupPlan``'s own docstring states: taken twice, the
+        # two copies can disagree and the rotation deletes what the preview kept.
+        #
+        # ``plan.portion`` RAISES for a portion the planner did not build. That is
+        # unreachable today and is left loud on purpose: ``plan_backup`` builds one
+        # entry per declared portion on both of its paths, so the only way to reach
+        # it is to add a member to ``backup_facts.Portion`` without teaching the
+        # planner about it, and a KeyError naming the portion is a better answer
+        # there than a run that quietly does one half.
+        plan = backup.BackupPlan(
+            stamp=plan.stamp,
+            archive_keep=plan.archive_keep,
+            portions=(plan.portion(portion),),
+        )
     outcome = backup.run_backup(cfg, plan, runner=runner, now=now, dry_run=dry_run)
     # ``PortionOutcome.results`` IS DROPPED, AND HERE IS WHY, because the
     # first-caller learning says a returned value nobody inspects is the same
@@ -455,6 +559,25 @@ def perform_backup(
     # reaches this report through the engine's own vocabulary rather than
     # through a second reading of ``results`` here, and nothing is aggregated a
     # second time at this layer: two reports of one condition drift apart.
+    # ``refusal_for`` IS APPLIED UNCHANGED AND UNQUALIFIED OVER A NARROWED RUN,
+    # and the temptation this comment exists to refuse is to add a condition on
+    # top of it. Its three branches already answer the question a single portion
+    # asks: a portion that ran returns None, a portion whose transfer came back
+    # non zero returns ``backup-transfer-failed``, and a portion the engine
+    # refused returns that refusal with its RESERVED remediation, so a person
+    # meets ``quit-rekordbox`` or ``mount-library-volume`` rather than a generic
+    # one. Its whole-run sentence, that a refusal only ends the run when nothing
+    # ran, is a statement about a run holding two portions; a run holding one is a
+    # run in which nothing ran whenever that portion did not.
+    #
+    # THE FIRST DRAFT OF THIS UNIT SUPPRESSED THE REFUSAL when the other portion
+    # would run, so that backing up with rekordbox open did not report a failure.
+    # That is unrecoverable and this is where it would come back. ``complete_item``
+    # writes ``done``, and ``jobs.retry`` re-arms only ``failed`` and ``claimed``,
+    # saying so in its own docstring: "Items that are DONE stay done." The person
+    # then quits rekordbox, resumes, and nothing happens, for ever, over a job
+    # reporting SUCCEEDED. Failing the item is louder and it is the only one of the
+    # two a resume can finish.
     refusal = refusal_for(outcome)
     if refusal is not None:
         raise refusal
@@ -465,16 +588,74 @@ def perform_backup(
     # what makes that checkable rather than asserted, since a rehearsal leaves
     # every portion exactly as it found it.
     report["dry_run"] = dry_run
-    report["ages"] = published_ages(cfg, now=now)
+    if read_back:
+        report["ages"] = published_ages(cfg, now=now)
     return report
+
+
+def handle(job, item, cfg) -> "jobs.Produced | None":
+    """Back up one portion. The per-item worker behind ``handler_key`` backup.run.
+
+    THE ITEM NAMES THE PORTION, and there is nothing in the payload to read it
+    from instead. That is the difference from ``master``, whose payload holds the
+    one recording its single item also names: here the payload carries the
+    rehearsal flag and the item carries the half of the library this claim is for,
+    so reading the payload could not select a portion at all.
+
+    IT RETURNS NOTHING TO COMMIT, and the absence is the decision. ``master``
+    stages its encode beside the destination and hands back a ``Produced`` so the
+    engine owns the flush-then-rename, because it writes a local file. rclone
+    writes to the remote and leaves nothing local, so there is no staged path and
+    no final path, and inventing one would be a commit ordering applied to a file
+    that does not exist. ``jobs.drive`` handles a handler that produces nothing and
+    completes the item with no artifact.
+
+    ``cfg`` IS THE CONFIGURATION THIS JOB WAS FROZEN AGAINST (KTD9) and it is
+    passed straight through. Nothing in this function loads one, and the guard in
+    ``tests/test_handlers.py`` that says so reads only this function's own body and
+    states in its own docstring that it cannot see a reload reached through a
+    helper. This module HAS such a helper, ``_load``, used by the unqueued path, so
+    the guard would not notice a call to it. Said here as well as there, because a
+    guard described as closing a hole it only narrows is the thing a later reader
+    trusts. A backup queued against one remote and claimed after the person
+    reconfigured their destinations would otherwise copy the library somewhere they
+    did not ask for and publish an age naming a destination the queued run never
+    targeted.
+    """
+    named = str(item.item_id or "")
+    declared = tuple(str(entry) for entry in backup_facts.Portion)
+    try:
+        portion = backup_facts.Portion(named)
+    except ValueError:
+        raise refuse(
+            "internal-error",
+            f"this job's item is {named!r}, which is not a backup portion this "
+            f"build declares. The portions are {', '.join(declared)}",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=("backup", "cli"),
+            detail={"item_id": named, "portions": list(declared)},
+        ) from None
+    perform_backup(
+        dict(job.payload or {}),
+        portion=portion,
+        cfg=cfg,
+        # RESOLVED AT CALL TIME, not left to the default, so a test can put a
+        # stand-in in front of it. ``perform_backup``'s own default is bound when
+        # this module is imported and cannot be reached any other way.
+        runner=backup.subprocess_runner,
+        read_back=False,
+    )
+    return None
 
 
 __all__ = [
     "DRY_RUN",
     "backup_argv",
+    "backup_items",
     "backup_library",
     "build",
     "frozen_payload",
+    "handle",
     "perform_backup",
     "published_ages",
     "refusal_for",
