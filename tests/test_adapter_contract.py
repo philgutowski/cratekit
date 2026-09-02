@@ -778,6 +778,7 @@ def test_the_vendored_settings_translation_names_every_key_that_reverted(setting
         "download_base_path",
         "format_track",
         "path_binary_ffmpeg",
+        "extract_flac",
     }
     assert pushed["quality_audio"] == "LOSSLESS"
     assert pushed["download_base_path"] == str(settings.download_staging)
@@ -828,6 +829,33 @@ def test_a_machine_with_no_ffmpeg_refuses_by_name_instead_of_landing_lossy(
     assert result.outcome is InvocationOutcome.ADAPTER_BROKEN
     assert "ffmpeg" in result.detail
     assert result.remedy is Remedy.INSTALL_ADAPTER
+
+
+def test_a_broken_ffmpeg_override_is_a_different_instruction_from_an_absent_one(
+    monkeypatch, tmp_path, settings
+):
+    """Installing ffmpeg does not fix an override pointing at nothing.
+
+    The binaries module already separates these two, and collapsing them onto one
+    remedy at this hop would throw that away and send the user to a package
+    manager for a variable they set wrong.
+    """
+    monkeypatch.setenv(binaries.env_var("ffmpeg"), str(tmp_path / "not-here"))
+    with pytest.raises(AdapterBroken) as caught:
+        vendored.tool_settings(settings)
+    assert caught.value.remedy is Remedy.REPAIR_ADAPTER_SETTINGS
+
+
+def test_the_flac_extraction_setting_is_pushed_rather_than_inherited(settings):
+    """KTD20: a setting this product depends on is stated every invocation.
+
+    The tool's factory default is True, but the value a run actually gets is
+    whatever the tool last wrote to its own settings file, and a run that finds
+    it False lands an m4a and reports success. That is the same argument the
+    quality setting is pushed for.
+    """
+    pushed = vendored.tool_settings(settings, resolve=_ffmpeg_at("/opt/x/ffmpeg"))
+    assert pushed["extract_flac"] is True
 
 
 def test_verification_covers_the_ffmpeg_key_by_it_being_pushed(settings):
@@ -1255,15 +1283,44 @@ def test_a_session_with_no_pkce_marker_reloads_as_a_device_flow_session(tmp_path
     assert _token_round_trip(tmp_path, is_pkce=False).is_pkce is False
 
 
-def test_the_persisted_flag_survives_the_bool_coercion_in_set_option(tmp_path):
+def test_the_persisted_flag_never_goes_through_the_bool_coercing_setter(tmp_path):
     """``set_option`` calls ``.lower()`` on any value whose field is a bool.
 
     ``is_pkce`` is the token model's only bool field, so routing the write
     through ``set_option`` like its four neighbours raises ``AttributeError`` and
-    the whole persistence call dies. The patch writes through ``self.data``, and
-    this is the test that would go red if somebody tidied it back into line.
+    the whole persistence call dies. Asserting the round trip again would not
+    catch a regression here, because a tidy-up that moved the write back onto
+    ``set_option`` would fail loudly anyway. What this pins is that the write
+    does not go through that setter at all, which is the thing a future reader
+    would otherwise "fix" for consistency with its four neighbours.
     """
-    assert _token_round_trip(tmp_path, is_pkce=True).is_pkce is True
+    from cratekit._vendor.tidal_dl_ng.config import Tidal
+    from cratekit._vendor.tidal_dl_ng.model.cfg import Token
+
+    holder = Tidal.__new__(Tidal)
+    holder.cls_model = Token
+    holder.data = Token()
+    holder.file_path = str(tmp_path / "token.json")
+    holder.session = _PkceSession(True)
+
+    routed: list[str] = []
+    original = Tidal.set_option
+
+    def record(self, key, value):
+        routed.append(key)
+        return original(self, key, value)
+
+    Tidal.set_option = record
+    try:
+        holder.token_persist()
+    finally:
+        Tidal.set_option = original
+
+    assert "is_pkce" not in routed, (
+        "is_pkce was written through set_option, which calls .lower() on a bool "
+        "field's incoming value and raises AttributeError"
+    )
+    assert holder.data.is_pkce is True
 
 
 @pytest.mark.parametrize(
@@ -1465,6 +1522,17 @@ def test_the_codec_table_answers_for_every_container_it_declares():
     assert vendored.LOSSLESS_BY_CONTAINER["MP3"] is False
     assert vendored.LOSSLESS_BY_CONTAINER["OggVorbis"] is False
     assert vendored.LOSSLESS_BY_CONTAINER["OggOpus"] is False
+    assert vendored.LOSSLESS_BY_CONTAINER["AAC"] is False
+    assert set(vendored.LOSSLESS_BY_CONTAINER) == {
+        "FLAC",
+        "WAVE",
+        "AIFF",
+        "OggFLAC",
+        "MP3",
+        "OggVorbis",
+        "OggOpus",
+        "AAC",
+    }, "a container was added to the table without a decision recorded here"
     assert "alac" in vendored.MP4_LOSSLESS_CODECS
     # MP4 is deliberately not in the container table: a .m4a holds AAC or ALAC
     # and only the codec string can say which, which is the exact container this
@@ -1533,18 +1601,22 @@ def test_a_refused_file_is_left_where_it_landed(tmp_path):
 
 @pytest.mark.parametrize("name", ["empty.flac", "mystery.xyz"])
 def test_a_landing_that_cannot_be_read_is_refused_as_unreadable_not_as_lossy(tmp_path, name):
-    """Two different facts get two different sentences.
+    """Two different facts get two different sentences, and two different remedies.
 
-    Not being able to confirm lossless is not the same as confirming lossy, and
-    reporting the first as the second sends the reader after the provider when
-    the file is truncated.
+    Not being able to confirm lossless is not the same as confirming lossy. It is
+    almost always a truncated download, so it raises a plain error that the
+    classifier reads as transient and re-queues. Refusing it as a POLICY failure
+    would carry RELAX_LOSSLESS_POLICY, telling somebody to loosen the rule that
+    just caught an unreadable file, and loosening it would make the product
+    accept that file.
     """
     broken = tmp_path / name
     broken.write_bytes(b"")
     assert vendored.codec_of(broken)[1] is None
 
-    with pytest.raises(vendored.LosslessRefused) as caught:
+    with pytest.raises(RuntimeError) as caught:
         vendored.landed_file(True, str(broken), "1234")
+    assert not isinstance(caught.value, vendored.LosslessRefused)
     assert "could not be read" in str(caught.value)
     assert "is lossy" not in str(caught.value)
 

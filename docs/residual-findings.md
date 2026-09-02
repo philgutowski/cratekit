@@ -10682,3 +10682,93 @@ unannounced leak.
 
 **Closes when:** the ingest erases its source, or doctor reports a provider token
 found on disk outside a live invocation.
+
+---
+
+## R-213. The alternative adapter never reads the file it landed
+
+**Found:** during U47's code review, 2026-09-01.
+
+U47 put the codec check in `vendored.landed_file`, so the vendored adapter
+refuses a landing whose codec is not lossless under a strict policy.
+`streamrip.py` has no equivalent. Its `fetch` returns the path its client
+reports and nothing reads the bytes, so the alternative adapter still answers the
+losslessness question from the provider's OFFER alone, which is precisely the
+arrangement R-196 records as having failed silently since July.
+
+**Why this matters more than a missing feature.** `acquire/adapter.py` exists so
+the two adapters are substitutable, and `docs/adapters.md` now describes the
+codec check as though it were a property of acquisition. It is a property of one
+adapter. Someone who switches adapters because the vendored one broke, which is
+the exact scenario the contract was written for, silently loses the guard at the
+same moment.
+
+**Why it is not fixed here.** The probe would have to move somewhere both
+adapters can reach and `streamrip`'s own quality vocabulary would have to be
+mapped onto it, and this unit's scope was the vendored path. Widening it without
+being able to drive the alternative, whose tool is not installed on this machine,
+would be a fix measured on a fixture.
+
+**Cost:** one of two shipped adapters enforces the product's central promise at
+the file. The contract's docstring now says which, so the gap is visible rather
+than assumed away.
+
+**Closes when:** the codec probe is reachable from both adapters and the
+conformance suite drives a lossy landing through each.
+
+---
+
+## R-214. Nothing drives the adapter's own login refusal
+
+**Found:** during U47's code review, 2026-09-01.
+
+`login_mode` is a pure function and is tested exhaustively. The line that CALLS
+it, in `_VendoredSource.authenticate`, is not driven by anything. Every test in
+the suite injects `session=`, which returns from `authenticate` before the
+vendored classes are constructed, so the refusal's wiring is proven only by the
+pure function plus an AST assertion that `do_pkce=True` appears in the source.
+
+**Why it was left.** Reaching that line offline means letting `authenticate`
+construct the vendored `Tidal`, and `Tidal.__init__` reads `path_file_token()`,
+the real user's `~/.config/tidal-dl-ng/token.json`, before the adapter overrides
+`file_path`. `conftest.py` redirects Cratekit's own state roots and not that one,
+so a test driving this path would read, and on a bad day rewrite, a real
+credential file. `Tidal` is also a `SingletonMeta`, so the first construction in
+a process wins. Writing the test without first isolating the vendored tool's
+config directory would trade a coverage gap for a test that touches a live token.
+
+**Cost:** two lines of wiring between a proven decision and a proven refusal are
+unproven. A refactor that dropped the `login_mode` call while keeping the
+function would pass the whole battery.
+
+**Closes when:** the vendored tool's config directory is redirected in
+`conftest.py`, and a test drives `authenticate` against a device-flow token file
+with no session injected.
+
+---
+
+## R-215. An abort cannot reach a download that is already running
+
+**Found:** during U47's code review, 2026-09-01.
+
+`fetch` builds a fresh `event_abort` per call and drops it. Nothing outside that
+call holds a reference, so nothing can set it. The concurrent driver in
+`core` checks its own stop flag between attempts but cannot interrupt an
+in-flight `acquire_one`, which means a provider block observed by one worker does
+not stop the requests its siblings already started.
+
+**This is not a regression and that is why it is recorded rather than fixed.**
+Before U47 the adapter passed no abort event at all and the download crashed on
+its first line, so nothing was interruptible then either. What changed is that
+downloads now run, which makes an existing gap reachable for the first time.
+
+**Why it is not fixed here.** The fix threads a run-scoped stop event through
+`TrackSource.fetch`, which is a signature change to the contract and to both
+adapters. The vendored `Download.item()` already declares an `event_stop`
+parameter for exactly this, so the shape exists; the plumbing is a unit.
+
+**Cost:** a run that should stop keeps downloading until every in-flight track
+finishes. Bounded by the concurrency cap, not by the queue length.
+
+**Closes when:** a run-scoped stop event reaches `Download`, and a test proves an
+in-flight fetch observes it.

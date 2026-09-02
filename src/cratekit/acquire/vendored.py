@@ -6,7 +6,7 @@ frozen at whatever the last extract happened to expose and none of them will eve
 be fixed. Confining knowledge of that tree to one file is what makes the eventual
 replacement a configuration change instead of a search across the codebase.
 
-THREE THINGS THIS FILE OWNS, and each is a failure the source system had:
+FOUR THINGS THIS FILE OWNS, and each is a failure the source system had:
 
 1. **Settings live in memory, per invocation (KTD20).** The source system drives
    the wrapped tool by mutating its global settings file through subprocess calls
@@ -22,6 +22,11 @@ THREE THINGS THIS FILE OWNS, and each is a failure the source system had:
 3. **Failures are translated into the contract.** The tool raises whatever its
    client raises. An authentication rejection becomes an invocation-level
    AUTH_FAILED naming the replacement path (AE9), not a pile of missing tracks.
+4. **The landed FILE is checked, not just the request (R-196).** The lossless
+   rule used to be enforced at the setting alone, so the product asked for
+   LOSSLESS, the provider sent AAC, and nothing between them ever looked. Every
+   layer was green while the central promise failed. ``codec_of`` reads what
+   actually arrived and ``landed_file`` refuses it under a strict policy.
 
 WHAT IS DELIBERATELY NOT PROVEN BY THE TEST SUITE. That a real download works.
 That needs an account, an authorised session, and the network, and it is the
@@ -121,6 +126,12 @@ def tool_settings(
     try:
         ffmpeg = resolve("ffmpeg")
     except binaries.BinaryNotFound as exc:
+        # An override the user set and got wrong is a different instruction from
+        # an encoder they never installed. Installing ffmpeg does not fix a
+        # CRATEKIT_BIN_FFMPEG pointing at nothing, and the binaries module
+        # already made that distinction; collapsing both onto one token here
+        # would throw it away at the last hop.
+        broken_override = exc.remedy is binaries.Remedy.FIX_BINARY_OVERRIDE
         # Refused rather than pushed empty. Empty is the tool's factory default
         # and it is exactly what it reads as "do not extract FLAC", so an absent
         # encoder would otherwise arrive as a successful lossy download. Doctor
@@ -131,7 +142,9 @@ def tool_settings(
             f"the downloader needs ffmpeg to extract lossless audio and it could "
             f"not be resolved ({exc}); without it this run would land lossy files "
             f"and report success",
-            remedy=Remedy.INSTALL_ADAPTER,
+            remedy=(
+                Remedy.REPAIR_ADAPTER_SETTINGS if broken_override else Remedy.INSTALL_ADAPTER
+            ),
         ) from exc
 
     return {
@@ -139,6 +152,13 @@ def tool_settings(
         "download_base_path": str(settings.download_staging),
         "format_track": STAGING_TEMPLATE,
         "path_binary_ffmpeg": ffmpeg,
+        # Pushed for the same reason as the quality above, and it is the same
+        # argument: the tool's factory default for this is True, but the value
+        # this run gets is whatever the tool last wrote to its own settings file,
+        # and a run that finds it False lands an m4a while reporting success.
+        # KTD20's whole point is that a setting this product depends on is stated
+        # every invocation rather than inherited.
+        "extract_flac": True,
     }
 
 
@@ -516,7 +536,14 @@ def landed_file(
 
     name, lossless = probe(path)
     if lossless is None:
-        raise LosslessRefused(
+        # A plain error, NOT a policy refusal, and the difference is what the
+        # user is told to do. A file nothing could parse is almost always a
+        # truncated or interrupted download, so it goes back through the
+        # classifier as transient and stays re-queueable. Raising
+        # ``LosslessRefused`` here would carry RELAX_LOSSLESS_POLICY, which tells
+        # somebody to loosen the rule that just caught an unreadable file, and
+        # loosening it would make the product ACCEPT that file.
+        raise RuntimeError(
             f"the file that landed for {key} could not be read as audio ({name}), "
             f"so this run cannot confirm it is lossless; it is at {path}"
         )

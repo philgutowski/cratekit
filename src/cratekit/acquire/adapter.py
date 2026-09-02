@@ -651,8 +651,16 @@ class TrackSource(Protocol):
     identical loop the vendored and alternative adapters use.
 
     Implementations raise ``AdapterAuthFailed`` when the session is rejected and
-    ``AdapterBroken`` when the tool cannot run. Any other exception from ``offer``
-    or ``fetch`` is a per-track failure and goes to ``classify_unavailable``.
+    ``AdapterBroken`` when the tool cannot run. ``fetch`` may also raise
+    ``LosslessRefused`` when it inspected the file it landed and the codec is not
+    what the policy asked for; that becomes REFUSED_BY_POLICY and does NOT go
+    through ``classify_unavailable``, because the track is not unavailable, it is
+    declined. Any other exception from ``offer`` or ``fetch`` is a per-track
+    failure and goes to ``classify_unavailable``.
+
+    Checking the landed file is OPTIONAL for an implementation and the contract
+    says so rather than pretending otherwise: the vendored adapter does it, the
+    alternative does not, and R-213 records that gap.
     """
 
     def authenticate(self) -> None:

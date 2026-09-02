@@ -253,18 +253,18 @@ class Tidal(BaseConfig, metaclass=SingletonMeta):
         return True
 
     def login(self, fn_print: Callable) -> bool:
-        # Cratekit patch (R-196): PKCE is the only login this product offers.
+        # Cratekit patch (R-196): a stored session is reused only when it is
+        # already PKCE.
         #
-        # Upstream called `login_oauth_simple` (device linking) and carried the
-        # PKCE call beside it as a comment. The provider now gates lossless audio
-        # behind the PKCE client, so the commented line is the one that works and
-        # the live one silently produced lossy downloads. There is deliberately no
-        # flag to keep the device flow: a flag that preserves it preserves the
-        # defect.
-        #
-        # The reload passes the persisted flag rather than the default, so a
-        # stored PKCE token refreshes against the client that minted it.
-        is_token = self.login_token(do_pkce=bool(getattr(self.data, "is_pkce", False)))
+        # The short circuit is the whole point. Upstream reuses ANY loadable
+        # token, so on a machine holding a device-flow token this method would
+        # report "you are logged in", never reach the PKCE branch below, and hand
+        # back the very token the adapter then refuses. That is every machine
+        # that ran this tool before the switch, so the documented
+        # re-authorisation would have been an unbreakable loop.
+        is_token = bool(getattr(self.data, "is_pkce", False)) and self.login_token(
+            do_pkce=True
+        )
         result = False
 
         if is_token:
@@ -274,7 +274,12 @@ class Tidal(BaseConfig, metaclass=SingletonMeta):
         elif not is_token:
             fn_print("You either do not have a token or your token is invalid.")
             fn_print("No worries, we will handle this...")
-            # Login method: PKCE authorization. Required for lossless streaming.
+            # Cratekit patch (R-196): PKCE is the only login this product
+            # offers. Upstream called `login_oauth_simple` (device linking) and
+            # carried this call beside it as a comment, so the commented line was
+            # the working one and the live one silently produced lossy downloads.
+            # There is deliberately no flag preserving the device flow: a flag
+            # that preserves it preserves the defect.
             self.session.login_pkce(fn_print)
 
             is_login = self.login_finalize()
