@@ -10858,3 +10858,148 @@ finishes. Bounded by the concurrency cap, not by the queue length.
 
 **Closes when:** a run-scoped stop event reaches `Download`, and a test proves an
 in-flight fetch observes it.
+
+## R-216. Two verbs a closed unit declared and never landed, and the revoke that is still missing
+
+**Found:** during U49, 2026-09-02, verified against `main` at 32420a9.
+
+U8 closed with `session.ack` and `session.release` declared in
+`src/cratekit/cli/registry.py` against `module="cratekit.session.cli"`, carrying
+`planned_in="U8"`, and that module never existed. `record_acknowledgment` had no
+caller anywhere in `src` or `scripts`, so nothing a person could type produced
+the record `assert_backup_acknowledged` demands, and every destructive path in
+the product refused: five call sites pass through that gate, in `write/trees.py`,
+`deletion/run.py`, `adopt/apply_cli.py`, `core/restore.py` and
+`modules/tools/backup.py`. `release_stale_lock` was in the same state, so a lock
+left by an installation that is gone could only be cleared by editing a file.
+
+**The suite was green for eleven units and could not see it.** Tests mint
+acknowledgments by calling the core function, so every guard resting on that
+record was measured in a world where its premise could not fail. That is the
+shape
+`docs/solutions/workflow-issues/a-guard-safe-only-because-its-subject-is-unimplemented-expires-when-it-lands.md`
+names, and `tests/_pending.py` owed nothing against the module, so no countdown
+was watching. This is the U45 shape: an engine landed without its shell, and the
+remedy was a new unit rather than a reopened one.
+
+**Closed for the session half by U49, 2026-09-02.** `src/cratekit/session/cli.py`
+ships both verbs, both markers came off in the commit that created the file, and
+a real destructive verb is driven to completion through the dispatcher on an
+acknowledgment minted through the CLI.
+
+**The vocals half is still open.** `registry.py` declares `analyze.vocals` and
+`metadata.mytags-vocals` with `planned_in="U25"` against
+`cratekit.vocals.cli` and `cratekit.write.metadata_cli`. Those are different
+module strings, so nothing U49 created expires them, and they belong to the
+analysis worker batch.
+
+**And no verb withdraws an acknowledgment.** Board issue #67 described
+`session.release` as releasing what `ack` recorded. The registry describes it as
+releasing a stale library lock, its gate prompt says "Release the lock held by
+another installation?", and `release_stale_lock` is the engine that answers
+that, so U49 implemented the registry: the registry is what the dispatcher
+reads and the issue is a description of it. The consequence is that a person who
+acknowledges and then discovers the backup was bad has no command that takes it
+back, and hand editing the state file is the only route until the twelve hour
+window lapses.
+
+**Cost:** the session half cost every destructive feature in the product being
+unreachable while its suite reported the guards protecting them as tested. What
+is left is a missing revoke, bounded by `DEFAULT_ACK_VALIDITY`.
+
+**Closes when:** the vocals markers expire against modules that exist, and
+somebody decides whether an early withdrawal is wanted. A withdrawal is a NEW
+registry entry with its own name, not a change to `session.release`.
+
+## R-217. A recorded gate answer is replayable, so one run id re-mints forever
+
+**Found:** during U49's document review, 2026-09-02, and confirmed against the
+landed verb.
+
+`crate session ack` mints on every answering invocation. The decision a person
+records with `crate run decide` is written into the run record and nothing
+consumes it, `cli/__init__.py` saves that record after a successful handler, and
+nothing in `src` prunes `gates.run_dir()`. So `crate --run R session ack` can be
+driven again at any later time and each drive restarts the twelve hour window,
+with no second deliberate act by anybody.
+
+`DEFAULT_ACK_VALIDITY`'s own docstring is the standard this falls short of: an
+unbounded acknowledgment is "a permanent affirmative wearing a timestamp, and
+R34 exists to forbid exactly that". The window is what makes the record an
+answer about now rather than a setting.
+
+**This is narrower than it was.** U49 also found and fixed a worse form on the
+same path: `Gates.require` refused an inline answer to an explicit gate only
+while nothing was recorded, so once any decision existed a `-d` flag was
+preferred over it and `--run R -d session.ack.backup=acknowledged` minted over a
+recorded `abort`. That is fixed and driven. What remains is replay of an answer
+the person genuinely gave.
+
+**Why it is not fixed here.** The fix is one line in the handler, clearing
+`ctx.run.decisions["session.ack.backup"]` after a successful mint. It changes
+what a recorded answer means for every explicit gate in the product, which is a
+shared-seam decision U49 did not open and should not settle from inside one verb.
+
+**Cost:** an actor holding one run id extends the acknowledgment indefinitely
+without asking anybody again.
+
+**Closes when:** either the mint consumes its decision, or run records acquire a
+retention rule and the decision to leave them replayable is written down as
+deliberate.
+
+## R-218. The ages in the refusal and the ages in the record are two reads
+
+**Found:** during U49's document review, 2026-09-02.
+
+`session.ack` reads the published ages before it asks the question, so the
+refusal can name what the person is deciding over. `record_acknowledgment` reads
+them again through `_shown_ages` when it writes the record. Those are two calls
+at two moments in two processes, and nothing bounds the interval between them: a
+portion can move from `never-recorded` to backed up, or the reverse, between the
+question and the answer.
+
+`ShownAge`'s docstring states the property the record is supposed to have,
+"Recorded rather than recomputed, because the question a person answered was
+given this, proceed? and re-deriving the number later answers a different
+question". The record can therefore attest to a showing that did not happen.
+
+**Both reads answer from one source and that is not the same thing.** Both go
+through `backup_facts.ages` and read one file, so they cannot disagree about
+where the numbers came from. They can disagree about when.
+
+**Why it is not fixed here.** Carrying the shown ages from the refusing
+invocation into the answering one means either putting them in the run record or
+passing them to `record_acknowledgment`, and that function deliberately has no
+parameter a caller can use to say what a person saw. Changing its signature is
+out of U49's scope for the reason the signature exists. A digest over the ages
+was considered and rejected: they move with every passing second, so every
+recorded answer would be stale before it could be spent.
+
+**Cost:** an acknowledgment's `shown` list is evidence of what the recording
+process read, not of what the person read.
+
+**Closes when:** the record carries the ages the refusal displayed, or the
+claim in `ShownAge`'s docstring is narrowed to what the code does.
+
+## R-219. The release prompt asserts a holder that may not be there
+
+**Found:** during U49's document review, 2026-09-02.
+
+`session.release.confirm` reads "Release the lock held by another
+installation?", and it is asked on every drive including one where the verb has
+already established that no lock is recorded. Conformance 3 holds every declared
+gate to firing, and skipping the question on the quiet path would make the case
+that needs asking least the only one exempt, so the prompt fires over a claim
+that does not exist. The refusal does carry the holder it found, or `None`, so
+the person is not misled once they read it; the prompt line above it still
+asserts something the verb knows is false.
+
+**Why it is not fixed here.** U49's whole discipline was to implement what the
+registry declares and change none of it. A unit that lands a declared module and
+edits the declaration in the same commit cannot say afterwards which half its
+tests were measuring, and a prompt is part of that declaration.
+
+**Cost:** one misleading sentence on a verb's quiet path.
+
+**Closes when:** somebody rewords the declared prompt so it does not assert a
+holder, in a commit that changes nothing else about the entry.
