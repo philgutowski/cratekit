@@ -354,17 +354,36 @@ def _shown_lines(shown: Mapping[str, Any]) -> list[str]:
         if isinstance(value, Mapping):
             lines.append(f"  {name}:")
             for key, entry in value.items():
-                lines.append(f"    {key}: {entry}")
+                lines.append(f"    {key}: {_shown_value(entry)}")
         elif isinstance(value, (list, tuple)):
             lines.append(f"  {name}:")
             for item in value:
                 if isinstance(item, Mapping):
-                    lines.append("    " + ", ".join(f"{k}={v}" for k, v in item.items()))
+                    lines.append(
+                        "    " + ", ".join(f"{k}={_shown_value(v)}" for k, v in item.items())
+                    )
                 else:
-                    lines.append(f"    {item}")
+                    lines.append(f"    {_shown_value(item)}")
         else:
-            lines.append(f"  {name}: {value}")
+            lines.append(f"  {name}: {_shown_value(value)}")
     return lines
+
+
+def _shown_value(value: Any) -> str:
+    """One carried value as a person should read it.
+
+    ``None`` becomes a word rather than the interpreter's spelling of it. A
+    refusal that prints "acknowledgment: None" has told a Python programmer
+    something and told everybody else nothing, and this is the surface a person
+    reads without asking for JSON.
+    """
+    if value is None:
+        return "none"
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return str(value)
 
 
 def render_gate(cause: Cause) -> str:

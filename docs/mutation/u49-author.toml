@@ -165,3 +165,59 @@ new = ""
 id = "A5_the_report_comes_from_the_pre_gate_read"
 description = "Render checks and summary from the pre-gate read instead of from the record, restoring the two-read payload the simplification pass removed"
 reason = "inert at this surface, not a missing test. After record_acknowledgment is handed the same moment the handler already read, both reads answer from one file at one instant and produce identical values, so no assertion can tell the mutated tree from this one. Writing a test for it would be the empty measurement the corpus warns about, and filing it as a residual would be worse than dropping it. The property the change buys is structural: one read reaches the payload rather than two, which removes the race rather than narrowing it."
+
+# ── Rows added after the code review, for the guards its findings bought ────
+
+[[rows]]
+id = "A6_the_authorisation_is_not_spent"
+description = "Leave the recorded decision in place after the mint, so one run id re-mints the acknowledgment forever (R-217's defect restored)"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''    ctx.run.decisions.pop(spec.name, None)'''
+new = ""
+
+[[rows]]
+id = "A7_the_check_rows_are_keyed_wrong"
+description = "Key the ack check rows by name rather than key, so the human check table prints a question mark where the portion should be"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''                    "key": f"backup.age.{entry['portion']}",'''
+new = '''                    "name": f"backup.age.{entry['portion']}",'''
+
+[[rows]]
+id = "A8_a_damaged_record_locks_the_verb_out"
+description = "Let the display read of the acknowledgment raise, so a corrupt record makes the one verb that replaces it refuse"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''    try:
+        recorded = session.read_acknowledgment(cfg)
+    except CratekitError as exc:
+        return {"unreadable": exc.cause.message}'''
+new = '''    recorded = session.read_acknowledgment(cfg)'''
+
+[[rows]]
+id = "L4_a_malformed_holder_raises_again"
+description = "Remove the coercion guard from read_lock_holder, so a lock record with a non numeric pid escapes as a traceback rather than a typed refusal"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''    try:
+        return Holder.from_json(data["holder"])
+    except (TypeError, ValueError, AttributeError):'''
+new = '''    if True:
+        return Holder.from_json(data["holder"])
+    if False:'''
+
+[[rows]]
+id = "G4_an_answered_gate_is_marked_open"
+description = "Mark the gate open even when a decision is already recorded, so the run record calls one gate both answered and awaiting an answer"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+old = '''            if recorded is None:
+                self.state.open_gate = spec.name
+            raise DecisionRequired(spec, self.state.run_id, context)
+
+        chosen = inline'''
+new = '''            self.state.open_gate = spec.name
+            raise DecisionRequired(spec, self.state.run_id, context)
+
+        chosen = inline'''

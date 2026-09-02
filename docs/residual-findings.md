@@ -10935,17 +10935,30 @@ preferred over it and `--run R -d session.ack.backup=acknowledged` minted over a
 recorded `abort`. That is fixed and driven. What remains is replay of an answer
 the person genuinely gave.
 
-**Why it is not fixed here.** The fix is one line in the handler, clearing
-`ctx.run.decisions["session.ack.backup"]` after a successful mint. It changes
-what a recorded answer means for every explicit gate in the product, which is a
-shared-seam decision U49 did not open and should not settle from inside one verb.
+**Cost while it stood:** an actor holding one run id extended the
+acknowledgment indefinitely without asking anybody again.
 
-**Cost:** an actor holding one run id extends the acknowledgment indefinitely
-without asking anybody again.
+**CLOSED by U49 itself, 2026-09-02, during its own code review.** The entry was
+written when the only fix considered was in `Gates.require`, which would have
+changed what a recorded answer means for every explicit gate in the product and
+was rightly out of one verb's scope. The review found the narrower fix that the
+first reading missed: `record_ack` pops its own decision off `ctx.run.decisions`
+after the mint returns, and the dispatcher persists that. The authorisation is
+therefore single use because THIS VERB decided its own is, which is a property
+of what it mints rather than of the gate machinery, and no other gate's
+resolution moves. A later drive of the same run refuses `decision-required` and
+needs a fresh `crate run decide`.
 
-**Closes when:** either the mint consumes its decision, or run records acquire a
-retention rule and the decision to leave them replayable is written down as
-deliberate.
+The record is kept rather than deleted because the reasoning is the transferable
+part: **a shared-seam objection to a fix is an objection to that fix, not to the
+finding.** The scope argument was sound and the conclusion drawn from it, that
+the defect had to be deferred, was wrong, because it was reached without asking
+whether the same property could be bought inside the caller.
+
+**Closes when:** closed. Driven by
+`tests/test_session_cli.py::test_a_spent_acknowledgment_decision_cannot_be_replayed`,
+which asserts the replay refuses and that a fresh deliberate act still works, so
+the guard cannot be satisfied by a verb that simply stopped minting.
 
 ## R-218. The ages in the refusal and the ages in the record are two reads
 
@@ -11003,3 +11016,34 @@ tests were measuring, and a prompt is part of that declaration.
 
 **Closes when:** somebody rewords the declared prompt so it does not assert a
 holder, in a commit that changes nothing else about the entry.
+
+## R-220. The actor on a gate decision is caller supplied, and this unit made it load bearing
+
+**Found:** during U49's code review, 2026-09-02, by two reviewers independently.
+
+`crate run decide` takes `--actor` as free text defaulting to `cli`
+(`src/cratekit/cli/verbs/runs.py`), and `gates.record` writes whatever it is
+handed into the run record as the actor who made the decision. The
+acknowledgment file itself is not affected: `record_acknowledgment` has no actor
+parameter and derives the account from the process identity, which is R34's
+sharpest clause and is intact.
+
+**What changed is what that decision now authorises.** Before U49 no landed verb
+reached an explicit gate that minted anything, so the actor on a gate decision
+was a label on a record nobody spent. It is now the audit trail for the act that
+unlocks every destructive write in the product, and it can say anybody.
+
+**This is pre-existing and the fix is not this unit's to make.** Deriving the
+actor in `run decide` changes the recorded meaning of every gate answer in the
+product, which is the same shared-seam objection R-217 raised and, unlike
+R-217, there is no narrower version available inside one verb: the decision is
+recorded by a different verb entirely.
+
+**Cost:** the run record can name someone who did not answer. The
+acknowledgment record, which is what the destructive gate actually consults,
+still names the derived account.
+
+**Closes when:** `run decide` records the derived identity as the actor for an
+explicit gate, keeping any supplied string as a separate annotation, and a test
+drives an arbitrary `--actor` against `session.ack.backup` and asserts what the
+record claims.

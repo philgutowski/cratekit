@@ -677,7 +677,20 @@ def read_lock_holder(path: Path | str) -> Holder | None:
         return None
     if not isinstance(data, Mapping) or not data.get("holder"):
         return None
-    return Holder.from_json(data["holder"])
+    try:
+        return Holder.from_json(data["holder"])
+    except (TypeError, ValueError, AttributeError):
+        # THE DOCSTRING'S PROMISE, KEPT. ``Holder.from_json`` coerces the pid
+        # with a bare ``int()``, so a record carrying a non numeric one raised
+        # straight out of a function whose first line says an unreadable file
+        # answers None. That was only reachable through a live contention race
+        # until ``session.release`` landed and made reading this file the first
+        # thing a plain invocation does, at which point a corrupted lock record
+        # became a traceback wearing a generic internal error instead of a
+        # refusal from the verb's own vocabulary. Structurally damaged and
+        # absent are still different conditions and the SHELL distinguishes
+        # them, by asking whether the file has bytes in it.
+        return None
 
 
 def _write_holder(handle: Any, holder: Holder | None) -> None:

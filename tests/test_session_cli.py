@@ -414,10 +414,15 @@ def test_a_second_mint_replaces_the_record_and_moves_the_window(installed):
     _code, _refused, first = _mint_through_the_cli()
     _code, _refused, second = _mint_through_the_cli()
     assert second["data"]["summary"]["recorded"] is True
-    assert (
-        second["data"]["summary"]["expires_at"] >= first["data"]["summary"]["expires_at"]
-    )
-    assert session.read_acknowledgment(installed).actor == session.derive_actor()
+    # DISTINCT, not merely non decreasing. A verb that recognised the live
+    # record and returned it untouched would satisfy ``>=`` exactly as a real
+    # re-mint does, so the ordering comparison cannot tell a second write from a
+    # second read, which is the whole claim this test is named for.
+    assert second["data"]["summary"]["recorded_at"] != first["data"]["summary"]["recorded_at"]
+    assert second["data"]["summary"]["expires_at"] != first["data"]["summary"]["expires_at"]
+    on_disk = session.read_acknowledgment(installed)
+    assert on_disk.actor == session.derive_actor()
+    assert on_disk.expires_at.isoformat() == second["data"]["summary"]["expires_at"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -522,7 +527,11 @@ def test_releasing_a_lock_nobody_holds_asks_anyway_and_reports_a_no_op(installed
     code, envelope = _drive(["--run", run_id, "session", "release"])
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
-    assert envelope["data"]["summary"] == {"released": False, "recorded": False}
+    assert envelope["data"]["summary"] == {
+        "released": False,
+        "recorded": False,
+        "unreadable": False,
+    }
 
 
 def test_aborting_the_release_clears_nothing(installed):
@@ -546,17 +555,182 @@ def test_aborting_the_release_clears_nothing(installed):
 
 
 def test_both_verbs_are_reachable_from_the_command_line(installed):
-    """``crate --help`` is where a person finds out these exist at all.
+    """``crate session --help`` is where a person finds these exist at all.
 
     Read off the REAL parser the dispatcher builds rather than by driving
     ``--help``, because argparse prints help and exits the process, so a drive
     would assert against an empty capture while the text went past it.
+
+    WALKED, NOT SUBSTRING MATCHED, and the difference is not pedantry. An
+    earlier version of this test asserted ``"session" in
+    build_parser().format_help()``, which is true of the group and says nothing
+    about either verb; worse, ``"ack"`` matches inside ``anchor track`` one
+    summary over, so the obvious repair would have passed over a verb that was
+    never registered. The subparser choices are the registration.
     """
-    assert "session" in cli.build_parser().format_help()
+    import argparse
+
+    parser = cli.build_parser()
+    groups = [
+        action
+        for action in parser._subparsers._group_actions  # noqa: SLF001 - argparse has no public walk
+        if isinstance(action, argparse._SubParsersAction)
+    ]
+    assert groups, "the root parser declares no subcommands at all"
+    session_group = groups[0].choices["session"]
+    leaves = [
+        action
+        for action in session_group._subparsers._group_actions  # noqa: SLF001
+        if isinstance(action, argparse._SubParsersAction)
+    ]
+    assert {"ack", "release"} <= set(leaves[0].choices)
+
     code, envelope = _drive(["session", "ack"])
     assert envelope["verb"] == "session.ack", envelope
     code, envelope = _drive(["session", "release"])
     assert envelope["verb"] == "session.release", envelope
+
+
+def test_every_payload_either_verb_emits_is_one_the_contract_accepts(installed):
+    """R21, and the conformance suite structurally cannot cover it.
+
+    Both gates are explicit, so the derived conformance drives answer them
+    inline, get refused, and only ever see the REFUSAL envelope. The success and
+    no-op payloads these verbs actually emit are reached by nothing over there,
+    so the schema they are validated against is checked here or nowhere. The
+    ``diagnostic`` surface declares ``checks`` and ``summary`` and rejects an
+    undeclared key, which is exactly the mistake a hand built payload makes.
+    """
+    from cratekit.cli import output
+
+    gone = _a_process_that_is_gone()
+
+    _code, _refused, minted = _mint_through_the_cli()
+    assert output.envelope_problems(minted) == [], minted
+
+    _code, _refused, aborted = _mint_through_the_cli("abort")
+    assert output.envelope_problems(aborted) == [], aborted
+
+    for option, prepare in (("release", lambda: _lock_recording(installed, gone)), ("abort", lambda: None)):
+        prepare()
+        _code, refused = _drive(["session", "release"])
+        _answer(refused["run_id"], RELEASE_GATE, option)
+        _code, envelope = _drive(["--run", refused["run_id"], "session", "release"])
+        assert output.envelope_problems(envelope) == [], envelope
+
+
+def test_the_check_rows_a_person_reads_name_the_portion(installed):
+    """The rows are rendered by ``cli.render``, which reads one field name.
+
+    A row keyed anything else renders as ``[ok] ?`` and the person is shown a
+    question mark where the portion should be. Driven through the DEFAULT output
+    mode, because that is the only place the defect is visible: the JSON carries
+    the wrong key perfectly happily.
+    """
+    _mint_through_the_cli()
+    code, refused = _drive(["session", "ack"])
+    _answer(refused["run_id"], ACK_GATE, "acknowledged")
+    code, text = _human(["--run", refused["run_id"], "session", "ack"])
+
+    assert code == int(ExitCode.OK), text
+    assert "backup.age.database" in text
+    assert "] ?:" not in text, (
+        "a check row rendered as a question mark, so the row is keyed by a "
+        "field the check table does not read"
+    )
+
+
+def test_a_damaged_acknowledgment_record_can_still_be_replaced(installed):
+    """The trap with no exit, refused: a corrupt record must not lock the verb out.
+
+    ``read_acknowledgment`` raises on a file it cannot understand, deliberately,
+    because reporting a damaged record as an absent one hides the broken thing.
+    That is right for every consumer except the one command whose whole job is to
+    OVERWRITE the file. If this verb propagated that refusal, a library whose
+    acknowledgment somebody corrupted could never be acknowledged again and no
+    destructive verb could ever run on it.
+    """
+    config.atomic_write_bytes(b"{not json at all", session.ack_path(installed))
+
+    code, refused = _drive(["session", "ack"])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["shown"]["acknowledgment"]["unreadable"]
+
+    _answer(refused["run_id"], ACK_GATE, "acknowledged")
+    code, envelope = _drive(["--run", refused["run_id"], "session", "ack"])
+    assert code == int(ExitCode.OK), envelope
+    assert session.read_acknowledgment(installed) is not None
+
+
+def test_a_lock_record_that_cannot_be_understood_refuses_by_name(installed):
+    """U49 is the first caller that reads this file on a plain invocation.
+
+    ``Holder.from_json`` coerces the pid with a bare ``int()``, so a record
+    carrying a non numeric one used to raise out of a function whose docstring
+    promises None for anything unreadable. Reachable before only through a live
+    contention race; reachable now every time somebody types the verb. A verb
+    must refuse from its own vocabulary rather than surface a traceback, and the
+    two conditions the engine collapses are separated here: this says the record
+    is unreadable rather than claiming nothing is recorded.
+    """
+    config.atomic_write_bytes(
+        json.dumps({"holder": {"host": "x", "boot": "y", "pid": "not-a-number"}}).encode(),
+        session.lock_path(installed),
+    )
+
+    code, refused = _drive(["session", "release"])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["shown"]["record"] == "unreadable"
+
+    _answer(refused["run_id"], RELEASE_GATE, "release")
+    code, envelope = _drive(["--run", refused["run_id"], "session", "release"])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["unreadable"] is True
+
+
+def test_a_spent_acknowledgment_decision_cannot_be_replayed(installed):
+    """R34: one deliberate act, one acknowledgment, and not one act forever.
+
+    A run identifier kept from an earlier session would otherwise re-mint on
+    every drive, restarting the twelve hour window with nobody asked again,
+    which ``DEFAULT_ACK_VALIDITY`` names as the permanent affirmative R34
+    exists to forbid. The second half is the control: a FRESH deliberate act
+    still works, so this refuses the replay rather than the verb.
+    """
+    code, refused = _drive(["session", "ack"])
+    run_id = refused["run_id"]
+    _answer(run_id, ACK_GATE, "acknowledged")
+    code, envelope = _drive(["--run", run_id, "session", "ack"])
+    assert code == int(ExitCode.OK), envelope
+    first = session.read_acknowledgment(installed).expires_at
+
+    code, envelope = _drive(["--run", run_id, "session", "ack"])
+    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    assert session.read_acknowledgment(installed).expires_at == first
+
+    _answer(run_id, ACK_GATE, "acknowledged")
+    code, envelope = _drive(["--run", run_id, "session", "ack"])
+    assert code == int(ExitCode.OK), envelope
+
+
+def test_a_gate_the_entry_does_not_declare_is_an_internal_error_by_name(installed):
+    """The defensive branch, driven rather than left as an unmeasured claim.
+
+    Unreachable through the registry today, which is why it is called directly:
+    a lookup by name that silently returned the wrong spec would ask the wrong
+    question, and the alternative shape, indexing ``gates[0]``, does exactly
+    that the day somebody declares a second gate.
+    """
+    from cratekit.cli import registry
+    from cratekit.core.cause import CratekitError
+    from cratekit.session import cli as session_cli
+
+    entry = registry.entry("session.ack")
+    assert session_cli._gate(entry, ACK_GATE).name == ACK_GATE
+    with pytest.raises(CratekitError) as raised:
+        session_cli._gate(entry, "session.ack.nonesuch")
+    assert raised.value.cause.reason == "internal-error"
+    assert raised.value.cause.remediation.remedy is Remedy.REPORT_DEFECT
 
 
 def test_neither_entry_still_claims_to_be_planned(installed):

@@ -404,11 +404,16 @@ class Gates:
             # exists to prevent. A supplied flag is now refused whatever the run
             # already holds, so the recorded answer is the only answer.
             #
-            # The open gate is still recorded before refusing. A refusal that
-            # does not leave the run resumable is a refusal the user answers by
-            # starting over, which is how people learn to reach for the blanket
-            # flag this rule exists to deny them.
-            self.state.open_gate = spec.name
+            # The open gate is still recorded before refusing, WHEN THE GATE IS
+            # GENUINELY OPEN. A refusal that does not leave the run resumable is
+            # a refusal the user answers by starting over, which is how people
+            # learn to reach for the blanket flag this rule exists to deny them.
+            # But a gate that already holds a recorded answer is not open, and
+            # marking it so would make ``crate run show`` list one gate as both
+            # answered and awaiting an answer, which is the run record
+            # contradicting itself about the only thing it is for.
+            if recorded is None:
+                self.state.open_gate = spec.name
             raise DecisionRequired(spec, self.state.run_id, context)
 
         chosen = inline if inline is not None else (recorded.option if recorded else None)

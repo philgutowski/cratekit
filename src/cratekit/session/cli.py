@@ -181,14 +181,29 @@ def _rendered_ages(cfg: config.Config, now: datetime) -> list[dict[str, Any]]:
 def _on_record(cfg: config.Config, now: datetime) -> dict[str, Any] | None:
     """The acknowledgment currently on record, or None when there is none.
 
-    THREE STATES AND NOT TWO. Absent, live, and expired are different facts with
-    different next moves, and a person deciding whether to acknowledge again is
-    entitled to know which one they are in before they answer rather than after.
-    Expired is reported with the moment it lapsed rather than as absent, for the
-    reason ``read_acknowledgment`` gives about its own file: reporting one
-    condition as another sends somebody to redo something already done.
+    FOUR STATES AND NOT TWO. Absent, live, expired and unreadable are different
+    facts with different next moves, and a person deciding whether to
+    acknowledge again is entitled to know which one they are in before they
+    answer rather than after. Expired is reported with the moment it lapsed
+    rather than as absent, for the reason ``read_acknowledgment`` gives about its
+    own file: reporting one condition as another sends somebody to redo
+    something already done.
+
+    AN UNREADABLE RECORD IS DESCRIBED HERE AND NOT RAISED, which is the opposite
+    of what this function does with an unreadable BACKUP FACT file, and the
+    asymmetry is the point. The ages are the thing a person is being asked to
+    decide over, so showing a clean sheet nobody saw would be a lie. This record
+    is not being decided over at all: it is context, and this verb OVERWRITES it
+    unconditionally a few lines later. Letting the read raise would mean a
+    library whose acknowledgment file somebody corrupted could never be
+    acknowledged again, because the one command that replaces the file refuses
+    before it gets there. That is a trap with no exit, and it costs more than the
+    thing it protects.
     """
-    recorded = session.read_acknowledgment(cfg)
+    try:
+        recorded = session.read_acknowledgment(cfg)
+    except CratekitError as exc:
+        return {"unreadable": exc.cause.message}
     if recorded is None:
         return None
     return {
@@ -245,11 +260,26 @@ def record_ack(ctx) -> Envelope:
     # long the write took, and that is the drift this whole layer exists to
     # remove. What the person is told is what a destructive session will consult.
     recorded_ages = [entry.to_json() for entry in acknowledgment.shown]
+    # THE DECISION IS SPENT. R34 asks for a deliberate act per acknowledgment,
+    # and a recorded answer that survives the mint is not that: a run identifier
+    # kept from an earlier session could be re-driven at any later time and each
+    # drive would restart the validity window with nobody asked again, which
+    # ``DEFAULT_ACK_VALIDITY`` calls "a permanent affirmative wearing a
+    # timestamp". Popped HERE rather than in the resolver, so what a recorded
+    # answer means for every other gate in the product is untouched: this is one
+    # verb deciding that its own authorisation is single use, which is a
+    # property of what it mints rather than of the gate machinery.
+    ctx.run.decisions.pop(spec.name, None)
     return ctx.envelope(
         data={
             "checks": [
                 {
-                    "name": f"backup.age.{entry['portion']}",
+                    # ``key``, because that is the field ``cli.render``'s check
+                    # table reads. A row keyed ``name`` renders as "[ok] ?" and
+                    # the person is shown a question mark where the portion
+                    # should be, on the one surface they read without asking for
+                    # JSON.
+                    "key": f"backup.age.{entry['portion']}",
                     "status": "ok",
                     "detail": entry["state"],
                 }
@@ -304,10 +334,23 @@ def release_lock(ctx) -> Envelope:
     which is recorded in the ledger rather than reworded here.
     """
     cfg = _load()
-    holder = session.read_lock_holder(session.lock_path(cfg))
+    path = session.lock_path(cfg)
+    holder = session.read_lock_holder(path)
+    # A LOCK FILE WITH NO READABLE HOLDER IS ITS OWN STATE, and the shell has to
+    # say so because the engine cannot. ``read_lock_holder`` answers None for
+    # "nobody holds this" and None again for "there is a file here I could not
+    # understand", and those have different next moves: the first is a healthy
+    # library and the second is a record somebody should look at. Reporting the
+    # second as the first tells a person nothing is wrong on the one surface
+    # that could have told them something is.
+    unreadable = holder is None and path.exists() and bool(path.read_bytes().strip())
     spec = _gate(ctx.entry, "session.release.confirm")
     option = ctx.gate.require(
-        spec, context={"holder": holder.to_json() if holder is not None else None}
+        spec,
+        context={
+            "holder": holder.to_json() if holder is not None else None,
+            "record": "unreadable" if unreadable else ("present" if holder else "absent"),
+        },
     )
     if option == "abort":
         return ctx.envelope(
@@ -319,14 +362,21 @@ def release_lock(ctx) -> Envelope:
         return ctx.envelope(
             data={
                 "checks": [],
-                "summary": {"released": False, "recorded": False},
+                "summary": {
+                    "released": False,
+                    "recorded": False,
+                    "unreadable": unreadable,
+                },
             },
             outcome=Outcome.NO_OP,
         )
     return ctx.envelope(
         data={
+            # ``key``, for the reason the acknowledgment's rows give: it is the
+            # field the check table renders and ``name`` prints as a question
+            # mark.
             "checks": [
-                {"name": "session.lock", "status": "ok", "detail": cleared.describe()}
+                {"key": "session.lock", "status": "ok", "detail": cleared.describe()}
             ],
             "summary": {"released": True, "holder": cleared.to_json()},
         }
