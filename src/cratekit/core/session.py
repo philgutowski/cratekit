@@ -1036,6 +1036,17 @@ def _shown_ages(cfg: config.Config, now: datetime) -> tuple[ShownAge, ...]:
     acknowledgment with no age is a click rather than a decision. An ABSENT file
     is untouched by this and still mints normally, as every library does before
     its first backup.
+
+    AND THE REMEDY TRAVELS, which this function used to argue for and then not
+    do. It named ``REPAIR_BACKUP_FACTS`` unconditionally, so the paragraph above
+    was true of the refusal and false of the act it offered: a person whose
+    configuration directory this account cannot traverse was told to repair or
+    reset the record of when their music was last protected, over a file that
+    was very likely intact, in the refusal standing immediately before the
+    riskiest operation in the product. ``read_facts`` distinguishes a permission
+    from a corruption from a newer schema at the raise site, and ``cli.doctor``
+    and the backup shell both carry that through already. This is the third
+    consumer joining them, spelled the way they spell it.
     """
     try:
         reported = backup_facts.ages(cfg, now=now)
@@ -1045,7 +1056,7 @@ def _shown_ages(cfg: config.Config, now: datetime) -> tuple[ShownAge, ...]:
             f"the backup ages this acknowledgment has to show cannot be read: "
             f"{exc}. Recording an acknowledgment now would say a person was shown "
             f"a clean sheet they were never shown",
-            remedy=Remedy.REPAIR_BACKUP_FACTS,
+            remedy=Remedy(str(exc.remedy)),
             scope=Scope.RUN,
             detail={"path": str(exc.path), "library": str(cfg.library.root)},
         ) from exc

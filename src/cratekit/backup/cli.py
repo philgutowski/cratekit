@@ -446,12 +446,15 @@ def perform_backup(
     # it runs the mirror has completed, so the backup the person asked for
     # exists, and a stale folder using space is a smaller problem than sending
     # them to repeat the whole transfer. Failing the portion HERE would overrule
-    # that decision from the wrong layer.
+    # that decision from the wrong layer, and that is still true.
     #
-    # What is genuinely lost is that a failed prune reaches no report at all, so
-    # dated archive folders can accumulate with nothing saying so. Recorded as a
-    # residual rather than fixed, because the fix is a new key in the outcome
-    # payload and that payload is the ENGINE's.
+    # THE PRUNE IS NO LONGER UNREPORTED, which is what this comment used to
+    # concede. ``_prune_archive`` classifies its own listing and purge return
+    # codes, ``run_backup`` records the result on the portion, and
+    # ``outcome_payload`` renders it under ``warnings``. So the condition
+    # reaches this report through the engine's own vocabulary rather than
+    # through a second reading of ``results`` here, and nothing is aggregated a
+    # second time at this layer: two reports of one condition drift apart.
     refusal = refusal_for(outcome)
     if refusal is not None:
         raise refusal

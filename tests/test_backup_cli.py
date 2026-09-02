@@ -132,6 +132,31 @@ def rclone(monkeypatch, tmp_path) -> Path:
 
 
 @pytest.fixture
+def rclone_that_cannot_list(monkeypatch, tmp_path) -> Path:
+    """The same stand-in, except that ``lsf`` fails and everything else does not.
+
+    THE ONE CONDITION THE ARCHIVE ROTATION CANNOT SURVIVE AND THE BACKUP CAN. A
+    remote that answers a sync and refuses a listing gives a real backup and no
+    rotation, which is the state the finding behind this unit says was reported
+    to nobody. Built as a PROGRAM rather than as an injected runner because the
+    claim is about what the shell reports over a real plan, and because failing
+    by label through the runner seam would prove the seam rather than the
+    condition.
+    """
+    log = tmp_path / "rclone-nolist-invocations.log"
+    program = tmp_path / "fake-rclone-nolist"
+    program.write_text(
+        "#!/bin/sh\n"
+        f'printf "%s\\n" "$*" >> "{log}"\n'
+        'case " $* " in *" lsf "*) echo "the remote refused the listing" >&2; exit 3 ;; esac\n'
+        "exit 0\n"
+    )
+    program.chmod(0o755)
+    monkeypatch.setenv("CRATEKIT_BIN_RCLONE", str(program))
+    return log
+
+
+@pytest.fixture
 def no_rclone(monkeypatch, tmp_path):
     """A machine with no rclone at all, built rather than hoped for, and ASSERTED.
 
@@ -458,6 +483,90 @@ def test_a_rehearsal_reports_a_run_and_publishes_nothing(cfg, rclone):
         entry.state is backup_facts.AgeState.NEVER_RECORDED
         for entry in _ages(cfg).values()
     )
+
+
+def _warnings_by_portion(report: dict) -> dict[str, list[str]]:
+    return {row["portion"]: [w["code"] for w in row["warnings"]] for row in report["portions"]}
+
+
+def test_a_backup_whose_rotation_stopped_reports_it_and_is_still_a_backup(
+    cfg, rclone_that_cannot_list
+):
+    """The drive the finding behind this unit records as never having been run.
+
+    NOT THROUGH THE DISPATCHER, and that is not an oversight. ``backup.run`` is
+    long running and only enqueues, so ``cli.run(["backup", "run"])`` returns a
+    job envelope carrying none of the keys below; every end-to-end drive in this
+    file calls the work body for the same reason.
+
+    BOTH HALVES IN ONE TEST, on purpose. The backup genuinely succeeded and the
+    published age is genuinely fresh, so a later reader does not mistake the new
+    warning for a failed backup. What is new is that the report now says the
+    rotation did not happen, which is the whole of the finding: dated archive
+    folders accumulate for as long as the condition lasts, and until now nothing
+    said so.
+    """
+    report = backup_cli.perform_backup({}, now=MOMENT)
+
+    assert report["ok"] is True and report["dry_run"] is False, report
+    assert _warnings_by_portion(report) == {
+        "files": [backup.ARCHIVE_LISTING_FAILED],
+        "database": [],
+    }, report
+
+    after = _ages(cfg)
+    assert {name: entry.state for name, entry in after.items()} == {
+        "files": backup_facts.AgeState.KNOWN,
+        "database": backup_facts.AgeState.KNOWN,
+    }, "a stopped rotation was read as a failed backup, which it is not"
+    assert all(entry.age == timedelta(0) for entry in after.values()), after
+
+    invoked = rclone_that_cannot_list.read_text().splitlines()
+    assert any(
+        line.startswith("sync ") and "remote:mirror" in line for line in invoked
+    ), (
+        "the mirror never ran, so the fresh age above would be measuring a run "
+        f"that copied nothing: {invoked}"
+    )
+    assert not any("purge" in line for line in invoked), (
+        "a failed listing purged something, which is how a prune removes the "
+        f"only archive there is: {invoked}"
+    )
+
+
+def test_a_backup_whose_rotation_completed_warns_about_nothing(cfg, rclone):
+    """The companion drive, without which the guard above proves less than it looks.
+
+    A report that carried the warning unconditionally, and a report whose key was
+    never populated at all, both satisfy a test that only ever sees the failing
+    remote. This is the same shell against the ordinary stand-in, whose ``lsf``
+    answers two dated folders.
+    """
+    report = backup_cli.perform_backup({}, now=MOMENT)
+
+    assert report["ok"] is True, report
+    assert _warnings_by_portion(report) == {"files": [], "database": []}, report
+    assert [row["state"] for row in report["ages"]] == ["known", "known"], report
+
+
+def test_a_rehearsal_reports_the_rotation_it_already_knows_it_cannot_run(
+    cfg, rclone_that_cannot_list
+):
+    """A preview exists to find out whether the remote is reachable.
+
+    The listing is the one prune command a rehearsal really issues, so a preview
+    against this remote had already discovered the rotation was impossible and
+    described it as though it would happen. It publishes nothing either way,
+    which is asserted here beside the warning so the two cannot be confused.
+    """
+    report = backup_cli.perform_backup({backup_cli.DRY_RUN: True}, now=MOMENT)
+
+    assert report["dry_run"] is True and report["ok"] is True, report
+    assert _warnings_by_portion(report)["files"] == [backup.ARCHIVE_LISTING_FAILED], report
+    assert [row["state"] for row in report["ages"]] == [
+        "never-recorded",
+        "never-recorded",
+    ], report
 
 
 def test_a_failing_rehearsal_is_not_reported_as_a_passing_one(cfg):

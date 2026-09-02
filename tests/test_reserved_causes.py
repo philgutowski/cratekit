@@ -1023,12 +1023,19 @@ def _converted_exception_types() -> set[type]:
     WHAT THIS STILL CANNOT PROVE, and the residual
     "The conversion proof shows that a conversion exists, not that it keeps anything"
     records it. A conversion that EXISTS
-    is not a conversion that is lossless. ``core/session.py`` catches
-    ``BackupFactsUnreadable``, reads ``exc.path`` and hardcodes the remedy,
-    discarding the one the exception carried, which is item 2 of the residual
-    "Five accepted findings from the U38 reviews". That handler
-    satisfies this proof and should, because the alternative is a rule about
-    which attributes a handler must read, and that is a rule a refactor breaks.
+    is not a conversion that is lossless. The worked example was
+    ``core/session.py``, which caught ``BackupFactsUnreadable``, read
+    ``exc.path`` and then named the remedy itself, discarding the one the
+    exception carried; that was item 2 of the residual
+    "Five accepted findings from the U38 reviews", and U48 closed it, so the
+    example is now a HISTORICAL one rather than a live reading of the tree.
+
+    The hole it illustrated did not close with it. That handler satisfied this
+    proof while losing a field, and it still would, because the alternative is a
+    rule about which attributes a handler must read, and that is a rule a
+    refactor breaks. Do not read the closure as evidence this check got
+    stronger: nothing here would notice the next handler that does the same
+    thing.
     """
     found: set[type] = set()
     modules, _ = imported_package_modules()
@@ -4827,7 +4834,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # cause, `backup-facts-unreadable` and `config-unusable`, were already
     # literals in the tree, in `core/session.py` and in every other shell, so the
     # distinct total does not see them either.
-    assert (len(literals), len(literals - set(causes))) == (328, 192), (
+    # Re-pinned on U48, 2026-09-02: 328 to 330 distinct, 192 to 194 non-keys.
+    # TWO literals joined and NOTHING left, differenced as SETS against
+    # `origin/main`'s own `src` tree read blob by blob rather than inferred from
+    # the total moving by two, because a literal joining while another leaves
+    # reads identically in a count. Named: `archive-listing-failed` and
+    # `archive-purge-failed`, the two conditions a portion reports about an
+    # archive rotation that did not happen. Neither is a cause, which is why both
+    # halves move together by the same two: a rotation that failed after the
+    # mirror in its portion succeeded is an advisory on a run that completed,
+    # and every member of the engine's `Refusal` enum is instead a reason one
+    # portion will NOT run, decided before anything is attempted.
+    assert (len(literals), len(literals - set(causes))) == (330, 194), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

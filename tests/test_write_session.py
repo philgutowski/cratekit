@@ -1399,6 +1399,68 @@ def test_an_unreadable_backup_fact_file_refuses_the_mint(cfg):
     assert acknowledge(cfg).shown
 
 
+def test_a_fact_file_this_account_may_not_open_asks_for_access_not_for_repair(cfg):
+    """A permission is not a corruption, and the acts are opposite.
+
+    DRIVEN THROUGH ``read_facts`` RATHER THAN THROUGH A HAND BUILT EXCEPTION,
+    because the finding is that a field the raise site sets was discarded, and a
+    hand built exception can carry a field the code path never produces. So the
+    ``PermissionError`` is made at the file boundary and ``cause.permission_denied``
+    classifies it, exactly as it would on a configuration directory this account
+    cannot traverse.
+
+    THE PRECONDITION IS ASSERTED RATHER THAN ASSUMED, the way ``no_rclone`` in
+    ``tests/test_backup_cli.py`` asserts its own: a run as an account the mode
+    bits do not restrain reads the file successfully, and this test would then
+    pass over a refusal that never happened.
+    """
+    from cratekit.core import backup_facts
+
+    locked = backup_facts.path_for(cfg)
+    locked.parent.mkdir(parents=True, exist_ok=True)
+    locked.write_text("{}")
+    locked.chmod(0o000)
+    try:
+        with pytest.raises(PermissionError):
+            locked.read_bytes()
+
+        with pytest.raises(CratekitError) as excinfo:
+            acknowledge(cfg)
+    finally:
+        locked.chmod(0o600)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "backup-facts-unreadable"
+    assert cause.code is ExitCode.ACK_REQUIRED
+    assert cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS, (
+        "a person whose configuration directory this account cannot open was "
+        "told to repair or reset a file that is very likely intact"
+    )
+    assert session.read_acknowledgment(cfg) is None, "a refused mint wrote a record"
+
+
+def test_a_fact_file_from_a_newer_build_asks_for_an_upgrade(cfg):
+    """The third token, which travels the same way and had no guard.
+
+    ``read_facts`` raises three remedies and the carry moves all three, so a
+    fix measured only on the permission case would leave two thirds of it
+    asserted rather than driven.
+    """
+    from cratekit.core import backup_facts
+
+    newer = backup_facts.path_for(cfg)
+    newer.parent.mkdir(parents=True, exist_ok=True)
+    newer.write_text(
+        json.dumps({"schema_version": backup_facts.SCHEMA_VERSION + 1, "portions": {}})
+    )
+    with pytest.raises(CratekitError) as excinfo:
+        acknowledge(cfg)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "backup-facts-unreadable"
+    assert cause.remediation.remedy is Remedy.UPGRADE_CRATEKIT
+
+
 def test_the_analysis_watch_runs_even_when_the_session_body_refuses(cfg, tmp_path):
     """The failing path is the one that matters MORE, not the one to skip.
 

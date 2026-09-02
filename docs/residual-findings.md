@@ -2877,6 +2877,19 @@ own token, so the conversion has only to pass `exc.remedy` through.
 
 **Closes when:** `_shown_ages` forwards `exc.remedy` instead of naming a token.
 
+**Item 2 closed by U48, 2026-09-02.** `_shown_ages` now writes
+`remedy=Remedy(str(exc.remedy))`, the way `cli/doctor.py` and the backup shell
+already did, so the session is the third consumer of that exception rather than
+the one that flattened it. All three tokens are driven through `read_facts` in
+`tests/test_write_session.py` rather than through hand built exceptions, because
+the finding is that a field is discarded and a hand built exception can carry a
+field the code path never produces: a permission error answers
+`GRANT_PATH_ACCESS`, a damaged file still answers `REPAIR_BACKUP_FACTS`, and a
+newer `schema_version` answers `UPGRADE_CRATEKIT`, which is the case this entry
+argues from first. R-201 records the same defect from the permission side and
+was written later without noticing this one; it closes on the same commit, and
+the two are one finding rather than two. The rest of R-56 is untouched.
+
 **3. The reservation table has no consumer in `src/`.** Only tests import
 `cratekit.cli.exit_codes`. All 22 reserved causes still reach `except Exception`
 and exit 1 today, and the two source guards forbid a second table rather than
@@ -10261,6 +10274,44 @@ behaviour a drive would show.
 `run_backup` reads the listing's return code and records a warning the shell can
 render.
 
+**Closed by U48, 2026-09-02, taking the SECOND condition and not the first.**
+The recorded warning is what landed; `outcome_payload` renders it and does not
+derive it. Saying which one was taken matters because taking both is how one
+condition acquires two reports that drift apart.
+
+The classification moved one level further in than the condition's own wording
+suggested. It reads "have `run_backup` read the listing's return code", and
+`run_backup` is the wrong place: `_prune_archive` already reads that return code,
+in the branch deciding whether to purge at all, and it is the only function that
+knows which of its results is the listing. Re-reading it in `run_backup` would
+have been a second read of one code, identifying the listing by its position in
+a returned list, which is METHOD defect pattern 2. So `_prune_archive` returns
+its results and at most one warning, `run_backup` records what it is handed, and
+`outcome_payload` stays a renderer.
+
+TWO CODES, `archive-listing-failed` and `archive-purge-failed`. A listing this
+account cannot get is a remote or credential problem and nothing was removed; a
+purge that failed on a folder the listing named is that folder, and the rest of
+the rotation happened. Two conditions with different fixes, so one code over
+both would leave the difference in the message, which is the only part nothing
+can branch on. Neither is a refusal cause: every member of `Refusal` is a reason
+one portion will NOT run, decided before anything is attempted.
+
+**The drive this entry recorded as NOT PERFORMED has now been performed**, at
+both layers. A stand-in rclone that fails `lsf` and answers everything else
+gives a report whose files portion carries the rotation warning, `ok` true, and
+a published age that is genuinely fresh, with the mirror asserted to have run
+from the program's own invocation log. Measured at `docs/mutation/u48-author.md`:
+dropping the listing classification kills 4, dropping the purge classification
+kills 1, collapsing the two codes into one kills 1, not recording the warning on
+the portion kills 5, and dropping the key from the payload kills 3.
+
+**One thing this entry did not name, swept for and found.** The rehearsal branch
+ran the listing and read nothing, three lines from the code this entry is about,
+so a preview whose remote refused `lsf` described a rotation it had already
+discovered it could not perform. It is folded into the same call behind a purge
+flag, so there is one prune path and one reading of it.
+
 ---
 
 ## R-201. The destructive session fixes the unreadable-fact remedy at repair, discarding the permission answer the exception carries
@@ -10293,6 +10344,41 @@ session edit inside a commit nobody would look for it in.
 
 **Closes when:** `core/session.py`'s `_shown_ages` carries `exc.remedy` the way
 its two sibling consumers already do.
+
+**Closed by U48, 2026-09-02, and it was already recorded once.** R-56 item 2 is
+the same defect, filed at U38 from the newer-build angle rather than the
+permission one, and neither entry cites the other. Both close on this commit and
+both say so. That two independent reviews found one line and neither found the
+other's note is the more useful half of this record: a ledger this size does not
+prevent a rediscovery, so a fix should search it by symbol before assuming it is
+the first.
+
+`_shown_ages` now writes `remedy=Remedy(str(exc.remedy))`, verbatim from
+`cli/doctor.py` and `backup.cli.published_ages`. Nothing was added to either
+`Remedy` enum or to the reservation table, because all three tokens were already
+declared and `grant-path-access` was already reserved.
+
+**Driven through `read_facts` rather than through a hand built exception**, which
+is the distinction this finding turns on: an exception built by hand can carry a
+field the code path never produces, so it would prove the refusal renders a
+token rather than that the token reaches it. The permission case makes a real
+`PermissionError` at the file boundary and asserts that precondition rather than
+assuming it, since an account the mode bits do not restrain reads the file and
+the guard would pass over a refusal that never occurred.
+
+**All three tokens, not one.** The carry moves every remedy `read_facts` raises,
+so the damaged file keeping `REPAIR_BACKUP_FACTS` and a newer `schema_version`
+answering `UPGRADE_CRATEKIT` are guards in their own right; a fix measured only
+on the permission case would leave two thirds of it asserted. Measured at
+`docs/mutation/u48-author.md`: hard coding the repair token again kills 2, and
+hard coding the permission token over every condition kills 2, which is the same
+defect mirrored and is why both directions are driven.
+
+Two prose sites this entry made false are corrected with it. The conversion
+proof's docstring cited this handler as its live example and now marks it
+historical while restating the hole, which did not close. The
+`grant-path-access` reservation measured its exit code from the flattening
+itself; the code has not moved and the reasoning under it has.
 
 ---
 
