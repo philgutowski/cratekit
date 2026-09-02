@@ -1096,6 +1096,131 @@ def test_a_download_the_tool_silently_skipped_is_not_reported_as_a_file():
         vendored.landed_file(False, "", "x")
 
 
+class _FakeDownload:
+    """Records how ``fetch`` constructed the wrapped tool's downloader.
+
+    The real ``Download.__init__`` declares every one of the four missing
+    arguments with a ``None`` default, so it accepts any subset and the failure
+    only appears later, inside ``item()``. That is precisely why this records the
+    call instead of asserting the constructor refuses one: there is nothing to
+    refuse.
+    """
+
+    seen: dict[str, object] = {}
+
+    def __init__(self, **kwargs: object) -> None:
+        type(self).seen = dict(kwargs)
+        self.landed = (True, "/staging/1234.flac")
+
+    def item(self, **_kwargs: object) -> tuple[bool, str]:
+        return self.landed
+
+
+def _fetch_with_fake(settings, tmp_path, landed=(True, "1234.flac")):
+    """Drive ``fetch`` through the seam and hand back what it built."""
+
+    class Landing(_FakeDownload):
+        def __init__(self, **kwargs: object) -> None:
+            super().__init__(**kwargs)
+            self.landed = landed
+
+    source = vendored._VendoredSource(
+        settings, tmp_path / "token.json", session=_ToolSession({}), downloader=Landing
+    )
+    return source, Landing
+
+
+def test_the_downloader_gets_every_argument_the_vendored_cli_passes(settings, tmp_path):
+    """R-197: three arguments where the tool needs seven, and it never fetched a file.
+
+    ``fetch`` carried ``pragma: no cover`` because it could not be reached
+    offline, which is also why every green battery missed this.
+    """
+    source, fake = _fetch_with_fake(settings, tmp_path)
+    source.fetch(TrackRequest(key="1234"), settings.download_staging)
+
+    assert set(fake.seen) == {
+        "tidal_obj",
+        "path_base",
+        "fn_logger",
+        "event_abort",
+        "event_run",
+        "progress",
+        "progress_overall",
+    }
+
+
+def test_the_run_event_is_set_and_the_abort_event_is_clear(settings, tmp_path):
+    """The row that catches a hang rather than a failure.
+
+    ``Download._download_segment`` runs ``self.event_run.wait()`` inside its
+    worker pool when the event is clear, and the vendored ``HandlingApp`` is the
+    only thing in the tree that ever sets it. A fresh unset Event blocks every
+    segment worker on something nothing will wake, so passing the keyword is not
+    enough: its STATE is the requirement.
+    """
+    source, fake = _fetch_with_fake(settings, tmp_path)
+    source.fetch(TrackRequest(key="1234"), settings.download_staging)
+
+    assert fake.seen["event_run"].is_set()
+    assert not fake.seen["event_abort"].is_set()
+
+
+def test_the_progress_pair_is_disabled_so_no_rendering_reaches_a_stream(settings, tmp_path):
+    """R32: the tool writes progress through these, and a caller may be parsing."""
+    source, fake = _fetch_with_fake(settings, tmp_path)
+    source.fetch(TrackRequest(key="1234"), settings.download_staging)
+
+    for key in ("progress", "progress_overall"):
+        assert fake.seen[key].disable is True, f"{key} would render"
+        # Still usable: the vendored code calls add_task on it regardless.
+        fake.seen[key].add_task("probe", total=1)
+
+
+def test_every_keyword_fetch_passes_exists_on_the_real_downloader():
+    """Derived from the callee, so an upstream rename fails here, not at run time.
+
+    The set cannot be derived from the signature alone. ``Download.__init__``
+    declares nine parameters and this adapter deliberately passes seven, leaving
+    ``skip_existing`` and ``progress_gui`` at their defaults, so a pure
+    derivation could not tell a rename from an omission. Two assertions: the
+    names are real, and the names are all there.
+    """
+    import inspect
+
+    from cratekit._vendor.tidal_dl_ng.download import Download
+
+    declared = set(inspect.signature(Download.__init__).parameters)
+    assert vendored.DOWNLOADER_ARGUMENTS <= declared, (
+        "fetch passes a keyword the vendored downloader does not declare; "
+        "re-run scripts/revendor_downloader.py rather than editing the tree"
+    )
+    assert declared - vendored.DOWNLOADER_ARGUMENTS == {"self", "skip_existing", "progress_gui"}
+
+
+def test_the_downloader_construction_in_the_source_names_every_argument():
+    """The source-level twin, so bypassing the seam is caught too.
+
+    A runtime double only sees the call the test drove. This reads what the
+    MODULE writes, which is the shape ``tests/test_pool_sizing.py`` uses for the
+    same reason.
+    """
+    tree = ast.parse((ACQUIRE_ROOT / "vendored.py").read_text(encoding="utf-8"))
+    written: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and any(
+            kw.arg == "tidal_obj" for kw in node.keywords if kw.arg
+        ):
+            written.update(kw.arg for kw in node.keywords if kw.arg)
+    assert written == vendored.DOWNLOADER_ARGUMENTS
+
+
+def test_a_skip_reported_through_the_seam_still_raises(settings, tmp_path):
+    source, _ = _fetch_with_fake(settings, tmp_path, landed=(False, ""))
+    with pytest.raises(RuntimeError, match="reported no file"):
+        source.fetch(TrackRequest(key="1234"), settings.download_staging)
+
+
 def test_an_injected_session_still_has_this_runs_settings_pushed_and_verified(settings, tmp_path):
     """The KTD20 half of authenticate is exercised, never skipped."""
 

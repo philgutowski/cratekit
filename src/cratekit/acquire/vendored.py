@@ -34,6 +34,7 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager
 from pathlib import Path
+from threading import Event
 from typing import Any
 
 from cratekit.acquire import provider_session
@@ -61,6 +62,26 @@ QUALITY_BY_POLICY: dict[str, str] = {
 
 #: The file name the wrapped tool expects its session in.
 TOKEN_FILENAME = "token.json"
+
+#: Every keyword ``fetch`` hands the wrapped tool's downloader. Named here rather
+#: than only spelled at the call so a test can assert the SET, which is the shape
+#: R-197 needed: the tool declares all four of the missing ones with ``None``
+#: defaults, so dropping one is accepted at construction and only dies later.
+#:
+#: Seven of the constructor's nine. ``skip_existing`` stays at its ``False``
+#: default because this product always downloads, and ``progress_gui`` belongs to
+#: the half of the tool that was not vendored.
+DOWNLOADER_ARGUMENTS: frozenset[str] = frozenset(
+    {
+        "tidal_obj",
+        "path_base",
+        "fn_logger",
+        "event_abort",
+        "event_run",
+        "progress",
+        "progress_overall",
+    }
+)
 
 #: What the wrapped tool names the file it lands, expressed in ITS template
 #: language. Deliberately just the provider's track identifier: naming is U4's
@@ -176,12 +197,17 @@ class _VendoredSource:
         *,
         session: Any = None,
         tool: Any = None,
+        downloader: Any = None,
     ) -> None:
         self._settings = settings
         self._token_path = token_path
         self._session: Any = session
         self._tool: Any = tool
         self._tidal: Any = None
+        #: The downloader CLASS, injectable so the construction R-197 got wrong is
+        #: provable without an account. Only the deferred import below is left
+        #: unreachable offline, instead of the whole of ``fetch``.
+        self._downloader: Any = downloader
 
     def authenticate(self) -> None:
         if self._session is not None:
@@ -243,18 +269,20 @@ class _VendoredSource:
         quality = str(getattr(track, "audio_quality", "") or "")
         return Offer(lossless="LOSSLESS" in quality.upper(), detail=quality)
 
-    def fetch(self, request: TrackRequest, destination: Path) -> Path:  # pragma: no cover
-        # Reaching the tool's downloader needs a live authorised session, so this
-        # is the one method the offline suite cannot exercise. It is kept to the
-        # fewest possible decisions for exactly that reason: everything decidable
-        # was already decided above this line.
+    def fetch(self, request: TrackRequest, destination: Path) -> Path:
         from cratekit._vendor.tidal_dl_ng.constants import MediaType  # noqa: PLC0415
-        from cratekit._vendor.tidal_dl_ng.download import Download  # noqa: PLC0415
 
-        downloader = Download(
+        event_abort, event_run = download_events()
+        progress, progress_overall = disabled_progress()
+        downloader_class = self._downloader or _vendored_downloader()
+        downloader = downloader_class(
             tidal_obj=self._tidal,
             path_base=str(destination),
             fn_logger=_discard_tool_logging,
+            event_abort=event_abort,
+            event_run=event_run,
+            progress=progress,
+            progress_overall=progress_overall,
         )
         try:
             ok, landed = downloader.item(
@@ -266,6 +294,47 @@ class _VendoredSource:
             raise_if_session_dead(exc)
             raise
         return landed_file(ok, landed, request.key)
+
+
+def _vendored_downloader() -> Any:  # pragma: no cover - needs the vendored tree's deps
+    """The wrapped tool's downloader class, imported at CALL time (KTD7)."""
+    from cratekit._vendor.tidal_dl_ng.download import Download  # noqa: PLC0415
+
+    return Download
+
+
+def download_events() -> tuple[Event, Event]:
+    """The abort and run events, in the STATES the wrapped tool requires.
+
+    Returned as a pair rather than built at the call because their states are the
+    requirement and are invisible from the keyword names alone. ``event_run`` is
+    SET and ``event_abort`` is CLEAR.
+
+    ``Download._download_segment`` runs ``if not self.event_run.is_set():
+    self.event_run.wait()`` inside its worker pool, and the vendored
+    ``HandlingApp.__init__`` is the only thing in that tree that ever sets it. A
+    fresh unset ``Event`` therefore blocks every segment worker on something
+    nothing will wake, so the failure is a HANG rather than an error and no
+    message names its cause. Passing the keyword is not enough.
+    """
+    event_run = Event()
+    event_run.set()
+    return Event(), event_run
+
+
+def disabled_progress() -> tuple[Any, Any]:
+    """The tool's two progress bars, rendering nothing.
+
+    The wrapped tool touches these inside the download and does not check for
+    None first, which is the half of R-197 that returned ``(False, path)`` and
+    logged nothing. They are real ``rich`` objects rather than stubs, because a
+    stub would be a second model of an interface the vendored tree can change
+    under us; ``disable=True`` keeps ``add_task`` and ``update`` working while
+    writing nothing to a stream a caller may be parsing (R32).
+    """
+    from rich.progress import Progress  # noqa: PLC0415 - same deferral as the tree above
+
+    return Progress(disable=True), Progress(disable=True)
 
 
 def landed_file(ok: bool, landed: object, key: str) -> Path:
@@ -314,11 +383,14 @@ class VendoredAdapter(BaseAdapter):
 
 
 __all__ = [
+    "DOWNLOADER_ARGUMENTS",
     "QUALITY_BY_POLICY",
     "STAGING_TEMPLATE",
     "TOKEN_FILENAME",
     "VendoredAdapter",
     "apply_settings",
+    "disabled_progress",
+    "download_events",
     "is_authentication_failure",
     "landed_file",
     "raise_if_session_dead",
