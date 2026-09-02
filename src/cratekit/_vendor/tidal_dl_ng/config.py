@@ -175,6 +175,18 @@ class Tidal(BaseConfig, metaclass=SingletonMeta):
         self.set_option("access_token", self.session.access_token)
         self.set_option("refresh_token", self.session.refresh_token)
         self.set_option("expiry_time", self.session.expiry_time)
+        # Cratekit patch (R-196): persist which client minted this session.
+        #
+        # Written through `self.data` rather than `set_option`, because
+        # `set_option` reads the existing value and calls `.lower()` on the
+        # incoming one whenever the field is a bool, so a Python bool raises
+        # AttributeError there. `is_pkce` is this model's only bool field.
+        #
+        # The source is the SESSION's flag, not this object's. `login()` calls
+        # `login_token()` first, which assigns `self.is_pkce` from its own
+        # defaulted argument before any PKCE handshake runs, so reading it here
+        # would record every fresh PKCE login as a device-flow one.
+        self.data.is_pkce = bool(getattr(self.session, "is_pkce", False))
         self.save()
 
         # Set restrictive permissions on token file (Unix-based systems only)
@@ -241,7 +253,18 @@ class Tidal(BaseConfig, metaclass=SingletonMeta):
         return True
 
     def login(self, fn_print: Callable) -> bool:
-        is_token = self.login_token()
+        # Cratekit patch (R-196): a stored session is reused only when it is
+        # already PKCE.
+        #
+        # The short circuit is the whole point. Upstream reuses ANY loadable
+        # token, so on a machine holding a device-flow token this method would
+        # report "you are logged in", never reach the PKCE branch below, and hand
+        # back the very token the adapter then refuses. That is every machine
+        # that ran this tool before the switch, so the documented
+        # re-authorisation would have been an unbreakable loop.
+        is_token = bool(getattr(self.data, "is_pkce", False)) and self.login_token(
+            do_pkce=True
+        )
         result = False
 
         if is_token:
@@ -251,10 +274,13 @@ class Tidal(BaseConfig, metaclass=SingletonMeta):
         elif not is_token:
             fn_print("You either do not have a token or your token is invalid.")
             fn_print("No worries, we will handle this...")
-            # Login method: Device linking
-            self.session.login_oauth_simple(fn_print)
-            # Login method: PKCE authorization (was necessary for HI_RES_LOSSLESS streaming earlier)
-            # self.session.login_pkce(fn_print)
+            # Cratekit patch (R-196): PKCE is the only login this product
+            # offers. Upstream called `login_oauth_simple` (device linking) and
+            # carried this call beside it as a comment, so the commented line was
+            # the working one and the live one silently produced lossy downloads.
+            # There is deliberately no flag preserving the device flow: a flag
+            # that preserves it preserves the defect.
+            self.session.login_pkce(fn_print)
 
             is_login = self.login_finalize()
 

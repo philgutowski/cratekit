@@ -89,11 +89,26 @@ The rules:
 * Every patch has a test asserting the patched state, so re-vendoring without
   re-applying it goes red immediately.
 
-Three categories have earned patches so far: removing credential material,
+Four categories have earned patches so far: removing credential material,
 removing behaviour that violates a Cratekit invariant with no configuration flag
-(R17, tempo tags), and fixing hazards that vendoring itself introduced, such as
-code that resolves paths relative to its own location and therefore reads the
-host application's files once it has been moved.
+(R17, tempo tags), fixing hazards that vendoring itself introduced, such as code
+that resolves paths relative to its own location and therefore reads the host
+application's files once it has been moved, and **replacing an upstream choice
+the provider has since broken, where upstream already ships the working
+alternative.**
+
+The fourth was added on 2026-09-01 by U47 and it is the narrowest of the four on
+purpose. R-196 found that the provider gates lossless audio behind the PKCE
+client and serves the device-linking client lossy, so upstream's login produced
+silently degraded downloads. The patch flips which of two calls is live, because
+upstream carried the PKCE call beside the one it used as a comment, and adds the
+one field its token model drops. No login flow is written into the vendored tree
+and no new capability is added; `tidalapi` already ships the handshake.
+
+That boundary is what keeps this from becoming "patch in the features you want".
+A patch in this category has to point at an upstream line that already exists and
+already works. Anything that would have to be authored here belongs in the
+adapter instead, which is the ordering the section below states.
 
 ## Replacement, not maintenance
 

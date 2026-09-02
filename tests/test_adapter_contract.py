@@ -27,6 +27,7 @@ ultimately about keeping those apart.
 from __future__ import annotations
 
 import ast
+import functools
 import stat
 import sys
 import types
@@ -60,7 +61,8 @@ from cratekit.acquire.adapter import (
     dispatch_invocation,
     verify_applied,
 )
-from cratekit.core import config, secrets
+from cratekit.core import binaries, config, secrets
+from tests._containers import synth_container
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ACQUIRE_ROOT = REPO_ROOT / "src" / "cratekit" / "acquire"
@@ -758,12 +760,126 @@ def test_settings_refuse_values_that_would_disable_the_cap_or_reverse_the_pacing
         AdapterSettings(download_staging=tmp_path, pacing_delay_s=-1.0)
 
 
+def _ffmpeg_at(path: str):
+    """A resolver stub standing in for ``binaries.resolve``."""
+    return lambda name: path if name == "ffmpeg" else f"/usr/bin/{name}"
+
+
 def test_the_vendored_settings_translation_names_every_key_that_reverted(settings):
-    """The two observed reversions, plus the naming template, in one mapping."""
-    pushed = vendored.tool_settings(settings)
+    """The observed reversions, the naming template, and the ffmpeg path.
+
+    The SET is asserted, not three names. R-195 was a missing key in a mapping
+    nothing counted, so a fourth key arriving unnoticed is the exact shape this
+    has to refuse.
+    """
+    pushed = vendored.tool_settings(settings, resolve=_ffmpeg_at("/opt/x/ffmpeg"))
+    assert set(pushed) == {
+        "quality_audio",
+        "download_base_path",
+        "format_track",
+        "path_binary_ffmpeg",
+        "extract_flac",
+    }
     assert pushed["quality_audio"] == "LOSSLESS"
     assert pushed["download_base_path"] == str(settings.download_staging)
     assert pushed["format_track"] == vendored.STAGING_TEMPLATE
+    assert pushed["path_binary_ffmpeg"] == "/opt/x/ffmpeg"
+
+
+def test_the_ffmpeg_path_is_the_one_the_binaries_module_resolves(monkeypatch, tmp_path, settings):
+    """R-195: doctor and the tool must answer from ONE lookup.
+
+    Driven through the real resolver rather than a stub, because the defect was
+    that the two answered different questions: doctor asked whether ffmpeg exists
+    on this machine, the tool asked whether it had been told the path.
+    """
+    exe = tmp_path / "ffmpeg"
+    exe.write_text("#!/bin/sh\nexit 0\n")
+    exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setenv(binaries.env_var("ffmpeg"), str(exe))
+
+    pushed = vendored.tool_settings(settings)
+    assert pushed["path_binary_ffmpeg"] == binaries.resolve("ffmpeg") == str(exe)
+
+
+def test_a_machine_with_no_ffmpeg_refuses_by_name_instead_of_landing_lossy(
+    monkeypatch, tmp_path, settings, stored_session
+):
+    """The whole point of R-195: silence here is a lossy file reported as success.
+
+    With the key unset the wrapped tool turns ``extract_flac`` off and logs one
+    warning through a logger this adapter discards, so the run reports OK over a
+    320k AAC file. Refusing by name is the alternative to that.
+    """
+    monkeypatch.setenv("PATH", "/nonexistent")
+    monkeypatch.delenv(binaries.env_var("ffmpeg"), raising=False)
+    monkeypatch.setattr(binaries, "fallback_dirs", lambda: ())
+
+    with pytest.raises(AdapterBroken) as caught:
+        vendored.tool_settings(settings)
+    assert "ffmpeg" in str(caught.value)
+    assert caught.value.remedy is Remedy.INSTALL_ADAPTER
+
+    result = vendored.VendoredAdapter(
+        settings,
+        source=vendored._VendoredSource(
+            settings, tmp_path / "token.json", session=_ToolSession({}), tool=_Tool()
+        ),
+    ).acquire([TrackRequest(key="1234")])
+    assert result.outcome is InvocationOutcome.ADAPTER_BROKEN
+    assert "ffmpeg" in result.detail
+    assert result.remedy is Remedy.INSTALL_ADAPTER
+
+
+def test_a_broken_ffmpeg_override_is_a_different_instruction_from_an_absent_one(
+    monkeypatch, tmp_path, settings
+):
+    """Installing ffmpeg does not fix an override pointing at nothing.
+
+    The binaries module already separates these two, and collapsing them onto one
+    remedy at this hop would throw that away and send the user to a package
+    manager for a variable they set wrong.
+    """
+    monkeypatch.setenv(binaries.env_var("ffmpeg"), str(tmp_path / "not-here"))
+    with pytest.raises(AdapterBroken) as caught:
+        vendored.tool_settings(settings)
+    assert caught.value.remedy is Remedy.REPAIR_ADAPTER_SETTINGS
+
+
+def test_the_flac_extraction_setting_is_pushed_rather_than_inherited(settings):
+    """KTD20: a setting this product depends on is stated every invocation.
+
+    The tool's factory default is True, but the value a run actually gets is
+    whatever the tool last wrote to its own settings file, and a run that finds
+    it False lands an m4a and reports success. That is the same argument the
+    quality setting is pushed for.
+    """
+    pushed = vendored.tool_settings(settings, resolve=_ffmpeg_at("/opt/x/ffmpeg"))
+    assert pushed["extract_flac"] is True
+
+
+def test_verification_covers_the_ffmpeg_key_by_it_being_pushed(settings):
+    """P4 again: a tool that drops the fourth key is caught by the mapping, not a list.
+
+    The stand-in swallows the write the way a tool that renamed or removed the
+    setting would. Nobody added ``path_binary_ffmpeg`` to a check list for this
+    to fire; it is covered because it is pushed.
+    """
+
+    class DropsTheEncoderPath(_ToolSettings):
+        @property
+        def path_binary_ffmpeg(self):
+            return ""
+
+        @path_binary_ffmpeg.setter
+        def path_binary_ffmpeg(self, value):
+            pass
+
+    target = DropsTheEncoderPath(quality_audio="", download_base_path="", format_track="")
+    with pytest.raises(AdapterBroken) as caught:
+        vendored.apply_settings(target, settings, resolve=_ffmpeg_at("/opt/x/ffmpeg"))
+    assert "path_binary_ffmpeg is ''" in str(caught.value)
+    assert caught.value.remedy is Remedy.REPAIR_ADAPTER_SETTINGS
 
 
 class _ToolSettings:
@@ -786,11 +902,27 @@ class _ToolSettings:
         )
 
 
+class _Tool:
+    """The wrapped tool's settings holder, with every key the adapter pushes."""
+
+    def __init__(self, **initial: object) -> None:
+        self.data = _ToolSettings(
+            **{
+                "quality_audio": "HIGH",
+                "download_base_path": "~/download",
+                "format_track": "",
+                "path_binary_ffmpeg": "",
+                **initial,
+            }
+        )
+
+
 def test_applying_settings_writes_them_in_memory_and_saves_nothing(settings):
-    target = _ToolSettings(quality_audio="HIGH", download_base_path="~/download", format_track="")
-    vendored.apply_settings(target, settings)
+    target = _Tool().data
+    vendored.apply_settings(target, settings, resolve=_ffmpeg_at("/opt/x/ffmpeg"))
     assert target.quality_audio == "LOSSLESS"
     assert target.download_base_path == str(settings.download_staging)
+    assert target.path_binary_ffmpeg == "/opt/x/ffmpeg"
 
 
 def test_a_tool_that_does_not_take_a_setting_refuses_the_run(settings):
@@ -805,9 +937,9 @@ def test_a_tool_that_does_not_take_a_setting_refuses_the_run(settings):
         def quality_audio(self, value):
             pass
 
-    target = Stubborn(download_base_path="", format_track="")
+    target = Stubborn(download_base_path="", format_track="", path_binary_ffmpeg="")
     with pytest.raises(AdapterBroken) as caught:
-        vendored.apply_settings(target, settings)
+        vendored.apply_settings(target, settings, resolve=_ffmpeg_at("/opt/x/ffmpeg"))
     assert "quality_audio" in str(caught.value)
     assert caught.value.remedy is Remedy.REPAIR_ADAPTER_SETTINGS
 
@@ -1091,21 +1223,484 @@ def test_a_download_the_tool_silently_skipped_is_not_reported_as_a_file():
     pair would send a phantom path into tagging; raising sends it back through
     the classifier, where it becomes transient and stays re-queueable.
     """
-    assert vendored.landed_file(True, "/staging/x.flac", "x") == Path("/staging/x.flac")
+    lossless = lambda _path: ("FLAC", True)  # noqa: E731 - a one-line probe stub
+    assert vendored.landed_file(True, "/staging/x.flac", "x", probe=lossless) == Path(
+        "/staging/x.flac"
+    )
     with pytest.raises(RuntimeError, match="reported no file"):
         vendored.landed_file(False, "", "x")
+
+
+class _PkceSession:
+    """The client's session object, as far as ``token_persist`` reads it."""
+
+    def __init__(self, is_pkce: bool) -> None:
+        self.is_pkce = is_pkce
+        self.token_type = "Bearer"
+        self.access_token = "FAKE-value-1"
+        self.refresh_token = "FAKE-value-2"
+        self.expiry_time = 0.0
+
+
+def _token_round_trip(tmp_path, *, is_pkce: bool):
+    """Write a session through the vendored persistence, then read it back.
+
+    Driven through the real ``token_persist`` and ``read`` rather than by
+    constructing a ``Token``, because the defect R-196 records is a field DROPPED
+    IN THE WRITE, and a read cannot see what was never stored. Building the model
+    directly would assert the dataclass has a field and prove nothing about the
+    code that fills it.
+    """
+    from cratekit._vendor.tidal_dl_ng.config import Tidal
+    from cratekit._vendor.tidal_dl_ng.model.cfg import Token
+
+    holder = Tidal.__new__(Tidal)
+    holder.cls_model = Token
+    holder.data = Token()
+    holder.file_path = str(tmp_path / "token.json")
+    holder.session = _PkceSession(is_pkce)
+    holder.token_persist()
+
+    reader = Tidal.__new__(Tidal)
+    reader.cls_model = Token
+    reader.data = Token()
+    reader.file_path = holder.file_path
+    reader.read(holder.file_path)
+    return reader.data
+
+
+def test_a_persisted_pkce_session_reloads_as_a_pkce_session(tmp_path):
+    """R-196: the write dropped ``is_pkce``, so every PKCE token came back wrong.
+
+    A token reloaded as a device-flow token refreshes against the device-flow
+    client, and that is the client the provider serves lossy audio to.
+    """
+    assert _token_round_trip(tmp_path, is_pkce=True).is_pkce is True
+
+
+def test_a_session_with_no_pkce_marker_reloads_as_a_device_flow_session(tmp_path):
+    """A legacy token stays identifiable rather than being read as PKCE by default."""
+    assert _token_round_trip(tmp_path, is_pkce=False).is_pkce is False
+
+
+def test_the_persisted_flag_never_goes_through_the_bool_coercing_setter(tmp_path):
+    """``set_option`` calls ``.lower()`` on any value whose field is a bool.
+
+    ``is_pkce`` is the token model's only bool field, so routing the write
+    through ``set_option`` like its four neighbours raises ``AttributeError`` and
+    the whole persistence call dies. Asserting the round trip again would not
+    catch a regression here, because a tidy-up that moved the write back onto
+    ``set_option`` would fail loudly anyway. What this pins is that the write
+    does not go through that setter at all, which is the thing a future reader
+    would otherwise "fix" for consistency with its four neighbours.
+    """
+    from cratekit._vendor.tidal_dl_ng.config import Tidal
+    from cratekit._vendor.tidal_dl_ng.model.cfg import Token
+
+    holder = Tidal.__new__(Tidal)
+    holder.cls_model = Token
+    holder.data = Token()
+    holder.file_path = str(tmp_path / "token.json")
+    holder.session = _PkceSession(True)
+
+    routed: list[str] = []
+    original = Tidal.set_option
+
+    def record(self, key, value):
+        routed.append(key)
+        return original(self, key, value)
+
+    Tidal.set_option = record
+    try:
+        holder.token_persist()
+    finally:
+        Tidal.set_option = original
+
+    assert "is_pkce" not in routed, (
+        "is_pkce was written through set_option, which calls .lower() on a bool "
+        "field's incoming value and raises AttributeError"
+    )
+    assert holder.data.is_pkce is True
+
+
+@pytest.mark.parametrize(
+    ("stored", "had", "refused"),
+    [
+        (types.SimpleNamespace(is_pkce=True), True, False),
+        (types.SimpleNamespace(is_pkce=False), True, True),
+        (types.SimpleNamespace(), True, True),
+        (types.SimpleNamespace(is_pkce=True), False, True),
+    ],
+)
+def test_only_a_stored_pkce_session_is_used(stored, had, refused):
+    """The pure half of the login decision, driven without the wrapped tool."""
+    answer = vendored.login_mode(stored, had_stored_session=had)
+    assert (answer is not None) is refused
+
+
+def test_the_adapter_authenticates_with_pkce_on():
+    """The argument itself, read from the source, because nothing else can see it.
+
+    ``authenticate`` returns early on an injected session and imports the wrapped
+    tool's classes inside itself, so no offline double reaches the ``login_token``
+    call and the keyword is invisible to every runtime test in this file. A
+    mutation table found exactly that: reverting ``do_pkce=True`` to the default
+    killed nothing. This is the guard for it.
+
+    ``do_pkce=False`` is the call that produced lossy audio for every download
+    since July, so the argument is the fix, not decoration.
+    """
+    tree = ast.parse((ACQUIRE_ROOT / "vendored.py").read_text(encoding="utf-8"))
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "login_token"
+    ]
+    assert calls, "the adapter no longer authenticates through login_token"
+    for call in calls:
+        pkce = {kw.arg: kw.value for kw in call.keywords}.get("do_pkce")
+        assert isinstance(pkce, ast.Constant) and pkce.value is True, (
+            "the adapter authenticates with PKCE off; the provider serves that "
+            "client lossy audio (R-196)"
+        )
+
+
+def test_a_device_flow_session_is_refused_with_a_remedy_that_has_a_procedure():
+    """A refusal whose remedy has nowhere to go is worse than the lossy download.
+
+    Every session in the keychain before this unit was minted by the device flow,
+    so this refusal is what every existing user meets first. It names the two
+    steps that produce a session it will accept.
+    """
+    refusal = vendored.login_mode(types.SimpleNamespace(is_pkce=False), had_stored_session=True)
+    assert refusal is not None
+    assert "PKCE" in refusal
+    assert "crate login provider-session --from-file" in vendored.REAUTHORISE_HINT
+
+
+class _FakeDownload:
+    """Records how ``fetch`` constructed the wrapped tool's downloader.
+
+    The real ``Download.__init__`` declares every one of the four missing
+    arguments with a ``None`` default, so it accepts any subset and the failure
+    only appears later, inside ``item()``. That is precisely why this records the
+    call instead of asserting the constructor refuses one: there is nothing to
+    refuse.
+    """
+
+    seen: dict[str, object] = {}
+
+    def __init__(self, *, landed: tuple[bool, str] = (True, ""), **kwargs: object) -> None:
+        # ``landed`` is consumed here and never recorded, so ``seen`` holds
+        # exactly the keywords ``fetch`` passed and nothing the test added.
+        type(self).seen = dict(kwargs)
+        self.landed = landed
+
+    def item(self, **_kwargs: object) -> tuple[bool, str]:
+        return self.landed
+
+
+def _landing(landed: tuple[bool, str]):
+    """A downloader class that reports one fixed landing."""
+    return functools.partial(_FakeDownload, landed=landed)
+
+
+def _fetch_with_fake(settings, tmp_path, landed=None):
+    """Drive ``fetch`` through the seam and hand back what it built.
+
+    The default landing is a REAL lossless file, so these tests exercise the
+    whole of ``fetch`` including the post-landing codec check rather than
+    stopping at the construction they are about.
+    """
+    if landed is None:
+        landed = (True, str(synth_container(tmp_path, ".flac")))
+    source = vendored._VendoredSource(
+        settings,
+        tmp_path / "token.json",
+        session=_ToolSession({}),
+        downloader=_landing(landed),
+    )
+    return source, _FakeDownload
+
+
+def test_the_downloader_gets_every_argument_the_vendored_cli_passes(settings, tmp_path):
+    """R-197: three arguments where the tool needs seven, and it never fetched a file.
+
+    ``fetch`` carried ``pragma: no cover`` because it could not be reached
+    offline, which is also why every green battery missed this.
+    """
+    source, fake = _fetch_with_fake(settings, tmp_path)
+    source.fetch(TrackRequest(key="1234"), settings.download_staging)
+
+    assert set(fake.seen) == vendored.DOWNLOADER_ARGUMENTS
+
+
+def test_the_run_event_is_set_and_the_abort_event_is_clear(settings, tmp_path):
+    """The row that catches a hang rather than a failure.
+
+    ``Download._download_segment`` runs ``self.event_run.wait()`` inside its
+    worker pool when the event is clear, and the vendored ``HandlingApp`` is the
+    only thing in the tree that ever sets it. A fresh unset Event blocks every
+    segment worker on something nothing will wake, so passing the keyword is not
+    enough: its STATE is the requirement.
+    """
+    source, fake = _fetch_with_fake(settings, tmp_path)
+    source.fetch(TrackRequest(key="1234"), settings.download_staging)
+
+    assert fake.seen["event_run"].is_set()
+    assert not fake.seen["event_abort"].is_set()
+
+
+def test_the_progress_pair_is_disabled_so_no_rendering_reaches_a_stream(settings, tmp_path):
+    """R32: the tool writes progress through these, and a caller may be parsing."""
+    source, fake = _fetch_with_fake(settings, tmp_path)
+    source.fetch(TrackRequest(key="1234"), settings.download_staging)
+
+    for key in ("progress", "progress_overall"):
+        assert fake.seen[key].disable is True, f"{key} would render"
+        # Still usable: the vendored code calls add_task on it regardless.
+        fake.seen[key].add_task("probe", total=1)
+
+
+def test_every_keyword_fetch_passes_exists_on_the_real_downloader():
+    """Derived from the callee, so an upstream rename fails here, not at run time.
+
+    The set cannot be derived from the signature alone. ``Download.__init__``
+    declares nine parameters and this adapter deliberately passes seven, leaving
+    ``skip_existing`` and ``progress_gui`` at their defaults, so a pure
+    derivation could not tell a rename from an omission. Two assertions: the
+    names are real, and the names are all there.
+    """
+    import inspect
+
+    from cratekit._vendor.tidal_dl_ng.download import Download
+
+    declared = set(inspect.signature(Download.__init__).parameters)
+    assert vendored.DOWNLOADER_ARGUMENTS <= declared, (
+        "fetch passes a keyword the vendored downloader does not declare; "
+        "re-run scripts/revendor_downloader.py rather than editing the tree"
+    )
+    assert declared - vendored.DOWNLOADER_ARGUMENTS == {"self", "skip_existing", "progress_gui"}
+
+
+def test_the_downloader_construction_in_the_source_names_every_argument():
+    """The source-level twin, so bypassing the seam is caught too.
+
+    A runtime double only sees the call the test drove. This reads what the
+    MODULE writes, which is the shape ``tests/test_pool_sizing.py`` uses for the
+    same reason.
+    """
+    tree = ast.parse((ACQUIRE_ROOT / "vendored.py").read_text(encoding="utf-8"))
+    written: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and any(
+            kw.arg == "tidal_obj" for kw in node.keywords if kw.arg
+        ):
+            written.update(kw.arg for kw in node.keywords if kw.arg)
+    assert written == vendored.DOWNLOADER_ARGUMENTS
+
+
+def test_a_skip_reported_through_the_seam_still_raises(settings, tmp_path):
+    source, _ = _fetch_with_fake(settings, tmp_path, landed=(False, ""))
+    with pytest.raises(RuntimeError, match="reported no file"):
+        source.fetch(TrackRequest(key="1234"), settings.download_staging)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Scenario: the lossless rule is enforced at the FILE, not only at the setting
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_codec_table_answers_for_every_container_it_declares():
+    """Driven over the whole table, not a sample, and with no files at all."""
+    assert vendored.LOSSLESS_BY_CONTAINER["FLAC"] is True
+    assert vendored.LOSSLESS_BY_CONTAINER["WAVE"] is True
+    assert vendored.LOSSLESS_BY_CONTAINER["AIFF"] is True
+    assert vendored.LOSSLESS_BY_CONTAINER["OggFLAC"] is True
+    assert vendored.LOSSLESS_BY_CONTAINER["MP3"] is False
+    assert vendored.LOSSLESS_BY_CONTAINER["OggVorbis"] is False
+    assert vendored.LOSSLESS_BY_CONTAINER["OggOpus"] is False
+    assert vendored.LOSSLESS_BY_CONTAINER["AAC"] is False
+    assert set(vendored.LOSSLESS_BY_CONTAINER) == {
+        "FLAC",
+        "WAVE",
+        "AIFF",
+        "OggFLAC",
+        "MP3",
+        "OggVorbis",
+        "OggOpus",
+        "AAC",
+    }, "a container was added to the table without a decision recorded here"
+    assert "alac" in vendored.MP4_LOSSLESS_CODECS
+    # MP4 is deliberately not in the container table: a .m4a holds AAC or ALAC
+    # and only the codec string can say which, which is the exact container this
+    # defect produced.
+    assert "MP4" not in vendored.LOSSLESS_BY_CONTAINER
+
+
+def test_a_real_flac_is_accepted_even_though_mutagen_reports_no_codec(tmp_path):
+    """Measured, and the row that would refuse every genuine FLAC if read wrong.
+
+    Mutagen exposes ``info.codec`` on MP4 alone. FLAC, WAV, AIFF and MP3 all
+    report None, so a None codec means the CONTAINER decided, not that the file
+    could not be read. Treating None as unreadable would refuse every lossless
+    file this unit exists to deliver.
+    """
+    flac = synth_container(tmp_path, ".flac")
+    name, lossless = vendored.codec_of(flac)
+    assert lossless is True, f"a real FLAC classified as {name!r}"
+    assert vendored.landed_file(True, str(flac), "1234") == flac
+
+
+def test_the_classifier_reads_mutagens_container_and_not_the_file_extension(tmp_path):
+    """WAV is the case where the two disagree, so it is the case worth pinning.
+
+    Mutagen names the class ``WAVE`` and the file is called ``.wav``. Every other
+    container this product can land spells them the same, so a classifier keyed on
+    the suffix would look correct everywhere else and refuse a genuine WAV as
+    unreadable. A mutation table found this: swapping the container lookup for a
+    suffix lookup killed nothing until this test existed.
+    """
+    wav = synth_container(tmp_path, ".wav")
+    name, lossless = vendored.codec_of(wav)
+    assert name == "WAVE", f"classified by extension rather than by container ({name})"
+    assert lossless is True
+    assert vendored.landed_file(True, str(wav), "1234") == wav
+
+
+def test_a_lossy_landing_is_refused_and_the_refusal_names_the_codec(tmp_path):
+    """The guard that makes the whole chain falsifiable.
+
+    The lossless rule was enforced at the SETTING and never at the FILE, which is
+    how the product's central promise failed silently from July: the setting said
+    LOSSLESS, the provider sent AAC, and nothing between them ever looked.
+    """
+    aac = synth_container(tmp_path, ".m4a")
+    name, lossless = vendored.codec_of(aac)
+    assert lossless is False, f"the .m4a synthesizer stopped producing lossy audio ({name})"
+
+    with pytest.raises(vendored.LosslessRefused) as caught:
+        vendored.landed_file(True, str(aac), "1234")
+    # The codec it ACTUALLY got, read from the file, not a hardcoded string.
+    assert name in str(caught.value)
+    assert str(aac) in str(caught.value)
+
+
+def test_a_refused_file_is_left_where_it_landed(tmp_path):
+    """Deleting a file on the strength of a probe is a destructive act.
+
+    It is also the evidence somebody diagnosing the next demotion will want.
+    """
+    aac = synth_container(tmp_path, ".m4a")
+    with pytest.raises(vendored.LosslessRefused):
+        vendored.landed_file(True, str(aac), "1234")
+    assert aac.exists()
+
+
+@pytest.mark.parametrize("name", ["empty.flac", "mystery.xyz"])
+def test_a_landing_that_cannot_be_read_is_refused_as_unreadable_not_as_lossy(tmp_path, name):
+    """Two different facts get two different sentences, and two different remedies.
+
+    Not being able to confirm lossless is not the same as confirming lossy. It is
+    almost always a truncated download, so it raises a plain error that the
+    classifier reads as transient and re-queues. Refusing it as a POLICY failure
+    would carry RELAX_LOSSLESS_POLICY, telling somebody to loosen the rule that
+    just caught an unreadable file, and loosening it would make the product
+    accept that file.
+    """
+    broken = tmp_path / name
+    broken.write_bytes(b"")
+    assert vendored.codec_of(broken)[1] is None
+
+    with pytest.raises(RuntimeError) as caught:
+        vendored.landed_file(True, str(broken), "1234")
+    assert not isinstance(caught.value, vendored.LosslessRefused)
+    assert "could not be read" in str(caught.value)
+    assert "is lossy" not in str(caught.value)
+
+
+def test_a_permitted_lossy_policy_does_not_refuse_the_landing(tmp_path):
+    aac = synth_container(tmp_path, ".m4a")
+    assert (
+        vendored.landed_file(
+            True, str(aac), "1234", policy=LosslessPolicy.ALLOW_LOSSY_MARKED
+        )
+        == aac
+    )
+
+
+def test_a_lossy_landing_refuses_the_track_and_lets_the_run_continue(
+    settings, tmp_path, stored_session
+):
+    """Per track, and the outcome names WHICH gate caught it.
+
+    There are four routes to "no file was accepted" in this adapter now, so an
+    assertion that merely observes the absence is satisfied by all of them.
+    """
+    aac = synth_container(tmp_path, ".m4a")
+    codec = vendored.codec_of(aac)[0]
+
+    # The OFFER says lossless and the FILE is not. That gap is the whole defect:
+    # the rule was enforced where the request was made and never where the file
+    # was accepted.
+    result = vendored.VendoredAdapter(
+        settings,
+        source=vendored._VendoredSource(
+            settings,
+            tmp_path / "token.json",
+            session=_ToolSession({"1234": _ToolTrack("LOSSLESS")}),
+            downloader=_landing((True, str(aac))),
+        ),
+    ).acquire([TrackRequest(key="1234")])
+
+    assert result.outcome is InvocationOutcome.OK
+    (one,) = result.results
+    assert one.outcome is TrackOutcome.REFUSED_BY_POLICY
+    assert one.remedy is Remedy.RELAX_LOSSLESS_POLICY
+    assert codec in one.detail
+    assert one.path is None
+    assert result.quarantine_keys() == ()
+    assert result.requeue_keys() == ("1234",)
+
+
+def test_a_lossy_landing_after_a_delisted_track_still_returns_a_contract_result(
+    settings, tmp_path, stored_session
+):
+    """The reason the refusal is per track rather than adapter level.
+
+    A failed invocation may not carry a permanently unavailable result: quarantine
+    is fed from those and quarantine is forever, so ``InvocationResult`` refuses
+    the combination outright. An adapter-level refusal raised from inside the loop
+    would hit that constructor with the delisted track already in hand and escape
+    as an uncaught ValueError, with no outcome, no remedy and no requeue list.
+    """
+    aac = synth_container(tmp_path, ".m4a")
+
+    source = vendored._VendoredSource(
+        settings,
+        tmp_path / "token.json",
+        session=_ToolSession(
+            {"gone": NotFoundError("404 not found"), "1234": _ToolTrack("LOSSLESS")}
+        ),
+        downloader=_landing((True, str(aac))),
+    )
+
+    result = vendored.VendoredAdapter(settings, source=source).acquire(
+        [TrackRequest(key="gone"), TrackRequest(key="1234")]
+    )
+
+    assert result.outcome is InvocationOutcome.OK
+    outcomes = [r.outcome for r in result.results]
+    assert outcomes == [TrackOutcome.UNAVAILABLE_PERMANENT, TrackOutcome.REFUSED_BY_POLICY]
+    assert result.quarantine_keys() == ("gone",)
 
 
 def test_an_injected_session_still_has_this_runs_settings_pushed_and_verified(settings, tmp_path):
     """The KTD20 half of authenticate is exercised, never skipped."""
 
-    class Tool:
-        def __init__(self) -> None:
-            self.data = _ToolSettings(
-                quality_audio="HIGH", download_base_path="", format_track=""
-            )
-
-    tool = Tool()
+    tool = _Tool()
     source = vendored._VendoredSource(
         settings, tmp_path / "token.json", session=_ToolSession({}), tool=tool
     )
