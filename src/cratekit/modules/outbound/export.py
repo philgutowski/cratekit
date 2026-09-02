@@ -93,12 +93,22 @@ def apply(
     account: RemoteAccount,
     planned: ExportPlan,
 ) -> ExportReport:
-    """Write the matched tracks. Reuses a recorded remote playlist if one exists."""
-    existing = ledger.playlist_remote_id(cfg, planned.playlist_key)
-    created = existing is None
-    remote_id = existing or account.create_playlist(planned.name)
-    if created:
-        ledger.record_playlist(cfg, planned.playlist_key, remote_id)
+    """Write the matched tracks. Reuses a recorded remote playlist if one exists.
+
+    THE CREATE AND ITS RECORD HAPPEN UNDER ONE LEDGER LOCK. This used to read the
+    recorded id, create when there was none, and record afterwards, so a ledger
+    that could not be written left an orphaned remote playlist and the next call
+    made another one. Under the per item shape the outbound verbs use, that is one
+    orphan per track: driven as three remote playlists from one three track
+    export. ``ledger.reserve_playlist`` carries the ordering and the argument.
+    """
+    remote_id, created = ledger.reserve_playlist(
+        cfg,
+        planned.playlist_key,
+        # RESOLVED LAZILY, so an unwritable ledger refuses before the account is
+        # touched at all rather than after.
+        lambda: account.create_playlist(planned.name),
+    )
     already_on = set(account.playlist_tracks(remote_id))
     already_recorded = set(ledger.playlist_added(cfg, planned.playlist_key))
     added: list[str] = []

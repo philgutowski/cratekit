@@ -13,8 +13,8 @@ is the operator's standing signal that a row should be hearted. This shell canno
 see pink: it reads a rekordbox collection export, and that document's track rows
 carry no colour, so a hand coloured row is invisible to it. What it reads instead
 is membership in a named playlist, defaulting to the one the source system
-maintains. A pink row outside that playlist is not swept, and that is recorded in
-``docs/residual-findings.md`` rather than papered over.
+maintains. A pink row outside that playlist is not swept, which is R-228 rather
+than something papered over.
 
 **NO LOCAL WRITE HAPPENS HERE.** ``heart_back`` accepts a ``LocalColors`` writer
 and would colour the library row. That is a write to the live rekordbox database
@@ -100,7 +100,9 @@ def build_sync(parser, entry) -> None:
     parser.set_defaults(_handler=sync_favorites)
 
 
-def confirm_digest(playlist_key: str, export_path: str) -> str:
+def confirm_digest(
+    playlist_key: str, export_path: str, tracks: list[str] | tuple[str, ...]
+) -> str:
     """The identity the confirm decision is recorded against.
 
     Same shape and the same reason as the export verb's: the enqueue path builds
@@ -111,7 +113,14 @@ def confirm_digest(playlist_key: str, export_path: str) -> str:
     any document.
     """
     return digest_of(
-        {"kind": "sync.favorites", "playlist": playlist_key, "export": export_path}
+        {
+            "kind": "sync.favorites",
+            "playlist": playlist_key,
+            "export": export_path,
+            # THE TRACK SET, not just the file it came from. A path names where
+            # the answer was read; only this names what will be written.
+            "tracks": list(tracks),
+        }
     )
 
 
@@ -174,12 +183,12 @@ def sync_favorites(ctx) -> Envelope:
     )
     resolved = source.resolve(source.read_library(exported), wanted)
 
-    option = ctx.gate.require(spec, digest=confirm_digest(resolved.key, str(exported)))
+    option = ctx.gate.require(spec, digest=confirm_digest(resolved.key, str(exported), resolved.track_ids))
     if option == "abort":
-        return ctx.envelope(
-            data={"playlist": resolved.key, "summary": {"queued": False}},
-            outcome=Outcome.NO_OP,
-        )
+        # THE DECLARED SHAPE, and nothing about the playlist. See
+        # ``shell.declined``: this verb declares ``job_state/1`` and the payload
+        # that named the playlist carried none of that surface's four fields.
+        return ctx.envelope(data=shell.declined(), outcome=Outcome.NO_OP)
     cfg = shell.load_config("favorites.cli")
     run_id = getattr(ctx.args, "run_id", None) or ctx.run.run_id
     with jobs.open_store() as store:
@@ -195,6 +204,7 @@ def sync_favorites(ctx) -> Envelope:
                 "run_id": run_id,
                 PLAYLIST: resolved.key,
                 EXPORT: str(exported),
+                shell.TRACKS: list(resolved.track_ids),
                 jobs.GATE_RUN_KEY: ctx.run.run_id,
             },
             # ONE FAVOURITE IS ONE ITEM, so the sweep cannot queue empty work.

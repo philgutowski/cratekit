@@ -117,7 +117,9 @@ def build(parser, entry) -> None:
     parser.set_defaults(_handler=export_playlist)
 
 
-def confirm_digest(playlist_key: str, export_path: str) -> str:
+def confirm_digest(
+    playlist_key: str, export_path: str, tracks: list[str] | tuple[str, ...]
+) -> str:
     """The identity the confirm decision is recorded against.
 
     ONE FUNCTION RATHER THAN TWO CALL SITES SPELLING A DICT, because the enqueue
@@ -127,7 +129,14 @@ def confirm_digest(playlist_key: str, export_path: str) -> str:
     would be a confirmed job that refuses its own resume for ever.
     """
     return digest_of(
-        {"kind": "export.playlist", "playlist": playlist_key, "export": export_path}
+        {
+            "kind": "export.playlist",
+            "playlist": playlist_key,
+            "export": export_path,
+            # THE TRACK SET, not just the file it came from. A path names where
+            # the answer was read; only this names what will be written.
+            "tracks": list(tracks),
+        }
     )
 
 
@@ -188,12 +197,12 @@ def export_playlist(ctx) -> Envelope:
     exported = source.required_path(getattr(ctx.args, "export", None))
     resolved = source.resolve(source.read_library(exported), playlist)
 
-    option = ctx.gate.require(spec, digest=confirm_digest(resolved.key, str(exported)))
+    option = ctx.gate.require(spec, digest=confirm_digest(resolved.key, str(exported), resolved.track_ids))
     if option == "abort":
-        return ctx.envelope(
-            data={"playlist": resolved.key, "summary": {"queued": False}},
-            outcome=Outcome.NO_OP,
-        )
+        # THE DECLARED SHAPE, and nothing about the playlist. See
+        # ``shell.declined``: this verb declares ``job_state/1`` and the payload
+        # that named the playlist carried none of that surface's four fields.
+        return ctx.envelope(data=shell.declined(), outcome=Outcome.NO_OP)
     cfg = shell.load_config("export.cli")
     with jobs.open_store() as store:
         job = jobs.enqueue(
@@ -205,6 +214,7 @@ def export_playlist(ctx) -> Envelope:
                 PLAYLIST: resolved.key,
                 NAME: resolved.name,
                 EXPORT: str(exported),
+                shell.TRACKS: list(resolved.track_ids),
                 jobs.GATE_RUN_KEY: ctx.run.run_id,
             },
             # ONE TRACK IS ONE ITEM. Without these the queue holds a job with

@@ -9,7 +9,7 @@ not roll back, and forgetting a remote id is how the next export duplicates.
 from __future__ import annotations
 
 import json
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
@@ -112,15 +112,62 @@ def record_playlist(cfg: config.Config, playlist_key: str, remote_id: str) -> No
     """Remember the remote playlist so a re-run updates it rather than creating."""
     lock = _locked(cfg)
     try:
-        document = _load(cfg)
-        existing = document["playlists"].get(playlist_key) or {
-            "remote_id": remote_id,
-            "added": [],
-        }
-        existing["remote_id"] = remote_id
-        existing.setdefault("added", [])
-        document["playlists"][playlist_key] = existing
-        _write(cfg, document)
+        _record_playlist_locked(cfg, playlist_key, remote_id)
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def _record_playlist_locked(
+    cfg: config.Config, playlist_key: str, remote_id: str
+) -> None:
+    document = _load(cfg)
+    existing = document["playlists"].get(playlist_key) or {
+        "remote_id": remote_id,
+        "added": [],
+    }
+    existing["remote_id"] = remote_id
+    existing.setdefault("added", [])
+    document["playlists"][playlist_key] = existing
+    _write(cfg, document)
+
+
+def reserve_playlist(
+    cfg: config.Config, playlist_key: str, create: Callable[[], str]
+) -> tuple[str, bool]:
+    """The remote playlist for this crate, creating one only if none is recorded.
+
+    Returns ``(remote_id, created)``.
+
+    **THE LOCK IS TAKEN BEFORE THE CREATE, AND THAT ORDERING IS THE WHOLE POINT.**
+    The caller used to read the recorded id without a lock, call
+    ``create_playlist`` when there was none, and only then take the lock to
+    record it. A ledger that cannot be locked or written fails at that last step,
+    with a remote playlist already made and nothing remembering it. Every
+    subsequent call read no record and made ANOTHER one.
+
+    That was not hypothetical. It was driven on 2026-09-02 against a state
+    directory the account could not write: one three track export produced THREE
+    remote playlists on the account, one per item, and the person is left to find
+    and delete two of them by hand at the provider. The per item shape the
+    outbound verbs use is what turned one orphan into N, which is why the fix
+    belongs here on the checking path rather than in either verb.
+
+    Taking the lock first means an unwritable ledger refuses
+    ``outbound-ledger-unusable`` BEFORE anything is created, so the account is
+    untouched. A narrower window survives, where the lock is held and the write
+    then fails, and it is recorded as a residual rather than claimed closed:
+    closing it needs a create the provider itself can make idempotent, which no
+    adapter offers.
+    """
+    lock = _locked(cfg)
+    try:
+        record = _load(cfg)["playlists"].get(playlist_key) or {}
+        recorded = record.get("remote_id")
+        if recorded:
+            return str(recorded), False
+        remote_id = create()
+        _record_playlist_locked(cfg, playlist_key, remote_id)
+        return remote_id, True
     finally:
         lock.__exit__(None, None, None)
 

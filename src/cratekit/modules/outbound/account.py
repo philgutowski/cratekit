@@ -29,7 +29,7 @@ would heart the wrong recording on a catalogue full of remasters and edits.
 this module and the workers pick it up because they look it up at call time. The
 child ``crate job resume`` spawns is a fresh process and inherits nothing, so
 there is no supported way to bind an account in a detached run until an adapter
-exists. Recorded rather than worked around.
+exists. R-226, rather than something worked around.
 
 Layer: modules.
 """

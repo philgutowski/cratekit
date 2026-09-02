@@ -35,7 +35,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.export import cli as export_cli
 from cratekit.favorites import cli as favorites_cli
 from cratekit.modules.outbound import account as account_module
-from cratekit.modules.outbound import artifacts, source
+from cratekit.modules.outbound import artifacts, ledger, source
 from tests import outbound_fakes
 from tests.cli_drive import approve_and_queue, drive
 from tests.test_config import valid_data
@@ -347,8 +347,8 @@ def test_a_second_export_of_the_same_playlist_adds_nothing_and_creates_nothing(
     assert code == int(ExitCode.OK), resumed
     assert account.created == [outbound_fakes.CRATE]
     assert account.playlist_tracks("pl-1") == ("tid-1", "tid-2", "tid-3")
-    assert resumed["data"]["outbound"]["added"] == []
-    assert sorted(resumed["data"]["outbound"]["already"]) == [
+    assert resumed["data"]["progress"]["outbound"]["added"] == []
+    assert sorted(resumed["data"]["progress"]["outbound"]["already"]) == [
         "tid-1",
         "tid-2",
         "tid-3",
@@ -369,8 +369,8 @@ def test_the_envelope_names_the_tracks_the_provider_could_not_match(
     _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
     code, resumed = _resume(job_id)
     assert code == int(ExitCode.OK), resumed
-    assert resumed["data"]["outbound"]["added"] == ["tid-2"]
-    assert sorted(resumed["data"]["outbound"]["unmatched"]) == ["1", "3"], (
+    assert resumed["data"]["progress"]["outbound"]["added"] == ["tid-2"]
+    assert sorted(resumed["data"]["progress"]["outbound"]["unmatched"]) == ["1", "3"], (
         "the envelope must name the library identity of each unmatched row, not "
         "a stringified mapping nothing downstream can key on"
     )
@@ -466,24 +466,37 @@ def test_a_provider_that_already_hearts_a_row_is_reported_rather_than_written(
     code, resumed = _resume(job_id)
     assert code == int(ExitCode.OK), resumed
     assert account.hearted == ["tid-2"]
-    assert resumed["data"]["outbound"]["hearted"] == ["tid-2"]
-    assert resumed["data"]["outbound"]["already"] == ["tid-1"]
+    assert resumed["data"]["progress"]["outbound"]["hearted"] == ["tid-2"]
+    assert resumed["data"]["progress"]["outbound"]["already"] == ["tid-1"]
 
 
 def test_a_second_sweep_writes_nothing_because_the_ledger_remembers(
     installed, exported, monkeypatch
 ):
-    """The ledger short circuit, reached without asking the provider at all."""
+    """The ledger short circuit, reached without asking the provider at all.
+
+    THE SECOND SWEEP GETS A FRESH ACCOUNT, and that is what makes this a test of
+    the LEDGER rather than of the provider. Reusing the first account leaves its
+    ``hearts`` set populated, so ``account.has_heart`` alone would report every
+    row as already and the assertion would pass with the ledger check deleted.
+    Measured that way: the guard killed zero tests. A new account that hearts
+    nothing can only be kept from writing by the recorded ledger.
+    """
     del installed
-    account = outbound_fakes.FakeAccount(catalog=catalog(1, 2))
-    bind(monkeypatch, account)
+    first_account = outbound_fakes.FakeAccount(catalog=catalog(1, 2))
+    bind(monkeypatch, first_account)
     _run, first = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
     assert _resume(first)[0] == int(ExitCode.OK)
-    assert sorted(account.hearted) == ["tid-1", "tid-2"]
+    assert sorted(first_account.hearted) == ["tid-1", "tid-2"]
 
+    second_account = outbound_fakes.FakeAccount(catalog=catalog(1, 2))
+    bind(monkeypatch, second_account)
     _run, second = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
     assert _resume(second)[0] == int(ExitCode.OK)
-    assert sorted(account.hearted) == ["tid-1", "tid-2"]
+    assert second_account.hearted == [], (
+        "the ledger is the only thing that can stop this write: this account "
+        "hearts nothing, so a re-write means the recorded hearts were not read"
+    )
 
 
 def test_an_unmatched_favourite_is_reported_and_does_not_fail_its_item(
@@ -495,7 +508,7 @@ def test_an_unmatched_favourite_is_reported_and_does_not_fail_its_item(
     code, resumed = _resume(job_id)
     assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["progress"]["counts"]["done"] == 2
-    assert resumed["data"]["outbound"]["unmatched"] == ["2"]
+    assert resumed["data"]["progress"]["outbound"]["unmatched"] == ["2"]
 
 
 def test_the_sweep_reaches_nothing_outside_the_add_only_protocol(
@@ -695,8 +708,16 @@ def test_a_relative_export_argument_still_resumes(
     assert _resume(job_id)[0] == int(ExitCode.OK)
 
 
+@pytest.mark.parametrize(
+    "verb, gate, module, worker",
+    [
+        ("export", "export.playlist.confirm", export_cli, "run_export_item"),
+        ("favorites", "sync.favorites.confirm", favorites_cli, "run_heart_item"),
+    ],
+    ids=["export.playlist", "sync.favorites"],
+)
 def test_the_handler_runs_against_the_frozen_configuration_not_the_current_one(
-    installed, exported, monkeypatch
+    installed, exported, monkeypatch, verb, gate, module, worker
 ):
     """KTD9, asserted on a key NO environment variable overrides.
 
@@ -710,7 +731,8 @@ def test_the_handler_runs_against_the_frozen_configuration_not_the_current_one(
     """
     del installed
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
-    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+    invocation = export_verb(exported) if verb == "export" else favorites_verb(exported)
+    _run, job_id = approve_and_queue(invocation, gate)
 
     current = config.load()
     # BOTH BANDS MOVE, because config validation refuses a stale day count above
@@ -727,13 +749,13 @@ def test_the_handler_runs_against_the_frozen_configuration_not_the_current_one(
     assert config.load().reports.intake_stale_days == 99
 
     seen: list[int] = []
-    real = export_cli.run_export_item
+    real = getattr(module, worker)
 
-    def watched(payload, track_id, cfg, remote):
+    def watched(payload, item_id, cfg, remote):
         seen.append(cfg.reports.intake_stale_days)
-        return real(payload, track_id, cfg, remote)
+        return real(payload, item_id, cfg, remote)
 
-    monkeypatch.setattr(export_cli, "run_export_item", watched)
+    monkeypatch.setattr(module, worker, watched)
     assert _resume(job_id)[0] == int(ExitCode.OK)
     assert seen and all(days != 99 for days in seen), (
         "the handler saw the CURRENT configuration, not the one its job froze"
@@ -847,3 +869,281 @@ def test_the_default_favourites_playlist_is_the_one_the_fixture_carries():
     green on a fixture that named a playlist directly.
     """
     assert source.DEFAULT_FAVORITES_PLAYLIST == outbound_fakes.FAVORITES
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 9. What the review found a green suite could not see
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_dangling_track_is_named_in_the_queued_envelope(installed, monkeypatch):
+    """The derivation collected it and nothing drove the reporting of it.
+
+    ``source.resolve`` returning ``dangling`` was tested; the warning built from
+    it was not, so the branch could have been deleted with the suite green.
+    """
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2)))
+    path = outbound_fakes.write_export(
+        installed.library.root / "outbound", crate=(1, 2, 99), tracks=2
+    )
+    _run, job_id = approve_and_queue(export_verb(path), "export.playlist.confirm")
+    code, shown = drive(["job", "show", job_id])
+    assert code == int(ExitCode.OK), shown
+    with jobs.open_store() as store:
+        assert [item.item_id for item in jobs.items(store, job_id)] == ["1", "2"]
+
+
+def test_the_queued_envelope_names_a_missing_and_a_repeated_track(
+    installed, monkeypatch
+):
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2)))
+    path = outbound_fakes.write_export(
+        installed.library.root / "outbound", crate=(1, 2, 99, 1, 1), tracks=2
+    )
+    code, refused = drive(export_verb(path))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    detail = refused["cause"]["detail"]
+    assert (
+        drive(
+            [
+                "run",
+                "decide",
+                refused["run_id"],
+                detail["gate"],
+                detail["options"][0],
+                "--actor",
+                "a-person",
+            ]
+        )[0]
+        == int(ExitCode.OK)
+    )
+    code, queued = drive(["--run", refused["run_id"], *export_verb(path)])
+    assert code == int(ExitCode.OK), queued
+    warnings = {w["code"]: w["message"] for w in queued.get("warnings") or ()}
+    assert "playlist-track-missing" in warnings
+    assert "99" in warnings["playlist-track-missing"]
+    assert "playlist-track-repeated" in warnings
+    # ONE track repeated, however many times it repeats. The count and the named
+    # list must describe distinct tracks or the sentence contradicts itself.
+    assert warnings["playlist-track-repeated"].startswith("1 track(s)")
+    assert warnings["playlist-track-repeated"].count("'1'") <= 1
+
+
+def test_a_ledger_that_cannot_be_written_creates_no_remote_playlist_at_all(
+    installed, exported, monkeypatch
+):
+    """The duplicate playlist defect, driven, in the direction that produced it.
+
+    An UNREADABLE ledger refuses before anything is created and was already
+    covered. An UNWRITABLE one is the case that duplicated: the old ordering read
+    the recorded id without a lock, created a remote playlist, and only then
+    failed trying to record it, so every item after it created another one. One
+    three track export made three remote playlists. The lock now precedes the
+    create, so the account is untouched.
+    """
+    del installed
+    account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3))
+    bind(monkeypatch, account)
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+
+    def unwritable(cfg):
+        raise ledger._unusable(
+            Path("outbound_writes.lock"), "the state directory is not writable"
+        )
+
+    monkeypatch.setattr(ledger, "_locked", unwritable)
+    code, resumed = _resume(job_id)
+    assert code != int(ExitCode.OK), resumed
+    assert account.created == [], (
+        "an unwritable ledger must refuse BEFORE the remote playlist is made; "
+        "a create the ledger cannot record is one the next item makes again"
+    )
+
+
+def test_a_cancelled_job_does_not_report_a_clean_resume(
+    installed, exported, monkeypatch
+):
+    """R-225 taken to the state that actually reaches a person: an interrupt.
+
+    A run stopped with a signal is CANCELLED, not FAILED, and it carries the
+    cause ``jobs.cancel`` builds. A guard reading FAILED alone reported an
+    interrupted export through a normal envelope and exited OK, over a job with
+    items still pending and tracks already on the remote playlist.
+    """
+    del installed
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+    with jobs.open_store() as store:
+        cancelled = jobs.cancel(store, job_id)
+    assert cancelled.state is jobs.JobState.CANCELLED
+    assert cancelled.cause is not None
+
+    code, resumed = _resume(job_id)
+    assert code != int(ExitCode.OK), resumed
+    assert resumed["cause"] is not None
+
+
+def test_a_job_with_no_items_refuses_rather_than_reporting_a_clean_success(
+    installed, exported, monkeypatch
+):
+    """The zero item rule on the DRIVE side, for a job neither verb can queue now.
+
+    A job frozen by a build before this one carries no items, and ``core.jobs``
+    reports attempting nothing as SUCCEEDED by design. Driving one would tell a
+    person their export finished when nothing was ever queued to run.
+    """
+    del installed
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+    with jobs.open_store() as store:
+        with store.immediate() as conn:
+            conn.execute("DELETE FROM job_items WHERE job_id = ?", (job_id,))
+    code, resumed = _resume(job_id)
+    assert code != int(ExitCode.OK), resumed
+    assert resumed["cause"]["reason"] == "internal-error"
+    with jobs.open_store() as store:
+        assert jobs.get(store, job_id).state is not jobs.JobState.SUCCEEDED
+
+
+def test_a_confirm_does_not_authorise_a_different_track_set_at_the_same_path(
+    installed, monkeypatch
+):
+    """The case the two-path test could not reach, and the one a person hits.
+
+    An operator confirms an export, re-exports the collection from rekordbox over
+    the same working path because that is what a working path is for, and runs
+    the approved invocation. The digest used to name the path and the playlist,
+    both unchanged, so a different set of tracks was written to their streaming
+    account under a decision that never described it.
+    """
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
+    path = outbound_fakes.write_export(installed.library.root / "outbound", crate=(1,))
+    code, refused = drive(export_verb(path))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    detail = refused["cause"]["detail"]
+    assert (
+        drive(
+            [
+                "run",
+                "decide",
+                refused["run_id"],
+                detail["gate"],
+                detail["options"][0],
+                "--actor",
+                "a-person",
+            ]
+        )[0]
+        == int(ExitCode.OK)
+    )
+    path.write_bytes(outbound_fakes.export_document(crate=(1, 2, 3)))
+    source.forget_libraries()
+    code, other = drive(["--run", refused["run_id"], *export_verb(path)])
+    assert code != int(ExitCode.OK), other
+    assert other["cause"]["reason"] == "decision-stale"
+    assert _queue_is_empty()
+
+
+def test_job_show_reports_the_bound_worker_for_a_queued_sweep(
+    installed, exported, monkeypatch
+):
+    """The plan named this for both verbs and only the export verb had it."""
+    del installed
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2)))
+    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
+    code, shown = drive(["job", "show", job_id])
+    assert code == int(ExitCode.OK), shown
+    assert shown["data"]["progress"]["worker"] == "bound"
+
+
+def test_a_failed_favourite_leaves_the_sweep_resumable(
+    installed, exported, monkeypatch
+):
+    """The plan named it for both verbs and only the export verb had it."""
+    del installed
+    account = outbound_fakes.FakeAccount(catalog=catalog(1, 2), fail_on={"tid-2"})
+    bind(monkeypatch, account)
+    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
+    assert _resume(job_id)[0] != int(ExitCode.OK)
+
+    account.fail_on = frozenset()
+    with jobs.open_store() as store:
+        jobs.retry(store, job_id)
+    assert _resume(job_id)[0] == int(ExitCode.OK)
+    assert sorted(account.hearted) == ["tid-1", "tid-2"]
+    assert account.hearted.count("tid-1") == 1
+
+
+def test_both_provider_refusals_carry_a_remediation_a_person_can_act_on(installed):
+    """Not merely non-None: a remedy token or a step, or the refusal says nothing."""
+    from cratekit.core import secrets
+
+    with pytest.raises(CratekitError) as missing:
+        account_module.resolve(installed)
+    assert missing.value.cause.remediation is not None
+    assert str(missing.value.cause.remediation.remedy)
+
+    original = secrets.exists
+    try:
+        secrets.exists = lambda name: True
+        with pytest.raises(CratekitError) as unbound:
+            account_module.resolve(installed)
+    finally:
+        secrets.exists = original
+    remediation = unbound.value.cause.remediation
+    assert remediation is not None
+    assert remediation.steps or str(remediation.remedy)
+
+
+def test_an_export_the_provider_matches_nothing_of_says_so_in_the_envelope(
+    installed, exported, monkeypatch
+):
+    """The plan's success criterion, at its worst case rather than its easy one."""
+    del installed
+    account = outbound_fakes.FakeAccount(catalog={})
+    bind(monkeypatch, account)
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+    code, resumed = _resume(job_id)
+    assert code == int(ExitCode.OK), resumed
+    outbound = resumed["data"]["progress"]["outbound"]
+    assert outbound["added"] == []
+    assert sorted(outbound["unmatched"]) == ["1", "2", "3"]
+
+
+def test_a_bare_name_resolves_a_uniquely_named_nested_playlist(installed):
+    """The bare-name fallback, reached into a resolution rather than a refusal."""
+    path = outbound_fakes.write_export(
+        installed.library.root / "outbound",
+        extra_children=outbound_fakes.nested_playlist("Crates", "Deep Cuts", [2, 3]),
+    )
+    resolved = source.resolve(source.read_library(path), "Deep Cuts")
+    assert resolved.key == "Crates/Deep Cuts"
+    assert resolved.name == "Deep Cuts"
+    assert resolved.track_ids == ("2", "3")
+
+
+def test_aborting_the_confirmation_queues_nothing(installed, exported):
+    """The other option on the gate, which no test had ever chosen."""
+    del installed
+    code, refused = drive(export_verb(exported))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    detail = refused["cause"]["detail"]
+    assert detail["options"][-1] == "abort"
+    assert (
+        drive(
+            [
+                "run",
+                "decide",
+                refused["run_id"],
+                detail["gate"],
+                "abort",
+                "--actor",
+                "a-person",
+            ]
+        )[0]
+        == int(ExitCode.OK)
+    )
+    code, aborted = drive(["--run", refused["run_id"], *export_verb(exported)])
+    assert code == int(ExitCode.OK), aborted
+    assert aborted["outcome"] == "no_op"
+    assert aborted["data"]["state"] == "declined"
+    assert _queue_is_empty()

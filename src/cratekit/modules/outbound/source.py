@@ -8,6 +8,8 @@ collection export the operator produced, through
 :func:`cratekit.modules.reports.export.read_export_file`, which is the one reader
 ``cli/reports.py`` already uses. A second reader would be a second answer to
 "what does this library contain", and two answers is how they come to disagree.
+The operator cost of reading a document somebody has to make by hand, and the
+fact that nothing warns when it is stale, are R-227.
 
 **WHY THIS MODULE EXISTS RATHER THAN TWO COPIES.** ``export.playlist`` and
 ``sync.favorites`` ask the same question, "which library rows is this write made
@@ -250,7 +252,10 @@ def resolve(library: Library, identifier: str) -> ResolvedPlaylist:
         name=playlist.display,
         track_ids=tuple(kept),
         dangling=tuple(dangling),
-        repeated=tuple(repeated),
+        # DEDUPED, so the count and the joined list in the warning describe
+        # distinct tracks. A playlist naming one track three times appended it
+        # twice and reported "2 track(s) appear more than once", naming one.
+        repeated=tuple(dict.fromkeys(repeated)),
     )
 
 

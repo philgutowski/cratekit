@@ -20,14 +20,31 @@ import io
 import json
 
 from cratekit import cli
+from cratekit.cli import output
 from cratekit.core.exit_codes import ExitCode
 
 
 def drive(argv: list[str]) -> tuple[int, dict]:
-    """Run one invocation and return its exit code and parsed envelope."""
+    """Run one invocation, VALIDATE its envelope, and return the code and payload.
+
+    THE VALIDATION IS THE POINT OF PUTTING THIS IN ONE PLACE. Every verb declares
+    an ``output_schema`` and ``cli.output`` closes each declared surface with
+    ``additionalProperties: false``, but nothing in the dispatcher validates what
+    a verb actually emitted. U51 shipped an undeclared ``outbound`` key on two
+    verbs' ``job_state/1`` payload and the whole suite stayed green, because the
+    schema fingerprint hashes the DECLARED fields and the golden envelope is a
+    hand written literal. ``tests/test_master_cli.py`` had this assertion inside
+    its own private driver, where it guarded one verb.
+
+    Here it guards every verb any of these suites drives, so the next undeclared
+    field fails in the suite rather than in somebody's consumer.
+    """
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(["--output", "json", *argv], stdout=out, stderr=err)
-    return code, json.loads(out.getvalue() or "{}")
+    document = json.loads(out.getvalue() or "{}")
+    if document:
+        assert output.envelope_problems(document) == [], document
+    return code, document
 
 
 def approve_and_queue(verb: list[str], gate: str) -> tuple[str, str]:
