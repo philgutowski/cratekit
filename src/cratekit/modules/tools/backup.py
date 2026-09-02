@@ -61,7 +61,7 @@ WHAT THIS PORT CHANGES, beyond translating the shell.
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -113,6 +113,25 @@ SNAPSHOT_SETTINGS = "snapshot-settings"
 RESTORE_MIRROR = "restore-mirror"
 RESTORE_DATABASE = "restore-database"
 LIST_SNAPSHOTS = "list-snapshots"
+
+#: What a portion says about a rotation that did not happen, as codes rather
+#: than as sentences, for the same reason the labels above are constants: a
+#: producer and a reader that spell one condition differently disagree about
+#: which condition they are looking at.
+#:
+#: TWO CODES, BECAUSE THESE ARE TWO CONDITIONS WITH DIFFERENT FIXES. A listing
+#: this account cannot get is a remote or a credential problem and nothing was
+#: removed. A purge that failed on a folder the listing named is that folder,
+#: and the rest of the rotation happened. One code over both would leave the
+#: difference in the message, which is the only part nothing can branch on.
+#:
+#: NEITHER IS A REFUSAL CAUSE. Every member of :class:`Refusal` is a reason one
+#: portion will NOT run, decided before anything is attempted. These two are
+#: reports about a rotation that failed AFTER the backup in the same portion
+#: succeeded, so they belong to neither ``REFUSALS`` nor the reserved cause
+#: table.
+ARCHIVE_LISTING_FAILED = "archive-listing-failed"
+ARCHIVE_PURGE_FAILED = "archive-purge-failed"
 
 #: Labels whose command TRANSFERS data, so a dry run must neutralize them.
 #: Derived membership, checked by a test, so a transferring command added later
@@ -266,11 +285,25 @@ class BackupPlan:
 
 @dataclass(frozen=True, slots=True)
 class PortionOutcome:
+    """What one portion did, including what it could not finish but survived.
+
+    ``warnings`` carries conditions that are REAL and are not failures, in the
+    ``code`` and ``message`` pair ``cli.output.Envelope`` uses for its own
+    warnings, so one vocabulary describes a non-fatal condition everywhere in
+    this program. Today its only producer is the archive rotation: a prune the
+    portion deliberately does not fail on, and therefore the one thing that
+    happened here that ``ran`` cannot express.
+
+    A mapping rather than a dataclass makes an instance unhashable, which is
+    safe only because nothing hashes a ``PortionOutcome``. Keep it that way.
+    """
+
     portion: backup_facts.Portion
     ran: bool
     refusal: Refusal | None = None
     detail: str = ""
     results: tuple[CommandResult, ...] = field(default_factory=tuple)
+    warnings: tuple[Mapping[str, str], ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
@@ -669,17 +702,35 @@ def run_backup(
             continue
 
         results: list[CommandResult] = []
+        warnings: list[Mapping[str, str]] = []
         failed: CommandResult | None = None
         for command in entry.commands:
             if command.label == PRUNE_ARCHIVE:
-                if dry_run:
-                    # Listing is safe; purging is not. A preview reports what
-                    # would be pruned by listing and stopping there.
-                    results.append(runner(command))
-                    continue
-                results += _prune_archive(
-                    cfg, command, runner=runner, keep=plan.archive_keep
+                # THE ONE CLASS THIS LOOP DOES NOT FAIL ON, AND NO LONGER STAYS
+                # SILENT ABOUT. ``_prune_archive`` argues at length why a failed
+                # rotation must not fail a portion whose mirror completed. That
+                # argument is about the VERDICT and says nothing about the
+                # report, and for as long as nothing reported it a person whose
+                # remote refused ``lsf`` accumulated dated folders with no
+                # signal. The classification comes back from the function that
+                # already reads the listing's return code, rather than being
+                # re-derived here from a position in a returned list.
+                #
+                # Listing is safe; purging is not, so a preview is the same call
+                # with the purge suppressed rather than a second path through
+                # the same command. A rehearsal therefore reports a failed
+                # listing exactly as a real run does, which the branch this
+                # replaced could not: it ran the listing and read nothing.
+                pruned, warning = _prune_archive(
+                    cfg,
+                    command,
+                    runner=runner,
+                    keep=plan.archive_keep,
+                    purge=not dry_run,
                 )
+                results += pruned
+                if warning is not None:
+                    warnings.append(warning)
                 continue
             if dry_run:
                 command = Command(label=command.label, argv=dry_run_argv(command))
@@ -696,6 +747,7 @@ def run_backup(
                     ran=False,
                     detail=f"{entry.portion.value} portion failed: {failed.stderr.strip()[-400:]}",
                     results=tuple(results),
+                    warnings=tuple(warnings),
                 )
             )
             continue
@@ -708,7 +760,12 @@ def run_backup(
                 destination=_destination_for(cfg, entry.portion),
             )
         outcomes.append(
-            PortionOutcome(portion=entry.portion, ran=True, results=tuple(results))
+            PortionOutcome(
+                portion=entry.portion,
+                ran=True,
+                results=tuple(results),
+                warnings=tuple(warnings),
+            )
         )
 
     return BackupOutcome(stamp=plan.stamp, portions=tuple(outcomes))
@@ -726,42 +783,77 @@ def _prune_archive(
     *,
     runner: Runner,
     keep: int,
-) -> list[CommandResult]:
-    """Remove all but the newest ``keep`` dated archive folders.
+    purge: bool = True,
+) -> tuple[list[CommandResult], Mapping[str, str] | None]:
+    """Remove all but the newest ``keep`` dated archive folders, and say so.
 
     Runs only after the mirror in the same portion succeeded, because each dated
     folder holds the pre-overwrite versions from one run: pruning before the new
     folder exists would leave a window with no rollback at all.
 
-    A failed listing is reported and prunes nothing. Deleting on a partial
-    listing is how a prune removes the only archive there is.
+    A failed listing prunes nothing. Deleting on a partial listing is how a
+    prune removes the only archive there is.
 
-    A failed PURGE is likewise reported and does not fail the portion. By the
-    time it runs the mirror has already completed, so the backup the user asked
-    for exists; what is left over is a stale folder using space, which is a
-    smaller problem than reporting a completed backup as failed and having the
-    user run the whole transfer again.
+    A failed PURGE does not fail the portion either. By the time it runs the
+    mirror has already completed, so the backup the user asked for exists; what
+    is left over is a stale folder using space, which is a smaller problem than
+    reporting a completed backup as failed and having the user run the whole
+    transfer again.
+
+    NEITHER FAILURE IS SILENT, and this function is where that is decided
+    because it is the only place that knows which result is the listing and
+    which are purges. It returns its results AND at most one warning, so a
+    caller reports the condition without re-reading a return code this function
+    already read or identifying the listing by its position in the list. The
+    warning is at most one because the two conditions cannot co-occur: a listing
+    that failed purged nothing.
+
+    ``purge`` is the rehearsal seam. False lists and deletes nothing, which is
+    what a preview owes a user; it defaults to True so a caller that says
+    nothing gets the real rotation rather than a silent no-op.
     """
     out: list[CommandResult] = []
     result = runner(listing)
     out.append(result)
-    if result.returncode != 0 or keep < 0:
-        return out
+    if result.returncode != 0:
+        return out, {
+            "code": ARCHIVE_LISTING_FAILED,
+            "message": (
+                f"the archive rotation did not run: listing "
+                f"{cfg.backup.archive_root}/ exited {result.returncode}, so "
+                f"nothing was removed and dated archive folders will accumulate "
+                f"until it succeeds. The backup itself completed"
+            ),
+        }
+    if keep < 0 or not purge:
+        return out, None
     names = sorted(line.strip().rstrip("/") for line in result.stdout.splitlines() if line.strip())
+    unremoved = 0
     for stale in names[: max(0, len(names) - keep)]:
-        out.append(
-            runner(
-                Command(
-                    label=PRUNE_ARCHIVE_FOLDER,
-                    # The SAME rclone the listing used, taken from its own argv
-                    # rather than resolved a second time: two resolutions inside
-                    # one run can disagree if PATH changes underneath, and the
-                    # one that deletes is not the one to leave to chance.
-                    argv=(listing.argv[0], "purge", f"{cfg.backup.archive_root}/{stale}"),
-                )
+        purged = runner(
+            Command(
+                label=PRUNE_ARCHIVE_FOLDER,
+                # The SAME rclone the listing used, taken from its own argv
+                # rather than resolved a second time: two resolutions inside
+                # one run can disagree if PATH changes underneath, and the
+                # one that deletes is not the one to leave to chance.
+                argv=(listing.argv[0], "purge", f"{cfg.backup.archive_root}/{stale}"),
             )
         )
-    return out
+        out.append(purged)
+        if purged.returncode != 0:
+            unremoved += 1
+    if unremoved:
+        return out, {
+            "code": ARCHIVE_PURGE_FAILED,
+            "message": (
+                f"the archive rotation did not finish: {unremoved} dated folder(s) "
+                f"under {cfg.backup.archive_root}/ could not be removed and will "
+                f"use remote space until a later run removes them. The backup "
+                f"itself completed"
+            ),
+        }
+    return out, None
 
 
 # ---------------------------------------------------------------------------
@@ -1103,6 +1195,20 @@ def plan_payload(plan: BackupPlan) -> dict:
 
 
 def outcome_payload(outcome: BackupOutcome) -> dict:
+    """Render the outcome. A RENDERER: nothing here interprets a return code.
+
+    ``warnings`` is rendered rather than derived. The condition it reports is
+    read once, in ``_prune_archive``, and carried out on the portion; deriving
+    it here instead would put the reading in a function whose whole contract is
+    serialization, where a caller reporting the outcome any other way would
+    lose it.
+
+    ``PAYLOAD_VERSION`` is NOT bumped for this key. The rule is stated at
+    ``modules.tools.setbuilder.PAYLOAD_VERSION``: bumped when a field is removed
+    or its meaning changes, so a consumer can refuse rather than silently read a
+    field that now means something else. A field that joins takes nothing away
+    from a consumer that does not read it.
+    """
     return {
         "payload_version": PAYLOAD_VERSION,
         "stamp": outcome.stamp,
@@ -1113,6 +1219,7 @@ def outcome_payload(outcome: BackupOutcome) -> dict:
                 "ran": entry.ran,
                 "refusal": entry.refusal.value if entry.refusal else None,
                 "detail": entry.detail,
+                "warnings": [dict(warning) for warning in entry.warnings],
             }
             for entry in outcome.portions
         ],

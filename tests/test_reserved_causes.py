@@ -4827,7 +4827,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # cause, `backup-facts-unreadable` and `config-unusable`, were already
     # literals in the tree, in `core/session.py` and in every other shell, so the
     # distinct total does not see them either.
-    assert (len(literals), len(literals - set(causes))) == (328, 192), (
+    # Re-pinned on U48, 2026-09-02: 328 to 330 distinct, 192 to 194 non-keys.
+    # TWO literals joined and NOTHING left, differenced as SETS against
+    # `origin/main`'s own `src` tree read blob by blob rather than inferred from
+    # the total moving by two, because a literal joining while another leaves
+    # reads identically in a count. Named: `archive-listing-failed` and
+    # `archive-purge-failed`, the two conditions a portion reports about an
+    # archive rotation that did not happen. Neither is a cause, which is why both
+    # halves move together by the same two: a rotation that failed after the
+    # mirror in its portion succeeded is an advisory on a run that completed,
+    # and every member of the engine's `Refusal` enum is instead a reason one
+    # portion will NOT run, decided before anything is attempted.
+    assert (len(literals), len(literals - set(causes))) == (330, 194), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

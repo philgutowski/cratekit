@@ -1375,6 +1375,143 @@ def test_the_prune_runs_only_after_the_mirror_succeeded(
     assert files.ran is False
 
 
+def _files_outcome(outcome):
+    return [p for p in outcome.portions if p.portion is backup_facts.Portion.FILES][0]
+
+
+def test_a_failed_listing_reports_the_rotation_and_leaves_the_backup_successful(
+    cfg, library_with_database, rclone_on_path
+):
+    """The drive the finding behind this unit recorded as never performed.
+
+    A remote that refuses ``lsf`` gave a successful backup, a fresh published age
+    and NO indication that the rotation had stopped, so dated folders accumulated
+    for as long as the condition lasted. Both halves are asserted here in one
+    test: the portion still ran and the age is still published, because a stopped
+    rotation is not a failed backup, AND the portion now says the rotation did
+    not happen.
+
+    The message is built from the return code rather than from ``stderr``,
+    because ``Recorder`` sets no ``stderr`` and a guard that read one would be
+    asserting the empty string.
+    """
+    recorder = Recorder(fail_labels={backup.PRUNE_ARCHIVE})
+    plan = backup.plan_backup(cfg, process_lister=no_processes)
+    outcome = backup.run_backup(cfg, plan, runner=recorder)
+
+    files = _files_outcome(outcome)
+    assert files.ran is True
+    assert outcome.ok is True
+    assert backup.backup_facts.ages(cfg)[0].state is not backup_facts.AgeState.NEVER_RECORDED
+
+    assert [w["code"] for w in files.warnings] == [backup.ARCHIVE_LISTING_FAILED]
+    assert "accumulate" in files.warnings[0]["message"]
+    assert backup.PRUNE_ARCHIVE_FOLDER not in recorder.labels(), (
+        "a failed listing purged something, which is how a prune removes the "
+        "only archive there is"
+    )
+
+
+def test_a_failed_purge_reports_how_many_folders_survived_it(
+    cfg, library_with_database, rclone_on_path
+):
+    """The second condition, which has a different fix from the first.
+
+    A listing this account cannot get is a remote or credential problem and
+    nothing was removed. A purge that failed on a folder the listing named is
+    that folder, and the rest of the rotation happened. One code over both would
+    leave the difference in the message, which is the only part nothing can
+    branch on.
+    """
+    recorder = Recorder(
+        stdout_for={backup.PRUNE_ARCHIVE: "one/\ntwo/\nthree/\n"},
+        fail_labels={backup.PRUNE_ARCHIVE_FOLDER},
+    )
+    plan = backup.plan_backup(cfg, process_lister=no_processes)
+    outcome = backup.run_backup(cfg, plan, runner=recorder)
+
+    files = _files_outcome(outcome)
+    assert files.ran is True
+    assert [w["code"] for w in files.warnings] == [backup.ARCHIVE_PURGE_FAILED]
+    assert "2 dated folder(s)" in files.warnings[0]["message"], files.warnings
+    assert files.results[0].returncode == 0, (
+        "the listing is reported as having failed, so the two conditions are "
+        "not being told apart"
+    )
+
+
+def test_a_prune_that_completed_warns_about_nothing(
+    cfg, library_with_database, rclone_on_path
+):
+    """The companion to the two above, and not an assertion of absence.
+
+    A guard that only checked ``warnings == ()`` would be satisfied by a prune
+    that never ran, by a portion that refused and by a key that was never
+    populated. So the rotation is asserted to have HAPPENED in the same test:
+    three folders listed, two purged, the newest kept.
+    """
+    recorder = Recorder(
+        stdout_for={
+            backup.PRUNE_ARCHIVE: "2026-01-01T000000Z/\n2026-02-01T000000Z/\n2026-03-01T000000Z/\n"
+        }
+    )
+    plan = backup.plan_backup(cfg, process_lister=no_processes)
+    outcome = backup.run_backup(cfg, plan, runner=recorder)
+
+    purged = [c for c in recorder.commands if c.label == backup.PRUNE_ARCHIVE_FOLDER]
+    assert len(purged) == 2
+    assert all(w == () for w in (p.warnings for p in outcome.portions))
+
+
+def test_the_portion_with_no_prune_command_carries_no_warning(
+    cfg, library_with_database, rclone_on_path
+):
+    """The database portion never prunes, so it has nothing to report."""
+    recorder = Recorder(fail_labels={backup.PRUNE_ARCHIVE})
+    plan = backup.plan_backup(cfg, process_lister=no_processes)
+    outcome = backup.run_backup(cfg, plan, runner=recorder)
+
+    database = [
+        p for p in outcome.portions if p.portion is backup_facts.Portion.DATABASE
+    ][0]
+    assert database.warnings == ()
+
+
+def test_a_rehearsal_reports_a_failed_listing_and_still_purges_nothing(
+    cfg, library_with_database, rclone_on_path
+):
+    """The branch this replaced ran the listing and read nothing.
+
+    A preview whose remote refuses ``lsf`` was describing a rotation it had
+    already discovered it could not perform.
+    """
+    recorder = Recorder(fail_labels={backup.PRUNE_ARCHIVE})
+    plan = backup.plan_backup(cfg, process_lister=no_processes)
+    outcome = backup.run_backup(cfg, plan, runner=recorder, dry_run=True)
+
+    assert [w["code"] for w in _files_outcome(outcome).warnings] == [
+        backup.ARCHIVE_LISTING_FAILED
+    ]
+    assert backup.PRUNE_ARCHIVE_FOLDER not in recorder.labels()
+
+
+def test_a_rehearsal_whose_listing_succeeded_warns_about_nothing_and_purges_nothing(
+    cfg, library_with_database, rclone_on_path
+):
+    """What the fold must not have changed.
+
+    ``purge`` defaults to the real rotation, so this is the guard that says the
+    rehearsal still passes False and that suppressing the purge did not start
+    reporting a rotation that was never attempted.
+    """
+    recorder = Recorder(stdout_for={backup.PRUNE_ARCHIVE: "one/\ntwo/\nthree/\n"})
+    plan = backup.plan_backup(cfg, process_lister=no_processes)
+    outcome = backup.run_backup(cfg, plan, runner=recorder, dry_run=True)
+
+    assert _files_outcome(outcome).warnings == ()
+    assert backup.PRUNE_ARCHIVE_FOLDER not in recorder.labels()
+
+
 def test_a_failed_portion_publishes_no_age(cfg, library_with_database, rclone_on_path):
     plan = backup.plan_backup(cfg, process_lister=no_processes)
     backup.run_backup(cfg, plan, runner=Recorder(fail_labels={backup.MIRROR}))
