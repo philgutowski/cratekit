@@ -249,6 +249,41 @@ def backup_items() -> tuple[str, ...]:
     return tuple(str(portion) for portion in backup_facts.Portion)
 
 
+def _refuse_an_empty_job(store, job) -> None:
+    """Refuse to drive a backup job that has no items, rather than succeeding at it.
+
+    THE JOB THIS CATCHES WAS QUEUED BY A BUILD THAT COULD NOT RUN IT. Before this
+    unit ``backup_library`` called ``enqueue`` with no ``item_ids`` at all, and the
+    queue is a durable file whose schema version this unit does not change, so a
+    person who upgrades still has those jobs sitting in it. Binding the handler is
+    what makes them drivable, and driving one is the exact hazard this unit exists
+    to prevent: ``jobs.drive`` transitions a job whose item count is zero straight
+    to SUCCEEDED, because nothing was attempted and nothing failed. The person
+    resumes a backup filed weeks ago and is told it succeeded, over a library
+    nothing copied.
+
+    A REFUSAL RATHER THAN A REPAIR. Filling the items in would be the friendlier
+    answer and it is the wrong one: the payload was frozen by a build with a
+    different idea of what a backup job is, and inventing items for it here would
+    run work under a configuration snapshot nobody checked against this shape. The
+    remedy tells the person to file a new one, which costs a command and is honest.
+    """
+    if jobs.items(store, job.job_id):
+        return
+    raise refuse(
+        "internal-error",
+        f"backup job {job.job_id} carries no items, so nothing would be copied "
+        f"and the run would report success anyway. It was queued by a build that "
+        f"had no worker for it",
+        steps=(
+            f"cancel it with: crate job cancel {job.job_id}",
+            "then queue a new backup with: crate backup run",
+        ),
+        origin=("backup", "cli"),
+        detail={"job_id": job.job_id},
+    )
+
+
 def backup_library(ctx) -> Envelope:
     """Freeze the rehearsal flag and queue, or continue the job already queued.
 
@@ -269,6 +304,7 @@ def backup_library(ctx) -> Envelope:
             job = jobs.reconcile(store, ctx.args.job)
             warnings: tuple[dict[str, str], ...] = ()
             if job.is_open():
+                _refuse_an_empty_job(store, job)
                 # The step that was missing until this unit. Everything above this
                 # line already worked; nothing below it ever ran a portion. A job
                 # every one of whose items failed raises out of here rather than
@@ -277,25 +313,38 @@ def backup_library(ctx) -> Envelope:
                 # own cause.
                 _, warnings = ctx.run_job(store, job)
                 job = jobs.get(store, job.job_id)
-                # A JOB THAT ENDED FAILED IS NOT AN OK EXIT, and this branch is
-                # the only place that can say so. ``jobs.drive`` raises only when
-                # EVERY attempted item failed; a run where the mirror completed
-                # and the database did not returns normally with the job recorded
-                # failed, so without this the verb exits 0 over half a backup.
-                # That is the merge bar's "a clean report over state the tool
-                # could not read", and it is the same sentence ``refusal_for``
-                # already enforces one layer down: a portion that failed decides
-                # the run even when the other completed, because a person told the
-                # backup succeeded stops looking and the half that failed
-                # published no age.
-                #
-                # THE ENGINE'S OWN CAUSE IS RE-RAISED rather than a new one built
-                # here. It already carries the counts, the retryable flag, the
-                # ``resume-job`` remedy and the failing item's cause nested
-                # inside it, and a second wording for one condition is how the two
-                # come to disagree about which one a run met.
-                if not job.is_open() and job.cause is not None:
-                    raise CratekitError(job.cause)
+            # A JOB THAT ENDED BADLY IS NOT AN OK EXIT, and this is the only
+            # place that can say so. ``jobs.drive`` raises only when EVERY
+            # attempted item failed; a run where the mirror completed and the
+            # database did not returns normally with the job recorded failed, so
+            # without this the verb exits 0 over half a backup. That is the merge
+            # bar's "a clean report over state the tool could not read", and it is
+            # the same sentence ``refusal_for`` enforces one layer down: a portion
+            # that failed decides the run even when the other completed, because a
+            # person told the backup succeeded stops looking and the half that
+            # failed published no age.
+            #
+            # IT SITS OUTSIDE THE ``is_open`` BRANCH, and the first draft had it
+            # inside. That draft answered the run that closes the job and got the
+            # SECOND look at it wrong: a job already FAILED on entry is not open,
+            # so the drive is skipped, and the check was skipped with it. Asking
+            # twice about a half failed backup then answered "failed" once and
+            # exit 0 for ever after, which is the same silence the check exists to
+            # break. Out here it answers the same way however many times it is
+            # asked.
+            #
+            # A CANCELLED JOB RAISES TOO, deliberately. An interrupt leaves work
+            # unfinished, and a person who stopped a backup is owed a non zero
+            # exit rather than a report that reads like a completed one.
+            # SUCCEEDED carries no cause, so it is not reached by this at all.
+            #
+            # THE ENGINE'S OWN CAUSE IS RE-RAISED rather than a new one built
+            # here. It already carries the counts, the retryable flag, the
+            # ``resume-job`` remedy and the failing item's cause nested inside it,
+            # and a second wording for one condition is how the two come to
+            # disagree about which one a run met.
+            if not job.is_open() and job.cause is not None:
+                raise CratekitError(job.cause)
             reported = _reported(store, job)
             # READ BACK HERE AND NOWHERE INSIDE THE ITEM. This is the same call
             # the work body deliberately does not make under the driver, and the
@@ -303,7 +352,15 @@ def backup_library(ctx) -> Envelope:
             # COMMAND here, where the person sees it and the already durable job
             # keeps its state, instead of failing an item whose transfer
             # completed and sending every later resume to repeat the transfer.
-            reported["ages"] = published_ages(cfg)
+            #
+            # AGAINST THE JOB'S FROZEN CONFIGURATION, not the one on disk. The
+            # item published its age under ``jobs.frozen_config(job)``, and
+            # ``config.state_path`` resolves the fact file under the configured
+            # library, so reading with a live configuration that names a different
+            # library reports a different file from the one this run wrote. The
+            # envelope describes THIS job, so it answers from the configuration
+            # this job ran against.
+            reported["ages"] = published_ages(jobs.frozen_config(job))
             return ctx.envelope(data=reported, warnings=warnings)
         job = jobs.enqueue(
             store,
@@ -543,7 +600,38 @@ def perform_backup(
         # call would silently drop it and narrow the run in a way no test asks
         # about.
         plan = replace(plan, portions=(plan.portion(portion),))
-    outcome = backup.run_backup(cfg, plan, runner=runner, now=now, dry_run=dry_run)
+    try:
+        outcome = backup.run_backup(cfg, plan, runner=runner, now=now, dry_run=dry_run)
+    except backup_facts.BackupFactsUnreadable as exc:
+        # THE ENGINE PUBLISHES THROUGH THIS FILE AND CAN FAIL ON IT, and until
+        # this unit nothing was in a position to notice. ``run_backup`` calls
+        # ``backup_facts.record`` after a portion's last command returns zero, and
+        # ``record`` READS the file before it writes, so a fact file that cannot be
+        # parsed raises here with the transfer already done.
+        #
+        # WHY IT IS TRANSLATED. ``BackupFactsUnreadable`` is a plain ``Exception``
+        # rather than a ``CratekitError``, so under the driver it lands in
+        # ``jobs.drive``'s ``except Exception`` and is recorded as
+        # ``internal-error`` carrying ``report-defect``. A person whose state
+        # directory holds one bad file would be told to file a bug against this
+        # program, and every retry would repeat the whole transfer to reach the
+        # same line. The remedy travels from the exception for the reason
+        # :func:`published_ages` gives: that class names three conditions and one
+        # of them is a directory permission, which repairing a file does not fix.
+        #
+        # THE ITEM STILL FAILS, and that is right rather than a compromise. The
+        # age is what a destructive session reads, so a copy whose age cannot be
+        # published is not yet the protection the person asked for. What changes
+        # is that they are told which file to fix.
+        raise refuse(
+            "backup-facts-unreadable",
+            f"the {portion or 'backup'} portion transferred and the age it "
+            f"publishes cannot be written: {exc}. The copy exists; the fact a "
+            f"destructive session reads does not",
+            remedy=Remedy(str(exc.remedy)),
+            origin=("backup", "cli"),
+            detail={"path": str(exc.path), "library": str(cfg.library.root)},
+        ) from exc
     # ``PortionOutcome.results`` IS DROPPED, AND HERE IS WHY, because the
     # first-caller learning says a returned value nobody inspects is the same
     # defect wearing a type annotation unless a comment says otherwise. Every
@@ -556,13 +644,18 @@ def perform_backup(
     # them to repeat the whole transfer. Failing the portion HERE would overrule
     # that decision from the wrong layer, and that is still true.
     #
-    # THE PRUNE IS NO LONGER UNREPORTED, which is what this comment used to
-    # concede. ``_prune_archive`` classifies its own listing and purge return
-    # codes, ``run_backup`` records the result on the portion, and
-    # ``outcome_payload`` renders it under ``warnings``. So the condition
-    # reaches this report through the engine's own vocabulary rather than
-    # through a second reading of ``results`` here, and nothing is aggregated a
-    # second time at this layer: two reports of one condition drift apart.
+    # THE PRUNE REACHES THIS REPORT, though no longer every reader of it.
+    # ``_prune_archive`` classifies its own listing and purge return codes,
+    # ``run_backup`` records the result on the portion, and ``outcome_payload``
+    # renders it under ``warnings``, so the condition arrives in the engine's own
+    # vocabulary rather than through a second reading of ``results`` here.
+    #
+    # WHAT CHANGED IS WHO SEES IT. :func:`handle` discards this report, and since
+    # the binding the queued path is the only one that runs a real backup, so a
+    # rotation that stopped now reaches nobody unless the work body was called
+    # directly. That is R-221 and it is recorded rather than fixed here: giving
+    # the report a route out of a claimed item needs a channel the job engine does
+    # not have.
     # ``refusal_for`` IS APPLIED UNCHANGED AND UNQUALIFIED OVER A NARROWED RUN,
     # and the temptation this comment exists to refuse is to add a condition on
     # top of it. Its three branches already answer the question a single portion
