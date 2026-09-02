@@ -1,0 +1,223 @@
+name = "u49-author"
+pass_kind = "light"
+
+# U49's author table. What it measures: whether the guards this unit shipped
+# would notice the acts they exist to guarantee being dropped. The hazard the
+# unit was opened for is a recording that silently does not happen, so the first
+# two rows delete the recording itself; the remedy rows drive the same defect in
+# all three directions, following the shape U48 measured on the sibling path.
+
+[[rows]]
+id = "A1_the_mint_never_happens"
+description = "Delete the record_acknowledgment call and keep the envelope, so session.ack reports minting and mints nothing"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''    acknowledgment = session.record_acknowledgment(cfg, now=now)'''
+new = '''    acknowledgment = session.read_acknowledgment(cfg) or session.Acknowledgment(
+        actor="nobody", recorded_at=now, expires_at=now
+    )'''
+
+[[rows]]
+id = "A2_the_abort_mints_anyway"
+description = "Drop the abort branch in record_ack, so a person who declines gets an acknowledgment"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''    if option == "abort":
+        return ctx.envelope(
+            data={"checks": [], "summary": {"recorded": False, "ages": shown}},
+            outcome=Outcome.NO_OP,
+        )
+'''
+new = ""
+
+[[rows]]
+id = "A3_the_refusal_names_no_ages"
+description = "Drop the context argument from the ack gate, so the refusal asks the question over nothing"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''    option = ctx.gate.require(
+        spec, context={"ages": shown, "acknowledgment": _on_record(cfg, now)}
+    )'''
+new = '''    option = ctx.gate.require(spec)'''
+
+[[rows]]
+id = "A4_the_record_on_file_is_not_shown"
+description = "Show the ages but not the acknowledgment already on record, so a person cannot see whether they are covered"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''        spec, context={"ages": shown, "acknowledgment": _on_record(cfg, now)}'''
+new = '''        spec, context={"ages": shown}'''
+
+[[rows]]
+id = "R1_hard_code_the_repair_token"
+description = "Name repair-backup-facts over every unreadable condition, which is R-201's defect reproduced on the new consumer"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''            remedy=Remedy(str(exc.remedy)),
+            origin=("session", "cli"),
+            detail={"path": str(exc.path), "library": str(cfg.library.root)},'''
+new = '''            remedy=Remedy.REPAIR_BACKUP_FACTS,
+            origin=("session", "cli"),
+            detail={"path": str(exc.path), "library": str(cfg.library.root)},'''
+
+[[rows]]
+id = "R2_hard_code_the_permission_token"
+description = "The same defect mirrored: name grant-path-access over every condition. Both directions are driven because a carry measured one way leaves the other unasserted"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''            remedy=Remedy(str(exc.remedy)),
+            origin=("session", "cli"),
+            detail={"path": str(exc.path), "library": str(cfg.library.root)},'''
+new = '''            remedy=Remedy.GRANT_PATH_ACCESS,
+            origin=("session", "cli"),
+            detail={"path": str(exc.path), "library": str(cfg.library.root)},'''
+
+[[rows]]
+id = "R3_an_unreadable_file_reads_as_empty"
+description = "Swallow BackupFactsUnreadable and show no ages, collapsing could-not-read into never-backed-up"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''    except backup_facts.BackupFactsUnreadable as exc:
+        raise refuse('''
+new = '''    except backup_facts.BackupFactsUnreadable:
+        return []
+    except NotImplementedError as exc:
+        raise refuse('''
+
+[[rows]]
+id = "L1_a_live_holder_reads_as_cleared"
+description = "Report the release as done whatever the engine returned, so a lock nobody cleared is reported cleared"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''    cleared = session.release_stale_lock(cfg)
+    if cleared is None:'''
+new = '''    cleared = session.read_lock_holder(session.lock_path(cfg))
+    if cleared is None:'''
+
+[[rows]]
+id = "L2_the_refusal_names_no_holder"
+description = "Drop the context from the release gate, so a person is asked to release a claim nobody described"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''    option = ctx.gate.require(
+        spec, context={"holder": holder.to_json() if holder is not None else None}
+    )'''
+new = '''    option = ctx.gate.require(spec)'''
+
+[[rows]]
+id = "L3_nothing_recorded_reports_a_release"
+description = "Report a release when nothing was recorded, which is the no-op branch collapsing into success"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''    if cleared is None:
+        return ctx.envelope(
+            data={
+                "checks": [],
+                "summary": {"released": False, "recorded": False},
+            },
+            outcome=Outcome.NO_OP,
+        )'''
+new = ""
+
+[[rows]]
+id = "G1_an_explicit_gate_takes_an_inline_answer_again"
+description = "Restore the recorded-is-None qualifier this unit removed, so a flag can overturn a recorded abort and mint the acknowledgment"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+old = '''        if inline is not None and spec.explicit:'''
+new = '''        if inline is not None and spec.explicit and recorded is None:'''
+
+[[rows]]
+id = "G2_the_second_raise_site_drops_the_context"
+description = "Carry the context at the no-answer refusal only, so what a person sees depends on whether they typed a flag"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+old = '''            self.state.open_gate = spec.name
+            raise DecisionRequired(spec, self.state.run_id, context)
+
+        chosen = inline if inline is not None else (recorded.option if recorded else None)'''
+new = '''            self.state.open_gate = spec.name
+            raise DecisionRequired(spec, self.state.run_id)
+
+        chosen = inline if inline is not None else (recorded.option if recorded else None)'''
+
+[[rows]]
+id = "G3_absent_context_becomes_an_empty_shown"
+description = "Materialise shown for every refusal, collapsing shows-nothing into looked-and-found-nothing"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+old = '''        if context is not None:
+            detail["shown"] = dict(context)'''
+new = '''        detail["shown"] = dict(context or {})'''
+
+[[rows]]
+id = "V1_the_terminal_screen_stops_showing_it"
+description = "Remove the shown branch from render_gate, so the carried facts reach JSON and never reach a person"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+old = '''    shown = detail.get("shown")
+    if isinstance(shown, Mapping) and shown:
+        lines.append("")
+        lines += _shown_lines(shown)'''
+new = ""
+
+[[dropped]]
+id = "A5_the_report_comes_from_the_pre_gate_read"
+description = "Render checks and summary from the pre-gate read instead of from the record, restoring the two-read payload the simplification pass removed"
+reason = "inert at this surface, not a missing test. After record_acknowledgment is handed the same moment the handler already read, both reads answer from one file at one instant and produce identical values, so no assertion can tell the mutated tree from this one. Writing a test for it would be the empty measurement the corpus warns about, and filing it as a residual would be worse than dropping it. The property the change buys is structural: one read reaches the payload rather than two, which removes the race rather than narrowing it."
+
+# ── Rows added after the code review, for the guards its findings bought ────
+
+[[rows]]
+id = "A6_the_authorisation_is_not_spent"
+description = "Leave the recorded decision in place after the mint, so one run id re-mints the acknowledgment forever (R-217's defect restored)"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''    ctx.run.decisions.pop(spec.name, None)'''
+new = ""
+
+[[rows]]
+id = "A7_the_check_rows_are_keyed_wrong"
+description = "Key the ack check rows by name rather than key, so the human check table prints a question mark where the portion should be"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''                    "key": f"backup.age.{entry['portion']}",'''
+new = '''                    "name": f"backup.age.{entry['portion']}",'''
+
+[[rows]]
+id = "A8_a_damaged_record_locks_the_verb_out"
+description = "Let the display read of the acknowledgment raise, so a corrupt record makes the one verb that replaces it refuse"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''    try:
+        recorded = session.read_acknowledgment(cfg)
+    except CratekitError as exc:
+        return {"unreadable": exc.cause.message}'''
+new = '''    recorded = session.read_acknowledgment(cfg)'''
+
+[[rows]]
+id = "L4_a_malformed_holder_raises_again"
+description = "Remove the coercion guard from read_lock_holder, so a lock record with a non numeric pid escapes as a traceback rather than a typed refusal"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''    try:
+        return Holder.from_json(data["holder"])
+    except (TypeError, ValueError, AttributeError):'''
+new = '''    if True:
+        return Holder.from_json(data["holder"])
+    if False:'''
+
+[[rows]]
+id = "G4_an_answered_gate_is_marked_open"
+description = "Mark the gate open even when a decision is already recorded, so the run record calls one gate both answered and awaiting an answer"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+old = '''            if recorded is None:
+                self.state.open_gate = spec.name
+            raise DecisionRequired(spec, self.state.run_id, context)
+
+        chosen = inline'''
+new = '''            self.state.open_gate = spec.name
+            raise DecisionRequired(spec, self.state.run_id, context)
+
+        chosen = inline'''

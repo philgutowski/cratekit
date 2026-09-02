@@ -620,7 +620,19 @@ ENTRIES: tuple[Entry, ...] = (
                 explicit=True,
             ),
         ),
-        planned_in="U8",
+        # U49 LANDED IT, and it landed BOTH. The countdown keys on the module
+        # string rather than on the verb name, so ``cratekit.session.cli``
+        # appearing expires this marker and ``session.release``'s together;
+        # dropping one would leave the other claiming a module that exists.
+        # Until it landed, nothing in the product could mint the acknowledgment
+        # ``assert_backup_acknowledged`` demands, so every destructive verb
+        # refused and the suite was green because tests minted through the core
+        # API. THREE properties arm against each of the two entries, not nine,
+        # measured by differencing collected identifiers across the marker drop:
+        # conformance 1's emission check, conformance 2's exit-code check and
+        # conformance 3's gate walk, six cases across the pair, against the two
+        # countdown cases that left. That is the same answer ``restore.list``
+        # records below, and the "all nine" claim above is wrong for every entry.
     ),
     Entry(
         name="session.release",
@@ -639,7 +651,14 @@ ENTRIES: tuple[Entry, ...] = (
                 explicit=True,
             ),
         ),
-        planned_in="U8",
+        # U49 landed it, in the same commit and for the same reason as
+        # ``session.ack`` above: one module string, one file, both markers. The
+        # prompt is asked even when no lock is recorded, because conformance 3
+        # holds every declared gate to firing, so it asserts a holder the verb
+        # may already know is absent. That wording was left alone deliberately
+        # and the observation is in the ledger: a unit that lands a declared
+        # module and edits the declaration at once cannot say afterwards which
+        # half its tests were measuring.
     ),
     Entry(
         name="restore.list",

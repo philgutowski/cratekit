@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from types import MappingProxyType
+from typing import Any
 
 from cratekit.cli import registry
 from cratekit.cli.output import Envelope
@@ -338,12 +339,68 @@ def render(envelope: Envelope) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _shown_lines(shown: Mapping[str, Any]) -> list[str]:
+    """What the verb consulted, rendered under the question it was asked over.
+
+    ONE LINE PER FACT, and a collection is expanded rather than printed as a
+    Python repr, because a person reading "shown: [{'portion': 'database', ...}]"
+    has been handed the serializer's output rather than an answer. The keys come
+    from whatever the verb passed, so nothing here names a backup portion or a
+    lock holder: this function's whole job is to be the display half of a value
+    it does not interpret.
+    """
+    lines: list[str] = []
+    for name, value in shown.items():
+        if isinstance(value, Mapping):
+            lines.append(f"  {name}:")
+            for key, entry in value.items():
+                lines.append(f"    {key}: {_shown_value(entry)}")
+        elif isinstance(value, (list, tuple)):
+            lines.append(f"  {name}:")
+            for item in value:
+                if isinstance(item, Mapping):
+                    lines.append(
+                        "    " + ", ".join(f"{k}={_shown_value(v)}" for k, v in item.items())
+                    )
+                else:
+                    lines.append(f"    {_shown_value(item)}")
+        else:
+            lines.append(f"  {name}: {_shown_value(value)}")
+    return lines
+
+
+def _shown_value(value: Any) -> str:
+    """One carried value as a person should read it.
+
+    ``None`` becomes a word rather than the interpreter's spelling of it. A
+    refusal that prints "acknowledgment: None" has told a Python programmer
+    something and told everybody else nothing, and this is the surface a person
+    reads without asking for JSON.
+    """
+    if value is None:
+        return "none"
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return str(value)
+
+
 def render_gate(cause: Cause) -> str:
     """The decision screen: the question, the options, and how to answer it.
 
     The options come from the gate declaration rather than from prose, so a new
     option appears here the moment it is declared and cannot be forgotten in the
     wording.
+
+    WHAT THE VERB SHOWED IS RENDERED HERE OR IT IS NOT SHOWN AT ALL. A gate's
+    prompt is fixed at declaration, so a verb that has to put a fact in front of
+    the person carries it on the refusal instead
+    (:class:`cratekit.cli.gates.DecisionRequired`). This function is the only
+    place that reaches a person who is not reading JSON, so a carried context
+    that stopped at the envelope would satisfy a machine and leave a human
+    answering a bare question. Absent stays absent: a refusal with no context
+    prints exactly what it printed before this existed.
     """
     detail = cause.detail
     gate = detail.get("gate", "?")
@@ -354,6 +411,12 @@ def render_gate(cause: Cause) -> str:
         "",
         f"  gate:    {gate}",
         f"  options: {', '.join(options)}",
+    ]
+    shown = detail.get("shown")
+    if isinstance(shown, Mapping) and shown:
+        lines.append("")
+        lines += _shown_lines(shown)
+    lines += [
         "",
         f"  answer:  crate run decide {run_id} {gate} <option>",
     ]

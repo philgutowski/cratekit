@@ -54,11 +54,44 @@ RUN_SCHEMA_VERSION = 1
 
 
 class DecisionRequired(CratekitError):
-    """A gate was reached and nothing had answered it."""
+    """A gate was reached and nothing had answered it.
 
-    def __init__(self, spec: GateSpec, run_id: str) -> None:
+    ``context`` is WHAT THE VERB CONSULTED before it asked, carried through to
+    the refusal under ``shown`` so the question arrives with the facts it was
+    asked over. A prompt string is fixed at declaration and cannot name a backup
+    age or a lock holder, and a verb that built its own ``decision-required``
+    cause to say so would skip :attr:`RunState.open_gate` and the run record the
+    dispatcher saves on the way out, which is the thing that makes a refusal
+    resumable rather than one a person answers by starting over.
+
+    ABSENT AND EMPTY STAY DIFFERENT. A caller that passes nothing leaves no
+    ``shown`` key at all rather than an empty mapping, because "this verb shows
+    nothing here" and "this verb looked and found nothing" are two conditions,
+    and :mod:`cratekit.core.backup_facts` argues at length that collapsing them
+    is how a person is told the wrong thing about their own library.
+
+    The values must be JSON already. The envelope serializes this detail, so a
+    caller hands over ``holder.to_json()`` rather than the frozen dataclass.
+    """
+
+    def __init__(
+        self,
+        spec: GateSpec,
+        run_id: str,
+        context: Mapping[str, Any] | None = None,
+    ) -> None:
         self.spec = spec
         self.run_id = run_id
+        self.context = context
+        detail: dict[str, Any] = {
+            "gate": spec.name,
+            "options": list(spec.options),
+            "prompt": spec.prompt,
+            "explicit": spec.explicit,
+            "run_id": run_id,
+        }
+        if context is not None:
+            detail["shown"] = dict(context)
         super().__init__(
             Cause(
                 reason="decision-required",
@@ -67,13 +100,7 @@ class DecisionRequired(CratekitError):
                 scope=Scope.RUN,
                 retryable=True,
                 origin=("gates",),
-                detail={
-                    "gate": spec.name,
-                    "options": list(spec.options),
-                    "prompt": spec.prompt,
-                    "explicit": spec.explicit,
-                    "run_id": run_id,
-                },
+                detail=detail,
             )
         )
 
@@ -332,8 +359,23 @@ class Gates:
         self.actor = actor
         self.reached: list[str] = []
 
-    def require(self, spec: GateSpec, *, digest: str | None = None) -> str:
-        """Return the chosen option, or raise so the CLI can exit resumably."""
+    def require(
+        self,
+        spec: GateSpec,
+        *,
+        digest: str | None = None,
+        context: Mapping[str, Any] | None = None,
+    ) -> str:
+        """Return the chosen option, or raise so the CLI can exit resumably.
+
+        ``context`` rides through to both refusals unchanged. BOTH, and that is
+        the point rather than an implementation detail: this method refuses at
+        two places, once because an explicit gate was answered inline and once
+        because nothing answered it at all, and a context carried at only one of
+        them would make what a person is shown depend on whether they typed a
+        flag. It is a display value and never an input to the decision, so
+        nothing below reads it.
+        """
         self.reached.append(spec.name)
 
         recorded = self.state.decisions.get(spec.name)
@@ -341,24 +383,43 @@ class Gates:
         if spec.digest_source is not None and digest is not None:
             self.state.offers[spec.name] = digest
 
-        if inline is not None and spec.explicit and recorded is None:
+        if inline is not None and spec.explicit:
             # R34. An explicit gate is answered by a deliberate, separate act
             # that is recorded with its actor, never inline in the same
             # invocation that discovered the gate. Accepting it here would make
             # "each requires its own explicit assertion" satisfiable by typing
             # one more flag on the command that was already running.
             #
-            # The open gate is still recorded before refusing. A refusal that
-            # does not leave the run resumable is a refusal the user answers by
-            # starting over, which is how people learn to reach for the blanket
-            # flag this rule exists to deny them.
-            self.state.open_gate = spec.name
-            raise DecisionRequired(spec, self.state.run_id)
+            # UNCONDITIONALLY, and it used to carry ``and recorded is None``.
+            # That qualifier meant the refusal held only until SOME decision
+            # existed, after which the ordinary precedence below preferred the
+            # inline value over the recorded one, so a flag could overturn an
+            # answer a person had deliberately recorded. It was invisible while
+            # no landed verb reached an explicit gate that minted anything: U49
+            # landed ``session.ack``, drove the ordering, and found that
+            # ``--run R -d session.ack.backup=acknowledged`` recorded the backup
+            # acknowledgment over a recorded ``abort``. That is the gate
+            # standing in front of every destructive write in the product being
+            # answered by the thing it gates, which is the one outcome R34
+            # exists to prevent. A supplied flag is now refused whatever the run
+            # already holds, so the recorded answer is the only answer.
+            #
+            # The open gate is still recorded before refusing, WHEN THE GATE IS
+            # GENUINELY OPEN. A refusal that does not leave the run resumable is
+            # a refusal the user answers by starting over, which is how people
+            # learn to reach for the blanket flag this rule exists to deny them.
+            # But a gate that already holds a recorded answer is not open, and
+            # marking it so would make ``crate run show`` list one gate as both
+            # answered and awaiting an answer, which is the run record
+            # contradicting itself about the only thing it is for.
+            if recorded is None:
+                self.state.open_gate = spec.name
+            raise DecisionRequired(spec, self.state.run_id, context)
 
         chosen = inline if inline is not None else (recorded.option if recorded else None)
         if chosen is None:
             self.state.open_gate = spec.name
-            raise DecisionRequired(spec, self.state.run_id)
+            raise DecisionRequired(spec, self.state.run_id, context)
         if chosen not in spec.options:
             raise UnknownOption(spec, chosen)
 

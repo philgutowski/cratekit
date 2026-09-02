@@ -5064,7 +5064,24 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # to it: it was already in the set, and the output-exists slug its new handler
     # raises travels through ``str(mastering.Refusal.OUTPUT_EXISTS)``, which
     # resolves to an enum member and not to a literal at all.
-    assert (len(literal_holders), len(literal_both)) == (80, 15), (
+    # Re-pinned on U49, 2026-09-02: 80 to 81 holders. session/cli.py joined,
+    # naming config-unusable the way every other shell does, internal-error for
+    # an entry declaring no gate under the name its handler asks for, and
+    # backup-facts-unreadable for a fact file it can reach and cannot read.
+    # Differenced as SETS by repointing this module's PACKAGE_ROOT at
+    # origin/main's own src tree extracted into a scratch directory, the same way
+    # as every entry above: exactly one module joined and none left. The
+    # also-holds-an-integer half stays 15, because the module holds no bare
+    # integer at all. The named halves did NOT move, staying at 21 and 8, and
+    # that was measured on the same differencing rather than inferred: every
+    # cause this module names it names as a literal. So the comparison just below
+    # widened for the sixteenth time out of sixteen.
+    #
+    # cli/gates.py is NOT a new holder despite this unit changing its explicit
+    # gate refusal: the condition moved and the cause it raises did not, so a pin
+    # watching the touched files rather than the derived set would have expected a
+    # second module here.
+    assert (len(literal_holders), len(literal_both)) == (81, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

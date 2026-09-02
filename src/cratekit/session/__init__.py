@@ -1,4 +1,10 @@
-"""The operator-facing surface of the write session: its history and its undo.
+"""The operator-facing surface of the write session: what it needs, and its undo.
+
+Four verbs across two modules. ``restore_cli`` holds the history and the one
+undo, ``restore.list`` and ``restore.run``. ``cli`` holds the two acts a write
+session depends on and that nothing else can perform: minting the backup
+acknowledgment every destructive verb consults, and clearing a library lock
+whose holder is gone.
 
 Empty of imports so importing the package does not import the CLI, the restore
 engine, or the off-machine backup module (KTD7). ``crate --help`` walks the
