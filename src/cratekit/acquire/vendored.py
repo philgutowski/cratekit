@@ -32,6 +32,7 @@ lifetime, and the error translation, all of which are pure or injectable.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
 from threading import Event
@@ -49,6 +50,7 @@ from cratekit.acquire.adapter import (
     TrackSource,
     verify_applied,
 )
+from cratekit.core import binaries
 
 #: Cratekit's quality vocabulary to the wrapped tool's. The tool takes the
 #: streaming client's own enum VALUE as a string, and its factory default is the
@@ -92,26 +94,58 @@ DOWNLOADER_ARGUMENTS: frozenset[str] = frozenset(
 STAGING_TEMPLATE = "{track_id}"
 
 
-def tool_settings(settings: AdapterSettings) -> dict[str, Any]:
+def tool_settings(
+    settings: AdapterSettings, *, resolve: Callable[[str], str] = binaries.resolve
+) -> dict[str, Any]:
     """The wrapped tool's setting names and the values this run requires.
 
-    Pure, and the single source of what gets pushed AND what gets verified.
-    Splitting those into a push list and a separate check list is how the source
-    system's guard ended up watching two keys while the tool had more; one
-    mapping means a setting added here is verified by existing (P4).
+    The single source of what gets pushed AND what gets verified. Splitting those
+    into a push list and a separate check list is how the source system's guard
+    ended up watching two keys while the tool had more; one mapping means a
+    setting added here is verified by existing (P4).
+
+    ``resolve`` is a PARAMETER rather than a call into the binaries module,
+    which is what keeps the rest of this function pure. Every existing caller
+    gets the real lookup, and a test can drive both answers without depending on
+    what happens to be installed on the machine running it.
 
     Each entry's drift has a different cost. A reverted quality silently violates
     the lossless rule. A reverted download path sends files somewhere no later
-    stage looks. A reverted name template hands naming back to the downloader.
+    stage looks. A reverted name template hands naming back to the downloader. A
+    reverted ffmpeg path is the quietest of the four: the tool turns FLAC
+    extraction off, logs one warning through a logger this adapter discards, and
+    lands a lossy file that every later stage treats as the track (R-195).
     """
+    try:
+        ffmpeg = resolve("ffmpeg")
+    except binaries.BinaryNotFound as exc:
+        # Refused rather than pushed empty. Empty is the tool's factory default
+        # and it is exactly what it reads as "do not extract FLAC", so an absent
+        # encoder would otherwise arrive as a successful lossy download. Doctor
+        # asks whether ffmpeg exists on this machine; the tool asks whether it
+        # was told the path, and the two agreed only where somebody had already
+        # run the wrapped tool's own config by hand.
+        raise AdapterBroken(
+            f"the downloader needs ffmpeg to extract lossless audio and it could "
+            f"not be resolved ({exc}); without it this run would land lossy files "
+            f"and report success",
+            remedy=Remedy.INSTALL_ADAPTER,
+        ) from exc
+
     return {
         "quality_audio": QUALITY_BY_POLICY.get(settings.quality, settings.quality.upper()),
         "download_base_path": str(settings.download_staging),
         "format_track": STAGING_TEMPLATE,
+        "path_binary_ffmpeg": ffmpeg,
     }
 
 
-def apply_settings(target: Any, settings: AdapterSettings) -> None:
+def apply_settings(
+    target: Any,
+    settings: AdapterSettings,
+    *,
+    resolve: Callable[[str], str] = binaries.resolve,
+) -> None:
     """Push this run's settings onto the tool's in-memory configuration, then check.
 
     ``target`` is the tool's settings data object. It is written through
@@ -122,7 +156,7 @@ def apply_settings(target: Any, settings: AdapterSettings) -> None:
 
     Nothing is saved. That is the entire KTD20 change, and it is one absent call.
     """
-    expected = tool_settings(settings)
+    expected = tool_settings(settings, resolve=resolve)
     for key, value in expected.items():
         setattr(target, key, value)
 

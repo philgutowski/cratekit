@@ -60,7 +60,7 @@ from cratekit.acquire.adapter import (
     dispatch_invocation,
     verify_applied,
 )
-from cratekit.core import config, secrets
+from cratekit.core import binaries, config, secrets
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ACQUIRE_ROOT = REPO_ROOT / "src" / "cratekit" / "acquire"
@@ -758,12 +758,98 @@ def test_settings_refuse_values_that_would_disable_the_cap_or_reverse_the_pacing
         AdapterSettings(download_staging=tmp_path, pacing_delay_s=-1.0)
 
 
+def _ffmpeg_at(path: str):
+    """A resolver stub standing in for ``binaries.resolve``."""
+    return lambda name: path if name == "ffmpeg" else f"/usr/bin/{name}"
+
+
 def test_the_vendored_settings_translation_names_every_key_that_reverted(settings):
-    """The two observed reversions, plus the naming template, in one mapping."""
-    pushed = vendored.tool_settings(settings)
+    """The observed reversions, the naming template, and the ffmpeg path.
+
+    The SET is asserted, not three names. R-195 was a missing key in a mapping
+    nothing counted, so a fourth key arriving unnoticed is the exact shape this
+    has to refuse.
+    """
+    pushed = vendored.tool_settings(settings, resolve=_ffmpeg_at("/opt/x/ffmpeg"))
+    assert set(pushed) == {
+        "quality_audio",
+        "download_base_path",
+        "format_track",
+        "path_binary_ffmpeg",
+    }
     assert pushed["quality_audio"] == "LOSSLESS"
     assert pushed["download_base_path"] == str(settings.download_staging)
     assert pushed["format_track"] == vendored.STAGING_TEMPLATE
+    assert pushed["path_binary_ffmpeg"] == "/opt/x/ffmpeg"
+
+
+def test_the_ffmpeg_path_is_the_one_the_binaries_module_resolves(monkeypatch, tmp_path, settings):
+    """R-195: doctor and the tool must answer from ONE lookup.
+
+    Driven through the real resolver rather than a stub, because the defect was
+    that the two answered different questions: doctor asked whether ffmpeg exists
+    on this machine, the tool asked whether it had been told the path.
+    """
+    exe = tmp_path / "ffmpeg"
+    exe.write_text("#!/bin/sh\nexit 0\n")
+    exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setenv(binaries.env_var("ffmpeg"), str(exe))
+
+    pushed = vendored.tool_settings(settings)
+    assert pushed["path_binary_ffmpeg"] == binaries.resolve("ffmpeg") == str(exe)
+
+
+def test_a_machine_with_no_ffmpeg_refuses_by_name_instead_of_landing_lossy(
+    monkeypatch, tmp_path, settings, stored_session
+):
+    """The whole point of R-195: silence here is a lossy file reported as success.
+
+    With the key unset the wrapped tool turns ``extract_flac`` off and logs one
+    warning through a logger this adapter discards, so the run reports OK over a
+    320k AAC file. Refusing by name is the alternative to that.
+    """
+    monkeypatch.setenv("PATH", "/nonexistent")
+    monkeypatch.delenv(binaries.env_var("ffmpeg"), raising=False)
+    monkeypatch.setattr(binaries, "fallback_dirs", lambda: ())
+
+    with pytest.raises(AdapterBroken) as caught:
+        vendored.tool_settings(settings)
+    assert "ffmpeg" in str(caught.value)
+    assert caught.value.remedy is Remedy.INSTALL_ADAPTER
+
+    result = vendored.VendoredAdapter(
+        settings,
+        source=vendored._VendoredSource(
+            settings, tmp_path / "token.json", session=_ToolSession({}), tool=_Tool()
+        ),
+    ).acquire([TrackRequest(key="1234")])
+    assert result.outcome is InvocationOutcome.ADAPTER_BROKEN
+    assert "ffmpeg" in result.detail
+    assert result.remedy is Remedy.INSTALL_ADAPTER
+
+
+def test_verification_covers_the_ffmpeg_key_by_it_being_pushed(settings):
+    """P4 again: a tool that drops the fourth key is caught by the mapping, not a list.
+
+    The stand-in swallows the write the way a tool that renamed or removed the
+    setting would. Nobody added ``path_binary_ffmpeg`` to a check list for this
+    to fire; it is covered because it is pushed.
+    """
+
+    class DropsTheEncoderPath(_ToolSettings):
+        @property
+        def path_binary_ffmpeg(self):
+            return ""
+
+        @path_binary_ffmpeg.setter
+        def path_binary_ffmpeg(self, value):
+            pass
+
+    target = DropsTheEncoderPath(quality_audio="", download_base_path="", format_track="")
+    with pytest.raises(AdapterBroken) as caught:
+        vendored.apply_settings(target, settings, resolve=_ffmpeg_at("/opt/x/ffmpeg"))
+    assert "path_binary_ffmpeg is ''" in str(caught.value)
+    assert caught.value.remedy is Remedy.REPAIR_ADAPTER_SETTINGS
 
 
 class _ToolSettings:
@@ -786,11 +872,27 @@ class _ToolSettings:
         )
 
 
+class _Tool:
+    """The wrapped tool's settings holder, with every key the adapter pushes."""
+
+    def __init__(self, **initial: object) -> None:
+        self.data = _ToolSettings(
+            **{
+                "quality_audio": "HIGH",
+                "download_base_path": "~/download",
+                "format_track": "",
+                "path_binary_ffmpeg": "",
+                **initial,
+            }
+        )
+
+
 def test_applying_settings_writes_them_in_memory_and_saves_nothing(settings):
-    target = _ToolSettings(quality_audio="HIGH", download_base_path="~/download", format_track="")
-    vendored.apply_settings(target, settings)
+    target = _Tool().data
+    vendored.apply_settings(target, settings, resolve=_ffmpeg_at("/opt/x/ffmpeg"))
     assert target.quality_audio == "LOSSLESS"
     assert target.download_base_path == str(settings.download_staging)
+    assert target.path_binary_ffmpeg == "/opt/x/ffmpeg"
 
 
 def test_a_tool_that_does_not_take_a_setting_refuses_the_run(settings):
@@ -805,9 +907,9 @@ def test_a_tool_that_does_not_take_a_setting_refuses_the_run(settings):
         def quality_audio(self, value):
             pass
 
-    target = Stubborn(download_base_path="", format_track="")
+    target = Stubborn(download_base_path="", format_track="", path_binary_ffmpeg="")
     with pytest.raises(AdapterBroken) as caught:
-        vendored.apply_settings(target, settings)
+        vendored.apply_settings(target, settings, resolve=_ffmpeg_at("/opt/x/ffmpeg"))
     assert "quality_audio" in str(caught.value)
     assert caught.value.remedy is Remedy.REPAIR_ADAPTER_SETTINGS
 
@@ -1224,13 +1326,7 @@ def test_a_skip_reported_through_the_seam_still_raises(settings, tmp_path):
 def test_an_injected_session_still_has_this_runs_settings_pushed_and_verified(settings, tmp_path):
     """The KTD20 half of authenticate is exercised, never skipped."""
 
-    class Tool:
-        def __init__(self) -> None:
-            self.data = _ToolSettings(
-                quality_audio="HIGH", download_base_path="", format_track=""
-            )
-
-    tool = Tool()
+    tool = _Tool()
     source = vendored._VendoredSource(
         settings, tmp_path / "token.json", session=_ToolSession({}), tool=tool
     )
