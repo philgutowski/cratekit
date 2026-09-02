@@ -43,6 +43,13 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 from tests import test_restore as restore_suite
 from tests.test_restore import completed_session
 
+# IMPORTED, NOT COPIED. ``_lock_recording`` is a plain function with no fixture
+# semantics, so the reason the autouse guards below are duplicated does not apply
+# to it, and ``completed_session`` above already establishes that a plain helper
+# is imported here rather than reproduced. Two copies of "write a lock file
+# naming this holder" is two things to keep in step for no gain.
+from tests.test_write_session import _lock_recording
+
 #: The configured, SAVED library fixture. Assignment rather than ``from ...
 #: import`` for the reason ``tests/test_restore_cli.py`` gives: a fixture
 #: imported by name is shadowed by every test parameter that uses it, and a
@@ -136,15 +143,6 @@ def _mint_through_the_cli(option: str = "acknowledged") -> tuple[int, dict, dict
     _answer(run_id, ACK_GATE, option)
     code, envelope = _drive(["--run", run_id, "session", "ack"])
     return code, refused, envelope
-
-
-def _lock_recording(target_cfg, holder):
-    """Write a lock file naming ``holder``. Same shape as test_write_session's."""
-    path = session.lock_path(target_cfg)
-    config.atomic_write_bytes(
-        json.dumps({"holder": holder.to_json()}).encode("utf-8"), path
-    )
-    return path
 
 
 def _a_process_that_is_gone() -> session.Holder:

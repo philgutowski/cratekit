@@ -230,7 +230,21 @@ def record_ack(ctx) -> Envelope:
             data={"checks": [], "summary": {"recorded": False, "ages": shown}},
             outcome=Outcome.NO_OP,
         )
-    acknowledgment = session.record_acknowledgment(cfg)
+    # THE SAME MOMENT, handed down rather than taken again. Without it
+    # ``record_acknowledgment`` reads its own clock and derives the record's
+    # ``shown`` list from that instant instead of this one. ``now`` is the ONLY
+    # thing handed over: there is deliberately no way to tell that function what
+    # a person was shown, because a caller that could say so could say anything,
+    # which is the same clause that keeps the actor out of its signature.
+    acknowledgment = session.record_acknowledgment(cfg, now=now)
+    # AND THE REPORT COMES FROM THE RECORD, not from the read above it. Both
+    # describe the same portions and after ``now=now`` they agree, but they are
+    # two reads of one file and only one of them is the thing that was written
+    # down. Rendering ``checks`` from ``shown`` and ``summary`` from the record
+    # would put two answers to one question in one payload, separated by however
+    # long the write took, and that is the drift this whole layer exists to
+    # remove. What the person is told is what a destructive session will consult.
+    recorded_ages = [entry.to_json() for entry in acknowledgment.shown]
     return ctx.envelope(
         data={
             "checks": [
@@ -239,14 +253,14 @@ def record_ack(ctx) -> Envelope:
                     "status": "ok",
                     "detail": entry["state"],
                 }
-                for entry in shown
+                for entry in recorded_ages
             ],
             "summary": {
                 "recorded": True,
                 "actor": acknowledgment.actor,
                 "recorded_at": acknowledgment.recorded_at.isoformat(),
                 "expires_at": acknowledgment.expires_at.isoformat(),
-                "shown": [entry.to_json() for entry in acknowledgment.shown],
+                "shown": recorded_ages,
             },
         }
     )
