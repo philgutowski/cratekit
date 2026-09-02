@@ -141,6 +141,21 @@ def configured(library, monkeypatch):
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
+    # A PERSON IS SITTING HERE, asserted rather than inherited, and U49 is what
+    # made it necessary. ``session.ack`` is the first landed verb that reaches
+    # ``core.session.record_acknowledgment``, which refuses when no controlling
+    # terminal opens, and conformance 3 drives every gated verb THROUGH its gate
+    # to OK. Whether ``os.ctermid()`` opens under pytest depends on how the suite
+    # was launched, so leaving it unpatched makes this file pass or fail on a
+    # property of the machine rather than of the product. The patch lives here
+    # and not in ``tests/conftest.py`` on purpose: here it is visible as a
+    # property of the conformance drive, there it would silently cover every
+    # future terminal-gated verb. The REFUSING direction is driven in
+    # tests/test_session_cli.py, where it is the thing under test rather than a
+    # precondition.
+    from cratekit.core import session as core_session
+
+    monkeypatch.setattr(core_session, "has_controlling_terminal", lambda: True)
     return cfg
 
 
@@ -857,10 +872,14 @@ def test_a_decision_answered_against_a_plan_that_has_since_moved_is_stale(config
 def test_a_gate_marked_explicit_refuses_an_inline_answer(configured):
     """R34: no blanket affirmative, and no answer smuggled into the same command.
 
-    The gate under test belongs to a verb that has not landed, so the resolver is
-    driven directly. That is deliberate rather than a workaround: the rule is a
-    property of the resolver, and asserting it here means it is already true when
-    the first explicit gate arrives with U8.
+    The resolver is driven directly, because the rule is a property of the
+    RESOLVER rather than of any verb that happens to declare an explicit gate.
+    An earlier version of this docstring justified that differently, saying the
+    gate belonged to a verb that had not landed and that asserting the rule here
+    made it true before the first explicit gate arrived with U8. Both clauses
+    are now false and one always was: ``write.cloudsync.unreadable`` is explicit
+    and sits on a landed entry, and U49 landed ``session.ack`` itself. The test
+    is unchanged because its reason never depended on either.
     """
     spec = registry.GateSpec(
         name="session.ack.backup",
@@ -1407,6 +1426,20 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # conformance 5's property, and queueing needs no database, which is
         # what lets the half of adoption that is ready land while its
         # destructive sibling waits.
+        # U49. Neither session verb takes a positional argument, and neither may
+        # take a flag: R34 forbids a caller naming the actor or asserting the
+        # answer, so the whole input is the recorded gate decision. Both are
+        # driven on a fixture whose library has no backup fact file and no lock,
+        # which is the state of every install before its first backup, and both
+        # must still ask their question rather than treating an empty world as a
+        # reason not to. WHICH MODE THIS MEASURES: the drives below reach these
+        # verbs through the derived populations, and the explicit gates mean
+        # ``_sample_decisions``'s inline answer is refused rather than accepted,
+        # so conformance 1 and 2 see the REFUSAL and conformance 3 is the only
+        # property here that reaches the acting half. The two-act OK path and
+        # every refusal shape live in tests/test_session_cli.py.
+        "session.ack": [],
+        "session.release": [],
         "adopt.scan": [],
         # U27. The apply takes no positional argument either, and for the same
         # R19 reason: the tree comes off the declared taxonomy. It asks its

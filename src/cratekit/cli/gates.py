@@ -383,12 +383,26 @@ class Gates:
         if spec.digest_source is not None and digest is not None:
             self.state.offers[spec.name] = digest
 
-        if inline is not None and spec.explicit and recorded is None:
+        if inline is not None and spec.explicit:
             # R34. An explicit gate is answered by a deliberate, separate act
             # that is recorded with its actor, never inline in the same
             # invocation that discovered the gate. Accepting it here would make
             # "each requires its own explicit assertion" satisfiable by typing
             # one more flag on the command that was already running.
+            #
+            # UNCONDITIONALLY, and it used to carry ``and recorded is None``.
+            # That qualifier meant the refusal held only until SOME decision
+            # existed, after which the ordinary precedence below preferred the
+            # inline value over the recorded one, so a flag could overturn an
+            # answer a person had deliberately recorded. It was invisible while
+            # no landed verb reached an explicit gate that minted anything: U49
+            # landed ``session.ack``, drove the ordering, and found that
+            # ``--run R -d session.ack.backup=acknowledged`` recorded the backup
+            # acknowledgment over a recorded ``abort``. That is the gate
+            # standing in front of every destructive write in the product being
+            # answered by the thing it gates, which is the one outcome R34
+            # exists to prevent. A supplied flag is now refused whatever the run
+            # already holds, so the recorded answer is the only answer.
             #
             # The open gate is still recorded before refusing. A refusal that
             # does not leave the run resumable is a refusal the user answers by
