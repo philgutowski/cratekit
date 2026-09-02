@@ -2,13 +2,13 @@
   "name": "u49-author",
   "pass_kind": "light",
   "branch": "relay/67",
-  "head": "ea8c49e",
-  "when": "2026-09-02 06:22 UTC",
+  "head": "bb9cc17",
+  "when": "2026-09-02 08:00 UTC",
   "valid": true,
   "invalid_reason": "",
   "baseline_collected": 6555,
   "baseline_exit": 0,
-  "pytest_runs": 19,
+  "pytest_runs": 5,
   "control": {
     "id": "NULL_CONTROL",
     "description": "Automatic control: append a comment line to src/cratekit/session/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
@@ -42,7 +42,7 @@
       "kind": "mutation",
       "surface": "user",
       "pairs_with": null,
-      "fingerprint": "02bbcb23d95cf1ca",
+      "fingerprint": "a3b3070aeadc46f4",
       "subset": null,
       "subset_reason": "full suite (test files importing cratekit.session.cli: none found)",
       "status": "killed",
@@ -62,7 +62,7 @@
       "note": "",
       "runs": 1,
       "head_verified": true,
-      "old": "    acknowledgment = session.record_acknowledgment(cfg)",
+      "old": "    acknowledgment = session.record_acknowledgment(cfg, now=now)",
       "new": "    acknowledgment = session.read_acknowledgment(cfg) or session.Acknowledgment(\n        actor=\"nobody\", recorded_at=now, expires_at=now\n    )"
     },
     {
@@ -72,7 +72,7 @@
       "kind": "mutation",
       "surface": "user",
       "pairs_with": null,
-      "fingerprint": "5152695373dc50de",
+      "fingerprint": "dbb3dded18306a05",
       "subset": null,
       "subset_reason": "full suite (test files importing cratekit.session.cli: none found)",
       "status": "killed",
@@ -90,8 +90,8 @@
       "note": "",
       "runs": 1,
       "head_verified": true,
-      "old": "    if option == \"abort\":\n        return ctx.envelope(\n            data={\"checks\": [], \"summary\": {\"recorded\": False, \"ages\": shown}},\n            outcome=Outcome.NO_OP,\n        )\n    acknowledgment = session.record_acknowledgment(cfg)",
-      "new": "    acknowledgment = session.record_acknowledgment(cfg)"
+      "old": "    if option == \"abort\":\n        return ctx.envelope(\n            data={\"checks\": [], \"summary\": {\"recorded\": False, \"ages\": shown}},\n            outcome=Outcome.NO_OP,\n        )\n",
+      "new": ""
     },
     {
       "id": "A3_the_refusal_names_no_ages",
@@ -451,5 +451,11 @@
       "new": ""
     }
   ],
-  "dropped": []
+  "dropped": [
+    {
+      "id": "A5_the_report_comes_from_the_pre_gate_read",
+      "description": "Render checks and summary from the pre-gate read instead of from the record, restoring the two-read payload the simplification pass removed",
+      "reason": "inert at this surface, not a missing test. After record_acknowledgment is handed the same moment the handler already read, both reads answer from one file at one instant and produce identical values, so no assertion can tell the mutated tree from this one. Writing a test for it would be the empty measurement the corpus warns about, and filing it as a residual would be worse than dropping it. The property the change buys is structural: one read reaches the payload rather than two, which removes the race rather than narrowing it."
+    }
+  ]
 }

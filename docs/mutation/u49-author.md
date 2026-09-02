@@ -1,8 +1,8 @@
 # Mutation table: u49-author
 
-Measured by `scripts/mutate.py` on 2026-09-02 06:22 UTC, branch `relay/67` at `ea8c49e`. Pass kind: light.
+Measured by `scripts/mutate.py` on 2026-09-02 08:00 UTC, branch `relay/67` at `bb9cc17`. Pass kind: light.
 
-Baseline: green, 6555 collected. pytest invocations for this batch: 19.
+Baseline: green, 6555 collected. pytest invocations for this batch: 5.
 
 Environment: inherited from the calling shell, then added to. Added: PYTHONDONTWRITEBYTECODE=1; PYTHONPATH (the plugin's temp directory, prepended); MUTATE_REPORT_PATH (the plugin's output file). Removed: PYTEST_ADDOPTS (an inherited value would edit the command after the driver built it). Nothing else was scrubbed, because a hand built environment is how a missing binary reddens a baseline and every row after it.
 
@@ -27,6 +27,12 @@ Null control `NULL_CONTROL`: killed 0, collected 6555 against 6555. The control 
 | `G3_absent_context_becomes_an_empty_shown` | `src/cratekit/cli/gates.py` | user | 5 file(s) | 1238 | 1 | killed |
 | `V1_the_terminal_screen_stops_showing_it` | `src/cratekit/cli/render.py` | user | 4 file(s) | 1355 | 1 | killed |
 
+## Considered and dropped
+
+METHOD caps a light pass at 25 rows. These were ranked below the cap and NOT measured. They are not coverage.
+
+- `A5_the_report_comes_from_the_pre_gate_read`: Render checks and summary from the pre-gate read instead of from the record, restoring the two-read payload the simplification pass removed Dropped because: inert at this surface, not a missing test. After record_acknowledgment is handed the same moment the handler already read, both reads answer from one file at one instant and produce identical values, so no assertion can tell the mutated tree from this one. Writing a test for it would be the empty measurement the corpus warns about, and filing it as a residual would be worse than dropping it. The property the change buys is structural: one read reaches the payload rather than two, which removes the race rather than narrowing it.
+
 ## Row definitions
 
 ### `A1_the_mint_never_happens`
@@ -47,7 +53,7 @@ Delete the record_acknowledgment call and keep the envelope, so session.ack repo
 Old text:
 
 ```
-    acknowledgment = session.record_acknowledgment(cfg)
+    acknowledgment = session.record_acknowledgment(cfg, now=now)
 ```
 
 New text:
@@ -79,13 +85,13 @@ Old text:
             data={"checks": [], "summary": {"recorded": False, "ages": shown}},
             outcome=Outcome.NO_OP,
         )
-    acknowledgment = session.record_acknowledgment(cfg)
+
 ```
 
 New text:
 
 ```
-    acknowledgment = session.record_acknowledgment(cfg)
+(empty)
 ```
 
 ### `A3_the_refusal_names_no_ages`

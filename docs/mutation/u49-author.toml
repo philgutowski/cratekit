@@ -12,7 +12,7 @@ id = "A1_the_mint_never_happens"
 description = "Delete the record_acknowledgment call and keep the envelope, so session.ack reports minting and mints nothing"
 file = "src/cratekit/session/cli.py"
 surface = "user"
-old = '''    acknowledgment = session.record_acknowledgment(cfg)'''
+old = '''    acknowledgment = session.record_acknowledgment(cfg, now=now)'''
 new = '''    acknowledgment = session.read_acknowledgment(cfg) or session.Acknowledgment(
         actor="nobody", recorded_at=now, expires_at=now
     )'''
@@ -27,8 +27,8 @@ old = '''    if option == "abort":
             data={"checks": [], "summary": {"recorded": False, "ages": shown}},
             outcome=Outcome.NO_OP,
         )
-    acknowledgment = session.record_acknowledgment(cfg)'''
-new = '''    acknowledgment = session.record_acknowledgment(cfg)'''
+'''
+new = ""
 
 [[rows]]
 id = "A3_the_refusal_names_no_ages"
@@ -160,3 +160,8 @@ old = '''    shown = detail.get("shown")
         lines.append("")
         lines += _shown_lines(shown)'''
 new = ""
+
+[[dropped]]
+id = "A5_the_report_comes_from_the_pre_gate_read"
+description = "Render checks and summary from the pre-gate read instead of from the record, restoring the two-read payload the simplification pass removed"
+reason = "inert at this surface, not a missing test. After record_acknowledgment is handed the same moment the handler already read, both reads answer from one file at one instant and produce identical values, so no assertion can tell the mutated tree from this one. Writing a test for it would be the empty measurement the corpus warns about, and filing it as a residual would be worse than dropping it. The property the change buys is structural: one read reaches the payload rather than two, which removes the race rather than narrowing it."
