@@ -11047,3 +11047,144 @@ still names the derived account.
 explicit gate, keeping any supplied string as a separate annotation, and a test
 drives an arbitrary `--actor` against `session.ack.backup` and asserts what the
 record claims.
+
+## R-221. The queued backup reports its ages and nothing else the run learned
+
+**Found:** during U50, 2026-09-02, while binding the backup worker.
+
+The resume envelope carries `published_ages` and the job report. It does not
+carry the per portion `ran` flags, the archive rotation warnings U48 taught the
+engine to stop swallowing, or the `dry_run` flag. `perform_backup` builds all
+three and `handle` discards the report, because `jobs.drive` keeps only a
+handler's `Produced` and a backup produces nothing to commit.
+
+**The `master` symmetry is what this was first argued from, and it does not
+carry.** That verb's resume also reports only the job, and the difference is that
+its discarded report describes a file the person can go and look at. A backup
+leaves nothing local, so the report is the only account of what happened.
+
+**The specific cost is the rehearsal.** `crate backup run --dry-run` queues a job
+whose resume drives every portion with each transfer neutralised, and the
+envelope for that run is byte for byte the shape of a real one: two items done, a
+succeeded job, and ages read from a fact file the rehearsal never touched. The
+ages are the same ages the previous real run published, so they are true, and
+nothing on the queued path says the run that just finished copied nothing. The
+`dry_run` flag exists in the report precisely because a rehearsal and a real run
+are otherwise indistinguishable, and the queued path is where it does not reach
+anybody.
+
+**Cost:** a rehearsal driven through the queue reads as a backup. The rotation
+warnings reach nobody on the queued path.
+
+**Closes when:** the resume envelope carries the outcome the worker built, which
+needs a way for a handler to return a report alongside its `Produced`, and a test
+drives a queued rehearsal and asserts the envelope says so.
+
+## R-222. A retried portion takes the last rotation slot, and the default keeps one
+
+**Found:** during U50, 2026-09-02, while binding the backup worker.
+
+`DEFAULT_ARCHIVE_KEEP` is 1. Each item builds its own plan at claim time, so each
+attempt at a portion stamps its own dated archive folder, and the prune that runs
+after a successful mirror keeps one. So a mirror that failed partway, wrote its
+archive folder, and is then retried to success deletes that folder: the versions
+the failed attempt overwrote before it died have their only remaining copies
+there.
+
+**This unit is what makes it reachable.** Nothing in `src` drove a backup before
+today, so no attempt could be retried. R11's per portion retry is the point of
+the item ledger, and it is also the first thing that can create two dated folders
+for one portion.
+
+**Not fixed here.** Freezing one archive stamp per item and reusing it across
+attempts is the fix, and the stamp is decided inside `plan_backup`, which is
+board unit U45's file and is out of this unit's scope. The narrower version, a
+stamp frozen into the payload at enqueue time, was considered and rejected on its
+own merits: a resume days later would then write into a folder dated for the day
+the job was queued.
+
+**Cost:** the safety net for one failed attempt is deleted by the attempt that
+succeeds. Only files the failed attempt had already overwritten are affected.
+
+**Closes when:** a retried portion reuses its earlier attempt's dated folder, or
+the rotation counts attempts of one job as one slot, with a test that fails a
+mirror, retries it, and asserts the first attempt's archive is still there.
+
+## R-223. Two backup jobs against one destination, and nothing says no
+
+**Found:** during U50, 2026-09-02, while binding the backup worker.
+
+`crate backup run` queues unconditionally. It prints a job identifier and appears
+to have done nothing, which is exactly the shape that invites typing it again, and
+the second invocation files a second job. Both can now be driven. Each takes its
+own driver lock, which is per job, so the locks do not see each other, and both
+run `rclone sync` against the same destination with different dated archive
+folders. At a keep of 1 each portion's prune then deletes the other run's archive.
+
+**Not fixed here.** Reporting the open job instead of queueing a second is a
+change to what the verb does when asked, which is a decision about the verb rather
+than about the worker this unit binds. `master` queues the same way and is not
+exposed to it, because two masters name two different recordings while two backups
+name one destination.
+
+**Cost:** two concurrent backups interleave against one remote and prune each
+other's archive.
+
+**Closes when:** `backup_library` reports the open backup job rather than filing a
+second, with a test that runs the verb twice and asserts one job.
+
+## R-224. A portion that refuses can only be recorded as failed
+
+**Found:** during U50, 2026-09-02, while reversing this unit's first design.
+
+`ItemState.SKIPPED` is declared and `jobs.progress` counts it as settled, and
+nothing produces it: `jobs.drive` completes or fails an item and has no third
+branch, `complete_item` writes only `done`, and no writer exists for the state at
+all. So a portion the engine refused before attempting anything, which is neither
+a completed copy nor a transfer that came back non zero, has to be recorded as one
+of the two.
+
+This unit records it as failed, which is the recoverable half of a bad pair:
+`jobs.retry` re-arms it, so quitting rekordbox and resuming finishes the backup,
+where `done` would be permanent. The cost is that a library backed up without
+quitting rekordbox first reports a failed job, which is louder than the whole run
+verdict in `refusal_for` calls the same state.
+
+**Not fixed here.** A skip path is `core/jobs.py`: a writer, a rule in `drive`
+about what a skipped item does to the job's verdict, and a decision about whether
+`retry` re-arms one. That is the engine, and this unit is a caller of it.
+
+**Cost:** the ordinary "backed up with rekordbox open" run reports failure rather
+than a partial success, and the item ledger cannot distinguish a portion that was
+skipped from one whose transfer broke.
+
+**Closes when:** a handler can record an item as skipped, `drive` says what a
+skipped item does to the job's state, and this verb uses it for a refusal.
+
+## R-225. A resume that half failed exits OK for every verb except backup
+
+**Found:** during U50, 2026-09-02, by driving the seam rather than reading it.
+
+`jobs.drive` raises only when every attempted item failed. A job where one item
+completed and another did not returns a `DriveResult` normally with the job
+recorded FAILED, so a resume branch that reports the job and returns its envelope
+exits 0 over a run that half failed. Measured on this branch: a backup whose
+mirror completed and whose database snapshot came back non zero exited
+`ExitCode.OK` with the job state reading `failed` in the same envelope.
+
+U50 fixes it for `backup.run` by re-raising the job's own cause, and
+`src/cratekit/master/cli.py` still has it. `master` is the only other bound verb,
+so the exposure is exactly one verb, and it will be inherited by every verb bound
+against R-203 that copies the same resume branch.
+
+**Not fixed here.** `master/cli.py` is board unit U46's file and changing another
+verb's exit code from this unit is a second opinion about a surface this unit does
+not own.
+
+**Cost:** `crate master --job ID` exits 0 over a mastering job that failed. A
+script reading the exit code stops looking.
+
+**Closes when:** the resume branch that raises on a closed failed job lives in one
+place both verbs reach, or `master` grows the same three lines, with a test
+driving a partially failed job through each bound verb and asserting the exit
+code.
