@@ -34,6 +34,32 @@ Null control `NULL_CONTROL`: killed 0, collected 6577 against 6577. The control 
 - `W4_portion_from_the_payload` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 - `W8_read_back_inside_the_item` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 
+### What was done about them, and it was not pairing
+
+**All three are settled in `docs/mutation/u50-zero-rows.md`, measured after this
+table and on the same branch.** Two were a real gap and one was a weak row, and
+telling those apart is the reason a zero gets read rather than excused.
+
+- `B2_items_hardcoded_pair` was a GAP. Replacing the derivation with the literal
+  pair killed nothing across all 6577 tests, because every assertion about the
+  item set compared it against `backup_facts.Portion`, and the literal and the
+  derivation agree on any build with exactly these two portions. Closed by
+  `test_the_item_list_is_derived_from_the_portions_rather_than_written_out`,
+  which stands in a three member enum, the one condition a literal cannot follow.
+  Re-measured: 1 kill.
+- `W8_read_back_inside_the_item` was a GAP. Nothing drove the handler against an
+  unreadable fact file, so the read back guard was asserted on the work body and
+  unmeasured at the seam that asks for it. Closed by
+  `test_the_handler_does_not_fail_an_item_over_the_age_read_back`. Re-measured:
+  1 kill.
+- `W4_portion_from_the_payload` was an INERT ROW rather than a gap, and it is
+  reclassified rather than paired. It read `payload["portion"]` with a fallback to
+  the item, and no payload this build writes carries that key, so the mutated code
+  and the original take the same branch on every input. A row that cannot change
+  behaviour cannot be killed and proves nothing about coverage. Replaced by
+  `W4b_item_ignored_entirely`, which ignores the item outright and is the defect
+  the original was reaching for. Measured: 4 kills.
+
 ## Considered and dropped
 
 METHOD caps a light pass at 25 rows. These were ranked below the cap and NOT measured. They are not coverage.
