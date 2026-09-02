@@ -61,6 +61,7 @@ from cratekit.acquire.adapter import (
     verify_applied,
 )
 from cratekit.core import binaries, config, secrets
+from tests._containers import synth_container
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ACQUIRE_ROOT = REPO_ROOT / "src" / "cratekit" / "acquire"
@@ -1193,7 +1194,10 @@ def test_a_download_the_tool_silently_skipped_is_not_reported_as_a_file():
     pair would send a phantom path into tagging; raising sends it back through
     the classifier, where it becomes transient and stays re-queueable.
     """
-    assert vendored.landed_file(True, "/staging/x.flac", "x") == Path("/staging/x.flac")
+    lossless = lambda _path: ("FLAC", True)  # noqa: E731 - a one-line probe stub
+    assert vendored.landed_file(True, "/staging/x.flac", "x", probe=lossless) == Path(
+        "/staging/x.flac"
+    )
     with pytest.raises(RuntimeError, match="reported no file"):
         vendored.landed_file(False, "", "x")
 
@@ -1311,8 +1315,15 @@ class _FakeDownload:
         return self.landed
 
 
-def _fetch_with_fake(settings, tmp_path, landed=(True, "1234.flac")):
-    """Drive ``fetch`` through the seam and hand back what it built."""
+def _fetch_with_fake(settings, tmp_path, landed=None):
+    """Drive ``fetch`` through the seam and hand back what it built.
+
+    The default landing is a REAL lossless file, so these tests exercise the
+    whole of ``fetch`` including the post-landing codec check rather than
+    stopping at the construction they are about.
+    """
+    if landed is None:
+        landed = (True, str(synth_container(tmp_path, ".flac")))
 
     class Landing(_FakeDownload):
         def __init__(self, **kwargs: object) -> None:
@@ -1414,6 +1425,174 @@ def test_a_skip_reported_through_the_seam_still_raises(settings, tmp_path):
     source, _ = _fetch_with_fake(settings, tmp_path, landed=(False, ""))
     with pytest.raises(RuntimeError, match="reported no file"):
         source.fetch(TrackRequest(key="1234"), settings.download_staging)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Scenario: the lossless rule is enforced at the FILE, not only at the setting
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_codec_table_answers_for_every_container_it_declares():
+    """Driven over the whole table, not a sample, and with no files at all."""
+    assert vendored.LOSSLESS_BY_CONTAINER["FLAC"] is True
+    assert vendored.LOSSLESS_BY_CONTAINER["WAVE"] is True
+    assert vendored.LOSSLESS_BY_CONTAINER["AIFF"] is True
+    assert vendored.LOSSLESS_BY_CONTAINER["OggFLAC"] is True
+    assert vendored.LOSSLESS_BY_CONTAINER["MP3"] is False
+    assert vendored.LOSSLESS_BY_CONTAINER["OggVorbis"] is False
+    assert vendored.LOSSLESS_BY_CONTAINER["OggOpus"] is False
+    assert "alac" in vendored.MP4_LOSSLESS_CODECS
+    # MP4 is deliberately not in the container table: a .m4a holds AAC or ALAC
+    # and only the codec string can say which, which is the exact container this
+    # defect produced.
+    assert "MP4" not in vendored.LOSSLESS_BY_CONTAINER
+
+
+def test_a_real_flac_is_accepted_even_though_mutagen_reports_no_codec(tmp_path):
+    """Measured, and the row that would refuse every genuine FLAC if read wrong.
+
+    Mutagen exposes ``info.codec`` on MP4 alone. FLAC, WAV, AIFF and MP3 all
+    report None, so a None codec means the CONTAINER decided, not that the file
+    could not be read. Treating None as unreadable would refuse every lossless
+    file this unit exists to deliver.
+    """
+    flac = synth_container(tmp_path, ".flac")
+    name, lossless = vendored.codec_of(flac)
+    assert lossless is True, f"a real FLAC classified as {name!r}"
+    assert vendored.landed_file(True, str(flac), "1234") == flac
+
+
+def test_a_lossy_landing_is_refused_and_the_refusal_names_the_codec(tmp_path):
+    """The guard that makes the whole chain falsifiable.
+
+    The lossless rule was enforced at the SETTING and never at the FILE, which is
+    how the product's central promise failed silently from July: the setting said
+    LOSSLESS, the provider sent AAC, and nothing between them ever looked.
+    """
+    aac = synth_container(tmp_path, ".m4a")
+    name, lossless = vendored.codec_of(aac)
+    assert lossless is False, f"the .m4a synthesizer stopped producing lossy audio ({name})"
+
+    with pytest.raises(vendored.LosslessRefused) as caught:
+        vendored.landed_file(True, str(aac), "1234")
+    # The codec it ACTUALLY got, read from the file, not a hardcoded string.
+    assert name in str(caught.value)
+    assert str(aac) in str(caught.value)
+
+
+def test_a_refused_file_is_left_where_it_landed(tmp_path):
+    """Deleting a file on the strength of a probe is a destructive act.
+
+    It is also the evidence somebody diagnosing the next demotion will want.
+    """
+    aac = synth_container(tmp_path, ".m4a")
+    with pytest.raises(vendored.LosslessRefused):
+        vendored.landed_file(True, str(aac), "1234")
+    assert aac.exists()
+
+
+@pytest.mark.parametrize("name", ["empty.flac", "mystery.xyz"])
+def test_a_landing_that_cannot_be_read_is_refused_as_unreadable_not_as_lossy(tmp_path, name):
+    """Two different facts get two different sentences.
+
+    Not being able to confirm lossless is not the same as confirming lossy, and
+    reporting the first as the second sends the reader after the provider when
+    the file is truncated.
+    """
+    broken = tmp_path / name
+    broken.write_bytes(b"")
+    assert vendored.codec_of(broken)[1] is None
+
+    with pytest.raises(vendored.LosslessRefused) as caught:
+        vendored.landed_file(True, str(broken), "1234")
+    assert "could not be read" in str(caught.value)
+    assert "is lossy" not in str(caught.value)
+
+
+def test_a_permitted_lossy_policy_does_not_refuse_the_landing(tmp_path):
+    aac = synth_container(tmp_path, ".m4a")
+    assert (
+        vendored.landed_file(
+            True, str(aac), "1234", policy=LosslessPolicy.ALLOW_LOSSY_MARKED
+        )
+        == aac
+    )
+
+
+def test_a_lossy_landing_refuses_the_track_and_lets_the_run_continue(
+    settings, tmp_path, stored_session
+):
+    """Per track, and the outcome names WHICH gate caught it.
+
+    There are four routes to "no file was accepted" in this adapter now, so an
+    assertion that merely observes the absence is satisfied by all of them.
+    """
+    aac = synth_container(tmp_path, ".m4a")
+    codec = vendored.codec_of(aac)[0]
+
+    class Landing(_FakeDownload):
+        def __init__(self, **kwargs: object) -> None:
+            super().__init__(**kwargs)
+            self.landed = (True, str(aac))
+
+    # The OFFER says lossless and the FILE is not. That gap is the whole defect:
+    # the rule was enforced where the request was made and never where the file
+    # was accepted.
+    result = vendored.VendoredAdapter(
+        settings,
+        source=vendored._VendoredSource(
+            settings,
+            tmp_path / "token.json",
+            session=_ToolSession({"1234": _ToolTrack("LOSSLESS")}),
+            downloader=Landing,
+        ),
+    ).acquire([TrackRequest(key="1234")])
+
+    assert result.outcome is InvocationOutcome.OK
+    (one,) = result.results
+    assert one.outcome is TrackOutcome.REFUSED_BY_POLICY
+    assert one.remedy is Remedy.RELAX_LOSSLESS_POLICY
+    assert codec in one.detail
+    assert one.path is None
+    assert result.quarantine_keys() == ()
+    assert result.requeue_keys() == ("1234",)
+
+
+def test_a_lossy_landing_after_a_delisted_track_still_returns_a_contract_result(
+    settings, tmp_path, stored_session
+):
+    """The reason the refusal is per track rather than adapter level.
+
+    A failed invocation may not carry a permanently unavailable result: quarantine
+    is fed from those and quarantine is forever, so ``InvocationResult`` refuses
+    the combination outright. An adapter-level refusal raised from inside the loop
+    would hit that constructor with the delisted track already in hand and escape
+    as an uncaught ValueError, with no outcome, no remedy and no requeue list.
+    """
+    aac = synth_container(tmp_path, ".m4a")
+
+    class Landing(_FakeDownload):
+        def __init__(self, **kwargs: object) -> None:
+            super().__init__(**kwargs)
+            self.landed = (True, str(aac))
+
+    source = vendored._VendoredSource(
+        settings,
+        tmp_path / "token.json",
+        session=_ToolSession(
+            {"gone": NotFoundError("404 not found"), "1234": _ToolTrack("LOSSLESS")}
+        ),
+        downloader=Landing,
+    )
+
+    result = vendored.VendoredAdapter(settings, source=source).acquire(
+        [TrackRequest(key="gone"), TrackRequest(key="1234")]
+    )
+
+    assert result.outcome is InvocationOutcome.OK
+    outcomes = [r.outcome for r in result.results]
+    assert outcomes == [TrackOutcome.UNAVAILABLE_PERMANENT, TrackOutcome.REFUSED_BY_POLICY]
+    assert result.quarantine_keys() == ("gone",)
 
 
 def test_an_injected_session_still_has_this_runs_settings_pushed_and_verified(settings, tmp_path):

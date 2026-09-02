@@ -123,6 +123,26 @@ class AdapterBroken(AdapterError):
     remedy = Remedy.SWITCH_ADAPTER
 
 
+class LosslessRefused(AdapterError):
+    """A file landed and its codec is not what strict policy asked for.
+
+    PER TRACK, not per invocation, and the distinction is load-bearing in both
+    directions. An adapter-level failure raised from inside the per-track loop
+    would make ``acquire_with_source`` build a failed ``InvocationResult``
+    carrying the results that landed before it, and ``InvocationResult`` refuses
+    a failed invocation holding any permanently unavailable result, so one
+    delisted track earlier in the same batch would turn a codec refusal into an
+    uncaught ValueError with no outcome and no requeue list.
+
+    It is also the same answer the loop already gives when the OFFER says lossy
+    under strict policy, which is the identical question asked earlier. A demoted
+    client produces one of these per track and the pattern is the signal; one
+    truncated file produces exactly one and does not end the run.
+    """
+
+    remedy = Remedy.RELAX_LOSSLESS_POLICY
+
+
 # ---------------------------------------------------------------------------
 # The two outcome vocabularies
 # ---------------------------------------------------------------------------
@@ -777,6 +797,16 @@ def acquire_one(
         path = source.fetch(request, settings.download_staging)
     except (AdapterAuthFailed, AdapterBroken):
         raise
+    except LosslessRefused as exc:
+        # A file landed and it is the wrong kind. Not a missing track and not a
+        # broken adapter: the same refusal the offer check above would have given
+        # had the provider told the truth about what it was going to send.
+        return TrackResult(
+            key=request.key,
+            outcome=TrackOutcome.REFUSED_BY_POLICY,
+            detail=str(exc),
+            remedy=exc.remedy,
+        )
     except Exception as exc:  # noqa: BLE001 - same rule as the lookup above
         return _unavailable(request, exc)
 
@@ -943,6 +973,7 @@ __all__ = [
     "InvocationOutcome",
     "InvocationResult",
     "LosslessPolicy",
+    "LosslessRefused",
     "Offer",
     "PolicyDecision",
     "Remedy",

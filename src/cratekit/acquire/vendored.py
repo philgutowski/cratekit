@@ -44,6 +44,8 @@ from cratekit.acquire.adapter import (
     AdapterBroken,
     AdapterSettings,
     BaseAdapter,
+    LosslessPolicy,
+    LosslessRefused,
     Offer,
     Remedy,
     TrackRequest,
@@ -369,7 +371,7 @@ class _VendoredSource:
         except Exception as exc:
             raise_if_session_dead(exc)
             raise
-        return landed_file(ok, landed, request.key)
+        return landed_file(ok, landed, request.key, policy=self._settings.lossless_policy)
 
 
 def _vendored_downloader() -> Any:  # pragma: no cover - needs the vendored tree's deps
@@ -413,7 +415,67 @@ def disabled_progress() -> tuple[Any, Any]:
     return Progress(disable=True), Progress(disable=True)
 
 
-def landed_file(ok: bool, landed: object, key: str) -> Path:
+#: Whether a container is lossless, when the container alone decides it.
+#:
+#: Keyed by mutagen's CLASS name rather than by file suffix, and the difference
+#: is the whole point: a ``.m4a`` holds AAC or ALAC and the suffix cannot say
+#: which, so a suffix test gives the wrong answer for the exact container this
+#: defect produced. MP4 is deliberately absent from this table; see
+#: ``MP4_LOSSLESS_CODECS``.
+LOSSLESS_BY_CONTAINER: dict[str, bool] = {
+    "FLAC": True,
+    "WAVE": True,
+    "AIFF": True,
+    "OggFLAC": True,
+    "MP3": False,
+    "OggVorbis": False,
+    "OggOpus": False,
+    "AAC": False,
+}
+
+#: The MP4 codec strings that are lossless. Measured, not assumed: mutagen
+#: exposes ``info.codec`` on MP4 alone. FLAC, WAV, AIFF and MP3 all report None,
+#: which is why a None codec means "the container decided" rather than "this file
+#: could not be read". Reading None as unreadable would refuse every real FLAC,
+#: which is the opposite of what this guard is for.
+MP4_LOSSLESS_CODECS: frozenset[str] = frozenset({"alac"})
+
+
+def codec_of(path: Path) -> tuple[str, bool | None]:
+    """What landed, as ``(name, lossless)``. ``lossless`` is None when unreadable.
+
+    Three answers, not two, because "this file is lossy" and "nothing here could
+    be read" are different facts and lead to different sentences. Mutagen is
+    imported inside the function, the convention ``core/tags.py`` sets, so this
+    module stays importable on an install with no audio stack.
+    """
+    import mutagen  # noqa: PLC0415 - see the docstring
+
+    try:
+        handle = mutagen.File(str(path))
+    except Exception:  # noqa: BLE001 - every container fails differently; none may escape
+        handle = None
+    if handle is None:
+        return "unreadable", None
+
+    container = type(handle).__name__
+    codec = str(getattr(handle.info, "codec", "") or "")
+    if codec:
+        return codec, codec.lower() in MP4_LOSSLESS_CODECS
+    known = LOSSLESS_BY_CONTAINER.get(container)
+    if known is None:
+        return container, None
+    return container, known
+
+
+def landed_file(
+    ok: bool,
+    landed: object,
+    key: str,
+    *,
+    policy: LosslessPolicy = LosslessPolicy.STRICT,
+    probe: Callable[[Path], tuple[str, bool | None]] = codec_of,
+) -> Path:
     """Turn the tool's ``(succeeded, path)`` pair into a file or an exception.
 
     Pulled out of ``fetch`` because it is the only DECISION in a method that
@@ -425,10 +487,45 @@ def landed_file(ok: bool, landed: object, key: str) -> Path:
     Raising sends it back through the classifier, where it becomes a transient
     result that stays re-queueable. Returning a path for a file that is not there
     would send a phantom into tagging.
+
+    THE CODEC CHECK IS HERE, at the acceptance, and not at the request. The
+    lossless rule was enforced at the SETTING and never at the FILE, which is how
+    the product's central promise failed silently from July: the setting said
+    LOSSLESS, the provider sent AAC, and nothing between them ever looked. This
+    is the cheap half of that problem and it is what catches the next demotion.
+
+    ``LosslessRefused`` rather than ``AdapterBroken``, and the reason is a defect
+    rather than a preference. An adapter-level failure raised from inside the per
+    track loop makes ``acquire_with_source`` build a failed ``InvocationResult``
+    carrying whatever landed earlier in the same run, and that constructor
+    refuses a failed invocation holding any permanently unavailable result. One
+    delisted track earlier in the batch would turn this refusal into an uncaught
+    ValueError. Per track also matches what the adapter already does with the
+    identical condition seen at the OFFER, so one unreadable file does not end a
+    fifty track sync.
+
+    The refused file is left where it landed. Deleting a file on the strength of
+    a probe is a destructive act, and that file is the evidence somebody
+    diagnosing the next demotion will want.
     """
     if not ok:
         raise RuntimeError(f"the downloader reported no file for {key}")
-    return Path(str(landed))
+    path = Path(str(landed))
+    if policy is not LosslessPolicy.STRICT:
+        return path
+
+    name, lossless = probe(path)
+    if lossless is None:
+        raise LosslessRefused(
+            f"the file that landed for {key} could not be read as audio ({name}), "
+            f"so this run cannot confirm it is lossless; it is at {path}"
+        )
+    if not lossless:
+        raise LosslessRefused(
+            f"the provider was asked for lossless audio and the file that landed "
+            f"for {key} is {name}; it is at {path}"
+        )
+    return path
 
 
 def _discard_tool_logging(*_args: object, **_kwargs: object) -> None:
@@ -460,12 +557,15 @@ class VendoredAdapter(BaseAdapter):
 
 __all__ = [
     "DOWNLOADER_ARGUMENTS",
+    "LOSSLESS_BY_CONTAINER",
+    "MP4_LOSSLESS_CODECS",
     "QUALITY_BY_POLICY",
     "REAUTHORISE_HINT",
     "STAGING_TEMPLATE",
     "TOKEN_FILENAME",
     "VendoredAdapter",
     "apply_settings",
+    "codec_of",
     "disabled_progress",
     "download_events",
     "is_authentication_failure",
