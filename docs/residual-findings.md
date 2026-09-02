@@ -9965,6 +9965,16 @@ and the tool answer from one lookup.
 binaries resolver, `verify_applied` checks it, and a test asserts the pushed set
 has four keys.
 
+**Closed by U47, 2026-09-01, on its own stated terms.** `tool_settings()` takes
+the resolver as a keyword parameter defaulting to `binaries.resolve` and pushes
+the fourth key; `verify_applied` covers it by it being pushed rather than by a
+second list; and the test asserts the pushed SET rather than three names, because
+a missing key in a mapping nothing counted is the whole of this finding. An
+unresolvable ffmpeg now refuses the run with `INSTALL_ADAPTER` instead of pushing
+the empty string, since empty is exactly the value the tool reads as
+do-not-extract-FLAC, so an absent encoder would otherwise have arrived as a
+successful lossy download.
+
 ## R-196. The provider serves lossy audio to the device-flow client, and neither the vendored tool nor the adapter can log in any other way
 
 **Found by** A1, 2026-08-28, and it reaches past this repository.
@@ -10006,6 +10016,32 @@ lossless, belongs beside it.
 file that records `is_pkce`, and a post-landing check refuses a lossy file under
 a lossless policy. The DJ_tools note is separate and is owed to that repository.
 
+**Closed by U47, 2026-09-01. Both halves, and the DJ_tools note is still owed.**
+PKCE is the product's only login path, decided by Phillip and not litigated in
+the unit. Three vendored patches, all declared in `scripts/revendor_downloader.py`
+and applied through it: the `Token` model gains `is_pkce`, `token_persist` writes
+it, and `Tidal.login` mints through `login_pkce`. No PKCE handshake was added to
+the vendored tree; `tidalapi` already ships one and upstream already carried the
+call as a comment beside the one it used. The adapter calls
+`login_token(do_pkce=True)` and refuses a stored non-PKCE session outright rather
+than downloading lossy audio with it. The post-landing codec check is in
+`landed_file`, at the acceptance rather than at the request.
+
+Two things the unit found that this entry does not say. `token_persist` cannot
+write the flag through `set_option`: that method calls `.lower()` on the incoming
+value whenever the existing one is a bool, and `is_pkce` is the token model's
+only bool field, so the obvious edit raises `AttributeError`. And the source must
+be the SESSION's flag, not the `Tidal` object's, because `login()` calls
+`login_token()` first and that assigns `self.is_pkce` from its own defaulted
+argument before any PKCE handshake runs, so reading it there would record every
+fresh PKCE session as a device flow one.
+
+What this closure COSTS, and it is not free: every session in the keychain before
+this merge was minted by the device flow, so the refusal is what an existing
+installation meets first. The re-authorisation is two attended commands and is
+written down in `docs/adapters.md`, because a refusal whose remedy has no
+procedure behind it is worse than the lossy download it replaces.
+
 ## R-197. The adapter's fetch constructs the downloader without the events and progress it requires, so the first real call crashes
 
 **Found by** A1, 2026-08-28, while driving `Download` directly to land the FLAC.
@@ -10029,6 +10065,28 @@ fake `Download` that asserts the constructor's keyword set.
 
 **Closes when:** `fetch` passes both events and a disabled `rich` `Progress`
 pair, and a test pins the constructor call.
+
+**Closed by U47, 2026-09-01, with one correction to this entry's own text.**
+`fetch` passes all seven keywords the vendored CLI passes (the CLI passes eight;
+`skip_existing` stays at its `False` default because this product always
+downloads). Three tests pin it: a fake downloader records the keyword set, an AST
+walk reads what the module writes so bypassing the seam is caught too, and a
+third asserts every keyword exists on the real `Download.__init__`.
+
+The correction: this entry says the missing events make `item()` "die on its
+first line", and that is true of `item()` but not of the constructor.
+`Download.__init__` declares all four with `None` defaults, so it accepts any
+subset silently. A test asserting the constructor REFUSES a missing argument
+therefore cannot be written, which is why the test asserts what `fetch` passes.
+
+A hazard this entry does not name and which cost a design round to find:
+`event_run` must be passed already SET. `Download._download_segment` runs
+`self.event_run.wait()` inside its worker pool when the event is clear, and the
+vendored `HandlingApp.__init__` is the only thing in that tree that sets it. A
+fresh unset `Event` blocks every segment worker on something nothing will wake,
+so the failure is a HANG rather than an error and no message names its cause.
+Passing the keyword is not enough; its state is the requirement, and there is a
+test for that alone.
 
 ## R-198. Nothing calls the job driver, so every long-running verb queues work the product never runs
 
@@ -10360,6 +10418,18 @@ driven, and the widest workflow in the product still cannot run.
 **Closes when:** a unit binds `acquire.download`'s handler, and takes R-195,
 R-196 and R-197 with it.
 
+**Still open after U47, 2026-09-01, and this is stated so the three closures are
+not read as satisfying it.** U47 took R-195, R-196 and R-197 and did NOT bind the
+handler. That is half of this entry's closing condition, and it is the half that
+does not discharge it: `acquire.download` still has no worker, so
+`acquire_paced` and the three functions behind it remain shipped and never
+driven, and the widest workflow in the product still cannot run.
+
+What did change is the size of what the binding unit inherits. The three findings
+that made this unit's own bar unreachable are fixed, so the unit that binds the
+handler is making an already-corrected path reachable rather than a broken one.
+It still owns whatever it finds, per the doctrine this entry cites.
+
 ---
 
 ## R-205. No test sees the whole `crate job resume` path in one piece
@@ -10519,3 +10589,96 @@ Nothing is lost. The window is one `os.replace` plus one sqlite commit wide.
 
 **Closes when:** a resumed item can tell its own completed output from a file
 somebody kept, and a test kills a driver inside that window.
+
+---
+
+## R-210. The attended smoke test U47 could not run, and the control it needs
+
+**Found:** during U47, 2026-09-01, as the thing that unit could not prove.
+
+U47 fixed the whole chain offline. Every guard it added is driven by the battery
+and none of them needs an account. What no offline test can show is that a real
+PKCE session, against the real provider, actually downloads a real FLAC through
+the shipped adapter. That needs Phillip's credentials, a browser, and a network,
+and it was explicitly not this unit's to attempt.
+
+**What is unproven, stated plainly.** That `login_pkce` completes against the
+live provider through the patched vendored login. That the minted token survives
+the two-command hop into the keychain and is accepted by `login_mode`. That
+`login_token(do_pkce=True)` refreshes against the PKCE client rather than the
+device-flow one. That the provider serves LOSSLESS to that session. That the
+downloader, given the seven arguments and the ffmpeg path, lands a FLAC. And that
+the landed file carries no tempo tag, which is R17's only end-to-end check.
+
+**The control this check must include, and why it is not optional.** The
+diagnosis that lossless is gated behind the PKCE CLIENT rests on the A1 session
+of 2026-08-28, which compared two aged persisted device-flow tokens against a
+freshly minted PKCE one. That varies token vintage alongside the client. If the
+real gate is vintage or refresh state rather than client type, a PKCE session
+still lands a FLAC, this check still passes, and R-196 will have foreclosed a
+device-flow path that would have worked. So the attended run must also mint a
+FRESH device-flow session on the same account and track and record whether it is
+served lossy. It is one extra step in the same sitting, and it cannot be
+recovered once the device flow is gone from the tree.
+
+**Cost:** the product's central promise is proven by construction and not by
+observation. Every guard is pinned; the thing the guards are about is not.
+
+**Closes when:** an attended run records both observations, the PKCE landing with
+no tempo tag and the fresh device-flow control.
+
+---
+
+## R-211. Under `allow_lossy_marked` an unmarked lossy file is still reachable
+
+**Found:** during U47's review, 2026-09-01.
+
+U47's codec check refuses a lossy landing under `strict`. Under
+`allow_lossy_marked` it computes the landed file's real codec and then discards
+the answer, because `acquire_one` builds the ACQUIRED result's `lossless` from
+the provider's OFFER. So a lossless offer that lands lossy is recorded as
+lossless with `requires_lossy_marker` False.
+
+**Name it for what it is.** That is an unmarked lossy file in the library, which
+`acquire/adapter.py` calls unconstructable by type and `docs/adapters.md`
+repeats. The type forbids the combination it can see; it cannot see a file whose
+codec nobody read. This is the surviving half of the silent failure R-196
+describes, not a classification nicety.
+
+**What bounds it.** `core/config.py` defaults the lossless policy to `strict`,
+where the refusal fires and no such result is built. Only an installation that
+has deliberately relaxed the policy is exposed.
+
+**Why it is not fixed here.** Closing it means `TrackSource.fetch` returning what
+it landed rather than a path, which is a change to the contract in
+`acquire/adapter.py` and to both shipped adapters. That is a unit, not a clause
+in this one.
+
+**Closes when:** the landed codec reaches the `TrackResult`, so the marker
+decision is made from the file rather than from the offer.
+
+---
+
+## R-212. The re-authorisation hop leaves a live refresh token in a plaintext file
+
+**Found:** during U47's review, 2026-09-01.
+
+R-196's closure makes every existing installation re-authorise, and the procedure
+`docs/adapters.md` now documents is three steps: mint through the vendored login,
+which writes the tool's own `token.json`; copy it into the keychain with `crate
+login provider-session --from-file`; erase the original.
+
+Step three is documented and nothing enforces it. `crate login --from-file`
+copies the file, it does not consume it, so a user who stops after step two has a
+live refresh token sitting in `~/.config/tidal-dl-ng/token.json` indefinitely.
+`provider_session.py` argues in its own docstring that a `0600` file inside a
+directory nobody checked is not protected, and promises that between invocations
+there is no provider token on disk. During this hop that promise is false.
+
+**Cost, bounded honestly.** One file, on the user's own machine, created by an
+attended act they performed deliberately, and the documented procedure tells them
+to remove it. It is a gap between a documented step and an enforced one, not an
+unannounced leak.
+
+**Closes when:** the ingest erases its source, or doctor reports a provider token
+found on disk outside a live invocation.

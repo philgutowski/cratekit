@@ -56,6 +56,14 @@ review:
    configuration in which a lossy file goes unmarked (R21), so the combination is
    not validated away, it is unconstructable.
 
+   Read that precisely: the type forbids the combination it can SEE. It cannot
+   see a file whose codec nobody read. Until U47 the losslessness on a result
+   came from the provider's OFFER and nothing compared it to what actually
+   landed, so the invariant governed a correctly classified result and never
+   guarded against misclassification. Under strict policy the codec check in the
+   vendored adapter now closes that gap at the file. Under
+   `allow_lossy_marked` it does not, and R-211 records what is still open there.
+
 ## Settings live in the adapter
 
 Quality, pacing, and the download destination are owned by the adapter for the
@@ -126,6 +134,45 @@ Between invocations there is no provider token on disk.
 Both the file and its directory are private. A `0600` file inside a
 world-writable directory is not protected: any local account can unlink it and
 put its own file in its place.
+
+### Authorising the provider, and why it takes two commands
+
+The vendored adapter accepts a PKCE session and refuses anything else. The
+provider gates lossless audio behind the PKCE client and serves the
+device-linking client lossy, so a device-flow session is not a lesser credential,
+it is one that silently downgrades every download (R-196). Every session minted
+before 2026-09-01 is a device-flow session, so this is the refusal an existing
+installation meets first.
+
+`crate login` does not perform an authorisation flow and is not going to. It
+records a value in the keychain. Obtaining a session is an attended act at a
+browser, exactly one verb in this product may read standard input, and the
+vendored downloader already owns that conversation. So authorising is two
+commands rather than one:
+
+```bash
+# 1. Mint a PKCE session. This opens a browser and writes the tool's own
+#    token file, by default ~/.config/tidal-dl-ng/token.json.
+python -c "from cratekit._vendor.tidal_dl_ng.cli import app; app()" login
+
+# 2. Move it into the keychain, which is where the adapter reads it from.
+crate login provider-session --from-file ~/.config/tidal-dl-ng/token.json
+
+# 3. Erase the plaintext original. Step 2 copies it; it does not consume it.
+rm ~/.config/tidal-dl-ng/token.json
+```
+
+Step 3 is not tidying. R4's promise is that no provider token sits on disk
+between invocations, and this hop is the one moment that is briefly false.
+Nothing enforces the erase today; R-212 records that gap.
+
+**What is verified about this procedure and what is not.** Every command above
+was checked to exist and resolve: the vendored app exposes `login`, `crate login`
+accepts `provider-session` with `--from-file`, and a token file's JSON text
+survives the keychain round trip that the adapter reads it back through. The
+interactive mint itself has not been run, because it needs real credentials, a
+browser and the network. That is R-210, and until it is done this sequence is
+correct by construction rather than by observation.
 
 ## Switching adapters
 
