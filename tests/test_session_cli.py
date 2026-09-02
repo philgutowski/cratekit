@@ -361,6 +361,18 @@ def test_an_inline_answer_cannot_overturn_a_recorded_abort(installed):
     assert code == int(ExitCode.DECISION_REQUIRED), envelope
     assert envelope["cause"]["detail"]["explicit"] is True
 
+    # AND THE RUN RECORD DOES NOT NOW CONTRADICT ITSELF. Refusing the flag must
+    # not mark the gate open, because it is not open: a person answered it. A
+    # run that lists one gate as both answered and awaiting an answer is a run
+    # record disagreeing with itself about the only thing it holds, and ``crate
+    # run show`` is where somebody would read that.
+    code, shown = _drive(["run", "show", run_id])
+    assert code == int(ExitCode.OK), shown
+    assert shown["data"]["summary"]["open_gate"] is None, shown
+    assert not [
+        row for row in shown["data"]["checks"] if row.get("status") == "open"
+    ], shown
+
     # And the recorded answer still stands on its own, so the fix refused the
     # FLAG rather than the run. Without this half the assertion above is also
     # satisfied by a resolver that stopped honouring recorded decisions.

@@ -1,12 +1,12 @@
 # Mutation table: u49-author
 
-Measured by `scripts/mutate.py` on 2026-09-02 08:00 UTC, branch `relay/67` at `bb9cc17`. Pass kind: light.
+Measured by `scripts/mutate.py` on 2026-09-02 08:36 UTC, branch `relay/67` at `2a7b7ba`. Pass kind: light.
 
-Baseline: green, 6555 collected. pytest invocations for this batch: 5.
+Baseline: green, 6561 collected. pytest invocations for this batch: 12.
 
 Environment: inherited from the calling shell, then added to. Added: PYTHONDONTWRITEBYTECODE=1; PYTHONPATH (the plugin's temp directory, prepended); MUTATE_REPORT_PATH (the plugin's output file). Removed: PYTEST_ADDOPTS (an inherited value would edit the command after the driver built it). Nothing else was scrubbed, because a hand built environment is how a missing binary reddens a baseline and every row after it.
 
-Null control `NULL_CONTROL`: killed 0, collected 6555 against 6555. The control is a semantically empty change, so a zero here is what makes every other number in this table believable.
+Null control `NULL_CONTROL`: killed 0, collected 6561 against 6561. The control is a semantically empty change, so a zero here is what makes every other number in this table believable.
 
 ## Summary
 
@@ -26,6 +26,15 @@ Null control `NULL_CONTROL`: killed 0, collected 6555 against 6555. The control 
 | `G2_the_second_raise_site_drops_the_context` | `src/cratekit/cli/gates.py` | user | 5 file(s) | 1238 | 1 | killed |
 | `G3_absent_context_becomes_an_empty_shown` | `src/cratekit/cli/gates.py` | user | 5 file(s) | 1238 | 1 | killed |
 | `V1_the_terminal_screen_stops_showing_it` | `src/cratekit/cli/render.py` | user | 4 file(s) | 1355 | 1 | killed |
+| `A6_the_authorisation_is_not_spent` | `src/cratekit/session/cli.py` | user | 1 file(s) | 25 | 1 | killed |
+| `A7_the_check_rows_are_keyed_wrong` | `src/cratekit/session/cli.py` | user | 1 file(s) | 25 | 1 | killed |
+| `A8_a_damaged_record_locks_the_verb_out` | `src/cratekit/session/cli.py` | user | 1 file(s) | 25 | 1 | killed |
+| `L4_a_malformed_holder_raises_again` | `src/cratekit/core/session.py` | user | 13 file(s) | 1690 | 1 | killed |
+| `G4_an_answered_gate_is_marked_open` | `src/cratekit/cli/gates.py` | user | 5 file(s) | 6561 | 0 (promoted) | zero |
+
+## Zero rows and what they owe
+
+- `G4_an_answered_gate_is_marked_open` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 
 ## Considered and dropped
 
@@ -430,5 +439,144 @@ New text:
 
 ```
 (empty)
+```
+
+### `A6_the_authorisation_is_not_spent`
+
+Leave the recorded decision in place after the mint, so one run id re-mints the acknowledgment forever (R-217's defect restored)
+
+- File: `src/cratekit/session/cli.py`
+- Surface: user
+- Subset: test files importing cratekit.session.cli
+- Ran: `tests/test_session_cli.py`
+- Collected: 25 against a baseline of 25
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_session_cli.py::test_a_spent_acknowledgment_decision_cannot_be_replayed`
+
+Old text:
+
+```
+    ctx.run.decisions.pop(spec.name, None)
+```
+
+New text:
+
+```
+(empty)
+```
+
+### `A7_the_check_rows_are_keyed_wrong`
+
+Key the ack check rows by name rather than key, so the human check table prints a question mark where the portion should be
+
+- File: `src/cratekit/session/cli.py`
+- Surface: user
+- Subset: test files importing cratekit.session.cli
+- Ran: `tests/test_session_cli.py`
+- Collected: 25 against a baseline of 25
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_session_cli.py::test_the_check_rows_a_person_reads_name_the_portion`
+
+Old text:
+
+```
+                    "key": f"backup.age.{entry['portion']}",
+```
+
+New text:
+
+```
+                    "name": f"backup.age.{entry['portion']}",
+```
+
+### `A8_a_damaged_record_locks_the_verb_out`
+
+Let the display read of the acknowledgment raise, so a corrupt record makes the one verb that replaces it refuse
+
+- File: `src/cratekit/session/cli.py`
+- Surface: user
+- Subset: test files importing cratekit.session.cli
+- Ran: `tests/test_session_cli.py`
+- Collected: 25 against a baseline of 25
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_session_cli.py::test_a_damaged_acknowledgment_record_can_still_be_replaced`
+
+Old text:
+
+```
+    try:
+        recorded = session.read_acknowledgment(cfg)
+    except CratekitError as exc:
+        return {"unreadable": exc.cause.message}
+```
+
+New text:
+
+```
+    recorded = session.read_acknowledgment(cfg)
+```
+
+### `L4_a_malformed_holder_raises_again`
+
+Remove the coercion guard from read_lock_holder, so a lock record with a non numeric pid escapes as a traceback rather than a typed refusal
+
+- File: `src/cratekit/core/session.py`
+- Surface: user
+- Subset: test files importing cratekit.core.session
+- Ran: `tests/test_adopt_apply_cli.py`, `tests/test_backup_cli.py`, `tests/test_cli_contract.py`, `tests/test_cutover_precheck.py`, `tests/test_deferred_routing.py`, `tests/test_deletion.py`, `tests/test_doctor.py`, `tests/test_rebuild.py`, `tests/test_restore.py`, `tests/test_restore_cli.py`, `tests/test_session_cli.py`, `tests/test_tree_writer.py`, `tests/test_write_session.py`
+- Collected: 1690 against a baseline of 1690
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_session_cli.py::test_a_lock_record_that_cannot_be_understood_refuses_by_name`
+
+Old text:
+
+```
+    try:
+        return Holder.from_json(data["holder"])
+    except (TypeError, ValueError, AttributeError):
+```
+
+New text:
+
+```
+    if True:
+        return Holder.from_json(data["holder"])
+    if False:
+```
+
+### `G4_an_answered_gate_is_marked_open`
+
+Mark the gate open even when a decision is already recorded, so the run record calls one gate both answered and awaiting an answer
+
+- File: `src/cratekit/cli/gates.py`
+- Surface: user
+- Subset: test files importing cratekit.cli.gates
+- Ran: `tests/test_cli_contract.py`, `tests/test_deletion.py`, `tests/test_doctor.py`, `tests/test_restore_cli.py`, `tests/test_write_session.py`
+- Collected: 6561 against a baseline of 6561
+- Kills: 0 (zero)
+- Promoted: subset killed 0, full suite killed 0
+- Note: confirmed on the full suite
+
+Old text:
+
+```
+            if recorded is None:
+                self.state.open_gate = spec.name
+            raise DecisionRequired(spec, self.state.run_id, context)
+
+        chosen = inline
+```
+
+New text:
+
+```
+            self.state.open_gate = spec.name
+            raise DecisionRequired(spec, self.state.run_id, context)
+
+        chosen = inline
 ```
 
