@@ -8220,6 +8220,32 @@ nor a catalogue: every release it listed would be dropped as unconfirmed and the
 run would read as a label with nothing new. Both now raise `run.LookupFailure`
 (`src/cratekit/label/sweep.py:239-301`).
 
+**The post-merge review of U52 found `_verifier`'s half only half closed, and it
+is closed now, 2026-09-02.** The paragraph above describes the scenario
+`_verifier` exists to prevent, a sweep that verifies nothing reading as a label
+with nothing new, and the guard it shipped covered only the case where no
+verification callable OBJECT exists. Two live producers of that same scenario
+were left open, and both were driven end to end through the real dispatcher,
+queue, handler resolution and driver before being fixed. A catalogue whose
+verification endpoint answers and CONFIRMS NOTHING, which is what a degraded or
+rate limited endpoint does and what a catalogue crediting a distributor does,
+made `list_for_label` drop every release, gave the increment no candidate and no
+error, and produced `shortfall="empty"`: exit 0, job SUCCEEDED, no cause, over
+forty releases read and discarded. `LabelSource` now accumulates the dropped
+population across the labels one listing pass read
+(`src/cratekit/label/sweep.py:303`, filled at `sweep.py:447`) and the worker
+refuses `label-sweep-incomplete` when the increment reports empty and that
+population is not (`src/cratekit/label/cli.py:844`). The refusal is keyed on the
+DROPPED population and never on an empty candidate list, so an all tombstoned
+label and an exhausted crawl keep succeeding, which is the mirror image this
+entry warns about directly above. Separately, `_verifier` returned
+`self.catalogue.search_release` bare while `_artist_for` wrapped its seam call,
+so a raise from verification escaped `increment`'s `except LookupFailure` and
+failed the item as `internal-error` with a remedy of report a defect. It is
+wrapped now (`src/cratekit/label/sweep.py:402`), a `CratekitError` passing
+through unchanged so an adapter's own `credential-missing` is not flattened into
+"this source could not list".
+
 ---
 
 ## R-136. The increment path drops discarded and suppressed
@@ -8249,6 +8275,19 @@ rewriting U26.
 **Closes when:** the increment result, or a labels-specific report
 beside it, carries the discarded and suppressed sets the sweep already
 computed.
+
+**Half of it is reachable now and the entry stays open, 2026-09-02, from the
+post-merge review of U52.** The sentence above, that a caller has no way to get
+the discarded population, is no longer true of the DISCARDED half.
+`LabelSource.list_recent` accumulates `listing.dropped` across the labels it
+lists and exposes it on the source (`src/cratekit/label/sweep.py:303` and
+`sweep.py:447`), because the worker needs it to tell a catalogue that confirmed
+nothing from a label with nothing new. It was not bought the way this entry
+proposed and that is deliberate: `IncrementResult` is untouched, so the U22
+contract change this entry calls out is still unpaid, and a caller reads the
+population off the source object it constructed rather than off the result. The
+suppressed and owned populations are still dropped on the floor, and a caller
+that wants either still has to recrawl.
 
 ---
 
@@ -11891,3 +11930,74 @@ these declarations and being true, and the unit that closes it needs them back.
 **Closes when:** the catalogue adapter lands and these two verbs write the
 surfaces they declare, or the entries are narrowed with the destructive question
 answered, which is the same fork R-233 leaves open for the two outbound verbs.
+
+---
+
+## R-241. A labels sweep that succeeds still reports the source has never run
+
+**Found:** at the U52 code review, 2026-09-02. Accepted rather than fixed.
+
+R-140's fix is what creates this. `run.increment` returns before
+`watermarks.advance` when the source does not acquire
+(`src/cratekit/sync/run.py:182`), and `LabelSource.acquires` is `False`
+(`src/cratekit/label/sweep.py:264`), so nothing in `src` ever writes the
+`labels` source watermark. `run.py:201` is that function's only caller.
+
+The reader was not updated with the writer. `watermarks.status_rows` unions
+`sources.DECLARED`, which always contains `labels`, and renders a source with no
+record as `state: never` with the detail `no clean increment has completed`
+(`src/cratekit/sync/watermarks.py:197`). `crate doctor` prints that row. So a
+person who has just run a fully successful five label sweep, whose releases are
+sitting in the review queue waiting on them, is told the labels source has never
+completed a clean increment.
+
+**The absence changed meaning and its one consumer did not.** Before this branch
+a missing record meant only "never completed cleanly". It now also means
+"structurally never records one, by design", and those are different facts with
+different answers.
+
+**Measured cost.** One false row in `crate doctor` and in any status view built
+on `status_rows`, on every installation that sweeps labels. No acquisition is
+wrong and no data is lost.
+
+**Why not fixed here.** Distinguishing the two absences means giving
+`sources.SourceSpec` an `acquires` flag, or having `status_rows` read it off the
+source, and then adding a third state to a surface every other source shares.
+That is a contract change to the watermark reporting surface, which is a
+different unit from the one that stopped writing the record.
+
+**Closes when:** a declared source that records no cursor by design reports that
+in `status_rows` rather than reporting that it never ran. R-238 records the
+`IncrementResult` half of the same split; this entry names the reader.
+
+---
+
+## R-242. An interrupt cannot reach a label item mid crawl
+
+**Found:** at the U52 code review, 2026-09-02. Accepted rather than fixed.
+
+`jobs.drive` checks its interrupt flag BETWEEN items and never inside one
+(`src/cratekit/core/jobs.py:1240`). That is a deliberate property of the shared
+job engine and it predates this branch. What this branch changes is that it is
+now reachable with a long tail: the label worker is the first bound handler
+whose single item runs a paginated crawl through `listing.fetch_with_retry`,
+whose ladder is five tries with a thirty second ceiling, per page.
+
+So a person who interrupts a slow or flaky label sweep waits for the current
+label's crawl to finish before the interrupt is honoured. The other bound
+handlers, `backup.run`, `master`, `export.playlist` and `sync.favorites`, do no
+multi page retrying provider read per item, which is why nothing measured this
+before.
+
+**Measured cost.** A delayed response to an interrupt, bounded by one label's
+crawl. Nothing is corrupted: the interrupt is honoured at the next item boundary
+and the job stays resumable.
+
+**Why not fixed here.** Making the flag visible inside an item means either
+passing it into the handler, which widens the handler contract every bound verb
+shares, or threading a cancellation token through `acquire.listing`. Both are
+changes to code this branch's stop conditions put out of scope, and neither is
+the label worker's to make alone.
+
+**Closes when:** a long running item can observe the interrupt flag, or the
+listing retry ladder takes a deadline the driver sets.

@@ -262,6 +262,54 @@ class UnreadableCatalogue(FakeCatalogue):
         raise RuntimeError(f"the catalogue could not read the playlist {reference!r}")
 
 
+class VerificationOutage(FakeCatalogue):
+    """A catalogue whose LISTINGS answer and whose VERIFICATION stops answering.
+
+    The fourth provider read, and the one U52 left without a failure boundary on
+    either label path. ``artist_for`` and ``playlist_for`` resolve normally here,
+    so a suite that reaches a raise has proved the listing was read and that what
+    failed is the confirmation of something already in hand. That is a different
+    condition from :class:`UnreadableCatalogue`, which cannot resolve anything at
+    all, and the two must not become the same refusal.
+
+    ``answers`` IS A COUNT AND NOT A FLAG, because the interesting case is a
+    PARTIAL round rather than a dead endpoint. ``review.offer`` commits per call,
+    so a harvest whose second track raises has already written the first track's
+    label into the review queue durably, and a refusal that did not name those
+    rows would send a person to retry with no idea what is already waiting for
+    them. ``answers=1`` is that shape; ``answers=0`` is the endpoint that was
+    down before the first ask.
+
+    ONE COUNTER FOR BOTH VERIFICATION METHODS. ``search_release`` and
+    ``check_label`` are the same capability asked two ways, and a provider whose
+    verification is rate limited or degraded is not selective about which of the
+    two it refuses. No shipped path calls both in one pass.
+    """
+
+    def __init__(self, *args: Any, answers: int = 0, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.answers = answers
+        self.verifications = 0
+
+    def _answer_or_fail(self) -> None:
+        self.verifications += 1
+        if self.verifications > self.answers:
+            # THE PROVIDER'S OWN EXCEPTION SHAPE, which is what
+            # ``listing.fetch_with_retry`` re-raises once its retry ladder is
+            # spent. Nothing in this codebase can predict its type, so the
+            # boundary under test has to catch broadly and this raises something
+            # it has no special knowledge of.
+            raise RuntimeError("the provider stopped answering verification calls")
+
+    def search_release(self, claimed: str, release: Any) -> dict:
+        self._answer_or_fail()
+        return super().search_release(claimed, release)
+
+    def check_label(self, name: str) -> dict:
+        self._answer_or_fail()
+        return super().check_label(name)
+
+
 def catalogue_factory(fake: FakeCatalogue) -> Callable[[object], FakeCatalogue]:
     """A stand-in for ``label.catalogue.resolve`` that hands back ``fake``.
 
@@ -287,5 +335,6 @@ __all__ = [
     "StrictCatalogue",
     "UnlistablePlaylist",
     "UnreadableCatalogue",
+    "VerificationOutage",
     "catalogue_factory",
 ]

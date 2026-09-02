@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from cratekit.core import config, review, tombstone
+from cratekit.core.cause import CratekitError
 from cratekit.core.review import DecisionStore, Queue
 from cratekit.label import crawl, registry
 from cratekit.label import verify as label_verify
@@ -281,6 +282,25 @@ class LabelSource:
         #: the pre-seam callers pass the pieces and there is no reason to rewrite
         #: them; a caller that has the whole capability passes this instead.
         self.catalogue = catalogue
+        #: EVERY RELEASE THIS SOURCE READ AND THEN DISCARDED, across all of the
+        #: labels one :meth:`list_recent` pass listed. ``list_for_label`` reports
+        #: it per label and this class used to drop it on the floor, which is
+        #: what let a catalogue that confirms NOTHING look like a catalogue with
+        #: nothing new: no candidate is offered, ``run.increment`` sees no
+        #: processed item and no error, and it answers ``shortfall="empty"``.
+        #: The two are the same envelope and a caller cannot tell them apart
+        #: without this. ``label/cli.py``'s worker is that caller.
+        #:
+        #: INSTANCE STATE IS SAFE HERE, and it is worth saying why rather than
+        #: leaving a reader to work it out. This object is constructed fresh per
+        #: queued item, inside ``label.cli.handle``, and it is the only
+        #: constructor in ``src``. Nothing shares one across items, across jobs
+        #: or across threads, so an attribute a listing pass writes cannot carry
+        #: one label's answer into another's. A source that ever became long
+        #: lived would have to move this onto the return value instead, which is
+        #: :class:`LabelListing`'s job one layer down and R-136's contract change
+        #: one layer up.
+        self.dropped: tuple[Dropped, ...] = ()
 
     def _artist_for(self, entry: registry.LabelEntry) -> Any:
         """The provider artist object for one favourite label, or a refusal.
@@ -349,19 +369,72 @@ class LabelSource:
 
         Explicit piece first, then the catalogue, then a refusal. The same order
         :meth:`_artist_for` uses and for the reason stated there.
+
+        **THE SEAM CALL IS WRAPPED, WHICH IS THE HALF THIS METHOD USED TO SKIP.**
+        It returned ``self.catalogue.search_release`` bare while
+        :meth:`_artist_for` wrapped its own seam call, so an exception out of
+        verification, which is exactly what ``listing.fetch_with_retry``
+        re-raises once its retry ladder is spent, flew straight past
+        ``run.increment``'s ``except LookupFailure`` and failed the item through
+        ``jobs.drive``'s generic handler as ``internal-error``. A provider outage
+        told the person to file a defect. Guarding only the case where no
+        verifier OBJECT exists, which is all this method did, is METHOD's defect
+        pattern three: the condition the docstring above describes was left open
+        while the missing-object case beside it was closed.
+
+        ``run.LookupFailure`` rather than a cause, for the reason
+        :func:`_crawl_or_refuse` states: the increment owns the conversion into
+        ``sync-source-lookups-failed``, which stays the single vocabulary for
+        "this source could not list".
+
+        A ``CratekitError`` PASSES THROUGH UNCHANGED, which is where this differs
+        from :meth:`_artist_for` and the difference is deliberate. An adapter that
+        discovers at call time that the stored provider session has expired
+        refuses ``credential-missing``, and that names an act the person can take;
+        flattening it into "this source could not list" would send somebody to
+        wait for a network that is fine.
         """
         if self.verify is not None:
             return self.verify
         if self.catalogue is not None:
-            return self.catalogue.search_release
+            catalogue = self.catalogue
+
+            def verified(claimed: str, release: Any) -> Mapping[str, Any]:
+                try:
+                    return catalogue.search_release(claimed, release)
+                except CratekitError:
+                    raise
+                except Exception as exc:
+                    raise run.LookupFailure(
+                        f"the catalogue could not confirm who is credited on a "
+                        f"release ({type(exc).__name__}: {exc}); the releases "
+                        f"this sweep listed were never verified, and an "
+                        f"unverified release is not a release with no match"
+                    ) from exc
+
+            return verified
         raise run.LookupFailure(
             "this labels source was built with neither a verification callable "
             "nor a catalogue, so no release it listed could be confirmed"
         )
 
     def list_recent(self, n: int) -> list[run.Candidate]:
+        """The newest N candidates, and a record of what was thrown away getting them.
+
+        ``self.dropped`` is rebuilt from this pass rather than appended to, so a
+        second call answers about the second call. It is assigned once the loop
+        has finished because a pass that raises refuses the whole source through
+        ``run.LookupFailure``, and a half filled record of a listing nobody is
+        going to report on is a thing a later reader would have to reason about.
+
+        THE TRUNCATION TO ``n`` DOES NOT TOUCH IT. A candidate cut by the
+        newest-N limit was confirmed and merely deferred to the next run, and a
+        discarded release was never a candidate at all. Counting the two together
+        would make a busy label look like an unverifiable one.
+        """
         verify = self._verifier()
         found: list[run.Candidate] = []
+        discarded: list[Dropped] = []
         for entry in self.registry.labels.values():
             listing = list_for_label(
                 self.cfg,
@@ -370,6 +443,8 @@ class LabelSource:
                 verify=verify,
             )
             found.extend(listing.candidates)
+            discarded.extend(listing.dropped)
+        self.dropped = tuple(discarded)
         found.sort(key=lambda item: item.recency, reverse=True)
         return found[:n] if n >= 0 else found
 

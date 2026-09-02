@@ -40,8 +40,8 @@ from dataclasses import replace
 import pytest
 
 from cratekit.cli import handlers, registry
-from cratekit.core import config, jobs, review
-from cratekit.core.exit_codes import ExitCode
+from cratekit.core import config, jobs, review, tombstone
+from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.label import catalogue, sweep
 from cratekit.label import cli as label_cli
 from tests.cli_drive import drive
@@ -53,6 +53,7 @@ from tests.label_fakes import (
     FakeTrack,
     UnlistablePlaylist,
     UnreadableCatalogue,
+    VerificationOutage,
     catalogue_factory,
 )
 from tests.test_config import valid_data
@@ -169,6 +170,22 @@ def item_causes(job_id: str) -> dict[str, str | None]:
         }
 
 
+def item_cause_message(job_id: str, item_id: str) -> str:
+    """One item's cause SENTENCE, which is the half a slug cannot carry.
+
+    A refusal that names a population has to say the size of it, and the reason
+    slug is the same string whether it says four or nothing at all. Read off the
+    row for the same reason :func:`item_causes` is: the envelope a person sees
+    names the evidence rule and only the row names what the worker refused.
+    """
+    with jobs.open_store() as store:
+        for item in jobs.items(store, job_id):
+            if item.item_id == item_id:
+                assert item.cause is not None, f"item {item_id} carries no cause"
+                return item.cause.message
+    raise AssertionError(f"job {job_id} has no item {item_id}")
+
+
 def job_state(job_id: str) -> str:
     with jobs.open_store() as store:
         return str(jobs.get(store, job_id).state)
@@ -231,12 +248,57 @@ def test_a_sweep_with_an_empty_registry_refuses_and_queues_nothing(installed):
     A verb that enqueued and then refused would raise this same cause and leave
     the empty job in the queue, where a later resume would drive it to SUCCEEDED
     over work nothing did. Only the queue can see that difference.
+
+    THE ``!= USAGE`` LINE THAT USED TO SIT HERE IS GONE. The equality above
+    already pins the code, so it could not fail for any input, and an assertion
+    that cannot fail reads like coverage while providing none. What it was
+    reaching for, that the refusal is a state of this installation rather than a
+    malformed invocation, is said by the equality it followed.
     """
     del installed
     code, refused = drive(["sync", "labels"])
     assert code == int(ExitCode.PRECONDITION), refused
-    assert code != int(ExitCode.USAGE)
     assert refused["cause"]["reason"] == "label-registry-empty"
+    assert queue_is_empty()
+
+
+def test_a_sweep_on_an_unconfigured_machine_says_so_rather_than_naming_the_registry():
+    """No ``installed`` fixture, which is the whole test: a fresh install.
+
+    THE FAVOURITE LABEL REGISTRY IS INSTALLATION SCOPED, so it reads perfectly
+    well on a machine that has never run ``crate setup`` (KTD6). Deriving the
+    sweep's items before loading the configuration therefore reached the empty
+    registry refusal first and told a person to run ``crate label registry add``,
+    hiding the blocker that a registered label would not have moved. On ``main``
+    this same command refused ``config-unusable``, because ``_queue`` opened with
+    ``cfg = _load()`` and an argument evaluated before the call cannot come after
+    it.
+
+    THE SIBLING VERB IS WHY THIS IS A DEFECT AND NOT A PREFERENCE. ``crate label
+    harvest`` loads the configuration first and refuses ``config-unusable`` on
+    the same machine, so two verbs in one package disagreed about what a fresh
+    install's problem is.
+    """
+    code, refused = drive(["sync", "labels"])
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "config-unusable"
+    assert refused["cause"]["remediation"]["remedy"] == str(Remedy.RUN_SETUP)
+    assert queue_is_empty()
+
+
+def test_the_unconfigured_refusal_outranks_the_registry_one_even_with_a_label_added():
+    """Both conditions at once, and the one that has to win.
+
+    A registry with a label in it is the state where the two refusals genuinely
+    compete: the items derive fine and the configuration still cannot be read.
+    Without this, a build could satisfy the test above by accident, because an
+    empty registry and no configuration are both true there and either answer
+    ends the command.
+    """
+    register(LABELS[0])
+    code, refused = drive(["sync", "labels"])
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "config-unusable"
     assert queue_is_empty()
 
 
@@ -579,6 +641,177 @@ def test_a_label_the_registry_no_longer_holds_refuses_rather_than_sweeping_nothi
     assert causes[SLUGS[0]] == "label-unknown"
     assert causes[SLUGS[1]] is None
     assert item_states(job_id)[SLUGS[1]] == str(jobs.ItemState.DONE)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6b. A catalogue that confirms nothing is not a label with nothing new
+#
+# THE THREE ARMS BELONG TOGETHER AND ARE WRITTEN TOGETHER. A catalogue whose
+# verification endpoint is degraded, rate limited, or answering under a
+# distributor's name confirms nothing, so every release it listed is dropped,
+# the increment sees no processed items and no errors, and it reports
+# ``shortfall="empty"``. That is the same envelope a label with genuinely
+# nothing new produces, which is R-135's shape on the one path U52 made
+# reachable.
+#
+# THE REFUSAL IS KEYED ON THE DROPPED POPULATION rather than on an empty
+# candidate list, and the second and third tests are what hold that key in
+# place. An all tombstoned label and a label whose crawl is exhausted both
+# produce no candidates and both are genuine no ops, so a build that refused on
+# "nothing was offered" would turn every quiet label into an error and would
+# trade R-135 for its mirror image.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def unconfirming(*label_ids: str) -> FakeCatalogue:
+    """A catalogue that lists these labels and confirms none of what it lists.
+
+    ``confirmed`` is the parameter ``label_fakes`` has documented since U52 as
+    "how a suite drives the unconfirmed-and-dropped path", and an empty set is
+    the whole of that path: every release is read off the provider and every one
+    is answered ``unconfirmed``.
+    """
+    return FakeCatalogue(
+        artists={
+            label_id: FakePagedArtist(
+                [FakeRelease(release_id) for release_id in RELEASES[label_id]]
+            )
+            for label_id in label_ids
+        },
+        confirmed=frozenset(),
+    )
+
+
+def test_a_sweep_that_confirmed_none_of_what_it_read_fails_rather_than_succeeding(
+    installed, monkeypatch
+):
+    """The dishonest success this closes, driven end to end through the binding.
+
+    Every assertion here failed the same way before the fix and it is worth
+    naming which way: the job reported SUCCEEDED with one item done, no cause and
+    no warning, over forty releases the product read and threw away. That is
+    indistinguishable from a label with nothing new, which is the one reading
+    ``sweep.py``'s own module docstring forbids.
+    """
+    register(LABELS[0])
+    bind(monkeypatch, unconfirming(SLUGS[0]))
+    job_id = queued_job(["sync", "labels"])
+
+    code, failed = drive(["sync", "labels", "--job", job_id])
+
+    assert code != int(ExitCode.OK), failed
+    assert item_causes(job_id) == {SLUGS[0]: "label-sweep-incomplete"}
+    assert job_state(job_id) != str(jobs.JobState.SUCCEEDED)
+    assert offers(installed) == {}
+
+
+def test_the_unconfirmed_refusal_says_how_many_were_read_and_that_the_provider_answered(
+    installed, monkeypatch
+):
+    """Two different problems, two different remedies, so the sentence separates them.
+
+    A sweep that could not REACH the provider and a sweep that reached it and
+    confirmed nothing are repaired by different acts: the first waits for the
+    network and the second is a verification endpoint answering wrongly, most
+    often because a release is credited to a distributor rather than to the
+    imprint. A message that only said the sweep was incomplete would send a
+    person to check their connection.
+    """
+    del installed
+    register(LABELS[0])
+    bind(monkeypatch, unconfirming(SLUGS[0]))
+    job_id = queued_job(["sync", "labels"])
+
+    drive(["sync", "labels", "--job", job_id])
+
+    said = item_cause_message(job_id, SLUGS[0])
+    assert str(len(RELEASES[SLUGS[0]])) in said, said
+    assert "confirm" in said, said
+
+
+def test_a_label_whose_every_release_is_tombstoned_still_succeeds(
+    installed, monkeypatch
+):
+    """A genuine no op, and the reason the refusal is keyed on the drops.
+
+    A tombstoned release was CONFIRMED and then suppressed by a decision this
+    person already made, so a sweep that offers none of them has done exactly
+    what it was asked to. ``list_for_label`` reports those in ``suppressed`` and
+    never in ``dropped``, and this is the test that fails if a build keys its
+    refusal on the empty candidate list instead.
+    """
+    register(LABELS[0])
+    for release_id in RELEASES[SLUGS[0]]:
+        review.DecisionStore(tombstone.STORE_KEY, installed).record(
+            kind=tombstone.KIND_VERSION,
+            identity=tombstone.version_identity(
+                artist="Label Act", title=f"Release {release_id}"
+            ),
+            actor="tests",
+        )
+    bind(monkeypatch, readable(SLUGS[0]))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert offers(installed) == {}
+
+
+def test_a_verification_call_that_raises_fails_the_item_in_the_lookup_vocabulary(
+    installed, monkeypatch
+):
+    """The fourth provider read, which had no failure boundary at all.
+
+    ``_artist_for`` wraps its seam call and ``_verifier`` returned
+    ``self.catalogue.search_release`` bare, so an exception from verification
+    flew past ``increment``'s ``except LookupFailure`` and failed the item
+    through ``jobs.drive``'s generic handler. ``sync-source-lookups-failed`` is
+    the single vocabulary this branch's own docstrings claim for "this source
+    could not list", and a second spelling of one condition is how the two come
+    to disagree about what a person should do next.
+    """
+    del installed
+    register(LABELS[0])
+    bind(
+        monkeypatch,
+        VerificationOutage(
+            artists={
+                SLUGS[0]: FakePagedArtist(
+                    [FakeRelease(release_id) for release_id in RELEASES[SLUGS[0]]]
+                )
+            },
+            answers=0,
+        ),
+    )
+    job_id = queued_job(["sync", "labels"])
+
+    code, failed = drive(["sync", "labels", "--job", job_id])
+
+    assert code != int(ExitCode.OK), failed
+    assert item_causes(job_id) == {SLUGS[0]: "sync-source-lookups-failed"}
+    assert job_state(job_id) == str(jobs.JobState.FAILED)
+
+
+def test_a_label_whose_crawl_listed_nothing_at_all_still_succeeds(
+    installed, monkeypatch
+):
+    """The other no op: an exhausted crawl, which has to keep reporting empty.
+
+    Nothing was read, so nothing was discarded, and there is no dishonesty to
+    refuse. U7 records the remaining producer this leaves open, a first page that
+    comes back empty from a method that exists, and it stays open here on purpose.
+    """
+    register(LABELS[0])
+    bind(monkeypatch, FakeCatalogue(artists={SLUGS[0]: FakePagedArtist([])}))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert offers(installed) == {}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -938,3 +1171,79 @@ def test_a_cratekit_refusal_from_below_is_not_flattened_into_an_unreadable_playl
 
     assert code != int(ExitCode.OK), refused
     assert refused["cause"]["reason"] == "review-schema-mismatch"
+
+
+def test_a_provider_that_fails_mid_verification_refuses_rather_than_reporting_a_defect(
+    installed, monkeypatch
+):
+    """The boundary covered only two of the three provider calls harvest makes.
+
+    ``_playlist_tracks_or_refuse`` wraps ``playlist_for`` and
+    ``playlist_tracks``, and ``found.check_label`` was handed into
+    ``from_tracks`` outside it. ``listing.fetch_with_retry`` re-raises the
+    provider's own exception once its retry ladder is spent, so a provider outage
+    during verification left the verb as ``internal-error`` with
+    ``report-defect``: a person whose provider was down was told to file a bug
+    against this program. The remedy is asserted as well as the cause, because
+    the cause slug alone is what a reader checks and the remedy is what the
+    person is actually told to do.
+    """
+    del installed
+    bind(
+        monkeypatch,
+        VerificationOutage(
+            playlists={
+                PLAYLIST: FakePagedPlaylist(
+                    [
+                        FakeTrack("t1", copyright="2026 Anjunadeep"),
+                        FakeTrack("t2", copyright="2026 Mystery Distro"),
+                    ]
+                )
+            },
+            known_labels={CONFIRMED},
+            answers=1,
+        ),
+    )
+
+    code, refused = run_harvest()
+
+    assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), refused
+    assert refused["cause"]["reason"] == "label-playlist-unreadable"
+    assert refused["cause"]["remediation"]["remedy"] != str(Remedy.REPORT_DEFECT)
+    steps = refused["cause"]["remediation"]["steps"]
+    assert any("retry" in step for step in steps), steps
+
+
+def test_a_harvest_that_fails_mid_verification_names_what_it_already_offered(
+    installed, monkeypatch
+):
+    """The partial state nothing named, and it is durable rather than rolled back.
+
+    ``review.offer`` commits per call, so the label confirmed before the outage
+    is already sitting in the queue when the refusal is raised. Both halves are
+    asserted: the queue holds it, and the refusal SAYS the queue holds it. A
+    person who retries this command needs to know, and a build that reported the
+    failure without the population would leave them guessing at a review queue
+    they cannot see from here.
+    """
+    bind(
+        monkeypatch,
+        VerificationOutage(
+            playlists={
+                PLAYLIST: FakePagedPlaylist(
+                    [
+                        FakeTrack("t1", copyright="2026 Anjunadeep"),
+                        FakeTrack("t2", copyright="2026 Mystery Distro"),
+                    ]
+                )
+            },
+            known_labels={CONFIRMED},
+            answers=1,
+        ),
+    )
+
+    code, refused = run_harvest()
+
+    assert code != int(ExitCode.OK), refused
+    assert harvested(installed) == [CONFIRMED]
+    assert refused["cause"]["detail"]["offered"] == [CONFIRMED]

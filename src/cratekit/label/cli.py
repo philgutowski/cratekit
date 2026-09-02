@@ -8,7 +8,7 @@ run id so two sources queued by ``sync all`` still share one intake file.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from cratekit.cli.output import Envelope
@@ -408,6 +408,22 @@ def sync_labels(ctx) -> Envelope:
     # since a job was queued cannot decide whether that job may be continued.
     if ctx.args.job:
         return _resume(ctx, ctx.args.job)
+    # THE CONFIGURATION IS READ BEFORE THE ITEMS ARE DERIVED, and the order is
+    # the fix rather than an ornament. ``_sweep_items_or_refuse()`` is an
+    # ARGUMENT to ``_queue``, so it is evaluated before ``_queue``'s own
+    # ``_load()`` ever runs, and the favourite label registry is installation
+    # scoped (KTD6) so it reads perfectly well on a machine that has never been
+    # set up. A fresh install therefore got ``label-registry-empty`` and was told
+    # to run ``crate label registry add``, which would not have moved the real
+    # blocker. ``main`` refused ``config-unusable`` here, and the sibling verb
+    # ``label.harvest`` still does, so this had made two verbs in one package
+    # disagree about what a fresh install's problem is.
+    #
+    # THE SECOND LOAD COSTS A ``stat`` AND NOTHING ELSE. ``config.load`` memoizes
+    # on ``(path, inode, mtime, size)`` and every write here goes through an
+    # atomic replace, so ``_queue``'s call is a memo hit rather than a second
+    # parse, and this does not become a reason to thread a ``Config`` through.
+    _load()
     run_id = getattr(ctx.args, "run_id", None) or ctx.run.run_id
     return _queue(
         ctx,
@@ -450,11 +466,14 @@ def import_label(ctx) -> Envelope:
 def _playlist_tracks_or_refuse(found: catalogue.Catalogue, reference: str) -> list:
     """Resolve and list one playlist, translating a provider failure at the boundary.
 
-    THIS IS WHERE ``label-playlist-unreadable`` IS EARNED, and it is the only
-    place it may be raised from. The cause means one thing: a BOUND provider was
-    asked for this playlist and could not answer. Everything upstream of the
-    ask has already refused with its own cause by the time this runs, which is
-    what makes the sentence below true rather than a guess.
+    THIS IS ONE OF THE TWO PLACES ``label-playlist-unreadable`` IS EARNED, and
+    :func:`_label_verifier` is the other. The cause means one thing across both:
+    a BOUND provider was asked something about this playlist and could not
+    answer. Everything upstream of the ask has already refused with its own cause
+    by the time either runs, which is what makes the sentence below true rather
+    than a guess. This one covers resolving the playlist and listing its tracks;
+    the other covers confirming the label names those tracks carry, which is the
+    third provider call the verb makes and the one that had no boundary at all.
 
     TWO EXCEPTION SHAPES ARRIVE HERE AND NEITHER IS CRATEKIT'S TO PREDICT.
     ``listing.fetch_with_retry`` re-raises the PROVIDER's own exception once its
@@ -465,13 +484,23 @@ def _playlist_tracks_or_refuse(found: catalogue.Catalogue, reference: str) -> li
     other escape as an unclassified crash, so the catch is broad and the
     breadth is bounded by the re-raise directly above it.
 
-    A ``CratekitError`` PASSES THROUGH UNCHANGED, which is the bound. A refusal
-    from further down already names what went wrong, and the failures reachable
-    here are not all the provider's: the review queue is a local file, and one
-    written at another schema version refuses ``review-schema-mismatch``.
-    Flattening that into an unreadable playlist would blame a reachable provider
-    for something on this machine, which is the defect this whole function
-    replaces, rebuilt one layer lower.
+    A ``CratekitError`` PASSES THROUGH UNCHANGED, which is the bound, and it is
+    DEFENSIVE rather than load bearing today. The justification this docstring
+    used to give was unreachable: it named ``review-schema-mismatch``, and
+    ``review.open_store(cfg)`` runs in the caller AFTER this boundary has
+    returned, so a queue written at another schema version cannot arrive here at
+    all. The test that pins the passthrough has to monkeypatch
+    ``harvest.playlist_tracks`` to reach it, which is the tell.
+
+    WHAT COULD ACTUALLY ARRIVE is an adapter's own refusal. ``playlist_for``
+    belongs to the :class:`~cratekit.label.catalogue.Catalogue` protocol, no
+    adapter ships in this build, and an adapter that discovered at call time that
+    the stored provider session had expired would refuse ``credential-missing``,
+    which names an act a person can take. Flattening that into an unreadable
+    playlist would send somebody to check a playlist that is fine, which is the
+    defect this whole function replaces, rebuilt one layer lower. The passthrough
+    is kept for that seam rather than deleted because the seam is the thing this
+    unit built and the adapter is the next unit.
     """
     try:
         playlist = found.playlist_for(reference)
@@ -488,6 +517,73 @@ def _playlist_tracks_or_refuse(found: catalogue.Catalogue, reference: str) -> li
             origin=("label.cli",),
             detail={"playlist": reference, "kind": type(exc).__name__},
         ) from exc
+
+
+def _label_verifier(
+    found: catalogue.Catalogue, reference: str
+) -> Callable[[str], dict]:
+    """``check_label`` with a failure boundary, and a memory of what it confirmed.
+
+    THE THIRD PROVIDER CALL HARVEST MAKES, AND THE ONE THAT HAD NO BOUNDARY.
+    ``found.check_label`` was handed into ``harvest.from_tracks`` outside the
+    try/except :func:`_playlist_tracks_or_refuse` provides, which wraps only the
+    resolve and the listing. ``listing.fetch_with_retry`` re-raises the
+    provider's own exception once its retry ladder is spent, so a provider that
+    went away mid playlist left the verb as ``internal-error`` with
+    ``Remedy.REPORT_DEFECT``: a person whose provider was down was told to file a
+    bug against this program. Measured on 2026-09-02 as exit 1, reason
+    ``internal-error``, remedy ``report-defect``, retryable false.
+
+    THE BOUNDARY IS ON THE PROVIDER CALL ITSELF rather than around the whole
+    ``from_tracks`` pass, and that placement is the accuracy. ``review.offer`` is
+    a local write, and a broad catch one level up would report a failure of the
+    review queue as a failure of the provider, which is the same collapse
+    :func:`_playlist_tracks_or_refuse` refuses to make. It also keeps
+    ``confirmed`` exact: ``from_tracks`` offers a name immediately after this
+    callable confirms it and before it asks about the next one, so every name in
+    the list at the moment of the raise is a row that is already in the queue.
+
+    THE PARTIAL STATE IS NAMED, because it is durable and nothing else can name
+    it. ``review.offer`` commits per call and is idempotent on the item's
+    identity, so the labels confirmed before the outage are sitting in the review
+    queue when this refuses, a retry will not duplicate them, and a person who
+    was told only that the harvest failed would have no way to know either fact.
+
+    A ``CratekitError`` PASSES THROUGH UNCHANGED, on the same bound and for the
+    same reason the function above gives.
+    """
+    confirmed: list[str] = []
+
+    def check(name: str) -> dict:
+        try:
+            verdict = found.check_label(name)
+        except CratekitError:
+            raise
+        except Exception as exc:
+            raise refuse(
+                "label-playlist-unreadable",
+                f"the provider stopped answering while harvest was confirming "
+                f"the label names read off {reference!r} ({exc}); the "
+                f"{len(confirmed)} it had already confirmed are offered in the "
+                f"review queue and are waiting there, and the rest of the "
+                f"playlist was never verified",
+                steps=(
+                    "retry this harvest when the provider is answering; the "
+                    "labels already offered will not be queued twice",
+                    "or read what is waiting with: crate review list",
+                ),
+                origin=("label.cli",),
+                detail={
+                    "playlist": reference,
+                    "kind": type(exc).__name__,
+                    "offered": list(confirmed),
+                },
+            ) from exc
+        if str(verdict.get("verdict") or "") == "confirmed":
+            confirmed.append(name)
+        return verdict
+
+    return check
 
 
 def _offered(item: review.Item) -> dict:
@@ -570,7 +666,10 @@ def harvest_playlist(ctx) -> Envelope:
         report = harvest.from_tracks(
             tracks,
             store=store,
-            verify=found.check_label,
+            # WRAPPED, NEVER THE BARE SEAM METHOD. Every provider call this verb
+            # makes is inside a boundary that converts a provider failure into a
+            # refusal a person can act on, and this was the one that was not.
+            verify=_label_verifier(found, reference),
             extract=extract,
         )
     unresolved = len(report.dropped) + nameless
@@ -672,17 +771,22 @@ def handle(job, item, cfg) -> jobs.Produced | None:
         )
 
     payload = dict(job.payload or {})
+    # ``cfg`` REACHES THE REVIEW STORE THROUGH THIS OBJECT. ``increment`` calls
+    # ``LabelSource.process`` without a store, and ``process`` then opens one
+    # against ``self.cfg``, so the configuration handed here is the one the
+    # offers are written under. That is the whole of R17 on this path.
+    #
+    # HELD IN A NAME rather than passed inline, because the result alone cannot
+    # answer what the sweep discarded and the source can. See the empty-shortfall
+    # refusal below.
+    source = sweep.LabelSource(
+        cfg,
+        registry=labels.Registry(labels={entry.label_id: entry}),
+        catalogue=catalogue.resolve(cfg),
+    )
     result = run_increment(
         cfg,
-        # ``cfg`` REACHES THE REVIEW STORE THROUGH THIS OBJECT. ``increment``
-        # calls ``LabelSource.process`` without a store, and ``process`` then
-        # opens one against ``self.cfg``, so the configuration handed here is the
-        # one the offers are written under. That is the whole of R17 on this path.
-        sweep.LabelSource(
-            cfg,
-            registry=labels.Registry(labels={entry.label_id: entry}),
-            catalogue=catalogue.resolve(cfg),
-        ),
+        source,
         owned=set(),
         limit=labels.effective_limit(entry),
         # THE RUN ID FALLS BACK TO THE JOB, so a sweep queued outside ``sync all``
@@ -709,6 +813,53 @@ def handle(job, item, cfg) -> jobs.Produced | None:
                 "label_id": entry.label_id,
                 "offered": len(result.processed),
                 "failed": len(result.errors),
+            },
+        )
+    # A CATALOGUE THAT CONFIRMS NOTHING IS NOT A LABEL WITH NOTHING NEW, and
+    # before this branch it was reported as one. ``list_for_label`` drops every
+    # release a degraded, rate limited, or distributor-crediting verification
+    # endpoint will not confirm, so the increment is handed no candidate at all;
+    # it then sees no processed item and no error and answers
+    # ``shortfall="empty"``. Measured on 2026-09-02 through the real dispatcher,
+    # queue and driver: forty releases read, forty discarded, exit 0, job
+    # SUCCEEDED, no cause and no warning. ``sweep._verifier``'s own docstring
+    # names this exact scenario as its reason for existing and then guards only
+    # the case where no verifier OBJECT exists, which is METHOD's defect pattern
+    # three, a fix on the performing path with the checking path left open.
+    #
+    # KEYED ON THE DROPPED POPULATION AND NEVER ON AN EMPTY CANDIDATE LIST. A
+    # label whose every release is tombstoned, and one whose crawl is genuinely
+    # exhausted, also offer nothing, and both are honest no ops a person asked
+    # for. ``list_for_label`` reports those in ``suppressed`` and in nothing at
+    # all respectively, so only "releases were read and every one was discarded
+    # as unconfirmed" reaches here. That is the one case where the success would
+    # be a claim about a catalogue nobody managed to verify a line of.
+    #
+    # THE SENTENCE SEPARATES TWO PROBLEMS WITH TWO REMEDIES. A sweep that could
+    # not REACH the provider already refuses ``sync-source-lookups-failed`` from
+    # the increment, and a person meeting that one waits for the network. This
+    # one reached the provider and could not confirm anything it found, which is
+    # usually a release credited to a distributor rather than to the imprint, and
+    # is repaired by the registry's ``--match`` needle rather than by waiting.
+    if result.shortfall == "empty" and source.dropped:
+        raise refuse(
+            "label-sweep-incomplete",
+            f"the sweep of {entry.name!r} read {len(source.dropped)} releases "
+            f"from the catalogue and could not confirm a single one of them, so "
+            f"it offered nothing and this is not a label with nothing new. The "
+            f"provider answered: what failed is verification rather than reach",
+            steps=(
+                f"check what the catalogue credits these releases to, then set "
+                f"the needle with: crate label registry add {entry.name} --match "
+                f"<credited name>",
+                "or resume this job once the verification endpoint is answering",
+            ),
+            origin=("label.cli",),
+            detail={
+                "label_id": entry.label_id,
+                "read": len(source.dropped),
+                "confirmed": 0,
+                "reasons": sorted({drop.reason for drop in source.dropped}),
             },
         )
     return None
