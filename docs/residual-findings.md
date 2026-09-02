@@ -8613,6 +8613,30 @@ names no analysis roots. Neither is U27's to take.
 are written, in a second session opened after this one closes rather than inside
 it, with the ordering between the ledger mark and the membership row argued.
 
+**CLOSED by U55, 2026-09-02, and the closing condition was met in the exact shape
+it names.** `cratekit.adopt.collection` is the reader.
+`cratekit.adopt.apply_cli.handle` writes the memberships through
+`write_tree_membership`, in that function's own session, which opens after the
+apply loop's has closed rather than inside it, so the composition this entry
+describes never arises.
+
+**The ordering was argued and then MEASURED, and the measurement reversed the
+first answer.** The obvious order is apply, then write memberships. Driven on
+2026-09-02 against a library whose taxonomy tree had not been cut over, the
+applied ledger came back holding every entry while the database held no
+membership row at all, and the next run then found nothing outstanding, so the
+gap was permanent. The recoverable write goes first, which is the order
+`apply_plan`'s own comment already argues for the tag write, and the mapping is
+derived from `plan.applicable()` rather than from what the run applied, so a kill
+between the membership write and the ledger mark costs one re-run that reports
+every row as `already_present`. Both directions are driven in
+`tests/test_adopt_workers.py`.
+
+**What is left is narrower and has its own number, R-235.** The write refuses on
+any library whose tree has not been cut over, which is every library adoption is
+for, and no shipped verb can perform a cutover. R-236 records the shape mismatch
+this wiring found between `membership_plan` and `write_tree_membership`.
+
 ---
 
 ## R-149. `delete.review` declares a queueing contract its shell does not implement
@@ -10431,10 +10455,11 @@ R-198 described: a queue with nothing behind it. They are `acquire.download`,
 `label.import`, `rebuild`, `route.resort`, `sync.all`, `sync.favorites`,
 `sync.labels`, `tag.folder` and `tag.retag`.
 
-**The population above is the one U46 measured and it is now three entries out of
-date, corrected here rather than rewritten.** U50 bound `backup.run` and U51
-bound `export.playlist` and `sync.favorites`, so FIFTEEN queued verbs have no
-worker as of 2026-09-02: the list above minus those three. The count in this
+**The population above is the one U46 measured and it is now five entries out of
+date, corrected here rather than rewritten.** U50 bound `backup.run`, U51 bound
+`export.playlist` and `sync.favorites`, and U55 bound `adopt.scan` and
+`adopt.apply`, so THIRTEEN queued verbs have no worker as of 2026-09-02: the list
+above minus those five. The count in this
 entry's title is left at eighteen deliberately, because it names what was true
 when the entry was written and the closing condition below is what decides when
 the entry is done. Nothing in the repository derives from this prose;
@@ -10461,6 +10486,10 @@ success over work it never did. And several have no worker to write yet at all:
 `adopt.scan` needs a collection reader that has not landed, `acquire.download`
 would newly reach an adapter that R-195, R-196 and R-197 say has never fetched a
 file, and `sync.all` carries R-130's unregistered obligation about run identity.
+U55 landed the reader `adopt.scan` was waiting for, which is what made both adopt
+verbs bindable; the claim that binding the rest is not mechanical is unchanged by
+it, and U55 is a worked example of why, since deciding what an apply's items are
+turned out to be a decision about which resume mechanism owns the run.
 
 **Cost:** the same as R-198's for eighteen verbs, with one change. `crate job list`
 and `crate job show` now carry a `worker` field derived from the declaration table
@@ -11461,3 +11490,260 @@ verb is not driven through that helper.
 **Closes when:** the branch emits `""` rather than `None`, or the verb is driven
 through a helper that validates its envelope.
 
+**CLOSED by U55, 2026-09-02, in both halves.** `apply_adoption`'s abort branch
+emits `""`, and the verb is now driven through `tests/cli_drive.drive`, which
+validates every envelope it returns. The same shape is used for the two new no-op
+payloads on `adopt.scan` and on an apply whose plan has nothing applicable, so the
+verb's other zero paths cannot reintroduce it.
+
+
+---
+
+## R-235. Adoption cannot write membership on a library nobody has cut over, and no verb can cut one over
+
+**Found:** during U55, 2026-09-02, by driving the apply worker against a library
+whose taxonomy tree the registry has no record for.
+
+This is R-148's successor and it is narrower. R-148 said adoption's memberships
+were collected and never written, for two reasons: sessions do not nest, and no
+unit landed a collection reader. Both are discharged. The reader landed, and the
+membership write happens in a second session opened after the apply loop's has
+closed, which is exactly the shape R-148's closing condition asked for.
+
+**What replaces it.** `cratekit.write.trees.write_tree_membership` calls
+`tree_registry.anchored_root`, which refuses a tree still on the bridge, and
+`Registry.mode` returns `Mode.XML` for a tree with no record at all, so an
+unrecorded tree IS on the bridge. Nothing under `src` calls
+`tree_registry.record_cutover` or `tree_registry.flip`: measured by grep on
+2026-09-02, every reference outside `core/tree_registry.py` itself is in a test.
+So no shipped verb can move a library into the mode the write requires, and the
+refusal a person meets names a remedy nobody can perform.
+
+**Measured cost.** `crate adopt apply` on any real library queues, drives, refuses
+`tree-unconverged` on its one item, and ends FAILED. Nothing is marked in the
+applied ledger, nothing is written to the database, and no file is touched, so
+the run costs a snapshot capture and time. The person is told the tree has not
+been cut over, which is true and is not something they can act on today.
+`tests/test_adopt_workers.py::test_an_uncut_library_marks_nothing_and_the_job_stays_resumable`
+drives it.
+
+**Why not fixed here.** The cutover is U29, which is attended and requires the
+live library. The alternative, an XML bridge membership writer so adoption can
+serve a pre-cutover library through the document rekordbox imports, is a second
+writer over `cratekit.write.rbxml` and its own unit.
+
+**Closes when:** a shipped verb can record a cutover, or adoption gains a bridge
+membership writer for the pre-cutover case.
+
+---
+
+## R-236. `membership_plan` groups content identifiers and its consumer decodes locations
+
+**Found:** during U55, 2026-09-02, while wiring the first caller that hands one to
+the other.
+
+`cratekit.adopt.apply.membership_plan` groups `entry.content_id` per destination.
+`cratekit.write.trees.write_tree_membership` passes every value of its `plan`
+through `match_indexed_rows`, which decodes each one as a recorded LOCATION and
+looks it up in an index keyed on resolved paths. A content identifier decodes to
+nothing, so every entry comes back `UNRESOLVED`, `added` stays 0, and
+`MembershipReport` reports a session that ran over a write that landed nothing.
+
+`apply_cli._collector`'s docstring asserted the two were one shape, in these
+words: "what comes back is the mapping `membership_plan` produces and
+`write_tree_membership` consumes". That sentence was false when it was written and
+nothing could see it, because no caller had ever handed one to the other.
+
+**Fixed on this side, recorded on the other.** U55's collector groups
+`entry.path`, and `apply_cli.membership_locations` is `membership_plan` with the
+location where that function has the identifier. `membership_plan` itself is
+untouched: it is `cratekit/adopt/apply.py`'s function with its own contract, and
+changing what it groups from a command-line module would be a second opinion
+about a surface U55 does not own.
+
+**Measured cost.** None today, and the reason is that the only caller is now
+correct. `membership_plan` has no other caller in `src`, measured by grep on
+2026-09-02. The cost is to the next author who reaches for it expecting the
+mapping the tree writer takes, and to a reader of its docstring, which still says
+it produces "the mapping both tree writers take".
+
+`tests/test_adopt_workers.py::test_the_membership_write_needs_locations_and_not_content_identifiers`
+drives both directions against a real index, so this entry is a measurement rather
+than a reading of the source.
+
+**Closes when:** `membership_plan` either takes the location or says in its own
+docstring which consumer it is for.
+
+---
+
+## R-237. An applied ledger record cannot say what the apply actually wrote
+
+**Found:** during U55, 2026-09-02, by the review of what the no-tag decision costs.
+
+`cratekit.adopt.apply.outstanding` computes a run's work as `plan.applicable()`
+minus the entry identifiers the applied ledger holds, and `entry_id` folds the
+tree, the content identifier, the bucket and the sub. It folds nothing about what
+was written.
+
+U55's apply writes a membership row and NO tag, deliberately: the tag write is
+the one act no snapshot undoes, the registry declares no `adopt.revert` verb, and
+seven ledger findings against the revert path (R-83, R-84, R-89, R-90, R-91,
+R-93, R-94) are unreachable today precisely because nothing writes a tag. So every
+entry U55's apply marks is membership-only, and the ledger cannot tell that record
+from a fully adopted one.
+
+**Measured cost.** None today, because nothing writes a tag at all. It arrives the
+day somebody supplies a `tag_value`: that unit's apply will find nothing
+outstanding for any track a previous adoption already placed, so those tracks are
+never tagged and nothing reports it. The remedy at that point is a re-derivation
+rather than a re-run, which is more expensive than adding the field now.
+
+**Why not fixed here.** The field is a change to the ledger's persisted shape,
+which needs a migration for records already written, and the decision about what
+it should record belongs with the unit that lands the tag write, since that is the
+unit that knows what distinctions matter.
+
+**Closes when:** the applied ledger records what an apply wrote, or a `tag_value`
+supplier lands and its unit re-derives rather than resumes.
+
+---
+
+## R-238. One capture per apply job, and the item shape is what bounds it
+
+**Found:** during U55, 2026-09-02, while choosing the apply's item shape.
+
+`cratekit.write.trees.write_tree_membership` runs `snapshot.capture(cfg, db=db)`
+followed by `snapshot.assert_verified` inside its own session, and `capture`
+copies the whole rekordbox database and its companion files into a new dated
+directory. So every membership session is a full copy of the library's database.
+
+U55's apply queues ONE item, the plan, so an apply of any size takes exactly one
+capture. `tests/test_adopt_workers.py::test_one_capture_per_apply_job_whatever_the_entry_count`
+pins it, which is what stops an item-per-entry shape creeping back later: that
+shape would take one full copy of the database per track.
+
+**Measured cost.** The cost recorded here is what the shape gives up rather than
+what it spends. A one item job cannot report per track progress, and a kill
+partway through is recovered by the applied ledger rather than by the queue, so
+`crate job show` says one of one pending for the whole run however many tracks it
+is placing. `core/snapshot.py` also does not prune, so a person who runs several
+adoptions accumulates one full database copy per run.
+
+**Why not fixed here.** Bounding the capture store is `snapshot`'s decision and
+R30 already separates pruning from the write session. Reporting per track progress
+without per track items would need a progress surface the job engine does not
+have.
+
+**Closes when:** the queue can report progress inside one item, or the capture
+store is pruned.
+
+---
+
+## R-239. Three spellings of the encryption probe, and two of them are wrong on a real library
+
+**Found:** during U55, 2026-09-02, while giving the collection reader one.
+
+Whether the database file is encrypted decides the `unlock` argument
+`rb_writer.open_db` passes the binding, and a constant answer is wrong in one
+direction or the other: `unlock=True` fails against a disposable database a test
+just built, `unlock=False` fails against a real library, which is encrypted.
+
+`cratekit.core.rb_writer.unlock_needed` is U55's answer and both of this unit's
+opens ask it. Three sites do not:
+
+- `cratekit.deletion.cli._needs_unlock` asks the same question with its own copy,
+  reading the first sixteen bytes through `read_bytes`, which pulls the whole
+  database into memory to look at fifteen characters, and spelling the bound as a
+  bare integer in a module that also names causes, which widens the surface
+  `tests/test_reserved_causes.py` watches.
+- `cratekit.write.routing_cli` and `cratekit.cli.converge` both pass
+  `unlock=False` unconditionally. On a real encrypted library both fail to open.
+
+**Measured cost.** Unmeasured on a real library, and said that way rather than
+claimed either direction: this branch drove no encrypted database, because the
+live one is off limits and no supplied snapshot was present for this run. What is
+measured is that the two `unlock=False` sites cannot supply a key, and
+`open_db`'s docstring says plainly that "the live database is encrypted and
+reading it with the key off simply fails".
+
+**Why not fixed here.** All three are other units' verbs, and changing what a
+shipped destructive verb does on an encrypted database is a decision this unit
+does not own. Rewiring them would also pull `delete.review` into a diff no test in
+U55 covers.
+
+**Closes when:** one function answers the question and every open asks it.
+
+---
+
+## R-240. A second copy of the job artifact helper, differing only in two directory names
+
+**Found:** during U55, 2026-09-02, when the adopt workers needed one.
+
+`cratekit.adopt.artifacts` and `cratekit.modules.outbound.artifacts` are the same
+five functions. Everything in either one is generic to the job engine: stage under
+the queue root, commit through `jobs.commit_artifact`, read the committed reports
+back in item order, resolve the root from the FROZEN configuration rather than
+from `jobs.store_dir()` with no argument. The only difference is the two directory
+names, `adopt-artifacts` and `adopt-staging` against `outbound-artifacts` and
+`outbound-staging`.
+
+**Measured cost.** None to a library. The cost is that the ordering rule the
+module exists to enforce, that an artifact is durable before the item's row flips
+to done, now has two homes, and the copy that is missed enforces it differently.
+The frozen-configuration rule has the same shape and the same exposure.
+
+**Why not fixed here.** The honest home is one module in `core` taking the two
+names as arguments, and moving the outbound one there is a change to U51's file.
+
+**Closes when:** one module owns the staging and commit pair and both feature
+packages name their own directories through it.
+
+---
+
+## R-241. A fifth copy of the prefix map comprehension
+
+**Found:** during U55, 2026-09-02, by counting before adding one.
+
+`[locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]`
+now appears in `write/routing_pass.py`, `write/rebuild.py`, `write/trees.py`,
+`deletion/run.py` and `adopt/collection.py`.
+
+**Measured cost.** None. Every copy is one line and they agree. The cost is that
+a change to how a configured prefix becomes a resolver rule has to be made in five
+places, and the copy that is missed resolves a person's older volume name
+differently from the other four, which is the S1 failure the map exists to
+prevent.
+
+**Why not fixed here.** The shared home is `core.locations` and four of the five
+copies are in other units' files.
+
+**Closes when:** one function builds the rules and every caller asks it.
+
+---
+
+## R-242. The reconcile guard on `adopt.apply` weakened when its branch started driving
+
+**Found:** during U55, 2026-09-02, while repairing the suite the new worker broke.
+
+`test_a_resume_reconciles_a_claim_a_dead_driver_left_behind` put a job into
+RUNNING with no driver holding the lock and asserted the resume reported QUEUED,
+which is what `jobs.reconcile` derives and what `jobs.get` would not. That
+assertion was sharp precisely because nothing ran: the reported state was the last
+thing the branch touched.
+
+The branch now drives. `jobs.drive` releases orphaned claims itself, and a RUNNING
+job with no claim drives to a terminal state under either spelling, so swapping
+`reconcile` for `get` in that branch may no longer kill this test. The test now
+asserts the terminal state and the item's own state instead, which is true and is
+weaker.
+
+**Measured cost.** None to a library. The cost is to the next mutation table: a
+row reverting the reconcile call in `adopt/apply_cli._resume` may read zero and be
+dismissed as an inert mutation when it is a real gap. Recorded so the zero has an
+explanation attached to it in advance.
+
+**Why not fixed here.** The property needs an observation between the reconcile
+and the drive, which means either a seam this module does not have or a test that
+reaches inside the branch.
+
+**Closes when:** the resume branch's reconcile has a driven observation of its own.
