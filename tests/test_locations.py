@@ -472,6 +472,27 @@ def test_no_module_outside_this_one_decodes_a_location_itself():
     normalization entirely, which is the exact shape that cost 144 files. A
     reviewer will not catch the eighth copy. A test will.
     """
+    #: The one call in our own tree that wears this shape and is not this shape,
+    #: as (module, function). Narrow on BOTH axes on purpose, so the day
+    #: ``searchers.py`` decodes something it is still reported.
+    #:
+    #: U56's catalogue searcher builds a SEARCH QUERY STRING for three public
+    #: record catalogues, ``?q=artist+title``. It is the same distinction this
+    #: guard's vendored-tree paragraph below already draws, now arriving in code
+    #: we wrote: that module never sees a rekordbox Location, has no concept of
+    #: one, and cannot reach the code that does. What makes the exemption safe to
+    #: state this narrowly rather than merely plausible is the function itself.
+    #: ``quote_plus`` encodes a space as ``+``, which is a query-string
+    #: convention and is WRONG for a path: a Location encoder written with it
+    #: would corrupt every file whose name has a space, which is most of a music
+    #: library. So this call cannot be the seventh copy of the decoder even by
+    #: accident. The four-name scan cannot see that, and widening it to reason
+    #: about intent would make it a thing nobody trusts.
+    #:
+    #: The alternative, spelling the same encoding as ``urlencode`` so the scan
+    #: does not match the name, is what P7 calls training people to route around
+    #: a guard. Stating the exemption where it can be read is the honest form.
+    permitted = {("cratekit/tagging/searchers.py", "quote_plus")}
     offenders: list[str] = []
     for path in sorted(SRC_ROOT.rglob("*.py")):
         if path.name == "locations.py":
@@ -502,11 +523,45 @@ def test_no_module_outside_this_one_decodes_a_location_itself():
                     called = node.func.id
                 elif isinstance(node.func, ast.Attribute):
                     called = node.func.attr
-            if called in {"unquote", "unquote_plus", "quote", "quote_plus"}:
-                offenders.append(f"{path.relative_to(SRC_ROOT)} calls {called}()")
+            relative = path.relative_to(SRC_ROOT).as_posix()
+            if called in {"unquote", "unquote_plus", "quote", "quote_plus"} and (
+                relative,
+                called,
+            ) not in permitted:
+                offenders.append(f"{relative} calls {called}()")
     assert not offenders, (
         "Location encoding and decoding live in cratekit.core.locations and "
         "nowhere else:\n" + "\n".join(offenders)
+    )
+
+
+def test_the_one_permitted_call_is_still_there_and_is_still_a_query_string():
+    """An exemption for a call nobody makes is an exemption nobody maintains.
+
+    The guard above names one permitted pair. If the searcher stops calling
+    ``quote_plus``, or the file moves, the exemption silently starts covering
+    nothing while still reading as a live carve-out, and the next author who
+    needs one adds a second beside it. So the pair is asserted to still match
+    something, and the call is asserted to still be what the exemption says it
+    is: a query string, built against a URL that names a public catalogue, and
+    never a path under the library.
+    """
+    source = (SRC_ROOT / "cratekit" / "tagging" / "searchers.py").read_text()
+    calls = [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "quote_plus"
+    ]
+    assert calls, (
+        "the permitted quote_plus call is gone, so the exemption in the guard "
+        "above covers nothing and should be deleted with it"
+    )
+    assert "from urllib.parse import quote_plus" in source
+    assert "https://" in source and "file://" not in source, (
+        "the exempted module encodes for a catalogue URL; a file scheme here "
+        "would mean it had started building a location after all"
     )
 
 
