@@ -50,7 +50,7 @@ from __future__ import annotations
 # is the defect ``docs/METHOD.md`` says to hunt, and here it would shadow the
 # handler the parser binds. U51 aliased three modules called ``export`` for the
 # same reason.
-from cratekit.adopt import artifacts, collection
+from cratekit.adopt import artifacts, collection, shell
 from cratekit.adopt import scan as scan_engine
 from cratekit.cli.output import Envelope
 from cratekit.core import config, jobs, taxonomy
@@ -116,16 +116,6 @@ def adopt_scan_argv(job) -> list[str]:
     return ["adopt", "scan", "--job", job.job_id]
 
 
-def _reported(store, job) -> dict:
-    """One job as the ``job_state`` payload, which is what this verb emits."""
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": jobs.progress(store, job.job_id),
-    }
-
-
 def _summary(cfg: config.Config, job_id: str) -> dict:
     """What this job's committed artifacts say the library looks like.
 
@@ -161,13 +151,11 @@ def _empty(reason: str, detail: str) -> tuple[dict, tuple[dict[str, str], ...]]:
     success over a census that never ran. Nothing is queued and the envelope says
     which zero this is.
 
-    ``job_id`` IS THE EMPTY STRING RATHER THAN ``None``. ``cli.output`` closes
-    the declared ``job_state/1`` surface with ``additionalProperties: false`` and
-    requires every field as a string, so a null here fails the verb's own schema.
-    That is R-234, which ``adopt.apply`` shipped and this verb does not repeat.
+    THE PAYLOAD SHAPE IS :func:`cratekit.adopt.shell.no_op`'s rather than this
+    module's, because the three zero paths these two verbs now have would
+    otherwise each be free to reintroduce R-234's null ``job_id`` separately.
     """
-    payload = {"job_id": "", "state": "no-op", "cause": None, "progress": {}}
-    return payload, ({"code": reason, "message": detail},)
+    return shell.no_op("no-op"), ({"code": reason, "message": detail},)
 
 
 def scan(ctx) -> Envelope:
@@ -189,7 +177,7 @@ def scan(ctx) -> Envelope:
     Reading the rows is cheap; probing the files is not.
 
     A LIBRARY OF TOMBSTONES IS NOT AN EMPTY LIBRARY, and only the collection can
-    tell them apart: :func:`cratekit.adopt.scan_engine.scan_rows` skips a deleted row, so
+    tell them apart: :func:`cratekit.adopt.scan.scan_rows` skips a deleted row, so
     both produce an empty census. The two warnings below are why the read happens
     here rather than one layer down.
     """
@@ -225,7 +213,7 @@ def scan(ctx) -> Envelope:
             item_ids=live,
             cfg=cfg,
         )
-        return ctx.envelope(data=_reported(store, job))
+        return ctx.envelope(data=shell.reported(store, job))
 
 
 def _resume(ctx, cfg: config.Config) -> Envelope:
@@ -242,26 +230,17 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
     the cause ``jobs.cancel`` builds; SUCCEEDED carries none, so it is unaffected.
     """
     with jobs.open_store() as store:
-        job = jobs.reconcile(store, ctx.args.job)
-        warnings: tuple[dict[str, str], ...] = ()
-        if job.is_open():
-            if not jobs.items(store, job.job_id):
-                raise refuse(
-                    "internal-error",
-                    f"job {job.job_id} has no items to run, so driving it would "
-                    f"report a census over a library it never read. It was queued "
-                    f"by a build that did not record what its items were",
-                    remedy=Remedy.REPORT_DEFECT,
-                    origin=("adopt", "scan_cli"),
-                    detail={"job_id": job.job_id},
-                )
-            _result, warnings = ctx.run_job(store, job)
-            job = jobs.get(store, job.job_id)
-        if not job.is_open() and job.cause is not None:
-            raise CratekitError(job.cause)
-        reported = _reported(store, job)
-        reported["progress"] = {**reported["progress"], "census": _summary(cfg, job.job_id)}
-        return ctx.envelope(data=reported, warnings=warnings)
+        job, warnings = shell.advance(
+            ctx,
+            store,
+            jobs.get(store, ctx.args.job),
+            origin=("adopt", "scan_cli"),
+            nothing_to_run="report a census over a library it never read",
+        )
+        return ctx.envelope(
+            data=shell.reported(store, job, {"census": _summary(cfg, job.job_id)}),
+            warnings=warnings,
+        )
 
 
 def handle(job, item, cfg) -> jobs.Produced:
@@ -284,8 +263,7 @@ def handle(job, item, cfg) -> jobs.Produced:
     guarantee worth anything: a census killed at row three thousand resumes at row
     three thousand and one rather than restarting a walk that stats every file.
     """
-    rows = {row.content_id: row for row in collection.read_collection(cfg)}
-    row = rows.get(item.item_id)
+    row = collection.indexed(cfg).get(item.item_id)
     if row is None:
         raise refuse(
             "adopt-item-absent",

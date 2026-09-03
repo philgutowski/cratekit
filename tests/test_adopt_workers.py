@@ -198,7 +198,6 @@ def _memberships(cfg: config.Config) -> dict[str, list[str]]:
     target = rb_writer.live_db_path(cfg)
     handle = rb_writer.open_db(target, unlock=False, cfg=cfg)
     try:
-        by_id = {str(row.ID): row for row in handle.get_playlist()}
         found: dict[str, list[str]] = {}
         for row in handle.get_playlist():
             members = [
@@ -206,7 +205,7 @@ def _memberships(cfg: config.Config) -> dict[str, list[str]]:
                 for entry in handle.get_playlist_songs(PlaylistID=str(row.ID))
             ]
             if members:
-                found[str(by_id[str(row.ID)].Name)] = sorted(members)
+                found[str(row.Name)] = sorted(members)
         return found
     finally:
         rb_writer.close_db(handle)

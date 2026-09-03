@@ -5168,7 +5168,21 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # declared cause, on purpose: the warning names the cause the job will end
     # with. Two names for that would let the warning and the failure describe one
     # outcome differently, which is the defect, not the fix.
-    assert (len(literal_holders), len(literal_both)) == (84, 15), (
+    # Re-pinned on U55, 2026-09-02: 84 to 85 holders. ONE module joined and none
+    # left, and it is a new file. adopt/shell.py names internal-error, which is
+    # the refusal both adoption verbs raise for a job queued with no items and
+    # which each of them used to spell separately. Differenced as SETS by
+    # re-deriving this module's own predicate over the working tree and comparing
+    # it against `main`'s, rather than inferred from the total moving by one. The
+    # also-holds-an-integer half stays 15: the new module holds no bare integer
+    # anywhere near the reserved range. The named halves did NOT move, staying at
+    # 21 and 8, measured rather than inferred.
+    #
+    # adopt/collection.py, adopt/artifacts.py and adopt/apply_cli.py are NOT new
+    # holders despite this unit writing two of them and rewriting the third: the
+    # first two name no cause at all, and apply_cli already named config-unusable
+    # on main.
+    assert (len(literal_holders), len(literal_both)) == (85, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

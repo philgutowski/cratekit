@@ -15,7 +15,6 @@ can reach it is a test that eventually does.
 from __future__ import annotations
 
 import ast
-import shutil
 from pathlib import Path
 
 import pytest
@@ -24,6 +23,7 @@ from cratekit.adopt import collection
 from cratekit.adopt.scan import CollectionRow
 from cratekit.core import config, rb_writer
 from cratekit.core.cause import CratekitError
+from tests import adopt_fixtures
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database, _row
 
@@ -174,16 +174,7 @@ def seeded(cfg, synthetic):
     so both files answer it. The supplied file is copied first, because reading a
     file somebody handed us is fine and leaving our fingerprints on it is not.
     """
-    supplied = rb_writer.integration_db_path()
-    if supplied is None:
-        return synthetic
-    path = Path(cfg.library.db_path)
-    shutil.copy2(supplied, path)
-    for suffix in rb_writer.db_sidecar_suffixes():
-        sidecar = supplied.with_name(supplied.name + suffix)
-        if sidecar.exists():
-            shutil.copy2(sidecar, path.with_name(path.name + suffix))
-    return path
+    return adopt_fixtures.copy_supplied(cfg) or synthetic
 
 
 class _Row:

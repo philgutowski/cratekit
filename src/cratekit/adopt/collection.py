@@ -60,6 +60,17 @@ from cratekit.write import trees
 #: write by accident.
 _CACHE: dict[str, tuple[CollectionRow, ...]] = {}
 
+#: The same collection, indexed by content identifier. Populated beside
+#: :data:`_CACHE` and cleared with it.
+#:
+#: WHY THE INDEX IS CACHED AND NOT ONLY THE ROWS. ``adopt.scan``'s worker runs
+#: once per collection row and looks ONE row up, so building the index inside the
+#: worker rebuilds it per item: N items times M rows, which on a library of fifty
+#: thousand tracks is two and a half billion dictionary inserts across one census
+#: that should have cost fifty thousand. The rows cache alone does not close it,
+#: because what repeats is the indexing rather than the read.
+_INDEX: dict[str, dict[str, CollectionRow]] = {}
+
 
 def reset_cache() -> None:
     """Forget every cached collection.
@@ -69,6 +80,7 @@ def reset_cache() -> None:
     a passing assertion about rows the second test never created.
     """
     _CACHE.clear()
+    _INDEX.clear()
 
 
 def prefix_rules(cfg: config.Config) -> list[locations.PrefixRule]:
@@ -184,11 +196,33 @@ def read_collection(cfg: config.Config) -> tuple[CollectionRow, ...]:
     finally:
         rb_writer.close_db(handle)
     _CACHE[key] = found
+    _INDEX[key] = {row.content_id: row for row in found}
     return found
+
+
+def indexed(cfg: config.Config) -> dict[str, CollectionRow]:
+    """The configured library's collection, keyed by content identifier.
+
+    ONE INDEX PER PROCESS, for the reason :data:`_INDEX` gives. A caller that
+    wants the rows in order asks :func:`read_collection`; a caller that wants one
+    row by identifier asks this and does not build a mapping of its own.
+
+    The returned mapping is the cached one rather than a copy, which is the same
+    bargain :func:`read_collection` makes with its tuple: copying it per item
+    would restore most of the cost the cache exists to remove. Nothing in this
+    package mutates it, and a caller that did would be editing a cache rather than
+    a library.
+    """
+    target = rb_writer.live_db_path(cfg)
+    key = str(Path(target).resolve())
+    if key not in _INDEX:
+        read_collection(cfg)
+    return _INDEX[key]
 
 
 __all__ = [
     "collection_rows",
+    "indexed",
     "prefix_rules",
     "genre_of",
     "read_collection",

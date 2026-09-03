@@ -67,7 +67,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from cratekit.adopt import apply as apply_engine
-from cratekit.adopt import artifacts, collection, scan
+from cratekit.adopt import artifacts, collection, scan, shell
 from cratekit.adopt import plan as plan_engine
 from cratekit.adopt.approval import grant
 from cratekit.cli.output import Envelope
@@ -167,16 +167,6 @@ def current_plan(cfg: config.Config, declared: taxonomy.Taxonomy) -> plan_engine
     return plan_engine.build_adoption_plan(
         census(cfg, declared), declared, tree=declared.tree.id
     )
-
-
-def _reported(store, job) -> dict:
-    """One job as the ``job_state`` payload, which is what this verb emits."""
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": jobs.progress(store, job.job_id),
-    }
 
 
 def _collector(
@@ -452,12 +442,12 @@ def apply_adoption(ctx) -> Envelope:
         # why it shipped: the schema fingerprint hashes the DECLARED fields and
         # the golden envelope is a hand written literal. Recorded as R-234 by U51
         # and closed here.
-        return ctx.envelope(data=_declined(), outcome=Outcome.NO_OP)
+        return ctx.envelope(data=shell.no_op("declined"), outcome=Outcome.NO_OP)
 
     applicable = plan.applicable()
     if not applicable:
         return ctx.envelope(
-            data=_declined(state="no-op"),
+            data=shell.no_op("no-op"),
             outcome=Outcome.NO_OP,
             warnings=(
                 {
@@ -494,7 +484,7 @@ def apply_adoption(ctx) -> Envelope:
             item_ids=(plan.digest(),),
             cfg=cfg,
         )
-        return ctx.envelope(data=_reported(store, job))
+        return ctx.envelope(data=shell.reported(store, job))
 
 
 def _resume(ctx, cfg: config.Config) -> Envelope:
@@ -519,32 +509,20 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
     plan = current_plan(cfg, declared)
     spec = _approval_gate(ctx.entry)
     if ctx.gate.require(spec, digest=plan.digest()) == "abort":
-        return ctx.envelope(data=_declined(), outcome=Outcome.NO_OP)
+        return ctx.envelope(data=shell.no_op("declined"), outcome=Outcome.NO_OP)
 
     with jobs.open_store() as store:
-        job = jobs.reconcile(store, ctx.args.job)
-        warnings: tuple[dict[str, str], ...] = ()
-        if job.is_open():
-            if not jobs.items(store, job.job_id):
-                raise refuse(
-                    "internal-error",
-                    f"job {job.job_id} has no items to run, so driving it would "
-                    f"report an adoption over a library it never touched. It was "
-                    f"queued by a build that did not record what its items were",
-                    remedy=Remedy.REPORT_DEFECT,
-                    origin=("adopt", "apply_cli"),
-                    detail={"job_id": job.job_id},
-                )
-            _result, warnings = ctx.run_job(store, job)
-            job = jobs.get(store, job.job_id)
-        if not job.is_open() and job.cause is not None:
-            raise CratekitError(job.cause)
-        reported = _reported(store, job)
-        reported["progress"] = {
-            **reported["progress"],
-            "adoption": _summary(cfg, job.job_id),
-        }
-        return ctx.envelope(data=reported, warnings=warnings)
+        job, warnings = shell.advance(
+            ctx,
+            store,
+            jobs.get(store, ctx.args.job),
+            origin=("adopt", "apply_cli"),
+            nothing_to_run="report an adoption over a library it never touched",
+        )
+        return ctx.envelope(
+            data=shell.reported(store, job, {"adoption": _summary(cfg, job.job_id)}),
+            warnings=warnings,
+        )
 
 
 def _summary(cfg: config.Config, job_id: str) -> dict:
@@ -748,11 +726,6 @@ class _Item:
 
 #: An apply has exactly one item, so its artifact always has ordinal zero.
 _ITEM_ZERO = _Item(0)
-
-
-def _declined(state: str = "declined") -> dict:
-    """The ``job_state`` payload for a run that queued nothing."""
-    return {"job_id": "", "state": state, "cause": None, "progress": {}}
 
 
 def _approving_actor(ctx, spec) -> str:
