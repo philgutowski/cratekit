@@ -893,9 +893,32 @@ def test_the_apply_opens_its_own_handle_with_write_intent(cut_over, monkeypatch)
     plan = apply_cli.current_plan(cut_over, DECLARED)
     with pytest.raises(Exception) as excinfo:
         apply_cli._write_memberships(cut_over, plan, DECLARED)
-    assert excinfo.value.cause.reason == "rekordbox-running", (
-        "the apply opened the database without declaring write intent, so a run "
-        "with rekordbox open reaches the commit before anything refuses"
+    assert excinfo.value.cause.reason == "rekordbox-running"
+
+
+def test_the_application_pin_is_what_the_write_intent_open_uniquely_holds(
+    cut_over, monkeypatch
+):
+    """The composite the two-process row owes, because that half is doubly guarded.
+
+    Measured on 2026-09-02: flipping ``require_closed`` to False on the apply's own
+    handle killed zero tests EVEN WITH the refusal above driven, and the reason is
+    that ``cratekit.core.session`` asserts rekordbox closed for itself before it
+    verifies a commit. So the two-process half of that flag is covered twice and
+    reverting it changes nothing a test can see.
+
+    The APPLICATION PIN is not. ``assert_app_version`` runs only inside
+    ``open_db``'s ``require_closed`` branch and nothing else on this path asks it,
+    so a rekordbox that has updated itself since the pin was recorded reaches the
+    membership commit with the flag off. This is what the flag holds alone.
+    """
+    monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: "9.9.9.0002")
+    plan = apply_cli.current_plan(cut_over, DECLARED)
+    with pytest.raises(Exception) as excinfo:
+        apply_cli._write_memberships(cut_over, plan, DECLARED)
+    assert excinfo.value.cause.reason == "app-version-pin-drift", (
+        "the apply opened a database whose application has moved since the pin "
+        "was recorded, and nothing outside the open would have asked"
     )
 
 
