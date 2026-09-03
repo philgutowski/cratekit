@@ -11673,6 +11673,14 @@ U55 covers.
 
 **Closes when:** one function answers the question and every open asks it.
 
+**The mutation table measured the gap rather than arguing it.** Two rows in
+`docs/mutation/u55-collection-reader.md` make the probe answer "not encrypted",
+and both read ZERO in two rounds. Every database in this suite is a disposable
+one built from the binding's own schema and none of them is encrypted, so the
+correct answer and the mutated one agree on every input the suite has. Supplying
+`CRATEKIT_TEST_DB` pointing at a real snapshot is what would give those rows an
+input; this run had none.
+
 ---
 
 ## R-240. A second copy of the job artifact helper, differing only in two directory names
@@ -11747,3 +11755,41 @@ and the drive, which means either a seam this module does not have or a test tha
 reaches inside the branch.
 
 **Closes when:** the resume branch's reconcile has a driven observation of its own.
+
+---
+
+## R-243. The apply's write intent open is half covered by the session below it
+
+**Found:** during U55, 2026-09-02, by the mutation table refusing to die.
+
+`apply_cli._write_memberships` opens its handle with `require_closed=True`, which
+is the open a write is supposed to make. Reverting that flag to False killed ZERO
+tests in both rounds, including after a test driving the two-process refusal was
+added and passing.
+
+**The reason is the one `docs/METHOD.md` names.** A guard covered by another
+guard is a guard nothing covers. `require_closed=True` does two things at the
+open, and the two-process refusal is asserted a second time inside the session:
+`core/session.py:1820` asserts rekordbox closed before it verifies a commit. So
+reverting the flag still refuses, just from one layer down and with the database
+already open.
+
+**What the flag holds ALONE is the application pin**, and that half is now
+covered. `assert_app_version` runs only inside `open_db`'s `require_closed`
+branch, and nothing else on the membership path asks it, so a rekordbox that has
+updated itself since the pin was recorded would reach the commit with the flag
+off. `test_the_application_pin_is_what_the_write_intent_open_uniquely_holds`
+drives that refusal directly. It was written after round two measured the row, so
+the zero stands as measured and the composite is what says what the flag is for.
+
+**Measured cost.** None. The refusal a person meets is the same refusal either
+way; what differs is how far the run gets before meeting it, and with the flag on
+it is before anything opens.
+
+**Why not fixed here.** There is nothing to fix in this unit. What would close it
+is deciding whether the duplicated two-process assertion belongs at the open, in
+the session, or in both deliberately, and `core/session.py` is another unit's
+file.
+
+**Closes when:** the two-process refusal has one owner, or the duplication is
+stated at both ends as deliberate.
