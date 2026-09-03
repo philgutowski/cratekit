@@ -101,6 +101,20 @@ fact from whether that session is then served what was actually requested, and
 an adapter's own settings check confirms only the request, never the artifact
 the wrapped tool produced from it.
 
+### Searcher
+A boundary component that answers "what genre is this track" from a public
+music catalogue, injected into the tagging engines so the suite can prove the
+write path with no network. It reports exactly one of four outcomes per
+source: matched, answered with no match, unreachable, or parsed to no
+recognizable shape. Only the second is a miss. The third keeps a catalogue
+that was down from reading as a catalogue that has never heard of the track,
+and the fourth keeps a scraper whose target page moved from reading as a
+network problem, which is a permanent state wearing a transient remedy. A
+searcher no source answered refuses rather than declining, so a job cannot
+report a clean sweep over answers it never got. A decline is a question the
+next run asks again; a refusal fails that one item and leaves the job
+resumable.
+
 ## Verification
 
 ### Guard
