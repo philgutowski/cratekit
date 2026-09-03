@@ -11793,3 +11793,30 @@ file.
 
 **Closes when:** the two-process refusal has one owner, or the duplication is
 stated at both ends as deliberate.
+
+---
+
+## R-244. An apply retry overwrites the artifact that recorded which entries failed
+
+**Found:** during U55's code review, 2026-09-02, reasoned from the artifact paths
+rather than driven.
+
+An apply is one item, so its artifact is always ordinal zero, and
+`artifacts.staged_path` clears the staging directory on every attempt. A second
+attempt therefore replaces the committed report of the first. The summary
+`crate adopt apply` reports is read back from that one file, so it describes the
+LAST attempt rather than the job.
+
+**Measured cost.** None to a library: the applied ledger, not the artifact, is
+what decides what a re-run does, and it is append only. The cost is to a person
+reading the report after a partial failure, who sees the second attempt's
+entries and not the first's, and to anybody diagnosing why an adoption took two
+runs.
+
+**Why not fixed here.** The fix is either an ordinal per attempt, which
+`jobs.Item` does not carry, or folding `already_applied` into the reported set,
+which changes what the envelope's `applied` field means. Both are decisions about
+the reporting surface rather than about this unit's writes.
+
+**Closes when:** an apply's report survives its own retry, or the envelope is
+explicit that it describes one attempt.

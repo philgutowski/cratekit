@@ -117,7 +117,14 @@ def committed(cfg: config.Config, job_id: str) -> tuple[dict[str, Any], ...]:
     if not directory.is_dir():
         return ()
     found: list[dict[str, Any]] = []
-    for path in sorted(directory.glob("*.json")):
+    # SORTED BY THE ORDINAL AS A NUMBER, not by the filename. The name is
+    # ``{ordinal:04d}.json``, so four digits sort as text in item order and the
+    # ten thousandth does not: ``"10000"`` sorts before ``"9999"``. A census over
+    # a real library is tens of thousands of items, so this is reachable input
+    # rather than a hypothesis. ``modules/outbound/artifacts`` has the same sort
+    # and one item per playlist track, which is R-240's territory rather than
+    # this unit's to reach across for.
+    for path in sorted(directory.glob("*.json"), key=lambda item: int(item.stem)):
         try:
             parsed = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):

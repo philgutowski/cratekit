@@ -216,7 +216,12 @@ def indexed(cfg: config.Config) -> dict[str, CollectionRow]:
     target = rb_writer.live_db_path(cfg)
     key = str(Path(target).resolve())
     if key not in _INDEX:
-        read_collection(cfg)
+        # BUILT FROM THE ROWS RATHER THAN ASSUMED PRESENT AFTER THE READ. The two
+        # registers are written and cleared together today, so a rows hit implies
+        # an index hit and the subscript would always resolve. That is a property
+        # of the current bodies rather than of this function, and the cost of it
+        # ceasing to hold is a bare ``KeyError`` inside a job worker.
+        _INDEX[key] = {row.content_id: row for row in read_collection(cfg)}
     return _INDEX[key]
 
 

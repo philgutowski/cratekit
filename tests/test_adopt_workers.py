@@ -19,6 +19,7 @@ D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -494,7 +495,7 @@ def test_the_membership_write_is_derived_from_the_plan_and_not_from_the_run(cut_
     assert code == int(ExitCode.OK), resumed
 
     report = artifacts.committed(cut_over, job_id)[-1]
-    assert report["gathered"] == {}, "the loop had nothing outstanding, as this test needs"
+    assert report["gathered"] == [], "the loop had nothing outstanding, as this test needs"
     assert report["added"] == 2, (
         "the memberships were derived from what this run applied rather than from "
         "the plan, so a kill between the membership write and the ledger mark "
@@ -966,3 +967,119 @@ def _record_decision(verb: list[str], gate: str) -> tuple[str, dict]:
     )
     assert decided == int(ExitCode.OK), envelope
     return run_id, refused
+
+
+# ---------------------------------------------------------------------------
+# The gaps the code review found, closed
+# ---------------------------------------------------------------------------
+
+
+def test_a_row_tombstoned_between_queueing_and_driving_fails_its_own_item(machine):
+    """rekordbox SOFT deletes, and the reader carries a tombstone on purpose.
+
+    Driven on 2026-09-02 before the fix: the item's row was still in the index so
+    the absence guard passed it, ``scan_rows`` then skipped it for being deleted,
+    and the single-value unpack raised ``ValueError`` out of the worker. A person
+    who removed one track from rekordbox while a census was queued was told to
+    report a defect, and every retry told them again.
+
+    The hard-delete twin one test above covers the other half of the condition.
+    Both are here because they are different library edits reaching one guard.
+    """
+    drive(["adopt", "scan"])
+    job = _job(registry.entry("adopt.scan").handler_key)
+
+    _tombstone_row(machine, "r-two")
+
+    code, resumed = drive(["adopt", "scan", "--job", job.job_id])
+    assert code != int(ExitCode.OK)
+    with jobs.open_store() as store:
+        items = {item.item_id: item for item in jobs.items(store, job.job_id)}
+    assert items["r-two"].state is jobs.ItemState.FAILED
+    assert items["r-one"].state is jobs.ItemState.DONE
+    assert items["r-two"].cause is not None
+    assert items["r-two"].cause.reason == "adopt-item-absent", (
+        "a track removed in rekordbox during a queued census reported as an "
+        "internal defect rather than as the library edit it is"
+    )
+    del resumed
+
+
+def test_a_track_the_tree_write_could_not_place_is_never_marked_applied(
+    cut_over, monkeypatch
+):
+    """R-148's hazard in its new shape: surfaced by the writer, marked by the caller.
+
+    ``write_tree_membership`` SURFACES a row it could not resolve to exactly one
+    active library row rather than raising, correctly. The caller then marked
+    every outstanding entry applied, including that one, so a track that never
+    reached a playlist was recorded as adopted and ``outstanding`` would never
+    offer it again. The ledger would say the library holds something it does not.
+
+    Driven by making the write report one row skipped, which is the shape a
+    library with two live rows for one file produces.
+    """
+    from cratekit.write import trees
+
+    real = apply_cli._write_memberships
+
+    def one_skipped(cfg, plan, declared):
+        report = real(cfg, plan, declared)
+        from dataclasses import replace as _replace
+
+        skipped = trees.RowMatch("a-location-two-rows-claim", trees.MatchOutcome.AMBIGUOUS)
+        return _replace(report, skipped=(skipped,))
+
+    monkeypatch.setattr(apply_cli, "_write_memberships", one_skipped)
+
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    code, envelope = drive(_resume(job_id))
+
+    assert code != int(ExitCode.OK)
+    assert envelope["cause"]["inner"]["reason"] == "adopt-entries-failed", envelope
+    assert "a-location-two-rows-claim" in envelope["cause"]["inner"]["message"], (
+        "the refusal counted the unplaced rows without naming them, which is not "
+        "something a person can act on"
+    )
+    assert adopt_apply.read(cut_over).entry_ids() == frozenset(), (
+        "a track the tree write could not place was recorded as adopted, so the "
+        "next run would never offer it again"
+    )
+
+
+def test_the_approval_is_refused_before_anything_is_written(cut_over):
+    """``require_approval`` runs inside the loop, which is AFTER the tree write.
+
+    A payload carrying no actor would have written playlist rows into a person's
+    database and only then discovered the run was never authorised. The refusal
+    is minted up front so it costs nothing.
+    """
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        item = jobs.items(store, job_id)[0]
+        unauthorised = replace(job, payload={**job.payload, apply_cli.ACTOR_KEY: ""})
+
+    handler = handlers.resolve(registry.entry("adopt.apply").handler_key)
+    with pytest.raises(Exception):
+        handler(unauthorised, item, jobs.frozen_config(job))
+
+    assert _memberships(cut_over) == {}, (
+        "an unauthorised run wrote membership rows before anything asked whether "
+        "it was authorised"
+    )
+
+
+def _tombstone_row(cfg: config.Config, content_id: str) -> None:
+    """Set rekordbox's own soft-delete marker, which is what a removal really is."""
+    import sqlite3
+
+    conn = sqlite3.connect(Path(cfg.library.db_path))
+    try:
+        conn.execute(
+            "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (content_id,)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    collection.reset_cache()

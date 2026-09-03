@@ -248,12 +248,16 @@ def handle(job, item, cfg) -> jobs.Produced:
 
     THE COLLECTION IS RE-READ AT DRIVE TIME AND IS NOT FROZEN.
     ``jobs.enqueue`` freezes the payload and the configuration, and neither
-    carries the library. So a row soft deleted or a track removed in rekordbox
-    between the queueing and the drive leaves an item naming a content identifier
-    this read no longer produces, and that is refused with its own slug rather
-    than raised as a ``KeyError``: an item that reported done having classified
-    nothing is the clean-report-over-unreadable-state cost ``docs/METHOD.md``
-    names.
+    carries the library. So a row removed in rekordbox between the queueing and
+    the drive leaves an item this read cannot classify, and that is refused with
+    its own slug rather than raised out of the worker: an item that reported done
+    having classified nothing is the clean-report-over-unreadable-state cost
+    ``docs/METHOD.md`` names.
+
+    REMOVED MEANS TOMBSTONED, NOT VANISHED, which is what the condition below
+    has to cover and what the first draft of it did not. rekordbox soft deletes:
+    the row stays and gains a marker. The reader carries it, so a check for
+    absence alone passes an item whose row ``scan_rows`` will skip.
 
     THE CONFIGURATION IS THE FROZEN ONE AND IS NOT LOADED HERE. KTD9 closes the
     recorded resume bug where a queued run re-resolved its configuration; a
@@ -264,11 +268,18 @@ def handle(job, item, cfg) -> jobs.Produced:
     three thousand and one rather than restarting a walk that stats every file.
     """
     row = collection.indexed(cfg).get(item.item_id)
-    if row is None:
+    if row is None or row.deleted:
+        # A TOMBSTONE COUNTS AS ABSENT HERE, and the two halves of this condition
+        # are not the same fact wearing one name. The reader CARRIES a deleted
+        # row on purpose, so a track removed in rekordbox between the queueing
+        # and the drive is still in the index; ``scan_rows`` then skips it, and
+        # the unpack below would raise ``ValueError`` out of the worker as an
+        # internal error telling a person to report a defect over an ordinary
+        # library edit. Driven on 2026-09-02 before this clause existed.
         raise refuse(
             "adopt-item-absent",
-            f"the collection no longer holds the row {item.item_id!r} this job "
-            f"queued, so there is nothing to classify for it",
+            f"the collection no longer holds a live row {item.item_id!r} for this "
+            f"item, so there is nothing to classify for it",
             steps=("queue a fresh census; this one was planned against a library that has moved",),
             origin=("adopt", "scan_cli"),
             detail={"content_id": item.item_id},

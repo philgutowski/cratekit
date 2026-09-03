@@ -21,7 +21,7 @@ import pytest
 
 from cratekit.adopt import collection
 from cratekit.adopt.scan import CollectionRow
-from cratekit.core import config, rb_writer
+from cratekit.core import config, locations, rb_writer
 from cratekit.core.cause import CratekitError
 from tests import adopt_fixtures
 from tests.test_config import valid_data
@@ -116,7 +116,7 @@ def seed(db_path: Path) -> None:
                 Title=NFC_NAME,
                 GenreID="7",
                 rb_local_deleted=0,
-                FolderPath=f"file://localhost/Music/{NFC_NAME}.flac",
+                FolderPath=locations.location_url(Path("/Music") / f"{NFC_NAME}.flac"),
             )
         )
         session.add(
@@ -126,7 +126,7 @@ def seed(db_path: Path) -> None:
                 Title=NFD_NAME,
                 GenreID=None,
                 rb_local_deleted=0,
-                FolderPath=f"file://localhost/Music/{NFD_NAME}.flac",
+                FolderPath=locations.location_url(Path("/Music") / f"{NFD_NAME}.flac"),
             )
         )
         session.add(
@@ -138,7 +138,7 @@ def seed(db_path: Path) -> None:
                 # after a genre is deleted while a track still points at it.
                 GenreID="999",
                 rb_local_deleted=1,
-                FolderPath="file://localhost/Music/gone.flac",
+                FolderPath=locations.location_url(Path("/Music/gone.flac")),
             )
         )
         session.commit()
@@ -253,9 +253,12 @@ def test_the_reader_yields_the_rows_the_database_holds(cfg, synthetic):
     rows = {row.content_id: row for row in collection.read_collection(cfg)}
     assert set(rows) == {"1", "2", "10", "11", "12"}
     assert rows["10"].genre == "Techno"
-    assert rows["10"].recorded.endswith(f"{NFC_NAME}.flac")
+    # THE RECORDED VALUE IS THE PERCENT-ENCODED URL rekordbox writes, not a path.
+    # Asserting on the decoded form is what makes this a statement about the
+    # reader's passthrough rather than about this test's own spelling.
+    assert rows["10"].recorded == locations.location_url(Path("/Music") / f"{NFC_NAME}.flac")
     assert rows["11"].genre == ""
-    assert rows["11"].recorded.endswith(f"{NFD_NAME}.flac")
+    assert rows["11"].recorded == locations.location_url(Path("/Music") / f"{NFD_NAME}.flac")
     assert rows["12"].deleted is True
 
 
@@ -267,8 +270,8 @@ def test_both_composition_forms_come_back_exactly_as_recorded(cfg, synthetic):
     be comparing a value nothing in the library actually holds.
     """
     recorded = {row.recorded for row in collection.read_collection(cfg)}
-    assert f"file://localhost/Music/{NFC_NAME}.flac" in recorded
-    assert f"file://localhost/Music/{NFD_NAME}.flac" in recorded
+    assert locations.location_url(Path("/Music") / f"{NFC_NAME}.flac") in recorded
+    assert locations.location_url(Path("/Music") / f"{NFD_NAME}.flac") in recorded
     assert NFC_NAME != NFD_NAME
 
 
@@ -283,7 +286,7 @@ def test_a_row_whose_file_is_absent_is_still_a_row(cfg, synthetic):
     """The reader stats nothing. Deciding whether a file is there is ``scan_rows``."""
     for row in collection.read_collection(cfg):
         if row.recorded:
-            assert not Path(row.recorded.replace("file://localhost", "")).exists()
+            assert not Path(locations.location_to_path(row.recorded)).exists()
 
 
 def test_the_reader_never_opens_the_database_for_writing(cfg, seeded, monkeypatch):

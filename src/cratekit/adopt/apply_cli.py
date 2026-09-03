@@ -616,9 +616,20 @@ def handle(job, item, cfg) -> jobs.Produced:
             detail={"approved": frozen_digest, "current": plan.digest()},
         )
 
-    membership = _write_memberships(cfg, plan, declared)
-
+    # THE APPROVAL IS MINTED BEFORE ANYTHING IS WRITTEN, and is minted again
+    # inside ``apply_outstanding`` from the same inputs. That looks redundant and
+    # is not: ``require_approval`` runs inside ``apply_plan``, which is AFTER the
+    # membership write, so a payload carrying no actor, or an actor
+    # ``approval.grant`` refuses, would have written playlist rows into a person's
+    # database and only then discovered that the run was never authorised. The
+    # result is discarded because the loop owns its own; what is wanted here is
+    # the refusal, at the moment it still costs nothing.
     actor = str((job.payload or {}).get(ACTOR_KEY) or "")
+    grant(plan, actor=actor)
+
+    membership = _write_memberships(cfg, plan, declared)
+    _refuse_unplaced(membership, job, cfg)
+
     report, gathered = apply_outstanding(cfg, plan, declared, actor=actor)
 
     produced = artifacts.produced(
@@ -632,10 +643,20 @@ def handle(job, item, cfg) -> jobs.Produced:
             "applied": list(report.applied),
             "already_applied": list(report.already_applied),
             "failed": dict(report.failed),
-            "gathered": {f"{folder}/{sub}": rows for (folder, sub), rows in gathered.items()},
+            # A LIST OF THREE FIELD OBJECTS RATHER THAN A JOINED KEY. The
+            # obvious ``f"{folder}/{sub}"`` collapses two destinations onto one
+            # key whenever a display name holds a slash, and the SHIPPED taxonomy
+            # has several that do. That is the duplicate-key-in-a-mapping shape
+            # ``docs/METHOD.md`` says to hunt, and here it would silently lose
+            # half a report.
+            "gathered": [
+                {"folder": folder, "sub": sub, "rows": rows}
+                for (folder, sub), rows in sorted(gathered.items())
+            ],
             "added": membership.added,
             "already_present": membership.already_present,
             "playlists": list(membership.playlists),
+            "unplaced": [str(match.requested) for match in membership.skipped],
             "skipped": [match.requested for match in membership.skipped],
         },
     )
@@ -650,6 +671,54 @@ def handle(job, item, cfg) -> jobs.Produced:
             detail={"failed": sorted(report.failed)},
         )
     return produced
+
+
+def _refuse_unplaced(
+    membership: trees.MembershipReport, job, cfg: config.Config
+) -> None:
+    """Refuse before the ledger is marked when a row could not be placed.
+
+    THE HAZARD THIS CLOSES IS R-148 WEARING A NEW SHAPE.
+    ``write_tree_membership`` SURFACES a row it could not resolve to exactly one
+    active library row rather than raising on it, correctly: one unresolvable
+    file is not a reason to abandon a session. But the caller then marks every
+    outstanding entry applied, including the ones that were surfaced, so a track
+    that never reached a playlist is recorded as adopted and
+    ``apply.outstanding`` never offers it again. The ledger would say the library
+    holds something it does not.
+
+    IT REFUSES RATHER THAN MARKING THE REST, which is the conservative direction
+    and costs nothing that a re-run does not recover. Nothing has been marked
+    when this fires, so every membership row that DID land is reported
+    ``already_present`` on the next attempt and the entries behind them are
+    marked then. The alternative, dropping the surfaced entries from the plan and
+    marking the others, keeps the run green at the price of a plan whose digest
+    no longer matches the approval it is being applied under.
+
+    THE REFUSAL NAMES THE ROWS. A count is not something a person can act on; the
+    recorded location is, because the two shapes that reach here are a location
+    the library has two live rows for and a location it has none for, and both
+    are fixed in rekordbox rather than here.
+    """
+    if not membership.skipped:
+        return
+    unplaced = sorted({str(match.requested) for match in membership.skipped})
+    artifacts.write(
+        artifacts.staged_path(cfg, job.job_id, _ITEM_ZERO.ordinal),
+        {"unplaced": unplaced, "added": membership.added, "playlists": list(membership.playlists)},
+    )
+    raise refuse(
+        "adopt-entries-failed",
+        f"{len(unplaced)} track(s) in this plan could not be placed in the "
+        f"library tree, so nothing has been recorded as adopted: "
+        f"{', '.join(unplaced)}",
+        steps=(
+            "check each named file in rekordbox: the library holds either two "
+            "live rows for it or none, and both are repaired there",
+        ),
+        origin=("adopt", "apply_cli"),
+        detail={"unplaced": unplaced},
+    )
 
 
 def _commit(produced: jobs.Produced) -> None:
