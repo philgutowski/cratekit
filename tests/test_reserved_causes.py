@@ -4753,7 +4753,22 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # doctor already has a remedy for. A second slug meaning the same thing would
     # have made a person who has not logged in read a different sentence
     # depending on which verb discovered it.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (142, 118, 24)
+    #
+    # Re-pinned on U55, 2026-09-02. TWO slugs, named rather than counted:
+    # adopt-item-absent, which is the collection no longer holding a row the scan
+    # job already queued as an item, and adopt-entries-failed, which is the apply
+    # worker's whole-run verdict over the entries apply_plan RETURNED as failed
+    # rather than raised on. Neither is in the reserved table, exactly as their
+    # siblings outbound-item-absent and export-playlist-unknown are not, so the
+    # reserved half does not move. Population 142 to 144, non-reserved 118 to 120,
+    # reserved half UNCHANGED at 24.
+    #
+    # WHY THE STALE PLAN IS NOT A THIRD. The apply worker refuses a rebuilt plan
+    # whose digest is not the frozen one, and that is ``decision-stale``, which
+    # this vocabulary already declares and which the gate layer already raises for
+    # the same fact. A second slug meaning the same thing would make a person read
+    # a different sentence depending on whether the queueing or the drive noticed.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (144, 120, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4878,7 +4893,23 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # describes a refusal: a warning that a playlist named a track the collection
     # does not carry is an advisory on a job that queued successfully, and every
     # declared cause is instead a reason something did NOT happen.
-    assert (len(literals), len(literals - set(causes))) == (339, 198), (
+    # Re-pinned on U55, 2026-09-02: 339 to 347 distinct, 198 to 204 non-keys.
+    # EIGHT literals joined and NOTHING left, differenced as SETS against `main`'s
+    # own `src` tree read blob by blob rather than inferred from the total moving
+    # by eight. TWO are keys, `adopt-item-absent` and `adopt-entries-failed`, and
+    # both are named at the population assertion above. The other SIX are not
+    # causes and each is worth naming, because a non-cause wearing a cause slug is
+    # exactly the shape the `lossy-refused` incident above was:
+    # `adopt-artifacts` and `adopt-staging` are DIRECTORY names under the queue
+    # root, the same kind of literal as `outbound-artifacts` and
+    # `outbound-staging`; `collection-empty`, `collection-all-tombstones` and
+    # `adoption-nothing-applicable` are WARNING codes on an envelope that reports
+    # a correct no-op, the same kind of literal as `config-drift`; and `no-op` is
+    # the `state` field on that same payload, which is a job_state value rather
+    # than a slug. None of the six collides with a declared cause, and none
+    # describes a refusal: an empty library is a fact about the library, not a
+    # reason something did not happen.
+    assert (len(literals), len(literals - set(causes))) == (347, 204), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5137,7 +5168,21 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # declared cause, on purpose: the warning names the cause the job will end
     # with. Two names for that would let the warning and the failure describe one
     # outcome differently, which is the defect, not the fix.
-    assert (len(literal_holders), len(literal_both)) == (84, 15), (
+    # Re-pinned on U55, 2026-09-02: 84 to 85 holders. ONE module joined and none
+    # left, and it is a new file. adopt/shell.py names internal-error, which is
+    # the refusal both adoption verbs raise for a job queued with no items and
+    # which each of them used to spell separately. Differenced as SETS by
+    # re-deriving this module's own predicate over the working tree and comparing
+    # it against `main`'s, rather than inferred from the total moving by one. The
+    # also-holds-an-integer half stays 15: the new module holds no bare integer
+    # anywhere near the reserved range. The named halves did NOT move, staying at
+    # 21 and 8, measured rather than inferred.
+    #
+    # adopt/collection.py, adopt/artifacts.py and adopt/apply_cli.py are NOT new
+    # holders despite this unit writing two of them and rewriting the third: the
+    # first two name no cause at all, and apply_cli already named config-unusable
+    # on main.
+    assert (len(literal_holders), len(literal_both)) == (85, 15), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

@@ -221,14 +221,20 @@ PENDING: dict[str, tuple[str, str]] = {
     # in ``UNREACHABLE_GATES``, so the second of its two gates is exempt from the
     # reach assertion rather than needing a rekordbox installation to provoke.
     #
-    # ITS RIDER IS NOT DISCHARGED AND IS NAMED HERE rather than deleted with the
-    # entry, because a rider deleted silently is an obligation nobody owns. The
-    # memberships half of an apply is still unwritten: ``apply_outstanding``
-    # COLLECTS placements and returns them instead of writing them, because
-    # ``write_tree_membership`` owns its own session and sessions do not nest, and
-    # because no unit in this build lands the collection reader that would give
-    # the census any rows. It is filed as a residual rather than left here, since
-    # no unit remains to own it.
+    # ITS RIDER IS DISCHARGED BY U55, 2026-09-02, and is rewritten here rather
+    # than deleted, because a rider deleted silently is an obligation nobody
+    # owns and a rider left standing after it is met is a claim the next reader
+    # trusts. Both halves of it are now false. ``cratekit.adopt.collection`` is
+    # the collection reader, so the census has rows. And the memberships an apply
+    # collects ARE written: ``apply_cli.handle`` calls ``write_tree_membership``
+    # in that function's own session, opened before ``apply_outstanding`` rather
+    # than inside it, so the composition the rider described never arises.
+    #
+    # WHAT IS STILL TRUE IS NARROWER AND IS R-235. The write refuses on any
+    # library whose taxonomy tree has not been cut over to the database, and no
+    # shipped verb can perform a cutover. This file is not where that lives: the
+    # PENDING register is a countdown against a unit that will land a module, and
+    # nothing here is waiting for a module.
 }
 
 

@@ -1,0 +1,336 @@
+name = "u55-collection-reader"
+pass_kind = "full"
+
+# ── The reader ────────────────────────────────────────────────────────────────
+
+[[rows]]
+id = "R1_read_only_open"
+description = "The reader asks for a WRITE intent open. The single most important row in this table."
+file = "src/cratekit/adopt/collection.py"
+surface = "user"
+old = '''        require_closed=False,'''
+new = '''        require_closed=True,'''
+
+[[rows]]
+id = "R2_reader_unlock_probe"
+description = "The reader assumes the file is never encrypted rather than asking the bytes"
+file = "src/cratekit/adopt/collection.py"
+surface = "user"
+old = '''        unlock=rb_writer.unlock_needed(target),'''
+new = '''        unlock=False,'''
+
+[[rows]]
+id = "R3_soft_delete_marker"
+description = "R-186's exact defect: default the tombstone marker instead of reading it"
+file = "src/cratekit/adopt/collection.py"
+surface = "user"
+old = '''            deleted=trees.soft_delete_marker(row),'''
+new = '''            deleted=bool(getattr(row, "rb_local_deleted", False)),'''
+
+[[rows]]
+id = "R4_genre_proxy"
+description = "Read the raw GenreID rather than the binding's own display proxy"
+file = "src/cratekit/adopt/collection.py"
+surface = "user"
+old = '''    return str(getattr(row, "GenreName", "") or "")'''
+new = '''    return str(getattr(row, "GenreID", "") or "")'''
+
+[[rows]]
+id = "R5_cache_key_resolved"
+description = "Key the reader's cache on the raw path rather than the resolved absolute one"
+file = "src/cratekit/adopt/collection.py"
+old = '''    key = str(Path(target).resolve())'''
+new = '''    key = str(target)'''
+
+[[rows]]
+id = "R6_unlock_probe_answer"
+description = "The encryption probe answers a constant, so a real library opens with the key off"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+old = '''        with Path(path).open("rb") as handle:
+            return not handle.read(len(SQLITE_HEADER)).startswith(SQLITE_HEADER)'''
+new = '''        with Path(path).open("rb") as handle:
+            handle.read(len(SQLITE_HEADER))
+            return False'''
+
+# ── The census wiring ─────────────────────────────────────────────────────────
+
+[[rows]]
+id = "R7_census_taxonomy"
+description = "The census resolves its own taxonomy, so one entry can be built from two"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''            collection.read_collection(cfg),
+            declared,
+            root=cfg.library.root,'''
+new = '''            collection.read_collection(cfg),
+            taxonomy.default_taxonomy(),
+            root=cfg.library.root,'''
+
+[[rows]]
+id = "R8_census_prefix_map"
+description = "The census drops the configured volume rewrites, so an older volume name resolves nowhere"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''            prefix_map=collection.prefix_rules(cfg),
+        )
+    )'''
+new = '''            prefix_map=(),
+        )
+    )'''
+
+# ── The zero item rule ────────────────────────────────────────────────────────
+
+[[rows]]
+id = "R9_scan_zero_item_refusal"
+description = "The scan queues a job over an empty library, which drives to SUCCEEDED having read nothing"
+file = "src/cratekit/adopt/scan_cli.py"
+surface = "user"
+old = '''    if not live:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R10_apply_zero_item_refusal"
+description = "The apply queues a job with one item over a plan that can place nothing"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''    if not applicable:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R11_scan_item_ids"
+description = "The scan enqueues with no items at all, which is the R-203 shape"
+file = "src/cratekit/adopt/scan_cli.py"
+surface = "user"
+old = '''            item_ids=live,'''
+new = '''            item_ids=(),'''
+
+[[rows]]
+id = "R12_apply_item_ids"
+description = "The apply enqueues with no items at all"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''            item_ids=(plan.digest(),),'''
+new = '''            item_ids=(),'''
+
+[[rows]]
+id = "R13_scan_job_id_string"
+description = "R-234's shape on the scan's no-op payload: a null job_id fails the declared schema"
+file = "src/cratekit/adopt/scan_cli.py"
+surface = "user"
+old = '''    payload = {"job_id": "", "state": "no-op", "cause": None, "progress": {}}'''
+new = '''    payload = {"job_id": None, "state": "no-op", "cause": None, "progress": {}}'''
+
+[[rows]]
+id = "R14_apply_job_id_string"
+description = "R-234 itself, reverted: the declined payload emits a null job_id again"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''    return {"job_id": "", "state": state, "cause": None, "progress": {}}'''
+new = '''    return {"job_id": None, "state": state, "cause": None, "progress": {}}'''
+
+# ── The resume branches ───────────────────────────────────────────────────────
+
+[[rows]]
+id = "R15_scan_no_items_refusal"
+description = "A job queued by an older build drives to SUCCEEDED over a census it never took"
+file = "src/cratekit/adopt/scan_cli.py"
+surface = "user"
+old = '''            if not jobs.items(store, job.job_id):
+                raise refuse(
+                    "internal-error",
+                    f"job {job.job_id} has no items to run, so driving it would "
+                    f"report a census over a library it never read. It was queued "
+                    f"by a build that did not record what its items were",
+                    remedy=Remedy.REPORT_DEFECT,
+                    origin=("adopt", "scan_cli"),
+                    detail={"job_id": job.job_id},
+                )
+'''
+new = ""
+
+[[rows]]
+id = "R16_apply_no_items_refusal"
+description = "The same, on the apply's resume branch"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''            if not jobs.items(store, job.job_id):
+                raise refuse(
+                    "internal-error",
+                    f"job {job.job_id} has no items to run, so driving it would "
+                    f"report an adoption over a library it never touched. It was "
+                    f"queued by a build that did not record what its items were",
+                    remedy=Remedy.REPORT_DEFECT,
+                    origin=("adopt", "apply_cli"),
+                    detail={"job_id": job.job_id},
+                )
+'''
+new = ""
+
+[[rows]]
+id = "R17_scan_r225_predicate"
+description = "R-225 narrowed: a run stopped by a signal is CANCELLED and would report OK"
+file = "src/cratekit/adopt/scan_cli.py"
+surface = "user"
+old = '''        if not job.is_open() and job.cause is not None:
+            raise CratekitError(job.cause)
+        reported = _reported(store, job)'''
+new = '''        if job.state is jobs.JobState.FAILED:
+            raise CratekitError(job.cause)
+        reported = _reported(store, job)'''
+
+[[rows]]
+id = "R18_apply_r225_predicate"
+description = "The same predicate on the apply's resume branch"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''        if not job.is_open() and job.cause is not None:
+            raise CratekitError(job.cause)
+        reported = _reported(store, job)'''
+new = '''        if job.state is jobs.JobState.FAILED:
+            raise CratekitError(job.cause)
+        reported = _reported(store, job)'''
+
+# ── The membership seam ───────────────────────────────────────────────────────
+
+[[rows]]
+id = "R19_collector_groups_locations"
+description = "The collector groups content identifiers again, which is the seam defect U55 found"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''            into.setdefault((folder, sub), []).append(entry.path)'''
+new = '''            into.setdefault((folder, sub), []).append(entry.content_id)'''
+
+[[rows]]
+id = "R20_membership_locations_key"
+description = "The written mapping groups content identifiers, so the write matches nothing"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''        grouped.setdefault((folder, sub), []).append(entry.path)'''
+new = '''        grouped.setdefault((folder, sub), []).append(entry.content_id)'''
+
+[[rows]]
+id = "R21_membership_from_the_plan"
+description = "The write is derived from THIS RUN rather than from the plan, so a crash is permanent"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''            plan=membership_locations(plan.applicable(), declared),'''
+new = '''            plan=dict(gathered),'''
+
+[[rows]]
+id = "R22_membership_before_the_mark"
+description = "Apply first, write memberships second: the ordering the drive reversed"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''    membership = _write_memberships(cfg, plan, declared)
+
+    actor = str((job.payload or {}).get(ACTOR_KEY) or "")
+    report, gathered = apply_outstanding(cfg, plan, declared, actor=actor)'''
+new = '''    actor = str((job.payload or {}).get(ACTOR_KEY) or "")
+    report, gathered = apply_outstanding(cfg, plan, declared, actor=actor)
+
+    membership = _write_memberships(cfg, plan, declared)'''
+
+# ── The worker's own refusals ─────────────────────────────────────────────────
+
+[[rows]]
+id = "R23_worker_raises_on_failure"
+description = "A failed apply returns rather than raising, so the job reaches SUCCEEDED over nothing"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''    if report.failed:
+        _commit(produced)
+        raise refuse('''
+new = '''    if False:
+        _commit(produced)
+        raise refuse('''
+
+[[rows]]
+id = "R24_worker_digest_check"
+description = "The worker applies a plan nobody approved, because the frozen digest is not compared"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''    if plan.digest() != frozen_digest:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R25_scan_item_absent_refusal"
+description = "A row removed between queueing and driving crashes the worker instead of failing its item"
+file = "src/cratekit/adopt/scan_cli.py"
+surface = "user"
+old = '''    row = rows.get(item.item_id)
+    if row is None:'''
+new = '''    row = rows.get(item.item_id)
+    if False:'''
+
+[[rows]]
+id = "R26_apply_write_intent_open"
+description = "The apply's own handle drops its write intent, so rekordbox may be running under it"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''        require_closed=True,'''
+new = '''        require_closed=False,'''
+
+[[rows]]
+id = "R27_apply_no_tag_value"
+description = "A tag_value supplier is installed, so the apply writes a genre onto the person's files"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''    report, gathered = apply_outstanding(cfg, plan, declared, actor=actor)'''
+new = '''    report, gathered = apply_outstanding(
+        cfg, plan, declared, actor=actor, tag_value=lambda entry, _d: entry.bucket or None
+    )'''
+
+# ── The frozen configuration ──────────────────────────────────────────────────
+
+[[rows]]
+id = "R28_scan_frozen_config"
+description = "KTD9: the scan worker loads a fresh configuration rather than using the frozen one"
+file = "src/cratekit/adopt/scan_cli.py"
+surface = "user"
+old = '''    rows = {row.content_id: row for row in collection.read_collection(cfg)}'''
+new = '''    cfg = config.load()
+    rows = {row.content_id: row for row in collection.read_collection(cfg)}'''
+
+[[rows]]
+id = "R29_apply_frozen_config"
+description = "The same, on the apply worker"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''    del item
+    declared = taxonomy.default_taxonomy()
+    plan = current_plan(cfg, declared)'''
+new = '''    del item
+    cfg = config.load()
+    declared = taxonomy.default_taxonomy()
+    plan = current_plan(cfg, declared)'''
+
+# ── The handler table ─────────────────────────────────────────────────────────
+
+[[rows]]
+id = "R30_scan_handler_bound"
+description = "adopt.scan loses its worker, which is the state R-203 records"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+old = '''    "adopt.scan": "cratekit.adopt.scan_cli:handle",'''
+new = ""
+
+[[dropped]]
+id = "R31_check_app_version"
+description = "Flip check_app_version on the reader's open"
+reason = "inert by construction: open_db consults it only inside its require_closed branch, so on a read it can kill nothing. Recorded in KTD1 rather than measured."
+
+[[dropped]]
+id = "R32_apply_handler_bound"
+description = "adopt.apply loses its worker, the sibling of R30"
+reason = "ranked below R30 as the same guard in the same table with the same derivation; test_handlers derives the population from the registry, so one of the pair measures the mechanism"
+
+[[dropped]]
+id = "R33_artifact_ordinal"
+description = "Build the artifact filename from the item identifier rather than the ordinal"
+reason = "the same guard modules/outbound/artifacts already carries and U51 already measured; this unit's copy adds no new decision"
+
+[[dropped]]
+id = "R34_analysis_roots"
+description = "Empty the analysis_roots the apply's membership write names"
+reason = "write_tree_membership raises ValueError on an empty one by construction, so the row measures that function's own guard rather than this unit's caller"

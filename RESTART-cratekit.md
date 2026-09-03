@@ -1,5 +1,34 @@
 # Restart: Cratekit
 
+**Last session 2026-09-02, U55 on `relay/73`.** The collection reader landed, so
+`adopt.scan` and `adopt.apply` both read the person's own library, derive real
+items, and resolve to workers. **R-148 is CLOSED**, in the shape its condition
+named: the memberships an apply collects are written, in a session opened after
+the apply loop's has closed. **Main's highest residual is now R-244**, and every
+number below R-235 in this file's older text predates that.
+
+**Two things the drive found that reading did not.** The first draft applied and
+then wrote memberships, and against a library whose tree had not been cut over the
+ledger came back holding every entry while the database held no membership row at
+all, so the next run found nothing outstanding and the gap was permanent. The
+recoverable write goes first now. The second is R-148's hazard wearing a new
+shape: `write_tree_membership` SURFACES a row it cannot place rather than raising,
+and the caller marked it applied anyway.
+
+**THE APPLY'S WRITE PATH IS REACHABLE ONLY FROM TESTS, which is R-235.** Nothing
+in `src` calls `tree_registry.record_cutover`, and `write_tree_membership` refuses
+a tree that is not database native with a root the library has. So on any real
+library `crate adopt apply` refuses per entry, marks nothing, and stays resumable
+for the day a cutover verb exists. `crate adopt scan` has no such wall and runs
+end to end.
+
+**Thirteen queued verbs still have no worker**, which is R-203 minus the five now
+bound. The board has eight Ready and one of them is U29, which is still attended
+and still not an agent's to take.
+
+
+## Before U55
+
 **Last session 2026-09-01.** U46 landed on `relay/64`, taken from the board as
 issue #64 rather than from the unit sequence: it is a residual somebody decided to
 act on, which is what moves a residual onto the board. **The pending register is
@@ -15,7 +44,7 @@ now say which. R-204 records why the acquisition binding, and the first caller
 obligation that travels with it, was not this unit's. R-205 through R-209 are the
 resume path no test sees in one piece, the staging directory a successful master
 leaves behind, and three findings the review reasoned out but did not drive.
-**Main's highest residual is now R-209.**
+Main's highest residual was R-209 at that point, and is R-244 now.
 
 **The population to reason about is the REGISTRY, not the resume branches.** An
 `ast` walk finds seventeen `if ctx.args.job` branches in fifteen modules, and that
@@ -41,6 +70,8 @@ section says so and the reason does not expire. **`board.py next` will say "Take
 #29" and you must not.**
 
 **There is no takeable unit left on this board.** Every other issue is closed.
+That sentence was true on 2026-09-01 and is not now: U51 through U58 were created
+after it and seven of them are open.
 If you are starting a session and want work, it is either U29 with Phillip
 driving, one of the residuals somebody decides to act on, or the parked
 conformance branch once Phillip unparks it.

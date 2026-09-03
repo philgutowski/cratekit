@@ -33,16 +33,18 @@ import pytest
 
 from cratekit import cli
 from cratekit.adopt import apply as adopt_apply
-from cratekit.adopt import apply_cli
+from cratekit.adopt import apply_cli, collection
 from cratekit.adopt import plan as adopt_plan
 from cratekit.adopt import scan as adopt_scan
 from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry
-from cratekit.core import config, jobs, rb_writer, session, tags, taxonomy
+from cratekit.core import config, jobs, preflight, rb_writer, session, tags, taxonomy
 from cratekit.core.cause import CratekitError, Outcome
 from cratekit.core.exit_codes import ExitCode
+from tests import adopt_fixtures
 from tests.test_adoption import TREE_ID, _bucket_and_genre, _plan_of, _readable, _row
 from tests.test_config import valid_data
+from tests.test_rb_writer_db import RECORDED_APP_VERSION
 from tests.test_tags import _synth
 
 #: A volume identity that is not the configured one. Any string that differs
@@ -59,13 +61,66 @@ def library(tmp_path, monkeypatch):
     return root
 
 
+@pytest.fixture(autouse=True)
+def _reader_cache():
+    """No test may inherit another test's library.
+
+    The collection reader memoizes per process, keyed on the resolved database
+    path, and every test here builds a library at the same configured path inside
+    its own temporary directory. Without this, the second test in a session would
+    census the first test's rows.
+    """
+    collection.reset_cache()
+    yield
+    collection.reset_cache()
+
+
+@pytest.fixture(autouse=True)
+def _platform_seams(monkeypatch):
+    """What this machine cannot speak for on behalf of a temporary library.
+
+    The cloud-sync marker is read by the canary on every open, including a read
+    only one, and this machine's answer says nothing about a database built in a
+    temporary directory. Patched at the seam the guard resolves; that the canary
+    refuses a tripped marker is proved directly in ``tests/test_rb_writer_db.py``.
+    """
+    from pyrekordbox.db6 import database as binding
+
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
+    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
+    monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(
+        rb_writer,
+        "read_rekordbox_settings",
+        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
+    )
+
+
 @pytest.fixture
 def cfg(library, monkeypatch):
     resolved = config.from_dict(valid_data(library))
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: resolved)
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
-    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     return resolved
+
+
+#: The library every census test here reads. One readable routable track, one row
+#: whose file is not on disk, and one tombstone, so a census over it exercises
+#: three of the derivation's outcomes rather than only the happy one.
+def _tracks(declared_taxonomy) -> tuple[adopt_fixtures.Track, ...]:
+    _bucket, genre = _bucket_and_genre(declared_taxonomy)
+    return (
+        adopt_fixtures.Track("r-ok", "present.flac", genre),
+        adopt_fixtures.Track("r-missing", "absent.flac", genre, on_disk=False),
+        adopt_fixtures.Track("r-gone", "removed.flac", genre, deleted=True),
+    )
+
+
+@pytest.fixture
+def seeded(cfg, declared):
+    """Configuration pointing at a disposable database holding those three rows."""
+    adopt_fixtures.build(cfg, _tracks(declared))
+    collection.reset_cache()
+    return cfg
 
 
 @pytest.fixture
@@ -326,12 +381,22 @@ def test_the_memberships_are_collected_and_match_what_the_loop_reached(
 ):
     """What comes back is the mapping the tree writer takes, for the entries PLACED.
 
-    Compared against ``membership_plan`` over the applied entries rather than over
-    the whole plan. The two are equal here and are not the same claim: a second
-    derivation from the plan would put back an entry the loop failed, which is the
-    difference between reporting what was done and reporting what was intended.
+    Compared against ``membership_locations`` over the applied entries rather than
+    over the whole plan. The two are equal here and are not the same claim: a
+    second derivation from the plan would put back an entry the loop failed, which
+    is the difference between reporting what was done and reporting what was
+    intended.
+
+    THE VALUES ARE LOCATIONS AND NOT CONTENT IDENTIFIERS, which is U55's
+    correction. ``write_tree_membership`` decodes every value of its ``plan`` as a
+    recorded location and looks it up in an index keyed on resolved paths, so a
+    content identifier resolves to nothing, every entry comes back UNRESOLVED, and
+    the write reports a session that added no rows as a session that ran.
+    ``membership_plan`` still groups identifiers and is another unit's function;
+    that divergence is the residual, and this assertion is what keeps this side
+    right.
     """
-    plan, _path = _one_track_plan(acknowledged, declared)
+    plan, path = _one_track_plan(acknowledged, declared)
     report, memberships = apply_cli.apply_outstanding(
         acknowledged,
         plan,
@@ -343,8 +408,16 @@ def test_the_memberships_are_collected_and_match_what_the_loop_reached(
     )
 
     landed = [entry for entry in plan.applicable() if entry.entry_id in set(report.applied)]
-    assert dict(memberships) == adopt_apply.membership_plan(landed, declared)
+    assert dict(memberships) == apply_cli.membership_locations(landed, declared)
     assert memberships, "the loop placed an entry and reported no membership for it"
+    placed = [value for values in memberships.values() for value in values]
+    assert placed and all(str(path) == value for value in placed), (
+        "the collector grouped something that is not a location, so handing it to "
+        "write_tree_membership would match nothing and report a clean session"
+    )
+    assert not set(placed) & {entry.content_id for entry in plan.applicable()}, (
+        "the collector is back to grouping content identifiers, which is the defect"
+    )
 
 
 def test_the_place_handed_down_writes_nothing_to_the_database(acknowledged, declared):
@@ -477,36 +550,79 @@ def test_the_resume_names_the_job_and_carries_the_run_that_holds_the_approval():
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_the_census_is_empty_because_no_unit_lands_a_collection_reader(cfg, declared):
-    """The absent input, driven, so it is a measured fact and not a claim in prose.
+def test_the_census_is_the_library_and_every_row_of_it_is_carried(seeded, declared):
+    """The reader landed, so the census is the person's own collection.
 
-    ``adopt.scan`` shipped in this same position and said so in the same words.
-    This guard is what makes the day a collection reader lands VISIBLE: it fails,
-    and whoever landed the reader is told that the plan this verb builds is no
-    longer empty and that the session below it is now doing real work.
+    THIS REPLACES A GUARD THAT PINNED THE EMPTINESS, and replacing it rather than
+    deleting it is the point. That guard was safe only because its subject was
+    unimplemented, and the obvious restatement of such a guard measures nothing;
+    ``docs/solutions/workflow-issues`` records the shape under the title about a
+    guard expiring the day somebody implements its subject. What is asserted now
+    is the derivation: every live row comes back classified, the tombstone is
+    skipped, and the one row whose file is on disk with a routable genre is the
+    only one the plan can act on.
     """
-    assert apply_cli.census(cfg) == ()
-    plan = apply_cli.current_plan(cfg, declared)
-    assert plan.entries == ()
-    assert plan.applicable() == ()
+    scanned = apply_cli.census(seeded, declared)
+    by_id = {track.content_id: track for track in scanned}
+
+    assert set(by_id) == {"r-ok", "r-missing", *adopt_fixtures.BASELINE_CONTENT_IDS}, (
+        "the census dropped a row, or invented one; a tombstone must be skipped "
+        "and every other row must be carried"
+    )
+    assert by_id["r-ok"].readability is adopt_scan.Readability.READABLE
+    assert by_id["r-ok"].disposition is adopt_scan.Disposition.ROUTE
+    assert by_id["r-missing"].readability is adopt_scan.Readability.MISSING
+    assert by_id["r-missing"].disposition is adopt_scan.Disposition.EXCLUDED
+
+    plan = apply_cli.current_plan(seeded, declared)
+    assert plan.content_ids() == set(by_id)
+    assert [entry.content_id for entry in plan.applicable()] == ["r-ok"]
     assert plan.tree == declared.tree.id
 
 
-def test_an_empty_plan_still_has_a_digest_to_approve_against(cfg, declared):
-    """The gate fires on an empty plan, so the digest has to exist and be stable.
+def test_a_library_of_tombstones_and_an_empty_one_both_census_to_nothing(cfg, declared):
+    """Stated as the LIMIT of what the census can say, rather than left implicit.
 
-    Two builds of the same empty plan give one digest, which is what makes a
-    recorded approval survive the resume that re-derives the plan. A digest that
-    moved between two identical runs would make every approval stale on the first
-    resume.
+    ``scan_rows`` skips a deleted row, so a library whose every row is a removal
+    produces the same census as a library with no rows at all. The two are
+    genuinely different facts and only the COLLECTION can tell them apart, which
+    is why ``adopt.scan`` derives its items from the collection and reports the
+    two zeroes with different warnings.
     """
-    first = apply_cli.current_plan(cfg, declared).digest()
-    second = apply_cli.current_plan(cfg, declared).digest()
+    adopt_fixtures.build(
+        cfg, (adopt_fixtures.Track("r-gone", "gone.flac", "Techno", deleted=True),)
+    )
+    collection.reset_cache()
+    tombstoned = apply_cli.census(cfg, declared)
+    live_rows = [row for row in collection.read_collection(cfg) if not row.deleted]
+
+    adopt_fixtures.build(cfg, ())
+    collection.reset_cache()
+    empty = apply_cli.census(cfg, declared)
+
+    assert adopt_scan.categories(tombstoned) == adopt_scan.categories(empty)
+    assert len(tombstoned) == len(empty) == len(adopt_fixtures.BASELINE_CONTENT_IDS)
+    assert len(live_rows) == len(adopt_fixtures.BASELINE_CONTENT_IDS), (
+        "the collection is what tells the two zeroes apart, and it must be able to"
+    )
+
+
+def test_two_builds_of_one_unchanged_library_give_one_digest(seeded, declared):
+    """What makes a recorded approval survive the resume that re-derives the plan.
+
+    A digest that moved between two identical runs would make every approval stale
+    on the first resume, which is the property the frozen ``digest`` payload key
+    and the worker's own comparison both rest on. Driven across a cleared reader
+    cache so the second build genuinely re-reads.
+    """
+    first = apply_cli.current_plan(seeded, declared).digest()
+    collection.reset_cache()
+    second = apply_cli.current_plan(seeded, declared).digest()
     assert first == second
     assert first
 
 
-def test_the_tree_comes_off_the_declared_taxonomy_rather_than_a_flag(cfg):
+def test_the_tree_comes_off_the_declared_taxonomy_rather_than_a_flag(seeded):
     """R19. A taxonomy declares exactly one routing tree, by stable identifier.
 
     Driven against a MODIFIED taxonomy rather than against the shipped one, so the
@@ -515,7 +631,38 @@ def test_the_tree_comes_off_the_declared_taxonomy_rather_than_a_flag(cfg):
     """
     declared = taxonomy.default_taxonomy()
     moved = replace(declared, tree=replace(declared.tree, id=TREE_ID))
-    assert apply_cli.current_plan(cfg, moved).tree == TREE_ID
+    assert apply_cli.current_plan(seeded, moved).tree == TREE_ID
+
+
+def test_the_census_classifies_against_the_taxonomy_its_caller_resolved(seeded):
+    """``declared`` is a PARAMETER, and this is the assertion that makes it one.
+
+    ``census`` resolved its own taxonomy until U55 while ``current_plan`` resolved
+    ``sub`` from the one IT was handed, so one plan entry could be built from two
+    taxonomies at once. The guard above could not see it: it drives a modified
+    taxonomy and reads back only the TREE identifier, which
+    ``build_adoption_plan`` takes as its own argument. Driven here by handing the
+    census a taxonomy that declares the fixture's genre too coarse to be a source.
+    If the census asked ``default_taxonomy`` for itself, the row would still route.
+    """
+    declared = taxonomy.default_taxonomy()
+    routed = apply_cli.census(seeded, declared)
+    assert any(track.disposition is adopt_scan.Disposition.ROUTE for track in routed)
+
+    _bucket, genre = _bucket_and_genre(declared)
+    narrowed = replace(
+        declared,
+        fallback=replace(
+            declared.fallback,
+            too_coarse_as_source=(*declared.fallback.too_coarse_as_source, genre),
+        ),
+    )
+    collection.reset_cache()
+    starved = apply_cli.census(seeded, narrowed)
+    assert not any(track.disposition is adopt_scan.Disposition.ROUTE for track in starved), (
+        "the census routed against a taxonomy its caller did not pass, so an "
+        "entry can be built from two taxonomies at once"
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -533,11 +680,32 @@ def installed(library, monkeypatch):
     genuinely exist. Both fixtures are kept: patching is right for the loop, and
     saving is the only thing that proves the verb reaches its own handler.
     """
-    resolved = config.from_dict(valid_data(library))
+    resolved = config.from_dict(
+        valid_data(
+            library,
+            rekordbox={
+                "pinned_app_version": RECORDED_APP_VERSION,
+                "validated_on": "2026-08-01",
+            },
+        )
+    )
     config.save(resolved)
     config.reset_cache()
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
-    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
+    # A LIBRARY WITH SOMETHING APPLICABLE IN IT, because the verb now refuses to
+    # queue a job over a plan with nothing to place. A fixture with an empty
+    # database would drive every test below down the no-op path.
+    adopt_fixtures.build(resolved, _tracks(taxonomy.default_taxonomy()))
+    collection.reset_cache()
+    # THE MACHINE IS SET UP RATHER THAN HALF SET UP, because the resume branch now
+    # drives real work and that work opens a destructive session. A fixture that
+    # left the volume identity unanswered would make every resume test below fail
+    # on the gate instead of on the thing it is asking about.
+    monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
+    monkeypatch.setattr(
+        preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id)
+    )
+    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
+    session.record_acknowledgment(resolved, terminal=lambda: True)
     return resolved
 
 
@@ -613,7 +781,10 @@ def test_a_declined_run_queues_nothing_at_all(installed):
     code, envelope = _drive(["--run", run_id, "adopt", "apply"])
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == str(Outcome.NO_OP)
-    assert envelope["data"]["job_id"] is None
+    assert envelope["data"]["job_id"] == "", (
+        "R-234: cli.output requires job_id to be a string, so a null here failed "
+        "the declared job_state/1 schema this verb emits"
+    )
     assert _queued(installed) == [], "a declined adoption was queued anyway"
 
 
@@ -654,7 +825,7 @@ def test_an_approval_recorded_against_a_plan_that_has_since_moved_is_refused(
             probe=_readable,
         )
     )
-    monkeypatch.setattr(apply_cli, "census", lambda _cfg: scanned)
+    monkeypatch.setattr(apply_cli, "census", lambda _cfg, _declared: scanned)
     assert apply_cli.current_plan(installed, taxonomy.default_taxonomy()).digest() != (
         plan_before.digest()
     ), "the fixture did not actually move the plan, so the assertion below is empty"
@@ -693,12 +864,25 @@ def test_the_resume_the_job_driver_spawns_can_actually_proceed(installed):
     assert "--job" in argv and job.job_id in argv
 
     code, resumed = _drive(argv)
-    assert code == int(ExitCode.OK), (
-        f"the resume the driver spawns refuses: {resumed.get('cause')}. A job "
-        f"whose own resume cannot answer its gate is a job nothing can advance"
+    assert code != int(ExitCode.DECISION_REQUIRED), (
+        f"the resume the driver spawns refuses its own gate: {resumed.get('cause')}. "
+        f"A job whose own resume cannot answer its gate is a job nothing can advance"
     )
-    assert resumed["data"]["job_id"] == job.job_id
     assert len(_queued(installed)) == 1, "the resume queued a second record"
+
+    # WHAT IT REACHES, now that the resume drives instead of reporting. The
+    # membership write refuses because this library's taxonomy tree has never
+    # been cut over to the database, which is the state every real library is in
+    # and which no shipped verb can change. That refusal arriving here is the
+    # proof the resume got PAST the gate: a run that had not would carry
+    # ``decision-required`` instead, and nothing about the tree would be reached.
+    assert resumed["cause"]["reason"] == "no-evidence", resumed
+    assert resumed["cause"]["inner"]["reason"] == "tree-unconverged", resumed
+    with jobs.open_store() as store:
+        assert jobs.get(store, job.job_id).state is jobs.JobState.FAILED
+    assert adopt_apply.read(installed).entry_ids() == frozenset(), (
+        "the applied ledger marked entries over an adoption that placed nothing"
+    )
 
 
 def test_a_resume_reconciles_a_claim_a_dead_driver_left_behind(installed):
@@ -724,8 +908,14 @@ def test_a_resume_reconciles_a_claim_a_dead_driver_left_behind(installed):
         assert jobs.get(store, job_id).state is jobs.JobState.RUNNING
 
     code, resumed = _drive(["--run", run_id, "adopt", "apply", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
-    assert resumed["data"]["state"] == str(jobs.JobState.QUEUED), (
-        "the resume reported the stale row rather than re-deriving the state "
-        "from disk truth, so a job whose driver died reads as still running"
-    )
+    assert code != int(ExitCode.OK)
+    assert resumed["cause"]["reason"] == "no-evidence", resumed
+
+    # THE STALE ROW DID NOT SURVIVE. A resume that reported ``jobs.get`` would
+    # have carried RUNNING out to the person; the job reaches a terminal state
+    # instead, which is only possible because the row was re-derived first and
+    # the item was then claimed and attempted.
+    with jobs.open_store() as store:
+        reconciled = jobs.get(store, job_id)
+        assert reconciled.state is jobs.JobState.FAILED
+        assert [item.state for item in jobs.items(store, job_id)] == [jobs.ItemState.FAILED]
