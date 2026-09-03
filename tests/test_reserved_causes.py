@@ -4939,27 +4939,29 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # describes a refusal: an empty library is a fact about the library, not a
     # reason something did not happen.
     #
-    # Re-pinned on U56, 2026-09-03: 347 to 356 distinct, 204 to 211 non-keys.
-    # NINE literals joined and NOTHING left, differenced as SETS against `main`'s
+    # Re-pinned on U56, 2026-09-03: 347 to 358 distinct, 204 to 213 non-keys.
+    # ELEVEN literals joined and NOTHING left, differenced as SETS against `main`'s
     # own `src` tree in a scratch worktree rather than inferred from the total
     # moving by nine. TWO are keys, `catalogue-unreachable` and
     # `catalogue-parse-broken`, and both are named at the population assertion
-    # above. The other SEVEN are not causes and each is worth naming, for the
+    # above. The other NINE are not causes and each is worth naming, for the
     # reason the U55 entry gives: a non-cause wearing a cause slug is the shape the
     # `lossy-refused` incident above was.
     # `tag-artifacts` and `tag-staging` are DIRECTORY names under the queue root,
     # the same kind of literal as `adopt-artifacts` and `outbound-staging`;
-    # `tag-folder-absent`, `tag-folder-no-audio` and `tag-folder-unnamed` are
-    # WARNING codes on an envelope that reports a correct no-op, the same kind of
-    # literal as `collection-empty`; `unmapped-genre` is a SKIP REASON on one
-    # file's tagging result, sitting beside `has-genre` and `no-hit`, which the
-    # tree has carried since the tagging engine landed; and `parse-break` is the
-    # name of one member of the searcher's per source outcome enum. None of the
-    # seven collides with a declared cause, and none describes a refusal: a folder
-    # holding no audio is a fact about the folder rather than a reason something
-    # did not happen, which is precisely why those three are warnings on a NO_OP
-    # and not refusals.
-    assert (len(literals), len(literals - set(causes))) == (356, 211), (
+    # `tag-folder-absent`, `tag-folder-no-audio`, `tag-folder-unnamed`,
+    # `tag-retag-folder-absent` and `tag-retag-nothing-coarse` are WARNING codes on
+    # an envelope that reports a correct no-op, the same kind of literal as
+    # `collection-empty`; `unmapped-genre` is a SKIP REASON on one file's tagging
+    # result, sitting beside `has-genre` and `no-hit`, which the tree has carried
+    # since the tagging engine landed; and `parse-break` is the name of one member
+    # of the searcher's per source outcome enum. None of the nine collides with a
+    # declared cause, and none describes a refusal: a folder holding no audio is a
+    # fact about the folder rather than a reason something did not happen, which is
+    # precisely why those five are warnings on a NO_OP and not refusals. The one
+    # place this verb family DOES refuse over an argument, an unnamed folder, has a
+    # declared slug already, `tag-retag-folder-unknown`, and it is not new.
+    assert (len(literals), len(literals - set(causes))) == (358, 213), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

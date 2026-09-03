@@ -36,13 +36,13 @@ from pathlib import Path
 import pytest
 
 from cratekit.cli import handlers, output, registry
-from cratekit.core import config, jobs, tags
+from cratekit.core import config, jobs, review, tags
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.tagging import artifacts, searchers, shell, tag
+from cratekit.tagging import artifacts, retag, searchers, shell, tag
 from cratekit.tagging.tag import SearchHit
 from tests._containers import synth_container
-from tests.cli_drive import drive
+from tests.cli_drive import approve_and_queue, drive
 from tests.test_config import valid_data
 from tests.test_handlers import _drive_calls
 
@@ -51,8 +51,10 @@ from tests.test_handlers import _drive_calls
 # opinion about what a fake searcher remembers being asked. A second copy of
 # either is a second opinion, and the copy that drifts is whichever one the next
 # change does not touch. ``SPECIFIC`` is read off the same module so the genre
-# this suite writes is the one the engine suite already proved writable.
-from tests.test_tagging_engine import SPECIFIC, answering, place
+# this suite writes is the one the engine suite already proved writable, and
+# ``CATCH_ALL`` so the value ``tag.retag`` selects on is the taxonomy's own
+# rather than a string typed here that a template edit would leave behind.
+from tests.test_tagging_engine import CATCH_ALL, SPECIFIC, TAXONOMY, answering, place
 
 SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
 SHELL_SOURCE = SRC_ROOT / "cratekit" / "tagging" / "shell.py"
@@ -988,3 +990,617 @@ def test_the_resume_argv_round_trips_the_frozen_folder_and_asks_for_no_run(
     assert argv == ["tag", "folder", job.payload["folder"], "--job", job.job_id]
     assert Path(job.payload["folder"]) == folder
     assert "--run" not in argv, argv
+
+
+# ---------------------------------------------------------------------------
+# U5: ``crate tag retag`` from the confirmation to the corrected file
+# ---------------------------------------------------------------------------
+#
+# EVERY CASE BELOW GOES THROUGH THE VERB, for the reason the U4 section gives:
+# the binding is half of what this unit lands, and a case that called
+# :func:`cratekit.tagging.retag_cli.handle` directly would pass against a handler
+# key still sitting in ``HANDLERS_NOT_YET_BOUND``.
+#
+# AND EVERY ONE OF THEM ANSWERS THE GATE THROUGH ``approve_and_queue``, which is
+# R34's two acts rather than one. A helper that answered the confirmation inline
+# would be asserting that a destructive sweep can be approved by the very
+# invocation that discovered it needed approving, which is what the contract
+# forbids.
+
+#: The confirmation this verb raises over its plan. Spelled once here so the
+#: cases below cannot disagree with each other about which gate they answered.
+RETAG_GATE = "tag.retag.confirm"
+
+
+@pytest.fixture
+def repair_on(cfg) -> config.Config:
+    """``cfg`` with the module that gates this verb switched on.
+
+    ``tag.retag`` is gated by ``repair`` and the fixture above configures the
+    SLIM profile, under which every module row is off, so the parser does not
+    offer the verb at all: the first drive of it here failed with ``invalid
+    choice: 'retag'`` rather than with anything about tagging. Turning the module
+    on is what makes the verb reachable, and reaching it through the real
+    dispatcher is the whole point of this section.
+    """
+    built = config.from_dict(
+        valid_data(Path(cfg.library.root), modules={"repair": True})
+    )
+    config.save(built)
+    config.reset_cache()
+    return built
+
+
+def coarse(folder: Path, silence: Path, name: str) -> Path:
+    """One file carrying the catch-all this verb exists to replace.
+
+    The value is the declared taxonomy's own rather than a word typed here, so a
+    template edit moves the fixture with it instead of leaving these cases
+    asserting about a genre nobody calls too coarse any more.
+    """
+    return place(folder, silence, name, CATCH_ALL)
+
+
+def selected(folder: Path) -> list[Path]:
+    """What a fresh walk of the folder would take, as it stands right now."""
+    return [
+        candidate.path for candidate in retag.select(folder, declared=TAXONOMY).candidates
+    ]
+
+
+def test_a_resume_after_a_partial_run_meets_its_gate_rather_than_going_stale(
+    repair_on, folder, silence, monkeypatch
+):
+    """KTD8 and AE4, and the permanent stall this unit would otherwise ship.
+
+    THE DEFECT IS UNREACHABLE UNTIL A WORKER WRITES, which is what makes it this
+    unit's. ``retag_genres`` rebuilt its plan by walking the folder on every
+    invocation, the resume included. A corrected file carries a specific genre,
+    so the next walk does not select it, so the plan digests differently from the
+    one the person's confirmation was recorded against, so ``ctx.gate.require``
+    raises ``DecisionStale``. Every respawn after the first partial run meets it,
+    for ever, over work somebody already approved.
+
+    THE CORRECTION IS WRITTEN HERE RATHER THAN DRIVEN, and that is the honest
+    way round. The only effect a worker has on the folder is
+    ``core.tags.write_genre``, and the mechanism under test is the SELECTION
+    shrinking rather than the route by which it shrank, so this stands in for a
+    run that was killed after its first item and can be measured against the code
+    as it stood before the split.
+    """
+    for name in ("a", "b", "c"):
+        coarse(folder, silence, name)
+    bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "bc"}))
+
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    assert tags.write_genre(folder / "a.flac", SPECIFIC), "the stand-in write failed"
+    assert selected(folder) == [folder / "b.flac", folder / "c.flac"], (
+        "the selection did not shrink, so this case cannot see the stall it is for"
+    )
+
+    code, resumed = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert tags.read_genre_from_file(folder / "b.flac") == SPECIFIC
+    assert tags.read_genre_from_file(folder / "c.flac") == SPECIFIC
+    assert set(item_states(job_id).values()) == {jobs.ItemState.DONE}
+
+
+def queued_jobs() -> tuple:
+    """Every job in the installation's queue, whichever verb queued it."""
+    with jobs.open_store() as store:
+        return jobs.list_jobs(store)
+
+
+def retag_reports(cfg: config.Config, job_id: str) -> dict:
+    """This job's committed reports, keyed by the item they describe."""
+    return {report["item"]: report for report in artifacts.committed(cfg, job_id)}
+
+
+# ---------------------------------------------------------------------------
+# The binding
+# ---------------------------------------------------------------------------
+
+
+def test_the_tag_retag_key_resolves_to_a_worker():
+    """The other half of R-203 this unit closes, asserted against the table.
+
+    ``tests/test_handlers.py`` derives its population from the registry and
+    checks that every queued verb sits in exactly ONE of the two mappings, which
+    a key parked in ``HANDLERS_NOT_YET_BOUND`` satisfies perfectly. Only an
+    assertion naming this key can tell "declared as unbound" from "bound".
+    """
+    key = registry.entry("tag.retag").handler_key
+
+    assert handlers.is_known(key), f"{key} still has no worker"
+    assert handlers.unbound_reason(key) is None
+    assert callable(handlers.resolve(key))
+
+
+# ---------------------------------------------------------------------------
+# The happy path
+# ---------------------------------------------------------------------------
+
+
+def test_three_confirmed_files_go_from_pending_to_done_and_carry_a_specific_genre(
+    repair_on, folder, silence, monkeypatch
+):
+    """The whole seam in one case: confirm, queue, drive, write, and read back.
+
+    THE FILES ARE READ BACK OFF DISK rather than taken from the report. A worker
+    that reported a genre it never wrote would drive every item to done and the
+    counts would still add up, which is the clean-report-over-unwritten-state
+    shape the merge bar names.
+
+    THE ITEMS ARE THE CONFIRMED ROWS. What a person approved is the SELECTION, so
+    the queue holds one item per candidate path and the job covers exactly the
+    files the plan named. A shell that queued its own walk instead would be a
+    second opinion about what was confirmed.
+    """
+    for name in ("a", "b", "c"):
+        coarse(folder, silence, name)
+    searcher = bound(
+        monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "abc"})
+    )
+
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    assert list(item_states(job_id)) == [str(folder / f"{name}.flac") for name in "abc"]
+
+    code, resumed = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert set(item_states(job_id).values()) == {jobs.ItemState.DONE}
+    for name in "abc":
+        assert tags.read_genre_from_file(folder / f"{name}.flac") == SPECIFIC
+    with jobs.open_store() as store:
+        assert jobs.get(store, job_id).state is jobs.JobState.SUCCEEDED
+    assert sorted(name for _artist, name in searcher.asked) == ["a", "b", "c"]
+    assert resumed["data"]["progress"]["retag"]["corrected"] == 3
+
+
+def test_the_report_is_derived_from_what_ran_rather_than_from_what_was_planned(
+    repair_on, folder, silence, monkeypatch
+):
+    """R16 at the surface a person reads, and the reason it is read back off disk.
+
+    Every one of these three files was in the plan the person confirmed, and the
+    three of them did three different things. A summary accumulated in memory
+    would also have to be re-accumulated on every resume, so a sweep continued
+    tomorrow would report only the part of it that ran today.
+
+    ZEROES INCLUDED, on the rule ``adopt.scan.categories`` states: a summary
+    listing only the reasons it happened to see makes "none of those here" and
+    "this build does not count that" the same output.
+    """
+    for name in ("a", "b", "c"):
+        coarse(folder, silence, name)
+    bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    tags.write_genre(folder / "b.flac", SPECIFIC)
+    _code, resumed = drive(resume_argv(job_id))
+
+    summary = resumed["data"]["progress"]["retag"]
+    assert summary["corrected"] == 1
+    assert summary["skipped"][retag.GENRE_SPECIFIC] == 1
+    assert summary["skipped"][retag.NO_ANSWER] == 1
+    assert summary["asked"] == 1
+    assert set(summary["skipped"]) == {
+        retag.NO_GENRE,
+        retag.GENRE_SPECIFIC,
+        retag.NO_ANSWER,
+        retag.ANSWER_TOO_COARSE,
+        retag.DECLINED_IN_REVIEW,
+    }
+    counted = summary["corrected"] + sum(summary["skipped"].values())
+    assert counted == len(artifacts.committed(repair_on, job_id)) == 3
+
+
+# ---------------------------------------------------------------------------
+# The zeroes, which are asked about and then queue nothing
+# ---------------------------------------------------------------------------
+
+
+def test_an_empty_plan_is_still_asked_about_and_still_queues_nothing(
+    repair_on, folder, silence
+):
+    """R12, and the reversal that got this verb back in line with its sibling.
+
+    The first draft of this unit skipped the gate when the plan was empty, on the
+    argument that a person's decision should not be spent on a sweep of nothing.
+    Conformance 3 reported it within minutes: it holds every declared gate to
+    FIRING, and a gate the registry declares and the verb sometimes skips is a
+    decision the product promises and does not always ask. ``adopt/apply_cli`` had
+    already answered the same question the other way, so skipping here would have
+    left two sibling verbs disagreeing about what an empty plan means.
+
+    THE FIRST DRIVE MUST REFUSE, which is what says the gate was reached. The
+    confirmation is ``explicit``, so a gate met with nothing recorded against this
+    run exits DECISION_REQUIRED. Asserting only the eventual no-op would pass
+    against a verb that never asked.
+
+    THE ZERO ITEM RULE IS ENFORCED AFTER IT. ``core.jobs`` drives a job with no
+    items straight to SUCCEEDED, so a confirmed empty job would report a clean
+    correction over a folder nothing touched.
+    """
+    place(folder, silence, "already-specific", SPECIFIC)
+
+    code, refused = drive(["tag", "retag", str(folder)])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["gate"] == "tag.retag.confirm"
+
+    run_id = refused["run_id"]
+    decided, envelope = drive(
+        ["run", "decide", run_id, "tag.retag.confirm", "apply", "--actor", "a-person"]
+    )
+    assert decided == int(ExitCode.OK), envelope
+
+    code, envelope = drive(["--run", run_id, "tag", "retag", str(folder)])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["job_id"] == ""
+    assert [warning["code"] for warning in envelope["warnings"]] == [
+        "tag-retag-nothing-coarse"
+    ]
+    assert queued_jobs() == ()
+
+
+def test_a_folder_that_is_not_there_is_a_different_zero_from_one_with_nothing_coarse(
+    repair_on, tmp_path
+):
+    """Both walk to nothing, and the person's next move differs for each.
+
+    One says every genre under that folder is already specific, the other says
+    the folder they named is not on this machine. Folded into one warning, a
+    mistyped path reads as a library that needs no correcting, which is the
+    answer most likely to stop somebody looking.
+
+    The gate fires here too, for the reason the test above gives, and the digest
+    carries the FOLDER as well as the rows, so approving one empty sweep is not
+    approving another.
+    """
+    absent = str(tmp_path / "no-such-folder")
+
+    code, refused = drive(["tag", "retag", absent])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, envelope = drive(
+        ["run", "decide", run_id, "tag.retag.confirm", "apply", "--actor", "a-person"]
+    )
+    assert decided == int(ExitCode.OK), envelope
+
+    code, envelope = drive(["--run", run_id, "tag", "retag", absent])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert [warning["code"] for warning in envelope["warnings"]] == ["tag-retag-folder-absent"]
+    assert queued_jobs() == ()
+
+
+def test_answering_the_confirmation_with_abort_queues_nothing_and_writes_nothing(
+    repair_on, folder, silence, monkeypatch
+):
+    """The branch a person reaches by reading the plan and saying no.
+
+    THE PAYLOAD IS THE DECLARED ``job_state`` SHAPE. This branch used to emit a
+    folder, a totals mapping and a ``summary`` object, which carries none of the
+    four fields ``cli.output`` requires of that surface and two it forbids, so an
+    envelope a consumer generated from the committed schema would reject. Going
+    through ``shell.no_op`` is what stops this verb's zero paths reintroducing
+    R-234 separately from the sibling verb's. ``tests/cli_drive.drive`` validates
+    the envelope, so this case fails on the shape as well as on the outcome.
+    """
+    coarse(folder, silence, "a")
+    bound(monkeypatch, answering({}))
+
+    code, refused = drive(["tag", "retag", str(folder)])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, _envelope = drive(
+        ["run", "decide", run_id, RETAG_GATE, "abort", "--actor", "a-person"]
+    )
+    assert decided == int(ExitCode.OK)
+
+    code, envelope = drive(["--run", run_id, "tag", "retag", str(folder)])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["job_id"] == ""
+    assert envelope["data"]["state"] == "declined"
+    assert queued_jobs() == ()
+    assert tags.read_genre_from_file(folder / "a.flac") == CATCH_ALL
+
+
+# ---------------------------------------------------------------------------
+# The file moved between the confirmation and the drive
+# ---------------------------------------------------------------------------
+
+
+def test_a_genre_made_specific_between_the_confirm_and_the_drive_is_not_rewritten(
+    repair_on, folder, silence, monkeypatch
+):
+    """Somebody corrected it already, and their curation outranks this sweep.
+
+    The confirmed plan says this file carries a catch-all, and by drive time it
+    does not. Writing anyway would make a queued job the thing that overwrites a
+    person's own answer, which is the whole reason this verb re-reads the genre
+    at drive time rather than trusting the frozen row.
+    """
+    coarse(folder, silence, "a")
+    searcher = bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+
+    by_hand = "Ambient"
+    assert tags.write_genre(folder / "a.flac", by_hand)
+    code, resumed = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert tags.read_genre_from_file(folder / "a.flac") == by_hand
+    assert searcher.asked == [], "the catalogue was asked about a file nobody may write"
+    report = retag_reports(repair_on, job_id)[str(folder / "a.flac")]
+    assert report["reason"] == retag.GENRE_SPECIFIC
+    assert report["written"] is None
+
+
+def test_a_genre_made_blank_between_the_confirm_and_the_drive_is_left_to_its_owner(
+    repair_on, folder, silence, monkeypatch
+):
+    """The one state two verbs could both claim, and neither may.
+
+    An empty genre is ``tag.folder``'s field under fill-if-empty. This verb OWNS
+    the value it writes, so a file with nothing in the field would be corrected
+    here and filled there, and one field under two policies is how a value a
+    person set by hand loses to whichever verb ran last. The taxonomy answers
+    ``is_too_coarse_as_source("")`` with True, so the check has to be for the
+    blank rather than for the predicate.
+    """
+    coarse(folder, silence, "a")
+    searcher = bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+
+    assert tags.write_genre(folder / "a.flac", "")
+    code, resumed = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert tags.read_genre_from_file(folder / "a.flac") in (None, "")
+    assert searcher.asked == []
+    report = retag_reports(repair_on, job_id)[str(folder / "a.flac")]
+    assert report["reason"] == retag.NO_GENRE
+    assert report["written"] is None
+
+
+def test_a_file_gone_at_drive_time_is_refused_with_a_slug_of_its_own(
+    repair_on, folder, silence, monkeypatch
+):
+    """R15. The folder is not frozen, so this is reachable input.
+
+    Refused rather than reported done: an item that reported done having
+    corrected nothing is the clean-report-over-unreadable-state cost
+    ``docs/METHOD.md`` names. It is not an internal error either, because a
+    person deleting one of their own files is not a defect in this program.
+    """
+    for name in ("a", "b"):
+        coarse(folder, silence, name)
+    bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+
+    (folder / "b.flac").unlink()
+    code, resumed = drive(resume_argv(job_id))
+
+    assert code != int(ExitCode.OK), resumed
+    assert item_states(job_id) == {
+        str(folder / "a.flac"): jobs.ItemState.DONE,
+        str(folder / "b.flac"): jobs.ItemState.FAILED,
+    }
+    assert item_causes(job_id) == {str(folder / "b.flac"): "source-missing"}
+
+
+# ---------------------------------------------------------------------------
+# The review queue, reached through the worker rather than through the sweep
+# ---------------------------------------------------------------------------
+
+
+def test_an_answer_that_is_itself_too_coarse_reaches_the_review_queue(
+    repair_on, folder, silence, monkeypatch
+):
+    """The engine's rule, asserted through the WORKER that now runs it.
+
+    ``tests/test_genre_retag.py`` drives this through ``retag_folder``, which is
+    a different caller with a different store: the sweep opens one review queue
+    for a whole folder and the worker opens one per item, against the FROZEN
+    configuration. A catch-all laundered into a file here would never be selected
+    again, because writing counts as progress and re-reading the write does not.
+    """
+    path = coarse(folder, silence, "a")
+    other = TAXONOMY.fallback.too_coarse_as_source[2]
+    bound(monkeypatch, answering({"a": hit("some vendor genre", other)}))
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+
+    code, resumed = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert tags.read_genre_from_file(path) == CATCH_ALL
+    with review.open_store(repair_on) as store:
+        page = review.list_items(store, queue=str(review.Queue.GENRE))
+    assert len(page) == 1
+    assert page.items[0].payload["path"] == str(path)
+    assert page.items[0].payload["proposed"] == other
+    assert page.items[0].handler_key == retag.HANDLER_KEY
+    report = retag_reports(repair_on, job_id)[str(path)]
+    assert report["reason"] == retag.ANSWER_TOO_COARSE
+    assert report["review_item"] == page.items[0].item_id
+
+
+def test_a_recorded_acceptance_is_used_and_the_searcher_is_never_asked(
+    repair_on, folder, silence, monkeypatch
+):
+    """The ordering inside the worker, and the only assertion that can see it.
+
+    Asking the catalogue first and reading the verdict afterwards would spend a
+    request per run on a question a person already answered, and would let a
+    fresh answer overwrite the recorded one. Asserting the written genre alone
+    passes for both implementations; asserting that the searcher was never asked
+    is what separates them.
+    """
+    path = coarse(folder, silence, "a")
+    bound(monkeypatch, answering({}))
+    _first_run, first_job = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    drive(resume_argv(first_job))
+
+    with review.open_store(repair_on) as store:
+        item = review.list_items(store, queue=str(review.Queue.GENRE)).items[0]
+        chosen = next(option for option in item.options if option.summary == SPECIFIC)
+        review.resolve(
+            store,
+            item.item_id,
+            review.Verdict.ACCEPTED,
+            option=chosen.option_id,
+            actor="a-person",
+        )
+
+    second = bound(monkeypatch, answering({"a": hit("deep house", "Techno")}))
+    _second_run, second_job = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    code, resumed = drive(resume_argv(second_job))
+
+    assert code == int(ExitCode.OK), resumed
+    assert second.asked == []
+    assert tags.read_genre_from_file(path) == SPECIFIC
+
+
+# ---------------------------------------------------------------------------
+# The failure part way through, and the resume that follows it
+# ---------------------------------------------------------------------------
+
+
+def test_a_searcher_that_raises_part_way_through_a_retag_fails_only_its_own_item(
+    repair_on, folder, silence, monkeypatch
+):
+    """R19x's first half. A network dropping out mid folder is not a decline.
+
+    The item that could not be answered fails, the two either side of it are done
+    and stay written, and the job carries a cause, so nobody is told the folder
+    was corrected.
+    """
+    for name in ("a", "b", "c"):
+        coarse(folder, silence, name)
+    table = {name: hit("deep house", SPECIFIC) for name in "abc"}
+    bound(monkeypatch, raising_on(answering(table), "b"))
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+
+    code, resumed = drive(resume_argv(job_id))
+
+    assert code != int(ExitCode.OK), resumed
+    assert item_states(job_id) == {
+        str(folder / "a.flac"): jobs.ItemState.DONE,
+        str(folder / "b.flac"): jobs.ItemState.FAILED,
+        str(folder / "c.flac"): jobs.ItemState.DONE,
+    }
+    assert item_causes(job_id) == {str(folder / "b.flac"): searchers.UNREACHABLE_REASON}
+    assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
+    assert tags.read_genre_from_file(folder / "c.flac") == SPECIFIC
+    assert tags.read_genre_from_file(folder / "b.flac") == CATCH_ALL
+
+
+def test_a_retried_retag_drives_only_the_item_that_failed(
+    repair_on, folder, silence, monkeypatch
+):
+    """R19x, and the guarantee the whole per item seam exists for.
+
+    ASSERTED BY COUNTING THE SEARCHER'S CALLS rather than by reading the item
+    states. A resume that re-asked the catalogue about two files it had already
+    corrected would leave exactly the same states behind, and would cost the
+    person two more requests against a rate limited source every single time.
+    """
+    for name in ("a", "b", "c"):
+        coarse(folder, silence, name)
+    table = {name: hit("deep house", SPECIFIC) for name in "abc"}
+    bound(monkeypatch, raising_on(answering(table), "b"))
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    drive(resume_argv(job_id))
+
+    second = bound(monkeypatch, answering(table))
+    with jobs.open_store() as store:
+        jobs.retry(store, job_id)
+    code, resumed = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert second.asked == [("", "b")], (
+        "the resume re-attempted work whose artifact was already durable"
+    )
+    assert set(item_states(job_id).values()) == {jobs.ItemState.DONE}
+    assert tags.read_genre_from_file(folder / "b.flac") == SPECIFIC
+    assert len(artifacts.committed(repair_on, job_id)) == 3
+
+
+def test_an_interrupted_retag_leaves_a_library_row_stale_and_the_artifact_recovers_it(
+    repair_on, folder, silence, monkeypatch
+):
+    """R-185 DRIVEN AND MEASURED, not repaired. The measurement is the point.
+
+    The file half of this verb writes the genre onto the file. The database half
+    is deferred, so ``retag.plan_library`` and ``retag.apply_library`` still have
+    no caller anywhere in ``src`` after this unit, and the library row keeps the
+    catch-all the file no longer carries.
+
+    THE POPULATION CANNOT BE RE-DERIVED LATER FROM THE FOLDER. A corrected file
+    stops being selectable the moment it is written, so a second full run sees
+    nothing to do and the stale row is invisible to the selection for ever. What
+    makes it recoverable at all is the committed artifact, which names the path,
+    the value that was there and the value that was written, which is exactly the
+    input the deferred half needs. That is asserted here so a later unit that
+    drops a field from the report fails in this file rather than in a library
+    nobody is looking at.
+    """
+    for name in ("a", "b"):
+        coarse(folder, silence, name)
+    bound(monkeypatch, raising_on(answering({"a": hit("deep house", SPECIFIC)}), "b"))
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+
+    drive(resume_argv(job_id))
+
+    assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
+    callers = {
+        relative
+        for relative, source in (
+            (path.relative_to(SRC_ROOT), path.read_text(encoding="utf-8"))
+            for path in SRC_ROOT.rglob("*.py")
+        )
+        if "plan_library(" in source or "apply_library(" in source
+    }
+    assert callers == {Path("cratekit/tagging/retag.py")}, (
+        f"the database half gained a caller in {callers}, so R-185's measurement "
+        f"is out of date and this case is asserting about a deferral that ended"
+    )
+    assert selected(folder) == [folder / "b.flac"], (
+        "the corrected file is still selectable, so this case cannot see why the "
+        "stale row needs the artifact to be recoverable"
+    )
+    report = retag_reports(repair_on, job_id)[str(folder / "a.flac")]
+    assert report["path"] == str(folder / "a.flac")
+    assert report["current"] == CATCH_ALL
+    assert report["written"] == SPECIFIC
+
+
+# ---------------------------------------------------------------------------
+# The resume argv
+# ---------------------------------------------------------------------------
+
+
+def test_the_retag_resume_argv_carries_the_gate_run_before_the_verb_path(
+    repair_on, folder, silence, monkeypatch
+):
+    """The flag belongs to the ROOT parser, so its position is the contract.
+
+    A decision belongs to the invocation rather than to the subcommand, and
+    ``--run`` after the verb path is not a flag this parser accepts. Asserted
+    through the real ``argv_for`` rather than by hand, so what is checked is the
+    command line the job driver would actually spawn.
+    """
+    coarse(folder, silence, "a")
+    bound(monkeypatch, answering({}))
+    gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+
+    argv = resume_argv(job_id)
+
+    assert argv == ["--run", gate_run, "tag", "retag", str(folder), "--job", job_id]

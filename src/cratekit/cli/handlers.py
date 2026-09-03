@@ -79,6 +79,7 @@ HANDLERS: Mapping[str, str] = {
     "master": "cratekit.master.cli:handle",
     "sync.favorites": "cratekit.favorites.cli:handle",
     "tag.folder": "cratekit.tagging.cli:handle",
+    "tag.retag": "cratekit.tagging.retag_cli:handle",
 }
 
 #: ``handler_key`` to why this build runs nothing for it. Every landed
@@ -102,7 +103,6 @@ HANDLERS_NOT_YET_BOUND: Mapping[str, str] = {
     "route.resort": "no worker yet, R-203",
     "sync.all": "no worker yet, R-203",
     "sync.labels": "no worker yet, R-203",
-    "tag.retag": "no worker yet, R-203",
 }
 
 

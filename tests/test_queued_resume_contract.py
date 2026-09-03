@@ -31,17 +31,21 @@ substring is not a flag.
 from __future__ import annotations
 
 import importlib
+import shutil
 from pathlib import Path
 
 import pytest
 
 from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry
-from cratekit.core import config, jobs, rb_writer
+from cratekit.core import config, jobs, rb_writer, tags, taxonomy
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import account as account_module
 from cratekit.modules.outbound import source as outbound_source
+from cratekit.tagging import searchers
+from cratekit.tagging.tag import SearchHit
 from tests import outbound_fakes
+from tests._containers import synth_container
 from tests.cli_drive import approve_and_queue as _approve_and_queue
 from tests.cli_drive import drive as _drive
 from tests.test_cli_contract import UNREACHABLE_GATES
@@ -173,6 +177,52 @@ def installed(tmp_path, monkeypatch):
     return resolved
 
 
+@pytest.fixture(scope="module")
+def _silence(tmp_path_factory) -> Path:
+    """One real audio container, synthesized once for the whole module."""
+    return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
+
+
+@pytest.fixture
+def coarse_folder(installed, _silence):
+    """One file under the configured library whose genre the taxonomy rejects.
+
+    THE PARAMETRISED DRIVE BELOW NEEDS A REAL JOB, and since U56 ``tag.retag``
+    refuses to queue one over a plan with no rows: a job with no items drives
+    straight to SUCCEEDED, which would report a clean correction over a folder
+    nothing touched. So the folder that stood in for "somewhere under the library"
+    now has to hold something this verb would actually correct, or the case tests
+    a no-op rather than a resume.
+
+    The value is read off the declared taxonomy rather than typed, so a template
+    edit moves this fixture with it instead of leaving the file asserting about a
+    string nobody declares.
+    """
+    catch_all = taxonomy.default_taxonomy().fallback.too_coarse_as_source[1]
+    path = installed.library.root / "Music" / "too-coarse.flac"
+    shutil.copy2(_silence, path)
+    assert tags.write_genre(path, catch_all), "the fixture could not tag the file"
+    return path
+
+
+@pytest.fixture
+def catalogue(monkeypatch):
+    """A genre answer the tagging worker gets instead of a live catalogue.
+
+    Since U56 this file's parametrised drive runs REAL WORK on the resume rather
+    than reconciling and reporting, which for ``tag.retag`` means a per file
+    lookup against Beatport, Traxsource and Bandcamp. The substitution is on the
+    module attribute the worker looks up at CALL time, the same seam the
+    ``remote`` fixture uses for the outbound account, and it is what keeps this
+    contract test off the network.
+    """
+    def searcher(artist: str, title: str):
+        return SearchHit(genre="Deep House", source="beatport", source_genre="Deep House")
+
+    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared=None: searcher)
+    return searcher
+
+
 @pytest.fixture
 def remote(monkeypatch):
     """A streaming account the outbound workers get instead of a live one.
@@ -237,7 +287,7 @@ def _resolved(verb: list[str]) -> list[str]:
     ids=["export.playlist", "sync.favorites", "tag.retag"],
 )
 def test_the_resume_the_job_driver_spawns_can_actually_proceed(
-    installed, verb, gate, remote
+    installed, verb, gate, remote, coarse_folder, catalogue
 ):
     """The one check the static guards cannot make: does the dispatcher accept it.
 
@@ -258,9 +308,20 @@ def test_the_resume_the_job_driver_spawns_can_actually_proceed(
     ``remote`` fixture substitutes the provider so the run reaches its work
     without a network; nothing else in the assertion moved, and no assertion was
     dropped to keep the file green.
+
+    **WHAT U56 CHANGED.** All three verbs now have a worker, so the claim above
+    holds for ``tag.retag`` as well. It needed two fixtures rather than none.
+    ``coarse_folder`` puts one file the taxonomy would correct under the library,
+    because that verb now refuses to queue a job with no items and an empty folder
+    would have made this case assert a no-op while reading like a resume.
+    ``catalogue`` substitutes the genre lookup at the module attribute the worker
+    reads at call time, so the run reaches its work without touching Beatport.
+    Both are additions; the assertions below are the ones this file already made.
     """
     del installed
     del remote
+    del coarse_folder
+    del catalogue
     verb = _resolved(verb)
     _run_id, job_id = _approve_and_queue(verb, gate)
 
