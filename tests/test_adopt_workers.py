@@ -734,3 +734,213 @@ def _answer_gate(verb: list[str], gate: str) -> tuple[str, dict]:
     code, envelope = drive(["--run", run_id, *verb])
     assert code == int(ExitCode.OK), envelope
     return run_id, envelope
+
+
+# ---------------------------------------------------------------------------
+# The gaps the first mutation round found, closed
+# ---------------------------------------------------------------------------
+
+
+def test_a_configured_volume_rewrite_reaches_the_census(machine, tmp_path):
+    """S1's prefix map, driven through the census rather than assumed.
+
+    Measured on 2026-09-02: dropping ``prefix_map`` from ``census`` killed ZERO
+    tests across the whole suite, because every fixture in this repository records
+    its locations under the configured root already. The source library records
+    most of its active rows under an OLDER VOLUME NAME, which is the failure S1
+    exists to prevent and which no test could see.
+    """
+    # A root this machine is not, built under the test's own temporary directory
+    # rather than spelled as a volume path: R1 forbids a shipped artifact naming a
+    # volume, and what the census has to resolve is a prefix rather than a mount.
+    older = str(tmp_path / "an-older-root")
+    rows = _tracks()
+    adopt_fixtures.build(machine, ())
+    _empty_the_collection(machine)
+    _insert_under(machine, older, "r-elsewhere", rows[0].genre)
+    (Path(machine.library.root) / "Music" / "one.flac").write_bytes(b"\x00" * 64)
+
+    unmapped = apply_cli.census(machine, DECLARED)
+    found = {track.content_id: track for track in unmapped}
+    assert found["r-elsewhere"].readability is adopt_scan.Readability.UNMAPPED
+
+    root = Path(machine.library.root)
+    data = valid_data(
+        root,
+        rekordbox={
+            "pinned_app_version": RECORDED_APP_VERSION,
+            "validated_on": "2026-08-01",
+        },
+    )
+    data["library"]["location_prefix_map"] = [{"from": older, "to": "{library.root}"}]
+    mapped = config.from_dict(data)
+    collection.reset_cache()
+    routed = apply_cli.census(mapped, DECLARED)
+    resolved = {track.content_id: track for track in routed}
+    assert resolved["r-elsewhere"].readability is adopt_scan.Readability.READABLE, (
+        "the census ignored the configured volume rewrite, so a library recorded "
+        "under an older volume name resolves nowhere"
+    )
+    assert resolved["r-elsewhere"].disposition is adopt_scan.Disposition.ROUTE
+
+
+def test_an_apply_job_queued_with_no_items_refuses_rather_than_driving(machine):
+    """The sibling of the scan's guard, which the first mutation round found absent.
+
+    Measured on 2026-09-02: deleting this refusal from ``apply_cli._resume`` killed
+    zero tests. A job frozen by a build before this one carries no items, and
+    ``core.jobs`` reports a zero item job as SUCCEEDED by design, so driving one
+    reports an adoption over a library it never touched.
+    """
+    plan = apply_cli.current_plan(machine, DECLARED)
+    run_id, refused = _record_decision(["adopt", "apply"], "adopt.apply.approve")
+    del refused
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key=registry.entry("adopt.apply").handler_key,
+            payload={
+                "tree": plan.tree,
+                "digest": plan.digest(),
+                apply_cli.ACTOR_KEY: "a-person",
+                jobs.GATE_RUN_KEY: run_id,
+            },
+            cfg=machine,
+        )
+    code, envelope = drive(["--run", run_id, "adopt", "apply", "--job", job.job_id])
+    assert code != int(ExitCode.OK)
+    assert envelope["cause"]["reason"] == "internal-error"
+    assert "no items" in envelope["cause"]["message"]
+
+
+@pytest.mark.parametrize("verb", ["adopt.scan", "adopt.apply"])
+def test_an_interrupted_job_exits_with_its_own_cause_and_not_ok(machine, verb):
+    """R-225, at its WIDER edge, which the first mutation round found untested.
+
+    Measured on 2026-09-02: narrowing each resume branch's predicate from "closed
+    and carrying a cause" to "FAILED" killed zero tests, because every driven
+    failure here reaches FAILED. A run stopped by a signal is CANCELLED and
+    carries the cause ``jobs.cancel`` builds, so the narrow predicate reports an
+    interrupted adoption through a normal envelope and exits 0. That exact shape
+    was driven on the two outbound verbs on 2026-09-02 as exit 0 over a job with
+    none of its items done.
+    """
+    if verb == "adopt.scan":
+        drive(["adopt", "scan"])
+        job = _job(registry.entry("adopt.scan").handler_key)
+        argv = ["adopt", "scan", "--job", job.job_id]
+        job_id = job.job_id
+    else:
+        run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+        argv = ["--run", run_id, "adopt", "apply", "--job", job_id]
+
+    with jobs.open_store() as store:
+        jobs.cancel(store, job_id, stage="interrupted")
+        cancelled = jobs.get(store, job_id)
+    assert cancelled.state is jobs.JobState.CANCELLED
+    assert cancelled.cause is not None, "the fixture built a cause-free cancel"
+
+    code, envelope = drive(argv)
+    assert code != int(ExitCode.OK), (
+        "an interrupted adoption reported through a normal envelope, so a person "
+        "whose work did not happen is told it finished"
+    )
+    assert envelope["cause"]["reason"] == cancelled.cause.reason
+
+
+def test_an_apply_whose_entries_failed_raises_rather_than_reporting_success(
+    cut_over, monkeypatch
+):
+    """``apply_plan`` RETURNS its failures, and ``jobs.drive`` fails only on a raise.
+
+    Measured on 2026-09-02: deleting this raise killed zero tests, because every
+    failure driven elsewhere in this file comes out of the membership write rather
+    than out of the loop. The report is substituted rather than provoked: what is
+    under test is the worker turning a returned failure into a raised one, and
+    there is no input to this build that makes ``apply_plan`` fail an entry
+    without also failing the write.
+    """
+    real = apply_cli.apply_outstanding
+
+    def failing(cfg, plan, declared, **kwargs):
+        report, gathered = real(cfg, plan, declared, **kwargs)
+        from dataclasses import replace as _replace
+
+        return _replace(report, failed={"e-1": "the taxonomy no longer declares this sub"}), gathered
+
+    monkeypatch.setattr(apply_cli, "apply_outstanding", failing)
+
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    code, envelope = drive(_resume(job_id))
+
+    assert code != int(ExitCode.OK)
+    assert envelope["cause"]["inner"]["reason"] == "adopt-entries-failed", envelope
+    assert artifacts.committed(cut_over, job_id), (
+        "the artifact was not committed before the raise, so what happened to the "
+        "failed entry survives nowhere"
+    )
+
+
+def test_the_apply_opens_its_own_handle_with_write_intent(cut_over, monkeypatch):
+    """The two-process refusal runs BEFORE anything opens, which is a write's open.
+
+    Measured on 2026-09-02: flipping ``require_closed`` to False on the apply's own
+    handle killed zero tests, because nothing here has rekordbox running. Driven
+    directly against ``_write_memberships`` rather than through the verb, so the
+    refusal that arrives is the OPEN's rather than the session's.
+    """
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
+    plan = apply_cli.current_plan(cut_over, DECLARED)
+    with pytest.raises(Exception) as excinfo:
+        apply_cli._write_memberships(cut_over, plan, DECLARED)
+    assert excinfo.value.cause.reason == "rekordbox-running", (
+        "the apply opened the database without declaring write intent, so a run "
+        "with rekordbox open reaches the commit before anything refuses"
+    )
+
+
+def _insert_under(cfg: config.Config, prefix: str, content_id: str, genre: str) -> None:
+    """One live row whose recorded location sits under a volume this machine is not."""
+    import sqlite3
+
+    from cratekit.core import locations
+
+    conn = sqlite3.connect(Path(cfg.library.db_path))
+    try:
+        row = conn.execute("SELECT ID FROM djmdGenre WHERE Name = ?", (genre,)).fetchone()
+        if row is None:
+            conn.execute(
+                "INSERT INTO djmdGenre (ID, Name, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?)",
+                ("900", genre, "2026-09-02", "2026-09-02"),
+            )
+            genre_id = "900"
+        else:
+            genre_id = row[0]
+        conn.execute(
+            "INSERT INTO djmdContent (ID, FolderPath, GenreID, rb_local_deleted, "
+            "created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?)",
+            (
+                content_id,
+                locations.location_url(Path(prefix) / "Music" / "one.flac"),
+                genre_id,
+                "2026-09-02",
+                "2026-09-02",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    collection.reset_cache()
+
+
+def _record_decision(verb: list[str], gate: str) -> tuple[str, dict]:
+    """R34's first two acts, without the third drive."""
+    code, refused = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, envelope = drive(
+        ["run", "decide", run_id, gate, "approve", "--actor", "a-person"]
+    )
+    assert decided == int(ExitCode.OK), envelope
+    return run_id, refused
