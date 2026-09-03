@@ -1,13 +1,22 @@
 """Genre and album-art tagging. Core, no extra.
 
 Search is injectable so the suite can prove the write path without a
-network. The live searchers (Beatport, Traxsource, Bandcamp) bind at the
-CLI when a later worker runs the queued job.
+network. The live searchers (Beatport, Traxsource, Bandcamp) live in
+``searchers`` and a worker binds one through ``for_taxonomy`` at call
+time, so a test can substitute a fake in process.
 """
 
 from __future__ import annotations
 
 from cratekit.tagging.retag import retag_folder
+from cratekit.tagging.searchers import catalogue_searcher, for_taxonomy
 from cratekit.tagging.tag import Searcher, SearchHit, tag_folder
 
-__all__ = ["SearchHit", "Searcher", "retag_folder", "tag_folder"]
+__all__ = [
+    "SearchHit",
+    "Searcher",
+    "catalogue_searcher",
+    "for_taxonomy",
+    "retag_folder",
+    "tag_folder",
+]

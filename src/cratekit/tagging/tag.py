@@ -22,10 +22,23 @@ Searcher = Callable[[str, str], "SearchHit | None"]
 
 @dataclass(frozen=True, slots=True)
 class SearchHit:
-    """What a catalogue search is willing to write."""
+    """What a catalogue search is willing to write, and what it was answering.
+
+    ``source`` and ``source_genre`` are carried even when ``genre`` is None,
+    because that combination is a DECLINE and a decline that cannot say what it
+    declined is one nobody can act on. The searcher resolves a catalogue's raw
+    string through the declared taxonomy, and when the taxonomy has no alias for
+    it the only useful thing to report is the string itself, so a person learns
+    which alias they are missing rather than only that something was unmapped.
+
+    Both default to empty so a caller that predates them, and a fake searcher in
+    a suite, keep working unchanged.
+    """
 
     genre: str | None = None
     art: bytes | None = None
+    source: str = ""
+    source_genre: str = ""
 
 
 @dataclass(frozen=True, slots=True)
