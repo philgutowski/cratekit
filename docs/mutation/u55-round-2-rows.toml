@@ -1,0 +1,102 @@
+name = "u55-round-2"
+pass_kind = "full"
+
+[[rows]]
+id = "R2_reader_unlock_probe"
+description = "The reader assumes the file is never encrypted rather than asking the bytes"
+file = "src/cratekit/adopt/collection.py"
+surface = "user"
+old = '''        unlock=rb_writer.unlock_needed(target),'''
+new = '''        unlock=False,'''
+
+[[rows]]
+id = "R5_cache_key_resolved"
+description = "Key the reader cache on the raw path rather than the resolved absolute one"
+file = "src/cratekit/adopt/collection.py"
+old = '''    key = str(Path(target).resolve())'''
+new = '''    key = str(target)'''
+
+[[rows]]
+id = "R6_unlock_probe_answer"
+description = "The encryption probe answers a constant, so a real library opens with the key off"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+old = '''        with Path(path).open("rb") as handle:
+            return not handle.read(len(SQLITE_HEADER)).startswith(SQLITE_HEADER)'''
+new = '''        with Path(path).open("rb") as handle:
+            handle.read(len(SQLITE_HEADER))
+            return False'''
+
+[[rows]]
+id = "R8_census_prefix_map"
+description = "The census drops the configured volume rewrites, so an older volume name resolves nowhere"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''            prefix_map=collection.prefix_rules(cfg),
+        )
+    )'''
+new = '''            prefix_map=(),
+        )
+    )'''
+
+[[rows]]
+id = "R16_apply_no_items_refusal"
+description = "The same guard on the apply resume branch"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''            if not jobs.items(store, job.job_id):
+                raise refuse(
+                    "internal-error",
+                    f"job {job.job_id} has no items to run, so driving it would "
+                    f"report an adoption over a library it never touched. It was "
+                    f"queued by a build that did not record what its items were",
+                    remedy=Remedy.REPORT_DEFECT,
+                    origin=("adopt", "apply_cli"),
+                    detail={"job_id": job.job_id},
+                )
+'''
+new = ""
+
+[[rows]]
+id = "R17_scan_r225_predicate"
+description = "R-225 narrowed: a run stopped by a signal is CANCELLED and would report OK"
+file = "src/cratekit/adopt/scan_cli.py"
+surface = "user"
+old = '''        if not job.is_open() and job.cause is not None:
+            raise CratekitError(job.cause)
+        reported = _reported(store, job)'''
+new = '''        if job.state is jobs.JobState.FAILED:
+            raise CratekitError(job.cause)
+        reported = _reported(store, job)'''
+
+[[rows]]
+id = "R18_apply_r225_predicate"
+description = "The same predicate on the applys resume branch"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''        if not job.is_open() and job.cause is not None:
+            raise CratekitError(job.cause)
+        reported = _reported(store, job)'''
+new = '''        if job.state is jobs.JobState.FAILED:
+            raise CratekitError(job.cause)
+        reported = _reported(store, job)'''
+
+[[rows]]
+id = "R23_worker_raises_on_failure"
+description = "A failed apply returns rather than raising, so the job reaches SUCCEEDED over nothing"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''    if report.failed:
+        _commit(produced)
+        raise refuse('''
+new = '''    if False:
+        _commit(produced)
+        raise refuse('''
+
+[[rows]]
+id = "R26_apply_write_intent_open"
+description = "The applys own handle drops its write intent, so rekordbox may be running under it"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''        require_closed=True,'''
+new = '''        require_closed=False,'''
