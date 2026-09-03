@@ -15,6 +15,14 @@ suite over this module, and each one breaks something in a file that is not this
 one. They are asserted by parsing the source, which is the only place the
 property lives.
 
+U4 APPENDED THE SECOND HALF, and the first sentence above is no longer the whole
+story. The section at the foot of this file drives ``crate tag folder`` end to
+end through the real dispatcher, so the shell and the artifact helper are now
+asserted twice: once as properties of their own, and once as the thing a verb
+stands on while it tags real files. The two halves are kept in one file because
+the second is what the first exists for, and splitting them would let a change
+to one pass while the other went unread.
+
 D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 """
 
@@ -27,12 +35,24 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.cli import output
-from cratekit.core import config, jobs
-from cratekit.core.cause import CratekitError
-from cratekit.tagging import artifacts, shell
+from cratekit.cli import handlers, output, registry
+from cratekit.core import config, jobs, tags
+from cratekit.core.cause import CratekitError, refuse
+from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.tagging import artifacts, searchers, shell, tag
+from cratekit.tagging.tag import SearchHit
+from tests._containers import synth_container
+from tests.cli_drive import drive
 from tests.test_config import valid_data
 from tests.test_handlers import _drive_calls
+
+# THE FIXTURE BUILDERS ARE IMPORTED RATHER THAN COPIED. ``place`` is one opinion
+# about what a real audio file carrying a genre is, and ``answering`` is one
+# opinion about what a fake searcher remembers being asked. A second copy of
+# either is a second opinion, and the copy that drifts is whichever one the next
+# change does not touch. ``SPECIFIC`` is read off the same module so the genre
+# this suite writes is the one the engine suite already proved writable.
+from tests.test_tagging_engine import SPECIFIC, answering, place
 
 SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
 SHELL_SOURCE = SRC_ROOT / "cratekit" / "tagging" / "shell.py"
@@ -471,3 +491,500 @@ def test_the_artifact_helper_never_resolves_the_queue_root_for_itself():
         "the queue root must come from the configuration the job froze, passed "
         f"in as a parameter; these calls resolve it for themselves: {bare}"
     )
+
+
+# ---------------------------------------------------------------------------
+# U4: ``crate tag folder`` walking a real folder, end to end
+# ---------------------------------------------------------------------------
+#
+# EVERY CASE BELOW GOES THROUGH THE VERB rather than through :func:`handle`. The
+# binding is half of what this unit lands, and a test that called the worker
+# directly would pass against a handler key still sitting in
+# ``HANDLERS_NOT_YET_BOUND``, which is the exact state this unit leaves behind.
+
+
+@pytest.fixture(scope="module")
+def silence(tmp_path_factory) -> Path:
+    """One real FLAC container, synthesized once and copied per file.
+
+    A real container rather than a stub, because the write under test goes all
+    the way through ``core.tags.write_genre`` and is read back off the file.
+    """
+    return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
+
+
+@pytest.fixture
+def folder(tmp_path) -> Path:
+    """A download folder OUTSIDE the library, which is where tagging happens.
+
+    ``crate tag folder`` is the verb a person points at what they just
+    downloaded, before any of it is in the library, so a fixture that put these
+    files under the library root would be asserting about a case the verb does
+    not have.
+    """
+    out = tmp_path / "downloads"
+    out.mkdir()
+    return out
+
+
+def bound(monkeypatch, searcher):
+    """Bind ``searcher`` where the worker looks one up (KTD11, R23).
+
+    The worker calls ``searchers.for_taxonomy`` at CALL TIME rather than
+    constructing a searcher inline, and this is the whole reason for that: a
+    fixed three argument ``ItemHandler`` leaves a test nowhere else to hand a
+    fake in, and without one every case below would touch the network.
+    """
+    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared=None: searcher)
+    return searcher
+
+
+def raising_on(searcher, title: str):
+    """``searcher``, except that one title raises the way the shipped one does.
+
+    ``catalogue-unreachable`` rather than an invented exception, because what is
+    under test is the path a real sweep takes when a network drops out part way
+    through a folder, and the shipped searcher raises exactly this.
+    """
+
+    def wrapped(artist: str, name: str):
+        if name == title:
+            searcher.asked.append((artist, name))
+            raise refuse(
+                searchers.UNREACHABLE_REASON,
+                f"no catalogue could be read, so nothing is known about {name!r}",
+                remedy=Remedy.RETRY_LATER,
+                origin=("tagging", "searchers"),
+            )
+        return searcher(artist, name)
+
+    wrapped.asked = searcher.asked  # type: ignore[attr-defined]
+    return wrapped
+
+
+def hit(source_genre: str, genre: str | None = None) -> SearchHit:
+    """One catalogue answer, carrying what it answered even when it declines.
+
+    A decline that cannot say what it declined is one nobody can act on, which
+    is the property R24's report stands on.
+    """
+    return SearchHit(genre=genre, source=searchers.BEATPORT, source_genre=source_genre)
+
+
+def tag_job():
+    """The one ``tag.folder`` job in the installation's queue."""
+    with jobs.open_store() as store:
+        held = [
+            job
+            for job in jobs.list_jobs(store)
+            if job.handler_key == registry.entry("tag.folder").handler_key
+        ]
+    assert len(held) == 1, f"expected exactly one tagging job, found {len(held)}"
+    return held[0]
+
+
+def resume_argv(job_id: str) -> list[str]:
+    """The command line the job driver would spawn for this job.
+
+    THROUGH THE REAL ``argv_for`` rather than by hand, because the property
+    under test is that the frozen folder survives the round trip. A hand written
+    resume would assert about a string this test typed.
+    """
+    from cratekit.cli import jobs as cli_jobs
+
+    with jobs.open_store() as store:
+        return cli_jobs.argv_for(jobs.get(store, job_id))
+
+
+def item_states(job_id: str) -> dict[str, jobs.ItemState]:
+    with jobs.open_store() as store:
+        return {item.item_id: item.state for item in jobs.items(store, job_id)}
+
+
+def item_causes(job_id: str) -> dict[str, str]:
+    with jobs.open_store() as store:
+        return {
+            item.item_id: item.cause.reason
+            for item in jobs.items(store, job_id)
+            if item.cause is not None
+        }
+
+
+# ---------------------------------------------------------------------------
+# The binding
+# ---------------------------------------------------------------------------
+
+
+def test_the_tag_folder_key_resolves_to_a_worker():
+    """The R-203 half this unit closes, asserted against the table itself.
+
+    ``tests/test_handlers.py`` derives its population from the registry and
+    checks that every queued verb is in exactly ONE of the two mappings, which a
+    key sitting in ``HANDLERS_NOT_YET_BOUND`` satisfies perfectly. Only an
+    assertion naming this key can tell "declared as unbound" from "bound".
+    """
+    key = registry.entry("tag.folder").handler_key
+
+    assert handlers.is_known(key), f"{key} still has no worker"
+    assert handlers.unbound_reason(key) is None
+    assert callable(handlers.resolve(key))
+
+
+# ---------------------------------------------------------------------------
+# The happy path
+# ---------------------------------------------------------------------------
+
+
+def test_a_folder_of_three_tags_the_two_with_no_genre_and_leaves_the_third(
+    cfg, folder, silence, monkeypatch
+):
+    """The whole seam in one case: queue, drive, write, and read back.
+
+    THE FILES ARE READ BACK OFF DISK rather than taken from the report. A worker
+    that reported a genre it never wrote would drive every item to done and the
+    counts would still add up, which is the clean-report-over-unwritten-state
+    shape the merge bar names.
+
+    THE THIRD FILE IS THE ONE WORTH HAVING. Fill if empty is the policy this
+    verb exists to hold, so a file that already carries somebody's curation must
+    come back as a skip with a reason rather than as a write.
+    """
+    place(folder, silence, "a")
+    place(folder, silence, "b")
+    place(folder, silence, "c", genre=SPECIFIC)
+    searcher = bound(
+        monkeypatch,
+        answering({"a": hit("deep house", SPECIFIC), "b": hit("deep house", SPECIFIC)}),
+    )
+
+    code, queued = drive(["tag", "folder", str(folder)])
+    assert code == int(ExitCode.OK), queued
+    job = tag_job()
+    assert list(item_states(job.job_id)) == ["a.flac", "b.flac", "c.flac"], (
+        "the items are the engine's own walk, relative to the folder and sorted"
+    )
+
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
+    assert tags.read_genre_from_file(folder / "b.flac") == SPECIFIC
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    assert searcher.asked == [("", "a"), ("", "b")], (
+        "the file that already carried a genre was asked about anyway"
+    )
+
+    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    assert len(reports) == 3, reports
+    assert reports["a.flac"]["genre_written"] == SPECIFIC
+    assert reports["c.flac"]["genre_written"] is None
+    assert reports["c.flac"]["skipped"] == tag.HAS_GENRE
+
+
+def test_a_file_in_a_subfolder_keeps_its_relative_identifier_and_is_still_tagged(
+    cfg, folder, silence, monkeypatch
+):
+    """The walk recurses, so an identifier holding a separator is ordinary input.
+
+    A download folder is a folder of release directories more often than it is a
+    flat list, and the identifier is the path relative to the frozen folder. That
+    makes ``sub/deep.flac`` the common case rather than the exotic one: the
+    worker has to join it back onto the payload's folder, and the artifact
+    helper has to name the report after the ORDINAL rather than after this
+    string, which the traversal case above already pins.
+    """
+    place(folder / "sub", silence, "deep")
+    bound(monkeypatch, answering({"deep": hit("deep house", SPECIFIC)}))
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    assert list(item_states(job.job_id)) == [str(Path("sub") / "deep.flac")]
+
+    code, resumed = drive(resume_argv(job.job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert tags.read_genre_from_file(folder / "sub" / "deep.flac") == SPECIFIC
+
+
+def test_the_skip_reason_reaches_the_report_and_not_only_the_artifact(
+    cfg, folder, silence, monkeypatch
+):
+    """R16 at the surface a person reads.
+
+    A reason that reaches the committed artifact and stops there is a reason
+    somebody has to go and find on disk. The counts ride under ``progress``,
+    which is the one place ``job_state/1`` leaves open for a per verb detail.
+    """
+    place(folder, silence, "a")
+    place(folder, silence, "b", genre=SPECIFIC)
+    bound(monkeypatch, answering({}))
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["skipped"][tag.HAS_GENRE] == 1
+    assert tagging["skipped"][tag.NO_HIT] == 1
+    assert tagging["tagged"] == 0
+    assert set(tagging["skipped"]) == {tag.HAS_GENRE, tag.NO_HIT, tag.UNMAPPED_GENRE}, (
+        "a summary listing only the reasons it saw cannot tell 'none of those "
+        "here' from 'this build does not count them'"
+    )
+
+
+def test_the_report_names_each_unresolved_source_genre_with_its_count(
+    cfg, folder, silence, monkeypatch
+):
+    """R24, and the reason a bare ``unmapped-genre`` total is not enough.
+
+    An unmapped count tells a person a gap exists. The STRING tells them which
+    alias their own taxonomy is missing, which is the only half of it they can
+    act on.
+    """
+    for name in ("a", "b", "c"):
+        place(folder, silence, name)
+    bound(
+        monkeypatch,
+        answering({"a": hit("gqom"), "b": hit("gqom"), "c": hit("footwork")}),
+    )
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["unresolved"] == {"gqom": 2, "footwork": 1}
+    assert tagging["skipped"][tag.UNMAPPED_GENRE] == 3
+    assert [report["source_genre"] for report in artifacts.committed(cfg, job.job_id)] == [
+        "gqom",
+        "gqom",
+        "footwork",
+    ]
+
+
+def test_the_counts_are_read_off_the_artifacts_rather_than_accumulated_in_memory(
+    cfg, folder, silence, monkeypatch
+):
+    """What makes the number true across a resume.
+
+    A sweep that tagged three of five files and is continued tomorrow has five
+    reports on disk, and the person asking what happened means all five. The
+    total is asserted against what the queue committed rather than against a
+    literal, so a summary that counted only this invocation's work fails here.
+    """
+    for name in ("a", "b", "c"):
+        place(folder, silence, name)
+    bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    tagging = resumed["data"]["progress"]["tagging"]
+    counted = tagging["tagged"] + sum(tagging["skipped"].values())
+    assert counted == len(artifacts.committed(cfg, job.job_id))
+    assert counted == resumed["data"]["progress"]["total"]
+
+
+# ---------------------------------------------------------------------------
+# The two zeroes, which are not one zero
+# ---------------------------------------------------------------------------
+
+
+def test_a_folder_holding_no_audio_queues_nothing_and_says_which_zero_it_is(
+    cfg, folder
+):
+    """AE3. Nothing is queued, and the exit code is still success.
+
+    ``core.jobs`` reports a job with no items as SUCCEEDED by design, so a verb
+    that queued one here would report a clean tagging sweep over a folder
+    nothing walked.
+    """
+    (folder / "cover.jpg").write_bytes(b"not audio")
+
+    code, envelope = drive(["tag", "folder", str(folder)])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["job_id"] == ""
+    assert [warning["code"] for warning in envelope["warnings"]] == ["tag-folder-no-audio"]
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
+def test_an_empty_folder_argument_never_sweeps_the_working_directory(
+    cfg, folder, silence, monkeypatch
+):
+    """The third zero, and the only one of them that is dangerous.
+
+    An empty string is a VALID argument to a positional that takes one, so the
+    parser accepts it and ``Path("")`` is the current directory. This verb writes
+    to files, so resolving an unnamed folder to whatever the person happens to be
+    standing in is a sweep of their working directory that nobody asked for.
+    ``tag.retag`` refuses the same argument under
+    ``tag-retag-folder-unknown`` for exactly this reason.
+
+    A NO_OP RATHER THAN A REFUSAL, and that is a limit of this unit rather than a
+    judgement: a refusal needs a slug of its own in ``cause.REASONS`` and reusing
+    the correction verb's would put that verb's name on this one's failure. What
+    matters either way is that nothing is queued and nothing is written.
+
+    ASSERTED WITH AUDIO IN THE WORKING DIRECTORY, because the reason this is
+    worth a test at all is that it passes trivially anywhere there is none.
+    """
+    place(folder, silence, "a")
+    monkeypatch.chdir(folder)
+
+    code, envelope = drive(["tag", "folder", ""])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert [warning["code"] for warning in envelope["warnings"]] == ["tag-folder-unnamed"]
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+    assert tags.read_genre_from_file(folder / "a.flac") in (None, "")
+
+
+def test_a_folder_that_is_not_there_is_a_different_zero_from_an_empty_one(cfg, tmp_path):
+    """Both walk to nothing, and the person's next move is different for each.
+
+    One says put some audio in it, the other says you named a folder that does
+    not exist. Folding them into one warning makes a typed path look like an
+    empty download directory.
+    """
+    code, envelope = drive(["tag", "folder", str(tmp_path / "no-such-folder")])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["job_id"] == ""
+    assert [warning["code"] for warning in envelope["warnings"]] == ["tag-folder-absent"]
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
+# ---------------------------------------------------------------------------
+# The failure part way through, and the resume that follows it
+# ---------------------------------------------------------------------------
+
+
+def test_a_searcher_that_raises_part_way_fails_only_its_own_item(
+    cfg, folder, silence, monkeypatch
+):
+    """R19x's first half, and the reason a decline and a refusal are not one thing.
+
+    The searcher raises when it could not READ a catalogue at all, which is a
+    network dropping out mid folder. That item fails, the two either side of it
+    are done and stay written, and the job carries a cause, so nobody is told
+    the folder was tagged.
+    """
+    for name in ("a", "b", "c"):
+        place(folder, silence, name)
+    table = {name: hit("deep house", SPECIFIC) for name in ("a", "b", "c")}
+    bound(monkeypatch, raising_on(answering(table), "b"))
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+
+    assert code != int(ExitCode.OK), resumed
+    assert item_states(job.job_id) == {
+        "a.flac": jobs.ItemState.DONE,
+        "b.flac": jobs.ItemState.FAILED,
+        "c.flac": jobs.ItemState.DONE,
+    }
+    assert item_causes(job.job_id) == {"b.flac": searchers.UNREACHABLE_REASON}
+    with jobs.open_store() as store:
+        assert jobs.get(store, job.job_id).state is jobs.JobState.FAILED
+        assert jobs.get(store, job.job_id).cause is not None
+    assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
+    assert tags.read_genre_from_file(folder / "c.flac") == SPECIFIC
+    assert tags.read_genre_from_file(folder / "b.flac") in (None, "")
+
+
+def test_a_retried_job_drives_only_the_item_that_failed(
+    cfg, folder, silence, monkeypatch
+):
+    """R19x, and the guarantee this whole seam exists for.
+
+    ASSERTED BY COUNTING THE SEARCHER'S CALLS rather than by reading the item
+    states, because a resume that re-asked the catalogue about two files it had
+    already tagged would leave exactly the same states behind and would cost the
+    person two more requests against a rate limited source every time.
+    """
+    for name in ("a", "b", "c"):
+        place(folder, silence, name)
+    table = {name: hit("deep house", SPECIFIC) for name in ("a", "b", "c")}
+    bound(monkeypatch, raising_on(answering(table), "b"))
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    drive(resume_argv(job.job_id))
+
+    second = bound(monkeypatch, answering(table))
+    with jobs.open_store() as store:
+        jobs.retry(store, job.job_id)
+    code, resumed = drive(resume_argv(job.job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert second.asked == [("", "b")], (
+        "the resume re-attempted work whose artifact was already durable"
+    )
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    assert tags.read_genre_from_file(folder / "b.flac") == SPECIFIC
+    assert len(artifacts.committed(cfg, job.job_id)) == 3
+
+
+def test_a_file_removed_between_the_queueing_and_the_drive_is_refused_by_name(
+    cfg, folder, silence, monkeypatch
+):
+    """R15. The folder is not frozen, so this is reachable input.
+
+    Refused with its own slug rather than reported done: an item that reported
+    done having tagged nothing is the clean-report-over-unreadable-state cost
+    ``docs/METHOD.md`` names. It is not an internal error either, because a
+    person deleting a file out of their own download folder is not a defect.
+    """
+    for name in ("a", "b"):
+        place(folder, silence, name)
+    bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    (folder / "b.flac").unlink()
+    code, resumed = drive(resume_argv(job.job_id))
+
+    assert code != int(ExitCode.OK), resumed
+    assert item_states(job.job_id) == {
+        "a.flac": jobs.ItemState.DONE,
+        "b.flac": jobs.ItemState.FAILED,
+    }
+    assert item_causes(job.job_id) == {"b.flac": "source-missing"}
+
+
+# ---------------------------------------------------------------------------
+# The resume argv
+# ---------------------------------------------------------------------------
+
+
+def test_the_resume_argv_round_trips_the_frozen_folder_and_asks_for_no_run(
+    cfg, folder, silence, monkeypatch
+):
+    """The payload is frozen at queue time, so only the verb can rebuild it.
+
+    ``--run`` IS ASSERTED AS A WHOLE TOKEN. ``--run-id`` contains ``--run`` as a
+    substring, so a membership check over the joined string would call a broken
+    argv clean, and this project has reported exactly that once already. This
+    verb declares no gate, so a resume that minted a run would be asking a
+    question nobody had posed.
+    """
+    place(folder, silence, "a")
+    bound(monkeypatch, answering({}))
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+
+    argv = resume_argv(job.job_id)
+
+    assert argv == ["tag", "folder", job.payload["folder"], "--job", job.job_id]
+    assert Path(job.payload["folder"]) == folder
+    assert "--run" not in argv, argv
