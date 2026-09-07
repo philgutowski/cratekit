@@ -260,12 +260,18 @@ def accepted_genre(item: review.Item) -> str:
     return ""
 
 
-def _decided(store: review.ReviewStore | None) -> dict[str, review.Item]:
+def decided_index(store: review.ReviewStore | None) -> dict[str, review.Item]:
     """Every item this pass has ever offered, read ONCE.
 
     A per-file lookup would be one query per candidate over a folder that can hold
     thousands. The whole queue for one kind is small enough to hold, and reading it
     once is the same reasoning ``trees.index_active_rows`` states for the library.
+
+    PUBLIC BECAUSE THE JOB WORKER NEEDS IT TOO. A worker runs one candidate per
+    call and builds this index per call, which is one read of a small queue per
+    item rather than one per folder. The queue holds only unanswered coarse-genre
+    questions, so it is bounded by the size of that backlog rather than by the
+    library, and the cost is recorded as a residual rather than assumed away.
     """
     if store is None:
         return {}
@@ -322,6 +328,79 @@ def _ask(
 # ---------------------------------------------------------------------------
 
 
+def retag_one(
+    candidate: Candidate,
+    *,
+    searcher: Searcher,
+    declared: taxonomy.Taxonomy,
+    decided: Mapping[str, review.Item],
+    store: review.ReviewStore | None = None,
+    handler_key: str = HANDLER_KEY,
+) -> RetagResult:
+    """Correct ONE candidate's genre, or record why it was not corrected.
+
+    THE PER CANDIDATE WORK, split out so a job worker can run exactly one of
+    them. :func:`retag_folder` is this function applied to every candidate the
+    selection took, so the sweep and the queued worker cannot come to hold two
+    different policies about one field.
+
+    A VERDICT ALREADY RECORDED IS READ BEFORE THE SEARCHER IS ASKED. That ordering
+    is the whole of "a resolved verdict is not re-asked": asking first and reading
+    afterwards would spend a lookup per run on a question a person has already
+    answered, and would let a fresh answer overwrite the recorded one.
+
+    A REJECTED item is settled AGAINST every candidate, so the file is left alone
+    and nothing is re-offered. ``review.offer`` would not reopen it, but calling it
+    would refresh nothing and would say in the code that this pass is still asking.
+
+    ``decided`` is passed in rather than read here, because the folder sweep reads
+    the queue once for the whole walk and a worker reads it once for its one item.
+    Reading it inside would make the sweep one query per candidate.
+    """
+    item_id = review.item_id_for(Queue.GENRE, KIND, identity_for(candidate.path))
+    item = decided.get(item_id)
+    answer = ""
+    if item is not None and item.resolved:
+        if item.suppressed:
+            return RetagResult(
+                path=candidate.path,
+                current=candidate.current,
+                reason=DECLINED_IN_REVIEW,
+                item_id=item_id,
+            )
+        answer = accepted_genre(item)
+    if not answer:
+        artist = tags.read_tag(candidate.path, "artist") or ""
+        title = tags.read_tag(candidate.path, "title") or candidate.path.stem
+        hit = searcher(artist, title)
+        answer = (hit.genre or "").strip() if hit is not None and hit.genre else ""
+    if not answer:
+        return _ask(
+            store,
+            candidate,
+            reason=NO_ANSWER,
+            proposed="",
+            declared=declared,
+            handler_key=handler_key,
+        )
+    if declared.is_too_coarse_as_source(answer):
+        return _ask(
+            store,
+            candidate,
+            reason=ANSWER_TOO_COARSE,
+            proposed=answer,
+            declared=declared,
+            handler_key=handler_key,
+        )
+    tags.write_genre(candidate.path, answer)
+    return RetagResult(
+        path=candidate.path,
+        current=candidate.current,
+        written=answer,
+        item_id=item_id,
+    )
+
+
 def retag_folder(
     root: Path,
     *,
@@ -332,72 +411,22 @@ def retag_folder(
 ) -> RetagOutcome:
     """Correct every too-coarse genre under ``root`` that can be corrected.
 
-    A VERDICT ALREADY RECORDED IS READ BEFORE THE SEARCHER IS ASKED. That ordering
-    is the whole of "a resolved verdict is not re-asked": asking first and reading
-    afterwards would spend a lookup per run on a question a person has already
-    answered, and would let a fresh answer overwrite the recorded one.
-
-    A REJECTED item is settled AGAINST every candidate, so the file is left alone
-    and nothing is re-offered. ``review.offer`` would not reopen it, but calling it
-    would refresh nothing and would say in the code that this pass is still asking.
+    The selection, the queue read, and :func:`retag_one` per candidate. Every
+    policy decision lives one function down, where the job worker reaches it too.
     """
     selection = select(root, declared=declared)
-    decided = _decided(store)
-    results: list[RetagResult] = []
-    for candidate in selection.candidates:
-        item_id = review.item_id_for(Queue.GENRE, KIND, identity_for(candidate.path))
-        item = decided.get(item_id)
-        answer = ""
-        if item is not None and item.resolved:
-            if item.suppressed:
-                results.append(
-                    RetagResult(
-                        path=candidate.path,
-                        current=candidate.current,
-                        reason=DECLINED_IN_REVIEW,
-                        item_id=item_id,
-                    )
-                )
-                continue
-            answer = accepted_genre(item)
-        if not answer:
-            artist = tags.read_tag(candidate.path, "artist") or ""
-            title = tags.read_tag(candidate.path, "title") or candidate.path.stem
-            hit = searcher(artist, title)
-            answer = (hit.genre or "").strip() if hit is not None and hit.genre else ""
-        if not answer:
-            results.append(
-                _ask(
-                    store,
-                    candidate,
-                    reason=NO_ANSWER,
-                    proposed="",
-                    declared=declared,
-                    handler_key=handler_key,
-                )
-            )
-            continue
-        if declared.is_too_coarse_as_source(answer):
-            results.append(
-                _ask(
-                    store,
-                    candidate,
-                    reason=ANSWER_TOO_COARSE,
-                    proposed=answer,
-                    declared=declared,
-                    handler_key=handler_key,
-                )
-            )
-            continue
-        tags.write_genre(candidate.path, answer)
-        results.append(
-            RetagResult(
-                path=candidate.path,
-                current=candidate.current,
-                written=answer,
-                item_id=item_id,
-            )
+    decided = decided_index(store)
+    results = [
+        retag_one(
+            candidate,
+            searcher=searcher,
+            declared=declared,
+            decided=decided,
+            store=store,
+            handler_key=handler_key,
         )
+        for candidate in selection.candidates
+    ]
     return RetagOutcome(results=tuple(results), passed=selection.passed)
 
 
@@ -539,10 +568,12 @@ __all__ = [
     "Unmatched",
     "accepted_genre",
     "apply_library",
+    "decided_index",
     "identity_for",
     "options_for",
     "plan_items",
     "plan_library",
     "retag_folder",
+    "retag_one",
     "select",
 ]

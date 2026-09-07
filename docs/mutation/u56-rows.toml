@@ -1,0 +1,404 @@
+name = "u56-catalogue-searcher-and-tag-workers"
+pass_kind = "full"
+
+# ── The searcher: fallback order and the four way outcome ─────────────────────
+
+[[rows]]
+id = "R1_fallback_order"
+description = "Reverse the fallback order, so Bandcamp answers before Beatport"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''_SEARCHES = (_search_beatport, _search_traxsource, _search_bandcamp)'''
+new = '''_SEARCHES = (_search_bandcamp, _search_traxsource, _search_beatport)'''
+
+[[rows]]
+id = "R2_unreachable_counts_as_an_answer"
+description = "METHOD's first pattern: an unreachable source reads as a miss, so a catalogue that was down reports as a catalogue that has never heard of the track"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''    if any(outcome.answer is Answer.MISS for outcome in outcomes):
+        return None'''
+new = '''    if any(
+        outcome.answer in {Answer.MISS, Answer.UNREACHABLE} for outcome in outcomes
+    ):
+        return None'''
+
+[[rows]]
+id = "R3_parse_break_folds_into_unreachable"
+description = "The same mistake one layer along: a moved page shape reports as a network problem, which is a permanent state wearing a transient remedy"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''    broken = [outcome for outcome in outcomes if outcome.answer is Answer.PARSE_BREAK]
+    if broken:'''
+new = '''    broken: list[SourceOutcome] = []
+    if broken:'''
+
+[[rows]]
+id = "R4_nothing_answered_declines"
+description = "A searcher no source answered returns None, so every item of a job reports done over answers nobody got"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''    if any(outcome.answer is Answer.MISS for outcome in outcomes):
+        return None
+
+    broken'''
+new = '''    return None
+
+    broken'''
+
+# ── The searcher: resolution through the shipped resolver ─────────────────────
+
+[[rows]]
+id = "R5_bare_alias_lookup"
+description = "The defect the document review found: hand roll the resolution out of tagging_alias instead of routing.suggest_tag, which loses the sub display and every declared refusal"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''    suggestion = routing.suggest_tag(declared, outcome.source_genre)
+    tag = suggestion.tag
+    if suggestion.declined or not tag or declared.is_too_coarse_as_source(tag):
+        tag = None'''
+new = '''    hit = declared.tagging_alias(outcome.source_genre.casefold())
+    tag = declared.bucket(hit[0]).display if hit is not None else None'''
+
+[[rows]]
+id = "R6_too_coarse_guard"
+description = "Write a suggestion the taxonomy calls too coarse to be a final tag, which launders a catch all into a value tag.retag would never select again"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''    if suggestion.declined or not tag or declared.is_too_coarse_as_source(tag):'''
+new = '''    if suggestion.declined or not tag:'''
+
+# ── The searcher: pacing and the rate limit ───────────────────────────────────
+
+[[rows]]
+id = "R7_pacer_does_not_sleep"
+description = "The pacer reports an interval it never took, so a headless worker hammers a catalogue at full speed"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''        delay = self.minimum_s * (1.0 + self.entropy.random() * self.jitter_fraction)
+        self.sleep(delay)
+        return delay'''
+new = '''        delay = self.minimum_s * (1.0 + self.entropy.random() * self.jitter_fraction)
+        return delay'''
+
+[[rows]]
+id = "R8_no_jitter"
+description = "Fixed intervals, so two runs that started together stay in step and trip the same limit together"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''    jitter_fraction: float = JITTER_FRACTION'''
+new = '''    jitter_fraction: float = 0.0'''
+
+[[rows]]
+id = "R9_minimum_interval_halved"
+description = "Halve the floor between two touches. A bound whose coefficient can be halved with a green suite is not pinned"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''MIN_INTERVAL_S = 1.0'''
+new = '''MIN_INTERVAL_S = 0.5'''
+
+[[rows]]
+id = "R10_no_backoff_growth"
+description = "The 429 wait stops growing with the attempt, so three retries arrive inside one window"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''                    sleep(RATE_LIMIT_BASE_WAIT_S * (attempt + 1))'''
+new = '''                    sleep(RATE_LIMIT_BASE_WAIT_S)'''
+
+[[rows]]
+id = "R11_no_attempt_cap"
+description = "One attempt per fetch, so a single 429 is unreachable and a source that would have answered on the second try never does"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''RATE_LIMIT_ATTEMPTS = 3'''
+new = '''RATE_LIMIT_ATTEMPTS = 1'''
+
+[[rows]]
+id = "R12_no_request_timeout"
+description = "The fetch carries no timeout, so a hung request stalls a job item for ever and looks exactly like work"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''                response = getter(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_S)'''
+new = '''                response = getter(url, headers=HEADERS)'''
+
+[[rows]]
+id = "R13_query_unescaped"
+description = "An unescaped query truncates at the first ampersand, so a different search is reported as this track's miss"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''    return quote_plus(f"{artist} {title}".strip())'''
+new = '''    return f"{artist} {title}".strip()'''
+
+# ── The item derivation ───────────────────────────────────────────────────────
+
+[[rows]]
+id = "R14_walk_unsorted"
+description = "The walk stops sorting, so an enqueue and a later walk disagree about ordinal order and one file's report is filed under another's name"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''        for path in sorted(root.rglob("*"))'''
+new = '''        for path in root.rglob("*")'''
+
+[[rows]]
+id = "R15_walk_not_recursive"
+description = "The walk stops recursing, so a folder of subfolders queues nothing and reports the honest zero over a library"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''        for path in sorted(root.rglob("*"))'''
+new = '''        for path in sorted(root.glob("*"))'''
+
+[[rows]]
+id = "R16_fill_if_empty_dropped"
+description = "tag.folder overwrites a genre somebody curated, which is the field's other owner losing to whichever verb ran last"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''    existing = tags.read_genre_from_file(path)
+    if existing:
+        return TagResult(path=path, genre_written=None, skipped=HAS_GENRE)'''
+new = '''    existing = None
+    if existing:
+        return TagResult(path=path, genre_written=None, skipped=HAS_GENRE)'''
+
+[[rows]]
+id = "R17_unmapped_reads_as_no_hit"
+description = "The taxonomy gap and the catalogue miss report as one reason, so a person cannot tell which of the two is theirs to fix"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''        reason = UNMAPPED_GENRE if hit.source_genre else NO_HIT'''
+new = '''        reason = NO_HIT'''
+
+[[rows]]
+id = "R18_folder_pass_walks_itself"
+description = "The sweep derives its own file list instead of audio_files, which is the second opinion KTD7 exists to prevent"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''    return [tag_one(path, searcher=searcher) for path in audio_files(root)]'''
+new = '''    return [
+        tag_one(path, searcher=searcher)
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and path.suffix.lower() in AUDIO_EXTS
+    ]'''
+
+# ── tag.folder: the queue, the zeroes and the worker ──────────────────────────
+
+[[rows]]
+id = "R19_folder_queues_no_items"
+description = "The zero item rule broken at its source: a job with nothing to claim drives straight to SUCCEEDED over a folder nothing walked"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''            item_ids=tuple(str(path.relative_to(folder)) for path in files),'''
+new = '''            item_ids=(),'''
+
+[[rows]]
+id = "R20_unnamed_folder_sweeps_cwd"
+description = "Path(\"\") is the current directory, so an unnamed folder writes genres into whatever the person is standing in"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''    named = str(ctx.args.folder or "")
+    if not named.strip():'''
+new = '''    named = str(ctx.args.folder or "")
+    if False:'''
+
+[[rows]]
+id = "R21_two_zeroes_read_as_one"
+description = "A mistyped path reports as a folder with nothing to tag, which is the answer most likely to stop somebody looking"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''            if folder.is_dir()
+            else _empty(
+                "tag-folder-absent",'''
+new = '''            if True
+            else _empty(
+                "tag-folder-absent",'''
+
+[[rows]]
+id = "R22_vanished_file_reports_done"
+description = "An item whose file is gone reports done having tagged nothing, which is the clean report over unreadable state the merge bar names"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''    path = folder / item.item_id
+    if not path.is_file():'''
+new = '''    path = folder / item.item_id
+    if False:'''
+
+[[rows]]
+id = "R23_summary_from_the_queue"
+description = "The report counts what was queued rather than what ran, so a half finished sweep reports every file as handled"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''    for report in artifacts.committed(cfg, job_id):
+        reason = str(report.get("skipped") or "")
+        source_genre = str(report.get("source_genre") or "")'''
+new = '''    for report in []:
+        reason = str(report.get("skipped") or "")
+        source_genre = str(report.get("source_genre") or "")'''
+
+# ── tag.retag: the frozen digest, the queue and the worker ────────────────────
+
+[[rows]]
+id = "R24_resume_digests_a_fresh_walk"
+description = "The stall this unit closed: the resume rebuilds the plan, so the first corrected file shrinks the selection and every respawn meets DecisionStale for ever"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''            digest=digest_for(
+                str(payload.get(FOLDER_KEY) or ""),
+                [dict(row) for row in payload.get(ITEMS_KEY) or ()],
+            ),'''
+new = '''            digest=plan_for(
+                str(payload.get(FOLDER_KEY) or ""), taxonomy.default_taxonomy()
+            )["digest"],'''
+
+[[rows]]
+id = "R25_digest_drops_the_folder"
+description = "Two different empty folders digest identically, so a decision recorded against one satisfies the gate for the other"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''            FOLDER_KEY: folder,
+            ITEMS_KEY: [dict(row) for row in items],'''
+new = '''            ITEMS_KEY: [dict(row) for row in items],'''
+
+[[rows]]
+id = "R26_retag_queues_no_items"
+description = "The zero item rule broken on the second verb, over work somebody explicitly confirmed"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''            item_ids=tuple(str(row["path"]) for row in plan["items"]),'''
+new = '''            item_ids=(),'''
+
+[[rows]]
+id = "R27_empty_plan_skips_the_gate"
+description = "The reversal this unit made: an empty plan is not asked about, so a declared gate sometimes does not fire"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''    option = ctx.gate.require(_plan_gate(ctx), digest=plan["digest"])
+    if option == "abort":
+        return ctx.envelope(data=shell.no_op("declined"), outcome=Outcome.NO_OP)
+
+    if not plan["items"]:'''
+new = '''    if not plan["items"]:'''
+
+[[rows]]
+id = "R28_worker_trusts_the_frozen_row"
+description = "The genre is not re-read at drive time, so a file somebody corrected by hand between the confirmation and the drive is corrected again"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''    current = tags.read_genre_from_file(path) or ""
+    if not current:'''
+new = '''    current = tags.read_genre_from_file(path) or ""
+    if False:'''
+
+[[rows]]
+id = "R29_blank_genre_is_corrected"
+description = "The retag writes into a field tag.folder owns under fill if empty, which is one field under two policies"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''    if not current:
+        result = retag.RetagResult(path=path, current=current, reason=retag.NO_GENRE)'''
+new = '''    if current == "\\u0000":
+        result = retag.RetagResult(path=path, current=current, reason=retag.NO_GENRE)'''
+
+[[rows]]
+id = "R30_specific_genre_is_overwritten"
+description = "A queued job overwrites somebody's own curation, which is the write this verb exists to avoid making"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''    elif not declared.is_too_coarse_as_source(current):'''
+new = '''    elif False:'''
+
+[[rows]]
+id = "R31_artifact_drops_the_previous_value"
+description = "R-185's only record: without the previous genre the artifacts stop naming which library rows went stale, so the deferred database half has no population to read"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''            "current": result.current,
+            "written": result.written,'''
+new = '''            "written": result.written,'''
+
+# ── The shell and the artifact helper ─────────────────────────────────────────
+
+[[rows]]
+id = "R32_r225_predicate_narrowed"
+description = "R-225 reintroduced: a run stopped with a signal closes CANCELLED, so the narrower predicate hands an interrupted sweep back as a payload and exits 0"
+file = "src/cratekit/tagging/shell.py"
+surface = "user"
+old = '''    if not job.is_open() and job.cause is not None:'''
+new = '''    if job.state is jobs.JobState.FAILED:'''
+
+[[rows]]
+id = "R33_no_op_job_id_is_null"
+description = "R-234 reintroduced: cli.output types job_id as a required string, so a null fails the verb's own schema on every zero path"
+file = "src/cratekit/tagging/shell.py"
+surface = "user"
+old = '''    return {"job_id": "", "state": state, "cause": None, "progress": {}}'''
+new = '''    return {"job_id": None, "state": state, "cause": None, "progress": {}}'''
+
+[[rows]]
+id = "R34_empty_job_is_driven"
+description = "A job frozen with no items drives straight to SUCCEEDED, which is a clean report over work it never did"
+file = "src/cratekit/tagging/shell.py"
+surface = "user"
+old = '''        if not jobs.items(store, job.job_id):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "R35_extra_rides_beside_progress"
+description = "A per verb detail at the top level is an undeclared field on job_state/1, so a consumer generated from the committed schema rejects every envelope"
+file = "src/cratekit/tagging/shell.py"
+surface = "user"
+old = '''    progress = dict(jobs.progress(store, job.job_id))
+    if extra:
+        progress.update(extra)
+    return {
+        "job_id": job.job_id,'''
+new = '''    progress = dict(jobs.progress(store, job.job_id))
+    return {
+        **dict(extra or {}),
+        "job_id": job.job_id,'''
+
+[[rows]]
+id = "R36_artifact_sorted_as_text"
+description = "Four digits sort as text in item order and the ten thousandth does not, so a large folder's reports come back out of order"
+file = "src/cratekit/tagging/artifacts.py"
+surface = "user"
+old = '''    for path in sorted(directory.glob("*.json"), key=lambda item: int(item.stem)):'''
+new = '''    for path in sorted(directory.glob("*.json")):'''
+
+[[rows]]
+id = "R37_artifact_named_by_item_id"
+description = "A filename built from a tagging item identifier is a path traversal wearing a report, because the identifier is a path relative to a folder"
+file = "src/cratekit/tagging/artifacts.py"
+surface = "user"
+old = '''    directory = _job_dir(ARTIFACTS_DIRNAME, cfg, job_id)
+    config._mkdir_private(directory)
+    return directory / f"{ordinal:04d}.json"'''
+new = '''    directory = _job_dir(ARTIFACTS_DIRNAME, cfg, job_id)
+    config._mkdir_private(directory)
+    return directory / f"{ordinal}.json"'''
+
+[[rows]]
+id = "R38_staging_not_cleared"
+description = "A half written report from an attempt that did not finish is committed by the next attempt as though it described that attempt"
+file = "src/cratekit/tagging/artifacts.py"
+surface = "user"
+old = '''    if directory.exists():
+        shutil.rmtree(directory)'''
+new = '''    if False:
+        shutil.rmtree(directory)'''
+
+# ── The binding table ─────────────────────────────────────────────────────────
+
+[[rows]]
+id = "R39_tag_folder_unbound"
+description = "The handler key goes back to declaring no worker, which is the state this whole unit exists to leave"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+old = '''    "tag.folder": "cratekit.tagging.cli:handle",'''
+new = ''''''
+
+[[rows]]
+id = "R40_tag_retag_unbound"
+description = "The same for the correction verb"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+old = '''    "tag.retag": "cratekit.tagging.retag_cli:handle",'''
+new = ''''''

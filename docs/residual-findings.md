@@ -9614,6 +9614,16 @@ eighteen are `R-203` and `job.resume` is exempt by role. Recorded here rather th
 by rewriting the closing condition, because the condition is right and it is the
 progress that is partial.
 
+**Re-measured on U56, 2026-09-03. The half this entry names about `tag.retag` is
+now MET and the entry still stays open.** This finding was raised over that verb
+in particular, and its own sentence, that a person who confirms a retag gets a
+job identifier and a queued state and the work does not happen, is false as of
+this unit: `tag.retag` and `tag.folder` both have workers in `cratekit.cli.handlers.HANDLERS`
+and both run their items from `pending` to `done`. Seven of the twenty landed
+queued verbs are bound now. The closing condition asks for EVERY long-running
+verb's engine to have a caller, eleven still do not, and those eleven are
+`R-203`.
+
 ## R-184. `plan_genre_retag` drops a row whose wanted genre is empty with no skip
 
 **Found by** U40's first-caller drive of `write/metadata`, 2026-08-26.
@@ -9660,6 +9670,24 @@ is the durable record a person can see, and the row is derived from it.
 **Closes when:** the pass records what it wrote to a resumable ledger the
 database half reads, so an interrupted run can finish the second act without
 re-running the first.
+
+**Driven on U56, 2026-09-03, and this entry stays OPEN.** The unit that gave this
+verb a worker is what made the shape reachable, so it was measured rather than
+argued. A three file retag was interrupted after one file was corrected: the file
+on disk carries the new genre, nothing planned or wrote a library row, and a
+second full run over the same folder selects nothing, because the corrected file
+is no longer too coarse. The row stays wrong until a routing pass moves it, which
+is exactly what this entry predicted.
+
+**What that measurement also found is the answer to the closing condition's own
+question.** The condition asks for a resumable ledger the database half can read,
+and one already exists: `jobs.drive` commits a per item artifact before it flips
+the row to done, and this worker's artifact carries the path, the PREVIOUS genre
+and the written one. That is the population, durable by construction and written
+in the order the corrections happened. The deferred half does not need a new
+register; it needs a caller that reads those. Recorded here rather than by
+rewriting the condition, because the condition is still what closes this and the
+artifact is only how.
 
 ## R-186. The genre lookup defaults the soft-delete marker, and U40 is what gave it a caller
 
@@ -10490,6 +10518,23 @@ U55 landed the reader `adopt.scan` was waiting for, which is what made both adop
 verbs bindable; the claim that binding the rest is not mechanical is unchanged by
 it, and U55 is a worked example of why, since deciding what an apply's items are
 turned out to be a decision about which resume mechanism owns the run.
+
+**U56 bound `tag.folder` and `tag.retag`, so ELEVEN queued verbs have no worker
+as of 2026-09-03**: `acquire.download`, `analyze.restamp`, `analyze.run`,
+`delete.review`, `intake.playlist`, `intake.set`, `label.import`, `rebuild`,
+`route.resort`, `sync.all` and `sync.labels`. The count in this entry's title
+stays at eighteen for the reason the correction above gives.
+
+**U56 is the third worked example of the claim, and the sharpest.** Binding the
+two tagging verbs was not one line each. It needed a backend that did not exist,
+a searcher over three public catalogues with its rate limiting and its four way
+per source outcome; it needed the fill-if-empty engine split so a job item was
+reachable; and it surfaced a permanent stall the binding itself created, because
+`tag.retag` rebuilt its confirm digest from a fresh walk of the folder and the
+first file a worker corrects shrinks that walk. Every respawn after a partial run
+met `DecisionStale` for ever. That defect was unreachable while nothing wrote,
+which is the general form of what this entry is about: for several of the eleven,
+the binding is the thing that makes their own defects reachable.
 
 **Cost:** the same as R-198's for eighteen verbs, with one change. `crate job list`
 and `crate job show` now carry a `worker` field derived from the declaration table
@@ -11820,3 +11865,323 @@ the reporting surface rather than about this unit's writes.
 
 **Closes when:** an apply's report survives its own retry, or the envelope is
 explicit that it describes one attempt.
+
+---
+
+## R-245. No catalogue page shape was verified against a live site, and no gate here can be
+
+**Found by** U56 while landing the searcher, 2026-09-03.
+
+`cratekit.tagging.searchers` parses Beatport's `__NEXT_DATA__` payload,
+Traxsource's track rows and Bandcamp's search listing and track tags. Every
+shape was read from `DJ_tools/src/dj_tools/DJ_tagging/scrape.py`, whose own last
+verified run against those sites is undated. No request left this machine during
+the unit, because a live catalogue call is attended and out of scope, and every
+test feeds synthetic page text through the injected fetch seam.
+
+**Measured cost.** The battery proves the SHAPE of the searcher and cannot prove
+it returns a real hit. A wholly broken parser and a working one produce the same
+green suite, so `crate tag folder` could ship tagging nothing and the first
+person to learn it would be the person whose folder came back untagged. The
+design bounds the damage rather than the risk: a page that parses to nothing
+recognizable is `catalogue-parse-broken`, whose remedy names the parser rather
+than the network, so the failure at least says what it is.
+
+**Why it is not fixed here.** A live call is attended by standing constraint.
+An agent can prepare for it and cannot perform it.
+
+**Closes when:** one lookup per source has been run against the live site with
+its result recorded, or the captured pages are shipped as dated fixtures so a
+later reader can tell how old the shape evidence is.
+
+---
+
+## R-246. The retag's database half still has no caller, while the registry says it writes one
+
+**Found by** U56 while binding `tag.retag`, 2026-09-03. Driven.
+
+`retag.plan_library` and `retag.apply_library` have exactly one file naming them
+after this unit, their own module. The worker corrects the file on disk and
+nothing plans the `GenreID` write. `registry.ENTRIES` declares `tag.retag` as
+`writes=frozenset({"files", "db_metadata"})`, so the declaration names a surface
+the shipped path does not touch.
+
+**Measured cost.** A person who confirms a retag sees the files corrected and
+rekordbox still showing the old genre, because rekordbox reads the row. R-185 is
+the same fact from the other side and this entry is the registry's half of it.
+Nothing derives from the `writes` set today, so the cost is a declaration a
+reader would trust.
+
+**Why it is not fixed here.** Holding a database write session open across a
+network lookup per file is what R-185 already argues against, and the fix is the
+deferred half rather than a change to this unit's writes.
+
+**Closes when:** the database half has a caller, or the registry entry stops
+claiming `db_metadata`.
+
+---
+
+## R-247. An unmapped source genre has nowhere to become an alias
+
+**Found by** U56, 2026-09-03, driven through `crate tag folder`.
+
+When a catalogue answers with a genre the declared taxonomy cannot resolve, the
+searcher declines and `tag_one` reports `unmapped-genre` with the raw string.
+R24 puts the distinct strings and their counts in the verb's report, so a person
+learns which words their taxonomy is missing. Nothing takes them any further.
+The declared taxonomy is a packaged template, and there is no verb that adds an
+alias to it.
+
+**Measured cost.** The file stays untagged for ever and every run re-pays a
+paced lookup on it, because the answer is deterministic. The person is told what
+is missing and has no way to act on it inside this product.
+
+**Why it is not fixed here.** `tag.retag` already offers its unanswerable cases
+into `review.Queue.GENRE`, so the surface exists, and routing `tag.folder`'s
+declines into it would make an unattended verb attended. That is a product
+decision about what `crate tag folder` is, not a repair.
+
+**Closes when:** an unmapped source genre reaches a queue a person answers, or a
+verb writes an alias into the active taxonomy.
+
+---
+
+## R-248. A third copy of the queued verb shell, and a third of the artifact helper
+
+**Found by** U56, 2026-09-03.
+
+`cratekit.tagging.shell` is `adopt/shell.py`'s three functions with tagging's
+words, and `cratekit.tagging.artifacts` is `adopt/artifacts.py`'s five with two
+different directory names. `modules/outbound` holds the other copy of each. Every
+rule in all three is the same rule.
+
+**Measured cost.** None today. The cost is the one R-240 already names for the
+artifact helper: three copies of a fix is two copies that do not get it. The
+R-225 predicate is now written out in three files, and it took two units to get
+right in the first place.
+
+**Why it is not fixed here.** The honest home is one module in `core` taking the
+names as arguments, and moving the other two there is a change to two other
+units' files. Reaching into `adopt` from `tagging` would put an adoption name on
+a tagging rule, which is the same defect wearing a shorter diff.
+
+**Closes when:** one module owns the queued verb shell and one owns the artifact
+helper, with each feature package naming its own values through them.
+
+---
+
+## R-249. A second pacing implementation, and it is deliberately not the first
+
+**Found by** U56, 2026-09-03.
+
+`searchers.Pacer` is a minimum interval, a jitter fraction and an injected sleep.
+`acquire/download.Pacing` is the same three plus a backoff policy, a retry hint
+ceiling and an attempt cap, and it is consumed by a bounded concurrent pool bound
+to the adapter contract.
+
+**Measured cost.** None. The two have different shapes because they solve
+different problems, and the searcher is sequential where the downloader is not.
+The cost is that the words "jitter fraction" and "minimum interval" now mean the
+same thing in two modules that share no code, so a later change to one is a
+question about the other that nothing asks.
+
+**Why it is not fixed here.** Importing the acquisition pacing into tagging would
+bind a genre lookup to the download adapter's settings type, and generalising it
+is a change to another unit's file.
+
+**Closes when:** one pacing policy serves both, or the two are stated as
+deliberately separate at both ends rather than at one.
+
+---
+
+## R-250. The retag worker reads the whole genre review queue once per item
+
+**Found by** U56 while binding the worker, 2026-09-03.
+
+`retag.decided_index` reads every item this pass has ever offered, which is one
+query for a whole folder sweep and one query PER ITEM in the worker, because the
+worker runs one candidate per call.
+
+**Measured cost.** Unmeasured and believed small. The queue holds only
+coarse-genre questions this pass has asked, so it is bounded by the size of that
+backlog rather than by the library, and a retag over a download folder is tens of
+files rather than thousands. No timing was taken.
+
+**Why it is not fixed here.** The cheap fix is a targeted read, and
+`core.review.get` refuses rather than returning None for an absent identifier, so
+a targeted read means either catching a refusal as control flow or adding a
+non-refusing sibling to `core.review`, which is a foundation file this unit does
+not own.
+
+**Closes when:** a measurement says it matters, or `core.review` grows a lookup
+that answers absence without raising.
+
+---
+
+## R-251. The vanished tagging file reuses `source-missing` rather than a slug of its own
+
+**Found by** U56, 2026-09-03.
+
+Both tagging workers refuse an item whose file is gone between the queueing and
+the drive, and both raise `source-missing`. Their two siblings each took a slug
+of their own for the same shape: `adopt-item-absent` for a collection row the
+scan job queued, `outbound-item-absent` for a track a frozen export no longer
+carries.
+
+**Measured cost.** None to a run. `source-missing`'s reserved remediation already
+says nothing was read and nothing was written, which is exactly what the refusal
+promises, and the message names the file. The cost is that a person filtering job
+causes cannot tell a tagging item's vanished file from any other missing source.
+
+**Why it is not fixed here.** It is a judgement about how wide a slug should be,
+and the argument runs both ways: the two siblings say a third, and this
+vocabulary's own record says twice that a second slug meaning the same thing
+makes a person read a different sentence depending on which verb noticed.
+
+**Closes when:** somebody decides, and the reserved population is re-pinned with
+the answer.
+
+---
+
+## R-252. A file added to a folder between the queueing and the drive is never tagged
+
+**Found by** the U56 document review, 2026-09-03, reasoned rather than driven.
+
+`crate tag folder` derives its items at enqueue and the job runs later. A file
+dropped into the folder in between is in no item, so the worker never sees it and
+the job reports SUCCEEDED over a folder that still holds an untagged file. R15
+covers only the file that disappeared.
+
+**Measured cost.** Unmeasured. The window is between the queueing and the resume,
+which for an attended run is seconds and for a queue left overnight is hours. The
+next run over the same folder does tag it, so the state converges; what does not
+converge is the report, which said the folder was done.
+
+**Why it is not fixed here.** The cheap answer is a count comparison in the final
+report rather than a new item, and deciding whether that is a warning or a
+refusal is a decision about what a queued sweep promises.
+
+**Closes when:** the report names the difference between what was queued and what
+the folder now holds, or a decision is recorded that a frozen item set is the
+whole promise.
+
+---
+
+## R-253. `tag.folder`'s unnamed folder is a warning where its sibling refuses
+
+**Found by** U56, 2026-09-03. Driven: before the branch existed, `crate tag
+folder ""` exited ok with a job queued over the current directory.
+
+An empty string is a valid argument to a positional, and `Path("")` is the
+current directory. `tag.retag` refuses that argument under
+`tag-retag-folder-unknown`, which is a declared slug of its own. `tag.folder`
+reports a NO_OP with the warning `tag-folder-unnamed` instead, because a refusal
+needs a slug in `cause.REASONS` and reusing the correction verb's would put that
+verb's name on this one's failure.
+
+**Measured cost.** None to a library: both stop before writing anything. The cost
+is that two sibling verbs answer one mistake with two different exit codes, so a
+script wrapping them has to know which is which.
+
+**Why it is not fixed here.** Adding a slug is a `cause.py` edit and a re-pin of
+the reserved population, and this unit already moved that population twice.
+
+**Closes when:** `tag.folder` refuses an unnamed folder under its own slug, or a
+decision is recorded that the two verbs answer it differently on purpose.
+
+---
+
+## R-254. The retag reports two zeroes where its sibling reports three
+
+**Found by** U56, 2026-09-03.
+
+`crate tag folder` tells a folder holding no audio apart from a folder that is
+not there. `crate tag retag` folds "every genre here is already specific" and
+"this folder holds no audio at all" into one warning,
+`tag-retag-nothing-coarse`, because its selection walks once and cannot tell them
+apart.
+
+**Measured cost.** Small. A person who mistypes a subfolder name under a real
+library gets the folder-absent warning either way, since that case IS
+distinguished. What is folded is two shapes of "nothing to correct", and the next
+move after both is the same.
+
+**Why it is not fixed here.** Telling them apart means a second walk of the same
+folder purely to count audio files, which is the cost this verb's selection
+already paid once.
+
+**Closes when:** the selection reports what it walked as well as what it took.
+
+---
+
+## R-255. A retag over a folder with nothing to correct still spends a person's decision
+
+**Found by** U56, 2026-09-03, and REVERSED INTO on purpose.
+
+The first draft of `tag.retag` derived its selection before raising the confirm
+gate, so an empty plan reported NO_OP without asking anybody. Conformance 3
+reported it as an unreachable gate within minutes, because that rule holds every
+declared gate to firing, and `adopt/apply_cli` had already answered the same
+question the other way. The gate now fires first and the zero item rule is
+enforced after it.
+
+**Measured cost.** A person running the verb over a clean folder meets
+DECISION_REQUIRED and has to record a decision through `crate run decide` before
+being told there was nothing to do. That is a real cost and it is the accepted
+side of the trade.
+
+**Why it is not fixed here.** Both answers are defensible and only one can be
+right for both verbs at once. Consistency with the sibling and with the shipped
+conformance rule won.
+
+**Closes when:** a decision is recorded that an empty plan should not raise its
+gate, and both verbs and the conformance rule move together.
+
+---
+
+## R-256. `scripts/mutate.py` exited 0 with a mutant still on disk
+
+**Found by** U56's mutation pass, 2026-09-07. Observed, not explained.
+
+The forty row pass returned exit code 0 and printed every row. After it
+returned, `src/cratekit/cli/handlers.py` still carried `R40`'s mutation, which
+deletes the `"tag.retag"` entry from `cli.handlers.HANDLERS`. The tree was clean
+before the run, and the file's mtime sits seven seconds before the driver's own
+table and sidecar writes, so the driver was the last writer.
+
+**Measured cost, and it is the whole point of this entry.** The next thing a
+session does after a pass is run the battery and merge. That battery would have
+run against a tree with `tag.retag` unbound, and the merge would have shipped it.
+The verb would have been queueable and would never have run, which is precisely
+the R-203 state this unit exists to leave, and the mutation table in the same
+commit would have been asserting that thirteen tests kill that exact change.
+Nothing in a green suite says which tree it was green on.
+
+**What is NOT damaged.** `R40` is the last row, so every measurement in the
+table was taken before the contamination. The null control killed zero on the
+full suite, no row drifted its collected count, and an independent two row rerun
+killed 10 and 14 where the pass recorded 10 and 13.
+
+**Why it is not fixed here.** It did not reproduce. The same two mutations
+against the same file on a clean tree restored correctly. The driver has two
+writes to a target, both inside a `finally` that restores from an in-memory
+snapshot and then compares the file to `git show HEAD:` and RAISES on a
+mismatch, and that error is re-raised rather than swallowed. The source says
+this cannot happen and it happened, so the cause is somewhere the source does
+not show, and a fix aimed at a guessed mechanism is the fourth recurring defect
+pattern in `docs/METHOD.md`.
+
+One nearby thing was found while looking and is worth naming, because it makes
+the record read stronger than it is: the sidecar's `head_verified` field is set
+from the driver's input flag rather than from the verification result, so it
+says HEAD verification was REQUESTED, not that it passed.
+
+**The mitigation, which costs one command and is now written down**: run
+`git status --porcelain` after every `scripts/mutate.py` return, before the
+battery and before trusting a row, and restore from `git show HEAD:<path>`.
+`docs/solutions/workflow-issues/a-mutation-driver-can-exit-clean-and-leave-a-mutant.md`
+carries it.
+
+**Closes when:** the mechanism is reproduced and fixed, or the driver verifies
+every target against HEAD once more after its last row and refuses to exit 0
+otherwise, which is a check that would have caught this one whatever caused it.

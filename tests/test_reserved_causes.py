@@ -4768,7 +4768,36 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # this vocabulary already declares and which the gate layer already raises for
     # the same fact. A second slug meaning the same thing would make a person read
     # a different sentence depending on whether the queueing or the drive noticed.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (144, 120, 24)
+    #
+    # Re-pinned on U56, 2026-09-03. TWO slugs, named rather than counted:
+    # catalogue-unreachable, which the tagging searcher raises when none of
+    # Beatport, Traxsource and Bandcamp could be READ, and catalogue-parse-broken,
+    # which it raises when one of them answered and the page carried no shape this
+    # product's parser recognises. Measured by differencing this branch's REASONS
+    # literal against the one in main's own tree extracted to a scratch directory,
+    # rather than by subtracting one total from another: exactly two joined, none
+    # left. Neither is in the reserved table, exactly as their siblings
+    # adopt-item-absent and export-playlist-unknown are not, so the reserved half
+    # does not move. Population 144 to 146, non-reserved 120 to 122, reserved half
+    # UNCHANGED at 24.
+    #
+    # WHY THEY ARE TWO SLUGS RATHER THAN ONE, since both mean the searcher learned
+    # nothing. They send a person to two different places. A catalogue nobody could
+    # read is a network, and it is transient. A page whose shape moved is this
+    # parser, and it is permanent until somebody rewrites it, so riding the
+    # transient slug would put a permanent break behind "retry later" for ever.
+    # That is the specific mistake the unit's four-way outcome exists to prevent,
+    # and collapsing the two slugs would reintroduce it one layer along.
+    #
+    # WHY THE VANISHED FILE IS NOT A THIRD. The tag.folder worker refuses an item
+    # whose file is gone between the queueing and the drive, and that is
+    # ``source-missing``, which this vocabulary already declares and whose reserved
+    # remediation, nothing was read and nothing was written, is exactly what that
+    # refusal promises. Its siblings adopt-item-absent and outbound-item-absent
+    # each name a frozen SOURCE rather than a file on disk, so neither is the same
+    # sentence. Reusing rather than adding is a judgement recorded in
+    # docs/residual-findings.md rather than left implicit here.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (146, 122, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4909,7 +4938,30 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # than a slug. None of the six collides with a declared cause, and none
     # describes a refusal: an empty library is a fact about the library, not a
     # reason something did not happen.
-    assert (len(literals), len(literals - set(causes))) == (347, 204), (
+    #
+    # Re-pinned on U56, 2026-09-03: 347 to 358 distinct, 204 to 213 non-keys.
+    # ELEVEN literals joined and NOTHING left, differenced as SETS against `main`'s
+    # own `src` tree in a scratch worktree rather than inferred from the total
+    # moving by nine. TWO are keys, `catalogue-unreachable` and
+    # `catalogue-parse-broken`, and both are named at the population assertion
+    # above. The other NINE are not causes and each is worth naming, for the
+    # reason the U55 entry gives: a non-cause wearing a cause slug is the shape the
+    # `lossy-refused` incident above was.
+    # `tag-artifacts` and `tag-staging` are DIRECTORY names under the queue root,
+    # the same kind of literal as `adopt-artifacts` and `outbound-staging`;
+    # `tag-folder-absent`, `tag-folder-no-audio`, `tag-folder-unnamed`,
+    # `tag-retag-folder-absent` and `tag-retag-nothing-coarse` are WARNING codes on
+    # an envelope that reports a correct no-op, the same kind of literal as
+    # `collection-empty`; `unmapped-genre` is a SKIP REASON on one file's tagging
+    # result, sitting beside `has-genre` and `no-hit`, which the tree has carried
+    # since the tagging engine landed; and `parse-break` is the name of one member
+    # of the searcher's per source outcome enum. None of the nine collides with a
+    # declared cause, and none describes a refusal: a folder holding no audio is a
+    # fact about the folder rather than a reason something did not happen, which is
+    # precisely why those five are warnings on a NO_OP and not refusals. The one
+    # place this verb family DOES refuse over an argument, an unnamed folder, has a
+    # declared slug already, `tag-retag-folder-unknown`, and it is not new.
+    assert (len(literals), len(literals - set(causes))) == (358, 213), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -4959,7 +5011,36 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # joined and does not say which, and a module leaving while another joined
     # reads identically. THE WITHOUT-OWN HALF IS STILL 8, now across five
     # measurements and four merges.
-    assert (len(without), len(with_own), len(both)) == (8, 21, 12), (
+    #
+    # Re-pinned on U56, 2026-09-03, and THIS IS THE RE-PIN WHERE THE WITHOUT-OWN
+    # HALF FINALLY MOVED, 8 to 9, after five measurements and four merges holding
+    # it. Named rather than counted, and measured by running this same derivation
+    # over main's own tree in a scratch worktree and differencing the two SETS:
+    # exactly one module joined, `tagging/searchers.py`, and nothing left. It
+    # joined all three halves at once, so with-own goes 21 to 22 and the
+    # also-holds-an-integer half 12 to 13.
+    #
+    # WHAT MOVED IT, AND WHY IT IS NOT THE FAILURE THIS HALF WATCHES FOR. The
+    # searcher names its two slugs once, as `UNREACHABLE_REASON` and
+    # `PARSE_BREAK_REASON`, and raises through them rather than repeating a string
+    # at each of two raise sites. Both resolve to causes `cause.py` declares, which
+    # is the definition of this half. The half exists to catch a module that has
+    # started keeping its own opinion about a reserved code, and this is the
+    # opposite shape: the module keeps no table, both raises go through
+    # `cause.refuse` with an explicit remedy, and the names exist so the two
+    # strings cannot drift apart between the raise site and the test that asserts
+    # them. Eight of the nine modules here have exactly that shape already,
+    # `core/jobs.py` among them.
+    #
+    # WHY IT ALSO JOINED THE INTEGER HALF, which is the more interesting half of
+    # the answer. `holds_an_in_range_integer` is true of this module because it
+    # declares a fifteen second request timeout and a thirty second rate limit
+    # base wait, and the reserved code range happens to contain 15 and 30. Neither
+    # number is an exit code and neither is near one. That is the false positive
+    # this composite exists to make visible rather than to hide: a module holding
+    # a cause name AND an in-range integer is worth a look, and the look is what
+    # says a duration is not a code.
+    assert (len(without), len(with_own), len(both)) == (9, 22, 13), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "
@@ -5182,7 +5263,24 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # holders despite this unit writing two of them and rewriting the third: the
     # first two name no cause at all, and apply_cli already named config-unusable
     # on main.
-    assert (len(literal_holders), len(literal_both)) == (85, 15), (
+    # Re-pinned on U56, 2026-09-03: 85 to 87 holders. TWO modules joined and none
+    # left, and both are new files. tagging/searchers.py names its own two slugs,
+    # catalogue-unreachable and catalogue-parse-broken, once each as a module
+    # constant; tagging/shell.py names internal-error, which is the refusal both
+    # tagging verbs raise for a job queued with no items, exactly as its sibling
+    # adopt/shell.py does one merge earlier. Differenced as SETS by re-deriving
+    # this module's own predicate over the working tree and comparing it against
+    # `main`'s in a scratch worktree, rather than inferred from the total moving by
+    # two. The also-holds-an-integer half moves 15 to 16, and only the searcher
+    # joins it, because that module declares a fifteen second request timeout and a
+    # thirty second rate limit base wait and the reserved range contains 15 and 30.
+    # Neither number is an exit code; the composite is doing its job by making a
+    # module worth one look, and the look says a duration is not a code.
+    #
+    # tagging/tag.py, tagging/artifacts.py and tagging/cli.py are NOT new holders
+    # despite this unit writing two of them and rewriting the third: the first two
+    # name no cause at all, and cli.py already named config-unusable on main.
+    assert (len(literal_holders), len(literal_both)) == (87, 16), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

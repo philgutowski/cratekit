@@ -657,6 +657,16 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
     {
         # ── Process ─────────────────────────────────────────────────────────
         "internal-error": ExitCode.INTERNAL,
+        # U56. A public catalogue answered and the page carried no shape this
+        # product's parser recognises, which is a defect HERE rather than a fact
+        # about the catalogue. It shares ``internal-error``'s code because
+        # ``report-defect`` is the right instruction, and it does not share the
+        # slug because the two are read by different people: a scraper whose
+        # target moved is expected over time and is somebody's afternoon, while
+        # ``internal-error`` is a state the program said could not happen.
+        # Folding it into ``unavailable-transient`` instead would be worse than
+        # either, since a permanent break would then wear "retry later" for ever.
+        "catalogue-parse-broken": ExitCode.INTERNAL,
         # U27. The operating system refused this account, anywhere under a verb,
         # at a call nobody guarded. It is deliberately NOT ``internal-error``:
         # that slug carries ``report-defect``, and a permission the user can
@@ -830,6 +840,13 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # of the class where an automated retry is the harm, so a cause built for
         # it carries explicit steps and ``retryable=False``.
         "provider-blocked": ExitCode.UPSTREAM_UNAVAILABLE,
+        # U56. No public catalogue could be READ, which is a different fact from
+        # no catalogue carrying the track, and the slug is the only place that
+        # difference survives. The tagging searcher declines when a source
+        # answered and had no match, and raises this when none of them answered,
+        # so a tagging job never reports every item done over a network that was
+        # never reached. It shares the transient code because that is what it is.
+        "catalogue-unreachable": ExitCode.UPSTREAM_UNAVAILABLE,
         "unavailable-permanent": ExitCode.REFUSED_BY_POLICY,
         "refused-by-policy": ExitCode.REFUSED_BY_POLICY,
         "whitelist-violation": ExitCode.REFUSED_BY_POLICY,

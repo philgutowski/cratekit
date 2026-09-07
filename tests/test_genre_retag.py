@@ -965,3 +965,79 @@ def test_the_handler_refuses_when_its_entry_declares_no_plan_gate():
     with pytest.raises(CratekitError) as excinfo:
         retag_cli._plan_gate(ctx)
     assert excinfo.value.cause.reason == "refused-by-policy"
+
+
+def test_the_frozen_rows_digest_the_same_after_the_folder_has_moved_under_them(
+    folder, silence
+):
+    """KTD8 and R13, asserted on the function rather than through the dispatcher.
+
+    THE STALL THIS SPLIT CLOSES. ``plan_for`` walks the folder, so the digest it
+    returns describes the folder AS IT STANDS. That was stable only while nothing
+    wrote: a corrected file carries a specific genre, the selection shrinks, and
+    the plan digests differently from the one the confirmation was recorded
+    against, so every resume after the first partial run meets ``DecisionStale``
+    for ever. Driven end to end in ``tests/test_tag_workers.py``; measured here on
+    the two functions, because this is the only place the property can be stated
+    without a job store and a gate.
+
+    THE THIRD DIGEST IS WHAT MAKES THE OTHER TWO MEAN ANYTHING. Without it, a
+    ``digest_for`` that ignored its rows entirely would satisfy the first two
+    assertions perfectly.
+    """
+    from cratekit.tagging import retag_cli
+
+    place(folder, silence, "one", CATCH_ALL)
+    place(folder, silence, "two", CATCH_ALL)
+    confirmed = retag_cli.plan_for(str(folder), TAXONOMY)
+
+    assert tags.write_genre(folder / "one.flac", SPECIFIC), "the fixture wrote nothing"
+    walked_again = retag_cli.plan_for(str(folder), TAXONOMY)
+
+    assert walked_again["digest"] != confirmed["digest"], (
+        "a corrected file left the selection unchanged, so this case cannot see "
+        "the staleness the frozen payload exists to prevent"
+    )
+    assert (
+        retag_cli.digest_for(str(folder), confirmed["items"]) == confirmed["digest"]
+    ), "the frozen rows no longer digest as the plan they were frozen from"
+    assert (
+        retag_cli.digest_for(str(folder), walked_again["items"]) != confirmed["digest"]
+    )
+
+
+def test_the_frozen_rows_survive_the_json_the_payload_is_stored_as(folder, silence):
+    """The payload is JSON on disk, and the digest is compared across that trip.
+
+    The rows go into the job payload, which ``core.jobs`` serializes, so the
+    resume digests values that have been through a text encoding rather than the
+    objects the plan built. A digest taken over anything that does not survive
+    that trip refuses a decision nobody changed.
+    """
+    import json
+
+    from cratekit.tagging import retag_cli
+
+    place(folder, silence, "one", CATCH_ALL)
+    confirmed = retag_cli.plan_for(str(folder), TAXONOMY)
+
+    round_tripped = json.loads(json.dumps({"items": confirmed["items"]}))["items"]
+
+    assert retag_cli.digest_for(str(folder), round_tripped) == confirmed["digest"]
+
+
+def test_two_different_empty_folders_digest_differently_through_the_pure_function(
+    tmp_path,
+):
+    """The property the split had to carry down with it, stated where it now lives.
+
+    Two different empty folders are two different decisions: approving a sweep of
+    one is not approving a sweep of the other. The test above this asserts it
+    through ``plan_for``, which walks; this asserts it on the function the resume
+    calls, which cannot walk and would otherwise be free to lose the folder.
+    """
+    from cratekit.tagging import retag_cli
+
+    assert retag_cli.digest_for(str(tmp_path / "EmptyOne"), []) != retag_cli.digest_for(
+        str(tmp_path / "EmptyTwo"), []
+    )
