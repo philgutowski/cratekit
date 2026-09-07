@@ -12136,3 +12136,52 @@ conformance rule won.
 
 **Closes when:** a decision is recorded that an empty plan should not raise its
 gate, and both verbs and the conformance rule move together.
+
+---
+
+## R-256. `scripts/mutate.py` exited 0 with a mutant still on disk
+
+**Found by** U56's mutation pass, 2026-09-07. Observed, not explained.
+
+The forty row pass returned exit code 0 and printed every row. After it
+returned, `src/cratekit/cli/handlers.py` still carried `R40`'s mutation, which
+deletes the `"tag.retag"` entry from `cli.handlers.HANDLERS`. The tree was clean
+before the run, and the file's mtime sits seven seconds before the driver's own
+table and sidecar writes, so the driver was the last writer.
+
+**Measured cost, and it is the whole point of this entry.** The next thing a
+session does after a pass is run the battery and merge. That battery would have
+run against a tree with `tag.retag` unbound, and the merge would have shipped it.
+The verb would have been queueable and would never have run, which is precisely
+the R-203 state this unit exists to leave, and the mutation table in the same
+commit would have been asserting that thirteen tests kill that exact change.
+Nothing in a green suite says which tree it was green on.
+
+**What is NOT damaged.** `R40` is the last row, so every measurement in the
+table was taken before the contamination. The null control killed zero on the
+full suite, no row drifted its collected count, and an independent two row rerun
+killed 10 and 14 where the pass recorded 10 and 13.
+
+**Why it is not fixed here.** It did not reproduce. The same two mutations
+against the same file on a clean tree restored correctly. The driver has two
+writes to a target, both inside a `finally` that restores from an in-memory
+snapshot and then compares the file to `git show HEAD:` and RAISES on a
+mismatch, and that error is re-raised rather than swallowed. The source says
+this cannot happen and it happened, so the cause is somewhere the source does
+not show, and a fix aimed at a guessed mechanism is the fourth recurring defect
+pattern in `docs/METHOD.md`.
+
+One nearby thing was found while looking and is worth naming, because it makes
+the record read stronger than it is: the sidecar's `head_verified` field is set
+from the driver's input flag rather than from the verification result, so it
+says HEAD verification was REQUESTED, not that it passed.
+
+**The mitigation, which costs one command and is now written down**: run
+`git status --porcelain` after every `scripts/mutate.py` return, before the
+battery and before trusting a row, and restore from `git show HEAD:<path>`.
+`docs/solutions/workflow-issues/a-mutation-driver-can-exit-clean-and-leave-a-mutant.md`
+carries it.
+
+**Closes when:** the mechanism is reproduced and fixed, or the driver verifies
+every target against HEAD once more after its last row and refuses to exit 0
+otherwise, which is a check that would have caught this one whatever caused it.
