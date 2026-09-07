@@ -941,9 +941,11 @@ def test_a_file_removed_between_the_queueing_and_the_drive_is_refused_by_name(
 ):
     """R15. The folder is not frozen, so this is reachable input.
 
-    Refused with its own slug rather than reported done: an item that reported
-    done having tagged nothing is the clean-report-over-unreadable-state cost
-    ``docs/METHOD.md`` names. It is not an internal error either, because a
+    Refused rather than reported done: an item that reported done having
+    tagged nothing is the clean-report-over-unreadable-state cost
+    ``docs/METHOD.md`` names. The slug is the SHARED ``source-missing`` rather
+    than one of this verb's own, which is R-251 in the ledger and a recorded
+    decision rather than an oversight. It is not an internal error either, because a
     person deleting a file out of their own download folder is not a defect.
     """
     for name in ("a", "b"):
@@ -1370,14 +1372,16 @@ def test_a_genre_made_blank_between_the_confirm_and_the_drive_is_left_to_its_own
     assert report["written"] is None
 
 
-def test_a_file_gone_at_drive_time_is_refused_with_a_slug_of_its_own(
+def test_a_file_gone_at_drive_time_is_refused_rather_than_reported_done(
     repair_on, folder, silence, monkeypatch
 ):
     """R15. The folder is not frozen, so this is reachable input.
 
     Refused rather than reported done: an item that reported done having
     corrected nothing is the clean-report-over-unreadable-state cost
-    ``docs/METHOD.md`` names. It is not an internal error either, because a
+    ``docs/METHOD.md`` names. The slug is the SHARED ``source-missing`` rather
+    than one of this verb's own, which is R-251 in the ledger and a recorded
+    decision rather than an oversight. It is not an internal error either, because a
     person deleting one of their own files is not a defect in this program.
     """
     for name in ("a", "b"):
