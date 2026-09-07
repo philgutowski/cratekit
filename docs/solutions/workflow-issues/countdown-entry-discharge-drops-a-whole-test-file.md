@@ -279,7 +279,7 @@ fifth retelling that can disagree.
 - `docs/residual-findings.md`, R-25: a countdown that arms correctly and still
   proves nothing, because the guard walks a syntax tree and a call under a false
   branch satisfies it. Arming the guard is not the end of the obligation.
-- `docs/wave-state-2026-08-13.md`: the narrative record of the U16 merge.
+- `docs/history/wave-state-2026-08-13.md`: the narrative record of the U16 merge.
 - `tests/test_restore.py`: the one worked escape hatch in the tree, where an
   obligation was taken off the countdown entirely and rewritten as a test that
   asks what the build contains.

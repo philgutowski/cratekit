@@ -1,5 +1,11 @@
 # Handoff: where Cratekit stands
 
+**THIS FILE IS HISTORY as of 2026-09-07.** It stopped being maintained after U27
+and nothing below should be read as current. It stays at this path because
+`tests/modules/test_reports.py` pins it by name in its cited floor. The current
+state is `RESTART-cratekit.md`, the operating instruction is `docs/METHOD.md`,
+and the rest of the narrative record is in `docs/history/`.
+
 Written 2026-08-01 so a session with no memory of the build can pick it up.
 Revised the same day, twice: once after the three pending branches merged and
 the U7 hardening landed, and again after U8 and U17. Revised 2026-08-02 after

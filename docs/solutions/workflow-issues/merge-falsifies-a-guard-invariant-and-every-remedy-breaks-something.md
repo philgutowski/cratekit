@@ -414,7 +414,7 @@ a chance to get one of them differently wrong.
   sits in the residual renumbering section rather than in the four recurring
   defect patterns at `:157`, which is worth knowing, because the phrase reads
   like one of the four and is not.
-- `docs/wave-state-2026-08-14.md`: the session narrative, with U27's independent
+- `docs/history/wave-state-2026-08-14.md`: the session narrative, with U27's independent
   verification numbers and the merge outcome.
 - `tests/modules/test_reports.py:1632` onward: the allowlist's own comment block,
   a worked example of a guard whose argument was found false once and rebuilt

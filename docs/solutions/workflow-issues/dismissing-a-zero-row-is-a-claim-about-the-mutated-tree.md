@@ -55,7 +55,7 @@ own round created, because it mutates what it believes it changed. Measured
 gaps between an author's table and an independent one: 10 against 17, 39
 against 49, 49 against 83." So an independent adversarial review was run by an
 agent that did not write the code, in its own worktree with its own virtual
-environment (`docs/u39-naming-review.md`).
+environment (`docs/history/u39-naming-review.md`).
 
 The independent table ran 22 rows against a 45 row full pass cap, with 77 total
 deaths, a null control of 0 deaths, and a green baseline of 6254 collected
@@ -204,7 +204,7 @@ operand; only a title-carried marker is recognized"
 It killed 0 of 6254 on the full
 suite.
 
-The reviewer's dismissal, at `docs/u39-naming-review.md:125` through `:128`,
+The reviewer's dismissal, at `docs/history/u39-naming-review.md:125` through `:128`,
 inside scenario G:
 
 > (Marker in the filename alone happens to already equal its own rendered
@@ -334,7 +334,7 @@ where both this learning and its mirror land.
 ## Examples
 
 **Before.** The independent review's Finding 1
-(`docs/u39-naming-review.md`) filed `K1` and `K2` together as one residual and
+(`docs/history/u39-naming-review.md`) filed `K1` and `K2` together as one residual and
 argued the filename half away, in the parenthetical quoted above. The proposed
 disposition was a single residual, proposed as R-166, with the note that "case G's title-only half is
 the one that matters." Under that disposition the shipped suite would have
@@ -373,7 +373,7 @@ carries the case."
 
 **The re-measurement.** All four rows were re-run with `scripts/mutate.py`
 against the same expressions the review mutated, and the results are recorded in
-the review's postscript (`docs/u39-naming-review.md:429` onward), which was
+the review's postscript (`docs/history/u39-naming-review.md:429` onward), which was
 added by the session that received the review and left every measurement above
 it untouched:
 
@@ -390,7 +390,7 @@ result than a death somewhere in the suite, because it shows the new assertion
 is the thing holding the branch rather than an incidental collision with an
 existing fixture. Final suite: 6257 passed, 1 skipped.
 
-**The correction, in the review's own words** (`docs/u39-naming-review.md:462`
+**The correction, in the review's own words** (`docs/history/u39-naming-review.md:462`
 onward):
 
 > Finding 1 records the marker's filename-only half as "a poor discriminator",
@@ -433,7 +433,7 @@ inference from the wrong tree.
   maintainer facing one line, `:111` on writing the table into the repository.
 - `docs/METHOD.md:32` through `:41`, the severity floor and the residual rule, on
   what a zero row becomes when it is accepted rather than closed.
-- `docs/u39-naming-review.md`, the independent review. Finding 1 at the "lossy
+- `docs/history/u39-naming-review.md`, the independent review. Finding 1 at the "lossy
   marker's OR" section is the dismissal, scenario G at `:125` is where it is
   stated, and the postscript at `:429` is the correction and the re-measurement.
 - `docs/mutation/u39-naming-independent.md`, the 22 row table: `K1` at `:452`,

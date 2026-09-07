@@ -470,7 +470,7 @@ which is still outstanding on `main`.
   `git show 038168a`, and read the pre-merge note with
   `git show be7b6e9:tests/_source_guards.py`. Its body says the note "had aged",
   which this document corrects: the note was false the day it was written.
-- `docs/wave-state-2026-08-14.md:344`, "U12 merged, and the coordination note that
+- `docs/history/wave-state-2026-08-14.md:344`, "U12 merged, and the coordination note that
   had aged": the session narrative, carrying the same correction.
 - `tests/_source_guards.py:258`, `ReviewImports`: the resolved code, whose
   docstring records the parameter mismatch and the three failing tests. The

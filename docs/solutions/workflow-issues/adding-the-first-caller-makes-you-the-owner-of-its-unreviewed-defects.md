@@ -163,7 +163,7 @@ per binary override `core.binaries.find` reads before PATH. The stand in answers
 `lsf` with one snapshot name and exits 1 on `copy`, which is what rclone does
 when the remote is unreachable, the token has expired, or the path is not there.
 
-The numbers, from `docs/u27-restore-review.md:60` onward:
+The numbers, from `docs/history/u27-restore-review.md:60` onward:
 
     exit 0, outcome "ok"
     data.totals  {"transfers": 2, "steps": 0, "dry_run": false}
@@ -474,7 +474,7 @@ its guard landed in `9397453`.
   back BLOCKING: both findings were driven again locally before being acted on,
   because a fix justified by somebody else's confident number is METHOD's fourth
   pattern.
-- `docs/u27-restore-review.md` holds the independent review in full, including
+- `docs/history/u27-restore-review.md` holds the independent review in full, including
   the reproduction for this finding and the 45 row mutation table behind it.
   `docs/residual-findings.md` R-150 through R-157 are what this unit recorded
   rather than fixed, and they arrived in two batches rather than one: R-150 to

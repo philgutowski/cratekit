@@ -56,7 +56,7 @@ is three of argparse's jobs done by hand, subcommand resolution, option parsing,
 and validation, and it checked NO POSITIONAL ARGUMENT AT ALL.
 
 An independent adversarial review found the cost, recorded in
-`docs/u28-skills-review.md`, finding 1 at `:82`. Of 278 fenced `crate` lines in
+`docs/history/u28-skills-review.md`, finding 1 at `:82`. Of 278 fenced `crate` lines in
 the twelve skills, eight exit 2 when a person types them, spread across six of
 the twelve. The review's evidence is a table at `:100` through `:108` plus four
 of the eight driven through the installed console script at `:113` through
@@ -245,7 +245,7 @@ owns the answer.
 WHAT THE SILENCE COST, MEASURED. Eight commands across six skills shipped to a
 person's machine, unaltered, through `crate skills install`. The review drove the
 producer to establish reachability under the merge bar's third condition,
-`docs/u28-skills-review.md:127` onward, installing all twelve skills into a
+`docs/history/u28-skills-review.md:127` onward, installing all twelve skills into a
 scratch directory and listing the files that landed. Three of the eight are
 `crate audit coverage --limit 200`, which is the verification step a skill tells
 a person to run AFTER a write. So the failure mode is a person following a
@@ -347,7 +347,7 @@ implementations by running both, and even it goes quiet when the fixture was
 authored from the model under test.
 
 TWO CORRECTIONS TO THE IN TREE RECORD, since this corpus is where a later reader
-will check. First, the review's summary row at `docs/u28-skills-review.md:29` and
+will check. First, the review's summary row at `docs/history/u28-skills-review.md:29` and
 `c24411c`'s own commit message both tally the eight as "6 omit a required
 positional, 1 puts a root flag after the verb, 1 names a subcommand that does not
 exist". The review's own evidence table at `:100` and the parser's messages
@@ -622,7 +622,7 @@ presets happening to agree:
 Same principle at a different altitude. A claim about the product, checked by
 running the product rather than by a person agreeing with the sentence.
 
-THE ROUND'S SHAPE, for scale. The independent pass is `docs/u28-skills-review.md`
+THE ROUND'S SHAPE, for scale. The independent pass is `docs/history/u28-skills-review.md`
 with its 45 row mutation table at `docs/mutation/u28-skills-independent.md`, both
 landed as `a695fc0`, and it returned BLOCKING on three findings of which this was
 one. `c24411c`'s battery was ruff clean, `scan_repo` clean, and 6228 passed with 1

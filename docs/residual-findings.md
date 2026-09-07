@@ -832,7 +832,7 @@ is invisible and wrong. Nothing in this repository derives meaning from these
 numbers being contiguous.
 
 **And the citations are not all inside this repository's source.**
-`docs/wave-state-2026-08-04.md` names "U32's R-21" four times while it is
+`docs/history/wave-state-2026-08-04.md` names "U32's R-21" four times while it is
 tracking several branches at once, each carrying its own R-numbers. Keeping these
 five where they are is what leaves those four sentences true. Renumbering would
 have made them silently name somebody else's finding, which is the same failure
