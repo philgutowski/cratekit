@@ -301,13 +301,49 @@ in an interview is met per phase, not per unit. Units land with commit messages
 and the record. When a phase merges, Phillip runs the `code-explainer` skill
 over the merged range once. A session does not run it.
 
-## The queue after the units
+## The order, serialized 2026-09-07
 
-`board.py next` shows units. When no takeable unit is left, the queue is, in
-order: the residual issues on the board, listed with
-`gh issue list --repo philgutowski/cratekit --label residual --state open`, each
-of which is either done or closed back to the ledger with a comment saying why;
-then U29, which is attended.
+`board.py next` ranks by reach, and every unit still open has a reach of zero,
+so the board no longer orders the queue. This list does. A session takes the
+first numbered line whose issue is still open, and nothing else. One line is
+one session. The lines without an issue number are Phillip's, not a session's.
+
+1. **#74, U56.** In flight on `relay/74`. That branch's uncommitted work is the
+   only copy, so committing it is the first act of the session, before reading
+   anything else.
+2. **#70, U52.** In flight on `relay/70`. Both in flight branches were built
+   under the old method and both rewrite `RESTART-cratekit.md`. Take the
+   incoming branch's RESTART and rewrite it against the merged tree. Take
+   `main`'s `docs/METHOD.md` and `CLAUDE.md` without exception.
+3. **#76, U58.** First of the ready units because its two engine defects make
+   every analysis silently wrong today, and a wrong answer outranks a missing
+   one.
+4. **#72, U54.** Download is where material enters the product, and the
+   adapter it constructs has never been instantiated, so it is the ready unit
+   most likely to find a defect the suite cannot see.
+5. **#75, U57.** Intake, which follows acquisition in the workflow order.
+6. **#71, U53.** Routing and rebuild, the last of the R-203 workers.
+7. Phase E explanation. Phillip runs the explainer once over the Phase E
+   merges, the range from `46d5a4c` to the U53 merge commit.
+8. **#77, U59.** Last of the units on purpose. Its conformance guards arm
+   against the finished tree rather than against one that four more merges
+   will change, and its brief already takes `main`'s pending register rather
+   than merging it. The soft delete defect has been live for 377 commits, and
+   five more sessions do not change what it costs.
+9. Residual issues, thirteen, grouped so that one session can close several.
+   Each is either done or closed back to the ledger with a comment saying why,
+   and `gh issue list --repo philgutowski/cratekit --label residual --state open`
+   is the live list.
+   - **#42, R-5** first, because U59 lands the conformance assertions it
+     records as gated, so it is probably a close.
+   - The guard group: **#38 R-1**, **#40 R-3**, **#53 R-15**, **#54 R-102**.
+   - The correctness group: **#52 R-14**, **#47 R-10**, **#39 R-2**.
+   - The surface group: **#43 R-6**, **#44 R-7**, **#41 R-4**, **#48 R-11**.
+   - **#46, R-9** is on the do not touch list. Close it back to the ledger
+     with the hardware reason. Do not attempt it.
+10. Phase F explanation, over the U59 merge and the residual commits.
+11. **#29, U29.** Attended, per workflow, never batched, and never a session's
+    to take. This is the exit.
 
 ## Relay
 
