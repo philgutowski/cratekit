@@ -1154,6 +1154,10 @@ ENTRIES: tuple[Entry, ...] = (
         extras_modules=("librosa", "numpy", "scipy"),
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
+        # It writes two library scoped state files, so the library has to be
+        # there. Not in ``writes``, whose vocabulary is the library's own
+        # material, files, database and XML, and a calibration is none of those.
+        doctor_checks=("library.mounted",),
     ),
     Entry(
         name="analyze.validate",

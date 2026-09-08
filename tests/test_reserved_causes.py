@@ -5016,7 +5016,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # terminal for a file the decoder could not read, kept apart from keyless;
     # and the three reasons a vocal pass reports for not scoring a track,
     # vocal-audio-undecodable, vocal-head-terminal and vocal-model-unavailable.
-    assert (len(literals), len(literals - set(causes))) == (374, 223), (
+    # Re-pinned in U58's second fix round, 2026-09-08: 374 to 376 distinct, 223
+    # to 225 non-keys. TWO literals joined and NOTHING left, differenced as
+    # SETS against `main`'s own `src` tree extracted into a scratch directory.
+    # Neither is a cause: skipped-unanalysable, the head's terminal for a file
+    # that decoded and then raised inside the analyser, kept apart from
+    # keyless as undecodable is; and vocal-inference-failed, the reason the
+    # vocal pass reports when the loaded model raised on a track's samples,
+    # so the key and tempo the head found are kept rather than the item
+    # failing as a defect.
+    assert (len(literals), len(literals - set(causes))) == (376, 225), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

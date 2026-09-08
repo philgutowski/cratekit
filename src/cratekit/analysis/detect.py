@@ -12,8 +12,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from cratekit.analysis.energy import MEASURE_RATE
+
 #: The terminal status for a file the decoder could not read at all.
 TERMINAL_UNDECODABLE = "skipped-undecodable"
+#: The terminal status for a file that decoded and could not be analysed: too
+#: short for a tempo, or a signal the chroma or separation step raised on.
+#: Kept apart from keyless, which is a track the analyser READ and found
+#: atonal, for the reason ``TERMINAL_UNDECODABLE`` is kept apart from it.
+TERMINAL_UNANALYSABLE = "skipped-unanalysable"
 
 _PITCHES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 _MAJOR = (6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
@@ -82,7 +89,10 @@ def analyse_file(path: Path, *, calibration: Any = None) -> dict[str, Any] | Non
     except ImportError:
         return None
     try:
-        y, sr = librosa.load(str(path), sr=22050, mono=True)
+        # AT THE ENERGY MEASURE RATE, one constant for both, because every
+        # spectral feature is rate dependent and the calibration fitted on the
+        # restamp path scores the samples decoded here.
+        y, sr = librosa.load(str(path), sr=MEASURE_RATE, mono=True)
         if y.size == 0:
             return {"path": path, "terminal": TERMINAL_UNDECODABLE}
     except Exception:
@@ -98,7 +108,11 @@ def analyse_file(path: Path, *, calibration: Any = None) -> dict[str, Any] | Non
         chroma = librosa.feature.chroma_cqt(y=y_harm, sr=sr)
         profile = chroma.mean(axis=1)
     except Exception:
-        return None
+        # DECODED AND NOT ANALYSABLE IS NOT KEYLESS EITHER. A stinger too short
+        # for a tempo estimate, or a signal the separation raised on, was
+        # reported as atonal by the first version, the same shape as the
+        # undecodable case above one step later.
+        return {"path": path, "terminal": TERMINAL_UNANALYSABLE}
     if not np.any(profile):
         return None
     best_corr = -2.0
@@ -115,7 +129,7 @@ def analyse_file(path: Path, *, calibration: Any = None) -> dict[str, Any] | Non
     camelot = _KEY_TO_CAMELOT.get(best_key or "")
     if camelot is None:
         return None
-    level, status = energy_from_samples(y, sr, tempo=bpm, calibration=calibration)
+    level, status = energy_from_samples(y, sr, calibration=calibration)
     return {
         "path": path,
         "camelot": camelot,
@@ -125,21 +139,20 @@ def analyse_file(path: Path, *, calibration: Any = None) -> dict[str, Any] | Non
     }
 
 
-def energy_from_samples(
-    samples: Any, rate: int, *, tempo: float | None, calibration: Any
-) -> tuple[int | None, str]:
+def energy_from_samples(samples: Any, rate: int, *, calibration: Any) -> tuple[int | None, str]:
     """The level and its status for samples already decoded by the head.
 
     Split out of :func:`analyse_file` so the three answers are one function
     with one caller each way: no calibration is ``uncalibrated`` and measures
     nothing, a measurement that fails is ``features-unavailable``, and a level
-    is ``calibrated``.
+    is ``calibrated``. The head's tempo is NOT handed down: the feature vector
+    measures its own from the slice so the run and restamp paths agree.
     """
     from cratekit.analysis import energy
 
     if calibration is None:
         return None, energy.STATUS_UNCALIBRATED
-    features = energy.features_from_samples(samples, rate, tempo=tempo)
+    features = energy.features_from_samples(samples, rate)
     if features is None:
         return None, energy.STATUS_FEATURES_UNAVAILABLE
     return energy.level_for(features, calibration), energy.STATUS_CALIBRATED

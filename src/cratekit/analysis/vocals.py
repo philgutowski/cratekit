@@ -37,6 +37,7 @@ VOCAL_CEILING = 2
 REASON_MODEL_UNAVAILABLE = "vocal-model-unavailable"
 REASON_AUDIO_UNDECODABLE = "vocal-audio-undecodable"
 REASON_HEAD_TERMINAL = "vocal-head-terminal"
+REASON_INFERENCE_FAILED = "vocal-inference-failed"
 
 _VOCAL_LOADER: Callable[[], Any] | None = None
 _VOCAL_MODEL: Any = None
@@ -117,7 +118,14 @@ def analyse(partial: dict[str, Any]) -> dict[str, Any]:
         return _inactive(result, REASON_AUDIO_UNDECODABLE)
     from cratekit.analysis.vocal import infer_frames, reduce_frames
 
-    score = reduce_frames(*infer_frames(model, samples))
+    # THE MODEL'S OWN FAILURE IS A REASON, NOT A DEFECT. The first version had
+    # no boundary here, so a clip the network rejected, or a torch out of
+    # memory on a long track, failed the whole item as an internal error and
+    # threw away the key and tempo the head had already found.
+    try:
+        score = reduce_frames(*infer_frames(model, samples))
+    except Exception:
+        return _inactive(result, REASON_INFERENCE_FAILED)
     result["vocal_active"] = True
     result["vocal_reason"] = None
     result["voxlevel"] = int(round(score.presence))

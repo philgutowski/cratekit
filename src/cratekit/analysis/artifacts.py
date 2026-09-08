@@ -59,6 +59,47 @@ def write(path: Path, payload: dict[str, Any]) -> Path:
     return path
 
 
+RENAME_INTENT_FILENAME = "rename-intent.json"
+
+
+def intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
+    """Where one item's rename intent lives: in its staging directory.
+
+    THE INTENT IS WRITTEN BEFORE THE RENAME AND OUTLIVES A KILL. The item is
+    the pre rename name and the rename lands inside the handler, before the
+    engine flips the row to done, so a kill in that window leaves a finished
+    file under its head and a pending row under its old name. The intent is
+    what lets the resume find the file the item BECAME rather than guessing
+    from the folder, because a guess matched any headed file whose stripped
+    stem equalled the item, which is an unrelated file when the source was
+    deleted, and matched nothing when the template deduped or truncated the
+    stem. ``staged_path`` clears the directory on the next attempt, which is
+    after the resume has read it.
+    """
+    return _job_dir(STAGING_DIRNAME, cfg, job_id) / str(ordinal) / RENAME_INTENT_FILENAME
+
+
+def record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    config._mkdir_private(path.parent)
+    return write(path, {"item": item.item_id, "target": str(target)})
+
+
+def rename_intent(cfg: config.Config, job, item) -> Path | None:
+    """The target this item's last attempt meant to rename it to, if recorded."""
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    if not path.is_file():
+        return None
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    target = loaded.get("target")
+    return Path(str(target)) if target else None
+
+
 def produced(cfg: config.Config, job, item, report: dict[str, Any]) -> jobs.Produced:
     return jobs.Produced(
         staged=write(staged_path(cfg, job.job_id, item.ordinal), report),
@@ -72,7 +113,11 @@ def committed(cfg: config.Config, job_id: str) -> tuple[dict[str, Any], ...]:
     if not directory.is_dir():
         return ()
     found: list[dict[str, Any]] = []
-    for path in sorted(directory.glob("*.json"), key=lambda item: int(item.stem)):
+    # Only ordinal named files are reports. A stray ``notes.json`` beside them
+    # once raised out of the sort key and took the whole resume envelope down
+    # after every item had finished.
+    reports = [path for path in directory.glob("*.json") if path.stem.isdigit()]
+    for path in sorted(reports, key=lambda item: int(item.stem)):
         try:
             loaded = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -84,10 +129,14 @@ def committed(cfg: config.Config, job_id: str) -> tuple[dict[str, Any], ...]:
 
 __all__ = [
     "ARTIFACTS_DIRNAME",
+    "RENAME_INTENT_FILENAME",
     "STAGING_DIRNAME",
     "committed",
     "final_path",
+    "intent_path",
     "produced",
+    "record_rename_intent",
+    "rename_intent",
     "staged_path",
     "write",
 ]

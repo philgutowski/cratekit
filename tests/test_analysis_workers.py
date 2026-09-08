@@ -321,6 +321,9 @@ def test_the_missing_extra_refuses_the_item_rather_than_skipping_it_as_keyless(
     assert inner["reason"] == "module-extras-missing"
     assert inner["code"] == int(ExitCode.MODULE_UNAVAILABLE)
     assert inner["detail"]["install"] == "pip install 'cratekit[analysis]'"
+    # The same remedy token the parser stub renders for this slug, so the one
+    # absence is not a bug in the worker and an installation gap at the parser.
+    assert inner["remediation"]["remedy"] == "install-module-extra"
 
 
 def test_a_worker_process_with_nothing_bound_binds_the_shipped_defaults(cfg, monkeypatch):
@@ -394,17 +397,51 @@ def test_the_frozen_folder_is_absolute_so_a_resume_from_elsewhere_finds_it(
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
 
 
+class _Killed(BaseException):
+    """A process death, which the item boundary does not convert."""
+
+
+def kill_after_the_rename(monkeypatch):
+    """Arrange for the first finalized report to die before it is staged.
+
+    ``jobs.drive`` converts ``Exception`` at the item boundary, and a kill is
+    not one, so the row stays pending under its old name while the file is
+    already under its head. The second attempt goes through untouched.
+    """
+    real = artifacts.produced
+    calls: list[str] = []
+
+    def produced(cfg, job, item, report):
+        if report.get("status") == "analyzed" and not calls:
+            calls.append(item.item_id)
+            raise _Killed()
+        return real(cfg, job, item, report)
+
+    monkeypatch.setattr(artifacts, "produced", produced)
+    return calls
+
+
 def test_an_item_renamed_before_its_row_moved_resumes_as_finished(
     cfg, folder, silence, monkeypatch
 ):
-    """The kill window between the rename and the row flipping to done."""
-    place(folder, silence, "a")
+    """The kill window between the rename and the row flipping to done.
+
+    THE STEM IS ONE THE TEMPLATE REWRITES, a trailing segment repeating the
+    lead, so the finished file's name is not the head plus the item. The
+    first version guessed the twin from the folder by stripping heads and
+    comparing stems, and refused exactly this file as missing.
+    """
+    place(folder, silence, "Daft Punk - Around the World - Daft Punk")
     bind_scoring(monkeypatch)
     drive(["analyze", "run", str(folder)])
     job = analysis_job("analyze.run")
-    # What a kill after the rename leaves behind: the finished file under its
-    # head and the pending row under its old name.
-    (folder / "a.flac").rename(folder / "08A - 124 - a.flac")
+    killed = kill_after_the_rename(monkeypatch)
+    with pytest.raises(_Killed):
+        drive(resume_argv(job.job_id))
+    assert killed == ["Daft Punk - Around the World - Daft Punk.flac"]
+    finished = folder / "08A - 124 - Daft Punk - Around the World.flac"
+    assert finished.is_file(), sorted(p.name for p in folder.iterdir())
+    assert item_states(job.job_id) != {killed[0]: jobs.ItemState.DONE}
 
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
@@ -412,7 +449,46 @@ def test_an_item_renamed_before_its_row_moved_resumes_as_finished(
     report = artifacts.committed(cfg, job.job_id)[0]
     assert report["status"] == "skipped-prefixed"
     assert report["resumed_after_rename"] is True
-    assert report["path"] == str(folder / "08A - 124 - a.flac")
+    assert report["path"] == str(finished)
+
+
+def test_a_deleted_source_beside_an_unrelated_twin_is_refused_not_reported_analysed(
+    cfg, folder, silence, monkeypatch
+):
+    """The folder already holds a headed file of the same stem from an
+    earlier pass. The queued source is then deleted. Nothing this job did
+    produced the headed file, and the first version reported it as this
+    item, done, resumed after a rename that never happened."""
+    place(folder, silence, "twin")
+    place(folder, silence, "08A - 124 - twin")
+    bind_scoring(monkeypatch)
+    drive(["analyze", "run", str(folder)])
+    job = analysis_job("analyze.run")
+    (folder / "twin.flac").unlink()
+
+    code, _ = drive(resume_argv(job.job_id))
+    assert code != int(ExitCode.OK)
+    assert item_causes(job.job_id) == {"twin.flac": "source-missing"}
+    # The older headed file is an item of its own and is the resume marker;
+    # nothing was committed FOR the deleted one.
+    assert [r["item"] for r in artifacts.committed(cfg, job.job_id)] == ["08A - 124 - twin.flac"]
+
+
+def test_a_rename_intent_for_another_item_or_a_gone_target_is_not_a_twin(cfg, folder):
+    class Job:
+        job_id = "j1"
+
+    class Item:
+        item_id = "a.flac"
+        ordinal = 1
+
+    assert analysis_cli._finalized_twin(cfg, Job, Item) is None
+    artifacts.record_rename_intent(cfg, Job, Item, folder / "08A - 124 - a.flac")
+    assert analysis_cli._finalized_twin(cfg, Job, Item) is None, "the target is not there"
+    (folder / "08A - 124 - a.flac").write_bytes(b"")
+    assert analysis_cli._finalized_twin(cfg, Job, Item) == folder / "08A - 124 - a.flac"
+    Item.item_id = "b.flac"
+    assert analysis_cli._finalized_twin(cfg, Job, Item) is None, "another item's intent"
 
 
 def test_a_detector_shaped_like_the_batch_fakes_is_accepted(cfg, folder, silence, monkeypatch):
@@ -646,20 +722,18 @@ def test_a_calibrated_level_is_written_and_routes_to_a_band(
 
 def test_the_detector_names_why_energy_is_what_it_is(monkeypatch):
     samples = np.zeros(2205, dtype=np.float32)
-    assert detect.energy_from_samples(samples, 22050, tempo=124, calibration=None) == (
+    assert detect.energy_from_samples(samples, 22050, calibration=None) == (
         None,
         energy.STATUS_UNCALIBRATED,
     )
     calibration = calibration_over()
     monkeypatch.setattr(energy, "features_from_samples", lambda *a, **k: None)
-    assert detect.energy_from_samples(samples, 22050, tempo=124, calibration=calibration) == (
+    assert detect.energy_from_samples(samples, 22050, calibration=calibration) == (
         None,
         energy.STATUS_FEATURES_UNAVAILABLE,
     )
     monkeypatch.setattr(energy, "features_from_samples", lambda *a, **k: features(11))
-    level, status = detect.energy_from_samples(
-        samples, 22050, tempo=124, calibration=calibration
-    )
+    level, status = detect.energy_from_samples(samples, 22050, calibration=calibration)
     assert status == energy.STATUS_CALIBRATED
     assert level == energy.LEVEL_MAX
 
@@ -718,8 +792,15 @@ def test_a_corrupt_calibration_raises_rather_than_reading_as_absent(cfg):
     assert caught.value.cause.reason == "energy-calibration-unreadable"
 
 
-@pytest.mark.parametrize("text", ["{not json", "{}", "[]"])
+_LIST_WHERE_A_MAPPING_BELONGS = json.dumps(
+    {"thresholds": list(range(9)), "mean": [], "std": {}, "weights": {}, "n_tracks": 1}
+)
+
+
+@pytest.mark.parametrize("text", ["{not json", "{}", "[]", _LIST_WHERE_A_MAPPING_BELONGS])
 def test_every_corrupt_calibration_shape_is_the_same_named_refusal(cfg, text):
+    """The fourth shape raised ``AttributeError`` through the promise the
+    loader's docstring makes, and reached the queue as a traceback."""
     path = energy.calibration_path(cfg)
     config._mkdir_private(path.parent)
     path.write_text(text, encoding="utf-8")
@@ -742,11 +823,17 @@ def test_a_corrupt_calibration_reaches_the_person_as_a_remedy_not_a_defect(
     assert refused["cause"]["reason"] == "energy-calibration-unreadable"
     assert "calibrate" in refused["cause"]["message"] or refused["cause"]["remediation"]
 
+    # THE WORKER PATH: the run refuses the same file at its queue now, so the
+    # calibration is corrupted AFTER the queue, which is a calibration written
+    # between two jobs driven by one process and the reason the default
+    # detector is rebound per item.
+    path.unlink()
     monkeypatch.setattr(vocals, "_VOCAL_LOADER", _FakeModel)
     monkeypatch.setattr(vocals, "_DECODER", voiced())
     monkeypatch.setattr(detect, "heavy_available", lambda: True)
     drive(["analyze", "run", str(folder)])
     job = analysis_job("analyze.run")
+    path.write_text("{not json", encoding="utf-8")
     code, resumed = drive(resume_argv(job.job_id))
     assert code != int(ExitCode.OK)
     assert item_causes(job.job_id) == {"a.flac": "energy-calibration-unreadable"}
@@ -1053,6 +1140,208 @@ def test_the_analysis_package_imports_with_the_heavy_stack_blocked():
     proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "slim"
+
+
+# ---------------------------------------------------------------------------
+# The second fix round, from the review over the whole branch
+# ---------------------------------------------------------------------------
+
+
+def test_a_dotfile_sidecar_beside_a_track_is_not_an_item(cfg, folder, silence):
+    """macOS writes ``._track.flac`` beside every file on an exFAT stick."""
+    place(folder, silence, "track")
+    place(folder, silence, "._track")
+    (folder / ".DS_Store.flac").write_bytes(b"")
+    assert analysis_cli._audio_in(folder) == ["track.flac"]
+
+
+def test_a_corrupt_undo_log_refuses_by_name_rather_than_failing_every_item_as_a_defect(
+    cfg, folder, silence, monkeypatch
+):
+    path = place(folder, silence, "a", energylevel=4)
+    energy.save_calibration(cfg, calibration_over())
+    log = energy.undo_log_path(cfg)
+    config._mkdir_private(log.parent)
+    log.write_text("[]", encoding="utf-8")
+    bind_measuring(monkeypatch, {"a": 9})
+    drive(["analyze", "restamp", str(folder)])
+    job = analysis_job("analyze.restamp")
+
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code != int(ExitCode.OK)
+    assert item_causes(job.job_id) == {"a.flac": "analysis-write-failed"}
+    inner = resumed["cause"]["inner"]
+    assert inner["detail"]["undo_log"] == str(log)
+    assert "only record" in inner["message"]
+    assert tags.read_energy_from_file(path) == 4, "nothing was written over the file"
+    assert log.read_text(encoding="utf-8") == "[]", "the unreadable text was kept"
+
+
+def test_a_model_whose_inference_raises_is_a_named_absence_with_the_head_intact(monkeypatch):
+    class Rejects:
+        def inference(self, wav):
+            raise RuntimeError("shape the network does not take")
+
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", Rejects)
+    monkeypatch.setattr(vocals, "_DECODER", voiced())
+    scored = vocals.analyse({"path": "x.flac", "terminal": None, "camelot": "8A", "rate": 124})
+    assert scored["vocal_active"] is False
+    assert scored["vocal_reason"] == vocals.REASON_INFERENCE_FAILED
+    assert scored["voxlevel"] is None
+    assert (scored["camelot"], scored["rate"]) == ("8A", 124)
+
+
+def test_a_run_with_no_model_loaded_warns_on_the_envelope(cfg, folder, silence, monkeypatch):
+    """The declared extra is ``analysis`` and the model is behind ``vocals``,
+    so a machine with the first and not the second finalizes every track
+    with no vocal tags. The item reports carried the absence; the envelope
+    did not."""
+    place(folder, silence, "a")
+
+    def no_model():
+        raise ImportError("panns_inference")
+
+    bind_scoring(monkeypatch, loader=no_model)
+    drive(["analyze", "run", str(folder)])
+    job = analysis_job("analyze.run")
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert [w["code"] for w in resumed["warnings"]] == [vocals.REASON_MODEL_UNAVAILABLE]
+    assert "cratekit[vocals]" in resumed["warnings"][0]["message"]
+    assert resumed["data"]["progress"]["analysis"]["by_vocal_reason"] == {
+        vocals.REASON_MODEL_UNAVAILABLE: 1
+    }
+
+
+def test_a_run_with_the_model_loaded_carries_no_vocal_warning(cfg, folder, silence, monkeypatch):
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch)
+    drive(["analyze", "run", str(folder)])
+    job = analysis_job("analyze.run")
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["warnings"] == []
+    assert resumed["data"]["progress"]["analysis"]["by_vocal_reason"] == {}
+
+
+def test_a_decodable_file_the_analyser_raises_on_is_its_own_terminal_not_keyless(monkeypatch):
+    """A stinger too short for a tempo decodes and then raises inside the
+    analyser; the first version returned None there, which the light pass
+    reported as atonal."""
+    import types
+
+    def tempo(**kwargs):
+        raise ValueError("too short")
+
+    fake = types.SimpleNamespace(
+        load=lambda p, sr, mono: (np.ones(64, dtype=np.float32), sr),
+        feature=types.SimpleNamespace(tempo=tempo),
+        effects=types.SimpleNamespace(),
+    )
+    monkeypatch.setitem(sys.modules, "librosa", fake)
+    found = detect.analyse_file(Path("stinger.flac"))
+    assert found == {"path": Path("stinger.flac"), "terminal": detect.TERMINAL_UNANALYSABLE}
+    assert light.analyse("stinger.flac")["terminal"] == "skipped-unanalysable"
+
+
+def test_the_head_decodes_at_the_energy_measure_rate():
+    source = (SRC_ROOT / "cratekit" / "analysis" / "detect.py").read_text(encoding="utf-8")
+    assert "sr=MEASURE_RATE" in source
+    assert "22050" not in source, "a second literal for the rate is how the two drift"
+
+
+def test_the_feature_vector_measures_its_own_tempo_on_every_path():
+    """The head's whole track integer tempo is no longer handed down, so a
+    file scored by ``analyze run`` and by ``analyze restamp`` carries one
+    tempo reading against one calibration."""
+    import inspect
+
+    assert "tempo" not in inspect.signature(energy.features_from_samples).parameters
+    assert "tempo" not in inspect.signature(detect.energy_from_samples).parameters
+
+
+def test_an_unreadable_calibration_refuses_a_run_at_the_queue(cfg, folder, silence, monkeypatch):
+    place(folder, silence, "a")
+    path = energy.calibration_path(cfg)
+    config._mkdir_private(path.parent)
+    path.write_text("{not json", encoding="utf-8")
+    bind_scoring(monkeypatch)
+    code, queued = drive(["analyze", "run", str(folder)])
+    assert code == int(ExitCode.PRECONDITION), queued
+    assert queued["cause"]["reason"] == "energy-calibration-unreadable"
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
+def test_an_absent_calibration_still_queues_a_run(cfg, folder, silence, monkeypatch):
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch)
+    code, queued = drive(["analyze", "run", str(folder)])
+    assert code == int(ExitCode.OK), queued
+
+
+def test_calibrate_refuses_with_the_library_away_rather_than_writing_beside_the_mount(
+    cfg, folder, silence, monkeypatch
+):
+    for i in range(12):
+        place(folder, silence, f"t{i}")
+    table = {f"t{i}.flac": i for i in range(12)}
+    monkeypatch.setattr(energy, "_EXTRACTOR", lambda p: features(table[p.name]))
+    shutil.rmtree(cfg.library.root)
+    code, envelope = drive(["analyze", "calibrate", str(folder)])
+    assert code == int(ExitCode.LIBRARY_UNAVAILABLE), envelope
+    assert envelope["cause"]["reason"] == "library-volume-unmounted"
+    assert not energy.calibration_path(cfg).exists()
+    assert not cfg.library.root.exists(), "nothing created the root on the way to the file"
+
+
+def test_calibrate_declares_the_mount_check_its_state_writes_need():
+    assert "library.mounted" in registry.entry("analyze.calibrate").doctor_checks
+
+
+def test_an_unknown_tag_field_is_a_defect_and_not_a_container_refusal(folder, silence):
+    """The writer's plain ``ValueError`` is the beat grid enforcement point,
+    R17. Folding it into the container refusal would report a defect in this
+    module as a folder of awkward files."""
+    path = place(folder, silence, "a")
+    with pytest.raises(ValueError, match="unknown tag fields"):
+        analysis_cli._write_or_refuse(path, {"averagebpm": "124"}, untouched="untouched")
+    odd = folder / "odd.webm"
+    odd.write_bytes(b"not-audio")
+    with pytest.raises(CratekitError) as caught:
+        analysis_cli._write_or_refuse(odd, {"initialkey": "08A"}, untouched="untouched")
+    assert caught.value.cause.reason == "analysis-write-failed"
+
+
+def test_a_stray_json_beside_the_reports_does_not_take_the_summary_down(cfg):
+    class Job:
+        job_id = "j9"
+
+    class Item:
+        item_id = "a.flac"
+        ordinal = 1
+
+    produced = artifacts.produced(cfg, Job, Item, {"status": "analyzed"})
+    jobs.commit_artifact(produced.staged, produced.final)
+    (produced.final.parent / "notes.json").write_text("{}", encoding="utf-8")
+    assert artifacts.committed(cfg, "j9") == ({"status": "analyzed"},)
+
+
+def test_the_restamp_reads_the_tag_once_and_records_its_text(cfg, folder, silence, monkeypatch):
+    """A tag another tool wrote as text is recorded as that text and compared
+    as no level, from one read rather than two that could disagree."""
+    path = place(folder, silence, "a")
+    assert tags.write_tags(path, {"energylevel": "7/10"})
+    energy.save_calibration(cfg, calibration_over())
+    bind_measuring(monkeypatch, {"a": 9})
+    drive(["analyze", "restamp", str(folder)])
+    job = analysis_job("analyze.restamp")
+    code, _ = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK)
+    assert energy.read_undo_log(cfg) == {str(path): "7/10"}
+    report = artifacts.committed(cfg, job.job_id)[0]
+    assert report["previous"] is None
+    assert report["written"] is True
 
 
 def test_the_verb_module_never_imports_the_model_module_at_module_scope():

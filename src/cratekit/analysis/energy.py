@@ -166,15 +166,19 @@ def _central(samples: Any, rate: int) -> Any:
     return samples[start : start + width]
 
 
-def features_from_samples(
-    samples: Any, rate: int, *, tempo: float | None = None
-) -> dict[str, float] | None:
+def features_from_samples(samples: Any, rate: int) -> dict[str, float] | None:
     """The ordered feature vector for decoded mono samples, or None.
 
     Takes samples rather than a path so the head pass, which has already
     decoded the track for key and tempo, does not decode it a second time.
-    ``tempo`` is the head's own reading when it has one. Measured over the
-    central :data:`SEGMENT_SECONDS`.
+    Measured over the central :data:`SEGMENT_SECONDS`.
+
+    THE TEMPO FEATURE IS MEASURED HERE, FROM THE SLICE, ON EVERY PATH. The
+    first version took the head's whole track integer tempo when it had one
+    and measured its own only on the restamp path, so the same file scored
+    through ``analyze run`` and through ``analyze restamp`` carried two tempo
+    readings against one calibration, and a level could move on a restamp
+    with nothing changed. One method, so the two paths agree by construction.
     """
     try:
         import librosa
@@ -241,14 +245,13 @@ def features_from_samples(
         f["high_band_ratio"] = high / total
         f["high_low_tilt"] = high / (low + _EPS)
 
-        if tempo is None:
-            try:
-                measured = librosa.feature.tempo(
-                    onset_envelope=onset_env, sr=rate, hop_length=hop, aggregate=np.mean
-                )
-                tempo = float(np.atleast_1d(measured)[0])
-            except Exception:
-                tempo = _NAN
+        try:
+            measured = librosa.feature.tempo(
+                onset_envelope=onset_env, sr=rate, hop_length=hop, aggregate=np.mean
+            )
+            tempo = float(np.atleast_1d(measured)[0])
+        except Exception:
+            tempo = _NAN
         f["tempo"] = float(tempo)
     except Exception:
         return None
@@ -436,9 +439,12 @@ def load_calibration(cfg: config.Config) -> Calibration | None:
     path = calibration_path(cfg)
     if not path.is_file():
         return None
+    # AttributeError is in the tuple because ``from_json`` asks ``.items()`` of
+    # three entries, and a file carrying a list where a mapping belongs raised
+    # through the promise this docstring makes.
     try:
         return Calibration.from_json(json.loads(path.read_text(encoding="utf-8")))
-    except (OSError, ValueError, KeyError, TypeError) as exc:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
         raise refuse(
             "energy-calibration-unreadable",
             f"this library's energy calibration at {path} could not be read "
@@ -463,8 +469,29 @@ def read_undo_log(cfg: config.Config) -> dict[str, str | None]:
     path = undo_log_path(cfg)
     if not path.is_file():
         return {}
-    loaded = json.loads(path.read_text(encoding="utf-8"))
-    return {str(k): (None if v is None else str(v)) for k, v in loaded.items()}
+    # AN UNREADABLE LOG REFUSES BY NAME. It is the only copy of every value a
+    # restamp overwrote, so a truncated one must reach the person as a file to
+    # repair, not as a defect report on every item of the next restamp, and a
+    # record appended to a log that could not be read back would discard
+    # whatever the unreadable text still held.
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(loaded, dict):
+            raise ValueError(f"expected a JSON object, found {type(loaded).__name__}")
+        return {str(k): (None if v is None else str(v)) for k, v in loaded.items()}
+    except (OSError, ValueError) as exc:
+        raise refuse(
+            "analysis-write-failed",
+            f"the energy undo log at {path} could not be read ({type(exc).__name__}: "
+            f"{exc}), and it is the only record of every value a restamp replaced, "
+            f"so no restamp is recorded against it until it is repaired",
+            steps=(
+                "repair or move the undo log aside; it is a JSON object of file path "
+                "to the energylevel text the file carried before its first restamp",
+            ),
+            origin=("analysis", "energy"),
+            detail={"undo_log": str(path), "kind": type(exc).__name__},
+        ) from exc
 
 
 def record_previous(cfg: config.Config, path: Path, previous: str | None) -> bool:
