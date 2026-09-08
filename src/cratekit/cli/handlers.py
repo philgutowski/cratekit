@@ -72,6 +72,7 @@ ItemHandler = Callable[[jobs.Job, jobs.Item, "config.Config"], "jobs.Produced | 
 
 #: ``handler_key`` to ``"dotted.module:function"``. Strings, never functions.
 HANDLERS: Mapping[str, str] = {
+    "acquire.download": "cratekit.acquire.cli:handle",
     "adopt.apply": "cratekit.adopt.apply_cli:handle",
     "adopt.scan": "cratekit.adopt.scan_cli:handle",
     # TWO WORKERS IN ONE MODULE, named for what each does to a file: the run
@@ -104,7 +105,6 @@ HANDLERS_NOT_YET_BOUND: Mapping[str, str] = {
         "the resume verb itself: it spawns the child that drives a job, and is "
         "never queued under its own key"
     ),
-    "acquire.download": "no worker yet, R-203",
     "delete.review": "no worker yet, R-203",
     "intake.playlist": "no worker yet, R-203",
     "intake.set": "no worker yet, R-203",

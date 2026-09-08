@@ -5025,7 +5025,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # vocal pass reports when the loaded model raised on a track's samples,
     # so the key and tempo the head found are kept rather than the item
     # failing as a defect.
-    assert (len(literals), len(literals - set(causes))) == (376, 225), (
+    # Re-pinned on U54, 2026-09-08: 376 to 377 distinct, 225 to 226 non-keys.
+    # ONE literal joined and NOTHING left, differenced as SETS against `main`'s
+    # own `src` tree extracted into a scratch directory. It is not a cause:
+    # no-tracks, the honest zero state a queued download reports when the list
+    # document it read declares no tracks, beside the analysis verbs' no-audio.
+    # Every refusal the acquisition worker raises reuses a slug the table
+    # already reserves, so the reserved half does not move.
+    assert (len(literals), len(literals - set(causes))) == (377, 226), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

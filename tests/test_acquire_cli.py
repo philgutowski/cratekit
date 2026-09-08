@@ -25,6 +25,7 @@ from cratekit.acquire.adapter import LosslessPolicy
 from cratekit.cli import registry
 from cratekit.core import config, naming
 from cratekit.core.exit_codes import ExitCode
+from tests.acquire_fakes import tidal_list
 from tests.test_cli_contract import configured, drive, library  # noqa: F401
 
 VERBS = ("acquire.download", "acquire.audit")
@@ -87,22 +88,25 @@ def test_neither_verb_is_hidden_behind_a_module_toggle():
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_download_over_an_absent_list_queues_and_exits_ok(configured):  # noqa: F811
-    """Queueing freezes the path without reading it, so an absent list is OK here.
+def test_download_over_an_absent_list_refuses_by_name(configured):  # noqa: F811
+    """The list is READ at the queue as of U54, so an absent one is refused here.
 
-    The refusal a person meets over a list that is not there belongs to the
-    worker that reads it under the frozen configuration. A stat in the shell
-    would refuse on a machine where the work would have run fine once claimed,
-    which is the residual ``master`` beside it already records.
+    Until U54 the path was frozen unread and this test asserted a queued job over
+    a list that was not there. The zero item rule reversed it: the items are the
+    list's tracks, and naming them means reading the list. The refusal is the
+    match verb's own, through the one list reader the product has.
     """
     absent = configured.library.root / "no-such-list.txt"
     assert not absent.exists()
     code, out, _ = drive(["--output", "json", "acquire", "download", str(absent)])
-    assert code == int(ExitCode.OK), out
+    assert code == int(ExitCode.PRECONDITION), out
     envelope = json.loads(out)
-    assert envelope["verb"] == "acquire.download"
-    assert envelope["data"]["state"] == "queued"
-    assert envelope["data"]["job_id"]
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert "could not be read" in envelope["cause"]["message"]
+    from cratekit.core import jobs
+
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
 
 
 def test_download_reaches_no_provider_and_no_network(configured, monkeypatch):  # noqa: F811
@@ -126,7 +130,9 @@ def test_download_reaches_no_provider_and_no_network(configured, monkeypatch):  
     ):
         monkeypatch.setattr(module, name, boom)
 
-    code, _, _ = drive(["acquire", "download", str(configured.library.root / "list.txt")])
+    listed = configured.library.root / "list.json"
+    listed.write_text(tidal_list([("100", "A", "B")]))
+    code, _, _ = drive(["acquire", "download", str(listed)])
     assert code == int(ExitCode.OK)
 
 
@@ -138,10 +144,10 @@ def test_download_argv_round_trips_the_frozen_payload_and_carries_no_run(configu
     against. Asserted as a WHOLE token: ``--run-id`` contains ``--run``, and a
     substring check is what reported a broken verb clean once already.
     """
-    code, out, _ = drive(
-        ["--output", "json", "acquire", "download", str(configured.library.root / "l.txt")]
-    )
-    assert code == int(ExitCode.OK)
+    listed = configured.library.root / "l.json"
+    listed.write_text(tidal_list([("100", "A", "B")]))
+    code, out, _ = drive(["--output", "json", "acquire", "download", str(listed)])
+    assert code == int(ExitCode.OK), out
     job_id = json.loads(out)["data"]["job_id"]
 
     from cratekit.core import jobs
@@ -151,7 +157,7 @@ def test_download_argv_round_trips_the_frozen_payload_and_carries_no_run(configu
     argv = acquire_cli.download_argv(job)
 
     assert argv[:2] == ["acquire", "download"]
-    assert argv[2] == str(configured.library.root / "l.txt")
+    assert argv[2] == str(listed)
     assert argv[-2:] == ["--job", job_id]
     assert "--run" not in argv
 
