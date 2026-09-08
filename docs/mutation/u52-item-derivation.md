@@ -70,6 +70,12 @@ the sentence that tells the two apart. `L8` and `H5` were zeros because every
 fake that failed verification failed it with a foreign exception, so the
 passthrough for this product's own refusals had never once been exercised.
 
+One sentence below, "METHOD caps a full pass at 45 rows", is the driver's
+template and not METHOD's rule. METHOD's cap is twenty five rows and one pass
+per unit per session; this table's forty was an explicit decision under the
+old method, recorded in `RESTART-cratekit.md`, and R-273 records the
+disagreement between the tool and the rule.
+
 
 - `I4_registry_empty_message` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 - `S4_and_shortfall_conjunct_gone` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it

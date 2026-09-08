@@ -9,9 +9,14 @@ file is part of the commit it would be naming.
 were built under the old method and interrupted by a timeout. This session
 merged `main` into them, twenty seven commits including U55 and U56, resolved
 five conflicts, and continued the unit from where it stopped rather than
-starting over. **The pending register is still EMPTY**, `tests/_pending.py`
-holds zero entries and `tests/test_pending_units.py` carries a test that says
-so out loud.
+starting over. After the merge: the nine user facing zero rows of the forty
+row table each got the test that was missing and were re-measured, nine
+killed by one test each (`docs/mutation/u52-zero-rows.md`); the built in
+review ran over the diff against main from seven angles, and eleven of its
+findings held and were fixed with a test each that fails on the tree before
+the fix; the rest are R-265 through R-273 and an amendment to R-248. **The
+pending register is still EMPTY**, `tests/_pending.py` holds zero entries and
+`tests/test_pending_units.py` carries a test that says so out loud.
 
 **THE LABEL VERBS RUN, AND NO LABEL WORKFLOW CAN RUN.** Both halves are true at
 once and confusing one for the other is the fastest way to misread this branch.
@@ -28,7 +33,8 @@ anywhere in `src`.** So a queued label item ends FAILED with a named cause
 instead of sitting pending for ever, and both queueing verbs warn at enqueue
 while the warning is still useful. That is smaller than a working sweep and it
 is the honest version of it. **R-258 is the whole remaining distance, and it has
-no board issue yet.**
+no board issue yet.** R-266 is what every driven label job looks like until it
+closes: `no-evidence`, retryable, over a refusal that says never retry.
 
 **THE INCOMING RESIDUALS WERE RENUMBERED AT THE MERGE.** The branch filed them
 as R-235 to R-242 against a main whose highest was R-234. Main carried its
@@ -64,12 +70,19 @@ reason does not expire. **`board.py next` will say "Take #29" and you must not.*
     .venv/bin/python scripts/board.py audit     # exit 0
 
 The last measured suite on `main` before this merge was **6780 passed and 1
-skipped**. The last measured suite on `relay/70`, on the committed merged tree,
-is recorded in the head commit's body rather than here, because this file is in
-that commit. **Main's highest residual is R-264 once this branch merges**, no
-duplicate headings, no heading deleted. Append only, and gaps are fine.
+skipped**. The last measured suite on `relay/70` was **6864 passed and 1
+skipped**, on the review fix commit, which is the commit before the record
+that rewrote this file; the record touched documents only. **Main's highest
+residual is R-273 once this branch merges**, no duplicate headings, no heading
+deleted. Append only, and gaps are fine.
 
-**The board: 59 units, 52 done, U52 in review, 6 ready, 0 blocked.**
+**The board: 61 units, 52 done, 8 ready, 1 blocked, and `board.py audit`
+exits 1 on purpose.** Two of the three drift items are #78 and #79, U60 and
+U61, added to the tracker during this run and not yet on the board; they are
+the operator's to add. The third is #70 itself: the relay moved it to `In
+review`, a status `board.py` does not preserve across a recomputation, so the
+audit calls it drift and `sync` would flip it back to Ready. R-265 records
+that. Do not run `sync` to make the audit green while #70 is under review.
 
 ## Read this before the next mutation pass
 
@@ -91,6 +104,8 @@ verification was REQUESTED, not that it passed.
 | issue | unit | state |
 |---|---|---|
 | #70 | U52, the label workers | In review on `relay/70`, the relay runner owns the merge |
+| #78 | U60, the deletion pass | On the tracker, not yet on the board |
+| #79 | U61, `crate sync all` composes the source increments | On the tracker, not yet on the board |
 | #71 | U53, routing and rebuild workers | Ready |
 | #72 | U54, the acquisition worker | Ready |
 | #75 | U57, the recognition identifier | Ready |
@@ -149,10 +164,18 @@ exhausted crawl and it has to keep reporting empty, or every quiet label becomes
 an error and R-135 has been traded for its mirror image.
 
 **A SWEEP THAT READ RELEASES AND CONFIRMED NONE REFUSES.** `LabelSource` carries
-the dropped population and `handle` raises `label-sweep-incomplete` when the
-increment reports empty and releases were read and all discarded. Keyed on the
-dropped set and never on an empty candidate list, so an all tombstoned label and
-an exhausted crawl keep succeeding.
+the dropped population and how many releases the crawl read, and `handle`
+raises `label-sweep-incomplete` only when the increment reports empty and
+every release read was dropped. The review found the first form, keyed on the
+dropped set being non empty, refusing a MIXED listing, one release tombstoned
+and one unconfirmed, as a catalogue nobody could verify a line of; that is
+why the count is carried. The local questions, tombstone and owned, are now
+asked before the provider is, so a suppressed release costs no round trip.
+
+**THE RESUME DRIVES LABEL JOBS ONLY.** `handlers.run_job` resolves the worker
+from the job row, so without the `LABEL_KEYS` check `sync labels --job` drove
+any queued job in process without that verb's own gate. `backup` and `master`
+still have the gap.
 
 **HARVEST BECAME A COMMAND THAT CAN SUCCEED.** It lists through
 `listing.playlist_tracks`, offers verified names, and emits `review_set/1`. An
@@ -176,8 +199,9 @@ is now written into three modules' docstrings.
 
 ## What U52 left behind, beyond the code
 
-Eight residuals, R-257 through R-264. Three are worth knowing before touching
-labels again:
+Seventeen residuals, R-257 through R-273, eight from the branch and nine from
+the review after the merge, plus an amendment to R-248 for the fifth copy of
+the resume tail. Four are worth knowing before touching labels again:
 
 - **R-258.** No catalogue adapter ships. Every label verb resolves to a constant
   refusal and the test substitution carries R-226's limit: the in process
@@ -189,6 +213,11 @@ labels again:
 - **R-263.** A successful labels sweep still reads as "never ran" in
   `crate doctor`, because R-140's fix stopped the watermark and the reader was
   not told.
+- **R-267 and R-268.** `bound()` and `resolve()` are two constants that must
+  move together the day an adapter lands, and the adapter owns translating its
+  client's authentication failure into `credential-missing` at the seam; the
+  five boundaries now pass a `CratekitError` through and flatten everything
+  else.
 
 ## The branches
 

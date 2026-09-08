@@ -12187,6 +12187,22 @@ a tagging rule, which is the same defect wearing a shorter diff.
 **Closes when:** one module owns the queued verb shell and one owns the artifact
 helper, with each feature package naming its own values through them.
 
+**A FOURTH AND A FIFTH COPY, found at the U52 review, 2026-09-07.** The merge
+brought `tagging/shell.advance` and `adopt/shell.advance` in beside
+`label/cli._resume`, and the three are one function: reconcile, refuse a job
+with no items, run the job, re-read it, re-raise a closed job's cause outside
+the `is_open` branch. `backup/cli.py` and `modules/outbound/shell.py` are the
+other two spellings and `master/cli.py`'s resume branch has neither the
+itemless refusal nor the re-raise, which is R-225. Two more facts joined at
+this review and belong to the same entry: the itemless refusal's machine
+readable remedy is `report-defect` in every copy while its sentence says the
+job is stale rather than defective, so tooling keyed on the token files a bug
+over a documented migration shape, and the guard itself belongs one layer
+down in `jobs.drive` beside its terminal state refusal, where one line would
+replace five. U52 added the cancel step to its own copy's remediation and
+nothing else, for the reason above: the honest home is one module, and
+`label` cannot import a sibling feature package to share it.
+
 ---
 
 ## R-249. A second pacing implementation, and it is deliberately not the first
@@ -12725,3 +12741,238 @@ the label worker's to make alone.
 
 **Closes when:** a long running item can observe the interrupt flag, or the
 listing retry ladder takes a deadline the driver sets.
+
+---
+
+## R-265. `crate doctor` and `board.py` cannot see a unit the relay has moved to In review
+
+**Found:** at the U52 record, 2026-09-07, by the audit this file's session
+contract requires before ending.
+
+The board's Status field carries an `In review` option and the relay runner
+moves a card there as its first tracker write. `scripts/board.py` orders five
+statuses in `STATUS_ORDER` and `derive_status` preserves exactly one of them
+across a recomputation, `In Progress`, on the reasoning that a unit on a branch
+must not be recomputed back to Ready. `In review` is not in that list, so the
+audit reports a unit under review as drift ("should be Ready") and `sync` would
+carry out the flip the comment in `derive_status` exists to prevent.
+
+**Measured cost.** `board.py audit` exited 1 on #70 during this record, and a
+session obeying the contract's "sync repairs it" would have moved a card the
+runner owns. The audit also reported #78 and #79 as not on the board at all;
+those are two units added to the tracker during this run and are somebody's to
+add, not this unit's.
+
+**Why not fixed here.** `board.py` is the operator's tool and the relay's status
+vocabulary is the runner's; which of the two owns the word is a decision. The
+conservative call was to leave the board untouched and record the exit code.
+
+**Closes when:** `derive_status` treats `In review` as it treats `In Progress`,
+or the runner uses a status the script already preserves.
+
+---
+
+## R-266. Every label job in this build ends `no-evidence`, retryable, over a refusal that says never retry
+
+**Found:** at the U52 review, 2026-09-07, by two angles independently.
+
+`catalogue.resolve` refuses on every item in this build, so every driven label
+job fails all of its items, and `jobs.drive` then raises `no-evidence` with the
+item's `label-catalogue-unbound` nested as `inner`: exit INTERNAL, remedy
+`retry-later`, `retryable` true. `core/cause.py` classifies the seam's slug as a
+PRECONDITION on the stated reasoning that a missing adapter is a limitation and
+not a defect to retry, and the top level cause contradicts that on every drive.
+A resume then calls `jobs.retry`, which re-arms the failed items, and the child
+fails identically; nothing on the resume path repeats the one sentence that
+would stop the loop.
+
+**Measured cost.** A person or a script keyed on the top level `retryable`
+re-drives a job that cannot succeed in this build. The same shape holds for
+both outbound verbs behind R-226, so this is the engine's verdict over an
+unbound seam rather than the label worker's.
+
+**Why not fixed here.** `evidence_or_raise` is the shared engine's whole run
+verdict, and teaching it to promote a unanimous PRECONDITION inner cause to
+the top is a change to the one function every queued verb runs through.
+
+**Closes when:** a job whose every item failed with one non retryable cause
+reports that cause at the top, or an adapter lands and the case stops being
+every run.
+
+---
+
+## R-267. `bound()` and `resolve()` answer one question from two constants, and the suite already shows them disagreeing
+
+**Found:** at the U52 review, 2026-09-07.
+
+`label/catalogue.bound` returns a literal `False` and `resolve` raises
+unconditionally after the credential check. The day an adapter lands both have
+to move together and nothing ties them: edit one and the queueing verb warns
+that a sweep will fail at the seam while the worker runs it, or the reverse.
+The suite is already in the first state, because a test substitutes `resolve`
+and `bound()` stays `False`, so `crate sync labels` under a fake catalogue emits
+`label-catalogue-unbound` as a warning on the exact run that then sweeps
+successfully. `modules/outbound/account.py` has the identical shape.
+
+**Measured cost.** None for a person today; both constants agree in a shipped
+build. A false warning in every driven test, and one lockstep edit owed.
+
+**Why not fixed here.** The clean form, one module level adapter slot that
+`bound()` reads and `resolve()` calls, puts the credential check before the
+adapter, and the suite's fakes carry no stored session, so every driven test
+would have to fake the credential too. That is a change to the substitution
+contract three docstrings state, and R-258 already records the closing shape.
+
+**Closes when:** one value answers both, on both seams.
+
+---
+
+## R-268. A provider's own authentication failure is not a `CratekitError`, so the passthroughs do not see it
+
+**Found:** at the U52 review, 2026-09-07.
+
+The three seam boundaries in `label/sweep.py` and the two in `label/cli.py` now
+let a `CratekitError` through and flatten only a foreign exception. That is
+right for an adapter that refuses `credential-missing` itself, and it is no
+help for the shape the vendored client actually raises: `listing.fetch_with_retry`
+re-raises the provider's raw exception once its ladder is spent, a rejected
+session arrives as that raw exception, and `acquire/vendored.py` already carries
+`is_authentication_failure` and `raise_if_session_dead` to tell it from a
+listing failure. Neither is asked on the label path, so an expired session in a
+future adapter that does not translate it is reported as an unreadable playlist
+or a source that could not list, and the person is sent to check a playlist
+that is fine.
+
+**Measured cost.** None today, because no adapter ships (R-258). The cost is
+the adapter's, and this entry says which side owns it.
+
+**Why not fixed here.** Asking the vendored predicate inside five boundaries
+binds the label package to the vendored client's exception shapes before an
+adapter has chosen them. The adapter that closes R-258 owns raising this
+product's refusal at the seam, and these boundaries now pass it through.
+
+**Closes when:** the adapter translates its client's authentication failure
+into `credential-missing` at the seam, or the boundaries ask the predicate.
+
+---
+
+## R-269. Harvest reports a clean `NO_OP` over a playlist whose every name the catalogue refused to confirm
+
+**Found:** at the U52 review, 2026-09-07. A judgement recorded rather than a
+defect fixed.
+
+`harvest_playlist` emits `outcome=no_op` and exit 0 whenever nothing was
+offered, including a playlist of forty tracks whose twenty five distinct names
+were all answered `unconfirmed` by a degraded verification endpoint. The sweep
+worker refuses the same shape as `label-sweep-incomplete`, so the two verbs in
+one module disagree about what an all unconfirmed pass means.
+
+**Measured cost.** A person reading `outcome` alone sees a no op. A person
+reading the envelope sees `unresolved: 25` and `items: []`, which is the whole
+truth, and it is why the two verbs differ: the sweep's `job_state/1` envelope
+cannot carry a count (R-257) and so must refuse to be honest, while harvest's
+`review_set/1` carries the count and can report instead. Nothing is written
+wrongly.
+
+**Why not fixed here.** Refusing here would make a playlist of names the
+catalogue genuinely does not know indistinguishable from an outage, which is
+the collapse in the other direction, and the envelope already says what
+happened.
+
+**Closes when:** the two verbs state one rule for an all unconfirmed pass, or
+`outcome` gains a value between OK and NO_OP for "read, confirmed nothing".
+
+---
+
+## R-270. The credential presence check is spelled three times
+
+**Found:** at the U52 review, 2026-09-07.
+
+`label/catalogue.resolve` and `modules/outbound/account.resolve` each ask
+`secrets.exists` for the provider session and each raise `credential-missing`
+with `Remedy.AUTHENTICATE_PROVIDER`, `Scope.RUN` and a `credential` detail, and
+`cli/verbs/login.py` is the third. `acquire.provider_session` declares itself
+the sole owner of the credential under R4 and neither seam calls into it.
+
+**Measured cost.** None. A change to the remedy, the detail key, or the
+predicate is three edits, and the third is the one that is missed.
+
+**Why not fixed here.** One `require_provider_session` in the credential owner
+is a change to that module and to the outbound seam, which are two other
+units' files. R-232 records the same shape for the configuration wrapper.
+
+**Closes when:** both seams ask the credential owner and keep only their own
+`-unbound` refusal.
+
+---
+
+## R-271. A fourth hand written snapshot of the suppression identity rule
+
+**Found:** at the U52 review, 2026-09-07.
+
+`sweep._suppression_reader` builds a set of `suppression_id` values from
+`DecisionStore.suppressions()` and tests `review.suppression_id_for(...)`
+membership. `acquire/match_cli.suppression_view` and the two predicates in
+`deletion/stores.py` do the same. The one real difference is that this reader
+is lazy and the others read at construction, which is a property this branch's
+suite pins (an unreadable store must not fail a label with nothing to ask).
+
+**Measured cost.** None. If the identifier scheme ever needs a store side
+adjustment, the deletion module's `identity_scheme` stamp says it might, four
+closures have to be found.
+
+**Why not fixed here.** The home is a method on `DecisionStore`, which is
+`core/review.py`, and this branch binds a worker rather than reshaping the
+store. The lazy wrapper would stay around whatever the store offered.
+
+**Closes when:** `DecisionStore` hands out the snapshot once and the four
+callers take it.
+
+---
+
+## R-272. The increment's lookup refusal carries the exception kind only in prose
+
+**Found:** at the U52 review, 2026-09-07.
+
+`run.increment` converts a `LookupFailure` into `sync-source-lookups-failed`
+with `from exc` and no `inner` and no `kind` in its detail, so the job ledger
+holds the flattened sentence and nothing structured. Every raise site in
+`label/sweep.py` chains the underlying exception and puts its type name in the
+message, so the fact is readable and not addressable. The harvest boundary in
+`label/cli.py` records `detail["kind"]`.
+
+**Measured cost.** A `ListingNotPaginated` from a client that dropped its
+pagination arguments lands in the item row as "every listing call failed",
+with a remedy to retry when the provider is reachable, and no retry fixes a
+client version mismatch. The kind is in the sentence for a person and not in
+the detail for a tool.
+
+**Why not fixed here.** `sync/run.py` is the shared increment engine and its
+refusal is every source's; changing its detail is a contract for all of them.
+
+**Closes when:** the increment's refusal carries the underlying kind in its
+detail, or the inner cause when the underlying exception was one.
+
+---
+
+## R-273. The mutation driver's record attributes a forty five row cap to METHOD, which states twenty five
+
+**Found:** at the U52 review, 2026-09-07, by the conventions angle.
+
+`scripts/mutate.py` carries `ROW_CAPS = {"light": 25, "full": 45}` and its
+"considered and dropped" template writes "METHOD caps a full pass at 45 rows"
+into every table it emits. `docs/METHOD.md` states one hard cap of twenty five
+rows and one pass per unit per session, and `CLAUDE.md` repeats it. U52's forty
+row table and U56's both carry the sentence, and both overruns are recorded as
+explicit decisions in `RESTART-cratekit.md`. What remains is the sentence: a
+future reader takes the tool's number for the rule.
+
+**Measured cost.** One false attribution per emitted table.
+
+**Why not fixed here.** `scripts/mutate.py` is on `main` and outside this
+branch's diff, and the cap is a policy the operator set on 2026-09-07 rather
+than the driver's to restate. The zero row re-measure this session ran nine
+rows and emitted the same sentence.
+
+**Closes when:** the driver's caps and its template say what METHOD says, or
+METHOD names the two pass kinds.
