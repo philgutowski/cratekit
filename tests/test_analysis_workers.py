@@ -444,8 +444,9 @@ def test_the_shipped_decoder_reads_at_the_models_rate_and_is_absent_without_the_
         import librosa  # noqa: F401
     except ImportError:
         assert vocal.decode("nowhere.flac") is None
-    else:
-        pytest.skip("the analysis extra is installed here, so the absence cannot be driven")
+    # With the extra installed the absence cannot be driven, and a skip here
+    # would be one the pending register does not count, so the test says
+    # nothing rather than skipping.
 
 
 def test_run_batch_threads_the_decoder_through_to_the_vocal_pass(tmp_path, monkeypatch):

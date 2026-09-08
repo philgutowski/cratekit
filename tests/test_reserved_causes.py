@@ -5342,7 +5342,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     #
     # label/cli.py and label/sweep.py are NOT new holders despite this unit
     # rewriting both: each already named a cause on main.
-    assert (len(literal_holders), len(literal_both)) == (88, 16), (
+    #
+    # Re-pinned on U58, 2026-09-07: holders UNCHANGED at 88. analysis/cli.py,
+    # analysis/energy.py, analysis/artifacts.py and analysis/vocals.py were
+    # written or rewritten and none is a new holder: cli.py already named
+    # config-unusable on main, and the other three name no declared cause at
+    # all, the vocal pass's three reasons being statuses rather than causes.
+    # The also-holds-an-integer half moves 16 to 17, and only analysis/cli.py
+    # joins it, measured by applying this module's own predicate to main's
+    # copy of the file and to the working tree's: it declares a minimum of ten
+    # measured tracks for a calibration, and the reserved range contains 10.
+    # A track count is not a code; the composite made the module worth one
+    # look, and the look says so.
+    assert (len(literal_holders), len(literal_both)) == (88, 17), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
