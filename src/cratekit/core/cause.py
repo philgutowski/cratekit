@@ -1440,6 +1440,12 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # could do. PRECONDITION because the remedy is a command, the calibrate
         # verb, rather than anything about this installation.
         "energy-calibration-missing": ExitCode.PRECONDITION,
+        # The calibration file exists and cannot be read. A DIFFERENT state from
+        # missing, refused under its own name so a truncated file is never
+        # folded into "never calibrated" and restamped over, and so the
+        # remedy, calibrating again, reaches the person instead of a defect
+        # report over a JSON error.
+        "energy-calibration-unreadable": ExitCode.PRECONDITION,
         # An analysed track could not be finalized: its tag write returned
         # false or its rename could not claim the target. The item FAILS rather
         # than reporting done, because an analysis whose values never reached

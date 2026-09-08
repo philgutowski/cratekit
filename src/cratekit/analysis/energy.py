@@ -26,6 +26,14 @@ missing tag as the taxonomy's no-energy sink. The first version of
 track with no status beside it, which looked like this absence and was
 actually "never computed".
 
+THE STATE FILES ARE WRITTEN ATOMICALLY AND THE UNDO LOG UNDER A LOCK. The
+undo log is declared by ``core.config`` as the only surviving copy of each
+file's pre-restamp value, so a truncating write interrupted by a kill would
+destroy every entry at once, and two restamp jobs driven concurrently over
+overlapping folders would each discard the other's entries in a read, modify,
+write race. ``config.atomic_write_bytes`` closes the first and the sibling
+lock closes the second, the way the label watermark does.
+
 librosa and numpy are imported inside the functions that need them, so a slim
 install can import this module and read a calibration file.
 """
@@ -34,13 +42,18 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from cratekit.core import config
+from cratekit.core.cause import refuse
 
-#: Fixed column order, so a feature vector is deterministic across runs.
+#: Fixed column order, so a feature vector is deterministic across runs. Every
+#: column is measured and only the weighted ones score; the unweighted ones cost
+#: little once the spectrum exists, and they are what a later re-weighting
+#: would need. Nothing persists the vector yet, so re-weighting today still
+#: means re-measuring, which is recorded as a residual rather than promised.
 FEATURE_ORDER: tuple[str, ...] = (
     "rms_mean", "rms_std", "rms_dr", "rms_crest", "loudness_db",
     "centroid_mean", "centroid_std", "rolloff_mean", "rolloff_std",
@@ -50,9 +63,7 @@ FEATURE_ORDER: tuple[str, ...] = (
     "low_band_ratio", "mid_band_ratio", "high_band_ratio", "high_low_tilt", "tempo",
 )
 
-#: Signed weights on z-scored features. Positive reads as more energy. A feature
-#: absent here carries no weight and is still measured, so a later re-weighting
-#: needs no re-analysis.
+#: Signed weights on z-scored features. Positive reads as more energy.
 DEFAULT_WEIGHTS: Mapping[str, float] = {
     "rms_mean": 1.5,
     "loudness_db": 1.0,
@@ -73,9 +84,12 @@ DEFAULT_WEIGHTS: Mapping[str, float] = {
 #: The central slice, in seconds, a track's features are measured over. A steady
 #: middle is representative of whole-track feel and is a fraction of the cost.
 SEGMENT_SECONDS = 120.0
+#: The rate the restamp and calibrate paths decode at, the head's rate.
+MEASURE_RATE = 22050
 
 LEVEL_MIN = 1
 LEVEL_MAX = 10
+CUT_COUNT = LEVEL_MAX - LEVEL_MIN
 #: The cap the beatless guard applies: the top of the low band.
 BEATLESS_CAP = 3
 #: The percentile of onset density below which a track is treated as beatless.
@@ -87,6 +101,7 @@ STATUS_FEATURES_UNAVAILABLE = "features-unavailable"
 
 STATE_KEY_CALIBRATION = "energy_calibration"
 STATE_KEY_UNDO_LOG = "energy_undo_log"
+FORMAT = "decile"
 
 _EPS = 1e-9
 _NAN = float("nan")
@@ -104,30 +119,27 @@ class Calibration:
     thresholds: tuple[float, ...]
     onset_floor: float | None
     n_tracks: int
-    method: str = "decile"
     note: str = ""
-    feature_order: tuple[str, ...] = field(default=FEATURE_ORDER)
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "feature_order": list(self.feature_order),
+            "format": FORMAT,
             "mean": dict(self.mean),
             "std": dict(self.std),
             "weights": dict(self.weights),
             "thresholds": list(self.thresholds),
             "onset_floor": self.onset_floor,
             "n_tracks": self.n_tracks,
-            "method": self.method,
             "note": self.note,
         }
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> Calibration:
         thresholds = tuple(float(t) for t in data["thresholds"])
-        if len(thresholds) != LEVEL_MAX - LEVEL_MIN:
+        if len(thresholds) != CUT_COUNT:
             raise ValueError(
-                f"an energy calibration carries {LEVEL_MAX - LEVEL_MIN} cut points, "
-                f"this one carries {len(thresholds)}"
+                f"an energy calibration carries {CUT_COUNT} cut points, this one "
+                f"carries {len(thresholds)}"
             )
         floor = data.get("onset_floor")
         return cls(
@@ -137,9 +149,7 @@ class Calibration:
             thresholds=thresholds,
             onset_floor=None if floor is None else float(floor),
             n_tracks=int(data["n_tracks"]),
-            method=str(data.get("method", "decile")),
             note=str(data.get("note", "")),
-            feature_order=tuple(data.get("feature_order") or FEATURE_ORDER),
         )
 
 
@@ -148,10 +158,8 @@ class Calibration:
 # ---------------------------------------------------------------------------
 
 
-def _central(samples: Any, rate: int, segment: float | None) -> Any:
-    if segment is None:
-        return samples
-    width = int(segment * rate)
+def _central(samples: Any, rate: int) -> Any:
+    width = int(SEGMENT_SECONDS * rate)
     if samples.shape[-1] <= width:
         return samples
     start = (samples.shape[-1] - width) // 2
@@ -159,13 +167,14 @@ def _central(samples: Any, rate: int, segment: float | None) -> Any:
 
 
 def features_from_samples(
-    samples: Any, rate: int, *, tempo: float | None = None, segment: float | None = SEGMENT_SECONDS
+    samples: Any, rate: int, *, tempo: float | None = None
 ) -> dict[str, float] | None:
     """The ordered feature vector for decoded mono samples, or None.
 
     Takes samples rather than a path so the head pass, which has already
     decoded the track for key and tempo, does not decode it a second time.
-    ``tempo`` is the head's own reading when it has one.
+    ``tempo`` is the head's own reading when it has one. Measured over the
+    central :data:`SEGMENT_SECONDS`.
     """
     try:
         import librosa
@@ -173,7 +182,7 @@ def features_from_samples(
     except ImportError:
         return None
     try:
-        y = _central(np.asarray(samples, dtype=np.float32), rate, segment)
+        y = _central(np.asarray(samples, dtype=np.float32), rate)
         if y.size == 0:
             return None
         hop = 512
@@ -246,17 +255,32 @@ def features_from_samples(
     return {name: f.get(name, _NAN) for name in FEATURE_ORDER}
 
 
-def features_from_path(path: Path, *, rate: int = 22050, tempo: float | None = None) -> dict[str, float] | None:
-    """Decode ``path`` and measure it. The restamp path, which has no head pass."""
+def features_from_path(path: Path) -> dict[str, float] | None:
+    """Decode the central slice of ``path`` and measure it.
+
+    The restamp and calibrate path, which has no head pass to share samples
+    with. ONLY THE SLICE IS DECODED: the duration is read off the header and
+    the decode is asked for the central :data:`SEGMENT_SECONDS`, so a ten
+    minute file costs a fifth of itself rather than all of it and then a cut.
+    """
     try:
         import librosa
     except ImportError:
         return None
     try:
-        samples, decoded_rate = librosa.load(str(path), sr=rate, mono=True)
+        offset = 0.0
+        try:
+            duration = float(librosa.get_duration(path=str(path)))
+        except Exception:
+            duration = 0.0
+        if duration > SEGMENT_SECONDS:
+            offset = (duration - SEGMENT_SECONDS) / 2.0
+        samples, decoded_rate = librosa.load(
+            str(path), sr=MEASURE_RATE, mono=True, offset=offset, duration=SEGMENT_SECONDS
+        )
     except Exception:
         return None
-    return features_from_samples(samples, int(decoded_rate), tempo=tempo)
+    return features_from_samples(samples, int(decoded_rate))
 
 
 _EXTRACTOR: Any = None
@@ -289,22 +313,26 @@ def measure(path: Path) -> dict[str, float] | None:
 # ---------------------------------------------------------------------------
 
 
-def _is_nan(value: float) -> bool:
-    return value != value
+def _weighted_index(
+    features: Mapping[str, float],
+    mean: Mapping[str, float],
+    std: Mapping[str, float],
+    weights: Mapping[str, float],
+) -> float:
+    total = 0.0
+    for name, weight in weights.items():
+        if weight == 0:
+            continue
+        value = float(features.get(name, _NAN))
+        deviation = std.get(name, 1.0) or 1.0
+        z = 0.0 if math.isnan(value) else (value - mean.get(name, 0.0)) / deviation
+        total += weight * z
+    return float(total)
 
 
 def index(features: Mapping[str, float], calibration: Calibration) -> float:
     """The weighted sum of z-scored features. A missing feature imputes to z=0."""
-    total = 0.0
-    for name, weight in calibration.weights.items():
-        if weight == 0:
-            continue
-        value = float(features.get(name, _NAN))
-        mean = calibration.mean.get(name, 0.0)
-        deviation = calibration.std.get(name, 1.0) or 1.0
-        z = 0.0 if _is_nan(value) else (value - mean) / deviation
-        total += weight * z
-    return float(total)
+    return _weighted_index(features, calibration.mean, calibration.std, calibration.weights)
 
 
 def level_for(features: Mapping[str, float], calibration: Calibration) -> int:
@@ -314,7 +342,7 @@ def level_for(features: Mapping[str, float], calibration: Calibration) -> int:
     level = max(LEVEL_MIN, min(LEVEL_MAX, level))
     if calibration.onset_floor is not None:
         density = float(features.get("onset_density", math.inf))
-        if not _is_nan(density) and density < calibration.onset_floor:
+        if not math.isnan(density) and density < calibration.onset_floor:
             level = min(level, BEATLESS_CAP)
     return level
 
@@ -347,11 +375,9 @@ def calibrate(
         mean[name] = float(np.nanmean(values))
         deviation = float(np.nanstd(values))
         std[name] = deviation if deviation > _EPS else 1.0
-    reference = Calibration(
-        mean=mean, std=std, weights=chosen, thresholds=(0.0,) * 9,
-        onset_floor=None, n_tracks=len(feature_dicts),
+    scores = np.array(
+        [_weighted_index(fd, mean, std, chosen) for fd in feature_dicts], dtype=float
     )
-    scores = np.array([index(fd, reference) for fd in feature_dicts], dtype=float)
     thresholds = tuple(
         float(t) for t in np.percentile(scores, [10, 20, 30, 40, 50, 60, 70, 80, 90])
     )
@@ -382,6 +408,14 @@ def distribution(levels: Sequence[int]) -> dict[str, int]:
 # ---------------------------------------------------------------------------
 
 
+def write_json(path: Path, payload: Any) -> Path:
+    """One state file, written whole or not at all, owner only."""
+    config.atomic_write_bytes(
+        (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8"), path
+    )
+    return path
+
+
 def calibration_path(cfg: config.Config) -> Path:
     return config.state_path(STATE_KEY_CALIBRATION, cfg)
 
@@ -393,50 +427,80 @@ def undo_log_path(cfg: config.Config) -> Path:
 def load_calibration(cfg: config.Config) -> Calibration | None:
     """The active calibration, or None when this library has none yet.
 
-    An unreadable file RAISES rather than reading as none, because a corrupt
-    calibration and an absent one are different states with different
-    remedies, and folding the first into the second would restamp a whole
-    library as though it had never been calibrated.
+    An unreadable file REFUSES rather than reading as none, because a corrupt
+    calibration and an absent one are different states, and folding the first
+    into the second would restamp a whole library as though it had never been
+    calibrated. The refusal names the remedy, which is to calibrate again, so
+    a caller that let it through does not turn it into a defect report.
     """
     path = calibration_path(cfg)
     if not path.is_file():
         return None
-    return Calibration.from_json(json.loads(path.read_text(encoding="utf-8")))
+    try:
+        return Calibration.from_json(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise refuse(
+            "energy-calibration-unreadable",
+            f"this library's energy calibration at {path} could not be read "
+            f"({type(exc).__name__}: {exc}), so no level can be scored against it",
+            steps=("run `crate analyze calibrate FOLDER` again to rewrite it",),
+            origin=("analysis", "energy"),
+            detail={"calibration": str(path), "kind": type(exc).__name__},
+        ) from exc
 
 
 def save_calibration(cfg: config.Config, calibration: Calibration) -> Path:
-    path = calibration_path(cfg)
-    config._mkdir_private(path.parent)
-    path.write_text(
-        json.dumps(calibration.to_json(), indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    return path
+    return write_json(calibration_path(cfg), calibration.to_json())
 
 
-def read_undo_log(cfg: config.Config) -> dict[str, int | None]:
+def read_undo_log(cfg: config.Config) -> dict[str, str | None]:
+    """Every file's pre-restamp tag TEXT, keyed by absolute path.
+
+    Text rather than an integer, because the value being protected is whatever
+    the file carried, and a tag another tool wrote as ``7/10`` would be
+    recorded as null by an integer read and then be unrecoverable.
+    """
     path = undo_log_path(cfg)
     if not path.is_file():
         return {}
     loaded = json.loads(path.read_text(encoding="utf-8"))
-    return {str(k): (None if v is None else int(v)) for k, v in loaded.items()}
+    return {str(k): (None if v is None else str(v)) for k, v in loaded.items()}
 
 
-def record_previous(cfg: config.Config, path: Path, previous: int | None) -> bool:
-    """Record a file's pre-restamp level, ONCE. Returns True when it was recorded.
+def record_previous(cfg: config.Config, path: Path, previous: str | None) -> bool:
+    """Record a file's pre-restamp tag text, ONCE. Returns True when recorded.
 
     Never overwrites: the log holds the value the file carried before the FIRST
     restamp touched it, which is the only copy of that value anywhere, and a
     second restamp recording the first restamp's output would erase it.
+
+    UNDER THE SIBLING LOCK. The driver lock is per job, so two restamp jobs
+    over overlapping folders may run at once, and an unlocked read, modify,
+    write would let each discard the other's entries.
     """
-    log = read_undo_log(cfg)
-    key = str(path)
-    if key in log:
-        return False
-    log[key] = previous
     target = undo_log_path(cfg)
-    config._mkdir_private(target.parent)
-    target.write_text(json.dumps(log, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return True
+    lock = config._exclusive_lock(target.with_name(target.name + ".lock"))
+    try:
+        lock.__enter__()
+    except config.ConfigLockUnavailable as exc:
+        raise refuse(
+            "analysis-write-failed",
+            f"the energy undo log could not be locked ({exc}), and recording a "
+            f"previous value unlocked can discard another restamp's record",
+            steps=("make the library state directory writable by this account",),
+            origin=("analysis", "energy"),
+            detail={"undo_log": str(target)},
+        ) from exc
+    try:
+        log = read_undo_log(cfg)
+        key = str(path)
+        if key in log:
+            return False
+        log[key] = previous
+        write_json(target, log)
+        return True
+    finally:
+        lock.__exit__(None, None, None)
 
 
 __all__ = [
@@ -463,4 +527,5 @@ __all__ = [
     "record_previous",
     "save_calibration",
     "undo_log_path",
+    "write_json",
 ]

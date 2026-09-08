@@ -11,10 +11,12 @@ active calibration, and :mod:`cratekit.cli.handlers` binds them under
 ITEM, never from the payload, because a handler that reads its subject from
 the payload does the same work for every item of a multi item job.
 
-THE ITEM IS A FILENAME, RELATIVE TO THE FROZEN FOLDER. The first version
-queued absolute paths, which made the frozen folder a second copy of a fact
-every item already carried, and two copies of one fact is how they come to
-disagree.
+THE ITEM IS A FILENAME, RELATIVE TO THE FROZEN FOLDER, AND THE FOLDER IS
+FROZEN ABSOLUTE. The first version queued absolute paths, which made the
+frozen folder a second copy of a fact every item already carried. The folder
+is resolved before it is frozen because ``jobs.spawn`` starts the resume
+child in the RESUMING process's working directory, not the queueing one's,
+so a relative folder would make every item of a resumed job go missing.
 
 THE SEAMS ARE BOUND AT CALL TIME. The detector, the vocal model loader, the
 decoder and the feature extractor are each module state the worker looks up
@@ -23,6 +25,11 @@ extra installed. A worker in a fresh process finds nothing bound and binds
 the shipped defaults, every one of which imports the heavy stack lazily
 inside a function. R-226's limit applies: the child ``crate job resume``
 spawns inherits nothing a test patched.
+
+THE MODEL MODULE IS NEVER IMPORTED AT MODULE SCOPE HERE. ``cli.jobs.argv_for``
+imports this module by name to build a resume command line, and the model
+module imports numpy at import time, which the slim profile does not
+declare. A worker binds it inside the function that needs it.
 """
 
 from __future__ import annotations
@@ -32,7 +39,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-from cratekit.analysis import artifacts, detect, energy, light, vocal, vocals
+from cratekit.analysis import artifacts, detect, energy, light, vocals
 from cratekit.cli.output import Envelope
 from cratekit.core import config, jobs, naming, tags
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
@@ -47,8 +54,22 @@ _ORIGIN = ("analysis", "cli")
 STATE_KEY_VOCAL_CALIBRATION = "vocal_calibration"
 #: The fallback cut when a folder has too few scored tracks for Otsu to split.
 DEFAULT_VOCAL_THRESHOLD = 12.0
+#: How far apart the two clusters' means must sit for a cut between them to
+#: mean anything. An all instrumental folder is one cluster, and Otsu will
+#: still split it down the middle and call half of it vocal.
+MIN_VOCAL_SEPARATION = 10.0
 #: How many measured tracks a calibration needs before its deciles mean anything.
 MIN_CALIBRATION_TRACKS = 10
+
+#: The warning every restamp resume carries, because the registry declares a
+#: database write this build does not perform. See ``handle_restamp``.
+DB_NOT_WRITTEN = {
+    "code": "db-metadata-not-written",
+    "message": (
+        "this restamp wrote the energylevel file tag only; the rekordbox star "
+        "rating half the verb declares is not written by this build"
+    ),
+}
 
 
 def _load() -> config.Config:
@@ -98,6 +119,10 @@ def _no_op(state: str) -> dict:
     return {"job_id": "", "state": state, "cause": None, "progress": {}}
 
 
+def _folder_of(named: str) -> Path:
+    return Path(named).expanduser().absolute()
+
+
 def _audio_in(folder: Path) -> list[str]:
     """The item identifiers: audio FILENAMES in the folder, sorted, not recursive."""
     if not folder.is_dir():
@@ -106,6 +131,27 @@ def _audio_in(folder: Path) -> list[str]:
         path.name
         for path in folder.iterdir()
         if path.is_file() and path.suffix.lower() in AUDIO_EXTS
+    )
+
+
+def _nothing_to_queue(ctx, folder: Path) -> Envelope:
+    """The two zeros, told apart: an empty folder and a folder that is not there.
+
+    A mistyped path or an unmounted volume must not read as "nothing new to
+    analyse", which is what one shared no-op would say. The tagging verbs make
+    the same split.
+    """
+    if folder.is_dir():
+        return ctx.envelope(data=_no_op("no-audio"), outcome=Outcome.NO_OP)
+    return ctx.envelope(
+        data=_no_op("folder-absent"),
+        outcome=Outcome.NO_OP,
+        warnings=(
+            {
+                "code": "folder-absent",
+                "message": f"{folder} is not a folder on this machine, so nothing was queued",
+            },
+        ),
     )
 
 
@@ -179,8 +225,8 @@ def _advance(ctx, store, job):
     """Reconcile, refuse an empty job, run it, and raise if it did not finish.
 
     The tail every queued verb carries (R-248, this is another copy). Not
-    named ``drive``: ``tests/test_handlers.py`` counts every call to a callee
-    of that name as a call to the job driver.
+    named ``drive``, because ``tests/test_handlers.py`` counts every call to
+    a callee of that name as a call to the job driver.
     """
     job = jobs.reconcile(store, job.job_id)
     warnings: tuple[dict[str, str], ...] = ()
@@ -205,6 +251,8 @@ def _advance(ctx, store, job):
 def _resume(ctx, cfg: config.Config) -> Envelope:
     with jobs.open_store() as store:
         job, warnings = _advance(ctx, store, jobs.get(store, ctx.args.job))
+        if job.handler_key == "analyze.restamp":
+            warnings = (*warnings, DB_NOT_WRITTEN)
         return ctx.envelope(
             data=_reported(store, job, {"analysis": _summary(cfg, job.job_id)}),
             warnings=warnings,
@@ -220,10 +268,10 @@ def analyze_run(ctx) -> Envelope:
     cfg = _load()
     if ctx.args.job:
         return _resume(ctx, cfg)
-    folder = Path(ctx.args.folder)
+    folder = _folder_of(ctx.args.folder)
     items = _audio_in(folder)
     if not items:
-        return ctx.envelope(data=_no_op("no-audio"), outcome=Outcome.NO_OP)
+        return _nothing_to_queue(ctx, folder)
     with jobs.open_store() as store:
         job = jobs.enqueue(
             store,
@@ -248,30 +296,53 @@ def _budget(cfg: config.Config) -> NameBudget:
     )
 
 
-def _item_path(job, item) -> tuple[Path, Path]:
+def _refuse_missing(item, folder: Path, path: Path, what: str) -> CratekitError:
+    return refuse(
+        "source-missing",
+        f"{path} is no longer a file, so there is nothing to {what} for this "
+        f"item. Nothing was read and nothing was written",
+        steps=(
+            "run the analysis verb again over the folder as it now stands; "
+            "this job was queued against a folder that has since changed",
+        ),
+        origin=_ORIGIN,
+        detail={"item": item.item_id, "folder": str(folder)},
+    )
+
+
+def _item_path(job, item, what: str = "analyse") -> Path:
     folder = Path(str((job.payload or {}).get("folder") or ""))
     path = folder / item.item_id
     if not path.is_file():
-        raise refuse(
-            "source-missing",
-            f"{path} is no longer a file, so there is nothing to analyse for this "
-            f"item. Nothing was read and nothing was written",
-            steps=(
-                "run the analysis verb again over the folder as it now stands; "
-                "this job was queued against a folder that has since changed",
-            ),
-            origin=_ORIGIN,
-            detail={"item": item.item_id, "folder": str(folder)},
-        )
-    return folder, path
+        raise _refuse_missing(item, folder, path, what)
+    return path
+
+
+def _finalized_twin(folder: Path, item_id: str, template: NameTemplate) -> Path | None:
+    """The file this item became, if a finalize renamed it before its row moved.
+
+    The item is the PRE-rename name and the rename lands inside the handler,
+    before the engine flips the row to done. A kill in that window leaves a
+    finished file under its head and a pending row under its old name, and
+    the resume would otherwise refuse the item as missing over work that is
+    complete on disk.
+    """
+    if not folder.is_dir():
+        return None
+    for candidate in folder.iterdir():
+        if not candidate.is_file() or not naming.has_head(candidate.name, template=template):
+            continue
+        if naming.strip_head(candidate.name, template=template) == item_id:
+            return candidate
+    return None
 
 
 def _require_heavy(seam_bound: bool, what: str) -> None:
     """Refuse the item when the extra is absent HERE and no fake is bound.
 
-    The detector answers a missing extra and a keyless track with the same
-    None, so without this a job on a machine with no librosa would skip every
-    file as keyless and report done.
+    The detector answers a missing extra with None, so without this a job on
+    a machine with no librosa would skip every file as keyless and report
+    done.
     """
     if seam_bound or detect.heavy_available():
         return
@@ -285,14 +356,59 @@ def _require_heavy(seam_bound: bool, what: str) -> None:
     )
 
 
+#: The detector THIS module bound, so it can tell its own binding from a
+#: test's and rebind with a fresh calibration on every item.
+_BOUND_DETECT: Any = None
+
+
+def _fake_detect_bound() -> bool:
+    return light.bound() and light._DETECT is not _BOUND_DETECT
+
+
 def _bind_defaults(cfg: config.Config) -> None:
-    """Bind the shipped seams where nothing is bound, once per process."""
-    if not light.bound():
-        light.bind_detect(
-            functools.partial(detect.analyse_file, calibration=energy.load_calibration(cfg))
+    """Bind the shipped seams where nothing else is bound, PER ITEM.
+
+    The detector is rebound on every call rather than once per process,
+    because the partial carries the calibration, and a calibration written
+    between two jobs driven by one process would otherwise stay invisible to
+    the second. A test's binding is left alone.
+    """
+    global _BOUND_DETECT
+    if not _fake_detect_bound():
+        _BOUND_DETECT = functools.partial(
+            detect.analyse_file, calibration=energy.load_calibration(cfg)
         )
+        light.bind_detect(_BOUND_DETECT)
     if not vocals.loader_bound():
+        from cratekit.analysis import vocal
+
         vocals.bind_loader(vocal.default_loader)
+
+
+def _write_or_refuse(path: Path, fields: dict[str, Any], *, untouched: str) -> None:
+    """A tag write that did not land refuses under the analysis slug.
+
+    ``write_tags`` returns False for a file it could not write and RAISES
+    ``ValueError`` for a container it does not know, and ``AUDIO_EXTS`` is
+    wider than the containers it knows, so both shapes are one refusal here
+    rather than one refusal and one defect report.
+    """
+    try:
+        written = tags.write_tags(path, fields)
+    except ValueError as exc:
+        raise refuse(
+            "analysis-write-failed",
+            f"the analysed values cannot be written onto {path.name}: {exc}. {untouched}",
+            origin=_ORIGIN,
+            detail={"path": str(path), "stage": "tags", "kind": type(exc).__name__},
+        ) from exc
+    if not written:
+        raise refuse(
+            "analysis-write-failed",
+            f"the analysed values could not be written onto {path.name}. {untouched}",
+            origin=_ORIGIN,
+            detail={"path": str(path), "stage": "tags"},
+        )
 
 
 def _finalize(cfg: config.Config, path: Path, scored: Mapping[str, Any]) -> Path:
@@ -310,13 +426,16 @@ def _finalize(cfg: config.Config, path: Path, scored: Mapping[str, Any]) -> Path
     template = _template(cfg)
     camelot = str(scored["camelot"])
     key = naming.pad_camelot(camelot)
+    # ``rate`` is the shipped detector's key and ``bpm`` the shape the older
+    # batch fakes use; ``run._as_result`` accepts both and so does this.
+    tempo = scored.get("rate", scored.get("bpm"))
     title = tags.read_tag(path, "title") or ""
     marker = cfg.naming.lossy_marker
     spec = NameSpec(
         stem=path.stem,
         suffix=path.suffix,
         key=key,
-        bpm=int(scored["rate"]),
+        bpm=int(tempo),
         title=naming.strip_head(title, template=template) if title else None,
         lossy=bool(marker) and (marker in path.stem or marker in title),
     )
@@ -331,14 +450,7 @@ def _finalize(cfg: config.Config, path: Path, scored: Mapping[str, Any]) -> Path
         "voxgender": scored.get("voxgender"),
         "voxgenderconf": scored.get("voxgenderconf"),
     }
-    if not tags.write_tags(path, fields):
-        raise refuse(
-            "analysis-write-failed",
-            f"the analysed values could not be written onto {path.name}; the file "
-            f"is untouched and was not renamed",
-            origin=_ORIGIN,
-            detail={"path": str(path), "stage": "tags"},
-        )
+    _write_or_refuse(path, fields, untouched="The file is untouched and was not renamed")
     target = path.with_name(rendered.filename)
     if target == path:
         return path
@@ -369,16 +481,33 @@ def handle_run(job, item, cfg) -> jobs.Produced:
 
     A name already carrying the head is the resume marker and is skipped
     without a read. Otherwise the light head runs, then the vocal score, then
-    the finalize. A head that found no key is a terminal skip, reported, with
-    nothing written. THE CONFIGURATION IS THE FROZEN ONE and is not loaded
-    here (KTD9).
+    the finalize. A head that found no key, or could not decode the file, is
+    a terminal skip, reported under its own name with nothing written. THE
+    CONFIGURATION IS THE FROZEN ONE and is not loaded here (KTD9).
     """
-    _folder, path = _item_path(job, item)
-    if naming.has_head(path.name, template=_template(cfg)):
+    template = _template(cfg)
+    folder = Path(str((job.payload or {}).get("folder") or ""))
+    path = folder / item.item_id
+    if not path.is_file():
+        twin = _finalized_twin(folder, item.item_id, template)
+        if twin is None:
+            raise _refuse_missing(item, folder, path, "analyse")
+        return artifacts.produced(
+            cfg,
+            job,
+            item,
+            {
+                "item": item.item_id,
+                "path": str(twin),
+                "status": "skipped-prefixed",
+                "resumed_after_rename": True,
+            },
+        )
+    if naming.has_head(path.name, template=template):
         return artifacts.produced(
             cfg, job, item, {"item": item.item_id, "path": str(path), "status": "skipped-prefixed"}
         )
-    _require_heavy(light.bound(), "analysing a track")
+    _require_heavy(_fake_detect_bound(), "analysing a track")
     _bind_defaults(cfg)
     partial = light.analyse(str(path))
     if partial.get("terminal") is not None:
@@ -397,7 +526,7 @@ def handle_run(job, item, cfg) -> jobs.Produced:
             "renamed_to": final.name if final != path else None,
             "status": "analyzed",
             "camelot": scored["camelot"],
-            "tempo": int(scored["rate"]),
+            "tempo": int(scored.get("rate", scored.get("bpm"))),
             "energy": scored.get("energy"),
             "energy_status": scored.get("energy_status"),
             "vocal_active": bool(scored.get("vocal_active")),
@@ -431,12 +560,12 @@ def analyze_restamp(ctx) -> Envelope:
     cfg = _load()
     if ctx.args.job:
         return _resume(ctx, cfg)
-    folder = Path(ctx.args.folder)
+    folder = _folder_of(ctx.args.folder)
     items = _audio_in(folder)
     if not items:
         # BEFORE THE CALIBRATION CHECK: a folder with nothing to restamp is a
         # complete answer whether or not the library is calibrated.
-        return ctx.envelope(data=_no_op("no-audio"), outcome=Outcome.NO_OP)
+        return _nothing_to_queue(ctx, folder)
     # REFUSED AT THE QUEUE, not only in the worker: a job whose every item
     # would fail on the same absence is a report over work nothing could do.
     _calibration_or_refuse(cfg)
@@ -448,24 +577,28 @@ def analyze_restamp(ctx) -> Envelope:
             cfg=cfg,
             item_ids=items,
         )
-        return ctx.envelope(data=_reported(store, job))
+        return ctx.envelope(data=_reported(store, job), warnings=(DB_NOT_WRITTEN,))
 
 
 def handle_restamp(job, item, cfg) -> jobs.Produced:
     """Rescore ONE file's energy against the active calibration and stamp it.
 
-    THE PREVIOUS VALUE IS RECORDED BEFORE THE WRITE, once per file, in the
-    undo log ``core.config`` declares as the only surviving copy of it. A
-    file whose level did not move is reported unchanged and not rewritten.
+    THE PREVIOUS VALUE IS RECORDED BEFORE THE WRITE, once per file, as the tag
+    TEXT the file carried, in the undo log ``core.config`` declares as the
+    only surviving copy of it. A file whose level did not move is reported
+    unchanged and not rewritten. A write that then fails leaves a log entry
+    for a file still carrying exactly that value, which is a true record.
 
     FILE TAG ONLY. The registry declares ``db_metadata`` for this verb too,
-    after the source system's separate re-rate step; that half is recorded as
-    a residual rather than written here.
+    after the source system's separate re-rate step; that half is not written
+    by this build, every report says ``db_written: false``, and the resume
+    envelope carries the warning. The residual is recorded with U58.
     """
-    _folder, path = _item_path(job, item)
+    path = _item_path(job, item, "restamp")
     calibration = _calibration_or_refuse(cfg)
     _require_heavy(energy.extractor_bound(), "measuring a track's energy")
     features = energy.measure(path)
+    previous = tags.read_energy_from_file(path)
     if features is None:
         return artifacts.produced(
             cfg,
@@ -475,24 +608,17 @@ def handle_restamp(job, item, cfg) -> jobs.Produced:
                 "item": item.item_id,
                 "path": str(path),
                 "status": energy.STATUS_FEATURES_UNAVAILABLE,
-                "previous": tags.read_energy_from_file(path),
+                "previous": previous,
                 "level": None,
                 "written": False,
+                "db_written": False,
             },
         )
     level = energy.level_for(features, calibration)
-    previous = tags.read_energy_from_file(path)
-    energy.record_previous(cfg, path, previous)
+    energy.record_previous(cfg, path, tags.read_tag(path, "energylevel"))
     written = False
     if previous != level:
-        if not tags.write_tags(path, {"energylevel": level}):
-            raise refuse(
-                "analysis-write-failed",
-                f"the energy level could not be written onto {path.name}; the "
-                f"file is untouched",
-                origin=_ORIGIN,
-                detail={"path": str(path), "stage": "tags"},
-            )
+        _write_or_refuse(path, {"energylevel": level}, untouched="The file is untouched")
         written = True
     return artifacts.produced(
         cfg,
@@ -505,6 +631,7 @@ def handle_restamp(job, item, cfg) -> jobs.Produced:
             "previous": previous,
             "level": level,
             "written": written,
+            "db_written": False,
         },
     )
 
@@ -532,7 +659,9 @@ def otsu_threshold(scores: list[float], *, bins: int = 100) -> float:
 
     Maximizes the between-class variance over a histogram of the scores. A
     vocal library is bimodal on presence, instrumentals near zero and vocal
-    tracks well above, and this is the unsupervised cut between them.
+    tracks well above, and this is the unsupervised cut between them. Whether
+    the input HAS two clusters is the caller's question, answered by
+    :func:`cluster_separation`.
     """
     import numpy as np
 
@@ -563,11 +692,24 @@ def otsu_threshold(scores: list[float], *, bins: int = 100) -> float:
     return best_cut
 
 
+def cluster_separation(scores: list[float], threshold: float) -> float | None:
+    """How far apart the means either side of ``threshold`` sit, or None.
+
+    None when one side is empty, which is a cut with nothing on one side of
+    it rather than a cut between two things.
+    """
+    low = [score for score in scores if score < threshold]
+    high = [score for score in scores if score >= threshold]
+    if not low or not high:
+        return None
+    return sum(high) / len(high) - sum(low) / len(low)
+
+
 def vocal_calibration_path(cfg: config.Config) -> Path:
     return config.state_path(STATE_KEY_VOCAL_CALIBRATION, cfg)
 
 
-def _calibrate_energy(cfg: config.Config, folder: Path, paths: list[Path]) -> dict[str, str]:
+def _calibrate_energy(cfg: config.Config, folder: Path, paths: list[Path]) -> dict[str, str | None]:
     measured: list[dict[str, float]] = []
     unreadable = 0
     for path in paths:
@@ -600,7 +742,9 @@ def _calibrate_energy(cfg: config.Config, folder: Path, paths: list[Path]) -> di
     )
 
 
-def _calibrate_vocals(cfg: config.Config, folder: Path, paths: list[Path]) -> dict[str, str]:
+def _calibrate_vocals(cfg: config.Config, folder: Path, paths: list[Path]) -> dict[str, str | None]:
+    from cratekit.analysis import vocal
+
     scores = [
         float(level)
         for level in (tags.read_vox_from_file(path) for path in paths)
@@ -616,22 +760,28 @@ def _calibrate_vocals(cfg: config.Config, folder: Path, paths: list[Path]) -> di
             Remedy.FIX_COMMAND_LINE,
         )
     threshold = otsu_threshold(scores)
-    target = vocal_calibration_path(cfg)
-    config._mkdir_private(target.parent)
-    target.write_text(
-        json.dumps(
-            {
-                "threshold": threshold,
-                "gender_margin": vocal.DEFAULT_GENDER_MARGIN,
-                "n_tracks": len(scores),
-                "method": "otsu",
-                "note": f"fitted over {folder}",
-            },
-            indent=2,
-            sort_keys=True,
+    separation = cluster_separation(scores, threshold)
+    if separation is None or separation < MIN_VOCAL_SEPARATION:
+        return _check(
+            "calibrate.vocals",
+            "vocal cut",
+            "skipped",
+            f"the {len(scores)} scored tracks in {folder} do not split into two "
+            f"clusters (best cut {threshold:.1f}, separation "
+            f"{0.0 if separation is None else separation:.1f} of the "
+            f"{MIN_VOCAL_SEPARATION:.0f} needed), so no cut was written; a folder "
+            f"holding both instrumental and vocal tracks is what a cut needs",
+            Remedy.FIX_COMMAND_LINE,
         )
-        + "\n",
-        encoding="utf-8",
+    target = energy.write_json(
+        vocal_calibration_path(cfg),
+        {
+            "threshold": threshold,
+            "gender_margin": vocal.DEFAULT_GENDER_MARGIN,
+            "n_tracks": len(scores),
+            "method": "otsu",
+            "note": f"fitted over {folder}",
+        },
     )
     above = sum(1 for score in scores if score >= threshold)
     return _check(
@@ -639,7 +789,7 @@ def _calibrate_vocals(cfg: config.Config, folder: Path, paths: list[Path]) -> di
         "vocal cut",
         "ok",
         f"cut at {threshold:.1f} over {len(scores)} scored tracks, {above} above it, "
-        f"written to {target}",
+        f"written to {target}; no routing pass in this build reads it yet",
         None,
     )
 
@@ -670,9 +820,14 @@ def analyze_calibrate(ctx) -> Envelope:
             },
             outcome=Outcome.NO_OP,
         )
-    folder = Path(ctx.args.folder)
+    folder = _folder_of(ctx.args.folder)
     paths = [folder / name for name in _audio_in(folder)]
     if not paths:
+        detail = (
+            f"{folder} holds no audio files, so nothing was measured"
+            if folder.is_dir()
+            else f"{folder} is not a folder on this machine, so nothing was measured"
+        )
         return ctx.envelope(
             data={
                 "checks": [
@@ -680,7 +835,7 @@ def analyze_calibrate(ctx) -> Envelope:
                         "calibrate.folder",
                         "calibration folder",
                         "failed",
-                        f"{folder} holds no audio files, so nothing was measured",
+                        detail,
                         Remedy.FIX_COMMAND_LINE,
                     )
                 ],

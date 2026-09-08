@@ -51,6 +51,10 @@ def analyse(path: str) -> dict[str, Any]:
     found = detector(target)
     if found is None:
         return {"path": path, "terminal": "skipped-no-key"}
+    if found.get("terminal") is not None:
+        # The detector's own terminal, a file it could not decode, passes
+        # through under its own name rather than being read as keyless.
+        return {"path": path, "terminal": str(found["terminal"])}
     payload = {"path": path, "terminal": None}
     payload.update(found)
     payload["path"] = path

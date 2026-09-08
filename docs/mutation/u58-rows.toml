@@ -1,0 +1,291 @@
+name = "u58-workers-and-wav"
+pass_kind = "light"
+
+# U58: the wav plumbing in the vocal pass, the two analysis workers and their
+# finalize, the energy scorer, and the handler binding. Twenty five rows, the
+# author's table, under METHOD's cap. Every row targets a guard this unit
+# introduced.
+
+[[rows]]
+id = "W1_voxlevel_zero"
+description = "The original defect: score every track voxlevel 0 with a model loaded"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''    result["voxlevel"] = int(round(score.presence))'''
+new = '''    result["voxlevel"] = 0'''
+
+[[rows]]
+id = "W2_decoder_seam_ignored"
+description = "Ignore the bound decoder and always use the shipped one"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''    decoder = _DECODER
+    if decoder is None:
+        from cratekit.analysis.vocal import decode
+
+        decoder = decode
+    return decoder(path)'''
+new = '''    from cratekit.analysis.vocal import decode
+
+    return decode(path)'''
+
+[[rows]]
+id = "W3_undecodable_scored"
+description = "Drop the guard that reports a failed decode instead of scoring it"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''    if samples is None:
+        return _inactive(result, REASON_AUDIO_UNDECODABLE)
+'''
+new = ""
+
+[[rows]]
+id = "W4_model_guard"
+description = "Drop the guard for a model that did not load"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''    if model is None:
+        return _inactive(result, REASON_MODEL_UNAVAILABLE)
+'''
+new = ""
+
+[[rows]]
+id = "W5_terminal_decoded"
+description = "Decode a track whose head was terminal anyway"
+file = "src/cratekit/analysis/vocals.py"
+surface = "maintainer"
+old = '''    if result.get("terminal") is not None:
+        return _inactive(result, REASON_HEAD_TERMINAL)
+'''
+new = ""
+
+[[rows]]
+id = "W6_gender_constant"
+description = "Report every scored track's gender as U"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''    result["voxgender"] = score.gender'''
+new = '''    result["voxgender"] = "U"'''
+
+[[rows]]
+id = "W7_undecodable_reason_reworded"
+description = "Reword the undecodable reason, do not append"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''REASON_AUDIO_UNDECODABLE = "vocal-audio-undecodable"'''
+new = '''REASON_AUDIO_UNDECODABLE = "vocal-audio-unreadable"'''
+
+[[rows]]
+id = "R1_prefixed_reanalysed"
+description = "Drop the resume marker: analyse a file already carrying the head"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    if naming.has_head(path.name, template=template):
+        return artifacts.produced(
+            cfg, job, item, {"item": item.item_id, "path": str(path), "status": "skipped-prefixed"}
+        )
+'''
+new = ""
+
+[[rows]]
+id = "R2_extra_not_required"
+description = "Drop the missing extra refusal in the run worker"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    _require_heavy(_fake_detect_bound(), "analysing a track")
+'''
+new = ""
+
+[[rows]]
+id = "R3_defaults_not_bound"
+description = "Never bind the shipped seams in a worker process"
+file = "src/cratekit/analysis/cli.py"
+surface = "maintainer"
+old = '''    _require_heavy(_fake_detect_bound(), "analysing a track")
+    _bind_defaults(cfg)'''
+new = '''    _require_heavy(_fake_detect_bound(), "analysing a track")'''
+
+[[rows]]
+id = "R4_keyless_finalized"
+description = "Finalize a track whose head found no key"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    if partial.get("terminal") is not None:
+        return artifacts.produced(
+            cfg, job, item, {"item": item.item_id, "path": str(path), "status": partial["terminal"]}
+        )
+'''
+new = ""
+
+[[rows]]
+id = "R5_tag_write_unchecked"
+description = "Ignore a failed tag write and rename anyway"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    _write_or_refuse(path, fields, untouched="The file is untouched and was not renamed")'''
+new = '''    tags.write_tags(path, fields)'''
+
+[[rows]]
+id = "R6_target_not_claimed"
+description = "Rename without claiming the target first"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    if not naming.claim_target(target):
+        raise refuse(
+            "analysis-write-failed",
+            f"{path.name} could not be renamed to {rendered.filename}: that name "
+            f"is already taken in the folder. The tags were written and the "
+            f"title carries the head, so the next pass converges",
+            origin=_ORIGIN,
+            detail={"path": str(path), "target": str(target), "stage": "rename"},
+        )
+'''
+new = ""
+
+[[rows]]
+id = "R7_absent_energy_stamped"
+description = "Write a level for an absent energy"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''        "energylevel": scored.get("energy"),'''
+new = '''        "energylevel": scored.get("energy") or 5,'''
+
+[[rows]]
+id = "R8_title_without_head"
+description = "Write the bare stem as the title tag"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''        "title": rendered.title_tag,'''
+new = '''        "title": path.stem,'''
+
+[[rows]]
+id = "R9_missing_file_analysed"
+description = "Drop the source-missing refusal for a file that vanished"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''        if twin is None:
+            raise _refuse_missing(item, folder, path, "analyse")
+'''
+new = ""
+
+[[rows]]
+id = "S1_previous_not_recorded"
+description = "Restamp without recording the previous value"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    energy.record_previous(cfg, path, tags.read_tag(path, "energylevel"))
+'''
+new = ""
+
+[[rows]]
+id = "S2_unchanged_rewritten"
+description = "Rewrite a file whose level did not move"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    if previous != level:'''
+new = '''    if True:'''
+
+[[rows]]
+id = "S3_queue_without_calibration"
+description = "Queue a restamp over a library that has no calibration"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    # REFUSED AT THE QUEUE, not only in the worker: a job whose every item
+    # would fail on the same absence is a report over work nothing could do.
+    _calibration_or_refuse(cfg)
+'''
+new = ""
+
+[[rows]]
+id = "S4_undo_overwritten"
+description = "Let a second restamp overwrite the first previous value"
+file = "src/cratekit/analysis/energy.py"
+surface = "user"
+old = '''        if key in log:
+            return False
+'''
+new = ""
+
+[[rows]]
+id = "Q1_empty_folder_queued"
+description = "Queue an analysis over a folder holding no audio"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    if not items:
+        return _nothing_to_queue(ctx, folder)
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key=ctx.entry.handler_key,
+            payload={"folder": str(folder)},
+            cfg=cfg,
+            item_ids=items,
+        )
+        return ctx.envelope(data=_reported(store, job))'''
+new = '''    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key=ctx.entry.handler_key,
+            payload={"folder": str(folder)},
+            cfg=cfg,
+            item_ids=items,
+        )
+        return ctx.envelope(data=_reported(store, job))'''
+
+[[rows]]
+id = "Q2_absolute_item_ids"
+description = "Queue absolute paths as item identifiers again"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    return sorted(
+        path.name
+        for path in folder.iterdir()'''
+new = '''    return sorted(
+        str(path)
+        for path in folder.iterdir()'''
+
+[[rows]]
+id = "H1_run_unbound"
+description = "Drop the analyze.run binding from the handler table"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+old = '''    "analyze.run": "cratekit.analysis.cli:handle_run",
+'''
+new = ""
+
+[[rows]]
+id = "E1_beatless_cap"
+description = "Drop the beatless cap in the energy scorer"
+file = "src/cratekit/analysis/energy.py"
+surface = "user"
+old = '''    if calibration.onset_floor is not None:
+        density = float(features.get("onset_density", math.inf))
+        if not math.isnan(density) and density < calibration.onset_floor:
+            level = min(level, BEATLESS_CAP)
+'''
+new = ""
+
+[[rows]]
+id = "E2_uncalibrated_measured"
+description = "Measure energy with no calibration instead of reporting uncalibrated"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+old = '''    if calibration is None:
+        return None, energy.STATUS_UNCALIBRATED
+'''
+new = ""
+
+[[dropped]]
+id = "E3_level_clamp"
+description = "Drop the clamp of the level into 1 to 10"
+reason = "ranked below the cap: nine ascending cut points already bound the level, so the clamp is belt over braces and maintainer facing"
+
+[[dropped]]
+id = "R10_rename_before_tags"
+description = "Swap the finalize order so the rename lands before the tag write"
+reason = "ranked below the cap: the crash window between the two writes is not driven by any test in this unit, so the row would measure only the twin collision case R6 already covers"
+
+[[dropped]]
+id = "C1_min_tracks_lowered"
+description = "Halve the minimum track count a calibration needs"
+reason = "ranked below the cap: the two track fixture would still refuse at five, so the row cannot distinguish the coefficient from its neighbour without a new fixture"

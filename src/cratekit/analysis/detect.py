@@ -12,6 +12,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+#: The terminal status for a file the decoder could not read at all.
+TERMINAL_UNDECODABLE = "skipped-undecodable"
+
 _PITCHES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 _MAJOR = (6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
 _MINOR = (6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
@@ -81,7 +84,14 @@ def analyse_file(path: Path, *, calibration: Any = None) -> dict[str, Any] | Non
     try:
         y, sr = librosa.load(str(path), sr=22050, mono=True)
         if y.size == 0:
-            return None
+            return {"path": path, "terminal": TERMINAL_UNDECODABLE}
+    except Exception:
+        # A FILE THE DECODER COULD NOT READ IS NOT A TRACK WITH NO KEY. The
+        # first version returned None here, which the light pass reported as
+        # skipped-no-key: a truncated download was told to the person as
+        # atonal, a clean report over a file the tool could not read.
+        return {"path": path, "terminal": TERMINAL_UNDECODABLE}
+    try:
         tempo = librosa.feature.tempo(y=y, sr=sr)
         bpm = int(float(np.asarray(tempo).reshape(-1)[0]) + 0.5)
         y_harm = librosa.effects.harmonic(y, margin=4)

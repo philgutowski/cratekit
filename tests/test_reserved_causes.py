@@ -4817,13 +4817,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # one of them is new: no session stored reuses credential-missing, which this
     # vocabulary already declares.
     #
-    # Re-pinned on U58, 2026-09-07. TWO slugs, named rather than counted:
+    # Re-pinned on U58, 2026-09-07. THREE slugs, named rather than counted:
     # energy-calibration-missing, which is a restamp asked for over a library
-    # that has never been calibrated; and analysis-write-failed, which is an
-    # analysed track whose tag write or rename did not land. Neither is in the
-    # reserved table, so the reserved half does not move. Population 149 to
-    # 151, non-reserved 125 to 127, reserved half UNCHANGED at 24.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (151, 127, 24)
+    # that has never been calibrated; energy-calibration-unreadable, which is
+    # a calibration file that exists and cannot be read, kept apart from
+    # missing so a truncated file is never restamped over as "never
+    # calibrated"; and analysis-write-failed, which is an analysed track whose
+    # tag write or rename did not land. None is in the reserved table, so the
+    # reserved half does not move. Population 149 to 152, non-reserved 125 to
+    # 128, reserved half UNCHANGED at 24.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (152, 128, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4998,17 +5001,22 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # cause-shaped literal that is not a declared cause. The protocol it declares
     # carries no slug of any kind, because it is a type rather than a table.
     #
-    # Re-pinned on U58, 2026-09-07: 361 to 370 distinct, 213 to 220 non-keys.
-    # NINE literals joined and NOTHING left, differenced as SETS against
-    # `main`'s own `src` tree extracted into a scratch directory. Two are the
-    # causes named at the population assertion above. The seven that are not
-    # causes: analysis-artifacts and analysis-staging, the two directory names
-    # under the queue root; no-audio, the honest zero state a queued analysis
-    # verb reports over a folder with nothing in it; features-unavailable, the
-    # energy status for a track that could not be measured; and the three
-    # reasons a vocal pass reports for not scoring a track,
+    # Re-pinned on U58, 2026-09-07: 361 to 374 distinct, 213 to 223 non-keys.
+    # THIRTEEN literals joined and NOTHING left, differenced as SETS against
+    # `main`'s own `src` tree extracted into a scratch directory, once on the
+    # build and again after the review's fix round. Three are the causes named
+    # at the population assertion above. The ten that are not causes:
+    # analysis-artifacts and analysis-staging, the two directory names under
+    # the queue root; no-audio and folder-absent, the two honest zero states a
+    # queued analysis verb reports, told apart so an unmounted volume is not
+    # read as an empty folder; db-metadata-not-written, the warning every
+    # restamp carries for the database half the registry declares and this
+    # build does not write; features-unavailable, the energy status for a
+    # track that could not be measured; skipped-undecodable, the head's
+    # terminal for a file the decoder could not read, kept apart from keyless;
+    # and the three reasons a vocal pass reports for not scoring a track,
     # vocal-audio-undecodable, vocal-head-terminal and vocal-model-unavailable.
-    assert (len(literals), len(literals - set(causes))) == (370, 220), (
+    assert (len(literals), len(literals - set(causes))) == (374, 223), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5343,18 +5351,22 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # label/cli.py and label/sweep.py are NOT new holders despite this unit
     # rewriting both: each already named a cause on main.
     #
-    # Re-pinned on U58, 2026-09-07: holders UNCHANGED at 88. analysis/cli.py,
-    # analysis/energy.py, analysis/artifacts.py and analysis/vocals.py were
-    # written or rewritten and none is a new holder: cli.py already named
-    # config-unusable on main, and the other three name no declared cause at
-    # all, the vocal pass's three reasons being statuses rather than causes.
-    # The also-holds-an-integer half moves 16 to 17, and only analysis/cli.py
-    # joins it, measured by applying this module's own predicate to main's
-    # copy of the file and to the working tree's: it declares a minimum of ten
-    # measured tracks for a calibration, and the reserved range contains 10.
-    # A track count is not a code; the composite made the module worth one
-    # look, and the look says so.
-    assert (len(literal_holders), len(literal_both)) == (88, 17), (
+    # Re-pinned on U58, 2026-09-07: 88 to 89 holders. ONE module joined and
+    # none left, and it is a new file. analysis/energy.py names
+    # energy-calibration-unreadable for a calibration file that cannot be
+    # read and analysis-write-failed for an undo log that cannot be locked.
+    # analysis/cli.py, analysis/artifacts.py and analysis/vocals.py are NOT
+    # new holders: cli.py already named config-unusable on main, and the other
+    # two name no declared cause at all, the vocal pass's three reasons being
+    # statuses rather than causes. The also-holds-an-integer half moves 16 to
+    # 18, measured by applying this module's own predicate to main's copy of
+    # each file and to the working tree's. cli.py joins it because it declares
+    # a minimum of ten measured tracks for a calibration, and energy.py because
+    # a level runs to ten and the decile percentiles are multiples of ten; the
+    # reserved range contains 10. A track count, a level and a percentile are
+    # not codes; the composite made both modules worth one look, and the look
+    # says so.
+    assert (len(literal_holders), len(literal_both)) == (89, 18), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
