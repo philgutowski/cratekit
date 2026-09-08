@@ -1540,10 +1540,20 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "analyze.calibrate": [],
         "analyze.validate": [],
         "analyze.restamp": [str(library / "Music")],
-        # U26. Registry list is the empty-install state. Sync queues one
-        # increment. Import of a name that is not registered must refuse with
-        # a vocabulary code. Harvest of an unreachable playlist must refuse
-        # rather than invent labels.
+        # U26. Registry list is the empty-install state. Import of a name that
+        # is not registered must refuse with a vocabulary code. Harvest of an
+        # unreachable playlist must refuse rather than invent labels.
+        #
+        # U52 CHANGED WHAT THE SWEEP DOES ON THIS FIXTURE, and the comment is
+        # updated rather than the assertion. It used to queue an increment here.
+        # Its job items are now the registered favourite labels, and this fixture
+        # registers none, so it refuses ``label-registry-empty`` rather than
+        # filing a job with nothing to claim, which ``jobs.drive`` would later
+        # transition straight to SUCCEEDED over work nothing did. That is still a
+        # code from the vocabulary and still not USAGE, which is all this
+        # conformance asks. The queueing path over a registry that holds labels,
+        # and the refusal over one that does not, are both driven in
+        # tests/test_label_workers.py, where a registry can be populated.
         "label.registry": [],
         "sync.labels": [],
         "label.import": ["no-such-label"],

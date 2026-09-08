@@ -1393,6 +1393,44 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # done, and the job would reach SUCCEEDED over an adoption that placed
         # nothing.
         "adopt-entries-failed": ExitCode.PRECONDITION,
+        # ── U52's three, appended for the reason every block above gives ───────
+        #
+        # No adapter in this build can turn a stored provider credential into a
+        # catalogue the label package reads labels and playlists through.
+        # DISTINCT FROM ``credential-missing`` on exactly the judgement
+        # ``outbound-account-unbound`` above records: the missing credential is
+        # the case doctor already diagnoses and already has a remedy for, and
+        # this one is the product's own gap that no amount of authenticating
+        # moves. Its own slug rather than a second use of the outbound one,
+        # because the two are different capabilities and a person told the
+        # streaming account is unbound while asking for a label sweep would go
+        # looking at the wrong half of the product.
+        #
+        # PRECONDITION rather than INTERNAL, because a build that ships without
+        # a catalogue adapter is a stated limitation rather than a defect a
+        # person should be told to report.
+        "label-catalogue-unbound": ExitCode.PRECONDITION,
+        # A sweep was asked for with no favourite label registered. THE ZERO
+        # ITEM RULE, at the second place that enforces it, beside
+        # ``export-playlist-empty``: ``core.jobs`` reports a job with no items
+        # as SUCCEEDED by design, so a verb that queued this would report a
+        # clean success over work it never did. The remedy is a command that
+        # adds a label rather than anything about this installation, so the
+        # message names that command and the code stays PRECONDITION.
+        "label-registry-empty": ExitCode.PRECONDITION,
+        # Some of a label's releases could not be offered, so the item FAILED
+        # rather than completing. The distinction it protects is the one the
+        # ledger keeps recording: a listing nobody could read and a catalogue
+        # with nothing new in it look identical in an item that reports done.
+        #
+        # The raise site carries ``Remedy.RESUME_JOB`` rather than this table
+        # deciding it, because this table maps a slug to a STATUS and the
+        # remediation is per raise (``refuse`` defaults it from the code only
+        # when the site names neither a remedy nor steps). PRECONDITION rather
+        # than UPSTREAM_UNAVAILABLE, because the item is resumable state in this
+        # product rather than a verdict about the provider: what failed is
+        # already carried underneath as the inner cause.
+        "label-sweep-incomplete": ExitCode.PRECONDITION,
     }
 )
 

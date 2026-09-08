@@ -40,6 +40,22 @@ class Source(Protocol):
 
     id: str
 
+    #: Whether a completed :meth:`process` call means the item LANDED in the
+    #: library, or means it was OFFERED for a decision somebody has yet to make.
+    #: The two are not interchangeable and only the first may be recorded.
+    #:
+    #: The distinction is a property of the source rather than of the call site,
+    #: which is why it is declared here rather than passed to :func:`increment`.
+    #: A labels sweep offers releases into the review queue through
+    #: ``review.offer``, whose verdict is ``None`` until a person decides; a
+    #: playlists sweep downloads files. Both complete without raising, so a
+    #: process call that did not raise cannot tell them apart.
+    #:
+    #: :func:`increment` reads it with a default of ``True``, so a source written
+    #: before this attribute existed still means acquisition, which is what every
+    #: one of them did. R-140 is the defect it closes.
+    acquires: bool
+
     def list_recent(self, n: int) -> Sequence[Candidate]: ...
 
     def process(
@@ -52,7 +68,20 @@ class Source(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class IncrementResult:
-    """What one source did, including a shortfall that blocked the watermark."""
+    """What one source did, including a shortfall that blocked the watermark.
+
+    **A CALLER OBLIGATION THIS TYPE CANNOT DISCHARGE, STATED WHERE A READER MEETS
+    IT.** Since ``Source.acquires`` exists, a non-empty ``processed`` with
+    ``shortfall`` of ``None`` no longer implies the run's ``{run_id}_synced.xml``
+    holds those identities, and it no longer implies the source watermark moved.
+    An offering source completes exactly this way and writes neither. This type
+    carries no field a caller could ask, and it is deliberately not widened here:
+    R-136 records that widening as a contract change of its own, and
+    :func:`run_independent` hands back a mixed dictionary with no per-source
+    signal either. A caller that needs the distinction must read
+    ``source.acquires`` off the source it passed in, and ``sync.all`` is the
+    caller that will need it first.
+    """
 
     source_id: str
     processed: tuple[str, ...]
@@ -103,7 +132,13 @@ def increment(
     staging: Path,
     boundary: Callable[[str], ContextManager[Any]] | None = None,
 ) -> IncrementResult:
-    """Run one source. The watermark moves only if ``shortfall`` is None."""
+    """Run one source. The watermark moves only if ``shortfall`` is None.
+
+    And only if the source ACQUIRES. A source that offers rather than acquires
+    records nothing at all: no intake row, no artifact, no cursor. See
+    ``Source.acquires`` for why the declaration lives on the source, and
+    :class:`IncrementResult` for the obligation that leaves on a caller.
+    """
     ctx = boundary(source.id) if boundary is not None else nullcontext()
     with ctx:
         try:
@@ -142,6 +177,20 @@ def increment(
                 processed=tuple(item.identity for item in processed),
                 errors=tuple(errors),
                 shortfall="; ".join(errors),
+            )
+
+        if not getattr(source, "acquires", True):
+            # Every item was offered, none was acquired, and the run succeeded.
+            # Returning here rather than guarding the three writes one by one is
+            # the point: the intake row, the artifact record and the watermark
+            # are three statements of the same claim, and a fourth writer added
+            # later belongs below this return, where an offering source will
+            # never reach it. Three separate guards is how one gets forgotten.
+            return IncrementResult(
+                source_id=source.id,
+                processed=tuple(item.identity for item in processed),
+                errors=(),
+                shortfall=None,
             )
 
         target = intake_path(staging, run_id)

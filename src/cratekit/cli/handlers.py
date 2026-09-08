@@ -76,8 +76,14 @@ HANDLERS: Mapping[str, str] = {
     "adopt.scan": "cratekit.adopt.scan_cli:handle",
     "backup.run": "cratekit.backup.cli:handle",
     "export.playlist": "cratekit.export.cli:handle",
+    # ONE WORKER UNDER TWO KEYS, which the string table makes ordinary rather than
+    # special: the sweep and the import differ in how many favourite labels they
+    # queue and in nothing about how one is swept, and the worker takes its label
+    # from the item either way.
+    "label.import": "cratekit.label.cli:handle",
     "master": "cratekit.master.cli:handle",
     "sync.favorites": "cratekit.favorites.cli:handle",
+    "sync.labels": "cratekit.label.cli:handle",
     "tag.folder": "cratekit.tagging.cli:handle",
     "tag.retag": "cratekit.tagging.retag_cli:handle",
 }
@@ -98,11 +104,9 @@ HANDLERS_NOT_YET_BOUND: Mapping[str, str] = {
     "delete.review": "no worker yet, R-203",
     "intake.playlist": "no worker yet, R-203",
     "intake.set": "no worker yet, R-203",
-    "label.import": "no worker yet, R-203",
     "rebuild": "no worker yet, R-203",
     "route.resort": "no worker yet, R-203",
     "sync.all": "no worker yet, R-203",
-    "sync.labels": "no worker yet, R-203",
 }
 
 
