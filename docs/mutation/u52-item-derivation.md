@@ -55,6 +55,22 @@ Null control `NULL_CONTROL`: killed 0, collected 6695 against 6695. The control 
 
 ## Zero rows and what they owe
 
+**Re-measured on 2026-09-07, after the merge with main, in `u52-zero-rows.md`.**
+All nine rows below were re-run from a spec whose row text is byte for byte the
+text in this table, after one test was written per row, and every one of the
+nine was killed by exactly one test, the new one, on its subset. The nine are no
+longer zeros. The listing below is left as the driver wrote it on 2026-09-02,
+because a table is a record of a measurement and not a claim to be edited
+afterwards; the second table is the measurement that supersedes it.
+
+Two of the nine are worth a line beyond the kill. `L5` was a zero because a
+guard one layer down refused the same input for a different reason, so the
+missing-object refusal was covered by the listing refusal and nothing pinned
+the sentence that tells the two apart. `L8` and `H5` were zeros because every
+fake that failed verification failed it with a foreign exception, so the
+passthrough for this product's own refusals had never once been exercised.
+
+
 - `I4_registry_empty_message` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 - `S4_and_shortfall_conjunct_gone` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 - `L5_artist_for_missing_returns_none` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
