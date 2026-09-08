@@ -1,0 +1,102 @@
+name = "u52-zero-rows"
+pass_kind = "full"
+
+# The nine user facing zero rows of docs/mutation/u52-item-derivation.md,
+# re-measured on 2026-09-07 after one test was written per row. The row text
+# is copied unchanged from that table, so a death here is the new test and
+# nothing else. A row that stays at zero after this is a residual, not a
+# third round: METHOD caps a unit at two fix rounds and this is the second.
+
+[[rows]]
+id = "I4_registry_empty_message"
+description = "Reword the label-registry-empty sentence, never append to it, because the suite asserts with in"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''        "no favourite label is registered, so a sweep would queue a job with "
+        "nothing to claim and would then report that it succeeded",'''
+new = '''        "the favourite label list holds nothing, so this sweep has no work in "
+        "it and would finish by claiming a result it never produced",'''
+
+[[rows]]
+id = "S4_and_shortfall_conjunct_gone"
+description = "MUTATE THE AND, second arm: drop the shortfall conjunct, so a sweep that offered plenty and dropped one release refuses"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''    if result.shortfall == "empty" and source.dropped:'''
+new = '''    if source.dropped:'''
+
+[[rows]]
+id = "L5_artist_for_missing_returns_none"
+description = "The bare skip R-135 named in miniature: a label with no catalogue object at all returns None rather than refusing"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''        raise run.LookupFailure(
+            f"no catalogue object was available for the registered label "
+            f"{entry.name!r}, so its releases were never listed; that is not "
+            f"a label with nothing new"
+        )'''
+new = '''        return None'''
+
+[[rows]]
+id = "L6_verifier_missing_returns_stub"
+description = "A source built with neither verifier nor catalogue confirms nothing instead of refusing, so every release is dropped as unconfirmed"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''        raise run.LookupFailure(
+            "this labels source was built with neither a verification callable "
+            "nor a catalogue, so no release it listed could be confirmed"
+        )'''
+new = '''        def unconfirmed(claimed: str, release: Any) -> Mapping[str, Any]:
+            return {}
+
+        return unconfirmed'''
+
+[[rows]]
+id = "L8_verifier_passthrough_gone"
+description = "REMOVE THE LAYER ALONE: an adapter's credential-missing refusal is flattened into this source could not list"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''                except CratekitError:
+                    raise
+                except Exception as exc:'''
+new = '''                except Exception as exc:'''
+
+[[rows]]
+id = "R3_closed_cause_narrowed_to_failed"
+description = "Narrow the predicate back to FAILED alone, which exits 0 over a CANCELLED job with 0 of 3 items done"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''        if not job.is_open() and job.cause is not None:'''
+new = '''        if job.state is jobs.JobState.FAILED and job.cause is not None:'''
+
+[[rows]]
+id = "H5_verifier_passthrough_gone"
+description = "REMOVE THE LAYER ALONE: the verification boundary swallows an adapter's own refusal into label-playlist-unreadable"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''        except CratekitError:
+            raise
+        except Exception as exc:'''
+new = '''        except Exception as exc:'''
+
+[[rows]]
+id = "P1_revoked_tombstones_suppress"
+description = "Snapshot revoked tombstones too, so a lifted suppression silently keeps a release out of the review queue"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''            snapshot = {record.suppression_id for record in store.suppressions()}'''
+new = '''            snapshot = {
+                record.suppression_id
+                for record in store.suppressions(include_revoked=True)
+            }'''
+
+[[rows]]
+id = "P2_snapshot_read_eagerly"
+description = "THE LAZY READ: take the snapshot when the reader is built, which fires the unreadable store refusal on a label that has no confirmed release to ask about"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''    snapshot: set[str] | None = None'''
+new = '''    snapshot: set[str] | None = {
+        record.suppression_id
+        for record in DecisionStore(tombstone.STORE_KEY, cfg).suppressions()
+    }'''
