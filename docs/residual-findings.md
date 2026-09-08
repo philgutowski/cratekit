@@ -8114,6 +8114,17 @@ has completed on an 18GB machine without an out-of-memory kill, and
 `analyze.vocals` has either landed beside this package or been reassigned
 to a unit that owns `cratekit.vocals.cli`.
 
+**U58 closed the agent half, 2026-09-07.** The path this entry describes as
+landed could not produce a score: `vocals.analyse` read a `wav` key nothing
+in the package set, so a loaded model scored every track `voxlevel=0,
+voxgender="U"`. The vocal pass now decodes the partial's path itself, at the
+model's rate, through a bound decoder, and a fake model driven through it
+yields a nonzero level and the model's gender call. `analyze.run` and
+`analyze.restamp` have workers and a queued job runs pending to done through
+the real resume. The attended half is unchanged: no real folder has been
+analysed and the 18GB run has not happened. `analyze.vocals` is still
+planned, and R-277 records what its absence now costs.
+
 ---
 
 ## R-134. The first delete.review drive baselines before the confirm gate
@@ -10731,6 +10742,17 @@ met `DecisionStale` for ever. That defect was unreachable while nothing wrote,
 which is the general form of what this entry is about: for several of the eleven,
 the binding is the thing that makes their own defects reachable.
 
+**U58 bound `analyze.run` and `analyze.restamp`, so SEVEN queued verbs have no
+worker as of 2026-09-07**: `acquire.download`, `delete.review`,
+`intake.playlist`, `intake.set`, `rebuild`, `route.resort` and `sync.all`.
+The count in this entry's title stays at eighteen for the reason the first
+correction gives. U58 is the fourth worked example of the claim: the two
+analysis verbs were the only ones that already passed items at enqueue, and
+the binding still needed the item identifier changed from an absolute path to
+a filename, the frozen folder resolved absolute, a resume that finds a file
+the finalize renamed before its row moved, and two engine defects fixed
+before a worker could produce a true value at all.
+
 **Cost:** the same as R-198's for eighteen verbs, with one change. `crate job list`
 and `crate job show` now carry a `worker` field derived from the declaration table
 without importing anything, so a queued job that will never run says so. Before
@@ -12976,3 +12998,231 @@ rows and emitted the same sentence.
 
 **Closes when:** the driver's caps and its template say what METHOD says, or
 METHOD names the two pass kinds.
+
+---
+
+## R-274. The analysis package carries the sixth resume tail and the fourth artifact helper
+
+**Found:** at the U58 review, 2026-09-07, by the reuse and altitude angles.
+
+`src/cratekit/analysis/cli.py` carries `_advance`, `_reported` and `_no_op`,
+the three functions `cratekit.tagging.shell` already parameterized so a fourth
+verb would not need them again, and `src/cratekit/analysis/artifacts.py` is the
+fourth copy of the five function staging helper beside adoption, outbound and
+tagging. The unit copied rather than reached across for the reason the earlier
+copies give, that a tagging name on an analysis rule is the wrong name, and it
+did not move either to `core`, which is the honest home and is other units'
+files. R-248 records the same shape for the resume tail; this entry adds the
+sixth copy and the fourth helper to its count.
+
+**Measured cost.** None to a user today. The next change to the closed and
+carrying a cause predicate, or to the ordinal named staging rule, lands in the
+copies somebody remembers.
+
+**Why not fixed here.** A core module taking the two directory names and the
+two refusal strings as arguments is a small change and it is not U58's, and
+migrating the three older copies is three other units' files.
+
+**Closes when:** one module in `core` owns both and the analysis package calls
+it, with R-248's count reduced by the same move.
+
+---
+
+## R-275. `analyze.restamp` writes the file tag only, under a declaration that names the database too
+
+**Found:** at the U58 authoring pass, 2026-09-07, and sharpened by the altitude angle.
+
+The registry entry for `analyze.restamp` declares `writes` of `files` and
+`db_metadata`, a doctor check on `rekordbox.pins`, and the cloud sync gate,
+after the source system's two scripts, `energy_restamp` for the file tag and
+`energy_rerate` for the star rating. `handle_restamp` writes the `energylevel`
+tag and nothing else. The gap is visible rather than silent: every item report
+carries `db_written: false`, and the queueing envelope and every resume
+envelope carry the warning `db-metadata-not-written`. The doctor check and the
+gate still stand for a write that does not happen, which is the source system's
+own shape, since its restamp was file tag only and its re-rate a separate
+deliberate step.
+
+**Measured cost.** A person who restamps a back catalogue and reads the item
+count as the whole of what the source system's pair did. The warning is the
+mitigation and it was driven.
+
+**Why not fixed here.** The re-rate is a guarded database write with the
+manual rating rule behind it, `write/metadata.plan_rating_backfill` exists for
+it, and it is a second worker's worth of decisions this unit did not have the
+bound for.
+
+**Closes when:** a re-rate lands beside the restamp and the warning goes, or
+the declaration narrows to `files` and drops the database preconditions.
+
+---
+
+## R-276. The vocal calibration is written and nothing in this build reads it
+
+**Found:** at the U58 review, 2026-09-07, by the altitude angle.
+
+`crate analyze calibrate` fits the vocal cut by Otsu over the voxlevel tags a
+folder's files carry and writes `vocal_calibration.json` under the library
+state directory. `cli/converge.py` passes `vocal_threshold=None` to the rebuild
+with a comment saying nothing reads the calibration file yet, and no other
+reader exists. The check's detail says so in its own text.
+
+**Measured cost.** A person who calibrates, rebuilds, and finds no track under
+"with vox". The detail line is the only thing that tells them why.
+
+**Why not fixed here.** The reader belongs to the routing and rebuild workers,
+which are U53's files, and D7 wants the threshold handed to the router by its
+caller rather than imported, so the reader is that caller's.
+
+**Closes when:** a `load_vocal_threshold(cfg)` beside `energy.load_calibration`
+is what the converge and rebuild callers pass, driven.
+
+---
+
+## R-277. A track finalized while the model was unavailable is never scored again
+
+**Found:** at the U58 review, 2026-09-07, by the line by line angle.
+
+`handle_run` skips any file whose name already carries the head, which is the
+resume marker the source system used and the one this package documents. A
+track analysed on a machine with librosa and no model is renamed with its head
+and tagged with no voxlevel, and every later `analyze run` skips it as
+finished. `analyze.restamp` rescores energy only. The verb that would re-score
+vocals, `analyze.vocals`, is the planned one U58's brief put out of scope, and
+the source system's `dj-vocal-restamp --force` is the behaviour it owes.
+
+**Measured cost.** Driven on the fixture: a model that fails to load reports
+`vocal-model-unavailable`, the file is finalized, and a second run reports
+`skipped-prefixed`. The calibrate verb then reports the vocal cut skipped for
+want of scored tracks, which is true and offers no way forward.
+
+**Why not fixed here.** The re-score is the planned verb's whole job, and a
+force flag on `analyze run` would re-run key and tempo detection on every
+finished file to reach the one pass that is missing.
+
+**Closes when:** `analyze.vocals` lands with a path that scores files already
+carrying the head.
+
+---
+
+## R-278. The calibrated head decodes and measures twice, and no feature vector survives
+
+**Found:** at the U58 review, 2026-09-07, by the efficiency angle. Not measured on the tree.
+
+`handle_run` decodes each track once at 22050 for key and tempo and again at
+32000 for the model, sequentially in one process, which is the two pool
+design's answer applied where the pool boundary does not exist. On the
+calibrated path `detect.analyse_file` runs a harmonic separation and an onset
+envelope for tempo, and `energy.features_from_samples` runs both again on the
+central slice. Neither worker persists the feature vector, so `calibrate` and
+`restamp` re-measure every track from the audio, and the `energy_feature_cache`
+state file `core.config` declares is not written by anything.
+
+**Measured cost.** Unmeasured. The reviewer's estimate was one to two seconds a
+track on the calibrated path and a full re-decode per track on every restamp,
+which on a two thousand track library is the difference between minutes and an
+hour. No number here was taken on the tree, and the entry says so.
+
+**Why not fixed here.** Sharing samples across the head and the model changes
+the detect seam's signature, sharing the separation changes the measurement the
+restamp must reproduce exactly, and the cache is a state file with a snapshot
+role that a writer has to honour. Each is a decision, none was in the bound.
+
+**Closes when:** one decode feeds both passes in the worker, or the cache is
+written and read and a restamp after a re-weighting costs a lookup per file.
+
+---
+
+## R-279. `analyze.calibrate` measures a folder inline, in the shell process
+
+**Found:** at the U58 review, 2026-09-07, by the efficiency angle.
+
+The calibrate verb walks the folder, measures every track through the bound
+extractor, and fits the calibration, all in the process that ran the command.
+The module's first line says the heavy passes are queued and never run inline
+(KTD26, R22), and this verb is the one exception in the package: no job, no
+pool, no resume. A kill at the last track discards everything.
+
+**Measured cost.** None on the fixture. On a real folder the cost is the whole
+measurement, once per interruption.
+
+**Why not fixed here.** A calibration is one value fitted over many
+measurements, so its job shape is a map then a reduce, which none of the
+existing workers has needed; a pool without a job keeps the inline shape and
+adds the spawned child seam problem `light.init_pass` already records.
+
+**Closes when:** the measurement is a queued job whose items are the tracks and
+whose reduce fits the calibration from the committed reports.
+
+---
+
+## R-280. Three decode sites, a sixth name template builder, and a second rename tail
+
+**Found:** at the U58 review, 2026-09-07, by the reuse angle.
+
+`detect.analyse_file`, `energy.features_from_path` and `vocal.decode` each
+carry the librosa import guard, the load call and the broad except returning
+None. `analysis/cli.py` builds the `NameTemplate` and `NameBudget` from
+`cfg.naming` by hand, as `write/naming_cli.py`, `intake/repair.py`,
+`setbuilder/cli.py`, `cli/reports.py` and `acquire/match_cli.py` already do,
+and its claim then rename then release sequence in `_finalize` is
+`naming_cli`'s line for line. The analysis rename and the naming verb's rename
+agree about the template only because both copied the same two lines.
+
+**Measured cost.** None to a user today. A decode level fix, a duration cap or
+a resample argument, has to land three times; a second marker rule has to land
+six.
+
+**Why not fixed here.** `core.naming` has no constructor from the naming
+section by design, to keep naming free of a config import, and adding one is a
+change to five other modules' call sites.
+
+**Closes when:** one decode helper with a rate argument serves all three sites,
+and `naming` owns a template and budget builder over the naming section that
+the six sites call.
+
+---
+
+## R-281. `analyze.validate` says nothing was scored, and nothing can be
+
+**Found:** at the U58 authoring pass, 2026-09-07.
+
+The validate verb reports one check, status `unavailable`, no remedy, saying no
+validation scorer ships in this build. That is the honest version of the
+`awaiting` check with a report defect remedy it replaced, and it is still a
+verb that does nothing. The source system's harness scored detected keys
+against an incumbent's tags on a library that carried them; this build has no
+labelled set format and no incumbent to score against.
+
+**Measured cost.** None. A person who runs it is told the truth.
+
+**Why not fixed here.** A labelled set format is a decision about what ground
+truth looks like for this product, and the analysers it would score have not
+run over a real folder (R-133).
+
+**Closes when:** a labelled set format exists and the verb scores the
+analysers against it, or the entry is withdrawn from the registry and the
+parity table.
+
+---
+
+## R-282. The head still folds a missing extra into a keyless track inside the detector
+
+**Found:** at the U58 review, 2026-09-07, by the altitude angle. Partly fixed.
+
+`detect.analyse_file` returned one None for three states: the extra absent, the
+file undecodable, and no key found. U58 gave the undecodable file its own
+terminal, `skipped-undecodable`, and guards the absent extra in the worker with
+`detect.heavy_available` before the detector is asked. Inside the detector the
+first and third are still one None, so a caller other than the worker, the
+batch entry point `run_batch` for one, reads a slim install as a folder of
+keyless tracks.
+
+**Measured cost.** None through the worker, which is the only caller in `src`.
+
+**Why not fixed here.** The vocal pass's shape, a named reason per absence, is
+the fix, and applying it to the detector means the light pass and the batch
+result grow a reason field the unit's bound did not cover.
+
+**Closes when:** the detector returns a terminal for the absent extra as it
+does for an undecodable file, and the worker's separate guard goes.
