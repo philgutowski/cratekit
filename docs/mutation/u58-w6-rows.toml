@@ -1,0 +1,13 @@
+name = "u58-zero-row-remeasured"
+pass_kind = "light"
+
+# The one zero row of u58-workers-and-wav, re-measured after the test that
+# pins the gender call was added. One row, one pass.
+
+[[rows]]
+id = "W6_gender_constant"
+description = "Report every scored track's gender as U"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''    result["voxgender"] = score.gender'''
+new = '''    result["voxgender"] = "U"'''

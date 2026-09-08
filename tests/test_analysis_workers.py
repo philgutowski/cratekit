@@ -225,7 +225,7 @@ def test_an_analyze_job_runs_pending_to_done_and_the_files_carry_the_result(
     assert tags.read_energy_from_file(done) == 6
     assert tags.read_vox_from_file(done) is not None
     assert tags.read_vox_from_file(done) > 0
-    assert tags.read_voxgender_from_file(done) in {"M", "F", "U"}
+    assert tags.read_voxgender_from_file(done) == "M", "the model's call, not a constant"
 
     reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
     assert set(reports) == {"a.flac", "b.flac"}
@@ -496,8 +496,12 @@ def test_a_partial_carrying_only_a_path_scores_nonzero_through_the_fixed_path(mo
     assert scored["vocal_active"] is True
     assert scored["vocal_reason"] is None
     assert scored["voxlevel"] > 0
-    assert scored["voxgender"] in {"M", "F", "U"}
-    assert isinstance(scored["voxgenderconf"], int)
+    # THE GENDER IS THE MODEL'S CALL, NOT A CONSTANT. The fake model scores the
+    # male class at four times the female class on this signal, so the
+    # reduction must say M; the mutation table's one zero row was a worker
+    # that reported every track as U with a green suite.
+    assert scored["voxgender"] == "M"
+    assert scored["voxgenderconf"] == 60
 
 
 def test_the_vocal_pass_never_reads_a_wav_key_off_the_partial():
