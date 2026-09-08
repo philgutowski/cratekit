@@ -74,6 +74,12 @@ ItemHandler = Callable[[jobs.Job, jobs.Item, "config.Config"], "jobs.Produced | 
 HANDLERS: Mapping[str, str] = {
     "adopt.apply": "cratekit.adopt.apply_cli:handle",
     "adopt.scan": "cratekit.adopt.scan_cli:handle",
+    # TWO WORKERS IN ONE MODULE, named for what each does to a file: the run
+    # analyses and finalizes it, the restamp rescores one tag on it. Neither is
+    # ``handle``, because a module owning two workers under one anonymous name
+    # would have the second one's binding read as the first's.
+    "analyze.restamp": "cratekit.analysis.cli:handle_restamp",
+    "analyze.run": "cratekit.analysis.cli:handle_run",
     "backup.run": "cratekit.backup.cli:handle",
     "export.playlist": "cratekit.export.cli:handle",
     # ONE WORKER UNDER TWO KEYS, which the string table makes ordinary rather than
@@ -99,8 +105,6 @@ HANDLERS_NOT_YET_BOUND: Mapping[str, str] = {
         "never queued under its own key"
     ),
     "acquire.download": "no worker yet, R-203",
-    "analyze.restamp": "no worker yet, R-203",
-    "analyze.run": "no worker yet, R-203",
     "delete.review": "no worker yet, R-203",
     "intake.playlist": "no worker yet, R-203",
     "intake.set": "no worker yet, R-203",

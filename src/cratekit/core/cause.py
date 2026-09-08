@@ -1431,6 +1431,27 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # product rather than a verdict about the provider: what failed is
         # already carried underneath as the inner cause.
         "label-sweep-incomplete": ExitCode.PRECONDITION,
+        # ── U58's refusals, appended for the reason every block above gives ────
+        #
+        # A restamp was asked for over a library that has never been calibrated.
+        # A level is where a track sits among its own library, so with no
+        # reference there is no level to stamp, and queueing a job whose every
+        # item would fail on the same absence is a report over work nothing
+        # could do. PRECONDITION because the remedy is a command, the calibrate
+        # verb, rather than anything about this installation.
+        "energy-calibration-missing": ExitCode.PRECONDITION,
+        # The calibration file exists and cannot be read. A DIFFERENT state from
+        # missing, refused under its own name so a truncated file is never
+        # folded into "never calibrated" and restamped over, and so the
+        # remedy, calibrating again, reaches the person instead of a defect
+        # report over a JSON error.
+        "energy-calibration-unreadable": ExitCode.PRECONDITION,
+        # An analysed track could not be finalized: its tag write returned
+        # false or its rename could not claim the target. The item FAILS rather
+        # than reporting done, because an analysis whose values never reached
+        # the file is the clean-report-over-unwritten-state shape the merge bar
+        # names. The audio is untouched in every branch that raises this.
+        "analysis-write-failed": ExitCode.PRECONDITION,
     }
 )
 

@@ -21,7 +21,51 @@ import numpy as np
 DEFAULT_FRAME_FLOOR = 0.05
 DEFAULT_GENDER_MARGIN = 0.20
 _EPS = 1e-9
-DEFAULT_CHUNK_SAMPLES = 32000 * 8
+
+#: The rate the model was trained at. The light pass decodes at 22050 for key
+#: and tempo, and a signal at that rate fed to this model is a signal the model
+#: hears at two thirds speed, so the vocal pass decodes for itself at its own
+#: rate rather than borrowing the head's samples (U58).
+MODEL_SAMPLE_RATE = 32000
+DEFAULT_CHUNK_SAMPLES = MODEL_SAMPLE_RATE * 8
+
+
+def decode(path: Any) -> np.ndarray | None:
+    """The samples the model scores, decoded at the model's own rate.
+
+    None when the extra is absent or the file cannot be decoded, and the CALLER
+    decides what None means. ``vocals.analyse`` reports it as vocal inactive
+    with the reason, never as a score of zero: a zero is a track the model
+    heard and found instrumental, and a track the model never heard is not
+    that (U58, the wav defect).
+
+    librosa is imported inside the function so a slim install can still import
+    the package.
+    """
+    try:
+        import librosa
+    except ImportError:
+        return None
+    try:
+        wav, _rate = librosa.load(str(path), sr=MODEL_SAMPLE_RATE, mono=True)
+    except Exception:
+        return None
+    if wav is None or wav.size == 0:
+        return None
+    return np.asarray(wav, dtype=np.float32)
+
+
+def default_loader() -> Any:
+    """Load the pretrained tagging model, behind the extra.
+
+    Raises when the extra is absent, which ``vocals._load`` records as a failed
+    load and reports as vocal inactive. It does not return None, because a
+    loader that returns None on a missing extra and a loader that returns None
+    because the checkpoint is corrupt are the same None to the caller.
+    """
+    from panns_inference import AudioTagging
+
+    return AudioTagging(checkpoint_path=None, device="cpu")
 
 
 @dataclass(frozen=True)

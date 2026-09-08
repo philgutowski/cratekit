@@ -22,6 +22,11 @@ def bind_detect(detect: Callable[[Path], dict[str, Any] | None] | None) -> None:
     _DETECT = detect
 
 
+def bound() -> bool:
+    """Whether a detector is bound in this process, without naming which."""
+    return _DETECT is not None
+
+
 def init_pass(detect_name: str | None = None) -> None:
     """Spawn initializer. Children re-import this module and start unbound.
 
@@ -46,6 +51,10 @@ def analyse(path: str) -> dict[str, Any]:
     found = detector(target)
     if found is None:
         return {"path": path, "terminal": "skipped-no-key"}
+    if found.get("terminal") is not None:
+        # The detector's own terminal, a file it could not decode, passes
+        # through under its own name rather than being read as keyless.
+        return {"path": path, "terminal": str(found["terminal"])}
     payload = {"path": path, "terminal": None}
     payload.update(found)
     payload["path"] = path

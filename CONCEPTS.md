@@ -469,6 +469,18 @@ of a multi item job comes to do the same piece of work.
 A job with no items is not an error. The driver reports it as a success over
 nothing, which is exactly what a verb that queues without items produces.
 
+### Rename intent
+The record a worker writes, before it renames the file its item identifies, of
+the name the file is about to take. It lives in the item's staging directory,
+carries the item id and the target path, and is what a resume reads when the
+item's source is missing: a target that exists is the item, finished before a
+kill flipped its row, and anything else is a missing source. Introduced by U58
+after a resume that guessed the finished file from the folder matched an
+unrelated older file and missed a file the naming template had rewritten.
+
+*Avoid:* recovering a missing item by scanning its folder for something that
+looks like the result. The scan is the guess the intent replaces.
+
 ### Handler key
 The stable string a job stores instead of a function, so a process can validate,
 list, or rebuild the command line for a queued job without importing the module
