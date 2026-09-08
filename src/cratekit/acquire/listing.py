@@ -216,7 +216,14 @@ def account_playlists(session: Any, **kwargs: Any) -> list[Any]:
     )
 
 
-def artist_releases(artist: Any, methods: Iterable[str] = ("get_albums", "get_ep_singles"),
+#: The two release listings a provider artist exposes, and the ones
+#: :func:`artist_releases` reads by default. Owned here so a caller that has to
+#: ask "can this object be listed at all" (``label.crawl.can_list``) checks the
+#: same names the crawl will try, without a second written copy of them.
+RELEASE_METHODS: tuple[str, ...] = ("get_albums", "get_ep_singles")
+
+
+def artist_releases(artist: Any, methods: Iterable[str] = RELEASE_METHODS,
                     **kwargs: Any) -> list[Any]:
     """Every release credited to an artist, across both release-type listings.
 
@@ -273,6 +280,7 @@ __all__ = [
     "GUARDED_METHODS",
     "PAGE_SIZES",
     "PAGINATION_KEYWORDS",
+    "RELEASE_METHODS",
     "WRAPPERS",
     "ListingNotPaginated",
     "account_playlists",

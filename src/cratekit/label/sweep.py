@@ -39,11 +39,23 @@ class Dropped:
 
 @dataclass(frozen=True, slots=True)
 class LabelListing:
-    """What one label's crawl produced after verification and tombstones."""
+    """What one label's crawl produced after verification and tombstones.
+
+    ``listed`` IS HOW MANY RELEASES THE CRAWL READ, before any of them was
+    classified, and it is carried because the three tuples do not add up to it.
+    A release the library already owns is skipped without a record, and the
+    newest-N cap stops the loop with releases still unread. The worker that
+    refuses "read N and confirmed none" needs the N, and ``len(dropped)`` alone
+    was that number only when nothing else happened to the listing: a label
+    whose confirmed releases were all tombstoned and whose others were dropped
+    was refused as a catalogue nobody could verify a line of, with
+    ``confirmed: 0``, over a release that verified fine.
+    """
 
     candidates: tuple[run.Candidate, ...]
     dropped: tuple[Dropped, ...]
     suppressed: tuple[run.Candidate, ...]
+    listed: int = 0
 
 
 def _year_of(release: Any) -> str:
@@ -83,9 +95,14 @@ def _suppression_reader(cfg: config.Config) -> Callable[[Any], bool]:
     ``_read`` REFUSES a store it cannot recognize rather than reading it as
     empty, because an unreadable suppression list read as empty un-suppresses
     everything in it. Reading at the top of the sweep would fire that refusal for
-    a label with no confirmed releases, which the per release form never did.
-    Deferring to the first release that actually asks keeps the refusal on
-    exactly the runs that used to raise it.
+    a label whose crawl listed nothing, which the per release form never did.
+    Deferring to the first release that actually asks keeps the refusal off
+    exactly those runs. The question is now asked BEFORE verification rather
+    than after it, so a label with releases and an unreadable store refuses
+    whether or not any of them would have confirmed; that is one more run than
+    the per release form refused on, and it is the right one, because the
+    alternative was a provider call per release whose answer the tombstone
+    then discarded.
 
     A release with neither an artist nor a title is answered without reading at
     all, which is the same short circuit the per release form had and the reason
@@ -158,8 +175,32 @@ def _crawl_or_refuse(entry: registry.LabelEntry, artist: Any) -> list[Any]:
     ``run.increment`` is the one place that knows a source failed to list and it
     already converts this into ``sync-source-lookups-failed``. Raising a cause
     here would give the same condition two vocabularies.
+
+    A ``CratekitError`` PASSES THROUGH UNCHANGED, as it does at the other two
+    seam boundaries in this module and for the same reason: an adapter that
+    discovers mid page that the stored session has expired refuses
+    ``credential-missing``, and that names an act the person can take. Wrapped
+    into a lookup failure it would become "retry when the provider is
+    reachable", which sends somebody to wait for a network that is fine.
+
+    THE PROBE IS INSIDE THE BOUNDARY TOO. ``crawl.can_list`` reads attributes
+    off the artist object, and an adapter's artist may be a lazy proxy that
+    fetches on attribute access, so the probe itself can raise the provider's
+    own error. Outside the ``try`` that error would bypass the increment's
+    conversion and fail the item as an internal error telling the person to
+    file a defect over an outage.
     """
-    if not crawl.can_list(artist):
+    try:
+        listable = crawl.can_list(artist)
+    except CratekitError:
+        raise
+    except Exception as exc:
+        raise run.LookupFailure(
+            f"the catalogue object for {entry.name!r} could not be examined "
+            f"({type(exc).__name__}: {exc}), so its releases were never read; "
+            f"that is not an empty catalogue"
+        ) from exc
+    if not listable:
         raise run.LookupFailure(
             f"the catalogue object for {entry.name!r} exposes none of the listing "
             f"methods {', '.join(crawl.LISTING_METHODS)}, so its releases were "
@@ -167,6 +208,8 @@ def _crawl_or_refuse(entry: registry.LabelEntry, artist: Any) -> list[Any]:
         )
     try:
         return list(crawl.releases(artist))
+    except CratekitError:
+        raise
     except Exception as exc:
         raise run.LookupFailure(
             f"the catalogue listing for {entry.name!r} could not be read "
@@ -203,8 +246,23 @@ def list_for_label(
     dropped: list[Dropped] = []
     suppressed: list[run.Candidate] = []
     tombstoned = _suppression_reader(cfg)
+    # THE LOCAL QUESTIONS COME FIRST AND THE PROVIDER CALL LAST. A tombstone is
+    # a decision the person already made and an owned release is one they
+    # already hold, and both are answered from this machine. Verifying before
+    # asking either spent a provider round trip per release whose answer the
+    # tombstone then threw away, which on a label with a long deleted back
+    # catalogue is most of the sweep's network calls, and each wasted one is a
+    # step closer to the rate limited endpoint the worker's refusal exists for.
+    # A tombstoned release therefore counts as suppressed whether or not the
+    # catalogue would have confirmed it, which is the honest reading: it was
+    # never a candidate, so nothing about it was for the provider to decide.
     for release in listed:
         identity = str(getattr(release, "id", "") or "")
+        if tombstoned(release):
+            suppressed.append(_candidate(entry, release))
+            continue
+        if identity in owned_ids:
+            continue
         verdict = label_verify.verify_release(claimed, release, search=verify)
         status = str(verdict.get("verdict") or "unconfirmed")
         if status != "confirmed":
@@ -216,19 +274,14 @@ def list_for_label(
                 )
             )
             continue
-        item = _candidate(entry, release)
-        if tombstoned(release):
-            suppressed.append(item)
-            continue
-        if identity in owned_ids:
-            continue
-        candidates.append(item)
+        candidates.append(_candidate(entry, release))
         if len(candidates) >= cap:
             break
     return LabelListing(
         candidates=tuple(candidates),
         dropped=tuple(dropped),
         suppressed=tuple(suppressed),
+        listed=len(listed),
     )
 
 
@@ -272,11 +325,22 @@ class LabelSource:
         artists: Mapping[str, Any] | None = None,
         verify: Callable[[str, Any], Mapping[str, Any]] | None = None,
         catalogue: Catalogue | None = None,
+        store: review.ReviewStore | None = None,
     ) -> None:
         self.cfg = cfg
         self.registry = registry
         self.artists = dict(artists or {})
         self.verify = verify
+        #: An OPEN review store to offer into, or ``None`` to open one per offer.
+        #: ``run.increment`` calls :meth:`process` with no store, so without this
+        #: every offered release opened, migrated and checkpointed the review
+        #: database on its own: measured at 0.386 ms per round trip, which on a
+        #: label at the default cap of four hundred is a hundred and fifty
+        #: milliseconds of connection churn per label and four hundred WAL
+        #: checkpoints. The worker opens one store around the increment and
+        #: hands it here. ``review.offer`` still commits per call, so the per
+        #: offer durability the harvest boundary relies on is unchanged.
+        self.store = store
         #: A ``label.catalogue.Catalogue``, which supplies both of the other two
         #: from one object. Kept beside them rather than replacing them because
         #: the pre-seam callers pass the pieces and there is no reason to rewrite
@@ -301,6 +365,13 @@ class LabelSource:
         #: :class:`LabelListing`'s job one layer down and R-136's contract change
         #: one layer up.
         self.dropped: tuple[Dropped, ...] = ()
+        #: HOW MANY RELEASES THE LAST PASS READ, summed over its labels. The
+        #: worker's "read N and confirmed none" refusal is keyed on this against
+        #: ``dropped``, and not on ``dropped`` being non-empty, because a
+        #: listing whose confirmed releases were all tombstoned and whose others
+        #: were dropped is a label with nothing new and not a catalogue nobody
+        #: could verify a line of.
+        self.read = 0
 
     def _artist_for(self, entry: registry.LabelEntry) -> Any:
         """The provider artist object for one favourite label, or a refusal.
@@ -316,11 +387,14 @@ class LabelSource:
         So the path is reachable, and it is closed here rather than annotated
         with a comment claiming it cannot happen.
 
-        EVERY exception from the seam is flattened into this one, and the
-        original stays reachable as ``__cause__``. An adapter's own refusal is
-        not lost by that, and ``sync-source-lookups-failed`` stays the single
-        vocabulary for "this source could not list", which is the distinction the
-        increment and the person reading its output both need.
+        A FOREIGN exception from the seam is flattened into this one, and the
+        original stays reachable as ``__cause__``, so
+        ``sync-source-lookups-failed`` stays the single vocabulary for "this
+        source could not list". A ``CratekitError`` PASSES THROUGH UNCHANGED,
+        on the same rule :meth:`_verifier` and :func:`_crawl_or_refuse` state:
+        an adapter's own refusal names an act the person can take, and the
+        first draft of this method flattened it too, which would have told
+        somebody whose session had expired to wait for the network.
 
         ONE UNREADABLE LABEL REFUSES THE WHOLE SOURCE, which is a choice worth
         naming. ``run.increment`` turns this into ``sync-source-lookups-failed``
@@ -347,6 +421,8 @@ class LabelSource:
         if self.catalogue is not None:
             try:
                 return self.catalogue.artist_for(entry)
+            except CratekitError:
+                raise
             except Exception as exc:
                 raise run.LookupFailure(
                     f"the catalogue could not resolve an artist for the label "
@@ -432,9 +508,15 @@ class LabelSource:
         discarded release was never a candidate at all. Counting the two together
         would make a busy label look like an unverifiable one.
         """
-        verify = self._verifier()
+        # THE VERIFIER IS RESOLVED ONLY ONCE THERE IS A LABEL TO VERIFY FOR, and
+        # once rather than per label. A source over an empty registry has nothing
+        # to confirm, and refusing it for lacking a way to confirm would turn a
+        # no-op into "retry when the provider is reachable" for a source that
+        # never needed a provider.
+        verify = self._verifier() if self.registry.labels else None
         found: list[run.Candidate] = []
         discarded: list[Dropped] = []
+        read = 0
         for entry in self.registry.labels.values():
             listing = list_for_label(
                 self.cfg,
@@ -444,7 +526,9 @@ class LabelSource:
             )
             found.extend(listing.candidates)
             discarded.extend(listing.dropped)
+            read += listing.listed
         self.dropped = tuple(discarded)
+        self.read = read
         found.sort(key=lambda item: item.recency, reverse=True)
         return found[:n] if n >= 0 else found
 
@@ -456,8 +540,9 @@ class LabelSource:
         store: review.ReviewStore | None = None,
     ) -> None:
         del artifacts, run_id
-        if store is not None:
-            offer_release(store, candidate)
-            return
-        with review.open_store(self.cfg) as opened:
+        opened = store if store is not None else self.store
+        if opened is not None:
             offer_release(opened, candidate)
+            return
+        with review.open_store(self.cfg) as own:
+            offer_release(own, candidate)

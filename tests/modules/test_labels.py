@@ -959,3 +959,86 @@ def test_a_source_with_neither_verifier_nor_catalogue_refuses_rather_than_confir
 
     assert "neither a verification callable nor a catalogue" in str(excinfo.value)
     assert source.dropped == ()
+
+
+def test_a_source_over_an_empty_registry_lists_nothing_rather_than_refusing_its_verifier(cfg):
+    """A no-op stays a no-op: nothing to confirm means no way to confirm is needed."""
+    from cratekit.label import registry as labels
+    from cratekit.label import sweep
+
+    source = sweep.LabelSource(cfg, registry=labels.Registry(labels={}))
+
+    assert source.list_recent(10) == []
+    assert source.read == 0
+
+
+class ProxyThatFetchesOnAttributeAccess:
+    """An artist object whose every attribute read goes to a provider that is down."""
+
+    def __getattr__(self, name: str):
+        raise ConnectionError(f"the provider did not answer for {name!r}")
+
+
+def test_an_artist_object_that_raises_on_inspection_is_a_lookup_failure_not_a_defect(cfg):
+    """The listing probe sits inside the boundary, as the listing itself does.
+
+    ``crawl.can_list`` reads attributes off the artist object, and an adapter's
+    artist may fetch on attribute access. Outside the ``try`` the provider's
+    own error bypassed the increment's conversion and failed the item as an
+    internal error telling the person to file a defect over an outage.
+    """
+    from cratekit.core.cause import CratekitError
+
+    _label_source_id, source = _label_source(
+        cfg,
+        "Life and Death",
+        artists={},
+        verify=_always_confirm,
+    )
+    source.artists = {_label_source_id: ProxyThatFetchesOnAttributeAccess()}
+
+    with pytest.raises(CratekitError) as excinfo:
+        _increment(cfg, source)
+
+    assert excinfo.value.cause.reason == "sync-source-lookups-failed"
+    assert "ConnectionError" in excinfo.value.cause.message
+
+
+def test_a_refusal_raised_mid_crawl_passes_through_the_listing_boundary_unchanged(cfg):
+    """The crawl's boundary keeps the rule the verifier's states.
+
+    An adapter that discovers mid page that the stored session expired refuses
+    ``credential-missing``, which names an act the person can take. Wrapped
+    into a lookup failure it would have become "retry when the provider is
+    reachable".
+    """
+    from cratekit.core.cause import CratekitError, refuse
+
+    class RefusingArtist:
+        def get_albums(self, limit=None, offset=0):
+            del limit, offset
+            raise refuse("credential-missing", "the session expired mid page", origin=("tests",))
+
+        def get_ep_singles(self, limit=None, offset=0):
+            del limit, offset
+            return []
+
+    _label_source_id, source = _label_source(
+        cfg,
+        "Life and Death",
+        artists={},
+        verify=_always_confirm,
+    )
+    source.artists = {_label_source_id: RefusingArtist()}
+
+    with pytest.raises(CratekitError) as excinfo:
+        _increment(cfg, source)
+
+    assert excinfo.value.cause.reason == "credential-missing"
+
+
+def test_the_crawl_probes_exactly_the_methods_the_listing_reads_by_default():
+    from cratekit.acquire import listing
+    from cratekit.label import crawl
+
+    assert crawl.LISTING_METHODS == listing.RELEASE_METHODS == ("get_albums", "get_ep_singles")

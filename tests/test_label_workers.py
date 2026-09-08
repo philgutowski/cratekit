@@ -1493,3 +1493,235 @@ def test_a_refusal_the_harvest_verifier_raises_in_kind_keeps_its_own_reason(
 
     assert code != int(ExitCode.OK), refused
     assert refused["cause"]["reason"] == "credential-missing"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 10. The review round, 2026-09-07
+#
+# Each test here drives one finding the built in review raised after the merge
+# with main. They sit together rather than in their sections because a reader
+# of the record should be able to find what a round changed in one place.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_keys_this_verb_will_drive_are_the_keys_bound_to_its_worker():
+    """LABEL_KEYS is two spelled strings, so this is what keeps them true."""
+    bound_here = {
+        key for key, target in handlers.HANDLERS.items() if target == "cratekit.label.cli:handle"
+    }
+    assert label_cli.LABEL_KEYS == bound_here
+
+
+def test_a_label_verb_will_not_drive_a_job_queued_for_another_verb(installed):
+    """The resume drives whatever the row names, so the row has to be a label job.
+
+    ``handlers.run_job`` resolves the worker from the job and not from the verb,
+    which without this check made ``sync labels --job`` a gate free driver for
+    any queued job: the outbound shell re-requires its gate and its payload
+    digest on resume by design, and a job driven from here would have skipped
+    both. The job is left exactly as it was, every item still pending.
+    """
+    with jobs.open_store() as store:
+        foreign = jobs.enqueue(
+            store,
+            handler_key="export.playlist",
+            payload={"playlist": "x"},
+            cfg=installed,
+            item_ids=("track-1",),
+        )
+
+    code, refused = drive(["sync", "labels", "--job", foreign.job_id])
+
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "job-unknown"
+    assert "export.playlist" in refused["cause"]["message"]
+    assert item_states(foreign.job_id) == {"track-1": str(jobs.ItemState.PENDING)}
+
+
+def test_an_import_on_an_unconfigured_machine_says_so_rather_than_naming_the_label():
+    """The sibling of the sweep's fresh install test, which the round found missing.
+
+    The registry is installation scoped and reads on a machine never set up, so
+    the import refused ``label-unknown`` first and sent a person to add a label,
+    and then refused ``config-unusable`` once they had. One blocker, two
+    refusals, in the verb the sweep's own comment claimed to have brought into
+    line.
+    """
+    code, refused = drive(["label", "import", LABELS[0]])
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "config-unusable"
+    assert queue_is_empty()
+
+
+def test_the_itemless_refusal_names_the_cancel_that_gets_a_person_out(installed):
+    """The job stays open on purpose, so the way out has to be in the steps."""
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key=SWEEP_KEY,
+            payload={"source_id": "labels"},
+            cfg=installed,
+            item_ids=(),
+        )
+    _, refused = drive(["sync", "labels", "--job", job.job_id])
+    steps = refused["cause"]["remediation"]["steps"]
+    assert any(f"crate job cancel {job.job_id}" in step for step in steps), steps
+
+
+class CountingCatalogue(FakeCatalogue):
+    """A catalogue that counts how many times it was asked to verify a release."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.verifications = 0
+
+    def search_release(self, claimed: str, release: object) -> dict:
+        self.verifications += 1
+        return super().search_release(claimed, release)
+
+
+def counting(*label_ids: str, confirmed=None) -> CountingCatalogue:
+    return CountingCatalogue(
+        artists={
+            label_id: FakePagedArtist(
+                [FakeRelease(release_id) for release_id in RELEASES[label_id]]
+            )
+            for label_id in label_ids
+        },
+        confirmed=confirmed,
+    )
+
+
+def bury(cfg: config.Config, release_id: str) -> None:
+    review.DecisionStore(tombstone.STORE_KEY, cfg).record(
+        kind=tombstone.KIND_VERSION,
+        identity=tombstone.version_identity(
+            artist="Label Act", title=f"Release {release_id}"
+        ),
+        actor="tests",
+    )
+
+
+def test_a_mixed_listing_of_tombstoned_and_unconfirmed_releases_is_a_label_with_nothing_new(
+    installed, monkeypatch
+):
+    """The false refusal the round found, driven.
+
+    One release the person confirmed and then deleted on purpose, one the
+    catalogue credits to a distributor. Nothing is offered, and a guard keyed on
+    "anything was dropped" refused this as a catalogue nobody could verify a
+    line of, with ``confirmed: 0`` and a remedy to set a match needle, over a
+    label that is honestly up to date. Every resume re-listed the same
+    catalogue and failed the same way.
+    """
+    register(LABELS[0])
+    bury(installed, "hf-1")
+    bind(monkeypatch, counting(SLUGS[0], confirmed=frozenset()))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert offers(installed) == {}
+
+
+def test_a_sweep_that_read_releases_and_confirmed_none_of_them_still_refuses(
+    installed, monkeypatch
+):
+    """The composite for the test above: the refusal it keeps is the one that was true."""
+    register(LABELS[0])
+    bind(monkeypatch, counting(SLUGS[0], confirmed=frozenset()))
+    job_id = queued_job(["sync", "labels"])
+
+    drive(["sync", "labels", "--job", job_id])
+
+    assert item_causes(job_id) == {SLUGS[0]: "label-sweep-incomplete"}
+
+
+def test_a_tombstoned_release_is_never_sent_to_the_provider_for_verification(
+    installed, monkeypatch
+):
+    """The local questions first, the provider call last.
+
+    A tombstone is a decision already made on this machine, so verifying the
+    release first spent a provider round trip whose answer the tombstone then
+    threw away. On a label with a long deleted back catalogue that was most of
+    the sweep's network calls, each one a step nearer the rate limited endpoint
+    the unconfirmed refusal exists for.
+    """
+    register(LABELS[0])
+    bury(installed, "hf-1")
+    fake = bind(monkeypatch, counting(SLUGS[0]))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert fake.verifications == 1, fake.verifications
+    assert offers(installed) == {"hf-2": SLUGS[0]}
+
+
+def test_one_item_opens_the_review_store_once_however_many_releases_it_offers(
+    installed, monkeypatch
+):
+    """The increment hands the source no store, so the worker has to.
+
+    Without this every offered release opened, migrated and checkpointed the
+    review database on its own, measured at 0.386 ms per round trip, which on a
+    label at the default cap of four hundred is a hundred and fifty milliseconds
+    of connection churn and four hundred checkpoints per label. Counted through
+    the module attribute the worker reaches the store by, during the drive
+    alone.
+    """
+    register(LABELS[0])
+    bind(monkeypatch, readable(SLUGS[0]))
+    job_id = queued_job(["sync", "labels"])
+    opened: list[object] = []
+    real_open = review.open_store
+
+    def counted_open(cfg):
+        opened.append(cfg)
+        return real_open(cfg)
+
+    monkeypatch.setattr(review, "open_store", counted_open)
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+    monkeypatch.setattr(review, "open_store", real_open)
+
+    assert code == int(ExitCode.OK), resumed
+    assert len(opened) == 1, len(opened)
+    assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
+
+
+class SessionExpiredAtListing(FakeCatalogue):
+    """A catalogue whose artist lookup refuses in this product's own vocabulary."""
+
+    def artist_for(self, entry: object) -> object:
+        del entry
+        raise refuse(
+            "credential-missing",
+            "the stored provider session expired before the artist was resolved",
+            origin=("tests",),
+        )
+
+
+def test_a_refusal_the_artist_lookup_raises_in_kind_keeps_its_own_reason(
+    installed, monkeypatch
+):
+    """The third seam boundary, brought onto the rule the other two already kept.
+
+    ``_artist_for`` flattened EVERY exception into a lookup failure, so an
+    adapter refusing ``credential-missing`` for an expired session became
+    "retry when the provider is reachable". The item row carries the adapter's
+    own reason now, as it does when the same refusal surfaces one call later at
+    verification.
+    """
+    del installed
+    register(LABELS[0])
+    bind(monkeypatch, SessionExpiredAtListing())
+    job_id = queued_job(["sync", "labels"])
+
+    code, failed = drive(["sync", "labels", "--job", job_id])
+
+    assert code != int(ExitCode.OK), failed
+    assert item_causes(job_id) == {SLUGS[0]: "credential-missing"}

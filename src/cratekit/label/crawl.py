@@ -7,21 +7,20 @@ exactly like a short catalogue.
 
 from __future__ import annotations
 
-import inspect
 from typing import Any
 
 from cratekit.acquire import listing
 
-#: The listing methods a crawl will actually TRY, read off
-#: ``listing.artist_releases``'s own signature rather than restated here. A
-#: second written copy of the names is a copy that goes stale in silence: the
-#: wrapper skips a method it cannot find, so a caller checking an artist object
-#: against a stale list would either refuse one the crawl could have read or
-#: accept one it could not. The names have already moved once between client
-#: versions, which is why that function takes them as a parameter at all.
-LISTING_METHODS: tuple[str, ...] = tuple(
-    inspect.signature(listing.artist_releases).parameters["methods"].default
-)
+#: The listing methods a crawl will actually TRY, which are the ones
+#: ``listing.artist_releases`` tries by default, imported from the constant it
+#: owns rather than restated here. A second written copy of the names is a copy
+#: that goes stale in silence: the wrapper skips a method it cannot find, so a
+#: caller checking an artist object against a stale list would either refuse
+#: one the crawl could have read or accept one it could not. The first draft
+#: read them off that function's signature with ``inspect``, which met the same
+#: goal and broke the whole label package at import the day the parameter was
+#: renamed or the default resolved inside the body.
+LISTING_METHODS: tuple[str, ...] = listing.RELEASE_METHODS
 
 
 def releases(artist: Any, **kwargs: Any) -> list[Any]:

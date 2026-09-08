@@ -19,6 +19,12 @@ from cratekit.label import catalogue, harvest, sweep
 from cratekit.label import registry as labels
 from cratekit.sync import artifacts, run, watermarks
 
+#: The two handler keys one label worker serves, and the only jobs a label
+#: verb's ``--job`` will drive. The same two strings ``cli/handlers.py`` binds
+#: to this module's ``handle``, and ``tests/test_label_workers.py`` pins them
+#: against the registry so a renamed key fails there rather than here.
+LABEL_KEYS: frozenset[str] = frozenset({"sync.labels", "label.import"})
+
 
 def _load() -> config.Config:
     try:
@@ -281,12 +287,20 @@ def _refuse_an_itemless_job(store, job) -> None:
     """
     if jobs.items(store, job.job_id):
         return
+    # THE STEPS NAME THE WAY OUT, because the slug does not. The job stays open
+    # after this refusal, on purpose, and a person who resumes it again meets
+    # the same sentence; without a step naming the cancel they are told only
+    # that the job is stale and not what to do about a stale job.
     raise refuse(
         "internal-error",
         f"job {job.job_id} has no items to run, so driving it would report a "
         f"success over work it never did. It was queued by a build that did not "
         f"record what its items were",
         remedy=Remedy.REPORT_DEFECT,
+        steps=(
+            f"cancel it with: crate job cancel {job.job_id}",
+            "then queue the sweep or the import again, which records its items",
+        ),
         origin=("label.cli",),
         detail={"job_id": job.job_id},
     )
@@ -327,6 +341,28 @@ def _resume(ctx, job_id: str) -> Envelope:
     """
     with jobs.open_store() as store:
         job = jobs.reconcile(store, job_id)
+        # THE JOB HAS TO BE A LABEL JOB. ``handlers.run_job`` resolves the worker
+        # from the job row and not from this verb, so without this line
+        # ``sync labels --job`` would drive any queued job of any verb in
+        # process, under this verb's envelope and without that verb's own resume
+        # time checks: the outbound shell re-requires its gate and its payload
+        # digest on resume by design, and a job driven from here would skip
+        # both. Either label key is accepted, because one worker serves the two
+        # and neither declares a gate. ``job-unknown`` is reused rather than
+        # given a sibling: from this verb's side the job named on ``--job`` is
+        # one it does not know, and the sentence says which verb does.
+        if job.handler_key not in LABEL_KEYS:
+            raise refuse(
+                "job-unknown",
+                f"job {job.job_id} was queued for {job.handler_key!r}, which is "
+                f"not a label job, so this verb will not drive it",
+                steps=(
+                    f"resume it through its own verb, or with: crate job resume "
+                    f"{job.job_id}",
+                ),
+                origin=("label.cli",),
+                detail={"job_id": job.job_id, "handler": job.handler_key},
+            )
         warnings: tuple[dict[str, str], ...] = ()
         if job.is_open():
             _refuse_an_itemless_job(store, job)
@@ -440,6 +476,13 @@ def import_label(ctx) -> Envelope:
     # is still refused, per item, where a person is told which label it was.
     if ctx.args.job:
         return _resume(ctx, ctx.args.job)
+    # THE CONFIGURATION IS READ BEFORE THE REGISTRY, for the reason
+    # :func:`sync_labels` gives. The registry is installation scoped and reads
+    # on a machine that has never been set up, so a fresh install used to be
+    # refused ``label-unknown`` here and sent to ``crate label registry add``,
+    # and then refused ``config-unusable`` once it had obeyed. The sibling verb
+    # had been brought into line and this one had not.
+    _load()
     held = labels.RegistryStore().load()
     entry = held.resolve(ctx.args.name)
     if entry is None:
@@ -589,9 +632,12 @@ def _label_verifier(
 def _offered(item: review.Item) -> dict:
     """One offered label projected for the envelope, not the whole record.
 
-    The same shape ``cratekit.cli.review`` lists a queue in, with the label name
-    added because that is the thing a person harvested. ``crate review show`` is
-    where the whole record lives, here as everywhere.
+    The identity triple ``crate review list`` keys a row on, with the label name
+    added because that is the thing a person harvested. NOT that verb's whole
+    row: it also carries the ordinal, the verdict and the option, which are
+    facts about a queue a person is working through and not about a harvest
+    that just offered the item. ``crate review show`` is where the whole record
+    lives, here as everywhere.
     """
     return {
         "id": item.item_id,
@@ -771,30 +817,34 @@ def handle(job, item, cfg) -> jobs.Produced | None:
         )
 
     payload = dict(job.payload or {})
-    # ``cfg`` REACHES THE REVIEW STORE THROUGH THIS OBJECT. ``increment`` calls
-    # ``LabelSource.process`` without a store, and ``process`` then opens one
-    # against ``self.cfg``, so the configuration handed here is the one the
-    # offers are written under. That is the whole of R17 on this path.
-    #
-    # HELD IN A NAME rather than passed inline, because the result alone cannot
-    # answer what the sweep discarded and the source can. See the empty-shortfall
-    # refusal below.
-    source = sweep.LabelSource(
-        cfg,
-        registry=labels.Registry(labels={entry.label_id: entry}),
-        catalogue=catalogue.resolve(cfg),
-    )
-    result = run_increment(
-        cfg,
-        source,
-        owned=set(),
-        limit=labels.effective_limit(entry),
-        # THE RUN ID FALLS BACK TO THE JOB, so a sweep queued outside ``sync all``
-        # still has one. R29 is why the payload's is preferred: two sources queued
-        # by one sync share an intake run, and an id invented per item would split
-        # what a person imports into as many files as the job has labels.
-        run_id=str(payload.get("run_id") or job.job_id),
-    )
+    # THE SOURCE IS HELD IN A NAME rather than passed inline, because the result
+    # alone cannot answer what the sweep read and discarded and the source can.
+    # See the empty-shortfall refusal below.
+    # ONE REVIEW STORE FOR THE WHOLE ITEM. ``run.increment`` hands the source no
+    # store, so without this every offered release opened and checkpointed the
+    # review database on its own, four hundred times on a label at the default
+    # cap. The store is opened against the FROZEN configuration, which is the
+    # whole of R17 on this path, and it is opened before the catalogue is
+    # resolved so an unbound build's refusal costs nothing it did not already.
+    with review.open_store(cfg) as store:
+        source = sweep.LabelSource(
+            cfg,
+            registry=labels.Registry(labels={entry.label_id: entry}),
+            catalogue=catalogue.resolve(cfg),
+            store=store,
+        )
+        result = run_increment(
+            cfg,
+            source,
+            owned=set(),
+            limit=labels.effective_limit(entry),
+            # THE RUN ID FALLS BACK TO THE JOB, so a sweep queued outside
+            # ``sync all`` still has one. R29 is why the payload's is preferred:
+            # two sources queued by one sync share an intake run, and an id
+            # invented per item would split what a person imports into as many
+            # files as the job has labels.
+            run_id=str(payload.get("run_id") or job.job_id),
+        )
     if result.errors:
         raise refuse(
             "label-sweep-incomplete",
@@ -827,13 +877,17 @@ def handle(job, item, cfg) -> jobs.Produced | None:
     # the case where no verifier OBJECT exists, which is METHOD's defect pattern
     # three, a fix on the performing path with the checking path left open.
     #
-    # KEYED ON THE DROPPED POPULATION AND NEVER ON AN EMPTY CANDIDATE LIST. A
-    # label whose every release is tombstoned, and one whose crawl is genuinely
-    # exhausted, also offer nothing, and both are honest no ops a person asked
-    # for. ``list_for_label`` reports those in ``suppressed`` and in nothing at
-    # all respectively, so only "releases were read and every one was discarded
-    # as unconfirmed" reaches here. That is the one case where the success would
-    # be a claim about a catalogue nobody managed to verify a line of.
+    # KEYED ON EVERY RELEASE READ HAVING BEEN DROPPED, and never on the dropped
+    # population being non-empty or on an empty candidate list. A label whose
+    # every release is tombstoned, and one whose crawl is genuinely exhausted,
+    # also offer nothing, and both are honest no ops a person asked for. So is
+    # the MIXED listing: some releases tombstoned and the rest dropped, which a
+    # guard keyed on "anything was dropped" refused as a catalogue nobody could
+    # verify a line of, with ``confirmed: 0``, over a release the person had
+    # confirmed and then deleted on purpose. Only "releases were read and every
+    # one of them was discarded as unconfirmed" reaches here, and that is the
+    # one case where the success would be a claim about a catalogue nobody
+    # managed to verify a line of.
     #
     # THE SENTENCE SEPARATES TWO PROBLEMS WITH TWO REMEDIES. A sweep that could
     # not REACH the provider already refuses ``sync-source-lookups-failed`` from
@@ -841,7 +895,7 @@ def handle(job, item, cfg) -> jobs.Produced | None:
     # one reached the provider and could not confirm anything it found, which is
     # usually a release credited to a distributor rather than to the imprint, and
     # is repaired by the registry's ``--match`` needle rather than by waiting.
-    if result.shortfall == "empty" and source.dropped:
+    if result.shortfall == "empty" and source.dropped and len(source.dropped) == source.read:
         raise refuse(
             "label-sweep-incomplete",
             f"the sweep of {entry.name!r} read {len(source.dropped)} releases "
