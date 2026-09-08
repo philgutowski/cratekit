@@ -1167,6 +1167,33 @@ def _partial_failure_cause(job_id: str, result: DriveResult, inner: Cause | None
     )
 
 
+class Parked(CratekitError):
+    """A handler's answer that the RUN must stop, not that the item failed.
+
+    Raised by a per item worker when the provider refused the CLIENT rather than
+    the track: a forbidden response, a bot wall, a wait so long it is a refusal.
+    The acquisition layer returns that as a structured cause because it sits
+    below the engine and may not park itself (KTD23), and this is the seam the
+    engine parks ON.
+
+    WHY A TYPE AND NOT A FIELD ON THE CAUSE. ``refuse`` defaults every cause to
+    ``Scope.RUN``, so nearly every item refusal in the package already condemns
+    the run by declaration, and keying the park on scope would park a master job
+    over ``output-exists``. Keying it on ``retryable`` would park on a lossless
+    refusal. A handler that wants the job parked says so with a raise nobody
+    else makes by accident, which also keeps the act greppable.
+
+    THE ITEM IS RELEASED, NOT FAILED. A block is a fact about the client and not
+    about the track in flight, so the track goes back to pending and the next
+    resume, which is a person's deliberate act after checking their account,
+    redoes it. Failing it would strand it: ``retry`` re-arms failed items only
+    for a TERMINAL job, and a blocked job is open.
+    """
+
+    def __init__(self, cause: Cause) -> None:
+        super().__init__(cause)
+
+
 def _internal_item_cause(item: Item, exc: Exception) -> Cause:
     return Cause(
         reason="internal-error",
@@ -1238,6 +1265,15 @@ def drive(
                     break
                 try:
                     produced = handle(job, item)
+                except Parked as exc:
+                    # BEFORE the item boundary below, which would fail the item
+                    # and claim the next one. The next claim is the second
+                    # request into a block, which is the one thing the pacing
+                    # layer exists to never make. The item goes back to pending
+                    # and the job records why it stopped.
+                    release_claims(store, job_id, driver=driver)
+                    result.job = block(store, job_id, exc.cause.at("jobs.drive"))
+                    return result
                 except CratekitError as exc:
                     last_cause = exc.cause.at("jobs.drive")
                     fail_item(store, job_id, item.item_id, last_cause)
@@ -1401,6 +1437,7 @@ __all__ = [
     "Item",
     "ItemState",
     "Job",
+    "Parked",
     "JobState",
     "JobStore",
     "Produced",
