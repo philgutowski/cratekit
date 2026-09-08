@@ -43,8 +43,31 @@ _KEY_TO_CAMELOT = {
 }
 
 
-def analyse_file(path: Path) -> dict[str, Any] | None:
-    """Return camelot, bpm, and energy, or None when detection cannot run.
+def heavy_available() -> bool:
+    """Whether the analysis extra is importable HERE, in this process.
+
+    Asked by a worker before it analyses an item, because ``analyse_file``
+    answers a missing extra and a track with no detectable key with the same
+    None, and a job that skipped every file as keyless on a machine that had
+    no librosa would be a clean report over work nothing could do.
+    """
+    try:
+        import librosa  # noqa: F401
+        import numpy  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def analyse_file(path: Path, *, calibration: Any = None) -> dict[str, Any] | None:
+    """Return camelot, tempo and energy, or None when detection cannot run.
+
+    Energy is computed from the same decoded samples when ``calibration`` is a
+    :class:`cratekit.analysis.energy.Calibration`, and is an honest absence
+    otherwise: ``energy`` is None and ``energy_status`` names why, so a
+    consumer can tell "this library has no calibration" from "the measurement
+    failed" and neither from "never computed", which is what the first version
+    of this function returned for every track (U58).
 
     Tests inject a detect callable into run_batch and never reach here.
     librosa is imported inside the function so a slim install can still
@@ -82,4 +105,31 @@ def analyse_file(path: Path) -> dict[str, Any] | None:
     camelot = _KEY_TO_CAMELOT.get(best_key or "")
     if camelot is None:
         return None
-    return {"path": path, "camelot": camelot, "rate": bpm, "energy": None}
+    level, status = energy_from_samples(y, sr, tempo=bpm, calibration=calibration)
+    return {
+        "path": path,
+        "camelot": camelot,
+        "rate": bpm,
+        "energy": level,
+        "energy_status": status,
+    }
+
+
+def energy_from_samples(
+    samples: Any, rate: int, *, tempo: float | None, calibration: Any
+) -> tuple[int | None, str]:
+    """The level and its status for samples already decoded by the head.
+
+    Split out of :func:`analyse_file` so the three answers are one function
+    with one caller each way: no calibration is ``uncalibrated`` and measures
+    nothing, a measurement that fails is ``features-unavailable``, and a level
+    is ``calibrated``.
+    """
+    from cratekit.analysis import energy
+
+    if calibration is None:
+        return None, energy.STATUS_UNCALIBRATED
+    features = energy.features_from_samples(samples, rate, tempo=tempo)
+    if features is None:
+        return None, energy.STATUS_FEATURES_UNAVAILABLE
+    return energy.level_for(features, calibration), energy.STATUS_CALIBRATED

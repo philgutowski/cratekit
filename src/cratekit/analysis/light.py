@@ -22,6 +22,11 @@ def bind_detect(detect: Callable[[Path], dict[str, Any] | None] | None) -> None:
     _DETECT = detect
 
 
+def bound() -> bool:
+    """Whether a detector is bound in this process, without naming which."""
+    return _DETECT is not None
+
+
 def init_pass(detect_name: str | None = None) -> None:
     """Spawn initializer. Children re-import this module and start unbound.
 

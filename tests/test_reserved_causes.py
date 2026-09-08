@@ -4816,7 +4816,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # paragraph above gives. label.catalogue.resolve raises TWO refusals and only
     # one of them is new: no session stored reuses credential-missing, which this
     # vocabulary already declares.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (149, 125, 24)
+    #
+    # Re-pinned on U58, 2026-09-07. TWO slugs, named rather than counted:
+    # energy-calibration-missing, which is a restamp asked for over a library
+    # that has never been calibrated; and analysis-write-failed, which is an
+    # analysed track whose tag write or rename did not land. Neither is in the
+    # reserved table, so the reserved half does not move. Population 149 to
+    # 151, non-reserved 125 to 127, reserved half UNCHANGED at 24.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (151, 127, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4990,7 +4997,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # non-key half does not move at all: the catalogue seam introduces no
     # cause-shaped literal that is not a declared cause. The protocol it declares
     # carries no slug of any kind, because it is a type rather than a table.
-    assert (len(literals), len(literals - set(causes))) == (361, 213), (
+    #
+    # Re-pinned on U58, 2026-09-07: 361 to 370 distinct, 213 to 220 non-keys.
+    # NINE literals joined and NOTHING left, differenced as SETS against
+    # `main`'s own `src` tree extracted into a scratch directory. Two are the
+    # causes named at the population assertion above. The seven that are not
+    # causes: analysis-artifacts and analysis-staging, the two directory names
+    # under the queue root; no-audio, the honest zero state a queued analysis
+    # verb reports over a folder with nothing in it; features-unavailable, the
+    # energy status for a track that could not be measured; and the three
+    # reasons a vocal pass reports for not scoring a track,
+    # vocal-audio-undecodable, vocal-head-terminal and vocal-model-unavailable.
+    assert (len(literals), len(literals - set(causes))) == (370, 220), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
