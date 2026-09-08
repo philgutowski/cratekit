@@ -8188,6 +8188,64 @@ of U26.
 an equivalent refusal, and only a crawl that actually exhausted the
 provider is reported empty.
 
+**Two of the three producers now refuse, U52, 2026-09-02, and this entry stays
+open for the third.** `sweep._crawl_or_refuse` is the one place that asks, and it
+sits on the checking path rather than in each caller that reports a result
+(`src/cratekit/label/sweep.py:89-128`). An artist object exposing NONE of the
+listing methods now raises `run.LookupFailure`, by way of `crawl.can_list`
+(`src/cratekit/label/crawl.py:32-52`, asked at `sweep.py:116-121`). Any exception
+out of the crawl raises the same (`sweep.py:122-128`), which covers
+`listing.fetch_with_retry` re-raising the provider's own error once its retry
+ladder is spent and `listing._paged_caller` raising `ListingNotPaginated` for a
+method that exists and cannot page. `run.increment` converts `LookupFailure` into
+`sync-source-lookups-failed`, so an unreachable provider surfaces as the item's
+cause and never as `shortfall="empty"`.
+
+**The third producer stays, and it is deliberately not fixed.**
+`listing.paginate` treats a `None` first answer as exhaustion
+(`src/cratekit/acquire/listing.py:123-126`). Stated plainly, because it is the
+half of this entry that a later reader is most likely to get wrong: AN EMPTY
+FIRST PAGE FROM A METHOD THAT EXISTS IS NOT A PRODUCER AT ALL. That is a
+genuinely exhausted crawl and it has to keep reporting empty, or every quiet
+label becomes an error and R-135 has been traded for its mirror image. What
+remains open is the `None` answer alone, which those four lines cannot tell apart
+from a page of zero rows.
+
+**Two more instances of the same shape closed with them, and this entry named
+neither.** `LabelSource._artist_for` returned nothing for a label the catalogue
+could not resolve and `list_recent` skipped it with a bare `continue`, so the
+sweep offered nothing and reported that it had looked. `LabelSource._verifier`
+had the same silent path for a source built with neither a verification callable
+nor a catalogue: every release it listed would be dropped as unconfirmed and the
+run would read as a label with nothing new. Both now raise `run.LookupFailure`
+(`src/cratekit/label/sweep.py:239-301`).
+
+**The post-merge review of U52 found `_verifier`'s half only half closed, and it
+is closed now, 2026-09-02.** The paragraph above describes the scenario
+`_verifier` exists to prevent, a sweep that verifies nothing reading as a label
+with nothing new, and the guard it shipped covered only the case where no
+verification callable OBJECT exists. Two live producers of that same scenario
+were left open, and both were driven end to end through the real dispatcher,
+queue, handler resolution and driver before being fixed. A catalogue whose
+verification endpoint answers and CONFIRMS NOTHING, which is what a degraded or
+rate limited endpoint does and what a catalogue crediting a distributor does,
+made `list_for_label` drop every release, gave the increment no candidate and no
+error, and produced `shortfall="empty"`: exit 0, job SUCCEEDED, no cause, over
+forty releases read and discarded. `LabelSource` now accumulates the dropped
+population across the labels one listing pass read
+(`src/cratekit/label/sweep.py:303`, filled at `sweep.py:447`) and the worker
+refuses `label-sweep-incomplete` when the increment reports empty and that
+population is not (`src/cratekit/label/cli.py:844`). The refusal is keyed on the
+DROPPED population and never on an empty candidate list, so an all tombstoned
+label and an exhausted crawl keep succeeding, which is the mirror image this
+entry warns about directly above. Separately, `_verifier` returned
+`self.catalogue.search_release` bare while `_artist_for` wrapped its seam call,
+so a raise from verification escaped `increment`'s `except LookupFailure` and
+failed the item as `internal-error` with a remedy of report a defect. It is
+wrapped now (`src/cratekit/label/sweep.py:402`), a `CratekitError` passing
+through unchanged so an adapter's own `credential-missing` is not flattened into
+"this source could not list".
+
 ---
 
 ## R-136. The increment path drops discarded and suppressed
@@ -8217,6 +8275,19 @@ rewriting U26.
 **Closes when:** the increment result, or a labels-specific report
 beside it, carries the discarded and suppressed sets the sweep already
 computed.
+
+**Half of it is reachable now and the entry stays open, 2026-09-02, from the
+post-merge review of U52.** The sentence above, that a caller has no way to get
+the discarded population, is no longer true of the DISCARDED half.
+`LabelSource.list_recent` accumulates `listing.dropped` across the labels it
+lists and exposes it on the source (`src/cratekit/label/sweep.py:303` and
+`sweep.py:447`), because the worker needs it to tell a catalogue that confirmed
+nothing from a label with nothing new. It was not bought the way this entry
+proposed and that is deliberate: `IncrementResult` is untouched, so the U22
+contract change this entry calls out is still unpaid, and a caller reads the
+population off the source object it constructed rather than off the result. The
+suppressed and owned populations are still dropped on the floor, and a caller
+that wants either still has to recrawl.
 
 ---
 
@@ -8253,6 +8324,47 @@ else `LabelSource` has to learn owned itself. Either is a later unit.
 N of what remains, and a test drives that order through
 `LabelSource.list_recent` rather than only through `list_for_label`.
 
+**Not fixed by U52, 2026-09-02, and the reachability that keeps it below the
+merge bar is a MEASUREMENT rather than an assumption.** The worker U52 bound is
+the first shipped caller this path has ever had, and it passes `owned=set()`
+(`src/cratekit/label/cli.py:673`). What was measured, rather than reasoned about:
+every declaration in `src` outside the vendored tree that takes a set of owned
+identities. There are five, and all five are consumers rather than producers.
+They are `sync.scope.scoped` (`src/cratekit/sync/scope.py:24`),
+`sync.run.increment` (`src/cratekit/sync/run.py:127`),
+`sync.run.run_independent` (`src/cratekit/sync/run.py:218`),
+`label.cli.run_increment` (`src/cratekit/label/cli.py:582`) and
+`label.sweep.list_for_label` (`src/cratekit/label/sweep.py:138`). The chain the
+worker actually drives is four of those five, `handle` to `run_increment` to
+`run.increment` to `scope.scoped`, and no frame in it constructs a set;
+`LabelSource.list_recent` calls `list_for_label` with no `owned` argument at all
+(`src/cratekit/label/sweep.py:303-315`).
+
+Thirty one files in `src` outside the vendored tree contain the word owned, and
+the four that could plausibly build such a set were read and rejected by name.
+`acquire.match`'s index answers owned VERSIONS of a wanted recording and needs a
+match index and a wanted list to be asked at all.
+`modules/tools/setbuilder.find_in_index` answers one owned track for a set
+builder. `modules/reports/export.read_export_file` reads the hand made collection
+export R-227 records the outbound verbs taking. `core/review`'s `owned.csv` is a
+legacy filename on the review queue rather than a producer of anything. The label
+package imports none of the first three, checked by reading every import line in
+`src/cratekit/label/`. So the correct statement is that N candidates were driven
+and none of them produces an owned identity set on this path, not that nothing in
+the product could ever produce one.
+
+**The LARGER consequence of the same fact, which this entry does not name.** An
+empty owned set does not merely put the ordering defect out of reach. It puts
+ownership filtering out of the product on this path entirely, because
+`scope.scoped` and `list_for_label` both filter only on membership in the set
+they are handed (`src/cratekit/sync/scope.py:36-41`,
+`src/cratekit/label/sweep.py:176`), and `scope.scoped`'s own docstring says it
+does not treat an empty owned set as a special case. So this is not ownership
+filtering happening in the wrong order, it is ownership filtering not happening,
+and a sweep offers releases the library already holds. Reordering two steps that
+both filter on an empty set would change nothing. That is R-259, filed separately
+because satisfying this entry's closing condition would not close it.
+
 ---
 
 ## R-138. The 400 cap is albums, not tracks
@@ -8278,6 +8390,30 @@ performance change. Filing rather than rewriting U26.
 
 **Closes when:** the cap is applied to tracks, or the field is renamed
 and reported as an album cap so the number means what it does.
+
+**Not fixed by U52, 2026-09-02, and its two arms are answered separately because
+they no longer stand or fall together.** This branch is the first caller ever to
+apply either number as the operative cap: the worker it bound passes
+`limit=labels.effective_limit(entry)` into `run_increment`
+(`src/cratekit/label/cli.py:598-680`), so the 400 reaches `scope.scoped` on a
+path a person can actually drive.
+
+**The counting arm loses its motivation.** `LabelSource.acquires` is False and
+`run.increment` returns before the intake append for an offering source
+(`src/cratekit/sync/run.py:182-194`), which is R-140's fix. The cap therefore
+bounds rows in the label-release review queue and never bytes of audio. This
+entry's cost sentence, a run that queues far more audio than the named cap, is
+not reachable through this path, because nothing on it downloads anything. What a
+person can still be handed is 400 albums' worth of releases to decide on, which
+is a review burden rather than an acquisition one, and it is a smaller thing than
+the one recorded above.
+
+**The naming arm survives that and is declined for its own reason.**
+`LabelEntry.track_limit` is a PERSISTED registry field: it is written into the
+favourite label document at `src/cratekit/label/registry.py:75` and read back at
+`:115`. Renaming it is therefore a migration over a file already on disk rather
+than a rename, and U52 carries no migration. The number still means albums under
+a name that says tracks, and the closing condition above is unchanged.
 
 ---
 
@@ -8308,12 +8444,40 @@ fix. Filing rather than rewriting U26.
 `listing.playlist_tracks`, verified names are offered, and only a
 playlist that could not be read raises `label-playlist-unreadable`.
 
+**Still open after U52, 2026-09-02, and this is stated so the rebuild is not read
+as a closure.** The closing condition above is met in the CODE and is not met for
+a person, and both halves are this entry.
+
+**What is met.** `harvest_playlist` resolves a catalogue through the seam before
+it touches anything, lists the named playlist through `listing.playlist_tracks`
+by way of `harvest.playlist_tracks`, offers the verified names into the
+label-release queue and emits a `review_set/1` envelope
+(`src/cratekit/label/cli.py:507-575`). `label-playlist-unreadable` is now raised
+in exactly one place, `_playlist_tracks_or_refuse`
+(`src/cratekit/label/cli.py:449-490`), and only after a bound provider was asked
+and failed to answer. An empty playlist is a success reported as `NO_OP` rather
+than a refusal, so a playlist with nothing in it stays distinguishable from one
+that could not be read. The false sentence is gone: nothing tells a person their
+playlist could not be listed over a provider that was never contacted.
+
+**What is NOT met is the thing this entry's cost sentence names.** No shipped
+build fills the catalogue seam, so `catalogue.resolve` raises
+`credential-missing` or `label-catalogue-unbound` on every real invocation, and
+`crate label harvest` still cannot succeed for a person. R-258 records that gap
+and it is the whole of it. The success branch is driven only under a seam
+substituted in process, which is a test and not a build.
+
+**What actually changed is WHICH refusal a person gets**, from a false statement
+about their playlist to a true statement about the build. That is the smaller
+half of this entry and it is the honest version of it, but it is not the half the
+closing condition is for.
+
 ---
 
 ## R-140. LabelSource.process treats offer as an acquisition
 
 **Found:** at the post-merge U26 correctness review, 2026-08-17. Accepted
-rather than held. Issue 26 stays closed.
+rather than held. Issue 26 stays closed. **CLOSED 2026-09-02, by U52.**
 
 The review named `process()` in `harvest.py` reporting
 `acquired=len(accepted)` after `review.offer()`. `harvest.from_tracks`
@@ -8342,6 +8506,37 @@ increment engine still writes the file.
 **Closes when:** increment records an acquisition only after a review
 decision that accepts the release, or the intake file and the watermark
 are not written from an offer.
+
+**How it is closed, and it is the SECOND arm of the condition above.** The
+condition is disjunctive and U52 took the second arm. The first arm, an
+acquisition recorded only after a review decision that accepts the release, is
+not what landed and is not owed by this entry.
+
+`cratekit.sync.run.Source` gained an `acquires` attribute
+(`src/cratekit/sync/run.py:38-66`). It is declared on the SOURCE rather than
+passed to each call, because whether a completed `process` call means the item
+landed in the library or means it was offered for a decision somebody has yet to
+make is a property of the source and not of the call site. Both shapes complete
+without raising, so a process call that did not raise cannot tell them apart.
+`increment` reads it as `getattr(source, "acquires", True)`, so a source written
+before the attribute existed still means acquisition, which is what every one of
+them did.
+
+The branch itself is `src/cratekit/sync/run.py:182-194`, and it RETURNS rather
+than guarding the three writes one at a time. That is deliberate: the intake row,
+the artifact registration and the watermark advance are three statements of the
+same claim, and a fourth writer added later lands below that return where an
+offering source can never reach it. Three separate guards is how one of them gets
+forgotten.
+
+`cratekit.label.sweep.LabelSource.acquires` is False
+(`src/cratekit/label/sweep.py:218`), which is correct for the reason this entry
+already gives: its `process` calls `offer_release`, which is `review.offer`, and
+that queues an item and hands it back with a verdict of `None`
+(`src/cratekit/label/sweep.py:191-203`). So a labels increment now appends no row
+to `{run_id}_synced.xml`, registers no artifact and advances no labels watermark.
+The intake file and the watermark are not written from an offer, and the
+watermark a person reads as "these landed" is no longer moved by one.
 
 ---
 
@@ -10547,6 +10742,30 @@ taught the opposite.
 `HANDLERS_NOT_YET_BOUND` is empty. `tests/test_handlers.py` fails the day a new
 queued verb is in neither, so this cannot quietly grow.
 
+**The correction above is itself now two entries out of date, corrected in the
+same register, 2026-09-02, by U52.** This unit bound `sync.labels` and
+`label.import` to one worker in `src/cratekit/label/cli.py`, so THIRTEEN queued
+verbs have no worker. Measured, not subtracted: `HANDLERS_NOT_YET_BOUND` in
+`src/cratekit/cli/handlers.py` holds fourteen keys, one of which is the
+`job.resume` exemption this entry already describes, leaving `acquire.download`,
+`adopt.apply`, `adopt.scan`, `analyze.restamp`, `analyze.run`, `delete.review`,
+`intake.playlist`, `intake.set`, `rebuild`, `route.resort`, `sync.all`,
+`tag.folder` and `tag.retag`. `HANDLERS` now holds six keys, two of which share
+one worker function because the sweep and the import differ in how many labels
+they queue and in nothing about how one is swept, and the two tables sum to the
+twenty landed `long_running` registry rows. The count in this entry's title stays
+at eighteen for the reason the paragraph above gives, and the closing condition
+is what decides when the entry is done. Nothing in the repository derives from
+this prose: `tests/test_handlers.py` derives the population from
+`registry.ENTRIES` and fails the day a queued verb is in neither table, which is
+why this is a record rather than a repair.
+
+`sync.all` is on that list and stays on it rather than being filed as anything
+new. Binding `sync.labels` does not make `crate sync all` execute a thing,
+because `src/cratekit/sync/cli.py` queues its job under `ctx.entry.handler_key`,
+which is `sync.all`, and that key still has no worker. It also still carries
+R-130's run identity obligation, exactly as the paragraph above says.
+
 ---
 
 ## R-204. The acquisition first caller obligation did not transfer, and why
@@ -11968,6 +12187,22 @@ a tagging rule, which is the same defect wearing a shorter diff.
 **Closes when:** one module owns the queued verb shell and one owns the artifact
 helper, with each feature package naming its own values through them.
 
+**A FOURTH AND A FIFTH COPY, found at the U52 review, 2026-09-07.** The merge
+brought `tagging/shell.advance` and `adopt/shell.advance` in beside
+`label/cli._resume`, and the three are one function: reconcile, refuse a job
+with no items, run the job, re-read it, re-raise a closed job's cause outside
+the `is_open` branch. `backup/cli.py` and `modules/outbound/shell.py` are the
+other two spellings and `master/cli.py`'s resume branch has neither the
+itemless refusal nor the re-raise, which is R-225. Two more facts joined at
+this review and belong to the same entry: the itemless refusal's machine
+readable remedy is `report-defect` in every copy while its sentence says the
+job is stale rather than defective, so tooling keyed on the token files a bug
+over a documented migration shape, and the guard itself belongs one layer
+down in `jobs.drive` beside its terminal state refusal, where one line would
+replace five. U52 added the cancel step to its own copy's remediation and
+nothing else, for the reason above: the honest home is one module, and
+`label` cannot import a sibling feature package to share it.
+
 ---
 
 ## R-249. A second pacing implementation, and it is deliberately not the first
@@ -12185,3 +12420,559 @@ carries it.
 **Closes when:** the mechanism is reproduced and fixed, or the driver verifies
 every target against HEAD once more after its last row and refuses to exit 0
 otherwise, which is a check that would have caught this one whatever caused it.
+
+---
+
+## R-257. A completed sweep reports item counts and no offer counts
+
+**Found:** during U52, 2026-09-02, as the stated cost of KTD7.
+
+Both label verbs declare `output_schema="job_state/1"`
+(`src/cratekit/cli/registry.py:1248-1265` and `:1308-1325`), and `cli/output`
+closes that surface with `additionalProperties: false` over exactly four fields,
+`job_id`, `state`, `cause` and `progress` (`tests/schemas/job_state.v1.json`).
+`_reported` fills those four (`src/cratekit/label/cli.py:37-43`) and `progress`
+is `jobs.progress`, which groups the job item ledger by item state and returns
+counts plus the totals a progress display needs
+(`src/cratekit/core/jobs.py:524-542`). The worker returns `None` and commits no
+artifact, as `backup/cli.py`'s does. So a sweep of five favourite labels that
+offered two hundred releases reports five items done, and the number two hundred
+appears nowhere in the envelope the verb emits.
+
+**Measured cost.** A person who runs `crate sync labels` and reads its output
+learns that every label was swept and nothing at all about what was found. To see
+the offers they run a second command against the label-release review queue,
+which is the product's actual and durable record of what was offered. No count in
+the envelope is wrong; a count is absent, and the absence is loudest on the run
+where a sweep found a great deal.
+
+**Why not fixed here.** Per verb detail added beside `progress` is exactly the
+undeclared key U51 had to remove from the two outbound verbs, so adding one here
+would reintroduce a schema violation that branch paid to fix. The alternative is
+a second artifact store for a fact the review queue already holds, which is two
+records of one thing and is how the two come to disagree about what a sweep
+offered. KTD7 chose neither and recorded the cost instead.
+
+**Closes when:** `job_state/1` grows a declared surface for per verb detail that
+every queued verb can fill, or a verb built to read the review queue reports what
+a named sweep put there.
+
+---
+
+## R-258. No catalogue adapter ships, so no label workflow can run outside a test
+
+**Found:** during U52, 2026-09-02, by binding the two workers and rebuilding
+harvest on the seam.
+
+`crate sync labels`, `crate label import` and `crate label harvest` all reach a
+provider through one module, `src/cratekit/label/catalogue.py`. `bound()` returns
+a constant `False` (`:110-121`), and `resolve` raises `credential-missing` when no
+provider session is recorded and `label-catalogue-unbound` when one is. Two
+refusals rather than one, because they are undone by different acts and
+collapsing them would send somebody to a login screen over a gap in the build.
+
+No implementation of the `Catalogue` protocol exists anywhere in `src`, measured
+by reading every reference to the name outside the vendored tree. There are six:
+the class definition (`catalogue.py:50`), the return annotation on `resolve`
+(`catalogue.py:124`), the `__all__` line (`catalogue.py:158`), one import
+(`src/cratekit/label/sweep.py:23`) and two parameter annotations
+(`src/cratekit/label/sweep.py:227`, `src/cratekit/label/cli.py:449`). Six
+references, zero implementations.
+
+**Measured cost, and it is the whole remaining distance between this branch and a
+label workflow the single real user can run.** Every queued label item ends FAILED
+with a named cause rather than sitting pending for ever, and harvest refuses
+before it contacts anything. Nothing is written wrongly and nothing is lost. Both
+queueing verbs warn at enqueue, because `bound()` can be asked without raising
+and `_queue` asks it, so nobody confirms a sweep this build cannot perform
+without being told first. What a person cannot do is sweep a label.
+
+**This is R-226's shape on a second seam, and the two are deliberately separate
+seams rather than one.** That entry records the same condition for
+`modules/outbound/account.RemoteAccount`. `RemoteAccount` is add only writes
+against an account and this is reads against a catalogue, so the two share a
+credential and not a capability, and a build could plausibly gain one and not the
+other. A person asked to sweep their favourite labels who was told the streaming
+ACCOUNT was unbound would go looking at the wrong half of the product. The test
+substitution carries the same limit R-226 states: a test replaces `resolve` on
+the module and the in process callers pick it up because they look it up at call
+time, while the child a resume spawns is a fresh process that inherits nothing.
+
+**Why not fixed here.** Opening a live provider session is attended work and a
+standing refusal for an unattended session, which is the reason R-144 has stayed
+open since 2026-08-17. The plan's Scope Boundaries put the adapter on the board
+as a follow up unit rather than in this ledger alone, because it is the whole
+remaining distance and a residual is a register of what was accepted rather than
+a queue. No issue for it exists yet, checked against all seventy six issues on
+the board.
+
+**Closes when:** an adapter implements `Catalogue`, `resolve` returns it,
+`bound()` stops being a constant, and one real label sweep and one real playlist
+harvest run against a live provider.
+
+---
+
+## R-259. The labels path applies no ownership filtering at all
+
+**Found:** during U52, 2026-09-02, as the second consequence KTD9 names.
+
+The worker passes `owned=set()` (`src/cratekit/label/cli.py:673`) and
+`LabelSource.list_recent` calls `list_for_label` with no `owned` argument
+(`src/cratekit/label/sweep.py:303-315`). Both filters are membership tests
+against the set they are handed, `scope.scoped` at
+`src/cratekit/sync/scope.py:36-41` and `list_for_label` at
+`src/cratekit/label/sweep.py:176`, and `scope.scoped`'s own docstring says it
+does not treat an empty owned set as "everything is new" in any special way: an
+empty owned set simply keeps the first `limit` items. An empty set therefore
+filters nothing.
+
+**Measured cost.** A sweep offers releases the library already holds. Each one
+becomes a row in the label-release review queue that a person has to read and
+decline, so the cost is paid in review time on every sweep, and it grows with how
+much of a label the library already has rather than with how much is new. A
+person sweeping a favourite label they have followed for years pays the most.
+
+**This is NOT R-137, and the distinction is why both entries exist.** R-137 is
+about the ORDER, newest N taken before owned dedup, and its closing condition is
+satisfied by reordering two steps. Reordering two steps that both filter on an
+empty set changes nothing at all. Closing R-137 would leave this entry open, and
+closing this entry is what makes R-137's defect reachable for the first time.
+R-137's own amendment carries the measurement that no producer of an owned
+identity set exists on this path.
+
+**Why not fixed here.** Building the producer is either a collection reader
+against the live rekordbox database, which has not landed and is the reason R-203
+gives for `adopt.scan` being unbound too, or a read of the hand made collection
+export R-227 describes, which carries library tracks rather than label release
+identities and would need a mapping between the two that nothing in `src` has.
+Either is a unit, not a line in a worker.
+
+**Closes when:** the labels path is handed a real set of owned release
+identities, and a sweep of a label whose catalogue the library already holds
+offers nothing.
+
+---
+
+## R-260. `IncrementResult` no longer says whether the intake file was written
+
+**Found:** during U52, 2026-09-02, as the caller obligation KTD3 creates.
+
+Before `Source.acquires`, a non empty `processed` tuple with `shortfall` of
+`None` meant the run's `{run_id}_synced.xml` held those identities and the source
+watermark had moved. It no longer does: an offering source completes in exactly
+that shape and writes neither (`src/cratekit/sync/run.py:182-194`).
+`IncrementResult` carries `source_id`, `processed`, `errors` and `shortfall` and
+no field a caller could ask (`src/cratekit/sync/run.py:69-90`), and
+`run_independent` hands back a dictionary keyed by source id whose values are
+those same results or an error, with no per source signal beyond them
+(`src/cratekit/sync/run.py:215-241`). A caller that needs the distinction has to
+read `source.acquires` off the source object it passed in. That is stated in the
+type's own docstring rather than left for a reader to infer, which is the whole
+of what this branch did about it.
+
+**Measured cost. NONE today, and it was measured rather than assumed.**
+`run.increment` has exactly one caller in `src`, `label.cli.run_increment`, and
+`run_independent` has none at all, checked by grep across `src` outside the
+vendored tree. The one caller knows its source offers, because it constructed the
+source. The cost falls entirely on the first caller that runs an acquiring source
+and an offering source in one pass and then reports what the pass did.
+
+**`sync.all` is the caller that will need it first.** `src/cratekit/sync/cli.py`
+is the orchestrator that runs several sources under one run id, and a report
+saying "these landed" over a set holding both a playlists download and a labels
+offer would be wrong about half of what it named. `sync.all` has no worker yet
+and is one of R-203's thirteen, so this is an obligation waiting for a unit
+rather than a live defect, and the unit that binds it inherits this entry.
+
+**Why not fixed here.** Widening `IncrementResult` is a U22 contract change, and
+R-136 already records it as one for the discarded and suppressed populations.
+Two widenings of one frozen dataclass belong in a single unit that answers what
+the result type is for, not in a branch that binds two workers.
+
+**Closes when:** `IncrementResult`, or whatever replaces it, says whether the run
+recorded an acquisition, and `run_independent` says it per source. R-136 is the
+other half of the same widening and should close with it.
+
+---
+
+## R-261. A client exposing one of two listing methods yields a half catalogue reported as a complete crawl
+
+**Found:** during U52, 2026-09-02, while closing two of R-135's three producers.
+
+`listing.artist_releases` walks two method names, `get_albums` and
+`get_ep_singles`, and skips one the client does not expose, individually and
+without raising (`src/cratekit/acquire/listing.py:234-236`, inside the function
+at `:219-246`). `crawl.can_list` refuses only an artist exposing NONE of them
+(`src/cratekit/label/crawl.py:32-52`), and `sweep._crawl_or_refuse` asks that
+question and no other before it is willing to believe an empty answer
+(`src/cratekit/label/sweep.py:116-121`). So a client exposing `get_albums` and
+not `get_ep_singles` returns the albums, skips the second listing in silence, and
+the increment reports a crawl that read the catalogue.
+
+**Measured cost.** A label whose catalogue lives mostly in extended plays and
+singles, which is where `artist_releases`'s own docstring says a label catalogue
+lives, is swept for its albums alone. Nothing warns. The sweep reports success,
+no watermark moves because an offering source moves none, and the releases that
+were never listed are indistinguishable from releases that were listed and found
+to be nothing new. This is the R-135 defect class at half strength: not an
+unreadable catalogue read as empty, but an unread half of one read as absent.
+
+**Why not fixed here, and this entry records a consequence rather than proposing
+a change.** The skip is a deliberate tradeoff the wrapper defends in its own
+docstring: the two method names have moved between client versions, and losing
+one listing is a smaller failure than refusing to crawl at all. `crawl.can_list`
+repeats that reasoning and says explicitly that the decision of what an absence
+MEANS belongs to the caller about to report it, which is why it is a separate
+function rather than a raise inside `releases`. Turning the skip into a refusal
+would make the next client version bump refuse every sweep in the product. What
+is missing is not a refusal, it is a report: nothing carries the fact that one of
+two listings was skipped up to any place a person reads.
+
+**Closes when:** a crawl that skipped a listing method says so in something a
+person sees, or both listings are read through a client contract that cannot be
+half present.
+
+---
+
+## R-262. Two more verbs declare write surfaces their workers cannot reach
+
+**Found:** during U52, 2026-09-02, and it is R-233's shape on a second pair of
+verbs.
+
+`sync.labels` and `label.import` each declare `writes=frozenset({"xml",
+"files"})`, `adjudicates=True` and `destructive=True`
+(`src/cratekit/cli/registry.py:1248-1265` and `:1308-1325`), along with the
+doctor checks `library.mounted` and `credential.provider`. The worker U52 bound
+writes neither declared surface. It offers into the label-release review queue
+and returns `None`, and `LabelSource.acquires` is False so `run.increment` writes
+no `{run_id}_synced.xml` and registers no artifact
+(`src/cratekit/sync/run.py:182-194`). Nothing on the path downloads a file.
+`label.harvest` is not affected: it declares no write surfaces at all.
+
+**Measured cost. NONE, and it was measured on this branch rather than inherited
+from R-233.** `entry.writes` and `entry.destructive` are read nowhere in `src`
+outside `registry.py`, where the only two reads are the entry's own self
+validation (`src/cratekit/cli/registry.py:177-184`), checked by grep across `src`
+excluding the vendored tree. `doctor.requires_check` is an `any()` across every
+registry entry rather than a per verb lookup
+(`src/cratekit/cli/doctor.py:506-523`), and the two checks these verbs declare
+are declared by twenty two and seven entries respectively, counted from
+`registry.ENTRIES`, so dropping them from these two would change neither. No
+health report changes and no gate changes.
+
+**Why not fixed here, and it is the reason R-233 already gives.** `writes` is a
+declaration of what the verb is FOR rather than of what today's build can reach,
+and narrowing it also lets `destructive` fall to False, which is a judgement
+about whether a verb that will download audio the day an adapter lands should
+hold the library lock in the meantime. R-258 is the only thing standing between
+these declarations and being true, and the unit that closes it needs them back.
+
+**Closes when:** the catalogue adapter lands and these two verbs write the
+surfaces they declare, or the entries are narrowed with the destructive question
+answered, which is the same fork R-233 leaves open for the two outbound verbs.
+
+---
+
+## R-263. A labels sweep that succeeds still reports the source has never run
+
+**Found:** at the U52 code review, 2026-09-02. Accepted rather than fixed.
+
+R-140's fix is what creates this. `run.increment` returns before
+`watermarks.advance` when the source does not acquire
+(`src/cratekit/sync/run.py:182`), and `LabelSource.acquires` is `False`
+(`src/cratekit/label/sweep.py:264`), so nothing in `src` ever writes the
+`labels` source watermark. `run.py:201` is that function's only caller.
+
+The reader was not updated with the writer. `watermarks.status_rows` unions
+`sources.DECLARED`, which always contains `labels`, and renders a source with no
+record as `state: never` with the detail `no clean increment has completed`
+(`src/cratekit/sync/watermarks.py:197`). `crate doctor` prints that row. So a
+person who has just run a fully successful five label sweep, whose releases are
+sitting in the review queue waiting on them, is told the labels source has never
+completed a clean increment.
+
+**The absence changed meaning and its one consumer did not.** Before this branch
+a missing record meant only "never completed cleanly". It now also means
+"structurally never records one, by design", and those are different facts with
+different answers.
+
+**Measured cost.** One false row in `crate doctor` and in any status view built
+on `status_rows`, on every installation that sweeps labels. No acquisition is
+wrong and no data is lost.
+
+**Why not fixed here.** Distinguishing the two absences means giving
+`sources.SourceSpec` an `acquires` flag, or having `status_rows` read it off the
+source, and then adding a third state to a surface every other source shares.
+That is a contract change to the watermark reporting surface, which is a
+different unit from the one that stopped writing the record.
+
+**Closes when:** a declared source that records no cursor by design reports that
+in `status_rows` rather than reporting that it never ran. R-260 records the
+`IncrementResult` half of the same split; this entry names the reader.
+
+---
+
+## R-264. An interrupt cannot reach a label item mid crawl
+
+**Found:** at the U52 code review, 2026-09-02. Accepted rather than fixed.
+
+`jobs.drive` checks its interrupt flag BETWEEN items and never inside one
+(`src/cratekit/core/jobs.py:1240`). That is a deliberate property of the shared
+job engine and it predates this branch. What this branch changes is that it is
+now reachable with a long tail: the label worker is the first bound handler
+whose single item runs a paginated crawl through `listing.fetch_with_retry`,
+whose ladder is five tries with a thirty second ceiling, per page.
+
+So a person who interrupts a slow or flaky label sweep waits for the current
+label's crawl to finish before the interrupt is honoured. The other bound
+handlers, `backup.run`, `master`, `export.playlist` and `sync.favorites`, do no
+multi page retrying provider read per item, which is why nothing measured this
+before.
+
+**Measured cost.** A delayed response to an interrupt, bounded by one label's
+crawl. Nothing is corrupted: the interrupt is honoured at the next item boundary
+and the job stays resumable.
+
+**Why not fixed here.** Making the flag visible inside an item means either
+passing it into the handler, which widens the handler contract every bound verb
+shares, or threading a cancellation token through `acquire.listing`. Both are
+changes to code this branch's stop conditions put out of scope, and neither is
+the label worker's to make alone.
+
+**Closes when:** a long running item can observe the interrupt flag, or the
+listing retry ladder takes a deadline the driver sets.
+
+---
+
+## R-265. `crate doctor` and `board.py` cannot see a unit the relay has moved to In review
+
+**Found:** at the U52 record, 2026-09-07, by the audit this file's session
+contract requires before ending.
+
+The board's Status field carries an `In review` option and the relay runner
+moves a card there as its first tracker write. `scripts/board.py` orders five
+statuses in `STATUS_ORDER` and `derive_status` preserves exactly one of them
+across a recomputation, `In Progress`, on the reasoning that a unit on a branch
+must not be recomputed back to Ready. `In review` is not in that list, so the
+audit reports a unit under review as drift ("should be Ready") and `sync` would
+carry out the flip the comment in `derive_status` exists to prevent.
+
+**Measured cost.** `board.py audit` exited 1 on #70 during this record, and a
+session obeying the contract's "sync repairs it" would have moved a card the
+runner owns. The audit also reported #78 and #79 as not on the board at all;
+those are two units added to the tracker during this run and are somebody's to
+add, not this unit's.
+
+**Why not fixed here.** `board.py` is the operator's tool and the relay's status
+vocabulary is the runner's; which of the two owns the word is a decision. The
+conservative call was to leave the board untouched and record the exit code.
+
+**Closes when:** `derive_status` treats `In review` as it treats `In Progress`,
+or the runner uses a status the script already preserves.
+
+---
+
+## R-266. Every label job in this build ends `no-evidence`, retryable, over a refusal that says never retry
+
+**Found:** at the U52 review, 2026-09-07, by two angles independently.
+
+`catalogue.resolve` refuses on every item in this build, so every driven label
+job fails all of its items, and `jobs.drive` then raises `no-evidence` with the
+item's `label-catalogue-unbound` nested as `inner`: exit INTERNAL, remedy
+`retry-later`, `retryable` true. `core/cause.py` classifies the seam's slug as a
+PRECONDITION on the stated reasoning that a missing adapter is a limitation and
+not a defect to retry, and the top level cause contradicts that on every drive.
+A resume then calls `jobs.retry`, which re-arms the failed items, and the child
+fails identically; nothing on the resume path repeats the one sentence that
+would stop the loop.
+
+**Measured cost.** A person or a script keyed on the top level `retryable`
+re-drives a job that cannot succeed in this build. The same shape holds for
+both outbound verbs behind R-226, so this is the engine's verdict over an
+unbound seam rather than the label worker's.
+
+**Why not fixed here.** `evidence_or_raise` is the shared engine's whole run
+verdict, and teaching it to promote a unanimous PRECONDITION inner cause to
+the top is a change to the one function every queued verb runs through.
+
+**Closes when:** a job whose every item failed with one non retryable cause
+reports that cause at the top, or an adapter lands and the case stops being
+every run.
+
+---
+
+## R-267. `bound()` and `resolve()` answer one question from two constants, and the suite already shows them disagreeing
+
+**Found:** at the U52 review, 2026-09-07.
+
+`label/catalogue.bound` returns a literal `False` and `resolve` raises
+unconditionally after the credential check. The day an adapter lands both have
+to move together and nothing ties them: edit one and the queueing verb warns
+that a sweep will fail at the seam while the worker runs it, or the reverse.
+The suite is already in the first state, because a test substitutes `resolve`
+and `bound()` stays `False`, so `crate sync labels` under a fake catalogue emits
+`label-catalogue-unbound` as a warning on the exact run that then sweeps
+successfully. `modules/outbound/account.py` has the identical shape.
+
+**Measured cost.** None for a person today; both constants agree in a shipped
+build. A false warning in every driven test, and one lockstep edit owed.
+
+**Why not fixed here.** The clean form, one module level adapter slot that
+`bound()` reads and `resolve()` calls, puts the credential check before the
+adapter, and the suite's fakes carry no stored session, so every driven test
+would have to fake the credential too. That is a change to the substitution
+contract three docstrings state, and R-258 already records the closing shape.
+
+**Closes when:** one value answers both, on both seams.
+
+---
+
+## R-268. A provider's own authentication failure is not a `CratekitError`, so the passthroughs do not see it
+
+**Found:** at the U52 review, 2026-09-07.
+
+The three seam boundaries in `label/sweep.py` and the two in `label/cli.py` now
+let a `CratekitError` through and flatten only a foreign exception. That is
+right for an adapter that refuses `credential-missing` itself, and it is no
+help for the shape the vendored client actually raises: `listing.fetch_with_retry`
+re-raises the provider's raw exception once its ladder is spent, a rejected
+session arrives as that raw exception, and `acquire/vendored.py` already carries
+`is_authentication_failure` and `raise_if_session_dead` to tell it from a
+listing failure. Neither is asked on the label path, so an expired session in a
+future adapter that does not translate it is reported as an unreadable playlist
+or a source that could not list, and the person is sent to check a playlist
+that is fine.
+
+**Measured cost.** None today, because no adapter ships (R-258). The cost is
+the adapter's, and this entry says which side owns it.
+
+**Why not fixed here.** Asking the vendored predicate inside five boundaries
+binds the label package to the vendored client's exception shapes before an
+adapter has chosen them. The adapter that closes R-258 owns raising this
+product's refusal at the seam, and these boundaries now pass it through.
+
+**Closes when:** the adapter translates its client's authentication failure
+into `credential-missing` at the seam, or the boundaries ask the predicate.
+
+---
+
+## R-269. Harvest reports a clean `NO_OP` over a playlist whose every name the catalogue refused to confirm
+
+**Found:** at the U52 review, 2026-09-07. A judgement recorded rather than a
+defect fixed.
+
+`harvest_playlist` emits `outcome=no_op` and exit 0 whenever nothing was
+offered, including a playlist of forty tracks whose twenty five distinct names
+were all answered `unconfirmed` by a degraded verification endpoint. The sweep
+worker refuses the same shape as `label-sweep-incomplete`, so the two verbs in
+one module disagree about what an all unconfirmed pass means.
+
+**Measured cost.** A person reading `outcome` alone sees a no op. A person
+reading the envelope sees `unresolved: 25` and `items: []`, which is the whole
+truth, and it is why the two verbs differ: the sweep's `job_state/1` envelope
+cannot carry a count (R-257) and so must refuse to be honest, while harvest's
+`review_set/1` carries the count and can report instead. Nothing is written
+wrongly.
+
+**Why not fixed here.** Refusing here would make a playlist of names the
+catalogue genuinely does not know indistinguishable from an outage, which is
+the collapse in the other direction, and the envelope already says what
+happened.
+
+**Closes when:** the two verbs state one rule for an all unconfirmed pass, or
+`outcome` gains a value between OK and NO_OP for "read, confirmed nothing".
+
+---
+
+## R-270. The credential presence check is spelled three times
+
+**Found:** at the U52 review, 2026-09-07.
+
+`label/catalogue.resolve` and `modules/outbound/account.resolve` each ask
+`secrets.exists` for the provider session and each raise `credential-missing`
+with `Remedy.AUTHENTICATE_PROVIDER`, `Scope.RUN` and a `credential` detail, and
+`cli/verbs/login.py` is the third. `acquire.provider_session` declares itself
+the sole owner of the credential under R4 and neither seam calls into it.
+
+**Measured cost.** None. A change to the remedy, the detail key, or the
+predicate is three edits, and the third is the one that is missed.
+
+**Why not fixed here.** One `require_provider_session` in the credential owner
+is a change to that module and to the outbound seam, which are two other
+units' files. R-232 records the same shape for the configuration wrapper.
+
+**Closes when:** both seams ask the credential owner and keep only their own
+`-unbound` refusal.
+
+---
+
+## R-271. A fourth hand written snapshot of the suppression identity rule
+
+**Found:** at the U52 review, 2026-09-07.
+
+`sweep._suppression_reader` builds a set of `suppression_id` values from
+`DecisionStore.suppressions()` and tests `review.suppression_id_for(...)`
+membership. `acquire/match_cli.suppression_view` and the two predicates in
+`deletion/stores.py` do the same. The one real difference is that this reader
+is lazy and the others read at construction, which is a property this branch's
+suite pins (an unreadable store must not fail a label with nothing to ask).
+
+**Measured cost.** None. If the identifier scheme ever needs a store side
+adjustment, the deletion module's `identity_scheme` stamp says it might, four
+closures have to be found.
+
+**Why not fixed here.** The home is a method on `DecisionStore`, which is
+`core/review.py`, and this branch binds a worker rather than reshaping the
+store. The lazy wrapper would stay around whatever the store offered.
+
+**Closes when:** `DecisionStore` hands out the snapshot once and the four
+callers take it.
+
+---
+
+## R-272. The increment's lookup refusal carries the exception kind only in prose
+
+**Found:** at the U52 review, 2026-09-07.
+
+`run.increment` converts a `LookupFailure` into `sync-source-lookups-failed`
+with `from exc` and no `inner` and no `kind` in its detail, so the job ledger
+holds the flattened sentence and nothing structured. Every raise site in
+`label/sweep.py` chains the underlying exception and puts its type name in the
+message, so the fact is readable and not addressable. The harvest boundary in
+`label/cli.py` records `detail["kind"]`.
+
+**Measured cost.** A `ListingNotPaginated` from a client that dropped its
+pagination arguments lands in the item row as "every listing call failed",
+with a remedy to retry when the provider is reachable, and no retry fixes a
+client version mismatch. The kind is in the sentence for a person and not in
+the detail for a tool.
+
+**Why not fixed here.** `sync/run.py` is the shared increment engine and its
+refusal is every source's; changing its detail is a contract for all of them.
+
+**Closes when:** the increment's refusal carries the underlying kind in its
+detail, or the inner cause when the underlying exception was one.
+
+---
+
+## R-273. The mutation driver's record attributes a forty five row cap to METHOD, which states twenty five
+
+**Found:** at the U52 review, 2026-09-07, by the conventions angle.
+
+`scripts/mutate.py` carries `ROW_CAPS = {"light": 25, "full": 45}` and its
+"considered and dropped" template writes "METHOD caps a full pass at 45 rows"
+into every table it emits. `docs/METHOD.md` states one hard cap of twenty five
+rows and one pass per unit per session, and `CLAUDE.md` repeats it. U52's forty
+row table and U56's both carry the sentence, and both overruns are recorded as
+explicit decisions in `RESTART-cratekit.md`. What remains is the sentence: a
+future reader takes the tool's number for the rule.
+
+**Measured cost.** One false attribution per emitted table.
+
+**Why not fixed here.** `scripts/mutate.py` is on `main` and outside this
+branch's diff, and the cap is a policy the operator set on 2026-09-07 rather
+than the driver's to restate. The zero row re-measure this session ran nine
+rows and emitted the same sentence.
+
+**Closes when:** the driver's caps and its template say what METHOD says, or
+METHOD names the two pass kinds.

@@ -1,0 +1,517 @@
+name = "u52-item-derivation"
+pass_kind = "full"
+
+# U52's mutation table. The plan's Verification Contract names the item
+# derivation, the zero item refusals at both ends, the acquires branch, the
+# LookupFailure translations, the shortfall to cause mapping, the frozen
+# configuration path and the four harvest branches. Those are where this unit's
+# own decisions live: what a label job's items ARE, what an empty answer MEANS,
+# and which of three provider failures a person is told about.
+#
+# WHAT IS DELIBERATELY NOT MUTATED, and why. `acquire/listing.py`,
+# `core/jobs.py`, `core/review.py` and `label/harvest.py` are engines this unit
+# is a caller of rather than an author of. A table over lines it did not write
+# measures those modules' suites rather than this binding, which is the rule
+# U51's row spec header states and this one follows. The one exception is
+# `sync/run.py`'s `increment`, whose `acquires` branch this unit added and whose
+# guard therefore belongs here.
+#
+# Forty rows against a cap of forty five. The five held back are for composites
+# a user facing zero row owes.
+
+# ---------------------------------------------------------------------------
+# 1. Item derivation. One item per registered label, keyed on label_id.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "I1_items_keyed_on_name"
+description = "Key a sweep's items on the display name instead of the label id, which is the rename hazard Seam R19 and the registry's D5 both forbid"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''    return tuple(entry.label_id for entry in held.labels.values())'''
+new = '''    return tuple(entry.name for entry in held.labels.values())'''
+
+[[rows]]
+id = "I2_one_item_for_the_whole_registry"
+description = "Queue ONE item for the whole registry rather than one per registered label, so a five label sweep sweeps one label"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''    return tuple(entry.label_id for entry in held.labels.values())'''
+new = '''    return tuple(entry.label_id for entry in held.labels.values())[:1]'''
+
+[[rows]]
+id = "I3_empty_registry_queues"
+description = "THE ZERO ITEM RULE at the sweep end: let an empty registry queue a job that drives straight to SUCCEEDED"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''    items = sweep_items(labels.RegistryStore().load())
+    if items:
+        return items'''
+new = '''    items = sweep_items(labels.RegistryStore().load())
+    if True:
+        return items'''
+
+[[rows]]
+id = "I4_registry_empty_message"
+description = "Reword the label-registry-empty sentence, never append to it, because the suite asserts with in"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''        "no favourite label is registered, so a sweep would queue a job with "
+        "nothing to claim and would then report that it succeeded",'''
+new = '''        "the favourite label list holds nothing, so this sweep has no work in "
+        "it and would finish by claiming a result it never produced",'''
+
+[[rows]]
+id = "I5_import_queues_no_item"
+description = "THE ZERO ITEM RULE at the import end: queue the single label job with no items at all"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''        item_ids=(entry.label_id,),'''
+new = '''        item_ids=(),'''
+
+[[rows]]
+id = "I6_import_item_keyed_on_name"
+description = "The import's single item names the label by display name, which the worker then cannot resolve by id"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''        item_ids=(entry.label_id,),'''
+new = '''        item_ids=(entry.name,),'''
+
+# ---------------------------------------------------------------------------
+# 2. The shortfall to cause mapping in handle, and the population it reads.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "S1_errors_branch_gone"
+description = "A sweep that could not offer some of the releases it listed exits 0 and reports the job done"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''    if result.errors:
+        raise refuse(
+            "label-sweep-incomplete",'''
+new = '''    if False:
+        raise refuse(
+            "label-sweep-incomplete",'''
+
+[[rows]]
+id = "S2_empty_shortfall_branch_gone"
+description = "A catalogue that confirms nothing is reported as a label with nothing new, which is the defect this branch closed"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''    if result.shortfall == "empty" and source.dropped:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S3_and_dropped_conjunct_gone"
+description = "MUTATE THE AND, first arm: drop the dropped population conjunct, so a genuinely exhausted crawl and a fully tombstoned label both refuse"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''    if result.shortfall == "empty" and source.dropped:'''
+new = '''    if result.shortfall == "empty":'''
+
+[[rows]]
+id = "S4_and_shortfall_conjunct_gone"
+description = "MUTATE THE AND, second arm: drop the shortfall conjunct, so a sweep that offered plenty and dropped one release refuses"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''    if result.shortfall == "empty" and source.dropped:'''
+new = '''    if source.dropped:'''
+
+[[rows]]
+id = "S5_dropped_never_accumulated"
+description = "Stop accumulating the dropped population in LabelSource.list_recent, so the refusal above can never see one"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''            discarded.extend(listing.dropped)'''
+new = '''            pass'''
+
+# ---------------------------------------------------------------------------
+# 3. The acquires branch in sync/run.py's increment, and its declaration.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "A1_acquires_early_return_gone"
+description = "R-140: an offering source writes the intake row, registers the artifact and moves the watermark over releases nobody accepted"
+file = "src/cratekit/sync/run.py"
+surface = "user"
+old = '''        if not getattr(source, "acquires", True):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A2_acquires_default_false"
+description = "MUTATE THE COEFFICIENT: flip the getattr default, so every source written before the attribute existed stops recording what it acquired"
+file = "src/cratekit/sync/run.py"
+surface = "user"
+old = '''        if not getattr(source, "acquires", True):'''
+new = '''        if not getattr(source, "acquires", False):'''
+
+[[rows]]
+id = "A3_label_source_acquires"
+description = "Declare the labels source an acquiring one, which is the state R-140 was recorded against"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''    acquires = False'''
+new = '''    acquires = True'''
+
+# ---------------------------------------------------------------------------
+# 4. The LookupFailure translations in label/sweep.py.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "L1_can_list_refusal_gone"
+description = "R-135: an artist object exposing none of the listing methods yields an empty list read as an empty catalogue"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''    if not crawl.can_list(artist):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "L2_crawl_except_gone"
+description = "REMOVE THE LAYER ALONE: an exception out of the crawl escapes untranslated instead of becoming a LookupFailure"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''    try:
+        return list(crawl.releases(artist))
+    except Exception as exc:
+        raise run.LookupFailure(
+            f"the catalogue listing for {entry.name!r} could not be read "
+            f"({type(exc).__name__}: {exc}); that is not an empty catalogue"
+        ) from exc'''
+new = '''    return list(crawl.releases(artist))'''
+
+[[rows]]
+id = "L4_artist_for_wrapper_gone"
+description = "The seam's artist lookup raises the adapter's own exception past the increment instead of sync-source-lookups-failed"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''        if self.catalogue is not None:
+            try:
+                return self.catalogue.artist_for(entry)
+            except Exception as exc:
+                raise run.LookupFailure(
+                    f"the catalogue could not resolve an artist for the label "
+                    f"{entry.name!r} ({type(exc).__name__}: {exc}); its releases "
+                    f"were never listed"
+                ) from exc'''
+new = '''        if self.catalogue is not None:
+            return self.catalogue.artist_for(entry)'''
+
+[[rows]]
+id = "L5_artist_for_missing_returns_none"
+description = "The bare skip R-135 named in miniature: a label with no catalogue object at all returns None rather than refusing"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''        raise run.LookupFailure(
+            f"no catalogue object was available for the registered label "
+            f"{entry.name!r}, so its releases were never listed; that is not "
+            f"a label with nothing new"
+        )'''
+new = '''        return None'''
+
+[[rows]]
+id = "L6_verifier_missing_returns_stub"
+description = "A source built with neither verifier nor catalogue confirms nothing instead of refusing, so every release is dropped as unconfirmed"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''        raise run.LookupFailure(
+            "this labels source was built with neither a verification callable "
+            "nor a catalogue, so no release it listed could be confirmed"
+        )'''
+new = '''        def unconfirmed(claimed: str, release: Any) -> Mapping[str, Any]:
+            return {}
+
+        return unconfirmed'''
+
+[[rows]]
+id = "L7_verifier_wrapper_gone"
+description = "THE NEW WRAPPER: return the bare seam method, which is the exact pre-fix shape that failed a provider outage as internal-error"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''        if self.catalogue is not None:
+            catalogue = self.catalogue
+
+            def verified(claimed: str, release: Any) -> Mapping[str, Any]:
+                try:
+                    return catalogue.search_release(claimed, release)
+                except CratekitError:
+                    raise
+                except Exception as exc:
+                    raise run.LookupFailure(
+                        f"the catalogue could not confirm who is credited on a "
+                        f"release ({type(exc).__name__}: {exc}); the releases "
+                        f"this sweep listed were never verified, and an "
+                        f"unverified release is not a release with no match"
+                    ) from exc
+
+            return verified'''
+new = '''        if self.catalogue is not None:
+            return self.catalogue.search_release'''
+
+[[rows]]
+id = "L8_verifier_passthrough_gone"
+description = "REMOVE THE LAYER ALONE: an adapter's credential-missing refusal is flattened into this source could not list"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''                except CratekitError:
+                    raise
+                except Exception as exc:'''
+new = '''                except Exception as exc:'''
+
+# ---------------------------------------------------------------------------
+# 5. crawl.can_list and LISTING_METHODS.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "C1_can_list_always_true"
+description = "Answer yes for every object, which is what makes the refusal above unreachable from the other side"
+file = "src/cratekit/label/crawl.py"
+surface = "user"
+old = '''    return any(getattr(artist, method, None) is not None for method in LISTING_METHODS)'''
+new = '''    return True'''
+
+[[rows]]
+id = "C2_can_list_requires_all"
+description = "Require EVERY listing method rather than any, so a client exposing one of two is refused instead of half read"
+file = "src/cratekit/label/crawl.py"
+surface = "user"
+old = '''    return any(getattr(artist, method, None) is not None for method in LISTING_METHODS)'''
+new = '''    return all(getattr(artist, method, None) is not None for method in LISTING_METHODS)'''
+
+# ---------------------------------------------------------------------------
+# 6. The resume branch in label/cli.py.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "R1_itemless_job_drives"
+description = "Drive a label job with no items, which jobs.drive transitions straight to SUCCEEDED over a registry nothing was read from"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''            _refuse_an_itemless_job(store, job)'''
+new = '''            pass'''
+
+[[rows]]
+id = "R2_closed_cause_reraise_gone"
+description = "R-225 restored: a job recorded failed or cancelled reports through a normal envelope and exits 0"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''        if not job.is_open() and job.cause is not None:
+            raise CratekitError(job.cause)'''
+new = '''        if False and job.cause is not None:
+            raise CratekitError(job.cause)'''
+
+[[rows]]
+id = "R3_closed_cause_narrowed_to_failed"
+description = "Narrow the predicate back to FAILED alone, which exits 0 over a CANCELLED job with 0 of 3 items done"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''        if not job.is_open() and job.cause is not None:'''
+new = '''        if job.state is jobs.JobState.FAILED and job.cause is not None:'''
+
+[[rows]]
+id = "R4_reraise_inside_is_open"
+description = "THE LOAD BEARING PLACEMENT: put the check back inside the is_open branch, so a job already closed on entry reports a normal envelope for ever after"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''        job = jobs.reconcile(store, job_id)
+        warnings: tuple[dict[str, str], ...] = ()'''
+new = '''        job = jobs.reconcile(store, job_id)
+        warnings: tuple[dict[str, str], ...] = ()
+        if not job.is_open():
+            return ctx.envelope(data=_reported(store, job), warnings=warnings)'''
+
+# ---------------------------------------------------------------------------
+# 7. The four harvest branches.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "H1_catalogue_not_resolved_first"
+description = "R13: an unbound build reaches the listing with no catalogue and earns label-playlist-unreadable about a provider it never had"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''    found = catalogue.resolve(cfg)'''
+new = '''    found = catalogue.resolve(cfg) if catalogue.bound() else None'''
+
+[[rows]]
+id = "H2_listing_passthrough_gone"
+description = "REMOVE THE LAYER ALONE: an adapter's own CratekitError refusal is rewritten as an unreadable playlist"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''    except CratekitError:
+        raise
+    except Exception as exc:
+        raise refuse(
+            "label-playlist-unreadable",
+            f"the playlist {reference!r} could not be listed by the provider "'''
+new = '''    except Exception as exc:
+        raise refuse(
+            "label-playlist-unreadable",
+            f"the playlist {reference!r} could not be listed by the provider "'''
+
+[[rows]]
+id = "H3_listing_translation_gone"
+description = "A provider failure while resolving or listing the playlist escapes as an unclassified crash rather than a refusal"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''    try:
+        playlist = found.playlist_for(reference)
+        return harvest.playlist_tracks(playlist)
+    except CratekitError:
+        raise
+    except Exception as exc:
+        raise refuse(
+            "label-playlist-unreadable",
+            f"the playlist {reference!r} could not be listed by the provider "
+            f"({exc}); harvest needs a reachable provider playlist and will not "
+            f"invent labels",
+            steps=("pass a playlist this account can read, then retry",),
+            origin=("label.cli",),
+            detail={"playlist": reference, "kind": type(exc).__name__},
+        ) from exc'''
+new = '''    playlist = found.playlist_for(reference)
+    return harvest.playlist_tracks(playlist)'''
+
+[[rows]]
+id = "H4_verification_boundary_gone"
+description = "THE THIRD PROVIDER CALL: hand from_tracks the bare seam method, so a provider that went away mid playlist becomes internal-error with report-defect"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''            verify=_label_verifier(found, reference),'''
+new = '''            verify=found.check_label,'''
+
+[[rows]]
+id = "H5_verifier_passthrough_gone"
+description = "REMOVE THE LAYER ALONE: the verification boundary swallows an adapter's own refusal into label-playlist-unreadable"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''        except CratekitError:
+            raise
+        except Exception as exc:'''
+new = '''        except Exception as exc:'''
+
+[[rows]]
+id = "H6_empty_playlist_reports_ok"
+description = "An empty playlist reports OK rather than NO_OP, so nothing found is indistinguishable from something found"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''        outcome=Outcome.OK if report.offered else Outcome.NO_OP,'''
+new = '''        outcome=Outcome.OK,'''
+
+[[rows]]
+id = "H7_unresolved_drops_nameless"
+description = "Count only the names a catalogue refused, so a playlist whose tracks carry no copyright string at all reports a clean zero unresolved"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''    unresolved = len(report.dropped) + nameless'''
+new = '''    unresolved = len(report.dropped)'''
+
+# ---------------------------------------------------------------------------
+# 8. The frozen configuration reaching the worker.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "F1_worker_loads_live_config"
+description = "R17: the worker builds its source against a freshly loaded configuration, so the offers are written under this run's library rather than the frozen one"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''    source = sweep.LabelSource(
+        cfg,'''
+new = '''    source = sweep.LabelSource(
+        config.load(),'''
+
+# ---------------------------------------------------------------------------
+# 9. The two handler bindings.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "B1_label_import_unbound"
+description = "Unbind label.import, leaving a queued job with a worker in neither table"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+old = '''    "label.import": "cratekit.label.cli:handle",'''
+new = ""
+
+[[rows]]
+id = "B2_sync_labels_unbound"
+description = "Unbind sync.labels, leaving a queued sweep with a worker in neither table"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+old = '''    "sync.labels": "cratekit.label.cli:handle",'''
+new = ""
+
+[[rows]]
+id = "B3_sync_labels_wrong_worker"
+description = "Point sync.labels at the favorites worker, which asks whether anything checks the TARGET or only that the key is present"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+old = '''    "sync.labels": "cratekit.label.cli:handle",'''
+new = '''    "sync.labels": "cratekit.favorites.cli:handle",'''
+
+# ---------------------------------------------------------------------------
+# 10. _suppression_reader.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "P1_revoked_tombstones_suppress"
+description = "Snapshot revoked tombstones too, so a lifted suppression silently keeps a release out of the review queue"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''            snapshot = {record.suppression_id for record in store.suppressions()}'''
+new = '''            snapshot = {
+                record.suppression_id
+                for record in store.suppressions(include_revoked=True)
+            }'''
+
+[[rows]]
+id = "P2_snapshot_read_eagerly"
+description = "THE LAZY READ: take the snapshot when the reader is built, which fires the unreadable store refusal on a label that has no confirmed release to ask about"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''    snapshot: set[str] | None = None'''
+new = '''    snapshot: set[str] | None = {
+        record.suppression_id
+        for record in DecisionStore(tombstone.STORE_KEY, cfg).suppressions()
+    }'''
+
+# ---------------------------------------------------------------------------
+# Ranked below the cap, and not measured. These are not coverage.
+# ---------------------------------------------------------------------------
+
+[[dropped]]
+id = "L3_crawl_except_narrowed"
+description = "Narrow _crawl_or_refuse's broad except to a type this layer happens to know, such as ValueError"
+reason = "ranked below the cap; L2 measures whether the translation exists at all, and the breadth is the same guard family with a strictly weaker mutation"
+
+[[dropped]]
+id = "S6_incomplete_remedy"
+description = "Flip the errors branch remedy from RESUME_JOB to REPORT_DEFECT"
+reason = "ranked below the cap; S1 measures the whole branch and the remedy is one field inside a refusal S1 already removes"
+
+[[dropped]]
+id = "S7_dropped_appended_not_rebuilt"
+description = "Append to LabelSource.dropped rather than rebuilding it, so a second list_recent answers about both passes"
+reason = "ranked below the cap and maintainer facing; the class is constructed fresh per queued item and label.cli.handle is its only constructor in src, so a second pass on one instance is not a reachable state today"
+
+[[dropped]]
+id = "C3_listing_methods_restated"
+description = "Replace the LISTING_METHODS derivation with a hand written tuple that has gone stale against the wrapper's signature"
+reason = "ranked below the cap; whether it kills anything depends entirely on which method names the test fakes happen to expose, so the number would be about the fixtures rather than about the guard"
+
+[[dropped]]
+id = "P3_identity_short_circuit"
+description = "Change the artist and title short circuit from and to or"
+reason = "ranked below the cap and maintainer facing; it is a performance short circuit carried over unchanged from the per release form rather than a decision this unit made"
+
+[[dropped]]
+id = "F2_increment_live_config"
+description = "Hand run_increment a freshly loaded configuration instead of the frozen one"
+reason = "ranked below the cap; the acquires early return fires before the watermark store, the artifact registry and the staging path are ever used, so on this path the mutation changes no observable answer and a zero would say nothing"
+
+[[dropped]]
+id = "H8_nameless_counter"
+description = "Stop incrementing the nameless counter inside the extractor"
+reason = "ranked below the cap; it is the same population H7 measures, reached one line earlier"
+
+[[dropped]]
+id = "E1_engine_lines"
+description = "Guards inside acquire/listing.py, core/jobs.py, core/review.py and label/harvest.py that this unit newly reaches"
+reason = "out of scope by the rule U51's row spec states: this unit is their first caller and not their author, so a table over them measures those modules' suites rather than this binding"

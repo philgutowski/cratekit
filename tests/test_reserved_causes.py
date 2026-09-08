@@ -4797,7 +4797,26 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # each name a frozen SOURCE rather than a file on disk, so neither is the same
     # sentence. Reusing rather than adding is a judgement recorded in
     # docs/residual-findings.md rather than left implicit here.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (146, 122, 24)
+    #
+    # Re-pinned at the U52 merge, 2026-09-07. THREE slugs, named rather than
+    # counted: label-catalogue-unbound, which is this build having no catalogue
+    # adapter to hand the label package; label-registry-empty, which is a sweep
+    # asked for with no favourite label registered; and label-sweep-incomplete,
+    # which is an item that could not offer all of a label's releases and failed
+    # rather than completing. U52 was built against a main whose population was
+    # 142 and measured 145 there by differencing the REASONS literal against
+    # main's own; the merge brings U55's two and U56's two in underneath it, so
+    # the merged tree is 146 plus the same three. None of the three is in the
+    # reserved table, exactly as their siblings export-playlist-unknown and
+    # tag-retag-folder-unknown are not, so the reserved half does not move.
+    # Population 146 to 149, non-reserved 122 to 125, reserved half UNCHANGED at
+    # 24.
+    #
+    # WHY THE MISSING CREDENTIAL IS NOT A FOURTH, for the reason the outbound
+    # paragraph above gives. label.catalogue.resolve raises TWO refusals and only
+    # one of them is new: no session stored reuses credential-missing, which this
+    # vocabulary already declares.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (149, 125, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -4961,7 +4980,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # precisely why those five are warnings on a NO_OP and not refusals. The one
     # place this verb family DOES refuse over an argument, an unnamed folder, has a
     # declared slug already, `tag-retag-folder-unknown`, and it is not new.
-    assert (len(literals), len(literals - set(causes))) == (358, 213), (
+    #
+    # Re-pinned at the U52 merge, 2026-09-07: 358 to 361 distinct, non-keys
+    # UNCHANGED at 213. THREE literals joined and NOTHING left, measured on the
+    # branch against its own base by repointing this module's PACKAGE_ROOT at
+    # main's src tree extracted into a scratch directory, and carried through the
+    # merge as the same three on top of U56's 358. All three are the causes named
+    # at the population assertion above, so they are KEYS on this side and the
+    # non-key half does not move at all: the catalogue seam introduces no
+    # cause-shaped literal that is not a declared cause. The protocol it declares
+    # carries no slug of any kind, because it is a type rather than a table.
+    assert (len(literals), len(literals - set(causes))) == (361, 213), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5280,7 +5309,22 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # tagging/tag.py, tagging/artifacts.py and tagging/cli.py are NOT new holders
     # despite this unit writing two of them and rewriting the third: the first two
     # name no cause at all, and cli.py already named config-unusable on main.
-    assert (len(literal_holders), len(literal_both)) == (87, 16), (
+    #
+    # Re-pinned at the U52 merge, 2026-09-07: 87 to 88 holders. ONE module joined
+    # and none left, and it is a new file. label/catalogue.py names
+    # credential-missing for a provider session nothing recorded and
+    # label-catalogue-unbound for a build with no adapter to hand the label
+    # package. Differenced as SETS on the branch against its own base, the same
+    # way as every entry above, and carried through the merge on top of U56's 87.
+    # The also-holds-an-integer half stays 16, because the module holds no bare
+    # integer at all. The named halves did NOT move, staying at 21 and 8: every
+    # cause it names it names as a literal, and the Remedy and Scope members it
+    # reaches through symbols resolve to remediation tokens rather than to
+    # declared causes, exactly as modules/outbound/account.py's do.
+    #
+    # label/cli.py and label/sweep.py are NOT new holders despite this unit
+    # rewriting both: each already named a cause on main.
+    assert (len(literal_holders), len(literal_both)) == (88, 16), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
