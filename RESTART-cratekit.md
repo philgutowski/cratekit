@@ -4,58 +4,45 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-07, U52 on `relay/70`, taken from the board as issue
-#70 and run as relay task 70.** The branch's eleven commits from 2026-09-02
-were built under the old method and interrupted by a timeout. This session
-merged `main` into them, twenty seven commits including U55 and U56, resolved
-five conflicts, and continued the unit from where it stopped rather than
-starting over. After the merge: the nine user facing zero rows of the forty
-row table each got the test that was missing and were re-measured, nine
-killed by one test each (`docs/mutation/u52-zero-rows.md`); the built in
-review ran over the diff against main from seven angles, and eleven of its
-findings held and were fixed with a test each that fails on the tree before
-the fix; the rest are R-265 through R-273 and an amendment to R-248. **The
-pending register is still EMPTY**, `tests/_pending.py` holds zero entries and
-`tests/test_pending_units.py` carries a test that says so out loud.
+**Last session 2026-09-08, U58 on `relay/76`, taken from the board as issue
+#76 and run as relay task 76.** Five commits of the unit already existed on
+the local branch `u58/pre-relay-76`, built by relay task 76's first run on
+2026-09-07 and ended by a session limit while it was writing the record. This
+session fast forwarded them onto `relay/76`, then did what that record still
+owed: the built in review ran again over the whole diff against main from
+eight angles, fourteen of its findings held and were fixed with a test each
+that fails on the tree before the fix, the rest are R-283 through R-288 with
+amendments to R-216, R-248 and R-278, one learning is filed, and this file is
+rewritten. The mutation table was measured on the first run and stands; the
+second fix round did not re-run it, by the brief's instruction, and the
+table's zero row note says which change it does not cover. **The pending
+register is still EMPTY.**
 
-**THE LABEL VERBS RUN, AND NO LABEL WORKFLOW CAN RUN.** Both halves are true at
-once and confusing one for the other is the fastest way to misread this branch.
-`crate sync labels` and `crate label import` derive real item ids from the
-favourite label registry, queue them, and drive each item through one worker,
-`cratekit.label.cli.handle`, bound under both keys in
-`src/cratekit/cli/handlers.py`. `crate label harvest` was rebuilt and no longer
-raises `label-playlist-unreadable` on every call over a provider it never
-contacted. What none of the three can do is reach a provider: every one of them
-resolves through `src/cratekit/label/catalogue.py`, whose `bound()` returns a
-constant `False` and whose `resolve` raises `credential-missing` or
-`label-catalogue-unbound`. **No implementation of the `Catalogue` protocol exists
-anywhere in `src`.** So a queued label item ends FAILED with a named cause
-instead of sitting pending for ever, and both queueing verbs warn at enqueue
-while the warning is still useful. That is smaller than a working sweep and it
-is the honest version of it. **R-258 is the whole remaining distance, and it has
-no board issue yet.** R-266 is what every driven label job looks like until it
-closes: `no-evidence`, retryable, over a refusal that says never retry.
+**BOTH ANALYSIS WORKERS RUN, AND BOTH ENGINE DEFECTS ARE FIXED.** `crate
+analyze run` and `crate analyze restamp` queue their folder's audio filenames
+as items and drive each through `cratekit.analysis.cli.handle_run` and
+`handle_restamp`, bound under their own names in `src/cratekit/cli/handlers.py`.
+The vocal pass no longer reads a `wav` key nothing set: the partial carries a
+path and `vocals.analyse` decodes it at the model's rate of 32000 through a
+bound decoder, so a fake model driven through the path yields a nonzero level
+and the model's gender call. Energy is computed by the source system's method,
+a fixed feature vector z scored against a library calibration and mapped to a
+level by nine decile cuts with a beatless cap, from the samples the head
+already decoded; without a calibration the level is an honest None with
+`energy_status` saying why, and the worker writes no `energylevel` tag for
+it, so routing reads the taxonomy's no energy sink. `crate analyze calibrate`
+is real and writes both state files; `crate analyze validate` says plainly
+that no scorer ships. **The vocals side moved, not the light pass**, for two
+reasons that each stand alone: the head decodes at 22050 and the model was
+trained at 32000, and a partial carrying samples would hold every track's
+audio in the parent across the pool boundary. `analysis/vocals.py`'s docstring
+carries both.
 
-**THE INCOMING RESIDUALS WERE RENUMBERED AT THE MERGE.** The branch filed them
-as R-235 to R-242 against a main whose highest was R-234. Main carried its
-highest to R-256 through U55 and U56, so the eight took R-257 to R-264, and the
-two amendments that cited them by number, in R-137 and R-139, were repointed.
-Main's numbers did not move. `docs/plans/2026-09-02-1257-feat-label-workers-plan.md`
-still says R-235 in its body and carries a parenthesis saying why. U52 also
-CLOSED R-140 and amended R-135, R-137, R-138, R-139 and R-203 without closing
-any of them.
-
-**R-203 IS DOWN TO NINE.** It was written at eighteen queued verbs with no
-worker. U50 and U51 took it to fifteen, U52 took two more on its branch, and
-U55 and U56 took four on main, so the merged tree holds nine. **The title still
-says eighteen deliberately.** Nothing in the repository derives from that prose:
-`tests/test_handlers.py` derives the population from `registry.ENTRIES` and
-fails the day a queued verb is in neither handler table. The nine are
-`acquire.download`, `analyze.restamp`, `analyze.run`, `delete.review`,
+**R-203 IS DOWN TO SEVEN.** `acquire.download`, `delete.review`,
 `intake.playlist`, `intake.set`, `rebuild`, `route.resort` and `sync.all`.
-**`sync.all` is one of them and binding `sync.labels` did not change that**,
-because `src/cratekit/sync/cli.py` queues under `ctx.entry.handler_key`, which
-is `sync.all`.
+The title still says eighteen deliberately; `tests/test_handlers.py` derives
+the population from `registry.ENTRIES` and is what fails when a queued verb
+is in neither table.
 
 **THAT HAS NOT CHANGED ABOUT WHO DOES U29.** Issue 29 is attended, Phillip's to
 perform against the live library one workflow at a time, which an agent cannot
@@ -69,54 +56,104 @@ reason does not expire. **`board.py next` will say "Take #29" and you must not.*
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 0
 
-The last measured suite on `main` before this merge was **6780 passed and 1
-skipped**. The last measured suite on `relay/70` was **6864 passed and 1
-skipped**, on the review fix commit, which is the commit before the record
-that rewrote this file; the record touched documents only. **Main's highest
-residual is R-273 once this branch merges**, no duplicate headings, no heading
-deleted. Append only, and gaps are fine.
+The last measured suite on `main` before this merge was **6928 passed and 1
+skipped**. The last measured suite on `relay/76` was **6946 passed and 1
+skipped**, on the second fix round's commit, which is the commit before the
+record that rewrote this file; the record touched documents only. **Main's
+highest residual is R-288 once this branch merges**, no duplicate headings,
+no heading deleted. Append only, and gaps are fine.
 
-**The board: 61 units, 52 done, 8 ready, 1 blocked, and `board.py audit`
-exits 1 on purpose.** Two of the three drift items are #78 and #79, U60 and
-U61, added to the tracker during this run and not yet on the board; they are
-the operator's to add. The third is #70 itself: the relay moved it to `In
-review`, a status `board.py` does not preserve across a recomputation, so the
-audit calls it drift and `sync` would flip it back to Ready. R-265 records
-that. Do not run `sync` to make the audit green while #70 is under review.
+**The board: 61 units, 53 done, 8 ready, 0 blocked, and `board.py audit`
+exits 1 on purpose.** Four drift items. #78 and #79, U60 and U61, are on the
+tracker and not on the board, the operator's to add. #70 is Done on the
+tracker and still In review on the board, which `sync` would repair. #76 is
+In review, a status `board.py` does not preserve across a recomputation, so
+`sync` would flip it back to Ready while the relay runner still owns its
+merge; R-265 records that. Do not run `sync` to make the audit green while
+#76 is under review.
 
-## Read this before the next mutation pass
+## Read this before touching analysis again
 
-**`scripts/mutate.py` can exit 0 with its last mutant still on disk.** It did on
-2026-09-07, leaving `src/cratekit/cli/handlers.py` with the `tag.retag` handler
-binding deleted. The tree was clean before the run and the driver was the last
-writer. The next act after a pass is the battery and a merge, so this ships
-silently. A green suite does not say which tree it was green on.
+**THE RESUME READS A RENAME INTENT, NEVER THE FOLDER.** The item is the pre
+rename filename and the finalize renames the file inside the handler, before
+the engine flips the row, so a kill in that window leaves a finished file
+under its head and a pending row under its old name. The finalize writes
+`rename-intent.json` into the item's staging directory immediately before the
+rename, and `_finalized_twin` reads that and nothing else. The first version
+scanned the folder for a headed file whose stripped stem equalled the item,
+which reported a deleted source as analysed when an older twin sat beside it
+and missed every file the naming template deduped or truncated. The learning
+is filed at `docs/solutions/workflow-issues/a-worker-that-renames-its-item-owes-the-resume-an-exact-record.md`
+and applies to every remaining R-203 worker, all of which move files.
 
-**The mitigation costs one command. Run `git status --porcelain` after every
-`scripts/mutate.py` return, before the battery and before trusting any row.**
-Restore with `git show HEAD:<path> > <path>`, never `git checkout`. R-256 and
-`docs/solutions/workflow-issues/a-mutation-driver-can-exit-clean-and-leave-a-mutant.md`
-carry it. One field misleads: the sidecar's `head_verified` records that HEAD
-verification was REQUESTED, not that it passed.
+**THE TEST FOR A KILL DIES IN THE WINDOW.** `kill_after_the_rename` in
+`tests/test_analysis_workers.py` raises a `BaseException` subclass out of the
+staging call on the first finalized report, because `jobs.drive` converts
+`Exception` at the item boundary and a kill is not one. A test that renames
+the file by hand is a test of the hand rename, and that is what hid both
+defects above through a green suite and a killed mutation row.
+
+**THE HEAVY STACK STAYS BEHIND THE EXTRA, AND SO DOES NUMPY.** Every librosa,
+torch and model touch is a lazy import inside a function.
+`analysis/cli.py` never imports `analysis/vocal.py` at module scope, because
+`cli.jobs.argv_for` imports the verb module by name to build a resume line
+and the model module needs numpy at import time, which the slim profile does
+not declare. `test_the_analysis_package_imports_with_the_heavy_stack_blocked`
+runs a fresh interpreter with all five blocked. The model is behind the
+separate `vocals` extra while the registry declares `analysis` for the verb,
+so a run on a machine with one and not the other finalizes every track with
+no vocal tags; the resume envelope now warns, counting them, and R-277 says
+those tracks are never scored again until `analyze.vocals` lands.
+
+**ONE TEMPO METHOD ON BOTH PATHS.** `energy.features_from_samples` measures
+its own tempo from the central slice on every path, and the head decodes at
+`energy.MEASURE_RATE`. The first version handed the head's whole track
+integer tempo down on the run path and measured its own on the restamp path,
+so one file scored through the two verbs carried two tempo readings against
+one calibration. The window difference that remains is R-287.
+
+**A KEBAB LITERAL IS A PINNED POPULATION.** Two joined this round,
+`skipped-unanalysable` and `vocal-inference-failed`, and the pin in
+`tests/test_reserved_causes.py` moved by two, differenced as sets against
+main's tree extracted into a scratch directory. Any new kebab shaped string
+in `src` moves it again and the re-pin names what joined.
+
+## What U58 left behind, beyond the code
+
+Fifteen residuals, R-274 through R-288, nine from the first review and six
+from the second, plus amendments to R-133, R-203, R-216, R-248 and R-278.
+Five are worth knowing before touching analysis again:
+
+- **R-276.** The vocal calibration is written and nothing reads it.
+  `cli/converge.py` passes `vocal_threshold=None` with a comment saying so.
+  The reader belongs to U53's routing and rebuild workers.
+- **R-277.** A track finalized while the model was unavailable is never
+  scored again, because the head in its name is the resume marker and the
+  re-score verb is the planned one.
+- **R-283.** The restamp has no rename recovery, and the intent cannot give
+  it one, because its file is renamed by another job.
+- **R-285.** The detector seam carries state the worker has to recognise: a
+  shadow binding, a per item calibration re-read, and two tempo keys.
+- **R-278, R-286, R-287.** Every efficiency number in these is the reviewer's
+  estimate and none was taken on the tree.
 
 ## What is open
 
 | issue | unit | state |
 |---|---|---|
-| #70 | U52, the label workers | In review on `relay/70`, the relay runner owns the merge |
+| #76 | U58, the analysis workers | In review on `relay/76`, the relay runner owns the merge |
 | #78 | U60, the deletion pass | On the tracker, not yet on the board |
 | #79 | U61, `crate sync all` composes the source increments | On the tracker, not yet on the board |
 | #71 | U53, routing and rebuild workers | Ready |
 | #72 | U54, the acquisition worker | Ready |
 | #75 | U57, the recognition identifier | Ready |
-| #76 | U58, the analysis workers | Ready |
 | #77 | U59, land the conformance branch | Ready |
 | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
 
 Thirteen residual issues carry the `residual` label. They are the queue after
 the units, each done or closed back to the ledger. A2 is attended.
 
-**Next is `#76`, U58**, per METHOD's serialized order, once U52 is merged.
+**Next is `#72`, U54**, per METHOD's serialized order, once U58 is merged.
 
 ## Do this first
 
@@ -124,128 +161,35 @@ the units, each done or closed back to the ledger. A2 is attended.
    the do-not-touch section binds.
 2. `board.py next`. It names #29. Do not take it. METHOD's serialized order is
    what picks the work, not the ranking.
-3. Grep `docs/solutions/` for the module you are about to touch.
+3. Grep `docs/solutions/` for the module you are about to touch. A worker that
+   moves files reads the rename intent entry before it binds.
 
-## What U52 is, beyond the call site
+## The branches
 
-U52 is wider than a call site, on purpose. METHOD's merge bar makes a finding
-whose input a branch makes REACHABLE that branch's to answer, and binding these
-two handlers made four recorded findings reachable at once.
-
-**THE SEAM CAME FIRST, and it is named `catalogue` rather than `provider`.**
-`cratekit.acquire.provider_session` already owns the word provider for the
-credential and `crate doctor` already reports a `credential.provider` check; one
-symbol meaning two things in two modules is on METHOD's list of what a green
-suite cannot see. The protocol has exactly four members because there are exactly
-four call sites, and **the failure contract is part of the type**: `artist_for`
-and `playlist_for` RAISE and never return `None`, because `LabelSource.list_recent`
-skipped a missing artist with a bare `continue`, so a returned `None` would have
-become a sweep that offered nothing and reported that it looked. Three slugs
-joined `src/cratekit/core/cause.py`: `label-catalogue-unbound`,
-`label-registry-empty` and `label-sweep-incomplete`.
-
-**THE INCREMENT STOPPED CLAIMING AN ACQUISITION IT DID NOT MAKE.**
-`cratekit.sync.run.Source` gained an `acquires` attribute, `LabelSource` declares
-it `False`, and `increment` returns before the intake append, the artifact
-registration and the watermark advance when it is false. One return rather than
-three guards, deliberately: those three writes are three statements of one claim,
-and a fourth writer added later lands below that return where an offering source
-cannot reach it. **Do not "simplify" that into three guards.** This closed R-140
-and opened R-263, because the labels watermark can no longer advance and
-`crate doctor` still reads its absence as "never ran".
-
-**AN UNREADABLE LISTING NOW RAISES.** `sweep._crawl_or_refuse` turns an artist
-exposing none of the listing methods, and any exception out of the crawl, into
-`run.LookupFailure`, which `increment` converts to `sync-source-lookups-failed`.
-Two of R-135's three producers close there. **The third must NOT be closed.**
-`listing.paginate` treats a `None` first answer as exhaustion, and an EMPTY first
-page from a method that exists is not a producer at all: that is a genuinely
-exhausted crawl and it has to keep reporting empty, or every quiet label becomes
-an error and R-135 has been traded for its mirror image.
-
-**A SWEEP THAT READ RELEASES AND CONFIRMED NONE REFUSES.** `LabelSource` carries
-the dropped population and how many releases the crawl read, and `handle`
-raises `label-sweep-incomplete` only when the increment reports empty and
-every release read was dropped. The review found the first form, keyed on the
-dropped set being non empty, refusing a MIXED listing, one release tombstoned
-and one unconfirmed, as a catalogue nobody could verify a line of; that is
-why the count is carried. The local questions, tombstone and owned, are now
-asked before the provider is, so a suppressed release costs no round trip.
-
-**THE RESUME DRIVES LABEL JOBS ONLY.** `handlers.run_job` resolves the worker
-from the job row, so without the `LABEL_KEYS` check `sync labels --job` drove
-any queued job in process without that verb's own gate. `backup` and `master`
-still have the gap.
-
-**HARVEST BECAME A COMMAND THAT CAN SUCCEED.** It lists through
-`listing.playlist_tracks`, offers verified names, and emits `review_set/1`. An
-empty playlist is a success reported as `NO_OP`, so a playlist with nothing in it
-stays distinguishable from one that could not be read.
-`label-playlist-unreadable` is raised in exactly one place now, and only after a
-bound provider was asked and failed.
-
-**ONE RESUME OWNER FOR BOTH VERBS, and `outbound/shell.resume` was NOT reused.**
-That function calls `ctx.gate.require` unconditionally and digests the fixed
-outbound triple of playlist, export and tracks; neither label verb declares a
-gate or carries those keys. Two fragments were lifted rather than the function:
-the itemless job refusal and the closed cause re-raise, and the second sits
-OUTSIDE the `is_open` branch. `master`'s resume branch is missing that second
-fragment and must not be copied.
-
-**THE WORKER READS ITS LABEL FROM THE ITEM, never from the payload.** A handler
-that reads its subject from the payload makes every item of a multi item job do
-the same work. That was the first defect U46's end to end drive surfaced and it
-is now written into three modules' docstrings.
+| branch | state |
+|---|---|
+| `relay/76` | U58, in review, the relay runner merges it |
+| `u58/pre-relay-76` | U58's first five commits, local only, fully contained in `relay/76`; delete after the merge |
+| `u52/pre-relay-70` | U52's pre relay branch, local only, merged through `relay/70`; delete |
+| `fix/conformance-3-and-soft-delete-reader` | U59's input, in `.worktrees/conformance`, far behind main |
 
 ## What U52 left behind, beyond the code
 
-Seventeen residuals, R-257 through R-273, eight from the branch and nine from
-the review after the merge, plus an amendment to R-248 for the fifth copy of
-the resume tail. Four are worth knowing before touching labels again:
+Seventeen residuals, R-257 through R-273, and an amendment to R-248 for the
+fifth copy of the resume tail. Four are worth knowing before touching labels
+again:
 
 - **R-258.** No catalogue adapter ships. Every label verb resolves to a constant
   refusal and the test substitution carries R-226's limit: the in process
   callers pick up a replaced `resolve`, and the child a resume spawns inherits
   nothing.
 - **R-259 and R-137.** The labels path applies no ownership filtering at all,
-  because nothing on it produces an owned identity set. R-137's reorder would
-  change nothing until this one closes.
+  because nothing on it produces an owned identity set.
 - **R-263.** A successful labels sweep still reads as "never ran" in
   `crate doctor`, because R-140's fix stopped the watermark and the reader was
   not told.
 - **R-267 and R-268.** `bound()` and `resolve()` are two constants that must
-  move together the day an adapter lands, and the adapter owns translating its
-  client's authentication failure into `credential-missing` at the seam; the
-  five boundaries now pass a `CratekitError` through and flatten everything
-  else.
-
-## The branches
-
-| branch | state |
-|---|---|
-| `relay/70` | U52, in review, the relay runner merges it |
-| `fix/conformance-3-and-soft-delete-reader` | U59's input, in `.worktrees/conformance`, far behind main |
-
-## What U56 left behind, beyond the code
-
-Twelve residuals, R-245 through R-256. Three are worth knowing before touching
-tagging again:
-
-- **R-245.** No catalogue page shape here has been verified against a live site.
-  Every parser was read from DJ_tools and every test feeds synthetic page text
-  through the injected seam. A wholly broken parser and a working one produce the
-  same green suite. A live call is attended by standing constraint, so an agent
-  can prepare for it and cannot perform it.
-- **R-246 and R-185.** `tag.retag` corrects the files and nothing writes the
-  library row, while the registry declares it writes `db_metadata`. R-185 was
-  driven rather than argued this time, and the measurement found the resumable
-  ledger its closing condition asks for: `jobs.drive` already commits a per item
-  artifact carrying the path, the previous genre and the written one. The
-  deferred half needs a caller, not a new register.
-- **R-255.** `tag.retag` raises its confirm gate before deriving its selection,
-  so a person running it over a folder with nothing to correct still has to
-  record a decision before being told there was nothing to do. Reversed into on
-  purpose, because conformance 3 holds every declared gate to firing.
+  move together the day an adapter lands.
 
 ## Standing decisions
 
@@ -255,8 +199,7 @@ tagging again:
 - **The pending register is empty.** Re-opening any countdown re-arms it.
 - **CI does not run the suite.** A step in the workflow must be able to pass.
 - **Use `scripts/mutate.py`**, cap 25 rows, author's table, gap recorded in one
-  line. U52 and U56 each ran forty by explicit decision under the old method;
-  neither is a precedent to follow silently. Do not edit `tests/` while it runs.
+  line. Run `git status --porcelain` after every return; R-256 says why.
 - **A finding blocks only if its input is REACHABLE and you drove the producer.**
 - **Re-pinning a population means naming what moved.** Difference the SETS
   against `main`'s own tree. A count that moved by the right amount is not a

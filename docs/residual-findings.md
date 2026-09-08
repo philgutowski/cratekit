@@ -11237,6 +11237,15 @@ is left is a missing revoke, bounded by `DEFAULT_ACK_VALIDITY`.
 somebody decides whether an early withdrawal is wanted. A withdrawal is a NEW
 registry entry with its own name, not a change to `session.release`.
 
+**THE ENGINES UNDER THE VOCALS HALF ARE REAL NOW, U58, 2026-09-08.** The two
+verbs are still planned and their markers still stand, by the brief's
+decision that they deserve their own unit. What changed underneath: the
+vocal pass scores a real level through a decoder at the model's rate, the
+calibrate verb writes the vocal cut, and R-277 records what the missing
+re-score verb now costs, a track finalized while the model was unavailable
+is never scored again. The unit that lands `analyze.vocals` finds its engine
+waiting rather than having to fix it first.
+
 ## R-217. A recorded gate answer is replayable, so one run id re-mints forever
 
 **Found:** during U49's document review, 2026-09-02, and confirmed against the
@@ -12225,6 +12234,16 @@ replace five. U52 added the cancel step to its own copy's remediation and
 nothing else, for the reason above: the honest home is one module, and
 `label` cannot import a sibling feature package to share it.
 
+**A SIXTH COPY OF THE TAIL AND A FOURTH OF THE HELPER, U58, 2026-09-08.**
+`analysis/cli.py` carries `_advance`, `_reported` and `_no_op`, and
+`analysis/artifacts.py` is the five function staging helper with two directory
+names changed. R-274 records why the unit copied rather than reached across.
+One fact joined at the second review: U58's round fixed the helper's
+`committed()` in the analysis copy only, so a stray non ordinal `.json`
+beside the reports no longer raises out of the sort key THERE, and the adopt,
+outbound and tagging copies still do. That is the cost this entry predicted,
+landed: a fix in one copy is three copies without it.
+
 ---
 
 ## R-249. A second pacing implementation, and it is deliberately not the first
@@ -13131,6 +13150,14 @@ role that a writer has to honour. Each is a decision, none was in the bound.
 **Closes when:** one decode feeds both passes in the worker, or the cache is
 written and read and a restamp after a re-weighting costs a lookup per file.
 
+**NARROWED AT THE SECOND REVIEW, 2026-09-08.** The double measurement was also
+a DIFFERENT measurement: the head handed its whole track integer tempo into
+the vector and the restamp measured its own from the slice, so the two paths
+scored one file against one calibration with two tempo readings. That half
+is fixed, the vector measures its own tempo everywhere. The window difference
+between a sliced full decode and an offset decode is R-287, and the per item
+re-read of the calibration is R-286.
+
 ---
 
 ## R-279. `analyze.calibrate` measures a folder inline, in the shell process
@@ -13226,3 +13253,168 @@ result grow a reason field the unit's bound did not cover.
 
 **Closes when:** the detector returns a terminal for the absent extra as it
 does for an undecodable file, and the worker's separate guard goes.
+
+---
+
+## R-283. `analyze.restamp` has no rename recovery, and the rule the run uses cannot give it one
+
+**Found:** at the U58 review over the whole branch, 2026-09-08, by the removed behaviour angle.
+
+`handle_restamp` resolves its file through `_item_path` and refuses a missing
+one as `source-missing`. A restamp queued over a folder of unheaded downloads,
+then an `analyze run` driven over the same folder first, renames every file
+under its head before the restamp resumes, and every restamp item fails. The
+run's own recovery does not transfer: it reads the rename intent its OWN
+attempt wrote before its rename, and the restamp's file was renamed by another
+job, which wrote nothing the restamp can see. Matching a headed file by its
+stripped stem is the guess the run stopped making in the same round, because
+it reported a deleted source as analysed when an older twin sat beside it.
+
+**Measured cost.** A failed restamp job with a remedy that works, since queueing
+the restamp again over the folder takes the headed names. Driven on the
+fixture for the run; the restamp shape is read from the same code path.
+
+**Why not fixed here.** An item identity that survives a rename is a change to
+what the queueing verb records, and the honest shape is probably a restamp that
+refuses at the queue a folder holding files with no head, which is a decision
+about what a restamp is for.
+
+**Closes when:** a restamp item is a headed name by construction, or the item
+carries an identity a rename does not change.
+
+---
+
+## R-284. `run_batch` binds the seams in the parent and the pool children start unbound
+
+**Found:** at the U58 review over the whole branch, 2026-09-08, by the removed behaviour angle. Pre-existing for the detector, extended to the decoder by U58.
+
+`analysis.run.run_batch` binds the detector, the vocal loader and now the
+decoder as module state in the calling process, and `light.run` and
+`vocals.run` spawn children with no initializer. On a pooled plan a child
+imports `light` fresh with nothing bound, runs the real `analyse_file`, and
+the vocal children report every partial as model unavailable. A caller's fake
+detector, model and decoder are ignored and the batch reports skipped or
+unscored tracks in their place.
+
+**Measured cost.** None from any verb. The two workers run per item in the
+driver's own process and never enter `run_batch`, and `run_batch` has no caller
+in `src` beyond its own module. Not driven on a pooled plan.
+
+**Why not fixed here.** A pool initializer that re-binds fakes across a spawn
+boundary is R-226's limit again, and the batch entry point is not on the path
+either worker takes.
+
+**Closes when:** the pool carries an initializer that binds the seams in each
+child, or `run_batch` is retired in favour of the per item workers.
+
+---
+
+## R-285. The detector seam carries state the worker has to recognise
+
+**Found:** at the U58 review over the whole branch, 2026-09-08, by the altitude and simplification angles.
+
+`analysis/cli.py` keeps `_BOUND_DETECT`, a shadow of `light._DETECT`, so
+`_fake_detect_bound` can tell the module's own partial from a test's, and it
+reads `light._DETECT` one line after using the `light.bound()` accessor the
+unit added to avoid naming it. The calibration is re-read from disk and a new
+partial bound on every item. `_finalize` and the report accept both `rate`
+and `bpm` as the tempo key with the opposite precedence from `run._as_result`,
+and a detector result carrying a key and no tempo raises `TypeError` in the
+worker, which the item boundary reports as a defect to file rather than as a
+named shape.
+
+**Measured cost.** None to a user through the shipped detector, which always
+returns `rate`. The next seam needing per job state, the vocal threshold for
+R-276 or a device choice for the loader, copies the identity trick or breaks
+it, and R-282's cleanup of `_require_heavy` cannot land while the worker still
+has to know which detector is bound.
+
+**Why not fixed here.** Passing the calibration through `light.analyse` changes
+the seam's signature for every caller including the batch fakes, and the
+tempo key normalisation belongs in the same change.
+
+**Closes when:** `light.analyse` takes the calibration as an argument and
+normalises the detector's result to one tempo key, and the shadow binding and
+its identity check go.
+
+---
+
+## R-286. The undo log is read and rewritten whole for every restamp item
+
+**Found:** at the U58 review over the whole branch, 2026-09-08, by the efficiency angle. Not measured on the tree.
+
+`energy.record_previous` takes the lock, parses the whole undo log, adds one
+entry and atomically rewrites the whole file, once per item. Over a job of n
+tracks that is n reads and n rewrites of a file that grows to n entries, and a
+second restamp over the same folder pays the same again to record nothing.
+The calibration JSON is likewise re-read and re-parsed per item on both
+workers, which the docstring justifies by a calibration written between two
+jobs driven by one process.
+
+**Measured cost.** Unmeasured. The reviewer's estimate over a five thousand
+track library was several million entry serialisations and five thousand
+fsynced replaces. No number here was taken on the tree.
+
+**Why not fixed here.** A line per entry log is a format change to a state
+file `core.config` declares as the only surviving copy of every pre restamp
+value, and a reader of the old format has to survive the change; a per job
+batch means the log is not durable per item, which the per item design chose.
+
+**Closes when:** the log is appended a line at a time under the lock and read
+whole only by whatever restores from it, and the calibration is cached on its
+modification time.
+
+---
+
+## R-287. The run and restamp paths still decode different windows of one file
+
+**Found:** at the U58 review over the whole branch, 2026-09-08, by the cross file angle. The tempo half was fixed in the same round.
+
+`detect.analyse_file` decodes the whole file and `energy.features_from_samples`
+slices the central segment of those samples, while `energy.features_from_path`
+asks the decoder for the central segment by offset and duration. For a lossless
+file the two windows are the same samples; for a lossy one the offset decode
+lands on a frame boundary and the slice does not, so the two vectors differ at
+the edges. The tempo feature no longer differs, since U58's second round made
+the vector measure its own on both paths, but the calibration is fitted from
+the restamp path and scores the run path's window.
+
+**Measured cost.** Unmeasured. A track near a decile cut could take one level
+under `analyze run` and its neighbour under `analyze restamp` with nothing
+changed, and the undo log would record that as a previous value. No fixture in
+the suite decodes real audio, so the size of the edge difference is not known.
+
+**Why not fixed here.** One decode serving both passes is R-278's closing
+condition, and it changes the detect seam's signature.
+
+**Closes when:** R-278 closes, or a test over a lossy fixture shows the two
+windows produce one level.
+
+---
+
+## R-288. `_audio_in` and `tagging.tag.audio_files` derive different item sets from one folder
+
+**Found:** at the U58 review over the whole branch, 2026-09-08, by the reuse angle.
+
+`analysis/cli._audio_in` walks one level with `iterdir` and returns names;
+`tagging.tag.audio_files` walks recursively with `rglob` and returns paths.
+Both filter on `AUDIO_EXTS`, and the analysis one now also drops dotfiles. So
+the same folder queues different item sets under `tag folder` and `analyze
+run`, and a nested download folder is fully tagged and only its top level
+analysed. The same review found the locked JSON read, modify, write spelled a
+fifth time in `energy.record_previous`, beside `label/marks`, `outbound/ledger`,
+`sync/watermarks` and `deletion/watermark`, and the calibrate verb's two hand
+built zero envelopes already drifted in status, `skipped` against `failed`,
+with nothing making the difference deliberate.
+
+**Measured cost.** None driven. A person who tags a nested folder and then
+analyses it finds the sub folders untagged by the second verb and has to
+learn which verb recurses.
+
+**Why not fixed here.** Whether analysis should recurse is a decision the
+source system did not make either way, and the one helper with a `recursive`
+argument is `tagging`'s file, which is U56's.
+
+**Closes when:** one helper in `core` derives a folder's audio items with the
+recursion and dotfile rules as arguments, and both verbs call it; the locked
+JSON update joins `core.config` beside the atomic writer.

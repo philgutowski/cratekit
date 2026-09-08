@@ -42,6 +42,16 @@ Null control `NULL_CONTROL`: killed 0, collected 6929 against 6929. The control 
 
 - `W6_gender_constant` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 
+The line above is the driver's own text at measurement time. The row was a
+test gap, not an inert mutation: the suite asserted the gender was one of
+three letters rather than the letter the fake model calls. Two assertions now
+pin the call, and the row was re-measured in its own one row pass,
+`u58-zero-row-remeasured.md`, where it is killed by two tests. The second fix
+round, 2026-09-08, changed the wav plumbing after this table was measured,
+adding a boundary around the model's inference; that change is covered by a
+test that fails on the tree before it and was not re-measured as a row, per
+the brief's instruction not to run the table again.
+
 ## Considered and dropped
 
 METHOD caps a light pass at 25 rows. These were ranked below the cap and NOT measured. They are not coverage.
