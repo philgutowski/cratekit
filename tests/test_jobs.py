@@ -865,3 +865,118 @@ def test_every_job_verb_refuses_an_unknown_identifier_with_the_same_code(
         code, envelope = _drive_cli([*argv, "no-such-job"])
         assert code == int(ExitCode.PRECONDITION), argv
         assert envelope["cause"]["reason"] == "job-unknown", argv
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Parking: the run stops, the item goes back, and nothing else is claimed
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _blocked() -> Cause:
+    return Cause(
+        reason="provider-blocked",
+        message="the provider refused this client",
+        remediation=Remediation(steps=("check the account",)),
+        scope=Scope.RUN,
+        retryable=False,
+    )
+
+
+def test_a_parked_item_blocks_the_job_and_claims_nothing_further(queue, cfg):
+    """A block is about the client, so the next claim is the second request
+    into it. The engine stops at the first."""
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a", "b", "c"]
+    )
+    seen: list[str] = []
+
+    def handle(_job, item):
+        seen.append(item.item_id)
+        if item.item_id == "b":
+            raise jobs.Parked(_blocked())
+        return None
+
+    result = jobs.drive(store, job.job_id, handle, root=root)
+
+    assert seen == ["a", "b"], "the driver claimed past the block"
+    assert result.job.state is jobs.JobState.BLOCKED
+    assert result.job.cause is not None
+    assert result.job.cause.reason == "provider-blocked"
+    assert result.job.cause.retryable is False
+    assert result.processed == 1
+    assert result.failed == 0
+
+
+def test_the_parked_item_is_released_rather_than_failed(queue, cfg):
+    """Failing it would strand it: ``retry`` re-arms failed items only for a
+    terminal job, and a blocked job is open."""
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a", "b"]
+    )
+
+    def handle(_job, item):
+        if item.item_id == "a":
+            raise jobs.Parked(_blocked())
+        return None
+
+    jobs.drive(store, job.job_id, handle, root=root)
+
+    states = {item.item_id: item.state for item in jobs.items(store, job.job_id)}
+    assert states == {"a": jobs.ItemState.PENDING, "b": jobs.ItemState.PENDING}
+    assert all(item.claimed_by is None for item in jobs.items(store, job.job_id))
+    assert all(item.cause is None for item in jobs.items(store, job.job_id))
+
+
+def test_a_blocked_job_is_re_driven_from_the_parked_item_on_the_next_drive(queue, cfg):
+    """The person resumes after checking the account, and the item that was in
+    flight is the first one redone. Done items stay done."""
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a", "b"]
+    )
+    attempts: list[str] = []
+    park = {"b"}
+
+    def handle(_job, item):
+        attempts.append(item.item_id)
+        if item.item_id in park:
+            raise jobs.Parked(_blocked())
+        return None
+
+    jobs.drive(store, job.job_id, handle, root=root)
+    park.clear()
+    result = jobs.drive(store, job.job_id, handle, root=root)
+
+    assert attempts == ["a", "b", "b"]
+    assert result.job.state is jobs.JobState.SUCCEEDED
+    assert result.job.cause is None
+
+
+def test_parked_is_not_the_item_boundary(queue, cfg):
+    """A plain refusal still fails the item and moves on; only the park signal
+    stops the run. Both shapes in one job, so the difference is measured rather
+    than assumed."""
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a", "b", "c"]
+    )
+
+    def handle(_job, item):
+        if item.item_id == "a":
+            raise CratekitError(_throttled())
+        if item.item_id == "c":
+            raise jobs.Parked(_blocked())
+        return None
+
+    result = jobs.drive(store, job.job_id, handle, root=root)
+
+    states = {item.item_id: item.state for item in jobs.items(store, job.job_id)}
+    assert states == {
+        "a": jobs.ItemState.FAILED,
+        "b": jobs.ItemState.DONE,
+        "c": jobs.ItemState.PENDING,
+    }
+    assert result.job.state is jobs.JobState.BLOCKED
+    assert result.failed == 1
