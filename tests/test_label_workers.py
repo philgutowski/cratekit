@@ -41,6 +41,7 @@ import pytest
 
 from cratekit.cli import handlers, registry
 from cratekit.core import config, jobs, review, tombstone
+from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.label import catalogue, sweep
 from cratekit.label import cli as label_cli
@@ -309,6 +310,21 @@ def test_the_empty_registry_refusal_names_the_command_that_fixes_it(installed):
     assert code == int(ExitCode.PRECONDITION), refused
     steps = refused["cause"]["remediation"]["steps"]
     assert any("crate label registry add" in step for step in steps), steps
+
+
+def test_the_empty_registry_refusal_says_that_no_label_is_registered(installed):
+    """The sentence, pinned, because the slug and the steps were and it was not.
+
+    A reword of this message survived the mutation table with zero deaths: the
+    cause was asserted and the remedy was asserted and the one thing a person
+    actually reads was not. The state it has to name is that no favourite label
+    is REGISTERED, which is what distinguishes it from a sweep whose registry
+    could not be read or whose labels all listed nothing.
+    """
+    del installed
+    _, refused = drive(["sync", "labels"])
+    said = refused["cause"]["message"]
+    assert "no favourite label is registered" in said, said
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -814,6 +830,184 @@ def test_a_label_whose_crawl_listed_nothing_at_all_still_succeeds(
     assert offers(installed) == {}
 
 
+def test_a_sweep_that_confirmed_some_of_what_it_read_succeeds_and_offers_those(
+    installed, monkeypatch
+):
+    """The other arm of the refusal's conjunction, which nothing had pinned.
+
+    The unconfirmed refusal is keyed on BOTH an empty increment AND a dropped
+    population. A build that refused on the dropped population alone would fail
+    every sweep in which one release was credited to a distributor, over a label
+    it had just offered the rest of. A partial confirmation is the ordinary case
+    for a real catalogue, so it has to succeed, and what it confirmed has to be
+    sitting in the review queue when it does.
+    """
+    register(LABELS[0])
+    bind(
+        monkeypatch,
+        FakeCatalogue(
+            artists={
+                SLUGS[0]: FakePagedArtist(
+                    [FakeRelease(release_id) for release_id in RELEASES[SLUGS[0]]]
+                )
+            },
+            confirmed={"hf-1"},
+        ),
+    )
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert offers(installed) == {"hf-1": SLUGS[0]}
+
+
+class SessionExpiredAtVerification(FakeCatalogue):
+    """A catalogue whose listings answer and whose verification refuses in kind.
+
+    The refusal is one of THIS PRODUCT'S, ``credential-missing``, which is what an
+    adapter raises when it discovers at call time that the stored provider
+    session has expired. That names an act the person can take. The two
+    verification boundaries, the sweep's and the harvest's, each let a
+    ``CratekitError`` through unchanged and flatten only a foreign exception,
+    and neither passthrough had a test: removing either layer left the suite
+    green, because every fake that failed verification failed it with a
+    ``RuntimeError``.
+    """
+
+    def search_release(self, claimed: str, release: object) -> dict:
+        del claimed, release
+        raise refuse(
+            "credential-missing",
+            "the stored provider session expired between the listing and the "
+            "verification",
+            origin=("tests",),
+        )
+
+    def check_label(self, name: str) -> dict:
+        del name
+        raise refuse(
+            "credential-missing",
+            "the stored provider session expired between the listing and the "
+            "verification",
+            origin=("tests",),
+        )
+
+
+def test_a_refusal_the_sweep_verifier_raises_in_kind_keeps_its_own_reason(
+    installed, monkeypatch
+):
+    """An expired session is not "this source could not list".
+
+    Flattening it would send a person to wait for a network that is fine, when
+    the act that repairs it is a login. The cause is read off the item row, as
+    every failing round in this file reads it.
+    """
+    del installed
+    register(LABELS[0])
+    bind(
+        monkeypatch,
+        SessionExpiredAtVerification(
+            artists={
+                SLUGS[0]: FakePagedArtist(
+                    [FakeRelease(release_id) for release_id in RELEASES[SLUGS[0]]]
+                )
+            }
+        ),
+    )
+    job_id = queued_job(["sync", "labels"])
+
+    code, failed = drive(["sync", "labels", "--job", job_id])
+
+    assert code != int(ExitCode.OK), failed
+    assert item_causes(job_id) == {SLUGS[0]: "credential-missing"}
+
+
+def test_a_revoked_tombstone_no_longer_keeps_a_release_out_of_the_queue(
+    installed, monkeypatch
+):
+    """A lifted suppression lifts, which the one read of the store has to honour.
+
+    ``DecisionStore.suppressions`` filters to the suppressing records by default
+    and keeps the revoked ones in the document, so a snapshot that asked for
+    every record would carry a decision the person already reversed and keep the
+    release out of the queue for ever, silently. The sibling test above proves a
+    live tombstone suppresses; this one proves a revoked one does not.
+    """
+    register(LABELS[0])
+    store = review.DecisionStore(tombstone.STORE_KEY, installed)
+    recorded = store.record(
+        kind=tombstone.KIND_VERSION,
+        identity=tombstone.version_identity(artist="Label Act", title="Release hf-1"),
+        actor="tests",
+    )
+    store.revoke(recorded.suppression_id, actor="tests")
+    bind(monkeypatch, readable(SLUGS[0]))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
+
+
+def corrupt_tombstone_store(cfg: config.Config) -> None:
+    """Leave a document in the tombstone store's place that it must refuse.
+
+    A top level list is good JSON and is not this store, which is exactly the
+    shape ``DecisionStore._read`` learned to refuse rather than read as empty.
+    """
+    path = review.DecisionStore(tombstone.STORE_KEY, cfg).path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("[]\n")
+
+
+def test_an_unreadable_tombstone_store_does_not_fail_a_label_with_nothing_to_ask(
+    installed, monkeypatch
+):
+    """THE LAZY READ, which is the behaviour preserving half of the one-read change.
+
+    The per release form only opened the store when a confirmed release asked
+    whether it was suppressed, so a label whose crawl listed nothing never read
+    it and never met its refusal. A snapshot taken when the reader is built
+    would refuse that same label over a file the sweep had no question for. The
+    pair below is the composite: the refusal still fires on exactly the runs
+    that used to raise it.
+    """
+    register(LABELS[0])
+    corrupt_tombstone_store(installed)
+    bind(monkeypatch, FakeCatalogue(artists={SLUGS[0]: FakePagedArtist([])}))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+
+
+def test_an_unreadable_tombstone_store_still_refuses_a_label_with_a_confirmed_release(
+    installed, monkeypatch
+):
+    """The composite for the test above: deferring the read did not lose the refusal.
+
+    A confirmed release has to ask whether it is suppressed, and an unreadable
+    suppression list read as empty would re-offer exactly what somebody removed
+    on purpose. So this run refuses, with the store's own reason and not a
+    lookup failure, because nothing about the provider went wrong.
+    """
+    register(LABELS[0])
+    corrupt_tombstone_store(installed)
+    bind(monkeypatch, readable(SLUGS[0]))
+    job_id = queued_job(["sync", "labels"])
+
+    code, failed = drive(["sync", "labels", "--job", job_id])
+
+    assert code != int(ExitCode.OK), failed
+    assert item_causes(job_id) == {SLUGS[0]: "review-file-unusable"}
+    assert offers(installed) == {}
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 7. The resume branch
 # ═══════════════════════════════════════════════════════════════════════════
@@ -867,6 +1061,32 @@ def test_a_second_resume_of_a_failed_sweep_still_does_not_exit_ok(
     assert code != int(ExitCode.OK), again
     assert again["cause"]["reason"] == "unavailable-transient"
     assert job_state(job_id) == str(jobs.JobState.FAILED)
+
+
+def test_a_resume_of_a_cancelled_sweep_does_not_exit_ok_over_the_items_it_never_ran(
+    installed, monkeypatch
+):
+    """ANY closed job carrying a cause, not FAILED alone.
+
+    A run stopped with a signal is CANCELLED, and ``jobs.cancel`` writes a cause
+    on it. A resume predicate narrowed to FAILED would skip the drive, because a
+    cancelled job is not open, and then skip the re-raise too, exiting 0 over a
+    job with none of its items done. Measured on 2026-09-02 as exactly that, and
+    it survived the mutation table because nothing here had ever cancelled a job.
+    """
+    del installed
+    register(*LABELS)
+    bind(monkeypatch, readable(*SLUGS))
+    job_id = queued_job(["sync", "labels"])
+    with jobs.open_store() as store:
+        jobs.cancel(store, job_id)
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code != int(ExitCode.OK), resumed
+    assert resumed["cause"]["reason"] == "cancelled"
+    assert job_state(job_id) == str(jobs.JobState.CANCELLED)
+    assert set(item_states(job_id).values()) == {str(jobs.ItemState.PENDING)}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1247,3 +1467,29 @@ def test_a_harvest_that_fails_mid_verification_names_what_it_already_offered(
     assert code != int(ExitCode.OK), refused
     assert harvested(installed) == [CONFIRMED]
     assert refused["cause"]["detail"]["offered"] == [CONFIRMED]
+
+
+def test_a_refusal_the_harvest_verifier_raises_in_kind_keeps_its_own_reason(
+    installed, monkeypatch
+):
+    """The harvest half of the passthrough the sweep test in section 6 pins.
+
+    ``_label_verifier`` lets a ``CratekitError`` through and wraps only a foreign
+    exception as ``label-playlist-unreadable``. An expired session discovered at
+    verification is a login, not an unreadable playlist, and a person told the
+    playlist could not be read would go and check a playlist that is fine.
+    """
+    del installed
+    bind(
+        monkeypatch,
+        SessionExpiredAtVerification(
+            playlists={
+                PLAYLIST: FakePagedPlaylist([FakeTrack("t1", copyright="2026 Anjunadeep")])
+            }
+        ),
+    )
+
+    code, refused = run_harvest()
+
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "credential-missing"

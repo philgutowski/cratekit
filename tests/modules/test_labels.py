@@ -902,3 +902,60 @@ def test_a_registered_label_with_no_artist_object_refuses_rather_than_skipping(c
         _increment(cfg, source)
 
     assert excinfo.value.cause.reason == "sync-source-lookups-failed"
+
+
+def test_the_missing_artist_refusal_names_the_missing_object_not_the_listing(cfg):
+    """REMOVE EACH GUARD LAYER ALONE, and this is the layer the test above cannot see.
+
+    A source that answered ``None`` for the missing artist object would still
+    refuse, one layer down: ``_crawl_or_refuse`` finds no listing method on
+    ``None`` and raises for that. So the test above passes with the guard in
+    ``_artist_for`` deleted, and a guard covered by another guard is a guard
+    nothing covers. The two refusals send a person to different places, a
+    catalogue that never produced an object against an object that cannot be
+    paged, so the sentence is what distinguishes them and the sentence is what
+    is pinned.
+    """
+    _label_source_id, source = _label_source(
+        cfg,
+        "Life and Death",
+        artists={},
+        verify=_always_confirm,
+    )
+
+    with pytest.raises(run.LookupFailure) as excinfo:
+        source.list_recent(10)
+
+    said = str(excinfo.value)
+    assert "no catalogue object was available" in said, said
+    assert "Life and Death" in said, said
+
+
+def test_a_source_with_neither_verifier_nor_catalogue_refuses_rather_than_confirming_nothing(
+    cfg,
+):
+    """The verifier's own missing-object case, which the docstring names and no test drove.
+
+    A source built with neither piece cannot confirm anything, and a stub that
+    answered "unconfirmed" for every release would drop them all and hand the
+    increment an empty result over a catalogue it read in full. That is the
+    absence-as-evidence shape in one more place, and it is a lookup failure
+    rather than a sweep that found nothing.
+    """
+    from cratekit.label import registry as labels
+
+    _label_source_id, source = _label_source(
+        cfg,
+        "Life and Death",
+        artists={
+            labels.slug("Life and Death"): PagedArtist(
+                [Album("a", year="2026", artist="X", title="A")]
+            )
+        },
+    )
+
+    with pytest.raises(run.LookupFailure) as excinfo:
+        source.list_recent(10)
+
+    assert "neither a verification callable nor a catalogue" in str(excinfo.value)
+    assert source.dropped == ()
