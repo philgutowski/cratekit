@@ -1,0 +1,300 @@
+name = "u54-acquisition-worker"
+pass_kind = "light"
+
+# U54's own diff: the queue side guards in acquire/cli.py, the worker's answer
+# reading, the landing checks, and the engine's new park seam in core/jobs.py.
+# The unit binds a verb that WRITES files into the library's staging root, so
+# every user facing guard is measured and a zero on one owes a composite.
+
+[[rows]]
+id = "G1_origin_refusal"
+description = "Queue a list from any provider, dropping the refusal that only the provider's own list carries acquirable identifiers"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    if origin != match.TIDAL:
+        raise _unusable(
+            f"this is a {origin} list, and acquiring needs the provider's own track "
+            f"identifiers, which only a list fetched from the provider carries",
+            "fetch the playlist from the provider into a list document first, "
+            "then acquire that",
+            "a pasted tracklist is matched against the library with match.run; "
+            "its missing rows carry acquisition options, not identifiers",
+            origin=origin,
+        )
+'''
+new = ""
+
+[[rows]]
+id = "G2_missing_identifier"
+description = "Queue a provider list whose rows carry no identifier, dropping the by-position refusal"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    if missing:
+        raise _unusable(
+            f"{len(missing)} track(s) in this list carry no provider identifier "
+            f"(positions {', '.join(str(p) for p in missing[:5])}"
+            f"{', ...' if len(missing) > 5 else ''}), so nothing can ask the "
+            f"provider for them",
+            "fetch the list from the provider again so every row carries its id",
+            positions=missing,
+        )
+'''
+new = ""
+
+[[rows]]
+id = "G4_zero_item_noop"
+description = "Enqueue a job for a list that read to no tracks, the zero item rule's own shape"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''        if not tracks:
+            return ctx.envelope(data=_no_op("no-tracks"), outcome=Outcome.NO_OP)
+'''
+new = ""
+
+[[rows]]
+id = "G6_resume_drives_open_job"
+description = "Report the reconciled job without driving it, so a resume does no work"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''                _, warnings = ctx.run_job(store, job)
+                job = jobs.get(store, job.job_id)
+'''
+new = ""
+
+[[rows]]
+id = "G7_staging_cleared"
+description = "Keep whatever a killed attempt left in the item's staging directory"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    if directory.exists():
+        shutil.rmtree(directory)
+'''
+new = ""
+
+[[rows]]
+id = "G8_park_on_block"
+description = "Read a parked run as an ordinary result, so the driver claims the next item into a provider block"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    if run.parked is not None:
+        raise jobs.Parked(run.parked)
+'''
+new = ""
+
+[[rows]]
+id = "G9_failed_invocation"
+description = "Ignore an invocation the adapter could not run at all"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    if invocation.outcome in FAILED_INVOCATIONS:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "G10_absent_result"
+description = "Drop the refusal for a run that reported OK with no result for this key"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    if result is None:
+        raise refuse(
+            "unavailable-transient",
+            f"{invocation.adapter} finished without reporting on {request.key}, "
+            f"so nothing is known about it and it stays queued",
+            remedy=Remedy.RETRY_LATER,
+            scope=Scope.ITEM,
+            retryable=True,
+            origin=("acquire.cli",),
+            detail={"adapter": invocation.adapter, "key": request.key},
+        )
+'''
+new = ""
+
+[[rows]]
+id = "G11_not_acquired"
+description = "Commit a per-track result that is not an acquisition"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    if result.outcome is not TrackOutcome.ACQUIRED:
+        raise _refused_track(result, invocation.adapter)
+'''
+new = ""
+
+[[rows]]
+id = "G12_landing_check"
+description = "Take the adapter's word for the landed file, skipping the policy check at the file"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    landed = checked_landing(Path(str(result.path)), request.key, policy=per_item.lossless_policy)'''
+new = '''    landed = Path(str(result.path))'''
+
+[[rows]]
+id = "G14_marker_applied"
+description = "Commit a lossy landing under its unmarked name whatever the policy required"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    if not required:
+        return landed.name
+'''
+new = '''    return landed.name
+'''
+
+[[rows]]
+id = "G15_no_marker_text"
+description = "Commit a lossy landing unmarked when the configuration names no marker text"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    if not text:
+        raise refuse(
+            "lossy-refused",
+            f"{landed.name} landed lossy under a policy that permits lossy only "
+            f"when marked, and the configuration names no marker text, so it "
+            f"cannot be marked and is not kept",
+            remedy=Remedy.RELAX_LOSSLESS_POLICY,
+            scope=Scope.ITEM,
+            origin=("acquire.cli",),
+            detail={"path": str(landed)},
+        )
+'''
+new = ""
+
+[[rows]]
+id = "G17_paced_sleep_bound"
+description = "Let the pool bind its own definition time sleep instead of the one the frozen configuration paces"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    run = download.acquire_paced(adapter, (request,), sleep=_SLEEP)'''
+new = '''    run = download.acquire_paced(adapter, (request,))'''
+
+[[rows]]
+id = "G19_frozen_config"
+description = "Build the adapter settings from a fresh load rather than the configuration the job was frozen against"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    settings = AdapterSettings.from_config(cfg)'''
+new = '''    settings = AdapterSettings.from_config(_load())'''
+
+[[rows]]
+id = "G20_output_exists"
+description = "Replace a file already at the destination instead of refusing"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    if final.exists():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "G21_park_releases_item"
+description = "Park the job with the claimed item still claimed, so the resume cannot redo it"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+old = '''                    release_claims(store, job_id, driver=driver)
+                    result.job = block(store, job_id, exc.cause.at("jobs.drive"))'''
+new = '''                    result.job = block(store, job_id, exc.cause.at("jobs.drive"))'''
+
+[[rows]]
+id = "G22_park_before_item_boundary"
+description = "Drop the park seam entirely, so a block falls through to the item boundary and fails the track"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+old = '''                except Parked as exc:
+                    # BEFORE the item boundary below, which would fail the item
+                    # and claim the next one. The next claim is the second
+                    # request into a block, which is the one thing the pacing
+                    # layer exists to never make. The item goes back to pending
+                    # and the job records why it stopped.
+                    release_claims(store, job_id, driver=driver)
+                    result.job = block(store, job_id, exc.cause.at("jobs.drive"))
+                    return result
+'''
+new = ""
+
+[[dropped]]
+id = "G16_invocation_retryable"
+description = "Flatten retryable on an invocation refusal to False for every outcome"
+reason = "ranked below the cap: the retryable flag rides the same two refusal builders G9 and G11 already measure, and the item's slug rather than its flag is what the person is shown"
+
+[[dropped]]
+id = "G24_track_retryable"
+description = "Flatten transient on a per-track refusal so every outcome reads permanent"
+reason = "ranked below the cap for G16's reason, the same builder measured from a different field"
+
+[[dropped]]
+id = "G25_remedy_fallback"
+description = "Drop the fallback in _remedy so a result carrying no remedy token raises instead"
+reason = "ranked below the cap: maintainer facing, and every fixture in the suite carries a remedy token, so the fallback's reachability is unmeasured"
+
+[[dropped]]
+id = "G26_marked_stem_form"
+description = "Append the marker after the suffix rather than into the stem"
+reason = "ranked below the cap: G14 already measures whether the marker reaches the name at all, and the naming engine's stem reading is U40's guard rather than this unit's"
+
+# ── The fix round's own guards ──────────────────────────────────────────────
+# Five rows added after the review, and five originals moved to `dropped` to
+# stay under METHOD's cap of 25. Each of these five is a defect the review
+# found and this round fixed, so a zero here is a fix nothing would notice
+# being reverted.
+
+[[rows]]
+id = "G27_remedy_absent_stays_absent"
+description = "Restore the non-transient remedy fallback, so a delisted track is told to relax the lossless policy"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''        remedy=_remedy(result.remedy, Remedy.RETRY_LATER if transient else None),'''
+new = '''        remedy=_remedy(result.remedy, Remedy.RETRY_LATER if transient else Remedy.RELAX_LOSSLESS_POLICY),'''
+
+[[rows]]
+id = "G28_marker_decided_by_the_file"
+description = "Take the marker requirement from the offer's claim alone, so a lying offer commits an unmarked lossy file"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    required = result.requires_lossy_marker or lossy_landing(
+        landed, policy=per_item.lossless_policy
+    )'''
+new = '''    required = result.requires_lossy_marker'''
+
+[[rows]]
+id = "G29_auth_failure_parks"
+description = "Fail the item on a dead credential instead of parking, so the driver re-authenticates once per remaining track"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''        if invocation.outcome is InvocationOutcome.AUTH_FAILED:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "G30_zero_item_resume"
+description = "Drive an open job that has no items, reporting success over a list nothing read"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''                if not jobs.items(store, job.job_id):'''
+new = '''                if False:'''
+
+[[rows]]
+id = "G31_reader_sees_the_path_as_typed"
+description = "Absolutise before the read again, so a pasted web address defeats the reader's URL refusal"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''        wanted = match_cli.read_list(given)'''
+new = '''        wanted = match_cli.read_list(given.expanduser().absolute())'''
+
+[[dropped]]
+id = "G3_repeat_folds_first_wins"
+description = "Last occurrence of a repeated identifier wins instead of the first"
+reason = "dropped at the fix round to make room for the round's own guards: a repeat asks for the same file either way, so what moves is which row's artist and title are frozen, not what lands"
+
+[[dropped]]
+id = "G5_list_frozen_absolute"
+description = "Freeze the list path as given rather than absolute"
+reason = "dropped at the fix round: the fix split that line, and G31 measures the half a defect was actually found in"
+
+[[dropped]]
+id = "G13_unreadable_is_transient"
+description = "Report a file nothing could read as a policy refusal rather than a transient failure"
+reason = "dropped at the fix round: G12 removes the landing check whole, so the branch is measured; this row measured only which slug it carries"
+
+[[dropped]]
+id = "G18_per_item_staging"
+description = "Point the adapter at the shared staging root rather than this item's own directory"
+reason = "dropped at the fix round: G7 measures the staging tree's clearing, which is the half a partial download travels through"
+
+[[dropped]]
+id = "G23_handler_bound"
+description = "Unbind the download handler key"
+reason = "dropped at the fix round: a named test resolves the key to this worker directly, so the row's only news would be that test disappearing"
