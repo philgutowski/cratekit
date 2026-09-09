@@ -81,6 +81,12 @@ class Landing:
     #: ``fetch_raises_times`` bounds it, so a rate limit can be made to clear.
     fetch_raises: BaseException | None = None
     fetch_raises_times: int | None = None
+    #: SKIP RATHER THAN WRITE when a file is already at the landing name, which
+    #: is what the wrapped tool does: it reports a skip as a successful call
+    #: carrying a path, the shape the vendoring notes are written about. A fake
+    #: that always writes overwrites whatever a killed attempt left behind, and
+    #: a test over stale staging then passes whether or not anything cleared it.
+    skips_when_present: bool = False
 
 
 @dataclass
@@ -145,6 +151,8 @@ class FakeSource:
         suffix, payload = _audio(landing.kind)
         destination.mkdir(parents=True, exist_ok=True)
         path = destination / f"{request.key}{suffix}"
+        if landing.skips_when_present and path.exists():
+            return path
         path.write_bytes(payload)
         return path
 

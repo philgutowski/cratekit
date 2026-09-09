@@ -290,7 +290,16 @@ def test_the_landing_is_staged_per_item_and_committed_rather_than_written_in_pla
 def test_a_partial_file_left_in_staging_does_not_poison_the_next_attempt(
     cfg, script, library
 ):
-    script.landings = landings("1")
+    """THE TOOL SKIPS RATHER THAN OVERWRITES, which is what makes the clear a
+    guard rather than a tidy up.
+
+    Measured 2026-09-09: with a fake that always writes its landing, reverting
+    the clear killed nothing in a suite of 6991, because the fresh write
+    replaced the stale bytes on its own. The wrapped tool reports a skip as a
+    successful call carrying the path already there, so the half download is
+    what gets handed on as the track. The fake skips here for the same reason.
+    """
+    script.landings = landings("1", skips_when_present=True)
     job_id = queued(listed(library, [("1", "A", "T")]))
     stale = Path(cfg.paths.download_staging) / acquire_cli.ACQUIRE_STAGING_DIRNAME / job_id / "0"
     stale.mkdir(parents=True)
