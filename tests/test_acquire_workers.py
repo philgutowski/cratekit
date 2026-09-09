@@ -290,7 +290,16 @@ def test_the_landing_is_staged_per_item_and_committed_rather_than_written_in_pla
 def test_a_partial_file_left_in_staging_does_not_poison_the_next_attempt(
     cfg, script, library
 ):
-    script.landings = landings("1")
+    """THE TOOL SKIPS RATHER THAN OVERWRITES, which is what makes the clear a
+    guard rather than a tidy up.
+
+    Measured 2026-09-09: with a fake that always writes its landing, reverting
+    the clear killed nothing in a suite of 6991, because the fresh write
+    replaced the stale bytes on its own. The wrapped tool reports a skip as a
+    successful call carrying the path already there, so the half download is
+    what gets handed on as the track. The fake skips here for the same reason.
+    """
+    script.landings = landings("1", skips_when_present=True)
     job_id = queued(listed(library, [("1", "A", "T")]))
     stale = Path(cfg.paths.download_staging) / acquire_cli.ACQUIRE_STAGING_DIRNAME / job_id / "0"
     stale.mkdir(parents=True)
@@ -348,23 +357,67 @@ def test_a_mid_batch_refusal_fails_that_item_leaves_the_job_resumable_and_the_re
     assert [r.key for r in script.fetched[fetched_before:]] == ["2"]
 
 
-def test_an_authentication_failure_names_the_replacement_path_on_the_item(
+def test_an_authentication_failure_parks_the_run_and_names_the_replacement_path(
     cfg, script, library
 ):
-    """AE9 through the queue: the session is dead, and the row says where to go."""
-    script.landings = landings("1")
+    """AE9 through the queue: the session is dead, and the row says where to go.
+
+    PARKED RATHER THAN FAILED PER ITEM. The worker builds an adapter and
+    authenticates inside every item, so failing the item lets the driver claim
+    the next one and log in again. The job stops on the first refusal with the
+    cause the adapter gave, and every remaining track stays pending.
+    """
+    script.landings = landings("1", "2", "3")
     script.authenticate_raises = AdapterAuthFailed("the provider rejected the stored session")
-    job_id = queued(listed(library, [("1", "A", "T")]))
+    job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U"), ("3", "C", "V")]))
 
     code, envelope = drive(resume_argv(job_id))
 
-    assert code != int(ExitCode.OK)
-    assert envelope["cause"]["reason"] == "no-evidence"
-    item = items_of(job_id)[0]
-    assert item.cause is not None and item.cause.reason == "auth-failed"
-    assert item.cause.remediation.remedy == Remedy.REAUTHENTICATE_PROVIDER
-    assert "streamrip" in item.cause.message
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["state"] == "blocked"
+    cause = envelope["data"]["cause"]
+    assert cause["reason"] == "auth-failed"
+    assert cause["remediation"]["remedy"] == Remedy.REAUTHENTICATE_PROVIDER
+    assert "streamrip" in cause["message"]
+    assert states(job_id) == {
+        "1": jobs.ItemState.PENDING,
+        "2": jobs.ItemState.PENDING,
+        "3": jobs.ItemState.PENDING,
+    }
     assert script.fetched == [], "a fetch was attempted with a dead session"
+
+
+def test_a_dead_session_logs_in_once_and_not_once_per_track(cfg, script, library):
+    """The measured cost of failing the item instead: one login per remaining
+    track, into the account the lockout applies to."""
+    script.landings = landings("1", "2", "3", "4", "5")
+    script.authenticate_raises = AdapterAuthFailed("the provider rejected the stored session")
+    job_id = queued(
+        listed(
+            library,
+            [("1", "A", "T"), ("2", "B", "U"), ("3", "C", "V"), ("4", "D", "W"), ("5", "E", "X")],
+        )
+    )
+
+    drive(resume_argv(job_id))
+
+    assert len(script.constructed) == 1, "the adapter was rebuilt for a track after the refusal"
+
+
+def test_a_broken_adapter_fails_the_item_and_does_not_park_the_run(cfg, script, library):
+    """The asymmetry, asserted so it cannot be flattened by accident. A dead
+    CREDENTIAL stops the run; a broken TOOL fails the track it broke on, because
+    the crash may be about that track and a fifty track sync should not end on
+    one bad file."""
+    script.landings = landings("1", "2")
+    script.authenticate_raises = AdapterBroken("the vendored tool is not installed")
+    job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
+
+    drive(resume_argv(job_id))
+
+    assert job_of(job_id).state is not jobs.JobState.BLOCKED
+    assert causes(job_id)["1"] == "adapter-broken"
+    assert states(job_id) == {"1": jobs.ItemState.FAILED, "2": jobs.ItemState.FAILED}
 
 
 def test_a_provider_block_parks_the_job_and_makes_no_further_request(
@@ -438,6 +491,11 @@ def test_a_track_the_provider_does_not_have_is_permanent_and_carries_no_remedy(
     assert item.cause is not None
     assert item.cause.reason == "unavailable-permanent"
     assert item.cause.retryable is False
+    # THE POINT OF THE NAME. There is nothing to do about a track the provider no
+    # longer has, and the remedy this refusal must never carry is the one that
+    # tells somebody to weaken the lossless policy over it.
+    assert item.cause.remediation.remedy != Remedy.RELAX_LOSSLESS_POLICY
+    assert item.cause.remediation.remedy is Remedy.CHANGE_POLICY_OR_INPUT
     assert script.fetched == []
 
 
@@ -524,6 +582,30 @@ def test_a_lossy_landing_under_the_permissive_policy_is_committed_marked(
     marker = cfg.naming.lossy_marker
     assert item.artifact == str(Path(cfg.paths.download_staging) / f"1 {marker}.mp3")
     assert Path(item.artifact).is_file()
+
+
+def test_a_lying_offer_under_the_permissive_policy_is_still_committed_marked(
+    library, script
+):
+    """R21's forbidden state, reached through the offer rather than the file.
+
+    The provider says lossless and lands lossy. ``requires_lossy_marker`` is
+    derived from the OFFER, and the codec check inside the landing is strict
+    policy's only, so trusting the claim commits an unmarked lossy file, which
+    is the single state the audit verb exists to find. The marker is decided by
+    the file instead.
+    """
+    cfg = _configure(library, lossless_policy="allow_lossy_marked")
+    script.landings = landings("1", kind="lossy", offer_lossless=True)
+    job_id = queued(listed(library, [("1", "A", "T")]))
+
+    code, envelope = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), envelope
+    item = items_of(job_id)[0]
+    assert item.state is jobs.ItemState.DONE
+    marker = cfg.naming.lossy_marker
+    assert Path(item.artifact).name == f"1 {marker}.mp3"
 
 
 def test_a_lossless_landing_under_the_permissive_policy_is_not_marked(library, script):
@@ -664,17 +746,25 @@ def test_the_shipped_adapter_is_constructed_through_build_and_refuses_with_a_nam
     _configure(library, adapter="tidal_dl_ng")
     job_id = queued(listed(library, [("1", "A", "T")]))
 
-    code, envelope = drive(resume_argv(job_id))
+    drive(resume_argv(job_id))
 
-    assert code != int(ExitCode.OK)
+    # THE CAUSE LANDS WHERE THE REFUSAL BELONGS, and this test asserts the pair
+    # rather than picking one: a dead credential parks the JOB with the track
+    # released, and a broken tool fails the ITEM. Which of the two an offline
+    # machine produces depends on what is in its keychain, so both are read.
+    job = job_of(job_id)
     item = items_of(job_id)[0]
-    assert item.cause is not None
-    assert item.cause.reason in {"auth-failed", "adapter-broken"}
-    assert item.cause.remediation.remedy in {
+    parked = job.state is jobs.JobState.BLOCKED
+    cause = job.cause if parked else item.cause
+    assert cause is not None
+    assert cause.reason in {"auth-failed", "adapter-broken"}
+    assert cause.remediation.remedy in {
         Remedy.REAUTHENTICATE_PROVIDER,
         Remedy.REPAIR_CREDENTIAL_STORE,
     }
-    assert "streamrip" in item.cause.message
+    assert "streamrip" in cause.message
+    assert (cause.reason == "auth-failed") is parked
+    assert item.state is (jobs.ItemState.PENDING if parked else jobs.ItemState.FAILED)
     assert script.constructed == [], "the fake was constructed instead of the real adapter"
 
 
@@ -690,6 +780,46 @@ def test_a_configuration_naming_an_unknown_adapter_fails_the_item_by_name(librar
     item = items_of(job_id)[0]
     assert item.cause is not None
     assert "no-such-adapter" in item.cause.message
+
+
+def test_a_pasted_web_address_gets_the_readers_own_refusal(cfg, library):
+    """The most likely wrong input, and the sentence that tells them what to do.
+
+    ``read_list`` refuses a URL by matching a scheme at the front of the string.
+    Absolutising the path before the read turns ``https://host/x`` into a
+    relative path under the working directory, which that guard cannot match,
+    and the person gets a file-not-found over a mangled path instead.
+    """
+    code, envelope = drive(["--output", "json", "acquire", "download", "https://tidal.com/p/1"])
+
+    assert code != int(ExitCode.OK)
+    assert "web address" in envelope["cause"]["message"]
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
+def test_an_open_job_with_no_items_refuses_rather_than_reporting_success(cfg, library):
+    """A job queued before this unit carries a frozen list path and no items.
+
+    Driving it settles nothing and the engine's success transition then reports
+    every track acquired over a list nothing read, which is R-198's empty queue
+    wearing a full one's clothes. ``adopt`` and ``tagging`` both guard this;
+    ``master`` does not need to, because it always queues exactly one item.
+    """
+    path = listed(library, [("1", "A", "T")])
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key="acquire.download",
+            payload={acquire_cli.LIST: str(path)},
+            cfg=cfg,
+        )
+
+    code, envelope = drive(resume_argv(job.job_id))
+
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "internal-error"
+    assert job_of(job.job_id).state is not jobs.JobState.SUCCEEDED
 
 
 def test_the_registry_entry_still_declares_the_argv_builder_the_resume_uses(cfg, library):

@@ -4,50 +4,54 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-08, U58 on `relay/76`, taken from the board as issue
-#76 and run as relay task 76.** Five commits of the unit already existed on
-the local branch `u58/pre-relay-76`, built by relay task 76's first run on
-2026-09-07 and ended by a session limit while it was writing the record. This
-session fast forwarded them onto `relay/76`, then did what that record still
-owed: the built in review ran again over the whole diff against main from
-eight angles, fourteen of its findings held and were fixed with a test each
-that fails on the tree before the fix, the rest are R-283 through R-288 with
-amendments to R-216, R-248 and R-278, one learning is filed, and this file is
-rewritten. The mutation table was measured on the first run and stands; the
-second fix round did not re-run it, by the brief's instruction, and the
-table's zero row note says which change it does not cover. **The pending
-register is still EMPTY.**
+**Last session 2026-09-09, U54 finished on `u54/finish`, taken from the board
+as issue #72.** The unit's CODE was already on `main`: relay task 72 built it
+on 2026-09-08 and the runner merged and pushed it, then a session limit cut
+that session down mid `/code-review`, so relay recorded the task as
+`partial_landing` and `main` carried a unit nobody had reviewed. Relay tasks
+71, 75 and 77 never ran at all, two seconds each and `no_envelope`, because the
+limit was still in force. This session did what task 72 still owed: the review
+over the merged range, five of its eight findings fixed with a test each, three
+recorded, the mutation table measured, its one zero chased to its cause and
+killed, eleven residuals filed and one learning. **The pending register is
+still EMPTY.**
 
-**BOTH ANALYSIS WORKERS RUN, AND BOTH ENGINE DEFECTS ARE FIXED.** `crate
-analyze run` and `crate analyze restamp` queue their folder's audio filenames
-as items and drive each through `cratekit.analysis.cli.handle_run` and
-`handle_restamp`, bound under their own names in `src/cratekit/cli/handlers.py`.
-The vocal pass no longer reads a `wav` key nothing set: the partial carries a
-path and `vocals.analyse` decodes it at the model's rate of 32000 through a
-bound decoder, so a fake model driven through the path yields a nonzero level
-and the model's gender call. Energy is computed by the source system's method,
-a fixed feature vector z scored against a library calibration and mapped to a
-level by nine decile cuts with a beatless cap, from the samples the head
-already decoded; without a calibration the level is an honest None with
-`energy_status` saying why, and the worker writes no `energylevel` tag for
-it, so routing reads the taxonomy's no energy sink. `crate analyze calibrate`
-is real and writes both state files; `crate analyze validate` says plainly
-that no scorer ships. **The vocals side moved, not the light pass**, for two
-reasons that each stand alone: the head decodes at 22050 and the model was
-trained at 32000, and a partial carrying samples would hold every track's
-audio in the parent across the pool boundary. `analysis/vocals.py`'s docstring
-carries both.
+**`crate acquire download` ACTUALLY DOWNLOADS.** The shell reads the list at
+the queue through `match_cli.read_list`, the one list reader the product has,
+and queues one item per track keyed by the provider's own track identifier,
+which is the only thing the adapter contract can be asked for. A pasted
+tracklist and a list from another service are refused at the queue rather than
+queued as items nothing can acquire. `handle` in `src/cratekit/acquire/cli.py`
+is the worker: it builds `AdapterSettings` from the FROZEN configuration with
+the download directory redirected to a per item staging directory, constructs
+the adapter through `acquire.build` by the frozen name, and drives
+`download.acquire_paced` with one request. It is the first caller of both.
 
-**R-203 IS DOWN TO SEVEN.** `acquire.download`, `delete.review`,
-`intake.playlist`, `intake.set`, `rebuild`, `route.resort` and `sync.all`.
-The title still says eighteen deliberately; `tests/test_handlers.py` derives
-the population from `registry.ENTRIES` and is what fails when a queued verb
-is in neither table.
+**THE MARKER IS DECIDED BY THE FILE, NOT BY THE OFFER.** `requires_lossy_marker`
+comes from what the provider SAID it was about to send, and under a permissive
+policy `vendored.landed_file` returns without probing anything, so trusting the
+claim committed an unmarked lossy file whenever the provider promised lossless
+and landed AAC. That is the single state the audit verb exists to find.
+`lossy_landing` asks the file, and the requirement is the claim OR the probe.
+A file the probe cannot read is still committed unmarked, which is R-292 and
+deliberate: refusing it is a decision about what the permissive policy means
+and it is Phillip's, not a session's.
 
-**THAT HAS NOT CHANGED ABOUT WHO DOES U29.** Issue 29 is attended, Phillip's to
-perform against the live library one workflow at a time, which an agent cannot
-touch by standing constraint. METHOD's do-not-touch section says so and the
-reason does not expire. **`board.py next` will say "Take #29" and you must not.**
+**A DEAD CREDENTIAL PARKS THE RUN. A BROKEN TOOL DOES NOT.** The worker builds
+an adapter and authenticates inside every item, so failing the item let the
+driver claim the next one and log in again: measured at five constructions for
+a five item job, which is two hundred failed logins for a two hundred track
+list, and repeated failed logins are what triggers the lockout the acquisition
+docstring calls unrecoverable. `AUTH_FAILED` therefore raises `jobs.Parked`.
+`ADAPTER_BROKEN` still fails its item, because the crash may be about that
+track and the brief asks for a resume that redoes only it. The asymmetry has
+its own test so it cannot be flattened by accident.
+
+**`jobs.Parked` is the engine's new seam.** A per item worker that learns the
+provider refused the CLIENT raises it; `drive` catches it BEFORE the item
+boundary, releases the claimed item back to pending, and records the job
+BLOCKED with the cause. Released and not failed, because `retry` re-arms failed
+items only for a terminal job and a blocked job is open.
 
 ## Main, verify before trusting it
 
@@ -56,104 +60,101 @@ reason does not expire. **`board.py next` will say "Take #29" and you must not.*
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 0
 
-The last measured suite on `main` before this merge was **6928 passed and 1
-skipped**. The last measured suite on `relay/76` was **6946 passed and 1
-skipped**, on the second fix round's commit, which is the commit before the
-record that rewrote this file; the record touched documents only. **Main's
-highest residual is R-288 once this branch merges**, no duplicate headings,
-no heading deleted. Append only, and gaps are fine.
+The last measured suite on this branch was **6990 passed and 1 skipped**, on the record
+commit; the commits before it were the fixes and the table, and the record
+touched documents only. **Main's highest residual is R-299 once this branch
+merges**, no duplicate headings, no heading deleted. Append only, and gaps are
+fine.
 
-**The board: 61 units, 53 done, 8 ready, 0 blocked, and `board.py audit`
-exits 1 on purpose.** Four drift items. #78 and #79, U60 and U61, are on the
-tracker and not on the board, the operator's to add. #70 is Done on the
-tracker and still In review on the board, which `sync` would repair. #76 is
-In review, a status `board.py` does not preserve across a recomputation, so
-`sync` would flip it back to Ready while the relay runner still owns its
-merge; R-265 records that. Do not run `sync` to make the audit green while
-#76 is under review.
+**The board before this merge: 61 units, 54 done, 7 ready, 0 blocked, and
+`board.py audit` exits 1.** Five drift items, all of them the interrupted relay
+run's leavings: #70 and #76 are Done on the tracker and still In review on the
+board, #72 is In review while its issue is open, and #78 and #79, U60 and U61,
+are on the tracker and not on the board. `sync` repairs all five and there is
+no longer a unit under review for it to disturb, so run it.
 
-## Read this before touching analysis again
+## Read this before touching acquisition again
 
-**THE RESUME READS A RENAME INTENT, NEVER THE FOLDER.** The item is the pre
-rename filename and the finalize renames the file inside the handler, before
-the engine flips the row, so a kill in that window leaves a finished file
-under its head and a pending row under its old name. The finalize writes
-`rename-intent.json` into the item's staging directory immediately before the
-rename, and `_finalized_twin` reads that and nothing else. The first version
-scanned the folder for a headed file whose stripped stem equalled the item,
-which reported a deleted source as analysed when an older twin sat beside it
-and missed every file the naming template deduped or truncated. The learning
-is filed at `docs/solutions/workflow-issues/a-worker-that-renames-its-item-owes-the-resume-an-exact-record.md`
-and applies to every remaining R-203 worker, all of which move files.
+**THE ITEM IS THE PROVIDER'S TRACK IDENTIFIER.** Not a filename, not a
+recording. `TrackSource.offer` and `fetch` take a key and there is no search,
+so a list that does not carry provider identifiers cannot be acquired at all,
+and that is refused at the QUEUE rather than discovered by a worker.
 
-**THE TEST FOR A KILL DIES IN THE WINDOW.** `kill_after_the_rename` in
-`tests/test_analysis_workers.py` raises a `BaseException` subclass out of the
-staging call on the first finalized report, because `jobs.drive` converts
-`Exception` at the item boundary and a kill is not one. A test that renames
-the file by hand is a test of the hand rename, and that is what hid both
-defects above through a green suite and a killed mutation row.
+**THE LIST REACHES THE READER AS TYPED.** `read_list` refuses a pasted web
+address by matching a scheme at the front of the string, and
+`expanduser().absolute()` turns `https://host/x` into a relative path under the
+working directory that the guard cannot match. The freeze is still absolute,
+because the child a resume spawns inherits the resuming process's directory;
+it just happens AFTER the read.
 
-**THE HEAVY STACK STAYS BEHIND THE EXTRA, AND SO DOES NUMPY.** Every librosa,
-torch and model touch is a lazy import inside a function.
-`analysis/cli.py` never imports `analysis/vocal.py` at module scope, because
-`cli.jobs.argv_for` imports the verb module by name to build a resume line
-and the model module needs numpy at import time, which the slim profile does
-not declare. `test_the_analysis_package_imports_with_the_heavy_stack_blocked`
-runs a fresh interpreter with all five blocked. The model is behind the
-separate `vocals` extra while the registry declares `analysis` for the verb,
-so a run on a machine with one and not the other finalizes every track with
-no vocal tags; the resume envelope now warns, counting them, and R-277 says
-those tracks are never scored again until `analyze.vocals` lands.
+**A FALLBACK MUST NOT FILL AN ABSENCE SOMEBODY MEANT.** The learning this unit
+paid for, filed at
+`docs/solutions/workflow-issues/a-remedy-fallback-overwrites-an-absence-somebody-meant.md`.
+A permanently unavailable track carries no remedy on purpose, and the fallback
+told that person to relax the product's central promise over a delisted track.
+The branch the fallback was written for was DEAD, because a policy refusal
+always carries its own remedy. Ask which outcomes can actually reach a branch,
+and read the producer's validator to find out.
 
-**ONE TEMPO METHOD ON BOTH PATHS.** `energy.features_from_samples` measures
-its own tempo from the central slice on every path, and the head decodes at
-`energy.MEASURE_RATE`. The first version handed the head's whole track
-integer tempo down on the run path and measured its own on the restamp path,
-so one file scored through the two verbs carried two tempo readings against
-one calibration. The window difference that remains is R-287.
+**A TEST NAMED FOR AN INVARIANT MUST ASSERT IT.** Twice in one unit.
+`..._carries_no_remedy` asserted the reason and the retryable flag and not the
+remedy, and the partial file test passed with the staging clear reverted
+because the FAKE always wrote its landing and overwrote the stale bytes itself.
+A fake's convenience standing in for coverage is what a mutation table is for:
+that row read zero across 6991 tests, and killed once the fake was taught to
+skip a landing already there, which is what the wrapped tool does.
 
-**A KEBAB LITERAL IS A PINNED POPULATION.** Two joined this round,
-`skipped-unanalysable` and `vocal-inference-failed`, and the pin in
-`tests/test_reserved_causes.py` moved by two, differenced as sets against
-main's tree extracted into a scratch directory. Any new kebab shaped string
-in `src` moves it again and the re-pin names what joined.
+## What U54 left behind, beyond the code
 
-## What U58 left behind, beyond the code
+Eleven residuals, R-289 through R-299, and R-296 amends R-248 with a seventh
+copy of the resume tail. Four are worth knowing before touching acquisition or
+tagging again:
 
-Fifteen residuals, R-274 through R-288, nine from the first review and six
-from the second, plus amendments to R-133, R-203, R-216, R-248 and R-278.
-Five are worth knowing before touching analysis again:
+- **R-289.** The acquisition staging tree is a dotfile, and
+  `tagging.tag.audio_files` walks with `rglob` and no dot filter, so
+  `crate tag folder <download_staging>` queues partial downloads and files the
+  landing check refused. Driven. R-288 records the same walker's asymmetry from
+  the analysis side.
+- **R-290.** A blocked job reports outcome `ok` and exits 0, in EVERY queued
+  verb. `ctx.envelope` has no cause parameter and `envelope_problems` requires
+  a top level cause exactly when the outcome is not a success, so reporting it
+  honestly changes the envelope contract for all of them at once.
+- **R-294 and R-295.** R-204 is discharged by HALF. `acquire_paced` and
+  `acquire_concurrently` have their first caller; `dispatch_invocation` and
+  `adapter_names` still have none. `acquire_paced` catches two exceptions and
+  anything else out of the session scope reaches the item boundary as
+  `internal-error`, reachability UNMEASURED rather than absent.
+- **R-297.** One request per call, so a configured `concurrency` above one is
+  inert on this path and nothing says so.
 
-- **R-276.** The vocal calibration is written and nothing reads it.
-  `cli/converge.py` passes `vocal_threshold=None` with a comment saying so.
-  The reader belongs to U53's routing and rebuild workers.
-- **R-277.** A track finalized while the model was unavailable is never
-  scored again, because the head in its name is the resume marker and the
-  re-score verb is the planned one.
-- **R-283.** The restamp has no rename recovery, and the intent cannot give
-  it one, because its file is renamed by another job.
-- **R-285.** The detector seam carries state the worker has to recognise: a
-  shadow binding, a per item calibration re-read, and two tempo keys.
-- **R-278, R-286, R-287.** Every efficiency number in these is the reviewer's
-  estimate and none was taken on the tree.
+## What U58 left behind, still current
+
+R-283 through R-288, and the rename intent rule below. **The resume reads a
+rename intent, never the folder**: the finalize writes `rename-intent.json`
+into the item's staging directory immediately before the rename, and
+`_finalized_twin` reads that and nothing else. It applies to every remaining
+R-203 worker, all of which move files. The learning is at
+`docs/solutions/workflow-issues/a-worker-that-renames-its-item-owes-the-resume-an-exact-record.md`.
+
+**The heavy stack stays behind the extra, and so does numpy.** Every librosa,
+torch and model touch is a lazy import inside a function, because
+`cli.jobs.argv_for` imports the verb module by name to build a resume line.
 
 ## What is open
 
 | issue | unit | state |
 |---|---|---|
-| #76 | U58, the analysis workers | In review on `relay/76`, the relay runner owns the merge |
-| #78 | U60, the deletion pass | On the tracker, not yet on the board |
-| #79 | U61, `crate sync all` composes the source increments | On the tracker, not yet on the board |
 | #71 | U53, routing and rebuild workers | Ready |
-| #72 | U54, the acquisition worker | Ready |
 | #75 | U57, the recognition identifier | Ready |
 | #77 | U59, land the conformance branch | Ready |
+| #78 | U60, the deletion pass | On the tracker, `sync` puts it on the board |
+| #79 | U61, `crate sync all` composes the source increments | On the tracker, same |
 | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
 
 Thirteen residual issues carry the `residual` label. They are the queue after
 the units, each done or closed back to the ledger. A2 is attended.
 
-**Next is `#72`, U54**, per METHOD's serialized order, once U58 is merged.
+**Next is `#71`, U53**, per METHOD's serialized order.
 
 ## Do this first
 
@@ -162,34 +163,31 @@ the units, each done or closed back to the ledger. A2 is attended.
 2. `board.py next`. It names #29. Do not take it. METHOD's serialized order is
    what picks the work, not the ranking.
 3. Grep `docs/solutions/` for the module you are about to touch. A worker that
-   moves files reads the rename intent entry before it binds.
+   moves files reads the rename intent entry before it binds; a worker that
+   translates another layer's optional field reads the remedy fallback entry.
 
 ## The branches
 
 | branch | state |
 |---|---|
-| `relay/76` | U58, in review, the relay runner merges it |
-| `u58/pre-relay-76` | U58's first five commits, local only, fully contained in `relay/76`; delete after the merge |
-| `u52/pre-relay-70` | U52's pre relay branch, local only, merged through `relay/70`; delete |
-| `fix/conformance-3-and-soft-delete-reader` | U59's input, in `.worktrees/conformance`, far behind main |
+| `u54/finish` | U54's review, fixes, table and record; delete after the merge |
+| `u58/pre-relay-76` | U58's first five commits, fully contained in `main`; delete |
+| `u52/pre-relay-70` | U52's pre relay branch, merged through `relay/70`; delete |
+| `relay/72` | U54's build, fully contained in `main`; delete |
+| `fix/conformance-3-and-soft-delete-reader` | U59's input, in `.worktrees/conformance`, far behind main. DO NOT TOUCH |
 
-## What U52 left behind, beyond the code
+## When a relay run is cut off mid unit
 
-Seventeen residuals, R-257 through R-273, and an amendment to R-248 for the
-fifth copy of the resume tail. Four are worth knowing before touching labels
-again:
-
-- **R-258.** No catalogue adapter ships. Every label verb resolves to a constant
-  refusal and the test substitution carries R-226's limit: the in process
-  callers pick up a replaced `resolve`, and the child a resume spawns inherits
-  nothing.
-- **R-259 and R-137.** The labels path applies no ownership filtering at all,
-  because nothing on it produces an owned identity set.
-- **R-263.** A successful labels sweep still reads as "never ran" in
-  `crate doctor`, because R-140's fix stopped the watermark and the reader was
-  not told.
-- **R-267 and R-268.** `bound()` and `resolve()` are two constants that must
-  move together the day an adapter lands.
+It has happened twice now, both times on a session limit, and the shape is
+worth recognising. The runner merges and pushes the branch, then its own verify
+refuses to call the task landed, `halt_class: partial_landing`, and the tracker
+issue stays open. So `main` carries a unit whose review, table and record never
+happened, and the board is right to still call the unit unfinished. The state
+lives in `~/.relay/<run>/state.json`: `tasks.<n>.status`, `halt_class`,
+`halt_message`, `findings`, and `transcript_path` for what the session was
+doing when it stopped. Finish it on a branch off `main` and close the issue with
+a trailer from there; do not re-run the unit from the board as though nothing
+had landed.
 
 ## Standing decisions
 

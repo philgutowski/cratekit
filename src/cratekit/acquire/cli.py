@@ -284,19 +284,45 @@ def acquire_download(ctx) -> Envelope:
             job = jobs.reconcile(store, ctx.args.job)
             warnings: tuple[dict[str, str], ...] = ()
             if job.is_open():
+                if not jobs.items(store, job.job_id):
+                    # THE ZERO ITEM RULE ON THE RESUME SIDE, which ``adopt`` and
+                    # ``tagging`` both guard and ``master`` does not need because
+                    # it always queues exactly one item. A job queued by a build
+                    # before this unit carries a frozen list path and no items at
+                    # all, and driving it reports SUCCEEDED over a list nothing
+                    # acquired, which is R-198's empty queue wearing a full one's
+                    # clothes.
+                    raise refuse(
+                        "internal-error",
+                        f"job {job.job_id} has no items to run, so driving it "
+                        f"would report every track acquired over a list nothing "
+                        f"read. It was queued by a build that did not record "
+                        f"what its items were",
+                        remedy=Remedy.REPORT_DEFECT,
+                        origin=("acquire.cli",),
+                        detail={"job_id": job.job_id},
+                    )
                 _, warnings = ctx.run_job(store, job)
                 job = jobs.get(store, job.job_id)
             return ctx.envelope(data=_reported(store, job), warnings=warnings)
-        listed = Path(str(ctx.args.list)).expanduser().absolute()
-        tracks = frozen_tracks(match_cli.read_list(listed))
+        # READ FROM THE PATH AS TYPED, freeze it absolute. ``read_list`` refuses a
+        # pasted URL by matching a scheme at the front of the string, and
+        # ``expanduser().absolute()`` turns ``https://...`` into a relative path
+        # under the working directory, which that guard cannot see. Absolutising
+        # before the read swapped the sentence telling somebody to fetch the
+        # playlist into a list document for a file-not-found over a mangled path.
+        given = Path(str(ctx.args.list))
+        wanted = match_cli.read_list(given)
+        # ABSOLUTE, for the reason ``master`` freezes its recording absolute: the
+        # child a resume spawns inherits the resuming process's directory, and a
+        # relative path would name a different file there.
+        listed = given.expanduser().absolute()
+        tracks = frozen_tracks(wanted)
         if not tracks:
             return ctx.envelope(data=_no_op("no-tracks"), outcome=Outcome.NO_OP)
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
-            # ABSOLUTE, for the reason ``master`` freezes its recording absolute:
-            # the child a resume spawns inherits the resuming process's
-            # directory, and a relative path would name a different file there.
             payload={LIST: str(listed), TRACKS: tracks},
             cfg=cfg,
             item_ids=tuple(tracks),
@@ -335,10 +361,21 @@ def request_for(item: jobs.Item, payload: dict[str, Any]) -> TrackRequest:
     )
 
 
-def _remedy(token: object, fallback: Remedy) -> Remedy:
+def _remedy(token: object, fallback: Remedy | None) -> Remedy | None:
     """The adapter's remedy token in the CLI's vocabulary, which it already is by
-    reservation; the fallback is for a result that carried none."""
-    return Remedy(str(token)) if token is not None else fallback
+    reservation; the fallback is for a result that carried none.
+
+    THE FALLBACK MAY BE ``None``, and that is the point of it being a parameter.
+    ``adapter._unavailable`` leaves the remedy off a permanently unavailable
+    track deliberately, because there is nothing a person can do about a track
+    the provider no longer has, and a fallback that filled that absence in would
+    tell them to relax the lossless policy over a delisted track. An absent
+    remedy is passed on absent, and ``refuse`` then defaults it from the reason
+    table, which is the answer the whole class of failure already declares.
+    """
+    if token is not None:
+        return Remedy(str(token))
+    return fallback
 
 
 def _refused_invocation(run: download.DownloadRun, request: TrackRequest) -> CratekitError:
@@ -362,10 +399,14 @@ def _refused_invocation(run: download.DownloadRun, request: TrackRequest) -> Cra
 
 def _refused_track(result: TrackResult, adapter: str) -> CratekitError:
     transient = result.outcome is TrackOutcome.UNAVAILABLE_TRANSIENT
+    # NO FALLBACK OFF THE TRANSIENT PATH. A policy refusal always carries its own
+    # remedy, which the ``TrackResult`` validator enforces, so the only outcome
+    # that can reach a fallback here is a permanently unavailable track, and that
+    # one carries none on purpose.
     return refuse(
         _ITEM_REASONS[result.outcome],
         f"{adapter} did not acquire {result.key}: {result.detail}",
-        remedy=_remedy(result.remedy, Remedy.RETRY_LATER if transient else Remedy.RELAX_LOSSLESS_POLICY),
+        remedy=_remedy(result.remedy, Remedy.RETRY_LATER if transient else None),
         scope=Scope.ITEM,
         retryable=transient,
         origin=("acquire.cli",),
@@ -413,6 +454,33 @@ def checked_landing(path: Path, key: str, *, policy: LosslessPolicy) -> Path:
             origin=("acquire.cli",),
             detail={"key": key, "path": str(path)},
         ) from exc
+
+
+def lossy_landing(path: Path, *, policy: LosslessPolicy) -> bool:
+    """Whether the file that landed is LOSSY, asked of the file itself.
+
+    THE OFFER IS NOT EVIDENCE ABOUT THE FILE. ``requires_lossy_marker`` is
+    derived from what the provider said it was about to send, and the whole
+    reason the codec check exists is that the provider's claim and the bytes
+    that arrive are different facts: the setting said lossless, the provider
+    sent AAC, and nothing between them ever looked. Under the STRICT policy
+    ``checked_landing`` has already refused a lossy file, so there is nothing
+    left to ask and the probe is not run twice. Under a permissive policy the
+    file is kept either way, and the only remaining question is whether it must
+    be MARKED, which R21 answers about the file and not about the offer.
+
+    A file the probe cannot read answers nothing, so it is not called lossy on
+    the strength of a failed measurement. It is committed unmarked exactly as it
+    was before, and that gap is recorded rather than closed here, because
+    refusing an unreadable file under a policy that exists to keep files is a
+    different decision from this one.
+    """
+    if policy is LosslessPolicy.STRICT:
+        return False
+    from cratekit.acquire import vendored  # noqa: PLC0415 - the probe imports the audio stack
+
+    _name, lossless = vendored.codec_of(path)
+    return lossless is False
 
 
 def marked_name(landed: Path, marker: str, *, required: bool) -> str:
@@ -487,7 +555,26 @@ def handle(job, item, cfg) -> jobs.Produced:
         raise jobs.Parked(run.parked)
     invocation = run.invocation
     if invocation.outcome in FAILED_INVOCATIONS:
-        raise _refused_invocation(run, request)
+        refusal = _refused_invocation(run, request)
+        if invocation.outcome is InvocationOutcome.AUTH_FAILED:
+            # PARKED, NOT FAILED, and only this one of the two. This worker
+            # builds an adapter and authenticates inside every item, so failing
+            # the item lets the driver claim the next one, which logs in again:
+            # a two hundred track list against an expired session becomes two
+            # hundred failed logins into one account, and repeated failed logins
+            # are what triggers the lockout the module docstring records as
+            # unrecoverable. A dead credential is also a fact about the RUN and
+            # never about the track, so nothing is lost by stopping. The item is
+            # released and the job records why, so one resume after fixing the
+            # credential redoes the whole remainder.
+            raise jobs.Parked(refusal.cause)
+        # A BROKEN ADAPTER STILL FAILS THE ITEM, deliberately and asymmetrically.
+        # A tool that crashed mid transfer may have crashed on this track, and
+        # the unit's brief asks for exactly that: the item fails, the job stays
+        # resumable, and the resume redoes only it. The rebuild it costs per item
+        # is recorded rather than fixed by parking, because parking here would
+        # end a fifty track sync on one bad file.
+        raise refusal
     result = next((r for r in invocation.results if r.key == request.key), None)
     if result is None:
         raise refuse(
@@ -504,9 +591,15 @@ def handle(job, item, cfg) -> jobs.Produced:
         raise _refused_track(result, invocation.adapter)
 
     landed = checked_landing(Path(str(result.path)), request.key, policy=per_item.lossless_policy)
-    final = root / marked_name(
-        landed, cfg.naming.lossy_marker or "", required=result.requires_lossy_marker
+    # THE OFFER OR THE FILE, whichever says the marker is owed. The offer's claim
+    # is what the provider intended to send and the probe is what arrived, and
+    # R21 is a rule about the file on disk. Trusting the claim alone commits an
+    # unmarked lossy file whenever the provider offers lossless and lands lossy,
+    # which is the one state the audit verb exists to find.
+    required = result.requires_lossy_marker or lossy_landing(
+        landed, policy=per_item.lossless_policy
     )
+    final = root / marked_name(landed, cfg.naming.lossy_marker or "", required=required)
     if final.exists():
         # AFTER the download rather than before it, and that ordering is a cost
         # this unit records rather than a choice it made: the file's name is the
