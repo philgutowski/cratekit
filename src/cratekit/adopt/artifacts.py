@@ -25,6 +25,8 @@ two different directory names. Nothing here is about adoption except those names
 so the honest home is one module in ``core`` that takes the names as arguments,
 and moving the outbound one there is a change to another unit's file. Filed as a
 residual instead of reached across for.
+ ``cratekit.core.artifacts`` is now that module, landed by U57 with the
+directory names as parameters; this copy is not yet migrated onto it.
 
 Layer: modules.
 """

@@ -813,7 +813,7 @@ ENTRIES: tuple[Entry, ...] = (
     # ── Intake ──────────────────────────────────────────────────────────────
     Entry(
         name="intake.set",
-        summary="take a set recording or mix URL through the whole intake pipeline",
+        summary="identify a set recording on this machine and resolve its tracks",
         module="cratekit.intake.cli",
         builder="build_set",
         handler_key="intake.set",
@@ -827,7 +827,17 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"xml", "files"}),
         adjudicates=True,
         destructive=True,
-        doctor_checks=("library.mounted", "binary.ffmpeg", "credential.provider"),
+        # THE CHECKS ARE THE GATE'S. ``recognize.recognition_ready`` refuses on
+        # the two recognition keys, ffmpeg and ffprobe, so doctor has to fail on
+        # exactly those or a machine doctor passes refuses at the verb. The
+        # provider session is not declared because this verb's worker never
+        # acquires: a recognised track carries no provider identifier.
+        doctor_checks=(
+            "library.mounted",
+            "binary.ffmpeg",
+            "binary.ffprobe",
+            "credential.recognition",
+        ),
     ),
     Entry(
         name="intake.identify",
@@ -840,7 +850,7 @@ ENTRIES: tuple[Entry, ...] = (
         module_id="identify",
         emits=frozenset({"match"}),
         output_schema="match/1",
-        doctor_checks=("credential.recognition",),
+        doctor_checks=("binary.ffmpeg", "binary.ffprobe", "credential.recognition"),
     ),
     Entry(
         name="intake.playlist",

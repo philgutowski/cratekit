@@ -20,15 +20,16 @@ defect wearing an indirection the handler guard in ``tests/test_handlers.py``
 cannot see. So the configuration is a parameter here and this module never
 loads one.
 
-**THIS IS THE HOME THE THREE FEATURE COPIES NAME.** :mod:`cratekit.adopt.artifacts`,
-:mod:`cratekit.modules.outbound.artifacts` and :mod:`cratekit.tagging.artifacts`
-are the same five functions with different directory names, and the tagging copy
-records that the honest home is one module in ``core`` taking the names as
-arguments. This is that module. The DIRECTORY NAMES ARE PARAMETERS rather than
-constants because a core module may not name a feature package, even as a
-string (KTD23, and the layering guard reads strings). The three copies are not
-migrated here: each is another unit's files, and a migration is a rename that
-moves where a committed report is read from.
+**THIS IS THE HOME THE FOUR FEATURE COPIES NAME.** Four feature packages each
+carry an ``artifacts`` module that is these same five functions with their own
+directory names, and each records that the honest home is one module in
+``core`` taking the names as arguments. This is that module. The DIRECTORY
+NAMES ARE PARAMETERS rather than constants because a core module may not name
+a feature package, even as a string (KTD23, and the layering guard reads
+strings), which is also why the four are not named here. They are not migrated
+here either: each is another unit's files, and a migration is a rename that
+moves where a committed report is read from. Each copy's docstring now points
+at this module so the next worker reaches for it rather than for a fifth copy.
 
 Layer: core.
 """
@@ -142,9 +143,15 @@ def committed(where: Location, cfg: config.Config, job_id: str) -> tuple[dict[st
     if not directory.is_dir():
         return ()
     found: list[dict[str, Any]] = []
+    # ONLY ORDINAL NAMED FILES ARE REPORTS, and the filter runs before the sort
+    # key does. A stray ``notes.json`` beside them once raised out of the sort
+    # key in a feature copy and took the whole resume envelope down after every
+    # item had finished, which is the promise two lines up broken by the line
+    # that was meant to keep it.
+    reports = [path for path in directory.glob("*.json") if path.stem.isdigit()]
     # SORTED BY THE ORDINAL AS A NUMBER, not by the filename: four digits sort as
     # text in item order and the ten thousandth does not.
-    for path in sorted(directory.glob("*.json"), key=lambda item: int(item.stem)):
+    for path in sorted(reports, key=lambda item: int(item.stem)):
         try:
             parsed = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):

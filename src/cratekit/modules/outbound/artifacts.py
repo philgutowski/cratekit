@@ -19,6 +19,10 @@ and cannot follow one through a helper. So the configuration is a parameter here
 and this module never loads one.
 
 Layer: modules.
+
+**A GENERIC HOME EXISTS.** ``cratekit.core.artifacts`` is these same functions
+taking the directory names as parameters, landed by U57; this copy is not
+yet migrated onto it.
 """
 
 from __future__ import annotations

@@ -1398,7 +1398,7 @@ def test_a_provider_that_fails_mid_verification_refuses_rather_than_reporting_a_
 ):
     """The boundary covered only two of the three provider calls harvest makes.
 
-    ``_playlist_tracks_or_refuse`` wraps ``playlist_for`` and
+    ``playlist_tracks_or_refuse`` wraps ``playlist_for`` and
     ``playlist_tracks``, and ``found.check_label`` was handed into
     ``from_tracks`` outside it. ``listing.fetch_with_retry`` re-raises the
     provider's own exception once its retry ladder is spent, so a provider outage

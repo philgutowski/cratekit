@@ -31,14 +31,16 @@ from an offer. R-140 is the entry that records what it costs to get that
 wrong one layer up, and this worker is written so it cannot reproduce it one
 layer down.
 
-**A SET NOBODY RECOGNISED IS A REPORT, NOT A SILENT SUCCESS.** Zero identified
-tracks queues nothing, and the envelope says so with the calls it took to
-find out, because the money was spent either way.
+**A SET NOBODY RECOGNISED IS A REPORT, NOT A SILENT SUCCESS, AND A SET NOBODY
+ANSWERED IS NOT A SET NOBODY RECOGNISED.** Zero identified tracks queues
+nothing, and the envelope says so with the calls it took to find out, because
+the money was spent either way. Zero tracks where chunks got NO answer is a
+failure, not a zero, and a set that queued over incomplete coverage carries a
+warning saying how much of it was never answered.
 """
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,25 +52,28 @@ from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import artifacts, config, jobs, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.intake import acrcloud, normalize, pipeline, recognize
-from cratekit.label import catalogue, harvest
+from cratekit.intake import normalize, pipeline, recognize
+from cratekit.label import catalogue
+from cratekit.label import cli as label_cli
 
 #: Payload keys. ``SOURCE`` is what the resume argv is rebuilt from. ``TRACKS``
 #: is what was learned about each item at the queue, keyed by the item
 #: identifier, so the worker reads nothing but the job. ``CALLS`` is what
-#: identifying the set cost, recorded on the job because the money is spent
-#: whether or not anything ran.
+#: identifying the set cost and ``UNREACHED`` how many of its chunks never got
+#: an answer; both are recorded on the job because the money is spent whether
+#: or not anything ran, and both are reported back on every resume.
 SOURCE = "source"
 TRACKS = "tracks"
 CALLS = "calls"
-TRACKLIST = "tracklist"
+UNREACHED = "unreached"
+
+#: The two handler keys one worker serves. A resume is refused for any other,
+#: because the driver resolves the worker from the job row and not from the
+#: verb, and driving a foreign job here would skip that verb's own checks.
+INTAKE_KEYS = frozenset({"intake.set", "intake.playlist"})
 
 #: Where one item's report is staged and where it lands, under the queue root.
 ARTIFACTS = artifacts.Location(final="intake-artifacts", staging="intake-staging")
-
-#: The digest width of a recognised track's item identifier. Sixteen hex
-#: characters, the width the match module uses for its own identifiers.
-_ID_WIDTH = 16
 
 #: What a match state is called on the item's report and in the summary. The
 #: words are the verb's, not the engine's, because a person reading a report
@@ -141,9 +146,15 @@ def _unusable(message: str, *steps: str, **detail: Any) -> CratekitError:
 # The surface
 # ---------------------------------------------------------------------------
 
+#: The help text both recognition verbs show. A recording ON THIS MACHINE and
+#: not a mix URL, because this build fetches none; the refusal a URL meets
+#: says the same thing, and the two have to agree on the one screen a person
+#: reads first.
+_SOURCE_HELP = "set recording on this machine (a mix URL is not fetched by this build)"
+
 
 def build_set(parser, entry) -> None:
-    parser.add_argument("source", help="set recording path or mix URL")
+    parser.add_argument("source", help=_SOURCE_HELP)
     parser.add_argument(
         "--job",
         default=None,
@@ -154,7 +165,7 @@ def build_set(parser, entry) -> None:
 
 
 def build_identify(parser, entry) -> None:
-    parser.add_argument("source", help="set recording path or mix URL")
+    parser.add_argument("source", help=_SOURCE_HELP)
     parser.set_defaults(_handler=intake_identify)
 
 
@@ -201,15 +212,34 @@ def item_key(row: Wanted) -> str:
     A provider row is keyed by the provider's own identifier, which is the one
     thing a later acquisition can be asked for and the key the acquisition
     verb uses for the same row. A recognised track carries none, so it is
-    keyed by a digest of the recording token, the version token and the ISRC,
-    which is the identity the match engine already gives the same record from
-    any list. Two different recordings cannot share it and the same recording
-    from two chunks folds to it.
+    keyed by the match module's own digest over the recording token, the
+    version token and the ISRC, which is the identity that module already
+    gives the same record from any list. Two different recordings cannot
+    share it and the same recording from two chunks folds to it.
     """
     if row.ref:
         return row.ref
-    material = "\x1f".join([row.recording, row.version_key, row.isrc or ""])
-    return "rc_" + hashlib.sha256(material.encode()).hexdigest()[:_ID_WIDTH]
+    return "rc_" + match.digest(row.recording, row.version_key, row.isrc or "")
+
+
+def _frozen(row: Wanted) -> dict[str, Any]:
+    """One track as the payload carries it. :func:`thawed` is the mirror."""
+    return {
+        "artist": row.artist,
+        "title": row.title,
+        "version": row.version,
+        "key": row.key,
+        "isrc": row.isrc,
+        "origin": row.origin,
+        "ref": row.ref,
+        "spelled": row.spelled,
+        # THE OTHER READING TRAVELS TOO. ``resolve_one`` asks the library about
+        # a title's second reading once nothing the list said has matched, and
+        # a freeze that dropped it would make the worker resolve a narrower
+        # question than the reader built, silently, on exactly the ambiguous
+        # titles the field exists for.
+        "other_reading": list(row.other_reading) if row.other_reading else None,
+    }
 
 
 def frozen_rows(rows: tuple[Wanted, ...]) -> dict[str, dict[str, Any]]:
@@ -217,8 +247,10 @@ def frozen_rows(rows: tuple[Wanted, ...]) -> dict[str, dict[str, Any]]:
 
     A PROVIDER ROW WITHOUT AN IDENTIFIER IS REFUSED BY POSITION, and the whole
     listing with it: a queue that quietly dropped a row would report every
-    item done over a playlist it did not finish. THE SAME IDENTIFIER TWICE
-    FOLDS TO ONE ITEM, first occurrence wins, because the queue keys items by
+    item done over a playlist it did not finish. Any row that is not plain
+    text is a provider row here, so a row from a second provider does not
+    slip past a check written for the first. THE SAME IDENTIFIER TWICE FOLDS
+    TO ONE ITEM, first occurrence wins, because the queue keys items by
     identifier and a repeat is an insert that cannot land.
 
     Everything the worker will need is frozen HERE, in the shape ``thawed``
@@ -228,7 +260,7 @@ def frozen_rows(rows: tuple[Wanted, ...]) -> dict[str, dict[str, Any]]:
     missing = [
         position
         for position, row in enumerate(rows, start=1)
-        if row.origin == match.TIDAL and not row.ref
+        if row.origin != match.TEXT and not row.ref
     ]
     if missing:
         raise _unusable(
@@ -241,24 +273,21 @@ def frozen_rows(rows: tuple[Wanted, ...]) -> dict[str, dict[str, Any]]:
         )
     frozen: dict[str, dict[str, Any]] = {}
     for row in rows:
-        frozen.setdefault(
-            item_key(row),
-            {
-                "artist": row.artist,
-                "title": row.title,
-                "version": row.version,
-                "key": row.key,
-                "isrc": row.isrc,
-                "origin": row.origin,
-                "ref": row.ref,
-                "spelled": row.spelled,
-            },
-        )
+        key = item_key(row)
+        if key in frozen:
+            continue
+        frozen[key] = _frozen(row)
     return frozen
 
 
 def thawed(said: Mapping[str, Any]) -> Wanted:
     """The frozen track as the ``Wanted`` the match engine reads."""
+    other = said.get("other_reading")
+    reading = (
+        (str(other[0]), str(other[1]))
+        if isinstance(other, (list, tuple)) and len(other) == 2
+        else None
+    )
     return Wanted(
         artist=str(said.get("artist") or ""),
         title=str(said.get("title") or ""),
@@ -268,6 +297,7 @@ def thawed(said: Mapping[str, Any]) -> Wanted:
         origin=str(said.get("origin") or match.TEXT),
         ref=str(said.get("ref") or ""),
         spelled=str(said.get("spelled") or ""),
+        other_reading=reading,
     )
 
 
@@ -276,36 +306,68 @@ def thawed(said: Mapping[str, Any]) -> Wanted:
 # ---------------------------------------------------------------------------
 
 
-def _summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
+def _summary(cfg: config.Config, job) -> dict[str, Any]:
     """What the committed reports say, counted by the verb's own words.
 
     READ BACK from the artifacts rather than accumulated, so a resume reports
     every item and not the ones this process happened to run. ``acquired`` is
     spelled out as zero rather than left absent, because a reader of an intake
     report reaches for that number first and an absent field reads as "not
-    yet counted" rather than as "this verb does not do that".
+    yet counted" rather than as "this verb does not do that". What the set
+    cost to identify rides along, from the payload that froze it.
     """
     counts = {word: 0 for word in _STATE_WORDS.values()}
-    reports = artifacts.committed(ARTIFACTS, cfg, job_id)
+    reports = artifacts.committed(ARTIFACTS, cfg, job.job_id)
     for report in reports:
         word = str(report.get("state") or "")
         if word in counts:
             counts[word] += 1
-    return {"reported": len(reports), "acquired": 0, **counts}
+    payload = job.payload or {}
+    return {
+        "reported": len(reports),
+        "acquired": 0,
+        **counts,
+        "calls": int(payload.get(CALLS) or 0),
+        "unreached": int(payload.get(UNREACHED) or 0),
+    }
 
 
 def _resume(ctx, store, job_id: str) -> Envelope:
-    """Reconcile, refuse an empty job, drive it, and report what it did.
+    """Reconcile, refuse a foreign or empty job, drive it, and report how it ended.
 
     RECONCILE FIRST. A resume arrives after something stopped, and a claim
     left behind by a driver that died is state the queue cannot see for
     itself.
 
+    THE JOB HAS TO BE AN INTAKE JOB. ``handlers.run_job`` resolves the worker
+    from the job row and not from this verb, so without this line ``intake
+    set x --job`` would drive any queued job of any verb in process, under
+    this verb's envelope and without that verb's own resume time checks.
+    Either intake key is accepted, because one worker serves the two.
+
     THE ZERO ITEM RULE ON THE RESUME SIDE. A job queued by a build before this
     unit carries a source string and no items at all, and driving it would
-    report SUCCEEDED over a set nothing ever resolved.
+    report SUCCEEDED over a set nothing ever resolved. The steps name the way
+    out, because the slug does not: the job stays open after this refusal.
+
+    A JOB THAT ENDED BADLY IS NOT AN OK EXIT. ``jobs.drive`` raises only when
+    EVERY attempted item failed, so a set where two tracks resolved and one
+    did not returns normally with the job recorded failed, and without the
+    re-raise the verb exits 0 over two thirds of a set. It sits OUTSIDE the
+    ``is_open`` branch so a job already failed on entry is caught too, and it
+    catches ANY closed job carrying a cause, so a run stopped by a signal is
+    not an OK exit either. Every sibling tail in the package does the same.
     """
     job = jobs.reconcile(store, job_id)
+    if job.handler_key not in INTAKE_KEYS:
+        raise refuse(
+            "job-unknown",
+            f"job {job.job_id} was queued for {job.handler_key!r}, which is not an "
+            f"intake job, so this verb will not drive it",
+            steps=(f"resume it through its own verb, or with: crate job resume {job.job_id}",),
+            origin=("intake.cli",),
+            detail={"job_id": job.job_id, "handler": job.handler_key},
+        )
     warnings: tuple[dict[str, str], ...] = ()
     if job.is_open():
         if not jobs.items(store, job.job_id):
@@ -315,30 +377,40 @@ def _resume(ctx, store, job_id: str) -> Envelope:
                 f"every track resolved over a listing nothing read. It was queued by "
                 f"a build that did not record what its items were",
                 remedy=Remedy.REPORT_DEFECT,
+                steps=(
+                    f"cancel it with: crate job cancel {job.job_id}",
+                    "then queue the set or the playlist again, which records its items",
+                ),
                 origin=("intake.cli",),
                 detail={"job_id": job.job_id},
             )
         _, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
+    if not job.is_open() and job.cause is not None:
+        raise CratekitError(job.cause)
     cfg = jobs.frozen_config(job)
-    return ctx.envelope(
-        data=_reported(store, job, extra=_summary(cfg, job.job_id)), warnings=warnings
-    )
+    return ctx.envelope(data=_reported(store, job, extra=_summary(cfg, job)), warnings=warnings)
 
 
 # ---------------------------------------------------------------------------
-# intake.set
+# intake.set and intake.identify
 # ---------------------------------------------------------------------------
 
 
 def _recording_or_refuse(source: str) -> Path:
-    """The recording as a file on this machine, or the refusal that says why not.
+    """The recording as a file on this machine, absolute, or why not.
 
     A MIX URL IS REFUSED HONESTLY. This build fetches no mix: nothing in the
     package drives the downloader the binaries table knows about, and a verb
     that accepted the address and then found that out inside a paid step would
     have spent the gate for nothing. The address is refused at the queue with
-    the step that gets a person to a file.
+    the step that gets a person to a file, and the help text says the same.
+
+    EXPANDED BEFORE IT IS CHECKED, because a tilde a shell did not expand is
+    the one input the expansion exists for, and checking the literal string
+    first refused a file that was there. ABSOLUTE, for the reason ``master``
+    freezes its recording absolute: the child a resume spawns inherits the
+    resuming process's directory.
     """
     if normalize.is_url(source):
         raise _unusable(
@@ -347,13 +419,48 @@ def _recording_or_refuse(source: str) -> Path:
             "download the mix to a file first, then run intake set on that file",
             source=source,
         )
-    path = Path(source)
+    path = Path(source).expanduser()
     if not path.is_file():
         raise _unusable(
             f"{source} is not a file on this machine",
             source=source,
         )
-    return path
+    return path.absolute()
+
+
+def _coverage_or_refuse(result: pipeline.IdentifyResult, source: Path) -> tuple[dict[str, str], ...]:
+    """The warnings a partially answered identification carries, or a refusal.
+
+    ABSENCE IS NOT EVIDENCE OF ABSENCE. A run where some chunks got no answer
+    and the rest named nothing is not a set nobody recognised, and reporting
+    it as one is the honest zero telling a lie. It is refused as a failure.
+    A run where some chunks got no answer and others named tracks is a
+    tracklist with holes in it, and it goes on with a warning that says how
+    many, because a tracklist missing forty minutes of a set with nothing
+    saying so is the same lie with a smaller hole.
+    """
+    if not result.unreached:
+        return ()
+    if not result.rows:
+        raise refuse(
+            "intake-recognition-failed",
+            f"{result.unreached} of {result.chunks} chunk(s) of {source.name} got no "
+            f"answer and the rest named nothing, so this is not a set nobody "
+            f"recognised; {result.calls} call(s) were made and counted",
+            remedy=Remedy.RETRY_LATER,
+            retryable=True,
+            origin=("intake.cli",),
+            detail={"source": str(source), "calls": result.calls, "unreached": result.unreached},
+        )
+    return (
+        {
+            "code": "recognition-incomplete",
+            "message": (
+                f"{result.unreached} of {result.chunks} chunk(s) got no answer, so "
+                f"this tracklist has gaps; identify the recording again to fill them"
+            ),
+        },
+    )
 
 
 def intake_set(ctx) -> Envelope:
@@ -362,26 +469,27 @@ def intake_set(ctx) -> Envelope:
     THE GATE, THEN THE SPEND, THEN THE QUEUE. The recognition gate refuses by
     name before anything is carved; the identifier is the paid step and it is
     bounded inside :mod:`cratekit.intake.acrcloud`; only a set that named at
-    least one track becomes a job. The ledger is read either side of the
-    spend so the honest zero can say what it cost.
+    least one track becomes a job. The counts the identifier reports are the
+    counts the job freezes, so the honest zero says what it cost and a
+    partial run says how partial.
     """
     cfg = _load()
     with jobs.open_store() as store:
         if ctx.args.job:
             return _resume(ctx, store, ctx.args.job)
-        path = _recording_or_refuse(str(ctx.args.source))
+        frozen = _recording_or_refuse(str(ctx.args.source))
         recognize.assert_recognition_ready()
-        # ABSOLUTE, for the reason ``master`` freezes its recording absolute:
-        # the child a resume spawns inherits the resuming process's directory.
-        frozen = path.expanduser().absolute()
-        ledger = acrcloud.Ledger()
-        before = ledger.used()
         result = pipeline.identify_only(frozen)
-        spent = max(0, ledger.used() - before)
+        warnings = _coverage_or_refuse(result, frozen)
         tracks = frozen_rows(result.rows)
         if not tracks:
             return ctx.envelope(
-                data=_no_op("nothing-identified", calls=spent, source=str(frozen)),
+                data=_no_op(
+                    "nothing-identified",
+                    calls=result.calls,
+                    chunks=result.chunks,
+                    source=str(frozen),
+                ),
                 outcome=Outcome.NO_OP,
             )
         job = jobs.enqueue(
@@ -390,24 +498,25 @@ def intake_set(ctx) -> Envelope:
             payload={
                 SOURCE: str(frozen),
                 TRACKS: tracks,
-                CALLS: spent,
-                TRACKLIST: result.tracklist,
+                CALLS: result.calls,
+                UNREACHED: result.unreached,
             },
             cfg=cfg,
             item_ids=tuple(tracks),
         )
-        return ctx.envelope(data=_reported(store, job, extra={"calls": spent}))
-
-
-# ---------------------------------------------------------------------------
-# intake.identify
-# ---------------------------------------------------------------------------
+        return ctx.envelope(
+            data=_reported(
+                store, job, extra={"calls": result.calls, "unreached": result.unreached}
+            ),
+            warnings=warnings,
+        )
 
 
 def intake_identify(ctx) -> Envelope:
     recognize.assert_recognition_ready()
     source = _recording_or_refuse(str(ctx.args.source))
     result = pipeline.identify_only(source)
+    warnings = _coverage_or_refuse(result, source)
     return ctx.envelope(
         data={
             "matched": [],
@@ -416,7 +525,8 @@ def intake_identify(ctx) -> Envelope:
                 {"artist": row.artist, "title": row.title, "ref": row.ref}
                 for row in result.rows
             ],
-        }
+        },
+        warnings=warnings,
     )
 
 
@@ -426,25 +536,14 @@ def intake_identify(ctx) -> Envelope:
 
 
 def _playlist_rows(found: catalogue.Catalogue, reference: str) -> tuple[Wanted, ...]:
-    """List one playlist through a BOUND catalogue, translating its failures.
+    """List one playlist through a BOUND catalogue, as ``Wanted`` rows.
 
-    The boundary :mod:`cratekit.label.cli` draws around the same read: a
-    ``CratekitError`` passes through, and anything else the provider raised is
-    ``label-playlist-unreadable``, which means one thing in both places: a
-    bound provider was asked about this playlist and could not answer.
+    The listing and its failure boundary are the label verb's own, called
+    rather than copied, so ``label-playlist-unreadable`` means one thing and
+    carries one shape wherever a bound provider was asked about a playlist
+    and could not answer. What is this verb's is the reading of the rows.
     """
-    try:
-        rows = harvest.playlist_tracks(found.playlist_for(reference))
-    except CratekitError:
-        raise
-    except Exception as exc:  # noqa: BLE001 - the provider's failures are its own
-        raise refuse(
-            "label-playlist-unreadable",
-            f"the catalogue could not list the playlist {reference!r}: "
-            f"{type(exc).__name__}: {exc}",
-            origin=("intake.cli",),
-            detail={"source": reference},
-        ) from exc
+    rows = label_cli.playlist_tracks_or_refuse(found, reference)
     try:
         return match.read_tidal_tracks(rows)
     except match.UnreadableList as exc:
@@ -512,7 +611,6 @@ def intake_file(ctx) -> Envelope:
 class _Resolved:
     """One drive's view of the library and the tombstones, built once."""
 
-    attempt: tuple[str, int]
     index: match.LibraryIndex
     suppresses: Any
     suppression_id: Any
@@ -522,8 +620,17 @@ class _Resolved:
 #: whole music tree, and the engine claims one item at a time, so without this
 #: a fifty track set walks the library fifty times. The key is the job and the
 #: attempt the engine stamped on it, so a resume walks again and sees what the
-#: previous drive's offers changed. Single entry: a driver runs one job.
+#: previous drive's offers changed. Single entry: a driver runs one job. This
+#: is a module global standing in for a per drive setup seam the job engine
+#: does not have, which is recorded rather than hidden; ``reset_cache`` is
+#: what a suite calls between libraries, the same hook adoption exposes.
 _RESOLVED: dict[tuple[str, int], _Resolved] = {}
+
+
+def reset_cache() -> None:
+    """Forget the cached library view. A module level cache no test can clear
+    is a cache that leaks one test's library into the next."""
+    _RESOLVED.clear()
 
 
 def _resolved_for(job: jobs.Job, cfg: config.Config) -> _Resolved:
@@ -531,17 +638,11 @@ def _resolved_for(job: jobs.Job, cfg: config.Config) -> _Resolved:
     held = _RESOLVED.get(key)
     if held is not None:
         return held
-    suppresses, identify = match_cli.suppression_view(
-        review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg)
-    )
-    index = match.index_library(
-        cfg.library.root / cfg.library.music_dir, template=match_cli.library_template(cfg)
-    )
+    index, suppresses, identify = match_cli.library_view(cfg)
+    built = _Resolved(index=index, suppresses=suppresses, suppression_id=identify)
     _RESOLVED.clear()
-    _RESOLVED[key] = _Resolved(
-        attempt=key, index=index, suppresses=suppresses, suppression_id=identify
-    )
-    return _RESOLVED[key]
+    _RESOLVED[key] = built
+    return built
 
 
 def resolve_track(wanted: Wanted, job: jobs.Job, cfg: config.Config) -> match.TrackMatch:
@@ -551,12 +652,17 @@ def resolve_track(wanted: Wanted, job: jobs.Job, cfg: config.Config) -> match.Tr
     resolve against the index and the tombstone snapshot, then let the review
     queue turn a needs review state into an item and read back any answer a
     person already gave. The offer is idempotent, so a resume that redoes the
-    item asks nothing twice.
+    item asks nothing twice. THE REVIEW STORE IS OPENED ONLY FOR A QUESTION:
+    ``adjudicate`` passes an owned or a missing track straight through, so
+    opening and initialising the store for those would be fifty opens to use
+    it twice.
     """
     view = _resolved_for(job, cfg)
     found = match.resolve_one(
         wanted, view.index, suppresses=view.suppresses, suppression_id=view.suppression_id
     )
+    if found.state is not match.MatchState.NEEDS_REVIEW:
+        return found
     with review.open_store(cfg) as items:
         result = match_cli.adjudicate(
             items,
@@ -586,7 +692,7 @@ def handle(job, item, cfg) -> jobs.Produced:
     a person may be asked about, and the acquisition options a missing track
     carries. It never says acquired.
     """
-    said = (job.payload or {}).get(TRACKS, {}).get(item.item_id)
+    said = job.payload.get(TRACKS, {}).get(item.item_id)
     if not isinstance(said, Mapping):
         raise refuse(
             "internal-error",
@@ -594,6 +700,7 @@ def handle(job, item, cfg) -> jobs.Produced:
             f"there is nothing to resolve; it was queued by a build that did not "
             f"record what its items were",
             remedy=Remedy.REPORT_DEFECT,
+            steps=(f"cancel it with: crate job cancel {job.job_id}",),
             origin=("intake.cli",),
             detail={"job_id": job.job_id, "item_id": item.item_id},
         )
@@ -615,9 +722,10 @@ def handle(job, item, cfg) -> jobs.Produced:
 __all__ = [
     "ARTIFACTS",
     "CALLS",
+    "INTAKE_KEYS",
     "SOURCE",
-    "TRACKLIST",
     "TRACKS",
+    "UNREACHED",
     "build_file",
     "build_identify",
     "build_playlist",
@@ -630,6 +738,7 @@ __all__ = [
     "intake_set",
     "item_key",
     "playlist_argv",
+    "reset_cache",
     "resolve_track",
     "set_argv",
     "thawed",

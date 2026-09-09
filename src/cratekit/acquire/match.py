@@ -1052,6 +1052,18 @@ def _digest(*parts: str) -> str:
     return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()[:DIGEST_WIDTH]
 
 
+def digest(*parts: str) -> str:
+    """The one identifier digest, for a caller outside this module.
+
+    Public so that a second generator elsewhere is this one and not a copy
+    of it: the intake queue keys a recognised track by a digest of the same
+    tokens this module's identifiers are built from, and a copy with its own
+    width is the "two identity generators in one codebase" shape this module
+    already records against itself.
+    """
+    return _digest(*parts)
+
+
 # ---------------------------------------------------------------------------
 # The one internal shape (R13)
 # ---------------------------------------------------------------------------
@@ -1513,6 +1525,20 @@ def _from_row(row: object, *, origin: str, position: int) -> Wanted:
         # version.
         other_reading=None if declared else split_ambiguous(raw_title),
     )
+
+
+def read_row(row: object, *, origin: str, position: int) -> Wanted:
+    """ONE provider shaped row as a ``Wanted``, for a reader outside this module.
+
+    The recognition identifier receives a hit in exactly the shape a provider
+    row has, a mapping with a title, a list of artists and an ISRC under
+    ``external_ids``, and reading it here rather than in a second reader is
+    what keeps a recognised track and the same track pasted in a tracklist
+    folding to one identity: every rule the readers learned about artists,
+    versions, spellings and ambiguous titles applies to both or to neither.
+    Raises :class:`UnreadableList` for a row naming no artist or no title.
+    """
+    return _from_row(row, origin=origin, position=position)
 
 
 class UnreadableList(ValueError):
@@ -2430,6 +2456,7 @@ __all__ = [
     "Why",
     "acquisition_options",
     "apply_verdict",
+    "digest",
     "fold",
     "index_library",
     "key_disagreement",
@@ -2437,6 +2464,7 @@ __all__ = [
     "listed_title",
     "question_identity",
     "question_shape",
+    "read_row",
     "read_spotify_items",
     "read_text_lines",
     "read_text_rows",

@@ -137,6 +137,29 @@ def _isolate_keychain(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_paid_recognition(monkeypatch):
+    """Refuse the live recognition transport in every test, structurally.
+
+    Until U57 the suite could not spend by construction: ``recognize.identify``
+    refused whenever no identifier was injected. Now the seam binds the
+    ACRCloud identifier, whose transport is looked up on the module at call
+    time, so a test that records both recognition keys in the isolated
+    keychain and has ffmpeg on PATH would post real chunks to a real host with
+    the battery green. This puts the guarantee back where it was: the shipped
+    transport is replaced with one that fails the test, and a test that wants
+    a transport injects its own, which every one of them already does.
+    """
+    from cratekit.intake import acrcloud
+
+    def refused(request):
+        raise AssertionError(
+            "a test reached the live recognition transport; inject a fake one"
+        )
+
+    monkeypatch.setattr(acrcloud, "http_transport", refused)
+
+
+@pytest.fixture(autouse=True)
 def _block_real_library_paths(request, tmp_path_factory, monkeypatch):
     """Point the library root at a temp directory and disarm the mount check.
 

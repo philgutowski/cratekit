@@ -28,10 +28,16 @@ from cratekit.intake.recognize import Identifier
 
 @dataclass(frozen=True, slots=True)
 class IdentifyResult:
-    """Identification-only output: a tracklist, and the Wanted rows behind it."""
+    """Identification-only output: a tracklist, the Wanted rows behind it, and
+    what finding them cost. The counts are the identifier's own, carried
+    through so a verb can say whether the coverage was complete."""
 
     rows: tuple[Wanted, ...]
     tracklist: str
+    calls: int = 0
+    chunks: int = 0
+    misses: int = 0
+    unreached: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,8 +55,15 @@ def identify_only(
     identifier: Identifier | None = None,
 ) -> IdentifyResult:
     """Identify the tracks in ``source`` and stop. Download nothing."""
-    rows = recognize.identify(source, identifier=identifier)
-    return IdentifyResult(rows=rows, tracklist=recognize.tracklist_text(rows))
+    found = recognize.identify(source, identifier=identifier)
+    return IdentifyResult(
+        rows=found.rows,
+        tracklist=recognize.tracklist_text(found.rows),
+        calls=found.calls,
+        chunks=found.chunks,
+        misses=found.misses,
+        unreached=found.unreached,
+    )
 
 
 def ingest_file(

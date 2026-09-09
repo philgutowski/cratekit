@@ -23,6 +23,7 @@ landed in U57; until then ``identify`` refused on every real call.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +32,30 @@ from cratekit.core import binaries, secrets
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
 
-Identifier = Callable[[Path], tuple[Wanted, ...]]
+
+@dataclass(frozen=True, slots=True)
+class Identified:
+    """What one identification found, and what it cost to find it.
+
+    ``rows`` is the tracklist. The four counts are what a bare tuple of rows
+    cannot say: how many paid calls were made, how many chunks the grid asked
+    for, how many the service answered with nothing, and how many got NO
+    answer at all. The last one is the one a report has to carry, because a
+    set where most chunks were never answered is not a set nobody recognised,
+    and the two look identical as a tuple of rows.
+    """
+
+    rows: tuple[Wanted, ...]
+    calls: int = 0
+    chunks: int = 0
+    misses: int = 0
+    unreached: int = 0
+
+
+#: An identifier answers with an :class:`Identified`, or with the bare rows
+#: when it has nothing to say about cost, which is what a fake in the suite
+#: does. ``identify`` normalises the two.
+Identifier = Callable[[Path], "Identified | tuple[Wanted, ...]"]
 
 #: The binaries recognition needs, in the order a person would install them.
 #: Both are checked by presence here and resolved again by the carver at call
@@ -73,8 +97,8 @@ def identify(
     source: Path,
     *,
     identifier: Identifier | None = None,
-) -> tuple[Wanted, ...]:
-    """Identify the tracks in ``source`` and return them as Wanted rows.
+) -> Identified:
+    """Identify the tracks in ``source``: the Wanted rows, and what it cost.
 
     Downloads nothing. Writes nothing. The caller decides whether to persist
     a tracklist. ``identifier`` is injected so the suite can prove the gate
@@ -90,7 +114,10 @@ def identify(
         from cratekit.intake import acrcloud  # noqa: PLC0415 - bound only on the paid path
 
         identifier = acrcloud.bound_identifier()
-    return identifier(source)
+    found = identifier(source)
+    if isinstance(found, Identified):
+        return found
+    return Identified(rows=tuple(found))
 
 
 def tracklist_text(rows: tuple[Wanted, ...] | list[Wanted] | Any) -> str:

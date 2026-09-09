@@ -190,7 +190,8 @@ def test_queueing_a_set_identifies_it_and_gives_the_driver_one_item_per_track(
     job = job_of(job_id)
     assert job.payload[intake_cli.SOURCE] == str(path.absolute())
     assert job.payload[intake_cli.CALLS] == 3
-    assert "Aurora Bloom - Sun Path" in job.payload[intake_cli.TRACKLIST]
+    assert job.payload[intake_cli.UNREACHED] == 0
+    assert envelope["warnings"] == []
     frozen = job.payload[intake_cli.TRACKS]
     assert {said["title"] for said in frozen.values()} == {"Sun Path", "Tide", "Glass Hour"}
     assert all(said["ref"] == "" for said in frozen.values())
@@ -210,9 +211,47 @@ def test_a_set_nobody_recognised_is_an_honest_zero_that_says_what_it_cost(
     assert envelope["data"]["state"] == "nothing-identified"
     assert envelope["data"]["job_id"] == ""
     assert envelope["data"]["progress"]["calls"] == 3
+    assert envelope["data"]["progress"]["chunks"] == 3
     assert envelope["data"]["progress"]["source"] == str(path.absolute())
     with jobs.open_store() as store:
         assert jobs.list_jobs(store) == (), "a set with nothing identified must queue nothing"
+
+
+def test_a_set_where_chunks_got_no_answer_and_the_rest_named_nothing_is_a_failure_not_a_zero(
+    cfg, library, recognised
+):
+    """Absence read as evidence of absence, refused. Two chunks unanswered and
+    one miss is not a set nobody recognised."""
+    recognised.answers[:] = [ConnectionError("down"), miss(), ConnectionError("down")]
+    code, envelope = drive(["intake", "set", str(recording(library))])
+    assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), envelope
+    assert envelope["cause"]["reason"] == "intake-recognition-failed"
+    assert envelope["cause"]["detail"]["unreached"] == 2
+    assert envelope["cause"]["detail"]["calls"] == 3
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
+def test_a_set_identified_over_incomplete_coverage_queues_with_a_warning_and_freezes_the_gap(
+    cfg, library, recognised
+):
+    recognised.answers[:] = [hit("Aurora Bloom", "Sun Path", isrc="X1"), ConnectionError("down"), miss()]
+    job_id, envelope = queued_set(recording(library))
+    assert [w["code"] for w in envelope["warnings"]] == ["recognition-incomplete"]
+    assert "1 of 3" in envelope["warnings"][0]["message"]
+    assert envelope["data"]["progress"]["unreached"] == 1
+    assert job_of(job_id).payload[intake_cli.UNREACHED] == 1
+    code, resumed = drive(resume_argv(job_id))
+    assert resumed["data"]["progress"]["unreached"] == 1, "the gap was forgotten on resume"
+    assert resumed["data"]["progress"]["calls"] == 3
+
+
+def test_identify_only_reports_the_same_coverage_rule(cfg, library, recognised):
+    recognised.answers[:] = [hit("Aurora Bloom", "Sun Path"), ConnectionError("down"), miss()]
+    code, envelope = drive(["intake", "identify", str(recording(library))])
+    assert code == int(ExitCode.OK), envelope
+    assert [w["code"] for w in envelope["warnings"]] == ["recognition-incomplete"]
+    assert [row["title"] for row in envelope["data"]["missing"]] == ["Sun Path"]
 
 
 def test_a_repeated_recording_in_one_set_is_one_item_per_play_and_one_per_fold(
@@ -234,6 +273,32 @@ def test_a_mix_url_is_refused_at_the_queue_before_the_gate_or_any_spend(cfg, rec
     assert envelope["cause"]["reason"] == "intake-list-unusable"
     assert "download the mix" in " ".join(envelope["cause"]["remediation"]["steps"])
     assert recognised.requests == []
+
+
+def test_the_help_text_and_the_registry_summary_say_what_the_refusal_says():
+    """SEAM P6. A verb that refuses a URL cannot advertise one."""
+    import argparse
+
+    from cratekit.cli import registry
+
+    parser = argparse.ArgumentParser()
+    intake_cli.build_set(parser, None)
+    source = next(a for a in parser._actions if a.dest == "source")
+    assert "URL" not in source.help.split("(")[0]
+    assert "on this machine" in source.help
+    entry = next(e for e in registry.ENTRIES if e.name == "intake.set")
+    assert "URL" not in entry.summary
+    assert "binary.ffprobe" in entry.doctor_checks
+    assert "credential.recognition" in entry.doctor_checks
+    assert "credential.provider" not in entry.doctor_checks
+
+
+def test_a_tilde_is_expanded_before_the_file_is_looked_for(cfg, library, recognised, monkeypatch):
+    three_tracks(recognised)
+    monkeypatch.setenv("HOME", str(library))
+    recording(library, "friday.mp3")
+    job_id, _ = queued_set(Path("~/friday.mp3"))
+    assert job_of(job_id).payload[intake_cli.SOURCE] == str(library / "friday.mp3")
 
 
 def test_a_missing_recording_is_refused_by_name(cfg, library, recognised):
@@ -357,7 +422,13 @@ def test_a_failure_mid_set_fails_that_item_leaves_the_job_resumable_and_the_resu
 
     code, envelope = drive(resume_argv(job_id))
 
-    assert envelope["data"]["state"] == "failed", envelope
+    # A JOB THAT ENDED BADLY IS NOT AN OK EXIT. The engine records the job
+    # failed and returns; the verb re-raises the cause, so the exit code says
+    # so and the envelope carries the partial failure with the item's own
+    # cause nested inside it.
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "unavailable-transient"
+    assert envelope["cause"]["detail"]["failed"] == 1
     tide = next(item for item in items_of(job_id) if item.state is jobs.ItemState.FAILED)
     assert job_of(job_id).payload[intake_cli.TRACKS][tide.item_id]["title"] == "Tide"
     assert tide.cause.reason == "unavailable-transient"
@@ -430,7 +501,7 @@ def test_the_library_is_indexed_once_per_drive_not_once_per_item(
         return real(root, **kwargs)
 
     monkeypatch.setattr(match, "index_library", counting)
-    intake_cli._RESOLVED.clear()
+    intake_cli.reset_cache()
 
     drive(resume_argv(job_id))
 
@@ -447,6 +518,27 @@ def test_an_open_job_with_no_items_refuses_rather_than_reporting_success(cfg, li
     assert envelope["cause"]["reason"] == "internal-error", envelope
     assert "did not record what its items were" in envelope["cause"]["message"]
     assert job_of(job.job_id).state is jobs.JobState.QUEUED
+
+
+def test_a_job_of_another_verb_is_refused_rather_than_driven_under_this_envelope(cfg, library):
+    with jobs.open_store() as store:
+        job = jobs.enqueue(store, handler_key="master", payload={"source": "x"}, cfg=cfg, item_ids=("x",))
+    code, envelope = drive(["intake", "set", "x", "--job", job.job_id])
+    assert envelope["cause"]["reason"] == "job-unknown", envelope
+    assert "not an intake job" in envelope["cause"]["message"]
+    assert states(job.job_id) == {"x": jobs.ItemState.PENDING}
+
+
+def test_a_stray_file_beside_the_reports_does_not_take_the_summary_down(cfg, library, recognised):
+    three_tracks(recognised)
+    job_id, _ = queued_set(recording(library))
+    drive(resume_argv(job_id))
+    first = Path(items_of(job_id)[0].artifact)
+    (first.parent / "notes.json").write_text("{}")
+    (first.parent / "0001 (copy).json").write_text("{}")
+    code, envelope = drive(resume_argv(job_id))
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["progress"]["reported"] == 3
 
 
 def test_an_item_the_payload_does_not_carry_fails_by_name_rather_than_resolving_nothing(cfg, library):
@@ -513,7 +605,7 @@ def test_queueing_a_playlist_lists_it_through_the_catalogue_and_keys_items_by_pr
     frozen = job_of(job_id).payload[intake_cli.TRACKS]
     assert frozen["102"] == {
         "artist": "Nova Reef", "title": "Tide", "version": "", "key": None, "isrc": "X2",
-        "origin": match.TIDAL, "ref": "102", "spelled": "Tide",
+        "origin": match.TIDAL, "ref": "102", "spelled": "Tide", "other_reading": None,
     }
     assert resume_argv(job_id) == ["intake", "playlist", "pl-1", "--job", job_id]
 
@@ -613,3 +705,20 @@ def test_a_frozen_row_thaws_to_the_row_the_engine_reads():
     assert thawed.recording == row.recording
     assert thawed.listed == row.listed
     assert thawed.identity == row.identity
+
+
+def test_a_titles_other_reading_survives_the_freeze():
+    """``resolve_one`` asks the library about the second reading of an
+    ambiguous title, so a freeze that dropped it would narrow the question."""
+    row = match.read_text_lines("Aurora Bloom - Sun Path - Live\n")[0]
+    assert row.other_reading is not None, "the fixture title is not ambiguous"
+    frozen = intake_cli.frozen_rows((row,))
+    said = next(iter(frozen.values()))
+    assert said["other_reading"] == list(row.other_reading)
+    thawed = intake_cli.thawed(said)
+    assert thawed.other_reading == row.other_reading
+    assert [(r.title, r.version) for r in thawed.readings] == [
+        (r.title, r.version) for r in row.readings
+    ]
+    plain = intake_cli.thawed({"artist": "A", "title": "T", "other_reading": ["only-one"]})
+    assert plain.other_reading is None, "a malformed reading is dropped, not guessed"

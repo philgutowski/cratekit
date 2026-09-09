@@ -25,14 +25,8 @@ from cratekit.core import secrets
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import acrcloud, recognize
-from cratekit.intake.acrcloud import (
-    Budget,
-    Ledger,
-    Match,
-    Outcome,
-    Request,
-    Response,
-)
+from cratekit.intake.acrcloud import Budget, Ledger, Match, Outcome, Request, Response
+from cratekit.intake.recognize import Identified
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -125,7 +119,7 @@ def run(
     credentials=fixed_credentials,
     month: str = "2026-09",
     source: Path | None = None,
-) -> acrcloud.Recognition:
+) -> Identified:
     return acrcloud.identify(
         source or Path("set.mp3"),
         transport=transport,
@@ -193,6 +187,27 @@ def test_the_grid_is_a_function_of_the_duration_alone(duration_s, offsets):
     assert acrcloud.sample_offsets(duration_s) == offsets
 
 
+@pytest.mark.parametrize("duration_s", [0.0, 5.0, 12.0, 36.0, 37.0, 60.0, 300.0, 7200.0, 7199.5])
+def test_the_planned_count_is_the_grids_length_without_building_it(duration_s):
+    assert acrcloud.planned_calls(duration_s) == len(acrcloud.sample_offsets(duration_s))
+
+
+def test_a_nonsense_duration_is_refused_by_the_bound_before_any_grid_exists(ledger):
+    """A broken header answering two billion seconds must not allocate two
+    billion offsets on the way to the refusal that exists for it."""
+    for duration in (2_147_483_647.0, float("inf"), 1e18):
+        transport = FakeTransport()
+        with pytest.raises(CratekitError) as excinfo:
+            run(transport, duration_s=duration, ledger=ledger)
+        assert excinfo.value.cause.reason in {
+            "intake-recognition-spend-bound",
+            "intake-recognition-failed",
+        }
+        assert transport.requests == []
+    assert acrcloud.planned_calls(float("nan")) == 0
+    assert acrcloud.planned_calls(float("inf")) == 0
+
+
 def test_no_chunk_is_ever_taken_past_the_point_where_a_whole_one_fits():
     for whole in range(1, 400):
         for offset in acrcloud.sample_offsets(float(whole)):
@@ -214,17 +229,21 @@ def test_a_two_hour_set_fits_under_the_per_run_bound_and_a_four_hour_file_does_n
     [
         (coded(0), Outcome.MATCH),
         (coded(1001), Outcome.MISS),
+        (coded(2004), Outcome.MISS),
+        (coded(3015), Outcome.MISS),
         (coded(3003), Outcome.QUOTA),
-        (coded(3015), Outcome.QUOTA),
         (coded(3001), Outcome.AUTH),
         (coded(3002), Outcome.AUTH),
         (coded(3006), Outcome.AUTH),
         (coded(3014), Outcome.AUTH),
-        (coded(2004), Outcome.TRANSIENT),
+        (coded(2000), Outcome.TRANSIENT),
+        (coded(2005), Outcome.TRANSIENT),
         (coded(2999), Outcome.TRANSIENT),
         (coded(3000), Outcome.TRANSIENT),
+        (coded(3100), Outcome.TRANSIENT),
         (coded(9999), Outcome.UNCLASSIFIED),
         (coded(3005), Outcome.UNCLASSIFIED),
+        (coded(3300), Outcome.UNCLASSIFIED),
         ({"status": {"msg": "no code"}}, Outcome.UNCLASSIFIED),
         ({"status": {"code": "0"}}, Outcome.UNCLASSIFIED),
         ({"status": {"code": True}}, Outcome.UNCLASSIFIED),
@@ -237,10 +256,18 @@ def test_every_status_code_lands_in_exactly_one_family(payload, outcome):
     assert found is outcome
 
 
-def test_a_non_zero_code_is_never_read_as_a_miss():
+def test_a_quota_a_credential_or_a_transient_answer_is_never_read_as_a_miss():
     """The 565 call batch. A quota answer that reads as a miss is the defect."""
-    for code in (3003, 3015, 3001, 3002, 3006, 3014, 2004, 3000, 9999):
+    for code in (3003, 3001, 3002, 3006, 3014, 2000, 2005, 3000, 3100, 9999):
         assert acrcloud.classify(coded(code))[0] is not Outcome.MISS
+
+
+def test_a_chunk_nothing_could_be_fingerprinted_from_is_a_miss_not_a_quota():
+    """3015 was the source system's second quota code, and it is the service
+    saying this chunk carried nothing to fingerprint, which is a fact about
+    the audio. Reading it as quota ended a whole set on one silent chunk."""
+    for code in (2004, 3015):
+        assert acrcloud.classify(coded(code))[0] is Outcome.MISS
 
 
 def test_a_match_becomes_a_wanted_row_with_the_version_split_and_the_isrc_kept():
@@ -443,7 +470,7 @@ def test_the_two_spend_refusals_and_a_miss_are_three_different_things(ledger):
     with bound as own:
         run(FakeTransport(), duration_s=100.0, budget=Budget(per_run=1), ledger=ledger)
     with bound as theirs:
-        run(FakeTransport(coded(3015)), duration_s=20.0, ledger=ledger)
+        run(FakeTransport(coded(3003)), duration_s=20.0, ledger=ledger)
     missed = run(FakeTransport(miss()), duration_s=20.0, ledger=ledger)
     assert own.value.cause.reason == theirs.value.cause.reason == "intake-recognition-spend-bound"
     assert own.value.cause.detail["kind"] != theirs.value.cause.detail["kind"]
@@ -463,7 +490,7 @@ def test_a_credential_answer_ends_the_run_as_auth_failed(ledger):
 
 def test_a_transient_answer_or_a_transport_that_raised_skips_the_chunk_and_is_counted(ledger):
     transport = FakeTransport(
-        coded(2004, "decode error"),
+        coded(2005, "timeout"),
         ConnectionError("dropped"),
         Response(status=502, body=b"bad gateway"),
         Response(status=200, body=b"not json"),
@@ -589,14 +616,31 @@ def test_the_keychain_credentials_are_read_by_name_after_the_gate():
     assert acrcloud.keychain_credentials() == ("k-1", "s-1")
 
 
-def test_a_credential_the_keychain_will_not_hand_over_is_the_gate_class():
+def test_a_credential_missing_after_the_gate_is_credential_missing_with_its_own_remedy():
     secrets.set(str(secrets.Credential.IDENTIFY_KEY), "k-1")
     with pytest.raises(CratekitError) as excinfo:
         acrcloud.keychain_credentials()
     cause = excinfo.value.cause
-    assert cause.reason == "intake-recognition-unready"
+    assert cause.reason == "credential-missing"
     assert cause.remediation.remedy == Remedy.SET_CREDENTIAL
     assert cause.detail["credential"] == str(secrets.Credential.IDENTIFY_SIGNING_KEY)
+
+
+def test_a_keychain_that_cannot_be_reached_keeps_the_stores_own_remedy(monkeypatch):
+    """Telling a person to record a credential into a store that cannot hold
+    one is the wrong instruction the secrets module names three types to
+    avoid, so the exception's remedy is the one passed on."""
+
+    def unreachable(name):
+        raise secrets.CredentialBackendUnavailable("no keychain backend here", name=name)
+
+    monkeypatch.setattr(secrets, "get", unreachable)
+    with pytest.raises(CratekitError) as excinfo:
+        acrcloud.keychain_credentials()
+    cause = excinfo.value.cause
+    assert cause.reason == "intake-recognition-unready"
+    assert cause.remediation.remedy == Remedy.INSTALL_KEYCHAIN_BACKEND
+    assert cause.detail["kind"] == "CredentialBackendUnavailable"
 
 
 def test_the_gate_names_both_binaries_and_both_keys():
@@ -620,9 +664,11 @@ def test_the_seam_binds_this_identifier_when_none_is_injected(monkeypatch, tmp_p
     ledger = Ledger(path=tmp_path / "usage.json", lock_path=tmp_path / "usage.lock")
     monkeypatch.setattr(acrcloud, "Ledger", lambda: ledger)
 
-    rows = recognize.identify(source)
+    found = recognize.identify(source)
 
-    assert [(row.artist, row.title) for row in rows] == [("Aurora Bloom", "Sun Path")]
+    assert isinstance(found, Identified)
+    assert [(row.artist, row.title) for row in found.rows] == [("Aurora Bloom", "Sun Path")]
+    assert (found.calls, found.chunks, found.misses, found.unreached) == (1, 1, 0, 0)
     assert transport.requests[0].fields["access_key"] == "k-1"
     assert ledger.used() == 1
 
@@ -649,5 +695,69 @@ def test_the_bound_identifier_resolves_its_seams_at_call_time(monkeypatch, tmp_p
     monkeypatch.setattr(acrcloud, "Ledger", lambda: ledger)
     secrets.set(str(secrets.Credential.IDENTIFY_KEY), "k-1")
     secrets.set(str(secrets.Credential.IDENTIFY_SIGNING_KEY), "s-1")
-    assert identifier(Path("set.mp3")) == ()
+    assert identifier(Path("set.mp3")).rows == ()
     assert len(transport.requests) == 1
+
+
+def test_a_fake_identifier_answering_bare_rows_is_normalised_by_the_seam(monkeypatch, tmp_path):
+    monkeypatch.setattr(recognize.secrets, "exists", lambda name: True)
+    monkeypatch.setattr(recognize.binaries, "find", lambda name: f"/usr/bin/{name}")
+    found = recognize.identify(tmp_path / "x.mp3", identifier=lambda path: (match_row("A", "T"),))
+    assert isinstance(found, Identified)
+    assert [row.title for row in found.rows] == ["T"]
+    assert (found.calls, found.chunks, found.misses, found.unreached) == (0, 0, 0, 0)
+
+
+def match_row(artist: str, title: str):
+    from cratekit.acquire.match import Wanted
+
+    return Wanted(artist=artist, title=title)
+
+
+# ---------------------------------------------------------------------------
+# The stop on a service that stops answering
+# ---------------------------------------------------------------------------
+
+
+def test_five_unanswered_calls_in_a_row_stop_the_run_and_count_what_was_spent(ledger):
+    """An offline machine costs a handful of attempts, not a whole set."""
+    transport = FakeTransport(*([ConnectionError("down")] * 20))
+    with pytest.raises(CratekitError) as excinfo:
+        run(transport, duration_s=600.0, ledger=ledger)
+    cause = excinfo.value.cause
+    assert cause.reason == "intake-recognition-failed"
+    assert cause.detail["calls"] == acrcloud.UNREACHED_STOP
+    assert cause.detail["unreached"] == acrcloud.UNREACHED_STOP
+    assert len(transport.requests) == acrcloud.UNREACHED_STOP
+    assert ledger.used("2026-09") == acrcloud.UNREACHED_STOP
+
+
+def test_an_answer_resets_the_streak_so_a_blip_does_not_end_the_run(ledger):
+    answers = [ConnectionError("blip")] * 4 + [miss()] + [ConnectionError("blip")] * 4 + [hit("A", "T")]
+    result = run(FakeTransport(*answers), duration_s=250.0, ledger=ledger)
+    assert (result.calls, result.unreached, result.misses) == (10, 8, 1)
+    assert [row.title for row in result.rows] == ["T"]
+
+
+def test_a_rejecting_host_stops_the_run_the_same_way(ledger):
+    transport = FakeTransport(*([Response(status=403, body=b"forbidden")] * 20))
+    with pytest.raises(CratekitError) as excinfo:
+        run(transport, duration_s=600.0, ledger=ledger)
+    assert excinfo.value.cause.reason == "intake-recognition-failed"
+    assert "HTTP 403" in excinfo.value.cause.message
+    assert len(transport.requests) == acrcloud.UNREACHED_STOP
+
+
+def test_a_ledger_that_cannot_record_stops_the_run_before_the_call(ledger, monkeypatch):
+    from cratekit.core import config
+
+    def unlockable(calls, month=None):
+        raise config.ConfigLockUnavailable("the state directory is read only")
+
+    monkeypatch.setattr(ledger, "record", unlockable)
+    transport = FakeTransport(miss())
+    with pytest.raises(CratekitError) as excinfo:
+        run(transport, duration_s=20.0, ledger=ledger)
+    assert excinfo.value.cause.reason == "intake-recognition-failed"
+    assert excinfo.value.cause.detail["calls"] == 0
+    assert transport.requests == [], "a call was made that the ledger could not count"

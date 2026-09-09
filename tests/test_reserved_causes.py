@@ -5047,19 +5047,22 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # document it read declares no tracks, beside the analysis verbs' no-audio.
     # Every refusal the acquisition worker raises reuses a slug the table
     # already reserves, so the reserved half does not move.
-    # Re-pinned on U57, 2026-09-09: 377 to 384 distinct, 226 to 231 non-keys.
-    # SEVEN literals joined and NOTHING left, differenced as SETS against
-    # `main`'s own `src` tree read file by file through `git show`. Two are
-    # the causes named at the population assertion above. The five that are
-    # not causes: intake-artifacts and intake-staging, the two directory names
-    # under the queue root the intake worker's reports land in;
-    # nothing-identified, the honest zero state a set reports when recognition
-    # named no track, beside the download verb's no-tracks; and per-run and
-    # provider-quota, the two KINDS a spend refusal carries in its detail so a
-    # reader can tell this build's own bound from the service's answer without
-    # parsing the sentence. The monthly kind is one word, so it is not
-    # cause-shaped and this population never held it.
-    assert (len(literals), len(literals - set(causes))) == (384, 231), (
+    # Re-pinned on U57, 2026-09-09: 377 to 385 distinct, 226 to 232 non-keys.
+    # EIGHT literals joined and NOTHING left, differenced as SETS against
+    # `main`'s own `src` tree extracted into a scratch directory, once on the
+    # build and again after the review's fix round. Two are the causes named
+    # at the population assertion above. The six that are not causes:
+    # intake-artifacts and intake-staging, the two directory names under the
+    # queue root the intake worker's reports land in; nothing-identified, the
+    # honest zero state a set reports when recognition named no track, beside
+    # the download verb's no-tracks; per-run and provider-quota, the two KINDS
+    # a spend refusal carries in its detail so a reader can tell this build's
+    # own bound from the service's answer without parsing the sentence; and
+    # recognition-incomplete, the WARNING code a set queued over chunks that
+    # got no answer carries, a warning and not a cause because the set did
+    # queue. The monthly kind is one word, so it is not cause-shaped and this
+    # population never held it.
+    assert (len(literals), len(literals - set(causes))) == (385, 232), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5418,13 +5421,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # over main's src tree extracted into a scratch directory. intake/cli.py
     # and core/artifacts.py are NOT new holders: cli.py already named
     # config-unusable on main, and artifacts.py names no cause at all. The
-    # also-holds-an-integer half moves 18 to 20: acrcloud.py joins it because
-    # a chunk is twelve seconds, the grid is twenty five and the request
-    # timeout thirty, and intake/cli.py joins it because a recognised track's
-    # item identifier is sixteen hex characters wide; the reserved range
-    # contains 12, 16, 25 and 30. A duration and a digest width are not codes;
-    # the composite made both modules worth one look, and the look says so.
-    assert (len(literal_holders), len(literal_both)) == (90, 20), (
+    # also-holds-an-integer half moves 18 to 19: acrcloud.py joins it because
+    # a chunk is twelve seconds, the grid is twenty five, the request timeout
+    # thirty and the stop on unanswered calls five, and the reserved range
+    # contains 12, 25 and 30. A duration is not a code; the composite made the
+    # module worth one look, and the look says so. intake/cli.py held a
+    # sixteen for one build, the width of a recognised track's identifier,
+    # and the review's fix round replaced it with the match module's own
+    # digest, so it never reached a pinned measurement.
+    assert (len(literal_holders), len(literal_both)) == (90, 19), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

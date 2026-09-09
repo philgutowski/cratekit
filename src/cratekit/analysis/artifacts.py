@@ -10,7 +10,9 @@ where an honest energy absence and an unscored vocal pass have to land.
 **THIS IS THE FOURTH COPY, RECORDED RATHER THAN HIDDEN** (KTD9x). Adoption,
 outbound and tagging each carry one, and the honest home is one module in
 ``core`` taking the two directory names as arguments. That move is another
-unit's files; the residual sits beside R-240.
+unit's files; the residual sits beside R-240. ``cratekit.core.artifacts`` is
+now that module, landed by U57 with the directory names as parameters;
+this copy is not yet migrated onto it.
 
 **THE ROOT COMES FROM THE FROZEN CONFIGURATION, PASSED IN.** ``jobs.store_dir()``
 with no argument loads the CURRENT configuration, which is the KTD9 defect
