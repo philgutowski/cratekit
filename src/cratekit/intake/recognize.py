@@ -11,9 +11,13 @@ keychain on macOS, which is how an unattended run hangs. The first paid
 call is the first retrieval, and it happens only after this gate has
 passed.
 
-A missing helper binary (ffmpeg, used to carve the 12 second chunks) is
-the same class of refusal: report it before any spend, not after the
-first failed carve.
+A missing helper binary (ffmpeg, used to carve the 12 second chunks, and
+ffprobe, which measures the recording so the spend is known before the
+first call) is the same class of refusal: report it before any spend, not
+after the first failed carve.
+
+The implementation behind the seam is :mod:`cratekit.intake.acrcloud`. It
+landed in U57; until then ``identify`` refused on every real call.
 """
 
 from __future__ import annotations
@@ -29,6 +33,11 @@ from cratekit.core.exit_codes import Remedy
 
 Identifier = Callable[[Path], tuple[Wanted, ...]]
 
+#: The binaries recognition needs, in the order a person would install them.
+#: Both are checked by presence here and resolved again by the carver at call
+#: time, so an override that points at nothing refuses there by name.
+BINARIES = ("ffmpeg", "ffprobe")
+
 
 def recognition_ready() -> tuple[str, ...]:
     """Names of the things that are missing, empty when spend may start."""
@@ -37,8 +46,9 @@ def recognition_ready() -> tuple[str, ...]:
         missing.append(str(secrets.Credential.IDENTIFY_KEY))
     if not secrets.exists(str(secrets.Credential.IDENTIFY_SIGNING_KEY)):
         missing.append(str(secrets.Credential.IDENTIFY_SIGNING_KEY))
-    if binaries.find("ffmpeg") is None:
-        missing.append("ffmpeg")
+    for name in BINARIES:
+        if binaries.find(name) is None:
+            missing.append(name)
     return tuple(missing)
 
 
@@ -68,17 +78,18 @@ def identify(
 
     Downloads nothing. Writes nothing. The caller decides whether to persist
     a tracklist. ``identifier`` is injected so the suite can prove the gate
-    and the shape without spending.
+    and the shape without spending; left unset, the bound ACRCloud
+    identifier runs, and that is the paid path.
+
+    THE GATE RUNS BEFORE THE IDENTIFIER IS BUILT. Building the bound one
+    touches nothing, but the order is the contract rather than a nicety: a
+    missing key refuses here, by name, and the keychain is never asked.
     """
     assert_recognition_ready()
     if identifier is None:
-        raise refuse(
-            "intake-recognition-unready",
-            "no identifier is bound in this build, so a paid recognition "
-            "call cannot be made; bind one or stay in identification tests",
-            remedy=Remedy.SET_CREDENTIAL,
-            origin=("intake.recognize",),
-        )
+        from cratekit.intake import acrcloud  # noqa: PLC0415 - bound only on the paid path
+
+        identifier = acrcloud.bound_identifier()
     return identifier(source)
 
 

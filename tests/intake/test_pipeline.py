@@ -57,8 +57,13 @@ def test_identification_only_downloads_nothing_and_writes_a_tracklist(
     assert excinfo.value.cause.reason == "intake-recognition-unready"
 
     monkeypatch.setattr(recognize.secrets, "exists", lambda name: True)
+    # BOTH binaries, because the gate names both: ffmpeg carves and ffprobe
+    # measures, and a build that could carve but not measure would spend
+    # before it knew how much.
     monkeypatch.setattr(
-        recognize.binaries, "find", lambda name: "/usr/bin/ffmpeg" if name == "ffmpeg" else None
+        recognize.binaries,
+        "find",
+        lambda name: f"/usr/bin/{name}" if name in recognize.BINARIES else None,
     )
     result = pipeline.identify_only(source, identifier=fake_identifier)
     assert "A - One" in result.tracklist
