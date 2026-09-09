@@ -39,6 +39,20 @@ Null control `NULL_CONTROL`: killed 0, collected 6991 against 6991. The control 
 
 - `G7_staging_cleared` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 
+**RE-MEASURED AND KILLED, 2026-09-09, at `u54-zero-row-remeasured`.** The zero
+was the fake's, not the guard's. `FakeSource.fetch` always wrote its landing,
+so the fresh write replaced a stale file on its own and the clear had nothing
+left to do; the wrapped tool instead reports a skip as a successful call
+carrying the path already there, which is the case the clear exists for. The
+fake was given `skips_when_present`, the test named for the hazard now asks for
+it, and the identical mutation run against that tree kills 1 at 64 collected.
+
+**No composite is owed**, because the row is no longer a zero. What the pair of
+runs measures is worth more than a composite would have been: it names a fake's
+convenience as the thing standing in for coverage, which is the second time
+this unit found a test passing over the invariant in its own name, the first
+being the remedy assertion the review caught.
+
 ## Considered and dropped
 
 METHOD caps a light pass at 25 rows. These were ranked below the cap and NOT measured. They are not coverage.

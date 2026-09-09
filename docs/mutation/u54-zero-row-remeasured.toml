@@ -1,0 +1,17 @@
+name = "u54-zero-row-remeasured"
+pass_kind = "light"
+
+# ONE ROW, re-measured. G7 was the light pass's only zero, and its cause was a
+# fake that always wrote its landing rather than a guard nothing needed. The
+# fake now skips a file already at the landing name, which is what the wrapped
+# tool does, and this re-runs the identical mutation against that tree.
+
+[[rows]]
+id = "G7_staging_cleared"
+description = "Keep whatever a killed attempt left in the item's staging directory, re-measured after the fake was taught to skip"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    if directory.exists():
+        shutil.rmtree(directory)
+'''
+new = ""

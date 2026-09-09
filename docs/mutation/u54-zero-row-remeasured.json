@@ -1,0 +1,70 @@
+{
+  "name": "u54-zero-row-remeasured",
+  "pass_kind": "light",
+  "branch": "u54/finish",
+  "head": "9bfd275",
+  "when": "2026-09-09 11:56 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 6991,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/acquire/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/acquire/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d36491790cbf0276",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 6991,
+    "baseline_collected": 6991,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G7_staging_cleared",
+      "description": "Keep whatever a killed attempt left in the item's staging directory, re-measured after the fake was taught to skip",
+      "file": "src/cratekit/acquire/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5326f3d26b4e969e",
+      "subset": [
+        "tests/test_acquire_cli.py",
+        "tests/test_acquire_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.acquire.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 64,
+      "baseline_collected": 64,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_workers.py::test_a_partial_file_left_in_staging_does_not_poison_the_next_attempt"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if directory.exists():\n        shutil.rmtree(directory)\n",
+      "new": ""
+    }
+  ],
+  "dropped": []
+}

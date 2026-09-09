@@ -13418,3 +13418,205 @@ argument is `tagging`'s file, which is U56's.
 **Closes when:** one helper in `core` derives a folder's audio items with the
 recursion and dotfile rules as arguments, and both verbs call it; the locked
 JSON update joins `core.config` beside the atomic writer.
+
+## R-289. The acquisition staging tree is a dotfile, and `tagging.tag.audio_files` walks dotfiles
+
+**Found:** at U54's review, 2026-09-08, by the reuse angle, and driven.
+
+`ACQUIRE_STAGING_DIRNAME` is a dotfile, and the comment above it says that is
+safe because "the folder walks that queue tagging and analysis skip dotfiles".
+Half of that is true. `analysis/cli._audio_in` does skip them, and it walks one
+level with `iterdir` so it would never descend into the tree anyway.
+`tagging.tag.audio_files` walks with `rglob("*")` and filters on extension
+only. Driven: `audio_files(d)` over a directory holding
+`.cratekit-acquire-staging/<job>/0/1.mp3` returns that file.
+
+**Measured cost.** `crate tag folder <download_staging>` queues partial
+downloads left by a killed attempt and files `checked_landing` refused and
+deliberately left as evidence. Nobody has run it, so the cost is the reachable
+shape rather than an incident.
+
+**Why not fixed here.** The fix lands in `tagging/tag.py`, which is U56's file
+and not this unit's, and the alternative, moving the staging tree out from
+under `download_staging`, moves where the adapter is pointed. R-288 already
+records this walker's asymmetry from the analysis side; this entry is the
+acquisition consequence of the same shape.
+
+**Closes when:** `audio_files` gains the dot skip its neighbour has, or the
+acquisition staging tree moves outside the configured download root.
+
+## R-290. A blocked job reports outcome `ok` and exits 0, in every queued verb
+
+**Found:** at U54's review, 2026-09-08, on the park path this unit added.
+
+`drive` returns normally with the job `BLOCKED`, and the shell then builds the
+envelope with the default `outcome=Outcome.OK, code=ExitCode.OK`. The block is
+legible only inside `data.cause`. `Outcome.BLOCKED` exists for exactly this.
+
+**Measured cost.** Anything wrapping the verb, a sweep or the sync layer, reads
+a clean success while the provider may have just walled the account. Driven
+through the park test, which asserts `ExitCode.OK` today.
+
+**Why not fixed here.** It is not this unit's defect and not this unit's to
+change. `master`, `adopt` and `tagging` all report a closed job the same way,
+and `ctx.envelope` has no cause parameter, while `output.envelope_problems`
+requires a top level cause exactly when the outcome is not a success. Reporting
+`BLOCKED` honestly therefore means changing the envelope contract for every
+queued verb at once, which is a unit rather than a line.
+
+## R-291. Per item staging directories are created and never removed
+
+**Found:** at U54's review, 2026-09-08.
+
+`staging_dir` clears a directory on the NEXT attempt at the same job and
+ordinal. After a successful commit the emptied directory stays, and a refused
+landing's file stays inside it, deliberately, since the refused file is the
+evidence for diagnosing the next demotion. Nothing ever sweeps either.
+
+**Measured cost.** Unbounded growth under `download_staging`, one directory per
+item of every job ever run, and with R-289 unbounded growth of files a tagging
+sweep would pick up.
+
+**Why not fixed here.** The worker cannot clean up after itself: the engine
+commits the staged file AFTER `handle` returns, so the only correct sweep point
+is in the engine or in a maintenance verb, and neither is this unit.
+
+## R-292. An unreadable file under a permissive policy is committed unmarked
+
+**Found:** at U54's fix round, 2026-09-08, as the gap the fix deliberately left.
+
+`lossy_landing` asks the probe whether the landed file is lossy, and a file the
+probe cannot read answers nothing. It is not called lossy on a failed
+measurement, so it is committed unmarked, which is what happened before the fix
+too. Under STRICT the same file is refused as transient.
+
+**Measured cost.** A truncated download under `allow_lossy_marked` is committed
+as if it were a lossless landing. The library gains a file that is neither.
+
+**Why not fixed here.** Refusing an unreadable file under a policy whose whole
+purpose is to keep files is a different decision from the one the fix made, and
+it is the person's to make, not a session's. Conservative option taken: keep
+the pre-existing behaviour rather than widen a refusal nobody asked for.
+
+**Closes when:** somebody decides whether the permissive policy refuses a file
+that cannot be read at all, or keeps it.
+
+## R-293. A broken adapter is rebuilt and re-authenticated once per item
+
+**Found:** at U54's fix round, 2026-09-08, and driven at five for a five item job.
+
+The fix parks the run on `AUTH_FAILED` only. `ADAPTER_BROKEN` still fails its
+item, so the driver claims the next one, and the worker builds a fresh adapter
+and enters a fresh session scope for it. A fifty track list against a broken
+tool is fifty constructions and fifty session scopes.
+
+**Measured cost.** Wasted work rather than harm, which is the whole reason the
+two outcomes were separated: repeated failed LOGINS are what triggers a
+lockout, and a broken tool does not log in successfully either. Bounded by the
+list length.
+
+**Why not fixed here.** The unit's brief asks for a mid batch adapter refusal
+to fail its item and leave the job resumable so the resume redoes only that
+item, and parking on `ADAPTER_BROKEN` would end a fifty track sync on one bad
+file. The asymmetry is asserted by a test so it cannot be flattened by accident.
+
+## R-294. `acquire_paced` names two exceptions, and the first caller owns the rest
+
+**Found:** at U54, 2026-09-08, discharging R-204's first caller obligation.
+
+`acquire_paced` wraps the session scope and the source hook in a try that
+catches `AdapterAuthFailed` and `AdapterBroken` and turns them into a failed
+invocation. Anything else out of `_session_scope` or `_source` propagates. The
+worker does not catch it either, so it reaches `jobs.drive`'s item boundary and
+becomes `internal-error` through `_internal_item_cause`.
+
+**Measured cost.** An item fails with a defect report rather than a named cause
+and a remedy. Not driven: no candidate producing a third exception from those
+two hooks was found, so the reachability is UNMEASURED. Two candidates were
+read and neither produces one.
+
+**Why not fixed here.** Naming the third exception means deciding what it is,
+and the honest answer is that the vendored adapter has never been driven
+against a live account inside this suite. R-132's attended smoke test is where
+that is learned.
+
+## R-295. R-204 is discharged by half: two of its four symbols still have no caller
+
+**Found:** at U54, 2026-09-08, re-running R-204's own measurement.
+
+R-204 transferred the first caller obligation for `download.acquire_paced`,
+`download.acquire_concurrently`, `adapter.dispatch_invocation` and
+`adapter.adapter_names` to whoever bound the acquisition handler. This unit
+bound it and called the first two, the second through the first. `git grep -n`
+for the other two over `src` still returns a definition and an export line
+each, and nothing else.
+
+**Measured cost.** None yet. The obligation simply has not moved: two exported
+functions still ship with no caller, and their failure paths are unreviewed.
+
+**Why not fixed here.** `dispatch_invocation` and `adapter_names` belong to the
+alternative adapter path and the doctor's inventory respectively, and calling
+one to discharge an obligation would be a caller written for the obligation
+rather than for the product.
+
+## R-296. A seventh copy of the resume tail, and a third of the zero item guard
+
+**Found:** at U54, 2026-09-08. An amendment to R-248.
+
+`acquire/cli.py` carries its own `_reported`, `_no_op` and inline resume
+branch, which is the seventh spelling of the shape R-248 records.
+`adopt/shell.advance` and `tagging/shell.advance` are line for line identical
+to each other, parameterised on `origin` and `nothing_to_run`, and this unit's
+fix round added the same zero item refusal inline as a third copy rather than
+importing either.
+
+**Measured cost.** The fix round is the cost, measured: the guard `adopt` and
+`tagging` have had for units went missing here precisely because it lives in a
+copy this file does not import, and a review found it rather than the compiler.
+
+**Why not fixed here.** Extracting the shared tail touches four shells at once,
+which is R-248's own reason and unchanged by this unit.
+
+## R-297. One request per call, so `concurrency` above one cannot be expressed
+
+**Found:** at U54, 2026-09-08, and recorded in the worker's docstring.
+
+The engine claims one item at a time, so the worker hands `acquire_paced` a
+single request. Every request is still paced through the frozen delay, so a
+fifty item job is fifty paced requests. What the item granularity cannot
+express is the configured `concurrency` above one.
+
+**Measured cost.** A configuration naming `concurrency: 4` acquires serially and
+says nothing about it. Nobody is told the setting is inert on this path.
+
+**Why not fixed here.** Honouring it means either a job level worker that
+claims a batch, which is a different engine contract, or a warning the shell
+raises at queue time, which is a decision about what the setting means.
+
+## R-298. `output-exists` is only reachable after the download has been paid for
+
+**Found:** at U54, 2026-09-08, recorded in the code at the raise site.
+
+The destination name is the tool's to decide and is known only once the file
+has landed, so the collision is detected after a full fetch. The landed copy
+stays in this attempt's staging directory until the next attempt clears it.
+
+**Measured cost.** A duplicate track costs a whole download and the pacing
+delays that went with it, and provider side that is the expensive half.
+
+**Why not fixed here.** Predicting the name before the fetch means reproducing
+the tool's naming, which is the coupling the vendoring exists to avoid.
+
+## R-299. `staging_dir` reaches into `config` for a private helper
+
+**Found:** at U54's review, 2026-09-08.
+
+`config._mkdir_private` is called from `acquire/cli.py`. It is the right
+behaviour, a directory created with private permissions, and it is a private
+symbol of another module, so nothing stops `config` from changing it.
+
+**Measured cost.** None. Maintainer facing.
+
+**Why not fixed here.** Promoting it to a public name is a `config` change and
+every other caller of it is inside `config` itself, so the promotion wants
+doing once for all of them rather than for this one.
