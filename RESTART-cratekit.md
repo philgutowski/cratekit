@@ -142,19 +142,26 @@ torch and model touch is a lazy import inside a function, because
 
 ## What is open
 
-| issue | unit | state |
-|---|---|---|
-| #71 | U53, routing and rebuild workers | Ready |
-| #75 | U57, the recognition identifier | Ready |
-| #77 | U59, land the conformance branch | Ready |
-| #78 | U60, the deletion pass | On the tracker, `sync` puts it on the board |
-| #79 | U61, `crate sync all` composes the source increments | On the tracker, same |
-| #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
+In METHOD's serialized order, which is what picks the work:
+
+| order | issue | unit | state |
+|---|---|---|---|
+| 5 | #75 | U57, the recognition identifier | Ready, and NEXT |
+| 6 | #71 | U53, routing and rebuild, the last R-203 worker | Ready |
+| 7 | | Phase E explanation, Phillip's and not a session's | |
+| 8 | #77 | U59, land the conformance branch | Ready, last on purpose |
+| | #78 | U60, the deletion pass | Ready, added to the board by this session's sync |
+| | #79 | U61, `crate sync all` composes the source increments | Ready, same |
+| | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
+
+#78 and #79 are not in METHOD's list, which was serialized before they existed.
+Where they fall is Phillip's to say, so a session does not take them.
 
 Thirteen residual issues carry the `residual` label. They are the queue after
 the units, each done or closed back to the ledger. A2 is attended.
 
-**Next is `#71`, U53**, per METHOD's serialized order.
+**Next is `#75`, U57**, per METHOD's serialized order, which is the fifth line
+and the first whose issue is still open.
 
 ## Do this first
 
