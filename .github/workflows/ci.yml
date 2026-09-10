@@ -55,18 +55,39 @@ jobs:
       # Network-free by construction: it reads tests/_pending.py and the verb
       # registry, never `gh`. That is what lets it run in this job.
       #
-      # `--since` names the merge base rather than a branch, so it judges the
-      # commits this push adds and not the history behind them. On a push to the
-      # default branch there is nothing to judge and it exits 0.
+      # `--since` NAMES THE REF'S PREVIOUS TIP, so the range is exactly the
+      # commits this push added.
+      #
+      # It used to name the merge base with `origin/main`, and that judged an
+      # EMPTY RANGE on every push. This repository opens no pull requests and
+      # pushes only `main`, so after the push `origin/main` IS `HEAD`, the merge
+      # base is `HEAD`, and `HEAD..HEAD` holds nothing. The trailer lives in the
+      # merge commit the push delivers, which is precisely the commit that range
+      # excludes. So the copy this comment calls load-bearing had never judged a
+      # single trailer, and the only thing actually running was the commit-msg
+      # hook, which needs a second install line and is absent from a fresh clone.
+      #
+      # `github.event.before` is all zeros when a ref is created, and a pull
+      # request carries a base sha instead. Both fall through to exit 0: a check
+      # that cannot read its input reports that rather than refusing, because a
+      # step that fails where it cannot see is a step somebody deletes.
       - name: A unit may not close while a register still owes it a module
+        env:
+          PUSHED_FROM: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          git fetch --depth=50 origin main || true
-          BASE=$(git merge-base origin/main HEAD 2>/dev/null || echo "")
-          if [ -n "$BASE" ]; then
-            python scripts/board.py closing --since "$BASE"
-          else
-            echo "no merge base with origin/main; nothing to judge"
+          BASE="$PUSHED_FROM"
+          if [ -n "$PR_BASE" ]; then
+            BASE="$PR_BASE"
           fi
+          case "$BASE" in
+            ""|0000000000000000000000000000000000000000)
+              echo "no previous tip for this ref; nothing to judge"
+              exit 0
+              ;;
+          esac
+          git fetch --depth=50 origin "$BASE" 2>/dev/null || true
+          python scripts/board.py closing --since "$BASE"
 
   # WAS `test`, AND THE RENAME IS THE POINT. It lints and it proves the slim
   # profile. It does not run pytest, and it does not deselect anything either:

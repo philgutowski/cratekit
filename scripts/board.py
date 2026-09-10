@@ -449,7 +449,11 @@ def _referenced(match: re.Match) -> int:
 
 
 def unresolved_closes(
-    text: str, owed: dict[int, list[str]] | None = None, *, raw: bool = True
+    text: str,
+    owed: dict[int, list[str]] | None = None,
+    *,
+    raw: bool = True,
+    units: dict[int, int] | None = None,
 ) -> list[str]:
     """Every issue this message closes whose unit a register still owes a module.
 
@@ -464,18 +468,42 @@ def unresolved_closes(
     to ready. By then `sync` deliberately will not repair it, so the repository is
     stuck with it. The trailer is the moment the close is decided, and it is the
     last moment refusing is cheap.
+
+    ``units`` MAPS AN ISSUE NUMBER TO A UNIT NUMBER, and it is optional because
+    of a limit rather than a preference. A trailer names an ISSUE. Both registers
+    name a UNIT. Those coincide for most units here and not for all: U38 is issue
+    #51, and U39 through U61 are issues #57 through #79. The mapping lives in the
+    issue TITLES, which is to say on GitHub, and this function's whole value is
+    that it needs no token, so it cannot go and get it.
+
+    So the caller supplies it when it has it, and `audit` does through
+    `units_by_issue_number`. When it does not, an issue number is read as a unit
+    number, WHICH IS A GUESS, and the two ways it is wrong are not equally
+    priced. Against a mismatched unit it MISSES, and a miss is a close that has
+    already cascaded. Against a number that is some other unit's issue it refuses
+    wrongly, and the refusal says which assumption it made so the reader can see
+    the guess rather than trust the sentence. Recorded as a residual with its
+    measured reach: twenty four units were mismatched on 2026-09-10 and none of
+    them was owed a module, so the miss was real and unreachable that day.
     """
     owed = owed_by_unit() if owed is None else owed
     found = []
-    for uid in dict.fromkeys(closing_references(text, raw=raw)):
-        modules = owed.get(uid)
+    for reference in dict.fromkeys(closing_references(text, raw=raw)):
+        uid = reference if units is None else units.get(reference)
+        modules = owed.get(uid) if uid is not None else None
         if not modules:
             continue
         lines = [
-            f"this message closes #{uid}, but U{uid} is still owed "
+            f"this message closes #{reference}, but U{uid} is still owed "
             f"{', '.join(modules)}. Either land them, or re-point them at "
             f"the unit that will."
         ]
+        if units is None and reference == uid:
+            lines.append(
+                f"      read #{reference} as U{uid} without consulting the board, "
+                f"which is right for most units here and not for all. Run "
+                f"`board.py audit` to have the mapping resolved."
+            )
         lines += [f"      {note}" for note in _near_misses(modules)]
         found.append("\n".join(lines))
     return found
@@ -534,8 +562,20 @@ def cmd_closing(args) -> int:
             return 1
         text = path.read_text()
     else:
+        # ONE MESSAGE PER RECORD, NOT ONE CONCATENATED BLOB, and the separator is
+        # what makes that true. `--format=%B` alone runs the messages together
+        # with a blank line between them, and the keyword-to-reference gap in
+        # CLOSES_RE spans newlines, so a commit whose subject ends with the word
+        # "closes" followed by a commit whose body opens with `#36` produced a
+        # closing reference NEITHER commit contains. Measured on 2026-09-10.
+        # A false refusal manufactured by the reader is worse than one a person
+        # wrote, because there is no line to reword: the commits are already
+        # history and the only way past the check is to delete it.
+        #
+        # A NUL is the separator because it is the one byte a commit message
+        # cannot contain. Any printable sentinel is a string somebody can type.
         result = subprocess.run(
-            ["git", "log", "--format=%B", f"{args.since}..HEAD"],
+            ["git", "log", "--format=%B%x00", f"{args.since}..HEAD"],
             capture_output=True,
             text=True,
         )
@@ -545,10 +585,13 @@ def cmd_closing(args) -> int:
             # cannot read is a check somebody removes from the hook.
             print("board: no commit range to read; nothing checked")
             return 0
-        text = result.stdout
-        # POST-cleanup messages. Nothing to strip, and stripping could only lose
-        # a real trailer.
-        return _report(unresolved_closes(text, raw=False))
+        problems: list[str] = []
+        for message in result.stdout.split("\0"):
+            if message.strip():
+                # POST-cleanup messages. Nothing to strip, and stripping could
+                # only lose a real trailer.
+                problems += unresolved_closes(message, raw=False)
+        return _report(problems)
     return _report(unresolved_closes(text, raw=True))
 
 
@@ -800,6 +843,33 @@ def repointed_residuals(graph: dict) -> list[str]:
     return found
 
 
+def units_by_issue_number(graph: dict) -> dict[int, int]:
+    """Unit number to issue number, read off the titles, because nothing else has it.
+
+    THE MAPPING LIVES ON GITHUB AND NOWHERE IN THIS REPOSITORY, which is the
+    whole reason it is derived here rather than looked up. `CLAUDE.md` states the
+    fact plainly, "an issue number usually matches its unit number and it is not
+    guaranteed", and the title is where the unit number is written down.
+
+    A title claiming a unit number some other issue already claimed is dropped
+    rather than allowed to overwrite, because a duplicate is a board editing
+    mistake and picking the later one silently answers with the wrong issue.
+    """
+    seen: dict[int, int] = {}
+    duplicated: set[int] = set()
+    for number, node in graph.items():
+        if not node["unit"]:
+            continue
+        match = re.match(r"U(\d+)\b", node["title"])
+        if not match:
+            continue
+        unit = int(match.group(1))
+        if unit in seen and seen[unit] != number:
+            duplicated.add(unit)
+        seen[unit] = number
+    return {unit: number for unit, number in seen.items() if unit not in duplicated}
+
+
 def contradictions(graph: dict) -> list[str]:
     """What the repository and the board disagree about, that a sync cannot fix.
 
@@ -818,13 +888,26 @@ def contradictions(graph: dict) -> list[str]:
     out of date and `sync` repairs it. A contradiction is two sources of truth
     disagreeing, and repairing it automatically would mean picking one to
     overwrite, which is how the wrong one wins silently.
+
+    A UNIT NUMBER IS NOT AN ISSUE NUMBER, and this used to index the graph with
+    one as though it were the other. The registers name UNITS, `U25`, and the
+    graph is keyed by ISSUE. They coincide for most units here and not for all:
+    U38 is issue #51, and U39 through U61 are issues #57 through #79. So a
+    register owing U51 looked up issue #51, which is U38's, and answered about
+    the wrong unit in both directions, silently reporting a contradiction over a
+    unit nothing owed and missing the one that was owed. Measured 2026-09-10:
+    twenty four units are mismatched, and none of them was owed a module that
+    day, which is why nothing had ever surfaced it. Resolved through the title,
+    which is the only place the mapping exists, and the graph already carries it.
     """
     found = []
+    issues_by_unit = units_by_issue_number(graph)
     for uid, modules in sorted(owed_by_unit().items()):
-        node = graph.get(uid)
+        number = issues_by_unit.get(uid)
+        node = graph.get(number) if number is not None else None
         if node and node["unit"] and node["closed"]:
             found.append(
-                f"#{uid} {node['title'][:44]}\n"
+                f"#{node['number']} {node['title'][:44]}\n"
                 f"      closed, but a register still owes it {', '.join(modules)}"
             )
     return found + repointed_residuals(graph)
@@ -942,8 +1025,12 @@ def cmd_audit(args) -> int:
             print(f"  {line}")
         print()
         print("Each one is a decision, not a repair. Either reopen the issue because")
-        print("the unit is not finished, or clear its tests/_pending.py entry because")
-        print("it is. Overwriting one from the other would let the wrong one win.")
+        print("the unit is not finished, or clear the register entry because it is.")
+        print("TWO REGISTERS CAN OWE, so read the module named above to know which")
+        print("file to open: a dotted module in tests/_pending.py PENDING, or a")
+        print("planned_in marker on a src/cratekit/cli/registry.py entry. Naming")
+        print("only the first sent people to a file the entry was never in.")
+        print("Overwriting one from the other would let the wrong one win.")
 
     if not drift and not clashes:
         print("The board matches the repository.")

@@ -1599,6 +1599,64 @@ def test_the_lookup_table_exclusion_is_not_an_evasion_route():
     ), "a module-level name shadowed by a parameter is not a lookup table either"
 
 
+@pytest.mark.parametrize(
+    ("label", "body"),
+    (
+        ("plain assignment", "    TABLE = rows[0]\n    return TABLE.get(COLUMN, 0)\n"),
+        ("tuple unpacking", "    TABLE, meta = rows[0]\n    return TABLE.get(COLUMN, 0)\n"),
+        (
+            "nested unpacking",
+            "    (a, [TABLE, b]) = rows[0]\n    return TABLE.get(COLUMN, 0)\n",
+        ),
+        ("with as", "    with rows as TABLE:\n        return TABLE.get(COLUMN, 0)\n"),
+        ("for target", "    for TABLE, _ in rows:\n        return TABLE.get(COLUMN, 0)\n"),
+        (
+            "except as",
+            "    try:\n        pass\n"
+            "    except ValueError as TABLE:\n        return TABLE.get(COLUMN, 0)\n",
+        ),
+    ),
+)
+def test_every_way_of_shadowing_a_lookup_table_still_fires(label, body):
+    """The exclusion is only as good as the ways it knows a name can be bound.
+
+    A real per-column lookup table at module level is excused, correctly. The
+    evasion is to spell a local by the same name and read a real row off it, and
+    `_local_names` recognized exactly one spelling of that, the bare assignment.
+    Measured on 2026-09-10: tuple unpacking, `with ... as`, a tuple `for` target
+    and `except ... as` were each silent while the plain form fired, so the
+    exclusion swallowed a permissive read through four routes the two tests
+    above claimed were closed.
+
+    Parametrized rather than written as one row with four asserts, because a
+    single row stops at its first failure and would report one open route while
+    three others stayed hidden.
+    """
+    guard = _source_guard()
+    source = 'COLUMN = "rb_local_deleted"\nTABLE = {}\ndef read(rows):\n' + body
+    assert guard.permissive_soft_delete_reads(source), (
+        f"{label} shadows the module-level table with a real row, and the read "
+        f"was excused as a per-column lookup"
+    )
+
+
+def test_a_genuine_module_level_lookup_table_is_still_excused():
+    """The control the row above is worthless without.
+
+    Widening `_local_names` until everything fires would pass every row in that
+    parametrization and destroy the exclusion, which exists because this
+    repository writes `COLUMN_TYPES.get(SOFT_DELETE_COLUMN)` for real and a guard
+    that fires on the code most likely to be correct is a guard somebody deletes.
+    """
+    guard = _source_guard()
+    assert not guard.permissive_soft_delete_reads(
+        'COLUMN = "rb_local_deleted"\n'
+        "COLUMN_TYPES = {}\n"
+        "def kind():\n"
+        "    return COLUMN_TYPES.get(COLUMN, 0)\n"
+    ), "a per-column lookup table is not a row and must stay excused"
+
+
 def test_no_module_in_the_package_reads_the_soft_delete_marker_permissively():
     """The guard, armed over every module we author. This is the assertion.
 

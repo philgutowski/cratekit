@@ -686,6 +686,140 @@ def test_the_closing_check_is_wired_where_it_cannot_be_forgotten():
     assert callable(board.cmd_closing)
 
 
+def test_the_ci_step_judges_the_commits_the_push_added():
+    """The step judged an EMPTY range on every push, and said so in its own comment.
+
+    It took the merge base with `origin/main`. This repository opens no pull
+    requests and pushes only `main`, so after a push `origin/main` is `HEAD`, the
+    merge base is `HEAD`, and the range holds nothing. The trailer lives in the
+    merge commit the push delivers, which is exactly what the range excluded, so
+    the copy CI calls load-bearing had judged nothing at all.
+
+    Asserted against the workflow text because there is no other way to see it
+    from here. The shape that matters is that the range starts at the ref's
+    PREVIOUS TIP and not at a merge base with the branch being pushed.
+    """
+    workflow = (TESTS_DIR.parent / ".github" / "workflows" / "ci.yml").read_text()
+    step = workflow[workflow.index("A unit may not close while a register") :]
+    step = step[: step.index("\n  portable:")]
+    assert "github.event.before" in step, (
+        "the range must start at the ref's previous tip; a merge base against "
+        "the branch being pushed is empty by construction"
+    )
+    assert "merge-base" not in step
+    assert "board.py closing --since" in step
+
+
+def test_a_closing_reference_is_never_manufactured_across_two_commit_messages(
+    tmp_path, monkeypatch
+):
+    """The reader must not invent a trailer neither commit wrote.
+
+    `git log --format=%B` runs messages together, and the keyword-to-reference
+    gap spans newlines, so a commit whose subject ends with the word "closes"
+    followed by a commit whose body opens with `#36` produced a closing reference
+    that is in neither message. A false refusal a person wrote costs one reworded
+    line. This one costs a rewrite of history, or the deletion of the check,
+    because the commits are already final.
+
+    Driven through `cmd_closing`, since the concatenation is the subcommand's and
+    not the function's, and asserting on `unresolved_closes` would go on passing
+    with the defect fully in place.
+    """
+    board = _board()
+    repo = tmp_path / "fixture"
+    run, base = _seeded_repo(repo)
+    # OLDEST FIRST HERE, NEWEST FIRST IN THE LOG. `git log` reverses these, so
+    # the message that must END with the keyword is the one committed LAST, and
+    # the message that must OPEN with the reference is committed first. Getting
+    # that backwards produces a fixture that manufactures nothing and a row that
+    # passes while measuring an empty range.
+    for index, message in enumerate(
+        ("#36 is the tracker for this", "docs: explain what this closes")
+    ):
+        (repo / f"f{index}.txt").write_text(f"{index}\n")
+        run("git", "add", f"f{index}.txt")
+        run("git", "commit", "-q", "--no-verify", "-F", "-", message_text=message)
+
+    concatenated = run("git", "log", "--format=%B", f"{base}..HEAD")
+    assert board.closing_references(concatenated, raw=False) == [36], (
+        "this test's premise is that concatenation manufactures the match; it no "
+        "longer does, so the row is measuring nothing"
+    )
+
+    monkeypatch.setattr(
+        board, "owed_by_unit", lambda: {36: ["cratekit.write.converge_cli"]}
+    )
+    monkeypatch.chdir(repo)
+    assert board.cmd_closing(_ClosingArgs(since=base)) == 0, (
+        "a trailer neither commit wrote was refused"
+    )
+
+
+def test_an_issue_number_is_resolved_to_its_unit_when_the_board_says_they_differ():
+    """A trailer names an ISSUE. Both registers name a UNIT. They are not the same.
+
+    U38 is issue #51, and U39 through U61 are issues #57 through #79. Reading the
+    reference as a unit number is wrong in both directions: it misses the unit
+    that is actually owed and refuses over a unit that is not. Twenty four units
+    were mismatched on 2026-09-10, none of them owed a module that day, which is
+    why nothing had surfaced it.
+    """
+    board = _board()
+    owed = {38: ["cratekit.write.some_cli"]}
+    units = {51: 38, 38: 26}
+
+    resolved = board.unresolved_closes("Closes #51", owed, units=units)
+    assert resolved, "closing U38's real issue must be refused while U38 is owed"
+    assert "U38" in resolved[0]
+
+    assert not board.unresolved_closes("Closes #38", owed, units=units), (
+        "#38 is U26's issue here, and refusing it names a unit the message has "
+        "no relationship to"
+    )
+
+
+def test_the_network_free_path_says_that_it_guessed_the_unit_number():
+    """The guess is stated rather than worn as a fact.
+
+    Without the board the mapping cannot be resolved, so the reference is read as
+    a unit number. That is right for most units here and not for all, and a
+    refusal that does not say so is a sentence the reader has no reason to doubt.
+    """
+    board = _board()
+    refusals = board.unresolved_closes("Closes #38", {38: ["cratekit.write.some_cli"]})
+    assert refusals
+    assert "without consulting the board" in refusals[0]
+
+    quiet = board.unresolved_closes(
+        "Closes #38", {38: ["cratekit.write.some_cli"]}, units={38: 38}
+    )
+    assert quiet and "without consulting the board" not in quiet[0], (
+        "a resolved mapping is not a guess and must not carry the caveat"
+    )
+
+
+def test_the_unit_to_issue_map_is_read_off_the_titles_and_drops_a_duplicate():
+    """The mapping exists only on GitHub, so it is derived from what the graph has.
+
+    A duplicate unit number is a board editing mistake, and letting the later
+    issue win would answer confidently about the wrong one. Dropped instead, so
+    the contradiction check simply says nothing about that unit rather than
+    saying something false.
+    """
+    board = _board()
+    graph = {
+        51: {"number": 51, "title": "U38: something", "unit": True},
+        77: {"number": 77, "title": "U59: something else", "unit": True},
+        90: {"number": 90, "title": "not a unit at all", "unit": False},
+        91: {"number": 91, "title": "U59: a duplicate claim", "unit": True},
+    }
+    assert board.units_by_issue_number(graph) == {38: 51}, (
+        "U59 is claimed by two issues and must be dropped rather than resolved "
+        "to whichever was seen last"
+    )
+
+
 def test_the_two_message_paths_are_cleaned_differently_because_they_have_to_be():
     """`raw` says which side of git's cleanup this text is on, and it is not symmetric.
 

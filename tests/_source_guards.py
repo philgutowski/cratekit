@@ -2269,7 +2269,34 @@ def _local_names(scope: ast.AST) -> set[str]:
     A name bound here is not the module-level name it happens to spell the same
     way, which is the whole content of shadowing and the reason a name-keyed
     exclusion cannot be right.
+
+    EVERY BINDING FORM, and recognizing four of them was an evasion route rather
+    than a scope decision. This used to read only a bare ``Name`` target, so a
+    local bound by tuple unpacking, by ``with ... as``, by a tuple ``for`` target
+    or by ``except ... as`` was invisible, and a module-level container literal of
+    the same name went on excusing every read off it. Measured on 2026-09-10,
+    each of these was silent while the plain-assignment spelling of the same code
+    fired::
+
+        TABLE = {}                       # a real per-column lookup table
+        def read(rows):
+            TABLE, meta = rows[0]        # ... shadowed by a real row
+            return TABLE.get(COLUMN, 0)  # ... and the read was excused
+
+    Targets are walked rather than matched shape by shape, because the next
+    spelling somebody reaches for is the one a fixed list of four does not
+    contain, and a name-keyed exclusion is only as good as the set of ways it
+    knows a name can be bound.
     """
+
+    def bind(target: ast.AST | None) -> None:
+        """Every name a binding target introduces, through any nesting of it."""
+        if target is None:
+            return
+        for node in ast.walk(target):
+            if isinstance(node, ast.Name):
+                found.add(node.id)
+
     found: set[str] = set()
     arguments = getattr(scope, "args", None)
     if arguments is not None:
@@ -2281,14 +2308,18 @@ def _local_names(scope: ast.AST) -> set[str]:
     for node in _own_nodes(scope):
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name):
-                    found.add(target.id)
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            found.add(node.target.id)
-        elif isinstance(node, ast.NamedExpr) and isinstance(node.target, ast.Name):
-            found.add(node.target.id)
-        elif isinstance(node, (ast.For, ast.AsyncFor)) and isinstance(node.target, ast.Name):
-            found.add(node.target.id)
+                bind(target)
+        elif isinstance(node, (ast.AnnAssign, ast.NamedExpr)):
+            bind(node.target)
+        elif isinstance(node, (ast.For, ast.AsyncFor)):
+            bind(node.target)
+        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            for item in node.items:
+                bind(item.optional_vars)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            found.add(node.name)
+        elif isinstance(node, (ast.comprehension,)):
+            bind(node.target)
     return found
 
 
