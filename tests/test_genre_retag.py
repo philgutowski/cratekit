@@ -605,6 +605,100 @@ def test_a_written_file_is_relinked_to_the_existing_genre_row(tmp_path):
     assert mapped["1"].GenreID == "7"
 
 
+def test_a_soft_deleted_genre_is_invisible_through_the_shipped_reader(tmp_path):
+    """U59's first scenario, driven at the reader every shipped verb reaches.
+
+    ``resolve_genre_id`` has its own rows in tests/test_metadata_policy.py, and
+    those prove the FUNCTION. They do not prove the path, and the path is what
+    the finding was about: this defect was dormant until U40 gave the function a
+    caller a person can reach, through ``crate tag retag`` into
+    ``plan_library`` into ``plan_genre_retag``. So the assertion belongs here,
+    where the whole chain runs, and not only one layer down.
+
+    The library has exactly one row named for this genre and rekordbox has
+    already retired it. The honest answer is that the library has no active genre
+    by that name, which is a per-row ``genre-unknown`` skip the user can act on.
+    The answer this pins against is the row being linked anyway, which is a
+    ``GenreID`` pointed at a tombstone with the run reporting success.
+    """
+    path = tmp_path / "track.flac"
+    rows = [trees.ContentRow(content_id="1", recorded=str(path), deleted=False)]
+    mapped = {"1": Row("1", GenreID=None)}
+    db = FakeLookup([Row("6", Name=SPECIFIC, rb_local_deleted=1)])
+
+    planned = retag.plan_library(
+        written_outcome(path), rows, mapped, root=tmp_path, db=db
+    )
+    report = retag.apply_library(planned, mapped)
+
+    assert planned.plan.changes == (), (
+        "a soft-deleted genre row was linked through the shipped read path, so "
+        "the track now points at a row rekordbox has already retired"
+    )
+    assert [(skip.content_id, skip.reason) for skip in planned.plan.skipped] == [
+        ("1", "genre-unknown")
+    ]
+    assert mapped["1"].GenreID is None
+    assert report.written == ()
+
+
+def test_a_live_namesake_behind_a_tombstone_is_still_found_through_the_reader(tmp_path):
+    """The control, and without it the row above is satisfied by refusing everything.
+
+    "The first ACTIVE row wins rather than the first row" is the other half of
+    the rule, and a reader that simply stopped at the first row would report "no
+    such genre" for a genre the library plainly has. The tombstone is listed
+    FIRST here on purpose, because that ordering is what makes the two
+    implementations differ.
+    """
+    path = tmp_path / "track.flac"
+    rows = [trees.ContentRow(content_id="1", recorded=str(path), deleted=False)]
+    mapped = {"1": Row("1", GenreID=None)}
+    db = FakeLookup(
+        [
+            Row("6", Name=SPECIFIC, rb_local_deleted=1),
+            Row("7", Name=SPECIFIC, rb_local_deleted=0),
+        ]
+    )
+
+    planned = retag.plan_library(
+        written_outcome(path), rows, mapped, root=tmp_path, db=db
+    )
+    retag.apply_library(planned, mapped)
+
+    assert planned.plan.skipped == ()
+    assert mapped["1"].GenreID == "7"
+
+
+def test_an_unreadable_marker_stops_the_run_rather_than_skipping_one_row(tmp_path):
+    """The refusal reaches a person through the shipped path, not just the unit.
+
+    A binding that stops exposing the column is not a per-row problem and must
+    not arrive as one. Collapsed into ``genre-unknown`` it would report a
+    binding regression as thousands of skips naming the user's own taxonomy,
+    sending them to fix a taxonomy that was never wrong. Driven here so that the
+    distinction is proved to survive ``plan_library``, which is where it would be
+    lost if a caller ever caught the refusal and continued.
+    """
+    path = tmp_path / "track.flac"
+    rows = [trees.ContentRow(content_id="1", recorded=str(path), deleted=False)]
+    mapped = {"1": Row("1", GenreID=None)}
+    db = FakeLookup([Row("6", Name=SPECIFIC)])
+
+    with pytest.raises(CratekitError) as raised:
+        retag.plan_library(written_outcome(path), rows, mapped, root=tmp_path, db=db)
+
+    cause = raised.value.cause
+    assert cause.reason == "soft-delete-marker-unreadable"
+    assert cause.detail["genre"] == SPECIFIC
+    # THE TRAIL IS THE HALF THAT ONLY THIS LAYER CAN PROVE. A cause arriving with
+    # a one-element origin means a hop caught it and rebuilt it, which is exactly
+    # how a run-scoped refusal would decay into a per-row skip somewhere between
+    # the reader and the verb.
+    assert cause.origin[0] == "write"
+    assert mapped["1"].GenreID is None
+
+
 def test_the_plan_is_built_from_what_was_written_and_never_from_the_selection(tmp_path):
     """The reporting half of the first-caller defect the corpus records.
 
