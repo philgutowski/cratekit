@@ -1,0 +1,263 @@
+name = "u59"
+pass_kind = "light"
+
+# U59 lands a parked branch. The table is scoped to the rule the branch exists
+# for, the soft-delete reader, plus the guards this merge re-armed or repaired
+# and the five findings the review round fixed. Everything else on the branch
+# was already measured on `main`: the conformance 3 work had been cherry-picked
+# across before this merge, so `tests/test_cli_contract.py` is byte identical to
+# `main` and there is nothing here for a table to say about it.
+
+# ---------------------------------------------------------------------------
+# The rule the unit exists for: the soft-delete reader in write/metadata.py.
+# USER FACING. A wrong answer here points a track's GenreID at a row rekordbox
+# has already retired, and the run reports success.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "M1_permissive_default"
+description = "Restore the permissive default: an unreadable marker reads as active"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''        marker = getattr(row, rb_writer.SOFT_DELETE_COLUMN, _MARKER_ABSENT)'''
+new = '''        marker = getattr(row, rb_writer.SOFT_DELETE_COLUMN, 0)'''
+
+[[rows]]
+id = "M2_refusal_removed"
+description = "Delete the refusal entirely, so an absent marker falls through as falsey"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''        if marker is _MARKER_ABSENT or marker is None:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M3_none_admitted"
+description = "Stop refusing an explicit None; bool(None) is the same permissive answer"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''        if marker is _MARKER_ABSENT or marker is None:'''
+new = '''        if marker is _MARKER_ABSENT:'''
+
+[[rows]]
+id = "M4_tombstone_resolves"
+description = "Invert the active test, so a soft-deleted genre is the one that resolves"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''        if not marker:
+            return row.ID'''
+new = '''        if marker:
+            return row.ID'''
+
+[[rows]]
+id = "M5_first_row_wins"
+description = "Return the first row rather than the first ACTIVE one, ending the loop"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''        if not marker:
+            return row.ID
+    return None'''
+new = '''        return row.ID
+    return None'''
+
+[[rows]]
+id = "M6_reason_reworded"
+description = "Reword the refusal reason, which the plan and the report both key on"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''                "soft-delete-marker-unreadable",'''
+new = '''                "soft-delete-marker-unknown",'''
+
+[[rows]]
+id = "M7_scope_narrowed"
+description = "Scope the refusal to the row rather than the run, making it per-row"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''                scope=Scope.RUN,
+                origin=("write", "metadata"),'''
+new = '''                scope=Scope.ITEM,
+                origin=("write", "metadata"),'''
+
+[[rows]]
+id = "M8_column_literal"
+description = "Read the column as a typed string instead of through the bound name"
+file = "src/cratekit/write/metadata.py"
+surface = "maintainer"
+old = '''        marker = getattr(row, rb_writer.SOFT_DELETE_COLUMN, _MARKER_ABSENT)'''
+new = '''        marker = getattr(row, "rb_local_deleted", _MARKER_ABSENT)'''
+
+[[rows]]
+id = "M9_column_repointed"
+description = "Point SOFT_DELETE_COLUMN at a neighbouring bookkeeping column"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+old = '''SOFT_DELETE_COLUMN = "rb_local_deleted"'''
+new = '''SOFT_DELETE_COLUMN = "rb_local_synced"'''
+
+# ---------------------------------------------------------------------------
+# The source guard over the rule, in tests/_source_guards.py. MAINTAINER facing:
+# a hole here does not itself cost a user anything, it removes the thing that
+# would have caught the next permissive read.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "G1_load_context"
+description = "Count a Store target as a read again, re-admitting every row double"
+file = "tests/_source_guards.py"
+old = '''            if not isinstance(node.ctx, ast.Load):
+                continue'''
+new = ""
+
+[[rows]]
+id = "G2_local_names_targets"
+description = "Recognize only a bare Name target, reopening the four shadowing routes"
+file = "tests/_source_guards.py"
+old = '''        for node in ast.walk(target):
+            if isinstance(node, ast.Name):
+                found.add(node.id)'''
+new = '''        if isinstance(target, ast.Name):
+            found.add(target.id)'''
+
+[[rows]]
+id = "G3_with_as_dropped"
+description = "Drop `with ... as` from the binding forms alone, leaving the others"
+file = "tests/_source_guards.py"
+old = '''        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            for item in node.items:
+                bind(item.optional_vars)'''
+new = ""
+
+[[rows]]
+id = "G4_except_as_dropped"
+description = "Drop `except ... as` alone, so one layer is removed by itself"
+file = "tests/_source_guards.py"
+old = '''        elif isinstance(node, ast.ExceptHandler) and node.name:
+            found.add(node.name)'''
+new = ""
+
+[[rows]]
+id = "G5_reader_pin_widened"
+description = "Widen the exact-membership reader pin to a subset check"
+file = "tests/test_rb_writer_guard.py"
+old = '''    assert readers == SOFT_DELETE_READERS, ('''
+new = '''    assert readers >= SOFT_DELETE_READERS, ('''
+
+[[rows]]
+id = "G6_reader_pin_stale"
+description = "Restore the pre-merge membership, which the merged tree contradicts"
+file = "tests/test_rb_writer_guard.py"
+old = '''    "src/cratekit/write/trees.py",
+}'''
+new = '''    "src/cratekit/write/routing_pass.py",
+}'''
+
+# ---------------------------------------------------------------------------
+# The closing check in scripts/board.py, including the five review findings.
+# The check itself is MAINTAINER facing in its immediate effect and USER facing
+# in its consequence: a missed refusal is a close that has already cascaded and
+# that `sync` deliberately will not repair.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "B1_per_message_split"
+description = "Concatenate the range again, manufacturing a trailer across two commits"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+surface = "user"
+old = '''            ["git", "log", "--format=%B%x00", f"{args.since}..HEAD"],'''
+new = '''            ["git", "log", "--format=%B", f"{args.since}..HEAD"],'''
+
+[[rows]]
+id = "B2_raw_true_on_range"
+description = "Strip comments on the CI path, which can only delete a real trailer"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+surface = "user"
+old = '''                problems += unresolved_closes(message, raw=False)'''
+new = '''                problems += unresolved_closes(message, raw=True)'''
+
+[[rows]]
+id = "B3_unit_mapping_ignored"
+description = "Ignore the supplied issue-to-unit map, restoring the number conflation"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+surface = "user"
+old = '''        uid = reference if units is None else units.get(reference)'''
+new = '''        uid = reference'''
+
+[[rows]]
+id = "B4_guess_caveat_dropped"
+description = "Stop saying the unit number was guessed, so the reader trusts it"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+old = '''        if units is None and reference == uid:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B5_contradictions_by_number"
+description = "Index the graph by unit number again in contradictions()"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+surface = "user"
+old = '''        number = issues_by_unit.get(uid)
+        node = graph.get(number) if number is not None else None'''
+new = '''        node = graph.get(uid)'''
+
+[[rows]]
+id = "B6_duplicate_unit_kept"
+description = "Let a duplicated unit number resolve to whichever issue was seen last"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+old = '''    return {unit: number for unit, number in seen.items() if unit not in duplicated}'''
+new = '''    return seen'''
+
+[[rows]]
+id = "B7_title_anchor_dropped"
+description = "Match a unit number anywhere in the title rather than at its start"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+old = '''        match = re.match(r"U(\d+)\b", node["title"])'''
+new = '''        match = re.search(r"U(\d+)\b", node["title"])'''
+
+[[rows]]
+id = "B8_missing_file_raises"
+description = "Let a missing message file raise instead of refusing with a sentence"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+old = '''        if not path.is_file():'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B9_unreadable_range_refuses"
+description = "Refuse an unreadable commit range rather than reporting nothing to judge"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+old = '''            print("board: no commit range to read; nothing checked")
+            return 0'''
+new = '''            print("board: no commit range to read; nothing checked")
+            return 2'''
+
+# ---------------------------------------------------------------------------
+# Rows considered and NOT run, logged because a truncation nobody recorded reads
+# as coverage. METHOD caps a light pass at 25 and the rows above are 24, so
+# these were ranked below the cap rather than dropped for lack of interest.
+# ---------------------------------------------------------------------------
+
+[[dropped]]
+id = "B10_keyword_table"
+description = "Remove a keyword from CLOSING_KEYWORDS, one at a time, nine rows"
+reason = "ranked below the cap: the eleven-spelling parametrization already drives every keyword through both the string path and, since this unit, a real commit range, so nine rows would re-measure one guard the suite pins by construction"
+
+[[dropped]]
+id = "B11_reference_forms"
+description = "Re-admit the two cross-repository reference forms"
+reason = "ranked below the cap: same family as B3, which is measured, and the branch's own commit 10 landed it with a test naming the vendored-pyrekordbox trigger"
+
+[[dropped]]
+id = "G7_container_test"
+description = "Drop the container-literal test from the module-level exclusion"
+reason = "ranked below the cap: same guard family as G2 and G3, both measured, and the branch's commit 6 landed it with its own row"
+
+[[dropped]]
+id = "P1_module_state_ancestor"
+description = "Collapse ANCESTOR_MISSING back into ABSENT in tests/_pending.py"
+reason = "ranked below the cap: the register is empty, so module_state has no live caller through requires() and a death count would be measured entirely on its own unit tests"
