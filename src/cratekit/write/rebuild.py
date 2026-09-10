@@ -1669,8 +1669,8 @@ def rebuild_governed_tree(
     a fresh one is the resume bug that rule closes.
 
     ``vocal_threshold`` IS PASSED IN AND DEFAULTS TO ABSENT, which is the same
-    answer ``crate converge`` gives and for the same reason: nothing in this build
-    reads the calibration file, so a number chosen here would be this layer
+    answer the convergence report gives and for the same reason: nothing in this
+    build reads the calibration file, so a number chosen here would be this layer
     answering a question about somebody's library on their behalf. The engine
     names the dimension it therefore did not derive and the report carries it.
 

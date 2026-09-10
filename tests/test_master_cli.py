@@ -797,7 +797,13 @@ def test_a_handler_that_raises_an_undeclared_error_fails_the_item_not_the_driver
 
 
 def test_a_job_show_says_when_a_queued_verb_has_no_worker(configured):
-    """One verb working and nineteen silent is worse than all of them silent."""
+    """One verb working and nineteen silent is worse than all of them silent.
+
+    THE UNBOUND SUBJECT IS DERIVED, never named. It was ``rebuild`` until U53
+    bound that key, and a name here expires silently every time a unit binds one:
+    the assertion would then be reading a bound verb's answer and comparing it to
+    the unbound wording.
+    """
     source = configured.library.root / "REC001.wav"
     job_id = _queued(source)
 
@@ -806,8 +812,12 @@ def test_a_job_show_says_when_a_queued_verb_has_no_worker(configured):
     assert envelope["data"]["progress"]["worker"] == "bound"
     assert envelope["data"]["progress"]["worker_reason"] is None
 
+    unbound = sorted(
+        key for key, reason in handlers.HANDLERS_NOT_YET_BOUND.items() if "R-203" in reason
+    )
+    assert unbound, "no queued verb is recorded as unbound, so this has nothing to measure"
     with jobs.open_store() as store:
-        other = jobs.enqueue(store, handler_key="rebuild", payload={}, cfg=configured)
+        other = jobs.enqueue(store, handler_key=unbound[0], payload={}, cfg=configured)
     code, envelope = _drive(["job", "show", other.job_id])
     assert envelope["data"]["progress"]["worker"] == "none"
     assert "R-203" in envelope["data"]["progress"]["worker_reason"]
