@@ -4,11 +4,27 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-10, U53 built on `relay/71`, taken from the board as
-issue #71 and run as relay task 71.** The unit ran the whole pipeline in one
-session: plan, build, the built in `/code-review`, a seven finding fix round, a
-twenty five row mutation table, a re-measure of its zero rows, and this record.
-**The pending register is still EMPTY.**
+**Last session 2026-09-10, U59 built on `relay/77`, taken from the board as
+issue #77 and run as relay task 77.** The unit ran the whole pipeline in one
+session: plan, the merge, the built in `/code-review`, a six finding fix round,
+a twenty five row mutation table with one composite, and this record. **The
+pending register is still EMPTY**, and the merge is what kept it that way: git
+took `main`'s empty `PENDING` and only the branch's three-state `module_state`
+probe, so nothing was re-armed and no `@requires` decorator exists anywhere.
+
+**THE SOFT DELETE DEFECT IS OFF MAIN.** `write/metadata.resolve_genre_id` no
+longer defaults the marker. A row that cannot report it refuses with
+`soft-delete-marker-unreadable` at run scope rather than reading as active, and
+the rule is driven through the SHIPPED reader, `crate tag retag` into
+`plan_library` into `plan_genre_retag`, not only through the function's own
+rows. R-186 closes.
+
+**THE CONFORMANCE BRANCH IS LANDED AND ITS WORKTREE IS UNTOUCHED.**
+`.worktrees/conformance` and `fix/conformance-3-and-soft-delete-reader` are
+exactly as they were; the merge was taken on `relay/77` in the primary checkout.
+**Two of its eleven commits were already on `main`**, the conformance 3 pair, so
+`tests/test_cli_contract.py` is byte identical to `main` and this merge armed
+three guards rather than the five the brief names. That is R-326.
 
 **PHASE E'S AGENT HALF IS DONE.** Three verbs stopped reporting work nobody had
 done. `route.inbox` applies on the confirmed branch instead of returning the
@@ -33,12 +49,23 @@ tree, which is the whole of what the entry now says.
     git status -sb                              # no ahead or behind count
     git status --porcelain                      # empty
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
-    .venv/bin/python scripts/board.py audit     # exit 0
+    .venv/bin/python scripts/board.py audit     # exit 2, and that is expected
 
-The last measured suite was **7139 passed and 1 skipped**, taken on the branch
-before the record commit; the record touches documents only. **Main's highest
-residual is R-319 once this branch merges**, no duplicate headings, no heading
-deleted. Append only, and gaps are fine.
+The last measured suite was **7227 passed and 1 skipped**, taken on the branch
+before the record commit; the record touches documents only. Collected 7228,
+reconciled against `main`'s 7140 BY IDENTIFIER: zero ids lost, and the gain is
+`test_pending_units.py`, `test_rb_writer_guard.py`, `test_metadata_policy.py`
+and `test_genre_retag.py`. **Main's highest residual is R-326 once this branch
+merges**, no duplicate headings, no heading deleted. The branch's own R-18 and
+R-19 became R-320 and R-321, and their two source citations moved with them.
+Append only, and gaps are fine.
+
+**THE AUDIT EXITS 2 AND IT IS NOT DRIFT.** Issue #25 is closed while the verb
+registry still carries `planned_in="U25"` on two entries whose modules do not
+exist. This merge is what made that visible, because `contradictions()` read one
+register and there are two. It is R-324, it needs a decision rather than a
+repair, and `board.py sync` will not touch it on purpose. Do not weaken the
+check to get a green audit.
 
 ## Read this before touching a write path again
 
@@ -69,7 +96,35 @@ exits zero over half a library.
 this build, so a genre change leaves the track in its old sub as well as its new
 one and the convergence check names the leftovers.
 
-## What U53 left behind, beyond the code
+## What U59 left behind, beyond the code
+
+Seven residuals, R-320 and R-321 renumbered in from the branch and R-322 through
+R-326 filed by this session, plus one learning. Four are worth knowing before
+touching the board tooling or a source guard again:
+
+- **R-324.** U25 is closed while the registry owes it two modules, so the audit
+  exits 2 until somebody rules on it. The section above says why that is not
+  drift.
+- **R-322.** `contradictions()` is driven by NOTHING. The zero row over it was
+  paired with a composite that deletes its closure test entirely, and the
+  composite killed zero as well, which is what turns the first zero from a
+  question into an answer.
+- **R-323.** A trailer names an ISSUE and both registers name a UNIT. Twenty
+  four units are mismatched today and none of them is owed a module, which is why
+  this was never seen. `audit` resolves the mapping through the issue titles now.
+  The network-free hook cannot, so it says that it guessed.
+- **R-326.** Two of the parked branch's eleven commits were already on `main`.
+  Found by reconciling the collected count BY IDENTIFIER; a total-only check
+  showed a healthy rise and would have said nothing.
+
+**A GUARD THAT GOES RED AT A MERGE HAS TWO POSSIBLE CAUSES AND ONLY ONE IS THE
+GUARD.** Four went red here and all four were right about their rule and stale
+about the tree. Filed at
+`docs/solutions/workflow-issues/a-guard-written-against-an-old-tree-goes-red-holding-a-rule-that-is-still-right.md`.
+The dangerous reading is the other one: weaken a stale guard to get green, and
+the rule it was holding goes with it.
+
+## What U53 left behind, still current
 
 Eight residuals, R-312 through R-319, corrections to R-203 and R-131, and one
 learning. Four are worth knowing before touching routing again:
@@ -123,7 +178,7 @@ In METHOD's serialized order, which is what picks the work:
 | order | issue | unit | state |
 |---|---|---|---|
 | 7 | | Phase E explanation, Phillip's and not a session's | |
-| 8 | #77 | U59, land the conformance branch | Ready, last on purpose |
+| 8 | #77 | U59, land the conformance branch | DONE on `relay/77` |
 | | #78 | U60, the deletion pass | Ready |
 | | #79 | U61, `crate sync all` composes the source increments | Ready |
 | | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
@@ -135,10 +190,18 @@ commit. A session does not run it.
 #78 and #79 are not in METHOD's list, which was serialized before they existed.
 Where they fall is Phillip's to say, so a session does not take them.
 
-Thirteen residual issues carry the `residual` label. They are the queue after
-the units, each done or closed back to the ledger. A2 is attended.
+**#42, R-5 is now probably a close.** METHOD's line 9 says so, on the grounds
+that U59 lands the conformance assertions R-5 records as gated. Read R-5 against
+the merged tree before assuming it, because two of those commits turned out to
+be on `main` already, which is R-326.
 
-**The next unit a session may take is `#77`, U59.**
+Thirteen residual issues carry the `residual` label. They are the queue after
+the units, each done or closed back to the ledger. A2 is attended. R-324 is a
+fourteenth finding that needs a decision and has no issue yet.
+
+**Every unit in METHOD's serialized list is now built.** What is left on that
+list is Phillip's: the two explanations, the residual issues, and #29. #78 and
+#79 exist and are not placed, which is his call.
 
 ## Do this first
 
@@ -155,8 +218,8 @@ the units, each done or closed back to the ledger. A2 is attended.
 
 | branch | state |
 |---|---|
-| `relay/71` | U53, the branch this record is on; delete after the merge |
-| `fix/conformance-3-and-soft-delete-reader` | U59's input, in `.worktrees/conformance`, far behind main. DO NOT TOUCH |
+| `relay/77` | U59, the branch this record is on; delete after the merge |
+| `fix/conformance-3-and-soft-delete-reader` | LANDED into `relay/77` by merge. Still in `.worktrees/conformance`, untouched, and now redundant. Deleting it and the worktree is Phillip's call, not a session's, because the merge is not pushed yet |
 
 ## When a relay run is cut off mid unit
 
@@ -199,9 +262,18 @@ whole repair. native-relay's own `docs/solutions/` carries both halves.
 - **A finding blocks only if its input is REACHABLE and you drove the producer.**
 - **Re-pinning a population means naming what moved.** Difference the SETS
   against `main`'s own tree. A count that moved by the right amount is not a
-  measurement of what moved.
+  measurement of what moved, and U59 hit the sharper version: the soft delete
+  reader pin went from two members to a DIFFERENT two, so the count did not move
+  at all while both members did.
+- **A guard that goes red at a merge is usually right and out of date.** Ask
+  whether the RULE moved or the TREE did, and drive the answer. Weakening a stale
+  guard to get green takes the rule with it. Four of them in U59, all four right.
+- **The audit exits 2 and it is R-324.** That is a decision waiting, not drift,
+  and not a reason to soften `contradictions()`.
 - **Never write a closing keyword next to an issue number in prose**, not even
   inside backticks and not even to quote one. GitHub reads the text and not the
   intent.
 - **Explanations are batched per phase.** No explainer inside a unit.
 - **Do not touch** U30's board state, U20, R-9, A1, A2, `.worktrees/conformance`.
+  The worktree stays on that list even though its branch has landed, because
+  removing it is a cleanup Phillip takes once the merge is pushed.

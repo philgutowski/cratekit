@@ -14330,3 +14330,170 @@ Neither the old assertion nor the new one covers it.
 declined in the guard's own docstring with the same reasoning; the sentinel is
 single-sourced by the U24 reconciliation; and somebody rules on derived versus
 supplied actors, with conformance 3 asserting whichever survives.
+
+---
+
+## R-322. `contradictions()` is driven by nothing, and the composite proved it
+
+**Found:** 2026-09-10, U59, by the mutation table over the merged tree.
+
+`scripts/board.py:contradictions` is the function that reports a board claiming
+work landed that the repository says did not. It is the whole point of the audit
+exiting 2, and no test in the suite executes it.
+
+**Driven, and both halves are measurements rather than an argument.** Row
+`B5_contradictions_by_number` restored the unit-number-as-issue-number indexing
+this unit fixed and killed zero, promoted to the full suite. That alone is
+ambiguous, because a zero can mean the guard is redundant. So it was paired with
+`B5_composite`, which deletes the `node["closed"]` test entirely and makes the
+function report a contradiction over every OPEN unit as well. That killed zero
+too, on the full suite. The pairing is what turns the first zero from a question
+into an answer: the function has no driver at all, so nothing it does can be
+measured by mutating it.
+
+**Measured cost.** The two things it can be wrong about both cascade. Reporting
+a contradiction that does not exist teaches a session to ignore exit 2, which is
+the failure R-115 bought a rule for. Missing one lets a close move dependent
+units to Ready over work the repository says is unfinished, and `sync`
+deliberately will not repair that afterwards.
+
+**Why it is not fixed here.** `contradictions` takes the graph, and the graph
+comes from `gh`. A test needs a hand-built graph, which is a fixture, and this
+unit's own table shows what a fixture-shaped measurement is worth. The
+neighbouring functions this unit did drive, `units_by_issue_number` and
+`unresolved_closes`, are pure and testable, and both are now pinned. The one
+that consumes them is not, and closing that means deciding whether a graph
+double is acceptable here.
+
+**Closes when:** a test drives `contradictions()` over a graph with a closed
+owed unit and an open one, and `B5_composite` becomes a killing row.
+
+---
+
+## R-323. The closing check reads an issue number as a unit number when nothing maps them
+
+**Found:** 2026-09-10, U59, by the review round, and fixed only halfway on
+purpose.
+
+A closing trailer names an ISSUE. Both registers name a UNIT. `CLAUDE.md`
+already states that these usually match and are not guaranteed to.
+
+**Measured on 2026-09-10.** Twenty four units carry an issue number that differs
+from their unit number: U38 is issue #51, and U39 through U61 are issues #57
+through #79. None of those twenty four was owed a module that day, which is
+exactly why nothing had ever surfaced it, and it is the reason this is recorded
+rather than held as a blocker. The merge bar's third condition is unmet: the
+input is real and nothing currently produces it.
+
+**What was fixed.** `contradictions()` resolves the mapping through
+`units_by_issue_number`, reading the unit number off the issue title, which is
+the only place it is written down. `unresolved_closes` takes the mapping when a
+caller has one.
+
+**What is left, and it is a limit rather than an oversight.** The mapping lives
+on GitHub. The value of the network-free check is precisely that it runs in a
+commit-msg hook on a machine with no token, so it cannot go and fetch it. It
+therefore reads the reference as a unit number and SAYS SO in the refusal, which
+is the honest version of a guess, not a fix for it. Against a mismatched owed
+unit it still misses.
+
+**Closes when:** somebody rules on which of the two it should be. Either the
+repository carries the mapping locally, which is a third register and this
+project already has two too many, or the hook accepts that it is best effort
+against this one shape and the authoritative answer is `audit`, which resolves
+it correctly today.
+
+---
+
+## R-324. U25 is closed while the verb registry still owes it two modules
+
+**Found:** 2026-09-10, U59, on the first `board.py audit` run after this merge
+armed the second register.
+
+Issue #25 is CLOSED. `src/cratekit/cli/registry.py` carries `planned_in="U25"`
+on two entries naming `cratekit.vocals.cli` and `cratekit.write.metadata_cli`,
+and neither module exists: there is no `src/cratekit/vocals/` directory at all.
+
+**This is the new check working rather than a regression.** Before this merge
+`contradictions()` read one register and there are two, so the board had never
+said a word about it. The moment the second register is read the contradiction
+becomes visible, which is the whole reason the branch existed.
+
+**Measured cost.** `board.py audit` exits 2 from this merge onward, and
+`CLAUDE.md` tells every session to run it before ending. An exit 2 that is
+always there is an exit 2 nobody reads, which converts a real guard into noise
+and is how the check gets deleted.
+
+**Why it is not fixed here.** `CLAUDE.md` gives two remedies and both are
+decisions somebody has to take rather than repairs a session can perform. Either
+U25 is not finished and its issue reopens, or the two verbs were re-pointed or
+dropped and the markers come off. Re-pointing another unit's verbs is that
+unit's judgement, which is the same reason R-320 gives for leaving seven other
+markers alone, and reopening a closed issue from inside an unattended run is a
+board write this session had no mandate for.
+
+**Closes when:** somebody answers the question for U25, in either direction, and
+the audit exits 0.
+
+---
+
+## R-325. Four maintainer facing zeros in U59's table, each with what it means
+
+**Found:** 2026-09-10, U59's mutation table, twenty five rows.
+
+METHOD gives a maintainer facing zero one line rather than a composite. Four of
+them, and every one reads as the author could not kill it, which is the sentence
+this project uses on purpose because there was no independent verifier.
+
+- **`M7_scope_narrowed`.** Narrowing the unreadable-marker refusal from
+  `Scope.RUN` to `Scope.ITEM` kills nothing on the full suite. Reclassified from
+  user facing to maintainer facing during the pass, with the reason: the scope
+  reaches a person only if the refusal does, and R-186 records that the producer
+  of an unreadable marker was never driven. What IS pinned is the refusal
+  itself, `M2_refusal_removed` kills four.
+- **`M8_column_literal`.** Replacing `rb_writer.SOFT_DELETE_COLUMN` with the
+  string it holds kills nothing, which is expected and still worth recording:
+  the constant exists so a reader is resolvable through the import graph rather
+  than being a string somebody typed, and that is a property no runtime test can
+  see. `M9_column_repointed` kills eleven, so the constant's VALUE is pinned
+  even though its use as a name is not.
+- **`G5_reader_pin_widened`.** Turning the exact-membership reader pin into a
+  subset check kills nothing, because no test adds a reader. That is the pin's
+  own design: it catches a WIDENING that has not happened yet. `G6` shows it is
+  live, since restoring the pre-merge membership kills one.
+- **`B7_title_anchor_dropped`.** Matching a unit number anywhere in an issue
+  title rather than at its start kills nothing, because no fixture title carries
+  a stray unit-shaped token later in the line. `B6` shows the map is otherwise
+  pinned.
+
+**Closes when:** nothing. This is a record of a measured gap, not work.
+
+---
+
+## R-326. Two of the parked branch's eleven commits were already on `main`
+
+**Found:** 2026-09-10, U59, while reconciling the collected count before the
+merge.
+
+U59's brief describes eleven commits, the first and fourth of which are the
+conformance 3 work: "conformance 3 asserted the inverse of R34 and could not
+drive two gates" and "conformance 3 stopped asserting that a declared gate is
+ever REACHED". Both were already on `main` when this unit was taken up.
+`tests/test_cli_contract.py` is byte identical between `main` and the merged
+tree, and all seven of the functions those commits introduce sit at identical
+line numbers on both sides.
+
+**How it was found, and it was nearly not.** The collected count reconciled by
+identifier showed zero lost ids and fifty one gained, none of them in
+`test_cli_contract.py`, against a branch whose diff adds four hundred and one
+lines to that file. A total-only check would have shown a healthy rise and said
+nothing. This is the second time that rule has paid for itself here.
+
+**Why it matters to a reader of the brief.** The brief says the branch carries
+"five conformance and board guards" and the merge arms them all. Three of the
+five land. The conformance half of this unit was a no-op, and a session reading
+the brief afterwards would otherwise conclude that this merge is what armed
+those assertions.
+
+**Closes when:** nothing. Recorded so the brief and the tree do not disagree
+silently.
