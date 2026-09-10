@@ -38,6 +38,7 @@ carries the procedure and the U16 case where it cost 330 tests.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -928,6 +929,240 @@ def test_a_near_miss_note_is_skipped_once_the_owed_module_actually_lands():
         "src/cratekit/write/rebuild.py and a note there would be a diagnosis of "
         "a problem that no longer exists"
     )
+
+
+# ── Rule B's other half: the audit side, over a graph ────────────────────────
+#
+# `unresolved_closes` above is the check moved BEFORE the close. `contradictions`
+# is the same comparison AFTER it, and it is the whole of what makes `board.py
+# audit` exit 2. R-322 recorded that no test in this suite executed it, and it
+# recorded that as a MEASUREMENT rather than an observation: U59 reverted the
+# unit-to-issue indexing and killed zero, then paired that zero with a composite
+# deleting the closure test entirely, which killed zero as well. Two zeros over
+# one function is not a redundant guard, it is a function with no driver.
+#
+# WHERE THE DOUBLE SITS IS THE WHOLE DECISION, and R-322 asks for it out loud.
+# `contradictions` takes the graph, and the graph comes from `gh`, so something
+# has to be hand built. A hand-built GRAPH is the wrong answer: every derived key
+# on a node, `closed`, `unit`, `open_deps`, `reach`, `unblocks`, would then be
+# typed beside the test rather than produced by the code, which is METHOD's
+# fourth defect pattern exactly, a measurement taken on a fixture authored
+# alongside the thing it justifies. Add a key to `build_graph` and a typed graph
+# goes on passing while the real one has moved.
+#
+# So the double is the PAYLOAD, the list of issue dicts `gh issue list --json`
+# returns, and `build_graph` runs on it for real. That puts the fixture at the one
+# boundary a test here genuinely cannot cross and leaves everything downstream of
+# it under measurement. The payload can still drift from what `load_issues` asks
+# for, and that is the one direction this shape does not close by construction,
+# so it is closed by an assertion instead: the field list is read out of
+# `load_issues`'s own source and compared against the fixture's keys.
+
+
+#: The `--json` payload for one issue, exactly as `gh issue list` returns it.
+#: Keys are asserted against `load_issues` in the test directly below, so this
+#: cannot quietly fall behind the call it is standing in for.
+def _issue(number: int, title: str, *, closed: bool, unit: bool, body: str = "") -> dict:
+    return {
+        "number": number,
+        "title": title,
+        "state": "CLOSED" if closed else "OPEN",
+        "body": body,
+        "labels": [{"name": "unit"}] if unit else [],
+    }
+
+
+def test_the_graph_double_carries_exactly_the_fields_load_issues_asks_gh_for():
+    """The one way the payload double can drift, closed by reading the producer.
+
+    Building the double at the network boundary means `build_graph` is measured
+    rather than mimicked, and it leaves precisely one gap: the payload itself
+    could stop resembling what `gh` is asked for. A field added to `load_issues`
+    and not to `_issue` would make every test below run against an issue shape
+    that no longer exists, and they would all still pass, because `build_graph`
+    only reads the keys it reads today.
+
+    So the field list is taken from the call rather than restated. Read off the
+    source text because the argument list is positional strings inside a
+    subprocess invocation, and there is nothing else to interrogate.
+    """
+    board = _board()
+    source = (TESTS_DIR.parent / "scripts" / "board.py").read_text()
+    call = source[source.index("def load_issues") : source.index("def parse_deps")]
+    fields = re.findall(r'"([a-z,]*number,[a-z,]*)"', call)
+    assert len(fields) == 1, (
+        f"the --json field list is no longer a single literal in load_issues, so "
+        f"this pin cannot read it: {fields}"
+    )
+    asked_for = set(fields[0].split(","))
+    assert set(_issue(1, "U1: x", closed=False, unit=False)) == asked_for, (
+        f"the payload double and load_issues disagree about the issue shape; gh is "
+        f"asked for {sorted(asked_for)} and the double supplies "
+        f"{sorted(_issue(1, 'U1: x', closed=False, unit=False))}"
+    )
+    assert callable(board.load_issues)
+
+
+def test_a_closed_unit_a_register_still_owes_is_the_contradiction_the_audit_exits_2_on():
+    """The detector, driven. R-322 is the finding that nothing drove it.
+
+    Four cases in one graph, because the function's two failure directions are
+    reached by different nodes and a graph holding only the positive case cannot
+    see either of them.
+
+    THE MISMATCHED NUMBER IS THE POINT. A register names a UNIT and the graph is
+    keyed by ISSUE, and here U38 is issue #51 exactly as it is on the real board.
+    Issue #38 is present too and belongs to a different unit that nothing owes, so
+    reading the register's unit number as an issue number reports the wrong unit
+    AND misses the right one, which is what the fixed code stopped doing and what
+    `B5_contradictions_by_number` puts back.
+
+    THE OPEN UNIT IS THE OTHER DIRECTION. U61 is owed a module and its issue is
+    still open, which is not a contradiction at all: a register owing an open unit
+    is the register working. Reporting it would teach a session that exit 2 is
+    noise, which is the failure R-115 already bought a rule for.
+
+    NO NODE HERE IS TITLED LIKE A RESIDUAL, and that is load bearing rather than
+    incidental. `contradictions` composes the register comparison with
+    `repointed_residuals`, which reads the real ledger from a path it computes
+    itself, so a graph carrying an `R-n:` title makes this test's answer depend on
+    a fourteen thousand line document nobody edited for it. The first draft used
+    `R-4` for the non-unit node and picked up a real repoint finding on the second
+    assertion. The attended-chore title exercises the same node shape, a board
+    item that is not a unit, and drags nothing in with it.
+    """
+    board = _board()
+    graph = board.build_graph(
+        [
+            _issue(51, "U38: the write routing pass", closed=True, unit=True),
+            _issue(38, "U26: something else entirely", closed=True, unit=True),
+            _issue(79, "U61: still in flight", closed=False, unit=True),
+            _issue(90, "A2: an attended chore, and not a unit", closed=False, unit=False),
+        ]
+    )
+    owed = {
+        38: ["cratekit.write.routing"],
+        61: ["cratekit.vocals.cli"],
+        99: ["cratekit.nowhere.cli"],
+    }
+
+    found = board.contradictions(graph, owed=owed)
+
+    assert len(found) == 1, (
+        f"one closed unit here is owed a module and one open unit is, and only the "
+        f"closed one is a contradiction; got {found}"
+    )
+    assert "#51" in found[0] and "U38" in found[0], (
+        "the register owes U38, whose issue is #51; a report naming #38 has "
+        "resolved a unit number as an issue number and is describing U26"
+    )
+    assert "cratekit.write.routing" in found[0], (
+        "the refusal must name the module owed, because two registers can owe and "
+        "the module is what says which file to open"
+    )
+    assert not any("#79" in line for line in found), (
+        "U61 is owed a module and its issue is OPEN, which is the register "
+        "working rather than the board contradicting it"
+    )
+    assert not any("#38" in line for line in found), (
+        "#38 is U26's issue here and nothing owes U26; reporting it is the "
+        "conflation that reported a contradiction over a unit nothing owed"
+    )
+
+
+def test_a_register_owing_a_unit_with_no_issue_at_all_is_silence_not_a_crash():
+    """The branch that exists because the mapping can simply be absent.
+
+    A unit number in a register need not appear on the board: a title can be
+    edited, an issue can be transferred, and `units_by_issue_number` DROPS a unit
+    two issues both claim, which is a deliberate absence rather than an accident.
+    None of those is a contradiction and none of them may be a traceback either,
+    because `audit` is the command a session runs before it stops and an audit
+    that raises reports nothing about the drift it had already found.
+    """
+    board = _board()
+    graph = board.build_graph(
+        [
+            _issue(77, "U59: the conformance unit", closed=True, unit=True),
+            _issue(91, "U59: a duplicate claim on the same unit", closed=True, unit=True),
+        ]
+    )
+    owed = {
+        # Dropped by the mapping, because two issues claim it.
+        59: ["cratekit.write.metadata_cli"],
+        # Never on this board at all.
+        99: ["cratekit.nowhere.cli"],
+    }
+    assert board.contradictions(graph, owed=owed) == [], (
+        "U59 is claimed by two issues so the mapping drops it, U99 is not on the "
+        "board, and the honest answer to both is to say nothing about that unit "
+        "rather than to pick an issue or to raise"
+    )
+
+
+def test_a_repointed_residual_issue_is_reported_through_the_same_call(monkeypatch):
+    """The other half of what `contradictions` returns, and it was undriven too.
+
+    A residual's number lives in its ISSUE TITLE, which is a surface the
+    repository cannot see, and the composed return is what carries that finding to
+    `audit`. Dropping the second term would leave the function reporting only
+    register contradictions with nothing anywhere saying the residual check had
+    stopped happening.
+
+    The document is supplied rather than read. Its real headings are append only
+    and would serve, but a test that asserts over the live ledger is a test whose
+    premise moves whenever somebody files a finding, and what is in question here
+    is the comparison, not the parse. The parse is pinned separately below,
+    against the real file, where the append-only rule makes that safe.
+    """
+    board = _board()
+    graph = board.build_graph(
+        [
+            _issue(42, "R-5: the title the file agrees with", closed=False, unit=False),
+            _issue(43, "R-6: a title the file no longer gives R-6", closed=False, unit=False),
+            _issue(44, "R-900: a number the file has never held", closed=False, unit=False),
+        ]
+    )
+    monkeypatch.setattr(
+        board,
+        "residual_titles",
+        lambda: {
+            5: "the title the file agrees with",
+            6: "something else that R-6 now points at",
+        },
+    )
+
+    found = board.contradictions(graph, owed={})
+
+    assert len(found) == 2, f"one agreeing title, one repointed, one absent; got {found}"
+    assert "#43" in found[0] and "R-6" in found[0]
+    assert "#44" in found[1] and "R-900" in found[1]
+    assert not any("#42" in line for line in found), (
+        "a residual issue whose title still names what its number points at is "
+        "correct, and flagging it is how this check gets switched off"
+    )
+
+
+def test_the_residual_heading_reader_reads_the_document_as_it_is_written():
+    """The parse, pinned on the tree rather than on a double.
+
+    `residual_titles` reads `docs/residual-findings.md` from a path it computes
+    itself, so the only way to drive it honestly is against the real document.
+    That is normally the wrong shape, since a test keyed to today's content passes
+    for reasons unrelated to the code. It is the RIGHT shape here for one specific
+    reason: residual numbers are append only by rule, and a renumber is forbidden
+    precisely because issue titles carry these numbers. R-322's heading says the
+    same thing next year as it does today, or a rule this project treats as
+    absolute has been broken and a red test is the correct response.
+    """
+    board = _board()
+    titles = board.residual_titles()
+    assert titles[322] == "`contradictions()` is driven by nothing, and the composite proved it", (
+        "the heading reader no longer reads a heading this document has held "
+        "since it was filed, so either the parse changed or the append-only rule "
+        "was broken"
+    )
+    assert 999999 not in titles
 
 
 class _ClosingArgs:

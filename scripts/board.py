@@ -870,7 +870,7 @@ def units_by_issue_number(graph: dict) -> dict[int, int]:
     return {unit: number for unit, number in seen.items() if unit not in duplicated}
 
 
-def contradictions(graph: dict) -> list[str]:
+def contradictions(graph: dict, owed: dict[int, list[str]] | None = None) -> list[str]:
     """What the repository and the board disagree about, that a sync cannot fix.
 
     Every value the board derives comes from issue closure state, so closure
@@ -899,10 +899,19 @@ def contradictions(graph: dict) -> list[str]:
     twenty four units are mismatched, and none of them was owed a module that
     day, which is why nothing had ever surfaced it. Resolved through the title,
     which is the only place the mapping exists, and the graph already carries it.
+
+    ``owed`` IS SUPPLIED BY A CALLER THAT HAS ONE, exactly as `unresolved_closes`
+    takes it, and defaults to the live registers. R-322 is the finding that
+    nothing drove this function at all, and the register is half of why: keyed to
+    whatever `main` happens to owe today, a test passes for a reason that has
+    nothing to do with the code and goes red the day somebody discharges a
+    marker. The graph is the other half, and that one is answered at the caller,
+    since `build_graph` is what a test drives instead of `gh`.
     """
     found = []
+    owed = owed_by_unit() if owed is None else owed
     issues_by_unit = units_by_issue_number(graph)
-    for uid, modules in sorted(owed_by_unit().items()):
+    for uid, modules in sorted(owed.items()):
         number = issues_by_unit.get(uid)
         node = graph.get(number) if number is not None else None
         if node and node["unit"] and node["closed"]:
