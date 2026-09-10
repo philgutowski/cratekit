@@ -175,6 +175,12 @@ def enable(owners: Iterable[str] = ()) -> frozenset[str]:
 # ---------------------------------------------------------------------------
 
 
+#: What "this row could not answer" looks like, distinct from every value the
+#: soft-delete column can legitimately hold. A plain default would be the
+#: permissive answer wearing a sentinel's clothes.
+_MARKER_ABSENT = object()
+
+
 def resolve_genre_id(db: Any, genre_name: str) -> Any | None:
     """The identifier of an existing, active genre row, or None.
 
@@ -188,11 +194,53 @@ def resolve_genre_id(db: Any, genre_name: str) -> Any | None:
     The first ACTIVE row wins rather than the first row. A soft-deleted namesake
     sorts ahead of a live one often enough to matter, and taking the first row and
     then testing it reports "no such genre" for a genre the library plainly has.
+
+    THE MARKER IS READ, NEVER DEFAULTED, AND A ROW THAT CANNOT REPORT IT REFUSES.
+    ``rb_local_deleted`` is a bookkeeping column, so a binding that stops exposing
+    it hands back rows that cannot say whether they are tombstones, and every
+    default this function could supply for that is the answer "active". Supplying
+    it made a soft-deleted genre resolve, and the write that followed pointed a
+    track's ``GenreID`` at a row rekordbox has already retired.
+
+    WHY REFUSING IS RIGHT HERE, AND WHY IT IS NOT THE SAME ARGUMENT AS A TRACK'S.
+    A tombstoned content row is a track somebody removed, and acting on it acts on
+    something that is gone. A tombstoned lookup row is not that. It is a
+    perfectly ordinary thing to encounter, and the correct response to a marker
+    that says "deleted" is to keep reading, because the next row may be the live
+    namesake. So the deleted case is not an error here at all, and exhausting the
+    rows is an honest None.
+
+    That is exactly why the UNREADABLE case cannot be folded into it. This
+    function's None already means one specific thing, "this library has no active
+    genre by that name", and the plan turns it into a per-row ``genre-unknown``
+    skip. Collapsing an unreadable marker into that None would report a binding
+    regression as thousands of skips naming the user's taxonomy, sending them to
+    fix a taxonomy that was never wrong. The failure is not per-row and it is not
+    about genres, so it does not get a per-row genre-shaped answer. ``None`` is
+    refused alongside a missing attribute because ``bool(None)`` is the same
+    permissive answer.
     """
     if not genre_name:
         return None
     for row in db.get_genre(Name=genre_name):
-        if not getattr(row, "rb_local_deleted", 0):
+        marker = getattr(row, rb_writer.SOFT_DELETE_COLUMN, _MARKER_ABSENT)
+        if marker is _MARKER_ABSENT or marker is None:
+            raise refuse(
+                "soft-delete-marker-unreadable",
+                f"the genre row {getattr(row, 'ID', '?')!r} cannot say whether "
+                f"it is a tombstone, and treating that as 'not deleted' would "
+                f"point a track's genre at a row rekordbox has already retired",
+                remedy=Remedy.RUN_DOCTOR,
+                scope=Scope.RUN,
+                origin=("write", "metadata"),
+                detail={
+                    "table": "djmdGenre",
+                    "row_id": str(getattr(row, "ID", "")),
+                    "column": rb_writer.SOFT_DELETE_COLUMN,
+                    "genre": genre_name,
+                },
+            )
+        if not marker:
             return row.ID
     return None
 

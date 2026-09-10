@@ -33,6 +33,18 @@ Installing the tool is not the same as installing the hook.
 dispatches to this repository's configuration, and reports the exact command
 when it does not. Doctor lands in U27.
 
+**Widened 2026-08-02: the closing condition names one hook type and there are
+now two.** `pre-commit install` writes `.git/hooks/pre-commit` and nothing else.
+The closing check added on `fix/conformance-3-and-soft-delete-reader` is on the
+`commit-msg` stage, which needs `--hook-type commit-msg` on top of it, so a clone
+can have a perfectly good `.git/hooks/pre-commit` and no `.git/hooks/commit-msg`
+at all. **U27 as specified will not close that gap**, because it checks the file
+this entry names. The install line in `.pre-commit-config.yaml` now asks for both
+types, and CI runs the closing check independently so the hook is not load
+bearing, but the doctor check should look for **every** hook type this
+repository configures rather than the one it happened to have when this was
+written.
+
 ---
 
 ## R-2. Four live portability and layering violations in the source repository
@@ -14128,3 +14140,193 @@ never candidates. Nothing is written and nothing is lost.
 
 **Closes when:** `_inbox_items` filters on the same suffix table `library_truth`
 derives from, so the two agree by construction about what a track is.
+
+---
+
+## R-320. Two records of the pending work, and nothing compared them
+
+**Found:** 2026-08-02, on `fix/conformance-3-and-soft-delete-reader`, from a
+third and fourth adversarial review of this wave. **Needs its own issue.**
+
+The repository keeps **two** registers of work a unit still owes. `tests/_pending.py`
+holds guards waiting for the module they govern. `planned_in` on a
+`cratekit.cli.registry` entry holds a verb waiting for its own. Both are the same
+promise in different files, and until this branch, `scripts/board.py` read only
+the first.
+
+Three consequences, all live.
+
+**Seven verbs are owed by closed units and nothing has ever said so.** U8, U15 and
+U35 are closed and still carry `planned_in` markers between them. `board.py audit`
+audits units against a register that never mentioned those verbs, so the marker is
+invisible to the one mechanism that exists to expire it.
+
+**The countdown that should catch it cannot fire for half the tree.**
+`test_a_planned_verb_whose_module_has_landed_must_lose_its_marker` probed with
+`find_spec` inside `except ModuleNotFoundError`, and `find_spec` raises when an
+ANCESTOR package is missing rather than the module. Both were read as "not
+present". Fixed here: `_pending.module_state` reports `present`, `absent` or
+`ancestor-missing`, walks ancestors top down, and no longer swallows a
+`ModuleNotFoundError` raised from inside an ancestor that does exist, which was a
+defect in our own tree reported as a countdown ticking quietly.
+
+**Measured, and the distinction is not a rule.** Seventeen planned verb modules
+are `ancestor-missing` and almost all belong to units that have not started, so
+asserting against that state would fire on correct pending work. The two records
+were compared instead, and they disagree exactly once: U23's package is
+`cratekit.adopt` in the register and `cratekit.adoption` in the registry.
+`test_the_two_registers_agree_on_each_unit_s_package_name` pins that one case as
+exact membership, so U23 resolving it turns the test red and forces the deletion.
+
+**Fixed far enough to be safe on this branch:** `board.py` gained `planned_units`,
+`owed_by_unit` and a network-free `closing` check that refuses a message closing
+a unit either register still owes, wired three ways. `contradictions()` now reads
+both registers. Rule A refuses a register key naming a command-line module no verb
+declares, because such a key can never be satisfied and its unit's close becomes a
+permanent exit 2.
+
+**The check recognizes every keyword GitHub acts on, not the one the contract
+uses.** The first version matched `^Closes #n$` anchored to a line and reported
+clean on `Fix`, `Fixes`, `Fixed`, `Close`, `Closed`, `Resolve`, `Resolves`,
+`Resolved`, the colon form, trailing punctuation, a comma list, and the inline
+form, every one of which closes the issue and cascades. Git's own comment lines
+and the `commit --verbose` diff are stripped first, or a template line would
+refuse a commit that closes nothing.
+
+**It caught its own author, which is the only evidence worth having.** Two
+commits on this branch documented the closing keywords by listing them with a
+real issue number, so their bodies contained twelve live closing references
+between them. Merged to `main`, GitHub would have closed two unrelated units and
+cascaded every unit waiting on either. `board.py closing --since main` refused
+the branch, the example numbers were replaced with a non-numeric placeholder, and
+the trees are byte-identical before and after. A check written that afternoon
+caught a defect its own author shipped the same afternoon, in the one shape
+nobody thinks to look at: prose about the rule is subject to the rule.
+
+**Residual in the hook path, stated rather than hidden.** The commit-msg hook is
+handed the message BEFORE git's cleanup, so it removes git's comment lines and
+cuts at git's scissors line. That is right for the editor path, where a template
+comment would otherwise refuse a commit that closes nothing. It is wrong for `-m`
+and `-F`, whose cleanup mode is `whitespace`, defined as "same as strip except
+#commentary is not removed", and **two** shapes are lost there rather than one: a
+real trailer on a `#`-leading line, and a real trailer below a genuine
+git-shaped scissors line, because under `whitespace` git does not cut at a
+scissors line at all. Both reach history and close the issue while the hook
+reported clean.
+
+Detecting the cleanup mode from inside the hook means reading the same
+configuration git is about to apply, which is not worth it, so **the hook is
+best-effort against those two shapes and CI is authoritative**. The CI path reads
+post-cleanup messages and now strips nothing at all, so it catches both.
+
+Two more, pre-existing and recorded rather than fixed. `re-fixes #NN` fires,
+because the lookbehind rejects a keyword preceded by `/` or a word character but
+not by `-`; GitHub's own behaviour there is ambiguous, so the refusal is not
+clearly wrong. And with `core.commentChar` set to anything but `#`, both the
+comment pattern and the scissors pattern miss, so the hook scans the entire
+verbose diff. Neither is new.
+
+**Merge order: the gap was never a silent miss, and the fix is a better message.**
+An earlier draft of this entry said Rule B catches the U36 and U32 key
+disagreement only if U32 merges first. That was wrong, and wrong in the
+reassuring direction. `pending_units()` keeps a unit owed for as long as its
+entry sits in the register, so if U36 merges first and lands a differently named
+module, U32 is **still owed** and Rule B refuses U32's close in either order. The
+failure was always loud.
+
+What order changes is only WHEN the diagnosis arrives, and a substring rule that
+asserted the mismatch was measured and rejected: `cratekit.core.restore` is U32's
+LIVE key today, so such a rule would eventually go red against a unit that did
+nothing wrong, which is a bad trade for moving a diagnosis earlier.
+
+Taken instead, with no heuristic surface: when Rule B refuses, the message names
+the sibling modules present in the key's parent package. A person reading a
+permanent exit 2 is told "cratekit.write.rebuild is absent and write already
+contains tree_rebuild" rather than guessing. Verified to produce that note for
+the simulated case and **no** note for `cratekit.core.restore`, which has no near
+miss in its package.
+
+**Left open, and this is what needs the issue.** Nothing decides WHICH record is
+right when they disagree, and this branch deliberately did not pick for U23. The
+seven markers on closed units are not repaired here either, because re-pointing
+another unit's verbs is that unit's judgement and not a side effect of a fix
+branch. Four closing contradictions are queued in this wave right now and the new
+check will refuse all four at their merge, which is the intended outcome and will
+need somebody to answer each one.
+
+**Closes when:** the markers on U8, U15 and U35 are re-pointed or landed, U23's
+package name is settled in both records, and the `closing` check has refused and
+been answered at least once so the refusal path is known to be usable rather than
+merely correct.
+
+---
+
+## R-321. What the soft-delete guard cannot see, and two gaps in the gate contract
+
+**Found:** 2026-08-02, by the second adversarial review of
+`fix/conformance-3-and-soft-delete-reader`. **Needs its own issue.**
+
+Three unrelated things, filed together because all three are "the assertion is
+correct and its reach is narrower than a reader would assume".
+
+### The guard's known blind spots
+
+`tests/_source_guards.py:permissive_soft_delete_reads` catches a falsey default
+at the call site however the column and the default are spelled, an alias chain
+of any depth, a splatted argument pair, and three routes that launder a correct
+read one line later. Verified against fourteen evasions and nine correct shapes.
+
+**Not caught, and each needs inference this does not have:**
+
+1. **A row subclass with a falsey class-level default** plus a plain attribute
+   read. `class Row: rb_local_deleted = 0` makes `row.rb_local_deleted` answer
+   "active" for a row that never said so, and the read looks exactly like the
+   correct one. Needs type inference to know what `row` is.
+2. **The column arriving from a call, a class attribute, or a dictionary
+   lookup.** `getattr(row, COLUMNS["soft_delete"], 0)` and
+   `getattr(row, spec.column, 0)` are invisible. One hop through a named binding
+   is resolved; a hop through a container is not.
+3. **A computed attribute name.** `getattr(row, "rb_" + suffix, 0)` cannot be
+   read statically at all.
+
+Recorded rather than chased because each fix widens the analyzer toward
+evaluating the module, and an analyzer that guesses fires on correct code, which
+is how a guard gets switched off. The pin on `SOFT_DELETE_READERS` is the
+backstop: all three shapes still have to live in a module, and a new module
+reading the column at all turns the pin red.
+
+### `_MARKER_ABSENT` is defined twice and will be three times
+
+`write/routing_pass.py` and `write/metadata.py` each define their own sentinel,
+with the same name and the same purpose, and U24 adds a third alongside
+`trees.soft_delete_marker`. One symbol meaning one thing in three modules is the
+shape the session contract names as what a green suite cannot see. **Closes with
+the U24 reconciliation**, which collapses the readers into one implementation and
+should take the sentinel with them.
+
+### The gate contract, two gaps neither assertion catches
+
+Both are **pre-existing on `main`** and neither is introduced here, but the
+assertions rewritten on this branch pin the current behaviour, so they are
+written down rather than left implied.
+
+**The actor is supplied, not derived.** `crate run decide --actor` takes the
+actor as a caller-supplied argument, and conformance 3 now asserts that the
+recorded decision carries it. `core/session.py:derive_actor()` says R34's
+sharpest clause is that the actor must be DERIVED and never named by the caller,
+precisely so an agent driving the command line cannot mint a human's assertion.
+The CLI's decision path takes the weaker form and the new assertion pins it.
+Which is right is a decision above this branch: the flag is what makes a decision
+answerable by a second person in a later session, which is R33's whole point, so
+the two rules are in genuine tension rather than one being simply wrong.
+
+**A second run inherits the first run's decisions.** A run resumed under `--run`
+carries its recorded decisions, which is correct. Nothing asserts what happens
+when a decision recorded against one run is reachable from another invocation of
+the same verb, and a probe confirms the whole suite stays green either way.
+Neither the old assertion nor the new one covers it.
+
+**Closes when:** the three guard blind spots are either covered or explicitly
+declined in the guard's own docstring with the same reasoning; the sentinel is
+single-sourced by the U24 reconciliation; and somebody rules on derived versus
+supplied actors, with conformance 3 asserting whichever survives.

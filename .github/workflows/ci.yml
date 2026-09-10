@@ -45,6 +45,29 @@ jobs:
       - name: Portability and secret scan (R1)
         run: python scripts/scan_repo.py
 
+      # The closing check, in the one place nobody can skip it. Same job as the
+      # scan and for the same reason: it needs no dependencies, it reports in
+      # seconds, and it must run on a machine where the hook was never
+      # installed. R1 is the finding that a fresh clone has no hooks at all, and
+      # the commit-msg hook needs a SECOND install command on top of that, so
+      # this is the wiring that is actually load-bearing.
+      #
+      # Network-free by construction: it reads tests/_pending.py and the verb
+      # registry, never `gh`. That is what lets it run in this job.
+      #
+      # `--since` names the merge base rather than a branch, so it judges the
+      # commits this push adds and not the history behind them. On a push to the
+      # default branch there is nothing to judge and it exits 0.
+      - name: A unit may not close while a register still owes it a module
+        run: |
+          git fetch --depth=50 origin main || true
+          BASE=$(git merge-base origin/main HEAD 2>/dev/null || echo "")
+          if [ -n "$BASE" ]; then
+            python scripts/board.py closing --since "$BASE"
+          else
+            echo "no merge base with origin/main; nothing to judge"
+          fi
+
   # WAS `test`, AND THE RENAME IS THE POINT. It lints and it proves the slim
   # profile. It does not run pytest, and it does not deselect anything either:
   # nothing is skipped here, so nothing here can read as a passing proof that

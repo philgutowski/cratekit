@@ -19,6 +19,7 @@ Subcommands:
     start N         branch, mark In Progress, print the closing trailer
     sync            make the board match the repository, idempotent
     audit           report drift, exit 1 if the board is lying
+    closing         refuse a `Closes #n` trailer while a register still owes Un
 
 `sync` is safe to run at any time and is the one that matters. Everything the
 board says about readiness is derived from issue closure state and the graph, so
@@ -199,6 +200,369 @@ def pending_units() -> dict[int, list[str]]:
                 if match:
                     owed.setdefault(int(match.group(1)), []).append(str(name))
     return owed
+
+
+def planned_units() -> dict[int, list[str]]:
+    """Which units the VERB REGISTRY still says owe a module.
+
+    The second register, and until now nothing read it. `planned_in` on a registry
+    entry is the same promise `tests/_pending.py` makes, written in a different
+    file: this verb's module does not exist and unit U-n will land it. Three
+    closed unit issues carry live markers between them and the board has never
+    said a word, because `contradictions()` read one register and there are two.
+
+    Read by ast rather than imported, for the same reason `pending_units` is: an
+    audit must never execute the code it audits. Keyed on the MODULE rather than
+    the verb, because one module carries several verbs and the obligation is the
+    file.
+    """
+    source = Path(__file__).resolve().parent.parent / "src" / "cratekit" / "cli" / "registry.py"
+    if not source.exists():
+        return {}
+    constants: dict[str, str] = {}
+    tree = ast.parse(source.read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and isinstance(node.value.value, str):
+                    constants[target.id] = node.value.value
+
+    def literal(value: ast.AST) -> str | None:
+        """The string this argument evaluates to, through one named constant.
+
+        `ROUTING_CLI_UNIT` is a module-level constant precisely so four entries
+        move together, so a reader that only understood literals would go blind
+        on the entries most likely to be re-pointed.
+        """
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            return value.value
+        if isinstance(value, ast.Name):
+            return constants.get(value.id)
+        return None
+
+    owed: dict[int, set[str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or getattr(node.func, "id", None) != "Entry":
+            continue
+        fields = {kw.arg: kw.value for kw in node.keywords if kw.arg}
+        planned = literal(fields["planned_in"]) if "planned_in" in fields else None
+        module = literal(fields["module"]) if "module" in fields else None
+        if not planned or not module:
+            continue
+        match = re.match(r"U(\d+)$", planned)
+        if match:
+            owed.setdefault(int(match.group(1)), set()).add(module)
+    return {uid: sorted(modules) for uid, modules in owed.items()}
+
+
+def owed_by_unit() -> dict[int, list[str]]:
+    """Every module either register still owes, per unit, merged.
+
+    Two registers exist and each one alone is a hole. `tests/_pending.py` holds
+    guards waiting for their module; the verb registry holds verbs waiting for
+    theirs. A unit can close clean against one while the other still owes it
+    seven verbs, which is the state three closed issues are in right now.
+    """
+    merged: dict[int, set[str]] = {}
+    for source in (pending_units(), planned_units()):
+        for uid, modules in source.items():
+            merged.setdefault(uid, set()).update(modules)
+    return {uid: sorted(modules) for uid, modules in merged.items()}
+
+
+# --------------------------------------------------------------------------
+# the closing check: a trailer is refused BEFORE it closes anything
+
+
+#: Every keyword GitHub closes an issue on, not the one this repository's
+#: contract happens to use.
+#:
+#: The distinction cost a whole check. The first version matched `^Closes #n$`
+#: and nothing else, on the reasoning that the contract says to write that exact
+#: trailer. GitHub does not read the contract, and nine keywords times four
+#: reference forms all close the issue and cascade every unit waiting on it.
+CLOSING_KEYWORDS = ("close", "closes", "closed", "fix", "fixes", "fixed",
+                    "resolve", "resolves", "resolved")
+
+#: The reference forms that close an issue IN THIS REPOSITORY. Two of them, and
+#: the two that are missing are missing on purpose.
+#:
+#: GitHub documents four. The two cross-repository forms, `owner/repo#n` and the
+#: full issue URL, close an issue in the NAMED repository and nothing here. A
+#: previous version matched both and read the number out of them, so
+#: `fixes numpy/numpy#36` and a link to an upstream pyrekordbox issue each
+#: refused a commit over a unit they have no relationship to. That is not
+#: hypothetical: this repository VENDORS pyrekordbox, the owed unit numbers run
+#: from 8 to 38, and upstream issue numbers collide with them constantly, so a
+#: vendor bump citing an upstream issue is the realistic trigger.
+#:
+#: Reading them correctly would mean knowing this repository's own slug, and
+#: `repo_slug()` needs `gh`, which would end this function's purity and with it
+#: its place in a hook and in the dependency-free CI job. Dropping them costs
+#: nothing, because a commit closing a unit here writes `#n` or `GH-n`.
+#:
+#: Ordered longest-first: at a given position the alternation tries branches left
+#: to right, so the bare `#n` must come last.
+REFERENCE_FORMS = (
+    r"GH-(\d+)",
+    r"#(\d+)",
+)
+
+#: Keyword, optional colon, then a reference.
+#:
+#: The lookbehind rejects a keyword that is a URL PATH SEGMENT, so
+#: `https://example.com/notes/fixes#36` is a link with a fragment rather than a
+#: closing reference. That was a verified false refusal, and the whole cost of a
+#: false refusal is somebody deleting the check.
+CLOSES_RE = re.compile(
+    r"(?<![/\w])\b(?:" + "|".join(CLOSING_KEYWORDS) + r")\b\s*:?\s*"
+    r"(?:" + "|".join(REFERENCE_FORMS) + r")",
+    re.IGNORECASE,
+)
+
+#: A comma list continuing from a keyword-anchored issue: `Closes #36, #33`.
+#:
+#: `[^\S\n]` IS HORIZONTAL WHITESPACE ONLY, and the distinction is the whole
+#: correctness of this pattern. With `\s*` the continuation crossed newlines, so
+#: a trailer followed by a blank line and a sentence beginning "and #33 stays
+#: open" was read as a two-issue list and BOTH were refused. GitHub closes only
+#: the first. The docstring below promises that explaining in a commit body why a
+#: unit is still open must stay possible, and that is the exact sentence it
+#: refused, so the code contradicted its own stated contract.
+CONTINUED_RE = re.compile(
+    r"[^\S\n]*(?:,|and)[^\S\n]*(?:" + "|".join(REFERENCE_FORMS) + r")",
+    re.IGNORECASE,
+)
+
+#: Lines git itself strips from a commit message. The commit-msg hook is handed
+#: the RAW file, comments and the verbose diff included, so a template line
+#: reading `# Closes #NN` would otherwise refuse every commit that never touched
+#: it. Applied ONLY to that path; see `message_body`.
+COMMENT_LINE_RE = re.compile(r"^\s*#")
+#: GIT'S OWN scissors line, not a shape that resembles one. Git emits
+#: `# ------------------------ >8 ------------------------` and cuts everything
+#: below it. The previous pattern allowed leading whitespace and as few as one
+#: dash, so a line a person typed in a body truncated the message and took any
+#: real trailer below it with it. Under the editor default git removes that line
+#: as a comment and KEEPS what follows, so the trailer reached history and closed
+#: the issue while this check reported clean. Eight dashes a side makes an
+#: accidental match essentially impossible and still matches git's twenty-four.
+SCISSORS_RE = re.compile(r"^#\s?-{8,}\s?>8\s?-{8,}\s*$")
+
+
+def message_body(text: str, *, raw: bool) -> str:
+    """The part of a commit message git will keep, comments and diff removed.
+
+    ``raw`` SAYS WHICH SIDE OF GIT'S CLEANUP THIS TEXT IS ON, and getting that
+    wrong is not symmetric.
+
+    A message file handed to the commit-msg hook is PRE-cleanup: it carries git's
+    instructional comments, and on `commit --verbose` the entire diff below a
+    scissors line. Matching over all of it would let a template line refuse a
+    commit that closes nothing, so those are removed.
+
+    `git log --format=%B` is POST-cleanup. Those messages are final. They contain
+    no git comments and no scissors block, so stripping cannot prevent a single
+    false refusal there and can only DELETE A REAL TRAILER: a body line beginning
+    with `#`, which git keeps under the `whitespace` cleanup that `-m` and `-F`
+    use, was being discarded. That is the CI path, the one this repository calls
+    the load-bearing wiring, so the strip was doing its only possible harm in the
+    place it mattered most.
+
+    RESIDUAL, stated rather than hidden. On the hook path a commit made with
+    `-m` or `-F` also gets `whitespace` cleanup, so a real trailer on a
+    `#`-leading line is dropped here too. Detecting the cleanup mode from inside
+    the hook is not possible without reading the same config git is about to
+    apply, so the hook is best-effort against that one shape and CI is
+    authoritative. Recorded in R-320.
+    """
+    if raw is False:
+        return text
+    kept = []
+    for line in text.splitlines():
+        if SCISSORS_RE.match(line):
+            break
+        if COMMENT_LINE_RE.match(line):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def closing_references(text: str, *, raw: bool = True) -> list[int]:
+    """Every issue number this message would close, by any spelling GitHub reads.
+
+    THE SPELLING IS NOT OURS TO CHOOSE. This repository's contract says to write
+    `Closes #n`, and a check that only recognized that was clean on `Fixes #36`,
+    `Resolve #36`, `Closes: #36`, `Closes #36.` and `This closes #36.`, each of
+    which closes the issue and cascades every unit waiting on it. What matters is
+    what GitHub acts on, not what the contract asks for.
+
+    Nine keywords times the two reference forms that close an issue HERE, the
+    bare `#n` and `GH-n`. GitHub documents two more, `owner/repo#n` and the full
+    issue URL, and both are deliberately not matched: they close an issue in the
+    named repository, so matching them refused commits over units they had no
+    relationship to. See :data:`REFERENCE_FORMS`.
+
+    The comma continuation is caught DELIBERATELY OVER-INCLUSIVELY, and confined
+    to ONE LINE. Whether GitHub closes the second issue in `Closes #36, #33` has
+    moved with its parser, but somebody writing that line means to close both,
+    and the costs are not comparable: a false refusal is one reworded line, a
+    miss is a close that has already cascaded. Crossing a newline is a different
+    thing entirely and was a defect: a trailer, a blank line, then a sentence
+    beginning "and #33 stays open" is not a list.
+
+    A bare `#36` with no keyword is left alone. Refusing a reference would make
+    it impossible to explain in a commit body why a unit is still open, which is
+    exactly the sentence this check is asking people to write.
+
+    WHAT STAYS REFUSED ON PURPOSE, because in each case GitHub really would close
+    the issue and this check has no way to be righter than GitHub:
+
+    * A REVERT. `Revert "feat: converge (closes #36)"` closes 36, and the refusal
+      is not merely correct, it is the point: a revert un-lands the module, so
+      the register genuinely re-owes that unit at the moment it fires.
+    * PROSE QUOTING A REAL TRAILER, and a fixture or diff inside a fenced block
+      in a body. Both close the issue when pushed. Nothing distinguishes quoting
+      from asserting, to this check or to GitHub. The remedy is a non-numeric
+      placeholder, which is what this branch's own history rewrite used after
+      this check refused it.
+    """
+    found: list[int] = []
+    body = message_body(text, raw=raw)
+    for match in CLOSES_RE.finditer(body):
+        found.append(_referenced(match))
+        position = match.end()
+        while (carried := CONTINUED_RE.match(body, position)) is not None:
+            found.append(_referenced(carried))
+            position = carried.end()
+    return found
+
+
+def _referenced(match: re.Match) -> int:
+    """The issue number out of whichever reference form matched.
+
+    One capturing group per form and exactly one of them is ever set, so the
+    first non-empty group is the answer. Reading `group(1)` would silently be
+    wrong for every form but the last.
+    """
+    return int(next(value for value in match.groups() if value is not None))
+
+
+def unresolved_closes(
+    text: str, owed: dict[int, list[str]] | None = None, *, raw: bool = True
+) -> list[str]:
+    """Every issue this message closes whose unit a register still owes a module.
+
+    PURE, and network-free, which is what lets this run where it is useful. The
+    rest of the audit needs `gh`, so it cannot bite on a machine with no token
+    and cannot be tested without one. This reads two files in the repository and
+    one block of text.
+
+    This is `contradictions()` moved to the other side of the event. That function
+    compares the registers against issues that are ALREADY CLOSED, so it can only
+    report a contradiction after the close has cascaded and moved dependent units
+    to ready. By then `sync` deliberately will not repair it, so the repository is
+    stuck with it. The trailer is the moment the close is decided, and it is the
+    last moment refusing is cheap.
+    """
+    owed = owed_by_unit() if owed is None else owed
+    found = []
+    for uid in dict.fromkeys(closing_references(text, raw=raw)):
+        modules = owed.get(uid)
+        if not modules:
+            continue
+        lines = [
+            f"this message closes #{uid}, but U{uid} is still owed "
+            f"{', '.join(modules)}. Either land them, or re-point them at "
+            f"the unit that will."
+        ]
+        lines += [f"      {note}" for note in _near_misses(modules)]
+        found.append("\n".join(lines))
+    return found
+
+
+def _near_misses(modules: list[str]) -> list[str]:
+    """For each owed module that is absent, what its package DOES contain.
+
+    THE DIAGNOSIS, moved to where the refusal is read. A register key can name a
+    module nobody will ever build, and the loudest symptom is a permanent exit 2
+    with no hint why. `cratekit.write.rebuild` absent while
+    `cratekit.write.tree_rebuild` exists is a one-word spelling difference that
+    is invisible in a message saying only that a module is owed.
+
+    This replaces a rule that would have ASSERTED the mismatch. That rule was
+    rejected on measurement: `cratekit.core.restore` is U32's live key today and
+    a substring heuristic would false-positive on it against a unit that did
+    nothing wrong. Telling the reader what is in the package costs no false
+    positives at all, and the failure was never silent to begin with, because a
+    register entry keeps its unit owed for as long as it sits in the file.
+    """
+    root = Path(__file__).resolve().parent.parent / "src"
+    notes: list[str] = []
+    for module in modules:
+        if module.startswith("path:"):
+            continue
+        parts = module.split(".")
+        package = root.joinpath(*parts[:-1])
+        target = package / f"{parts[-1]}.py"
+        if not package.is_dir() or target.exists() or (package / parts[-1]).is_dir():
+            continue
+        siblings = sorted(
+            child.stem
+            for child in package.glob("*.py")
+            if child.stem != "__init__" and parts[-1] in child.stem
+        )
+        if siblings:
+            notes.append(
+                f"note: {module} is absent and {package.name} already contains "
+                f"{', '.join(siblings)}. If that is the same module under "
+                f"another name, the register key is what needs correcting."
+            )
+    return notes
+
+
+def cmd_closing(args) -> int:
+    """Refuse a closing trailer while a register still owes that unit a module."""
+    if args.message_file:
+        path = Path(args.message_file)
+        if not path.is_file():
+            # A refusal a person can act on, not a traceback. This runs inside a
+            # git hook, where an unhandled exception surfaces as a stack trace in
+            # place of the commit message editor and reads as the tool being
+            # broken rather than the invocation being wrong.
+            print(f"board: no commit message at {args.message_file!r}", file=sys.stderr)
+            return 1
+        text = path.read_text()
+    else:
+        result = subprocess.run(
+            ["git", "log", "--format=%B", f"{args.since}..HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            # No such ref, a shallow clone, or no repository. Nothing to judge
+            # rather than a refusal, because a check that fails on a machine it
+            # cannot read is a check somebody removes from the hook.
+            print("board: no commit range to read; nothing checked")
+            return 0
+        text = result.stdout
+        # POST-cleanup messages. Nothing to strip, and stripping could only lose
+        # a real trailer.
+        return _report(unresolved_closes(text, raw=False))
+    return _report(unresolved_closes(text, raw=True))
+
+
+def _report(problems: list[str]) -> int:
+    if not problems:
+        return 0
+    print("CONTRADICTION: a unit cannot close while a register still owes it work.")
+    for line in problems:
+        print(f"  {line}")
+    print()
+    print("This is the same comparison `audit` makes, run BEFORE the close rather")
+    print("than after it. Afterwards the close has already cascaded and `sync`")
+    print("will not repair it.")
+    return 2
 
 
 # --------------------------------------------------------------------------
@@ -440,11 +804,15 @@ def contradictions(graph: dict) -> list[str]:
     """What the repository and the board disagree about, that a sync cannot fix.
 
     Every value the board derives comes from issue closure state, so closure
-    state is the one INPUT and nothing checks it. `tests/_pending.py` is the
-    repository asserting, in a file the suite enforces, that a named unit has not
-    finished. A closed issue for such a unit is the board claiming work landed
-    that the repository says did not, and it cascades: one wrong close moved four
-    units to Ready.
+    state is the one INPUT and nothing checks it. TWO registers assert, each in a
+    file the suite enforces, that a named unit has not finished: `tests/_pending.py`
+    for guards awaiting their module, and `planned_in` on a verb registry entry
+    for a verb awaiting its own. A closed issue for such a unit is the board
+    claiming work landed that the repository says did not, and it cascades: one
+    wrong close moved four units to Ready.
+
+    Reading only the first register is how three closed units kept live markers
+    for seven verbs between them with nothing ever saying so.
 
     This is kept apart from drift on purpose. Drift is a derived value that fell
     out of date and `sync` repairs it. A contradiction is two sources of truth
@@ -452,12 +820,12 @@ def contradictions(graph: dict) -> list[str]:
     overwrite, which is how the wrong one wins silently.
     """
     found = []
-    for uid, modules in sorted(pending_units().items()):
+    for uid, modules in sorted(owed_by_unit().items()):
         node = graph.get(uid)
         if node and node["unit"] and node["closed"]:
             found.append(
                 f"#{uid} {node['title'][:44]}\n"
-                f"      closed, but tests/_pending.py still owes it {', '.join(modules)}"
+                f"      closed, but a register still owes it {', '.join(modules)}"
             )
     return found + repointed_residuals(graph)
 
@@ -603,6 +971,19 @@ def main() -> int:
     audit = sub.add_parser("audit", help="report drift, exit 1 if the board is lying")
     audit.add_argument("--labels-only", action="store_true", help="skip the project board")
     audit.set_defaults(func=cmd_audit)
+    closing = sub.add_parser(
+        "closing", help="refuse a Closes trailer while a register still owes that unit"
+    )
+    closing.add_argument(
+        "--message-file",
+        help="a single commit message to judge; this is what the commit-msg hook passes",
+    )
+    closing.add_argument(
+        "--since",
+        default="main",
+        help="judge every commit after this ref instead of one message file",
+    )
+    closing.set_defaults(func=cmd_closing)
     args = parser.parse_args()
     try:
         return args.func(args)
