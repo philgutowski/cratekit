@@ -1,0 +1,69 @@
+name = "u53-zero-rows-remeasured"
+pass_kind = "light"
+
+# The five zeros from ``u53-rows.toml``, re-measured after the guards that were
+# missing were written, plus the composite METHOD asks for on the one that
+# stays. Not a second pass over the unit's diff: the same five rows, re-run.
+
+# ---------------------------------------------------------------------------
+# The four that were zero because of the FIXTURES rather than the guard
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "A2_abort_instead_of_not_apply"
+description = "The branch tests for abort rather than for apply, so an option nobody classified acquires the write"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    if option != "apply":
+        return ctx.envelope(data=_plan(items, kind="inbox", applied=False), outcome=Outcome.NO_OP)'''
+new = '''    if option == "abort":
+        return ctx.envelope(data=_plan(items, kind="inbox", applied=False), outcome=Outcome.NO_OP)'''
+
+[[rows]]
+id = "I1_native_filter_dropped"
+description = "A resort queues an item for a tree still on the bridge, which no rebuild can write"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    return tuple(sorted(t for t in entries.tree_ids() if entries.is_database_native(t)))'''
+new = '''    return tuple(sorted(entries.tree_ids()))'''
+
+[[rows]]
+id = "I6_tree_items_ignores_native"
+description = "The rebuild's items include trees the registry says are still on the bridge"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+old = '''    native = tuple(sorted(t for t in entries.tree_ids() if entries.is_database_native(t)))'''
+new = '''    native = tuple(sorted(entries.tree_ids()))'''
+
+[[rows]]
+id = "I7_tree_items_ignores_the_named_tree"
+description = "A rebuild of one named tree quietly rebuilds every tree in the library"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+old = '''    if tree_id is None:
+        return native
+    return tuple(t for t in native if t == tree_id)'''
+new = '''    return native'''
+
+# ---------------------------------------------------------------------------
+# The one that stays zero, and the composite that says what it does hold
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "E1_addressability_check_dropped"
+description = "Two destinations sharing one display pair are merged rather than refused"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''    destinations = resolve_destinations(declared, placements, standing, record)
+    assert_addressable(tree_id, destinations, standing)'''
+new = '''    destinations = resolve_destinations(declared, placements, standing, record)'''
+
+[[rows]]
+id = "E1c_composite_the_thing_it_guards"
+description = "COMPOSITE for E1: the duplicate node refusal inside assert_addressable stops firing, which is one of the three shapes E1's call site exists to reach"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''        collided = by_node.get(node)
+        if collided is not None:'''
+new = '''        collided = by_node.get(node)
+        if False:'''
