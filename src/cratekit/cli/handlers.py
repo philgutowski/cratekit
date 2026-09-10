@@ -83,6 +83,12 @@ HANDLERS: Mapping[str, str] = {
     "analyze.run": "cratekit.analysis.cli:handle_run",
     "backup.run": "cratekit.backup.cli:handle",
     "export.playlist": "cratekit.export.cli:handle",
+    # ONE WORKER UNDER TWO KEYS, for the reason the label pair below gives: a
+    # set and a playlist differ in how their tracks are LISTED, recognition
+    # against a recording or a catalogue read, and in nothing about what is
+    # done with one track once it is queued.
+    "intake.playlist": "cratekit.intake.cli:handle",
+    "intake.set": "cratekit.intake.cli:handle",
     # ONE WORKER UNDER TWO KEYS, which the string table makes ordinary rather than
     # special: the sweep and the import differ in how many favourite labels they
     # queue and in nothing about how one is swept, and the worker takes its label
@@ -106,8 +112,6 @@ HANDLERS_NOT_YET_BOUND: Mapping[str, str] = {
         "never queued under its own key"
     ),
     "delete.review": "no worker yet, R-203",
-    "intake.playlist": "no worker yet, R-203",
-    "intake.set": "no worker yet, R-203",
     "rebuild": "no worker yet, R-203",
     "route.resort": "no worker yet, R-203",
     "sync.all": "no worker yet, R-203",

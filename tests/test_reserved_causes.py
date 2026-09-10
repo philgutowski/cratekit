@@ -4826,7 +4826,22 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # tag write or rename did not land. None is in the reserved table, so the
     # reserved half does not move. Population 149 to 152, non-reserved 125 to
     # 128, reserved half UNCHANGED at 24.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (152, 128, 24)
+    #
+    # Re-pinned on U57, 2026-09-09. TWO slugs, named rather than counted, and
+    # measured by differencing the REASONS literal against main's own: exactly
+    # two joined, none left. intake-recognition-spend-bound is recognition
+    # refusing to spend, whether this build's own bound or the service
+    # answering that the account's quota is used up, kept apart from a miss
+    # because a miss is a fact about the audio and this is a fact about money.
+    # intake-recognition-failed is the service unreachable or answering in a
+    # shape this build cannot classify. Neither is in the reserved table, so
+    # the reserved half does not move. Population 152 to 154, non-reserved
+    # 128 to 130, reserved half UNCHANGED at 24.
+    #
+    # WHY THE REJECTED CREDENTIAL IS NOT A THIRD. The service answering that
+    # the key or the signing key is wrong reuses auth-failed, which this
+    # vocabulary already declares with the exit code that means exactly that.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (154, 130, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5032,7 +5047,22 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # document it read declares no tracks, beside the analysis verbs' no-audio.
     # Every refusal the acquisition worker raises reuses a slug the table
     # already reserves, so the reserved half does not move.
-    assert (len(literals), len(literals - set(causes))) == (377, 226), (
+    # Re-pinned on U57, 2026-09-09: 377 to 385 distinct, 226 to 232 non-keys.
+    # EIGHT literals joined and NOTHING left, differenced as SETS against
+    # `main`'s own `src` tree extracted into a scratch directory, once on the
+    # build and again after the review's fix round. Two are the causes named
+    # at the population assertion above. The six that are not causes:
+    # intake-artifacts and intake-staging, the two directory names under the
+    # queue root the intake worker's reports land in; nothing-identified, the
+    # honest zero state a set reports when recognition named no track, beside
+    # the download verb's no-tracks; per-run and provider-quota, the two KINDS
+    # a spend refusal carries in its detail so a reader can tell this build's
+    # own bound from the service's answer without parsing the sentence; and
+    # recognition-incomplete, the WARNING code a set queued over chunks that
+    # got no answer carries, a warning and not a cause because the set did
+    # queue. The monthly kind is one word, so it is not cause-shaped and this
+    # population never held it.
+    assert (len(literals), len(literals - set(causes))) == (385, 232), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5382,7 +5412,24 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # reserved range contains 10. A track count, a level and a percentile are
     # not codes; the composite made both modules worth one look, and the look
     # says so.
-    assert (len(literal_holders), len(literal_both)) == (89, 18), (
+    #
+    # Re-pinned on U57, 2026-09-09: 89 to 90 holders. ONE module joined and
+    # none left, and it is a new file. intake/acrcloud.py names
+    # intake-recognition-spend-bound, intake-recognition-failed, auth-failed
+    # and intake-recognition-unready, each at a raise that goes through
+    # cause.refuse. Differenced as SETS by running this module's own derivation
+    # over main's src tree extracted into a scratch directory. intake/cli.py
+    # and core/artifacts.py are NOT new holders: cli.py already named
+    # config-unusable on main, and artifacts.py names no cause at all. The
+    # also-holds-an-integer half moves 18 to 19: acrcloud.py joins it because
+    # a chunk is twelve seconds, the grid is twenty five, the request timeout
+    # thirty and the stop on unanswered calls five, and the reserved range
+    # contains 12, 25 and 30. A duration is not a code; the composite made the
+    # module worth one look, and the look says so. intake/cli.py held a
+    # sixteen for one build, the width of a recognised track's identifier,
+    # and the review's fix round replaced it with the match module's own
+    # digest, so it never reached a pinned measurement.
+    assert (len(literal_holders), len(literal_both)) == (90, 19), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

@@ -843,6 +843,26 @@ def library_template(cfg: config.Config) -> naming.NameTemplate:
     )
 
 
+def library_view(cfg: config.Config) -> tuple[match.LibraryIndex, Callable[..., bool], Callable[..., str]]:
+    """The library as the match engine sees it: the index, and the tombstone view.
+
+    ONE BUILDER FOR EVERY CALLER, because the intake worker resolves one track
+    at a time against exactly this view and a second copy of these three lines
+    is a second opinion about which directory is the library and which
+    template reads its names.
+
+    THE TOMBSTONE SNAPSHOT COMES BEFORE THE LIBRARY WALK. A store that cannot
+    be read refuses, and a refusal that arrives after a scan of every file on
+    the music volume is a refusal the user waited minutes for. The order costs
+    nothing and is the same argument U8 makes for its three gates.
+    """
+    suppresses, identify = suppression_view(review.DecisionStore(TOMBSTONE_STORE, cfg))
+    index = match.index_library(
+        cfg.library.root / cfg.library.music_dir, template=library_template(cfg)
+    )
+    return index, suppresses, identify
+
+
 def match_list(ctx: Any) -> Envelope:
     """The handler. NOT called ``run``: ``cli.run`` is the dispatcher.
 
@@ -852,14 +872,7 @@ def match_list(ctx: Any) -> Envelope:
     """
     cfg = _load()
     wanted = read_list(Path(ctx.args.list))
-    # THE TOMBSTONE SNAPSHOT COMES BEFORE THE LIBRARY WALK. A store that cannot
-    # be read refuses, and a refusal that arrives after a scan of every file on
-    # the music volume is a refusal the user waited minutes for. The order costs
-    # nothing and is the same argument U8 makes for its three gates.
-    suppresses, identify = suppression_view(review.DecisionStore(TOMBSTONE_STORE, cfg))
-    index = match.index_library(
-        cfg.library.root / cfg.library.music_dir, template=library_template(cfg)
-    )
+    index, suppresses, identify = library_view(cfg)
     result = match.resolve_all(
         wanted, index, suppresses=suppresses, suppression_id=identify
     )
@@ -897,6 +910,7 @@ __all__ = [
     "adjudicate",
     "build",
     "library_template",
+    "library_view",
     "match_list",
     "read_list",
     "suppression_view",

@@ -1452,6 +1452,20 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # the file is the clean-report-over-unwritten-state shape the merge bar
         # names. The audio is untouched in every branch that raises this.
         "analysis-write-failed": ExitCode.PRECONDITION,
+        # ── U57's refusals, appended for the reason every block above gives ────
+        #
+        # Recognition would spend more than it is allowed to: the set needs more
+        # calls than the per run cap or the month's ledger has left, or the
+        # service itself answered that the account's quota is spent. A POLICY
+        # refusal and never a miss, because a miss is a fact about the audio and
+        # this is a fact about money, and folding the two is the 565 call batch
+        # the source system once read as content misses.
+        "intake-recognition-spend-bound": ExitCode.REFUSED_BY_POLICY,
+        # The recognition service could not be reached, or answered in a shape
+        # this build cannot classify. UPSTREAM_UNAVAILABLE because nothing
+        # about the set or the account is decided by it, and the chunk that
+        # met it is retried on the next run rather than read as silence.
+        "intake-recognition-failed": ExitCode.UPSTREAM_UNAVAILABLE,
     }
 )
 

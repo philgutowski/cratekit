@@ -506,7 +506,7 @@ def import_label(ctx) -> Envelope:
     )
 
 
-def _playlist_tracks_or_refuse(found: catalogue.Catalogue, reference: str) -> list:
+def playlist_tracks_or_refuse(found: catalogue.Catalogue, reference: str) -> list:
     """Resolve and list one playlist, translating a provider failure at the boundary.
 
     THIS IS ONE OF THE TWO PLACES ``label-playlist-unreadable`` IS EARNED, and
@@ -569,7 +569,7 @@ def _label_verifier(
 
     THE THIRD PROVIDER CALL HARVEST MAKES, AND THE ONE THAT HAD NO BOUNDARY.
     ``found.check_label`` was handed into ``harvest.from_tracks`` outside the
-    try/except :func:`_playlist_tracks_or_refuse` provides, which wraps only the
+    try/except :func:`playlist_tracks_or_refuse` provides, which wraps only the
     resolve and the listing. ``listing.fetch_with_retry`` re-raises the
     provider's own exception once its retry ladder is spent, so a provider that
     went away mid playlist left the verb as ``internal-error`` with
@@ -581,7 +581,7 @@ def _label_verifier(
     ``from_tracks`` pass, and that placement is the accuracy. ``review.offer`` is
     a local write, and a broad catch one level up would report a failure of the
     review queue as a failure of the provider, which is the same collapse
-    :func:`_playlist_tracks_or_refuse` refuses to make. It also keeps
+    :func:`playlist_tracks_or_refuse` refuses to make. It also keeps
     ``confirmed`` exact: ``from_tracks`` offers a name immediately after this
     callable confirms it and before it asks about the next one, so every name in
     the list at the moment of the raise is a row that is already in the queue.
@@ -690,7 +690,7 @@ def harvest_playlist(ctx) -> Envelope:
     # would be about a provider it never had.
     found = catalogue.resolve(cfg)
     reference = str(ctx.args.playlist)
-    tracks = _playlist_tracks_or_refuse(found, reference)
+    tracks = playlist_tracks_or_refuse(found, reference)
     # ONE EXTRACTOR, RUN ONCE PER TRACK. ``from_tracks`` defaults to this same
     # function, and taking the default while counting the nameless tracks with a
     # second reference to it is how the two silently come to disagree about what
@@ -926,6 +926,7 @@ __all__ = [
     "build_sync",
     "handle",
     "harvest_playlist",
+    "playlist_tracks_or_refuse",
     "import_label",
     "label_import_argv",
     "queue_warnings",

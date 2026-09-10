@@ -8075,6 +8075,17 @@ an importable `*_inboxed.xml` through this pipeline, that file has been
 imported into rekordbox, and the no-beatgrid suite is still green against
 the same builder.
 
+**U57 closed the agent half, 2026-09-09.** The build binds an identifier:
+`intake/acrcloud.py` sits behind the seam, reads the two recognition keys through
+`core.secrets` at call time, carves and posts through injected seams, knows the
+call count from the duration before the first call, refuses to spend past a per
+run cap under `intake-recognition-spend-bound`, and folds adjacent answers to one
+row per track. `intake.set` identifies at the queue and its worker runs, so the
+two intake verbs no longer reconcile forever. What stays open is exactly this
+entry's attended half: no live key has been bound and no paid call has been
+made, so the response table has met no real answer (R-300) and the closing
+condition above, one real set through to an importable file, is untouched.
+
 ---
 
 ## R-133. U25 lands the two-pass pools; it does not drive a full library
@@ -10787,6 +10798,20 @@ new. Binding `sync.labels` does not make `crate sync all` execute a thing,
 because `src/cratekit/sync/cli.py` queues its job under `ctx.entry.handler_key`,
 which is `sync.all`, and that key still has no worker. It also still carries
 R-130's run identity obligation, exactly as the paragraph above says.
+
+**U57 bound `intake.set` and `intake.playlist`, so FOUR queued verbs have no
+worker as of 2026-09-09**: `delete.review`, `rebuild`, `route.resort` and
+`sync.all`. Measured, not subtracted: `HANDLERS_NOT_YET_BOUND` holds five keys,
+one of which is the `job.resume` exemption. The count in this entry's title
+stays at eighteen for the reason the first correction gives. U57 is the fifth
+worked example of the claim, and the one where the items did not exist until
+money was spent: a set's items are the tracks recognition names, so the paid
+identification moved to the queue, and the verb needed an identifier behind a
+seam that had carried an injection point and nothing else since U37 (R-132),
+a spend bound with its own cause, a coverage rule so a set nobody answered is
+not reported as a set nobody recognised, and a worker that resolves and offers
+and never acquires, because a recognised track carries no provider identifier
+and the adapter contract has no search.
 
 ---
 
@@ -13620,3 +13645,260 @@ symbol of another module, so nothing stops `config` from changing it.
 **Why not fixed here.** Promoting it to a public name is a `config` change and
 every other caller of it is inside `config` itself, so the promotion wants
 doing once for all of them rather than for this one.
+
+---
+
+## R-300. The ACRCloud status table is the source system's, corrected twice, and has met no live answer
+
+**Found:** at U57's review, 2026-09-09.
+
+`intake/acrcloud.py` classifies the service's status codes into families. The
+families are the ones `DJ_setid/acr.py` used, with two corrections made on the
+strength of the vendor's published table as remembered at review: 3015, which
+the source system counted as a second quota code, is read as a miss, because
+the table names it "could not generate fingerprint", a fact about one chunk's
+audio; and 3100, "QpS limit exceeded", is read as transient. Neither the
+source's table nor the corrections have been checked against a real answer,
+because no live key is bound (R-132). 2004 is read as a miss on the same
+recollection.
+
+**Measured cost.** None today. If 3015 is a quota code after all, a spent
+account is paid into chunk by chunk until the streak stop at five ends the run
+under the failure slug rather than the spend slug, and a person reads "cannot
+reach the service" for "out of quota". If 3100 is not transient, a rate limited
+run stops after five answers with the same wrong sentence.
+
+**Why not fixed here.** The first attended run is where the table is checked,
+and it is Phillip's, not a session's.
+
+**Closes when:** one live run has met each family at least once and the table
+has been corrected or confirmed against what came back.
+
+---
+
+## R-301. The region host and the monthly bound are constants; a recognition config section is the home
+
+**Found:** during U57, 2026-09-09.
+
+`acrcloud.HOST` names one region's identify endpoint and an account belongs to
+one region. `Budget.monthly` exists and nothing in the shipped path sets it, so
+in production the ledger counts and never refuses: the per run cap of 400 is the
+only bound a person meets. Both belong in a `[recognition]` section of the
+configuration, frozen with the job like everything else the worker reads, and
+neither was built here because a configuration section is a change to
+`core/config.py`, its migration guards and its documentation, and the attended
+binding is where the region is first discovered.
+
+**Measured cost.** A person in another region gets an HTTP answer this build
+reads as transient, five times, and a failure naming the host; a person with a
+small plan is bounded only by the service's own quota code, which the source
+system measured at 565 calls before anyone noticed.
+
+**Closes when:** a config section carries the host and the monthly bound, the
+budget is built from the frozen configuration, and the two constants are gone.
+
+---
+
+## R-302. The intake worker resolves and offers; it does not acquire, and the registry says it writes
+
+**Found:** during U57, 2026-09-09.
+
+A recognised track carries no provider identifier, `TrackSource.offer` and
+`fetch` take a key and there is no search, so there is nothing to ask a provider
+for. The worker resolves each frozen track against the frozen library, offers a
+needs review row to the review queue, and commits a report that says owned,
+offered or missing and never acquired. A playlist row does carry an identifier,
+and acquiring it is the acquisition verb's job over a list document rather than
+a second copy of that worker here. The registry entries for both verbs still
+declare `writes={"xml", "files"}` and `destructive=True`, which describe the
+source system's pipeline and not what this build's worker touches, which is a
+report under the queue root and a review queue row.
+
+**Measured cost.** `crate intake set` ends with tracks it cannot fetch and a
+person carries the missing ones to `match.run`'s acquisition options by hand.
+Anything that reads the writes and destructive flags describes a verb that in
+this build touches nothing under the library.
+
+**Why not fixed here.** Acquisition by ISRC needs a search the adapter contract
+does not declare, and R-140 records why a worker must not claim an acquisition
+it only offered. The registry flags are a decision about what the verb will do
+once acquisition exists, and changing them twice is worse than once.
+
+**Closes when:** a search lands in the adapter contract and the worker acquires
+a missing track through it, or the registry flags are brought down to what the
+worker writes.
+
+---
+
+## R-303. A mix URL is refused at the queue, and nothing drives the downloader
+
+**Found:** during U57, 2026-09-09.
+
+`intake.set` and `intake.identify` accept a recording on this machine and refuse
+a web address with `intake-list-unusable`, and the help text and the registry
+summary say so. `core/binaries.py` knows the downloader's install hint and
+nothing in the package invokes it. The source system fetched the mix first; the
+feature row still names a URL.
+
+**Measured cost.** The dj-pipeline door that takes a SoundCloud or Mixcloud
+address is a manual download away from working.
+
+**Closes when:** a fetch step lands ahead of identification, under its own
+binary check, and the URL is accepted at the queue again.
+
+---
+
+## R-304. Identification at the queue is un-resumable spend
+
+**Found:** during U57, 2026-09-09.
+
+The items are the identified tracks, so identification runs inline at the queue
+and before the job exists. A crash mid set, or a spend refusal on the two
+hundredth chunk, loses every answer already paid for: the ledger has counted
+the calls and nothing has kept the matches. The source system wrote a raw
+document per chunk and could resume from it.
+
+**Measured cost.** Up to one full set's calls repeated after a crash.
+
+**Why not fixed here.** A per source cache of chunk answers keyed by the
+recording's digest and the offset is a new state file with a root and a
+snapshot role to decide, and the honest first measurement of how often it is
+needed is the attended run.
+
+**Closes when:** identification can resume from the answers already paid for.
+
+---
+
+## R-305. The per drive library view is a module global standing in for a setup seam the job engine lacks
+
+**Found:** at U57's review, 2026-09-09.
+
+`intake/cli.py` caches the library index and the tombstone view per drive in a
+module level dict keyed by the job and its attempt, with a public
+`reset_cache` for the suite, because the engine's handler contract is per item
+and `handlers.run_job` offers no per drive hook. `adopt/collection.py` solved
+the same gap with a different key and its own reset. The next worker that
+needs a per drive view will write a third.
+
+In the same family: the zero item guard is now in its eighth resume tail while
+`jobs.evidence_or_raise` still calls an itemless job a genuine no-op, and
+`_refuse_an_itemless_job` in the label shell records that the check belongs to
+`drive`. Both are R-248's shape.
+
+**Measured cost.** None to a run. The suite reaches into a reset hook per
+module rather than into one engine seam.
+
+**Closes when:** `run_job` calls an optional `prepare(job, cfg)` once per drive
+and passes its result to the handler, and the engine refuses an open job with
+zero items in one place.
+
+---
+
+## R-306. The recognition ledger counts attempts the service never received, up to the streak stop
+
+**Found:** at U57's review, 2026-09-09.
+
+A call is recorded before its answer is read, so a crash between the two leaves
+it counted. A transport that raises before any bytes leave the machine is
+counted the same way, because the identifier cannot tell a refused connection
+from a timeout after the send. The streak stop bounds it: five unanswered
+attempts in a row end the run, so an offline machine costs five phantom calls
+and not a set of them.
+
+**Measured cost.** Five calls a month of drift per offline attempt, against a
+ledger the module already calls advisory. A configured monthly bound (R-301)
+would count them.
+
+**Closes when:** the ledger distinguishes a call that was sent from one that
+was not, or the monthly bound is reconciled against the account.
+
+---
+
+## R-307. One ffmpeg process per chunk, and the carve waits for the network
+
+**Found:** at U57's review, 2026-09-09.
+
+`FfmpegCarver.carve` spawns one process per chunk, writes a WAV to a fresh
+temporary directory and reads it back, and the next chunk is carved only after
+the previous post has answered. On a two hour set that is 288 spawns and 288
+disk round trips in series with 288 network calls. A single decode sliced in
+memory, or carving one chunk ahead while the post is in flight, are the two
+shapes that remove it.
+
+**Measured cost.** Unmeasured. Tens of seconds on a long set by estimate, and
+the estimate was made on nothing this repository has run.
+
+**Closes when:** the attended run measures it and it matters, or does not.
+
+---
+
+## R-308. `core.artifacts` landed and the four feature copies are not migrated onto it
+
+**Found:** during U57, 2026-09-09. Extends R-240.
+
+`core/artifacts.py` is the generic per item report helper the copies in
+adopt, outbound, tagging and analysis each describe as their honest home, with
+the directory names as parameters so core names no feature. Intake is its first
+caller. The four copies stand, each now pointing at it, because migrating one
+is a rename that moves where a committed report is read from, and the outbound
+copy still sorts by filename text rather than by ordinal, so its migration is
+also an ordering change past item 9999.
+
+**Measured cost.** None to a run. Five spellings of one helper until the four
+are moved.
+
+**Closes when:** the four copies call `core.artifacts` and are deleted.
+
+---
+
+## R-309. `acrcloud` and `core.artifacts` reach into `config` for private helpers
+
+**Found:** at U57's review, 2026-09-09. R-299's class.
+
+`config._mkdir_private`, `config._exclusive_lock` and `config._CAN_SET_MODE` are
+called from `intake/acrcloud.py` and `core/artifacts.py`. Each is the right
+behaviour and a private symbol of another module. `outbound/ledger.py` and the
+tagging artifacts copy already do the same, so promoting them wants doing once
+for every caller, as R-299 says.
+
+**Measured cost.** None. Maintainer facing.
+
+**Closes when:** R-299 closes.
+
+---
+
+## R-310. `frozen_rows` and `acquire.frozen_tracks` freeze a `Wanted` by hand, differently
+
+**Found:** at U57's review, 2026-09-09.
+
+`intake/cli.py` freezes nine fields of a `Wanted` and thaws them back;
+`acquire/cli.py` freezes three. The review found the intake freezer had dropped
+`other_reading`, which is the exact defect a single serializer prevents, and the
+acquisition freezer still carries no version or spelling. Both refuse a provider
+row without an identifier by position with slightly different sentences.
+`Wanted` has no `to_json` or `from_json` while `Candidate`, `Acquisition` and
+`TrackMatch` do.
+
+**Measured cost.** None driven. The acquisition worker never thaws a row, so its
+narrower freeze costs nothing today.
+
+**Closes when:** `Wanted` serializes itself and both freezers call it.
+
+---
+
+## R-311. Nothing ties a verb's doctor checks to the gate it actually runs
+
+**Found:** at U57's review, 2026-09-09.
+
+`intake.set`'s registry entry declared `binary.ffmpeg` and `credential.provider`
+while its gate refused on ffmpeg, ffprobe and the two recognition keys, and the
+suite was green: doctor derives its per verb readiness from the declaration and
+the verb derives its refusal from `recognize.BINARIES` and the credential
+names, and no test compares the two. This unit corrected the entry by hand and
+pinned it in one test; the general guard does not exist.
+
+**Measured cost.** A machine doctor calls ready refuses at the verb, for any
+verb whose gate and declaration drift.
+
+**Closes when:** a test derives each gated verb's required binaries and
+credentials from the gate and asserts the registry declares them.

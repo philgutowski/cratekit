@@ -1,0 +1,305 @@
+name = "u57-recognition-and-items"
+pass_kind = "light"
+
+# U57's author table, scoped to the unit's own diff after the review's fix
+# round: the identifier's response mapping and spend guards in
+# intake/acrcloud.py, the item derivation and the resume tail in
+# intake/cli.py, and the one guard the fix round added to core/artifacts.py.
+# Twenty five rows, the cap. Dropped rows are listed at the foot with the
+# reason each ranked below the cap.
+
+# ---------------------------------------------------------------------------
+# The response mapping
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "M1_miss_family_loses_1001"
+description = "1001, the service's own no result code, falls out of the miss family"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''_MISS_CODES = frozenset({1001, 2004, 3015})'''
+new = '''_MISS_CODES = frozenset({2004, 3015})'''
+
+[[rows]]
+id = "M2_quota_family_empty"
+description = "3003 stops being a quota answer, so a spent account reads as unclassified"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''_QUOTA_CODES = frozenset({3003})'''
+new = '''_QUOTA_CODES = frozenset()'''
+
+[[rows]]
+id = "M3_auth_family_loses_3001"
+description = "3001, a missing or invalid access key, stops being a credential answer"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''_AUTH_CODES = frozenset({3001, 3002, 3006, 3014})'''
+new = '''_AUTH_CODES = frozenset({3002, 3006, 3014})'''
+
+[[rows]]
+id = "M4_transient_range_dropped"
+description = "The 2000s stop being transient, so a recording error ends the run as unclassified"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''    if 2000 <= code < 3000 or code in _TRANSIENT_CODES:'''
+new = '''    if code in _TRANSIENT_CODES:'''
+
+[[rows]]
+id = "M5_empty_music_not_none"
+description = "A match answer carrying no music entry is indexed rather than read as none"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''    if not isinstance(music, list) or not music:
+        return None'''
+new = '''    if not isinstance(music, list):
+        return None'''
+
+[[rows]]
+id = "M6_score_constant"
+description = "Every hit scores zero, so the fold can never prefer a better answer"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''    try:
+        score = int(top.get("score", 0))
+    except (TypeError, ValueError):
+        score = 0'''
+new = '''    score = 0'''
+
+[[rows]]
+id = "M7_fold_never_takes_best_score"
+description = "Adjacent answers fold to the first, whatever the later one scored"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''            if found.score > last.score:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M9_fold_ignores_version"
+description = "Without an ISRC, a remix folds into the original it follows"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''    return (
+        one.wanted.recording == other.wanted.recording
+        and one.wanted.version_key == other.wanted.version_key
+    )'''
+new = '''    return one.wanted.recording == other.wanted.recording'''
+
+# ---------------------------------------------------------------------------
+# The spend guards
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "M10_miss_does_not_reset_streak"
+description = "A miss no longer resets the unanswered streak, so a blip either side of one ends the run"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''        elif outcome is Outcome.MISS:
+            streak = 0
+            misses += 1'''
+new = '''        elif outcome is Outcome.MISS:
+            misses += 1'''
+
+[[rows]]
+id = "M11_unreached_stop_tenfold"
+description = "Fifty unanswered calls in a row before the run stops, not five"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''UNREACHED_STOP = 5'''
+new = '''UNREACHED_STOP = 50'''
+
+[[rows]]
+id = "M12_quota_reads_as_failure"
+description = "The provider's quota answer is raised under the failure slug, not the spend slug"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''    return refuse(
+        "intake-recognition-spend-bound",
+        f"the recognition service refused to spend: code {code} ({message or 'no message'}) "'''
+new = '''    return refuse(
+        "intake-recognition-failed",
+        f"the recognition service refused to spend: code {code} ({message or 'no message'}) "'''
+
+[[rows]]
+id = "M13_credentials_before_budget"
+description = "The keychain is asked before the budget is checked"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''    assert_within(spend, planned=planned, used_this_month=counter.used(month))
+    offsets = sample_offsets(duration_s)
+    access_key, signing_key = credentials()'''
+new = '''    access_key, signing_key = credentials()
+    assert_within(spend, planned=planned, used_this_month=counter.used(month))
+    offsets = sample_offsets(duration_s)'''
+
+[[rows]]
+id = "M14_monthly_ignores_used"
+description = "The monthly bound compares the plan alone, forgetting what the month already spent"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''    if budget.monthly is not None and used_this_month + planned > budget.monthly:'''
+new = '''    if budget.monthly is not None and planned > budget.monthly:'''
+
+[[rows]]
+id = "M15_ledger_after_answer"
+description = "The call is counted after its answer arrives rather than before it is sent"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''        calls += 1
+        try:
+            counter.record(1, month)
+        except (config.ConfigLockUnavailable, OSError) as exc:
+            raise _failed(
+                f"the recognition ledger could not record a call ({exc}), so the "
+                f"call was not made; {calls - 1} call(s) were made before it",
+                calls=calls - 1,
+            ) from exc
+        outcome, code, message, payload = _answer(transport, request)'''
+new = '''        calls += 1
+        outcome, code, message, payload = _answer(transport, request)
+        try:
+            counter.record(1, month)
+        except (config.ConfigLockUnavailable, OSError) as exc:
+            raise _failed(
+                f"the recognition ledger could not record a call ({exc}), so the "
+                f"call was not made; {calls - 1} call(s) were made before it",
+                calls=calls - 1,
+            ) from exc'''
+
+[[rows]]
+id = "M16_grid_off_by_one"
+description = "The planned count loses its last chunk"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''    return (whole - chunk_s) // interval_s + 1'''
+new = '''    return (whole - chunk_s) // interval_s'''
+
+[[rows]]
+id = "M18_missing_credential_is_unready"
+description = "A credential missing after the gate is reported as the gate class, not as credential-missing"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''            "credential-missing" if missing else "intake-recognition-unready",'''
+new = '''            "intake-recognition-unready",'''
+
+# ---------------------------------------------------------------------------
+# The item derivation and the resume tail
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "C1_item_key_drops_isrc"
+description = "A recognised track's identifier forgets the ISRC"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''    return "rc_" + match.digest(row.recording, row.version_key, row.isrc or "")'''
+new = '''    return "rc_" + match.digest(row.recording, row.version_key)'''
+
+[[rows]]
+id = "C2_item_key_ignores_provider_ref"
+description = "A provider row is keyed by digest rather than by the provider's identifier"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''    if row.ref:
+        return row.ref
+    return "rc_" + match.digest(row.recording, row.version_key, row.isrc or "")'''
+new = '''    return "rc_" + match.digest(row.recording, row.version_key, row.isrc or "")'''
+
+[[rows]]
+id = "C3_missing_ref_not_refused"
+description = "A provider row without an identifier is queued rather than refused by position"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''        if row.origin != match.TEXT and not row.ref'''
+new = '''        if False'''
+
+[[rows]]
+id = "C5_other_reading_dropped_at_thaw"
+description = "The other reading of an ambiguous title is dropped when the worker thaws the row"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''        other_reading=reading,
+    )'''
+new = '''        other_reading=None,
+    )'''
+
+[[rows]]
+id = "C6_unanswered_zero_reads_as_zero"
+description = "A set where chunks got no answer and the rest named nothing is reported as nothing identified"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''    if not result.unreached:
+        return ()
+    if not result.rows:
+        raise refuse('''
+new = '''    if not result.unreached or not result.rows:
+        return ()
+    if False:
+        raise refuse('''
+
+[[rows]]
+id = "C7_foreign_job_driven"
+description = "A job of another verb is driven under this verb's envelope"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''    if job.handler_key not in INTAKE_KEYS:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C8_failed_job_exits_ok"
+description = "A closed job carrying a cause is reported with an OK exit"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''    if not job.is_open() and job.cause is not None:
+        raise CratekitError(job.cause)
+    cfg = jobs.frozen_config(job)'''
+new = '''    cfg = jobs.frozen_config(job)'''
+
+[[rows]]
+id = "C9_never_offered"
+description = "A needs review track is reported without being offered to the review queue"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''    if found.state is not match.MatchState.NEEDS_REVIEW:
+        return found'''
+new = '''    return found'''
+
+[[rows]]
+id = "C12_stray_file_sorted"
+description = "The report reader sorts every json file by its stem as a number again"
+file = "src/cratekit/core/artifacts.py"
+surface = "user"
+old = '''    reports = [path for path in directory.glob("*.json") if path.stem.isdigit()]'''
+new = '''    reports = list(directory.glob("*.json"))'''
+
+# ---------------------------------------------------------------------------
+# Dropped, ranked below the cap
+# ---------------------------------------------------------------------------
+
+[[dropped]]
+id = "M8_isrc_fold_always"
+description = "Two different ISRCs fold as one recording"
+reason = "same guard family as M9, whose fallback branch is the one a recognised set without ISRCs walks"
+
+[[dropped]]
+id = "M17_short_file_zero_chunks"
+description = "A recording shorter than one chunk plans zero calls"
+reason = "same function as M16, and the parametrised grid table pins both branches by value"
+
+[[dropped]]
+id = "M19_all_unreached_returns_empty"
+description = "A run where no call got an answer returns an empty result"
+reason = "M11 exercises the same stop one line earlier, and the all-unreached branch is only reachable for a grid shorter than the stop"
+
+[[dropped]]
+id = "C4_fold_keeps_last"
+description = "A repeated identifier keeps the last occurrence instead of the first"
+reason = "the count does not move and no current test pins which occurrence survives; a zero row known in advance is a finding to record, not a row to spend"
+
+[[dropped]]
+id = "C10_state_word_constant"
+description = "Every report says owned"
+reason = "the same tests kill C9, which removes the offer rather than the word"
+
+[[dropped]]
+id = "C11_summary_calls_zero"
+description = "The resume summary reports zero calls"
+reason = "maintainer facing count with one direct assertion; ranked below the user facing guards"

@@ -30,6 +30,8 @@ different directory names. Nothing here is about tagging except those two names,
 so the honest home is one module in ``core`` taking them as arguments, and moving
 either of the other two there is another unit's files. Filed as a residual beside
 R-240 rather than reached across for (KTD9x).
+ ``cratekit.core.artifacts`` is now that module, landed by U57 with the
+directory names as parameters; this copy is not yet migrated onto it.
 
 Layer: modules.
 """

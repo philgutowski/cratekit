@@ -11,14 +11,19 @@ keychain on macOS, which is how an unattended run hangs. The first paid
 call is the first retrieval, and it happens only after this gate has
 passed.
 
-A missing helper binary (ffmpeg, used to carve the 12 second chunks) is
-the same class of refusal: report it before any spend, not after the
-first failed carve.
+A missing helper binary (ffmpeg, used to carve the 12 second chunks, and
+ffprobe, which measures the recording so the spend is known before the
+first call) is the same class of refusal: report it before any spend, not
+after the first failed carve.
+
+The implementation behind the seam is :mod:`cratekit.intake.acrcloud`. It
+landed in U57; until then ``identify`` refused on every real call.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +32,35 @@ from cratekit.core import binaries, secrets
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
 
-Identifier = Callable[[Path], tuple[Wanted, ...]]
+
+@dataclass(frozen=True, slots=True)
+class Identified:
+    """What one identification found, and what it cost to find it.
+
+    ``rows`` is the tracklist. The four counts are what a bare tuple of rows
+    cannot say: how many paid calls were made, how many chunks the grid asked
+    for, how many the service answered with nothing, and how many got NO
+    answer at all. The last one is the one a report has to carry, because a
+    set where most chunks were never answered is not a set nobody recognised,
+    and the two look identical as a tuple of rows.
+    """
+
+    rows: tuple[Wanted, ...]
+    calls: int = 0
+    chunks: int = 0
+    misses: int = 0
+    unreached: int = 0
+
+
+#: An identifier answers with an :class:`Identified`, or with the bare rows
+#: when it has nothing to say about cost, which is what a fake in the suite
+#: does. ``identify`` normalises the two.
+Identifier = Callable[[Path], "Identified | tuple[Wanted, ...]"]
+
+#: The binaries recognition needs, in the order a person would install them.
+#: Both are checked by presence here and resolved again by the carver at call
+#: time, so an override that points at nothing refuses there by name.
+BINARIES = ("ffmpeg", "ffprobe")
 
 
 def recognition_ready() -> tuple[str, ...]:
@@ -37,8 +70,9 @@ def recognition_ready() -> tuple[str, ...]:
         missing.append(str(secrets.Credential.IDENTIFY_KEY))
     if not secrets.exists(str(secrets.Credential.IDENTIFY_SIGNING_KEY)):
         missing.append(str(secrets.Credential.IDENTIFY_SIGNING_KEY))
-    if binaries.find("ffmpeg") is None:
-        missing.append("ffmpeg")
+    for name in BINARIES:
+        if binaries.find(name) is None:
+            missing.append(name)
     return tuple(missing)
 
 
@@ -63,23 +97,27 @@ def identify(
     source: Path,
     *,
     identifier: Identifier | None = None,
-) -> tuple[Wanted, ...]:
-    """Identify the tracks in ``source`` and return them as Wanted rows.
+) -> Identified:
+    """Identify the tracks in ``source``: the Wanted rows, and what it cost.
 
     Downloads nothing. Writes nothing. The caller decides whether to persist
     a tracklist. ``identifier`` is injected so the suite can prove the gate
-    and the shape without spending.
+    and the shape without spending; left unset, the bound ACRCloud
+    identifier runs, and that is the paid path.
+
+    THE GATE RUNS BEFORE THE IDENTIFIER IS BUILT. Building the bound one
+    touches nothing, but the order is the contract rather than a nicety: a
+    missing key refuses here, by name, and the keychain is never asked.
     """
     assert_recognition_ready()
     if identifier is None:
-        raise refuse(
-            "intake-recognition-unready",
-            "no identifier is bound in this build, so a paid recognition "
-            "call cannot be made; bind one or stay in identification tests",
-            remedy=Remedy.SET_CREDENTIAL,
-            origin=("intake.recognize",),
-        )
-    return identifier(source)
+        from cratekit.intake import acrcloud  # noqa: PLC0415 - bound only on the paid path
+
+        identifier = acrcloud.bound_identifier()
+    found = identifier(source)
+    if isinstance(found, Identified):
+        return found
+    return Identified(rows=tuple(found))
 
 
 def tracklist_text(rows: tuple[Wanted, ...] | list[Wanted] | Any) -> str:
