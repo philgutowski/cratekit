@@ -12871,6 +12871,16 @@ conservative call was to leave the board untouched and record the exit code.
 **Closes when:** `derive_status` treats `In review` as it treats `In Progress`,
 or the runner uses a status the script already preserves.
 
+**Observed again on 2026-09-10, on #81, and this is a confirmation rather than a
+new finding.** `board.py audit` printed `#81 status is In review, should be
+Ready` and exited 1. Recorded here rather than as a fresh number, because the
+session that hit it had drafted a new entry before finding this one, and a second
+copy of a fact is how the two come to disagree. What the second sighting adds is
+that it is now the ONLY thing the audit reports: with issue #25 reopened the
+contradiction is gone, so this drift is the whole of the audit's output at the
+end of a relay run, and the printed remedy is a `sync` that would undo the
+runner's first tracker write.
+
 ---
 
 ## R-266. Every label job in this build ends `no-evidence`, retryable, over a refusal that says never retry
@@ -14467,6 +14477,21 @@ board write this session had no mandate for.
 **Closes when:** somebody answers the question for U25, in either direction, and
 the audit exits 0.
 
+**One of the two remedies was taken, by somebody other than this entry's author,
+and it is measured rather than assumed.** As of 2026-09-10, issue #25 is OPEN
+with a state reason of REOPENED, so `contradictions()` returns nothing about it
+and `board.py audit` no longer exits 2. Driven directly on the live board while
+closing R-322, not read off a report:
+`contradictions(build_graph(load_issues()))` is empty and `owed_by_unit()` still
+answers `{25: ['cratekit.vocals.cli', 'cratekit.write.metadata_cli']}`.
+
+So the LOUD half is discharged and the substantive half is not. The registry
+still owes U25 two modules and U25 is now an open unit that owes them, which is
+the register working rather than the board contradicting the repository. Issue
+#80 is still open and this entry is left open with it, because whether that is
+the answer for U25 or merely the quieter state is the judgement #80 exists to
+make, and the session that closed R-322 did not take it.
+
 ---
 
 ## R-325. Four maintainer facing zeros in U59's table, each with what it means
@@ -14573,3 +14598,4 @@ exactly that reason.
 **Closes when:** somebody decides the board's write half is worth a double, and
 says what shape keeps it honest given that there is no payload seam to build it
 at. Recorded rather than fixed because it did not meet the bar to hold a merge.
+
