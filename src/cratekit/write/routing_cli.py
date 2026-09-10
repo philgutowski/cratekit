@@ -54,7 +54,7 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import rebuild, routing_pass, trees
 
@@ -254,7 +254,14 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
                 plan=plan,
                 rows=rows,
                 root_exists=lambda root: root in known,
-                analysis_roots=[Path(cfg.library.root) / cfg.library.music_dir],
+                # THE LIBRARY ROOT, which is what ``route_pending`` twelve
+                # functions below already names and for the same reason: the
+                # watch walks for ANLZ files by name and those do not sit beside
+                # the audio, so naming a narrower directory arms a watch over
+                # nothing and reports a clean session whatever happened to the
+                # grids. The empty-list refusal cannot catch that, because a
+                # barren list is not an empty one.
+                analysis_roots=[Path(cfg.library.root)],
                 workflow=INBOX_WORKFLOW,
             )
             added += report.added
@@ -361,6 +368,64 @@ def route_unplaced(ctx) -> Envelope:
     )
 
 
+def _resume(ctx, store, job_id: str) -> Envelope:
+    """Reconcile, refuse a foreign or itemless job, drive it, and report how it ended.
+
+    RECONCILE FIRST, because a resume arrives after something stopped and a claim
+    a dead driver left behind is state the queue cannot see for itself.
+
+    THE JOB HAS TO BE A RESORT. ``handlers.run_job`` resolves the worker from the
+    JOB ROW rather than from this verb, and this verb takes no other required
+    input, so without this line any queued job of any verb could be driven
+    through it, under this envelope and without that verb's own resume checks.
+
+    THE ZERO ITEM RULE ON THE RESUME SIDE. A resort queued by any build before
+    U53 carries no items, and ``jobs.drive`` walks an itemless job in one empty
+    pass and records it SUCCEEDED, which is the defect this unit closed arriving
+    through the one door that predates the fix.
+
+    A JOB THAT ENDED BADLY IS NOT AN OK EXIT, which is R-225. ``drive`` raises
+    only when EVERY attempted item failed, and this verb queues one item per
+    governed tree, so a partial failure is the ordinary shape here rather than
+    the edge one: without this an exit of 0 covers a sweep that finished half a
+    library. It sits outside the ``is_open`` branch so a job already failed on
+    entry is caught too.
+    """
+    job = jobs.reconcile(store, job_id)
+    if job.handler_key != ctx.entry.handler_key:
+        raise refuse(
+            "job-unknown",
+            f"job {job.job_id} was queued for {job.handler_key!r}, which is not a "
+            f"resort, so this verb will not drive it",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            steps=("resume this job through the verb that queued it, or through the "
+                   "job resume verb, which reads the worker off the job itself",),
+            origin=("routing_cli",),
+            detail={"job_id": job.job_id, "handler": job.handler_key},
+        )
+    warnings: tuple[dict[str, str], ...] = ()
+    if job.is_open():
+        if not jobs.items(store, job.job_id):
+            raise refuse(
+                "internal-error",
+                f"job {job.job_id} has no tree to re-place, so driving it would "
+                f"report a resort that swept a library nothing read. It was queued "
+                f"by a build that did not record its items",
+                remedy=Remedy.REPORT_DEFECT,
+                steps=(
+                    "cancel this job, then queue the resort again, which records "
+                    "one item per governed tree",
+                ),
+                origin=("routing_cli",),
+                detail={"job_id": job.job_id},
+            )
+        _, warnings = ctx.run_job(store, job)
+        job = jobs.get(store, job.job_id)
+    if not job.is_open() and job.cause is not None:
+        raise CratekitError(job.cause)
+    return ctx.envelope(data=_reported(store, job), warnings=warnings)
+
+
 def route_resort(ctx) -> Envelope:
     """Queue a resort. Long work is a job, never an inline sweep.
 
@@ -375,15 +440,7 @@ def route_resort(ctx) -> Envelope:
     cfg = _load()
     with jobs.open_store() as store:
         if ctx.args.job:
-            # RECONCILE, THEN DRIVE. Reporting the job again is what this verb
-            # did before U46 landed the driver, and it is why the items stayed
-            # pending for ever.
-            job = jobs.reconcile(store, ctx.args.job)
-            warnings: tuple[dict[str, str], ...] = ()
-            if job.is_open():
-                _, warnings = ctx.run_job(store, job)
-                job = jobs.get(store, job.job_id)
-            return ctx.envelope(data=_reported(store, job), warnings=warnings)
+            return _resume(ctx, store, ctx.args.job)
         items = _native_trees(tree_registry.read(cfg))
         if not items:
             return ctx.envelope(

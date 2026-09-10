@@ -1693,7 +1693,16 @@ def rebuild_governed_tree(
             declared=declared,
             rows=rows,
             root_exists=lambda root_id: root_id in known,
-            analysis_roots=[Path(cfg.library.root) / cfg.library.music_dir],
+            # THE LIBRARY ROOT, never the music directory. The watch this arms is
+            # the runtime half of R17's fifth surface and it walks for ANLZ files
+            # by NAME, and those do not live beside the audio: rekordbox keeps
+            # them under its own directory inside the library. Naming the music
+            # directory fingerprints an empty set, and a watch over nothing
+            # reports a clean session whatever happened to the grids, which is
+            # exactly the shape the empty-list refusal one layer down exists to
+            # stop and cannot see, because a barren list is not an empty one.
+            # Every other caller in this package names the library root.
+            analysis_roots=[Path(cfg.library.root)],
             vocal_threshold=vocal_threshold,
             workflow=workflow,
         )

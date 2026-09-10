@@ -643,3 +643,198 @@ def test_a_driven_rebuild_whose_root_the_database_lacks_fails_the_item(
     item = _items(job_id)[0]
     assert item.state == jobs.ItemState.FAILED
     assert item.cause is not None, item
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The review's round, driven so each finding has a guard that would bite again
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.fixture
+def planted_grid(configured) -> Path:
+    """One analysis file where rekordbox actually keeps them.
+
+    NOT beside the audio. The watch walks for ANLZ files by NAME, and a caller
+    that names the music directory fingerprints an empty set, which reports a
+    clean session whatever happened to the grids. That is a barren watch rather
+    than an absent one, so the empty-list refusal one layer down cannot see it.
+    """
+    grid = Path(configured.library.root) / "PIONEER" / "USBANLZ" / "P001" / "ANLZ0000.DAT"
+    grid.parent.mkdir(parents=True)
+    grid.write_bytes(b"PMAI")
+    return grid
+
+
+def _watched_roots(monkeypatch) -> list[list[str]]:
+    """Capture the roots each write arms its analysis watch over, without disarming it.
+
+    A WRAPPER RATHER THAN A STUB. The real gates still run, so this measures the
+    shipped path instead of replacing it, and the assertion that follows is taken
+    over the TREE: which files the captured roots actually cover.
+    """
+    from cratekit.core import session as session_module
+
+    seen: list[list[str]] = []
+    real = session_module.assert_gates
+
+    def wrapper(cfg, *, analysis_roots=(), **rest):
+        seen.append([str(root) for root in analysis_roots])
+        return real(cfg, analysis_roots=analysis_roots, **rest)
+
+    monkeypatch.setattr(session_module, "assert_gates", wrapper)
+    return seen
+
+
+def test_a_driven_rebuild_watches_the_grids_where_they_actually_live(
+    acknowledged, native, planted_grid, monkeypatch
+):
+    """R17's fifth surface, runtime half, measured over the tree rather than asserted.
+
+    The claim is not that some path was passed. It is that the files the watch
+    covers include this library's real analysis files, which is the only version
+    of the claim a narrower root fails.
+    """
+    del native
+    seen = _watched_roots(monkeypatch)
+    job_id = _drive(["rebuild", "--actor", "a-person"])[1]["data"]["job_id"]
+    code, envelope = _drive(["rebuild", "--actor", "a-person", "--job", job_id])
+    assert code == int(ExitCode.OK), envelope
+
+    assert seen, "the write opened no session at all, so there is nothing to measure"
+    for roots in seen:
+        assert planted_grid in session.analysis_files_under(roots), (
+            f"the session armed its analysis watch over {roots}, which holds no "
+            f"analysis file at all, so it would report a clean session whatever "
+            f"happened to this library's grids"
+        )
+    del acknowledged
+
+
+def test_a_confirmed_inbox_watches_the_grids_where_they_actually_live(
+    acknowledged, native, planted_grid, monkeypatch
+):
+    """The same claim for the apply, which is a separate call site."""
+    del acknowledged, native
+    seen = _watched_roots(monkeypatch)
+    code, envelope = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), envelope
+
+    assert seen, "the apply opened no session at all, so there is nothing to measure"
+    for roots in seen:
+        assert planted_grid in session.analysis_files_under(roots), roots
+
+
+@pytest.mark.parametrize(
+    "argv", [["rebuild", "--actor", "a-person"], ["route", "resort"]], ids=["rebuild", "resort"]
+)
+def test_neither_resume_drives_another_verbs_job(acknowledged, native, argv):
+    """``handlers.run_job`` reads the worker off the JOB ROW, not off this verb.
+
+    So without a check here, naming somebody else's job identifier drives that
+    verb's work in process, under this verb's envelope and without that verb's
+    own resume time checks.
+    """
+    del acknowledged, native
+    with jobs.open_store() as store:
+        foreign = jobs.enqueue(
+            store,
+            handler_key="master",
+            payload={},
+            cfg=config.load(),
+            item_ids=("one",),
+        )
+
+    code, envelope = _drive([*argv, "--job", foreign.job_id])
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "job-unknown", envelope
+    assert [item.state for item in _items(foreign.job_id)] == [jobs.ItemState.PENDING]
+
+
+@pytest.mark.parametrize(
+    "argv, key",
+    [(["rebuild", "--actor", "a-person"], "rebuild"), (["route", "resort"], "route.resort")],
+    ids=["rebuild", "resort"],
+)
+def test_neither_resume_drives_a_job_an_older_build_queued_with_no_items(
+    acknowledged, native, argv, key
+):
+    """The zero item rule on the resume side, which is the door that predates the fix.
+
+    Every rebuild and every resort queued before U53 carries no items, and
+    ``jobs.drive`` walks an itemless job in one empty pass and records it
+    SUCCEEDED. So the verb that refuses to FILE one has to refuse to DRIVE one
+    as well, or the defect simply arrives from the queue instead.
+    """
+    del acknowledged, native
+    with jobs.open_store() as store:
+        stale = jobs.enqueue(store, handler_key=key, payload={}, cfg=config.load())
+
+    code, envelope = _drive([*argv, "--job", stale.job_id])
+    assert code != int(ExitCode.OK), envelope
+    with jobs.open_store() as store:
+        assert jobs.get(store, stale.job_id).state != jobs.JobState.SUCCEEDED
+
+
+@pytest.mark.parametrize(
+    "argv, key",
+    [(["rebuild", "--actor", "a-person"], "rebuild"), (["route", "resort"], "route.resort")],
+    ids=["rebuild", "resort"],
+)
+def test_a_resume_whose_items_did_not_all_succeed_is_not_an_ok_exit(
+    acknowledged, native, argv, key, monkeypatch
+):
+    """R-225, which named this inheritance in advance.
+
+    ``jobs.drive`` raises only when EVERY attempted item failed, so a job over
+    two trees where one failed returns normally with the job recorded failed. An
+    unconditional OK on the resume exits 0 over half a library, and the person
+    reading the exit status is the one who then believes the sweep finished.
+    """
+    del acknowledged
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key=key,
+            payload={"tree": None, "actor": "a-person"},
+            cfg=config.load(),
+            item_ids=(TREE_ID, "second_tree"),
+        )
+
+    real = rebuild.rebuild_governed_tree
+
+    def one_of_two(cfg, *, tree_id, workflow, **rest):
+        if tree_id != TREE_ID:
+            raise RuntimeError("this tree is not there")
+        return real(cfg, tree_id=tree_id, workflow=workflow, **rest)
+
+    monkeypatch.setattr(rebuild, "rebuild_governed_tree", one_of_two)
+
+    code, envelope = _drive([*argv, "--job", job.job_id])
+    assert code != int(ExitCode.OK), envelope
+    states = {item.item_id: item.state for item in _items(job.job_id)}
+    assert states[TREE_ID] == jobs.ItemState.DONE
+    assert states["second_tree"] == jobs.ItemState.FAILED
+    assert _membership(config.load(), native) == {"1"}, (
+        "the item that did succeed was rolled back, which is not what a partial "
+        "failure means: the successes are durable and the exit says so"
+    )
+
+
+def test_a_resume_reads_no_registry_of_its_own(acknowledged, native):
+    """Everything a queued job needs was frozen when it was queued.
+
+    Reading the registry on the resume path would let an unreadable one
+    permanently block work whose items are already decided, and the difference is
+    visible in the ITEM: the driver either ran and recorded a cause, or it never
+    ran at all.
+    """
+    del native
+    job_id = _drive(["rebuild", "--actor", "a-person"])[1]["data"]["job_id"]
+    tree_registry.path_for(acknowledged).write_text("{ this is not a registry")
+
+    code, envelope = _drive(["rebuild", "--actor", "a-person", "--job", job_id])
+    assert code != int(ExitCode.OK), envelope
+    assert _items(job_id)[0].state == jobs.ItemState.FAILED, (
+        "the verb refused before it drove anything, so the item is still pending "
+        "and the unreadable registry blocked a job whose items were already frozen"
+    )

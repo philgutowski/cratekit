@@ -124,6 +124,68 @@ def tree_items(entries: tree_registry.Registry, tree_id: str | None) -> tuple[st
     return tuple(t for t in native if t == tree_id)
 
 
+def _resume(ctx, store, job_id: str) -> Envelope:
+    """Reconcile, refuse a foreign or itemless job, drive it, and report how it ended.
+
+    RECONCILE FIRST. A resume arrives after something stopped, and a claim a
+    dead driver left behind is state the queue cannot see for itself.
+
+    THE JOB HAS TO BE A REBUILD. ``handlers.run_job`` resolves the worker from
+    the JOB ROW and not from this verb, so without this line a rebuild naming
+    somebody else's job identifier would drive that verb's work in process,
+    under this verb's envelope and without that verb's own resume checks.
+
+    THE ZERO ITEM RULE ON THE RESUME SIDE. A rebuild queued by any build before
+    U53 carries no items at all, and ``jobs.drive`` walks an itemless job in one
+    empty pass and records it SUCCEEDED, which is precisely the defect this unit
+    exists to close arriving through the one door that predates the fix.
+
+    A JOB THAT ENDED BADLY IS NOT AN OK EXIT, which is R-225. ``drive`` raises
+    only when EVERY attempted item failed, so a rebuild over three trees where
+    one tree failed returns normally with the job recorded failed, and an
+    unconditional OK here exits 0 over two thirds of a library. It sits OUTSIDE
+    the ``is_open`` branch so a job already failed on entry is caught too, and it
+    catches ANY closed job carrying a cause, so a run stopped by a signal is not
+    an OK exit either.
+    """
+    job = jobs.reconcile(store, job_id)
+    if job.handler_key != ctx.entry.handler_key:
+        raise refuse(
+            "job-unknown",
+            f"job {job.job_id} was queued for {job.handler_key!r}, which is not a "
+            f"rebuild, so this verb will not drive it",
+            steps=(f"resume it through its own verb, or with: crate job resume {job.job_id}",),
+            origin=("cli.rebuild",),
+            detail={"job_id": job.job_id, "handler": job.handler_key},
+        )
+    warnings: tuple[dict[str, str], ...] = ()
+    if job.is_open():
+        if not jobs.items(store, job.job_id):
+            raise refuse(
+                "internal-error",
+                f"job {job.job_id} has no tree to rebuild, so driving it would "
+                f"report a rebuild that happened over a library nothing read. It "
+                f"was queued by a build that did not record what its items were",
+                remedy=Remedy.REPORT_DEFECT,
+                steps=(
+                    f"cancel it with: crate job cancel {job.job_id}",
+                    "then queue the rebuild again, which records one item per tree",
+                ),
+                origin=("cli.rebuild",),
+                detail={"job_id": job.job_id},
+            )
+        _, warnings = ctx.run_job(store, job)
+        job = jobs.get(store, job.job_id)
+    if not job.is_open() and job.cause is not None:
+        raise CratekitError(job.cause)
+    return ctx.envelope(
+        data=_reported(store, job),
+        outcome=Outcome.OK,
+        code=ExitCode.OK,
+        warnings=warnings,
+    )
+
+
 def rebuild(ctx) -> Envelope:
     """Queue one rebuild, naming the person who asked for it."""
     actor = (getattr(ctx.args, "actor", None) or "").strip()
@@ -136,33 +198,22 @@ def rebuild(ctx) -> Envelope:
             steps=("pass the actor flag with the name of the person running this rebuild",),
         )
     cfg = _load()
-    tree_id = getattr(ctx.args, "tree", None)
-    entries = tree_registry.read(cfg)
-    if tree_id is not None and not entries.is_database_native(tree_id):
-        raise refuse(
-            "rebuild-tree-not-native",
-            f"the tree {tree_id!r} is still on the XML bridge, so a "
-            f"rebuild would write membership the next import would "
-            f"overwrite",
-            remedy=Remedy.COMPLETE_PENDING_ACTION,
-            steps=("cut this tree over before rebuilding it",),
-        )
     with jobs.open_store() as store:
         if ctx.args.job:
-            # RECONCILE FIRST, then DRIVE. A resume arrives after something
-            # stopped, and a claim a dead driver left behind is state the queue
-            # cannot see for itself. Everything above this line already worked
-            # before U46; nothing below it ever ran an item.
-            job = jobs.reconcile(store, ctx.args.job)
-            warnings: tuple[dict[str, str], ...] = ()
-            if job.is_open():
-                _, warnings = ctx.run_job(store, job)
-                job = jobs.get(store, job.job_id)
-            return ctx.envelope(
-                data=_reported(store, job),
-                outcome=Outcome.OK,
-                code=ExitCode.OK,
-                warnings=warnings,
+            # THE RESUME READS NO REGISTRY AND NO TREE FLAG. Everything this job
+            # needs was frozen when it was queued, so an unreadable registry here
+            # would permanently block work whose items are already decided.
+            return _resume(ctx, store, ctx.args.job)
+        tree_id = getattr(ctx.args, "tree", None)
+        entries = tree_registry.read(cfg)
+        if tree_id is not None and not entries.is_database_native(tree_id):
+            raise refuse(
+                "rebuild-tree-not-native",
+                f"the tree {tree_id!r} is still on the XML bridge, so a "
+                f"rebuild would write membership the next import would "
+                f"overwrite",
+                remedy=Remedy.COMPLETE_PENDING_ACTION,
+                steps=("cut this tree over before rebuilding it",),
             )
         items = tree_items(entries, tree_id)
         if not items:
