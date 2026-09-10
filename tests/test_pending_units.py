@@ -38,7 +38,6 @@ carries the procedure and the U16 case where it cost 330 tests.
 from __future__ import annotations
 
 import ast
-import re
 from pathlib import Path
 
 import pytest
@@ -992,17 +991,36 @@ def test_the_graph_double_carries_exactly_the_fields_load_issues_asks_gh_for():
     that no longer exists, and they would all still pass, because `build_graph`
     only reads the keys it reads today.
 
-    So the field list is taken from the call rather than restated. Read off the
-    source text because the argument list is positional strings inside a
-    subprocess invocation, and there is nothing else to interrogate.
+    So the field list is taken from the call rather than restated, by finding the
+    string that FOLLOWS the `--json` argument in `load_issues`'s own syntax tree.
+    Read structurally rather than by a pattern over the field names, because a
+    pattern has to describe what a field name looks like and would then be
+    asserting its own vocabulary: the first version matched `[a-z,]*`, which
+    cannot express `closedAt` or `stateReason`, so adding one of gh's camelCase
+    fields would have failed this test with a message about the literal no longer
+    being findable rather than about the double having drifted. A wrong diagnosis
+    sends the reader to the wrong file.
     """
     board = _board()
     source = (TESTS_DIR.parent / "scripts" / "board.py").read_text()
-    call = source[source.index("def load_issues") : source.index("def parse_deps")]
-    fields = re.findall(r'"([a-z,]*number,[a-z,]*)"', call)
+    call = next(
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.FunctionDef) and node.name == "load_issues"
+    )
+    literals = [
+        node.value
+        for node in ast.walk(call)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    ]
+    fields = [
+        following
+        for argument, following in zip(literals, literals[1:])
+        if argument == "--json"
+    ]
     assert len(fields) == 1, (
-        f"the --json field list is no longer a single literal in load_issues, so "
-        f"this pin cannot read it: {fields}"
+        f"the --json field list is no longer a single string literal following a "
+        f"`--json` argument in load_issues, so this pin cannot read it: {fields}"
     )
     asked_for = set(fields[0].split(","))
     assert set(_issue(1, "U1: x", closed=False, unit=False)) == asked_for, (
@@ -1151,6 +1169,86 @@ def test_a_repointed_residual_issue_is_reported_through_the_same_call(monkeypatc
         "a residual issue whose title still names what its number points at is "
         "correct, and flagging it is how this check gets switched off"
     )
+
+
+def test_the_register_defaults_to_the_live_one_when_no_caller_supplies_it(monkeypatch):
+    """The default branch, which every test above routes around by supplying `owed`.
+
+    Making the register injectable is what lets these tests say the same thing
+    next year, and it opens a hole one call frame up: `cmd_audit` supplies
+    nothing, so the default read is the only path production takes, and a
+    supplied-register driver cannot see it. `owed = owed or {}` in place of the
+    `is None` test keeps the whole battery green while `board.py audit` stops
+    reporting register contradictions entirely and returns 0 where it owes 2.
+    That is R-322's own failure shape, moved up a frame by the fix for it, so the
+    default is driven here rather than assumed.
+    """
+    board = _board()
+    graph = board.build_graph(
+        [_issue(51, "U38: the write routing pass", closed=True, unit=True)]
+    )
+    monkeypatch.setattr(board, "owed_by_unit", lambda: {38: ["cratekit.write.routing"]})
+
+    found = board.contradictions(graph)
+
+    assert len(found) == 1 and "#51" in found[0], (
+        f"with no register supplied, the live one must be read; got {found}"
+    )
+    assert board.contradictions(graph, owed={}) == [], (
+        "an explicitly EMPTY register is not the same as no register at all, and "
+        "collapsing the two is how the default stops being reachable"
+    )
+
+
+def test_the_audit_reports_a_contradiction_as_exit_2_and_drift_as_exit_1(monkeypatch):
+    """The exit code the whole rule rests on, which nothing asserted.
+
+    `CLAUDE.md` tells a session that exit 1 is drift a sync repairs and exit 2 is
+    a contradiction it will not, and every instruction about what to do next
+    branches on which one it got. The number was written down in one place and
+    read in none.
+
+    IT WAS RECORDED AS UNREACHABLE, AND THAT WAS WRONG. This task's first row
+    file dropped the row over this line on the grounds that `cmd_audit` shells
+    out to `gh` for the issue list, so it could not run without a token. Every
+    name it calls is module level, this file already replaces `owed_by_unit` and
+    `residual_titles` the same way, and `_board()` hands back a fresh module per
+    call so nothing leaks. A limitation asserted into a fact is the exact error
+    this file's own closing-spelling table was written to correct.
+
+    NO NODE IS TITLED LIKE A RESIDUAL, for the reason the driver above gives:
+    `repointed_residuals` reads the real ledger and would otherwise decide this
+    test's exit code.
+    """
+    board = _board()
+    payload = [
+        _issue(51, "U38: the write routing pass", closed=True, unit=True),
+        _issue(79, "U61: still in flight", closed=False, unit=True),
+    ]
+    monkeypatch.setattr(board, "repo_slug", lambda: ("fixture", "cratekit"))
+    monkeypatch.setattr(board, "load_issues", lambda: payload)
+    monkeypatch.setattr(board, "reconcile", lambda owner, apply, labels_only=False: [])
+    monkeypatch.setattr(board, "owed_by_unit", lambda: {38: ["cratekit.write.routing"]})
+
+    class _AuditArgs:
+        labels_only = True
+
+    assert board.cmd_audit(_AuditArgs()) == 2, (
+        "a closed unit a register still owes is a contradiction, and exit 2 is "
+        "what tells a session that a sync will not repair it"
+    )
+
+    monkeypatch.setattr(board, "owed_by_unit", lambda: {})
+    monkeypatch.setattr(
+        board, "reconcile", lambda owner, apply, labels_only=False: ["#79 says Ready"]
+    )
+    assert board.cmd_audit(_AuditArgs()) == 1, (
+        "drift with no contradiction is exit 1, the code that sends a session to "
+        "`board.py sync` rather than to a decision"
+    )
+
+    monkeypatch.setattr(board, "reconcile", lambda owner, apply, labels_only=False: [])
+    assert board.cmd_audit(_AuditArgs()) == 0
 
 
 def test_the_residual_heading_reader_reads_the_document_as_it_is_written():
