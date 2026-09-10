@@ -6,6 +6,23 @@ pass_kind = "light"
 # empty plan and baseline branches of review_removals, plus the new display
 # context, the new registry guard, and a fixed sample of the verb's existing
 # guards. The deletion verb deletes, so user facing zeros owe a composite.
+#
+# THE FIRST ROW IS HERE FOR THE NULL CONTROL, NOT FOR ITS RANK. The driver's
+# control targets the first Python row's file and runs on that module's derived
+# importer subset. No test imports ``cratekit.deletion.cli``, so a control there
+# runs the FULL suite, about six minutes, on top of the six minute full baseline,
+# and the preflight alone overran a ten minute foreground call, measured on the
+# first attempt. ``cratekit.sync.cli`` is imported by one test file, so the
+# control runs there and the preflight fits.
+
+[[rows]]
+id = "G4_sync_all_inline"
+description = "What the new guard holds: sync.all's shell stops enqueueing, so a queued verb does its work nowhere"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
+surface = "maintainer"
+old = '''enqueue('''
+new = '''enqueue_later('''
 
 # ---------------------------------------------------------------------------
 # The confirm branch
@@ -209,15 +226,6 @@ tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_han
 surface = "maintainer"
 old = '''        if self.long_running and not self.argv_builder:'''
 new = '''        if False and self.long_running and not self.argv_builder:'''
-
-[[rows]]
-id = "G4_sync_all_inline"
-description = "What the new guard holds: sync.all's shell stops enqueueing, so a queued verb does its work nowhere"
-file = "src/cratekit/sync/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
-surface = "maintainer"
-old = '''enqueue('''
-new = '''enqueue_later('''
 
 [[dropped]]
 id = "D1_close_db"
