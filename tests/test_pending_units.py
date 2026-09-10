@@ -411,10 +411,16 @@ def test_a_cli_shaped_register_key_names_a_module_some_verb_declares():
 #: than as an allowance, so U23 resolving it turns this red and forces the
 #: deletion, exactly like the pending countdown above.
 #:
-#: U23's package is `cratekit.adopt` in the register and `cratekit.adoption` in
-#: the registry. One of them is wrong and only U23 knows which, so it is recorded
-#: here rather than picked by a branch that does not own that unit.
-KNOWN_PACKAGE_NAME_DISAGREEMENTS = {("U23", "cratekit.adopt", "cratekit.adoption")}
+#: EMPTY AT THE U59 MERGE, BECAUSE THE COUNTDOWN FIRED AND THIS IS THE DELETION
+#: IT ASKED FOR. The entry read `("U23", "cratekit.adopt", "cratekit.adoption")`,
+#: the register saying one package name and the registry saying another, recorded
+#: rather than picked because only U23 knew which was wrong. U23 answered:
+#: `src/cratekit/adopt/` is the package that shipped, `cratekit.adoption` is
+#: spelled nowhere in the registry any more, and `_pending.PENDING` is empty, so
+#: neither side still disagrees with the other. Deleting the entry is exactly
+#: what the exact-membership shape above was built to force, and leaving it would
+#: have been a permanent red light over a defect that no longer exists.
+KNOWN_PACKAGE_NAME_DISAGREEMENTS: set[tuple[str, str, str]] = set()
 
 
 def test_no_unit_declares_two_confusingly_similar_package_roots():
@@ -742,20 +748,27 @@ def test_a_refusal_names_what_the_package_actually_contains():
     entry sits in the file, so Rule B refuses in either merge order. All the note
     does is move the diagnosis earlier, which is worth nothing if it costs a
     false positive and worth having if it costs none.
+
+    RE-AIMED AT THE U59 MERGE, AND THE OLD SHAPE IS WORTH NAMING. It owed
+    `cratekit.write.rebuild` and WROTE `src/cratekit/write/tree_rebuild.py` into
+    the real package to play the sibling. Both halves expired: U36 landed
+    `rebuild.py`, so the owed module now exists and `_near_misses` correctly
+    short-circuits before it ever looks for a sibling, and the test went red
+    holding a green rule. It is re-aimed rather than patched, because a test that
+    creates a file inside `src/` to make its own premise true is one interrupted
+    run away from leaving that file behind, and the merged tree supplies the
+    same shape for free: `cratekit.write.routing` is genuinely absent and
+    `routing_cli` and `routing_pass` are genuinely beside it. Nothing is written
+    anywhere now, and the measurement is taken on the tree rather than on a
+    fixture authored alongside it.
     """
     board = _board()
-    landed = TESTS_DIR.parent / "src" / "cratekit" / "write" / "tree_rebuild.py"
-    assert not landed.exists(), "this fixture simulates U36 landing; it has landed"
-    landed.write_text("# simulation, removed below\n")
-    try:
-        refusals = board.unresolved_closes(
-            "Closes #32", {32: ["cratekit.write.rebuild", "cratekit.core.restore"]}
-        )
-    finally:
-        landed.unlink()
+    refusals = board.unresolved_closes(
+        "Closes #32", {32: ["cratekit.write.routing", "cratekit.core.restore"]}
+    )
 
     assert len(refusals) == 1
-    assert "tree_rebuild" in refusals[0], (
+    assert "routing_pass" in refusals[0], (
         "the refusal must name the sibling that exists, or the reader is left to "
         "guess why a module is owed that nobody is going to write"
     )
@@ -763,4 +776,21 @@ def test_a_refusal_names_what_the_package_actually_contains():
         "U32's live key has no near miss in its package and must not acquire a "
         "note; a note on a correct key is the false positive the rejected rule "
         "would have asserted"
+    )
+
+
+def test_a_near_miss_note_is_skipped_once_the_owed_module_actually_lands():
+    """The short-circuit, driven, because it is what expired the test above.
+
+    `_near_misses` returns nothing for a module that EXISTS, which is right: a
+    landed module needs no diagnosis. It is asserted here rather than left
+    implicit, because the previous version of the test above depended on this
+    branch never being taken and gave no signal when it started being taken.
+    `cratekit.write.rebuild` is the exact module whose landing caused that.
+    """
+    board = _board()
+    assert board._near_misses(["cratekit.write.rebuild"]) == [], (
+        "a module that has landed must acquire no note; U36 shipped "
+        "src/cratekit/write/rebuild.py and a note there would be a diagnosis of "
+        "a problem that no longer exists"
     )

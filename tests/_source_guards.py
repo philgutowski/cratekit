@@ -2205,6 +2205,22 @@ def _soft_delete_reads(
         if isinstance(node, ast.Attribute) and node.attr == SOFT_DELETE_COLUMN_LITERAL:
             # ``row.rb_local_deleted``. No default is possible, so it cannot be
             # permissive; it is recorded because the READER pin below counts it.
+            #
+            # LOAD CONTEXT ONLY, and the distinction is the difference between a
+            # reader and a row double. ``self.rb_local_deleted = deleted`` in a
+            # test fixture is the attribute being DEFINED, which is the shape
+            # every stand-in row in this repository is built from, and it is not
+            # a place the rule has to be got right. Counted as a read, it put
+            # ``tests/test_adopt_collection.py`` into the exact-membership pin
+            # below, which would have made the pin fire on the next fixture
+            # anybody writes: the failure mode that ends a guard, and the one
+            # ``test_the_soft_delete_guard_survives_an_unrelated_edit_to_the_files_it_protects``
+            # exists to refuse. Nothing is lost, because a read is a Load by
+            # construction: ``x.rb_local_deleted = y`` writes, ``y =
+            # x.rb_local_deleted`` reads, and there is no third spelling that
+            # reaches the value through a Store.
+            if not isinstance(node.ctx, ast.Load):
+                continue
             found.append((node, None))
             continue
         if not isinstance(node, ast.Call):
@@ -2502,7 +2518,9 @@ def permissive_soft_delete_reads(source: str) -> list[str]:
     falsey class-level default under a plain attribute read, the column arriving
     from a function call or a dictionary lookup, and an attribute name computed
     at runtime. Each needs type or value inference this does not have. They are
-    recorded in R-321 rather than left for a reader to discover by being wrong.
+    recorded in the residual
+    "What the soft-delete guard cannot see, and two gaps in the gate contract"
+    rather than left for a reader to discover by being wrong.
     """
     tree = ast.parse(source)
     names = SoftDeleteNames(tree)
@@ -2524,8 +2542,9 @@ def reads_soft_delete_marker(source: str) -> bool:
     Separate from the question above because the two guard different things. The
     one above is a defect check and must fire on nobody today. This one feeds an
     exact-membership PIN over the modules that read the column, which is the only
-    shape that catches a WIDENING (R-15): a fourth reader is a two-line diff that
-    passes every other assertion in this suite.
+    shape that catches a WIDENING. See the residual
+    "Guard whitelists assert what is forbidden, never what is permitted".
+    A fourth reader is a two-line diff that passes every other assertion here.
 
     It is what will force the reconciliation with U24's ``trees.soft_delete_marker``
     instead of leaving it to be remembered. That unit lands a single sanctioned

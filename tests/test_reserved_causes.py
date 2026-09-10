@@ -4222,6 +4222,17 @@ CITED_RESIDUALS = (
     # it, so a title another unit cites has to be declared here or the reverse
     # direction stops checking anything.
     "A class rebound after its own definition is no longer reachable by name",
+    # Declared on the U59 merge, 2026-09-10, and the two are this rule proving
+    # itself on a live case rather than on an argument. Both were cited by NUMBER
+    # in tests/_source_guards.py on the conformance branch. One of the two
+    # numbers named a finding the branch had filed itself, and that finding's
+    # number had to MOVE at this merge, because the branch was cut when main's
+    # highest was far below where main has since reached and append-only
+    # numbering gives the incoming side fresh numbers. The citation would have
+    # gone on pointing at whatever main had put in the vacated slot, silently and
+    # with no test failing. Both are titles now.
+    "Guard whitelists assert what is forbidden, never what is permitted",
+    "What the soft-delete guard cannot see, and two gaps in the gate contract",
 )
 
 #: WHAT A CITATION LOOKS LIKE, as a form rather than as a convention: the word

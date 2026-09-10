@@ -1634,10 +1634,45 @@ def test_no_module_in_the_package_reads_the_soft_delete_marker_permissively():
 #: and the merge cannot quietly leave two implementations of one rule in the
 #: tree. The reason is corrected here because a pin whose stated mechanism is
 #: wrong is a pin somebody deletes when it fires the way it was not described.
+#:
+#: RE-PINNED AT THE U59 MERGE, AND THE PREDICTION ABOVE HELD EXACTLY. The set is
+#: differenced against the merged tree rather than adjusted to match a count.
+#: ``routing_pass`` left, because its direct read is now
+#: ``trees.soft_delete_marker(row)`` at ``routing_pass.py:695``. ``trees`` joined,
+#: because it holds that single sanctioned implementation at ``trees.py:204``.
+#: Two readers before, two after, a different two, which is the set inequality
+#: the pin was built to catch rather than a growth check that would have missed
+#: it. The third member the raw measurement reported,
+#: ``tests/test_adopt_collection.py``, was NOT admitted: it defines
+#: ``self.rb_local_deleted`` on a stand-in row and reads it nowhere, and
+#: ``_soft_delete_reads`` was narrowed to load context so a row double stops
+#: counting as a reader.
 SOFT_DELETE_READERS = {
     "src/cratekit/write/metadata.py",
-    "src/cratekit/write/routing_pass.py",
+    "src/cratekit/write/trees.py",
 }
+
+
+def test_defining_the_marker_on_a_row_double_is_not_reading_it():
+    """The narrowing, driven from both sides, because one side alone proves nothing.
+
+    A stand-in row assigns the attribute and is not a reader; anything that takes
+    the value back out is. Both halves are asserted here, so reverting the load
+    context test kills this row rather than quietly re-admitting every fixture in
+    the tree into the membership pin above.
+
+    The write shape is not invented. It is what ``tests/test_adopt_collection.py``
+    does at line 187, and it is the shape every stand-in row here is built from.
+    """
+    guard = _source_guard()
+    assert not guard.reads_soft_delete_marker(
+        "class Row:\n"
+        "    def __init__(self, deleted):\n"
+        "        self.rb_local_deleted = deleted\n"
+    ), "a row double DEFINING the column is a fixture, not a place the rule lives"
+    assert guard.reads_soft_delete_marker(
+        "def read(row):\n    return row.rb_local_deleted\n"
+    ), "taking the value back out is a read, and narrowing must not have lost it"
 
 
 def test_only_the_declared_modules_read_the_soft_delete_marker_at_all():
