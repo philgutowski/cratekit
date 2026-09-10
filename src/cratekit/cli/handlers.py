@@ -95,6 +95,15 @@ HANDLERS: Mapping[str, str] = {
     # from the item either way.
     "label.import": "cratekit.label.cli:handle",
     "master": "cratekit.master.cli:handle",
+    # ONE ENGINE UNDER TWO KEYS, and unlike the pairs above these two are not one
+    # worker: they are two workers over one engine, in two modules that cannot
+    # import each other because ``rebuild`` is a CLI verb and ``route.resort`` is
+    # a write-layer one. What they share is
+    # ``cratekit.write.rebuild.rebuild_governed_tree``, and what differs is the
+    # workflow name each writes under, so the session log can say which verb
+    # touched the library.
+    "rebuild": "cratekit.cli.rebuild:handle",
+    "route.resort": "cratekit.write.routing_cli:handle_resort",
     "sync.favorites": "cratekit.favorites.cli:handle",
     "sync.labels": "cratekit.label.cli:handle",
     "tag.folder": "cratekit.tagging.cli:handle",
@@ -112,8 +121,6 @@ HANDLERS_NOT_YET_BOUND: Mapping[str, str] = {
         "never queued under its own key"
     ),
     "delete.review": "no worker yet, R-203",
-    "rebuild": "no worker yet, R-203",
-    "route.resort": "no worker yet, R-203",
     "sync.all": "no worker yet, R-203",
 }
 

@@ -86,6 +86,7 @@ from cratekit.core import (
     config,
     convergence,
     locations,
+    rb_writer,
     routing,
     session,
     tags,
@@ -1285,6 +1286,43 @@ def close_restore_marker(cfg: config.Config, tree_id: str) -> bool | None:
     return bool(open_ids)
 
 
+def plan_destinations(
+    declared: taxonomy.Taxonomy,
+    placements: Sequence[DeclaredPlacement],
+    standing: Sequence[TreeNode],
+    record: convergence.TreeConvergence | None,
+    *,
+    tree_id: str,
+) -> tuple[tuple[Destination, ...], dict[tuple[str, str], list[str]]]:
+    """Resolve every declared placement into the two names the writer targets.
+
+    LIFTED OUT OF :func:`rebuild_tree` SO THERE IS ONE OF IT. A second caller
+    needed the same three steps in the same order, resolve through the recorded
+    node map, refuse an ambiguous pair, then key the plan on the display names,
+    and a copy of them beside this one would be two answers to "where does this
+    track go" that agree until the day they do not.
+
+    THE PLAN IS KEYED ON THE DISPLAY PAIR BECAUSE THE WRITER TARGETS BY NAME,
+    and that is safe only because :func:`assert_addressable` has just refused
+    every way two destinations could share one pair. Without it two destinations
+    merged into one entry here and every track in one bucket was written into the
+    other bucket's playlist as well.
+
+    THE DESTINATIONS ARE RETURNED BESIDE THE PLAN because the caller that writes
+    also has to record where each destination landed, and re-resolving them from
+    the display names afterwards is the weaker method this unit's node map exists
+    to replace.
+    """
+    destinations = resolve_destinations(declared, placements, standing, record)
+    assert_addressable(tree_id, destinations, standing)
+    by_key = {(entry.bucket, entry.sub): entry for entry in destinations}
+    plan: dict[tuple[str, str], list[str]] = {}
+    for entry in placements:
+        destination = by_key[(entry.bucket, entry.sub)]
+        plan.setdefault((destination.folder, destination.playlist), []).append(entry.location)
+    return destinations, plan
+
+
 def report_convergence(
     cfg: config.Config,
     db: Any,
@@ -1444,19 +1482,9 @@ def rebuild_tree(
 
     record = convergence.read(cfg).tree(tree_id)
     standing = read_tree(db, root_id)
-    destinations = resolve_destinations(declared, placements, standing, record)
-    assert_addressable(tree_id, destinations, standing)
-    by_key = {(entry.bucket, entry.sub): entry for entry in destinations}
-
-    # THE PLAN IS KEYED ON THE DISPLAY PAIR BECAUSE THE WRITER TARGETS BY NAME,
-    # and that is safe only because ``assert_addressable`` has just refused every
-    # way two destinations could share one pair. Without it two destinations
-    # merged into one entry here and every track in one bucket was written into
-    # the other bucket's playlist as well.
-    plan: dict[tuple[str, str], list[str]] = {}
-    for entry in placements:
-        destination = by_key[(entry.bucket, entry.sub)]
-        plan.setdefault((destination.folder, destination.playlist), []).append(entry.location)
+    destinations, plan = plan_destinations(
+        declared, placements, standing, record, tree_id=tree_id
+    )
 
     if not plan:
         # UNREACHABLE BY CONSTRUCTION AND REFUSED ANYWAY. ``declared_membership``
@@ -1613,6 +1641,75 @@ def rebuild_tree(
     )
 
 
+def rebuild_governed_tree(
+    cfg: config.Config,
+    *,
+    tree_id: str,
+    workflow: str = REBUILD_WORKFLOW,
+    vocal_threshold: float | None = None,
+) -> RebuildReport:
+    """Open this library's database, rebuild one governed tree, and close it again.
+
+    THE COMPOSITION, AND NOTHING ELSE. Every rule about what a rebuild derives,
+    what it refuses and in which order still lives in :func:`rebuild_tree`. What
+    is here is the four things that function needs and cannot get for itself: a
+    database handle, the registry, the declared taxonomy and the collection rows.
+
+    IT LIVES BESIDE THE ENGINE BECAUSE TWO WORKERS NEED IT. ``rebuild`` and
+    ``route.resort`` are queued under different keys in different modules on
+    different rungs of the layer ladder, so neither can import the other, and a
+    copy of this body in each is two answers to what a rebuild opens and in which
+    order. A tree is one item of one job, which is why this takes one identifier
+    rather than a list: a refusal on the second tree then leaves the first one's
+    item done and claimable evidence of it in the queue, instead of collapsing a
+    partly finished sweep into a single failure.
+
+    NO CONFIGURATION IS LOADED HERE. The caller is a job handler and the
+    configuration it holds is the one its job was FROZEN against (KTD9); loading
+    a fresh one is the resume bug that rule closes.
+
+    ``vocal_threshold`` IS PASSED IN AND DEFAULTS TO ABSENT, which is the same
+    answer the convergence report gives and for the same reason: nothing in this
+    build reads the calibration file, so a number chosen here would be this layer
+    answering a question about somebody's library on their behalf. The engine
+    names the dimension it therefore did not derive and the report carries it.
+
+    THE ROWS ARE MATERIALIZED BEFORE THE ENGINE IS CALLED. They come from
+    :func:`cratekit.write.routing_pass.content_rows`, the one producer that
+    refuses a row which cannot report its soft-delete marker, rather than from a
+    second walk written here.
+    """
+    entries = tree_registry.read(cfg)
+    declared = taxonomy.default_taxonomy()
+    handle = rb_writer.open_db(cfg=cfg, unlock=False)
+    try:
+        known = {str(row.ID) for row in handle.get_playlist()}
+        rows = list(routing_pass.content_rows(handle))
+        return rebuild_tree(
+            cfg,
+            handle,
+            tree_id=tree_id,
+            registry=entries,
+            declared=declared,
+            rows=rows,
+            root_exists=lambda root_id: root_id in known,
+            # THE LIBRARY ROOT, never the music directory. The watch this arms is
+            # the runtime half of R17's fifth surface and it walks for ANLZ files
+            # by NAME, and those do not live beside the audio: rekordbox keeps
+            # them under its own directory inside the library. Naming the music
+            # directory fingerprints an empty set, and a watch over nothing
+            # reports a clean session whatever happened to the grids, which is
+            # exactly the shape the empty-list refusal one layer down exists to
+            # stop and cannot see, because a barren list is not an empty one.
+            # Every other caller in this package names the library root.
+            analysis_roots=[Path(cfg.library.root)],
+            vocal_threshold=vocal_threshold,
+            workflow=workflow,
+        )
+    finally:
+        rb_writer.close_db(handle)
+
+
 __all__ = [
     "DERIVATIONS",
     "REBUILD_ACTOR",
@@ -1634,8 +1731,10 @@ __all__ = [
     "declared_membership",
     "derive_from_taxonomy",
     "library_truth",
+    "plan_destinations",
     "read_tree",
     "read_truth",
+    "rebuild_governed_tree",
     "rebuild_tree",
     "report_convergence",
     "resolve_destinations",

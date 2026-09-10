@@ -8034,6 +8034,17 @@ satisfy the live gate the brief names.
 rekordbox with no integrity prompt, and has taken one post-cutover sync
 that placed new tracks without a manual playlist import.
 
+**The agent half is done as of U53, 2026-09-10, and the entry stays open on
+its attended half alone.** The three verbs named above are no longer surfaces
+without a worker: `route.inbox` applies on the confirmed branch, `route.unplaced`
+reports the rows no governed tree holds rather than a constant, and `rebuild`
+and `route.resort` queue one item per governed tree and drive them, both through
+`rebuild_governed_tree`, which is the first caller of `rebuild_tree` anywhere in
+`src`. Every one of those is driven against a disposable database copy in a
+temporary directory. What is unchanged is the sentence this entry exists for:
+none of it has run on a live tree, and the closing condition above is still the
+whole of what is left.
+
 ---
 
 ## R-132. U37 lands the emitter and the pipeline; it does not drive a live set
@@ -10812,6 +10823,18 @@ a spend bound with its own cause, a coverage rule so a set nobody answered is
 not reported as a set nobody recognised, and a worker that resolves and offers
 and never acquires, because a recognised track carries no provider identifier
 and the adapter contract has no search.
+
+**U53 bound `rebuild` and `route.resort`, so TWO queued verbs have no worker as
+of 2026-09-10**: `delete.review` and `sync.all`. Measured, not subtracted:
+`HANDLERS_NOT_YET_BOUND` holds three keys, one of which is the `job.resume`
+exemption. The count in this entry's title stays at eighteen for the reason the
+first correction gives. U53 is the sixth worked example of the claim, and the
+one where the two verbs shared an ENGINE without sharing a worker: both re-derive
+the declaration through `rebuild_governed_tree`, and neither could import the
+other's module because one is a CLI verb and one is a write-layer verb, so what
+they share had to move down to the engine rather than sideways. The items were
+the decision, as the paragraph above predicts: a rebuild's item is a tree, and a
+library that has flipped no tree therefore files no job rather than an empty one.
 
 ---
 
@@ -13902,3 +13925,206 @@ verb whose gate and declaration drift.
 
 **Closes when:** a test derives each gated verb's required binaries and
 credentials from the gate and asserts the registry declares them.
+
+---
+
+## R-312. The resort is additive, so a genre change leaves the track in two places
+
+**Found:** during U53, 2026-09-10, while binding the `route.resort` worker.
+
+`route.resort` re-derives the declaration and writes back what the database
+lacks, through the same engine the rebuild uses. That is the whole of what a
+re-place can be in this build, because
+`cratekit.write.trees.write_tree_membership` is additive by construction and
+nothing in the package removes a membership row from the database. The XML half
+has `apply_playlist_changes` and `apply_unplaced_changes`; the database half has
+no counterpart.
+
+So after somebody changes a bucket assignment or an energy band, the resort puts
+the track in its new sub and leaves it in the old one. The engine's convergence
+report names the leftovers as `unexpected` differences, so the state is visible,
+and the verb's registry summary, "re-place already-routed tracks after a genre
+or energy change", promises more than the verb performs.
+
+**Measured cost.** A track appears in two subs after a resort, and the tree
+stays unconverged for the duration. Nothing is lost and nothing is silent: the
+convergence check reports each leftover by identifier.
+
+**The options, and the conservative one taken.** Removing the stale membership
+needs a database delete, which is a new capability against a whitelist that
+today permits only additions, on the one path that would let a defect in a
+derivation delete a person's playlist contents. Recorded rather than built.
+
+**Closes when:** either a governed removal path exists and the resort uses it,
+or the registry summary is reworded to say the verb is additive and the
+convergence check is what names what is left over.
+
+---
+
+## R-313. `route.unplaced` declares that it writes and it only reports
+
+**Found:** during U53, 2026-09-10.
+
+The registry entry carries `writes={"db_tree"}` and `destructive=True`. The verb
+opens the database read only, walks each governed tree, and reports the active
+rows no tree holds. It takes no session, no lock and no acknowledgment, and it
+writes nothing.
+
+The declaration is what doctor derives its per verb readiness from and what
+conformance 6 quantifies over, so the over-claim costs a person three health
+checks they do not need for a report, and it puts a read only diagnostic in the
+population of verbs a reader would call dangerous.
+
+**Measured cost.** A person is told to close rekordbox before running a report
+that would have been safe with it open.
+
+**Closes when:** the entry drops `writes` and `destructive`, or the verb gains
+the sweep the declaration describes. The name argues for the second: the source
+system's `dj-sort-unplaced` MOVED tracks, and this build's `route.inbox` is
+where that act now lives.
+
+---
+
+## R-314. Nothing in the suite reaches the addressability refusal, composite included
+
+**Found:** at U53's mutation table, 2026-09-10, measured twice.
+
+`rebuild.assert_addressable` refuses three shapes: two declared destinations on
+one display pair, two on one node, and one display pair carried by two nodes.
+Deleting the CALL to it from `plan_destinations` killed zero tests over the full
+suite, 7136 collected. The composite METHOD asks for on a user facing zero was
+run and is also zero: disabling the duplicate node refusal INSIDE the function
+killed nothing either, 7140 collected.
+
+So the guard is not held by one call site that happens to be untested. Nothing
+anywhere in the repository produces a destination set that collides, and every
+assertion about this function is about the code rather than about its effect.
+
+**Measured cost.** Unmeasured, and that is the finding. The refusal's own
+docstring names what it costs when it does not fire, tracks written into two
+playlists at once and a node map that makes it permanent, and this unit could
+not produce the input, so the reachability is unmeasured rather than absent.
+
+**Not this unit's to fix, and this unit is why it is visible.** `plan_destinations`
+is an extraction: the call sat inline in `rebuild_tree` and had the same zero
+coverage there. Lifting it is what made the row measurable.
+
+**Closes when:** one test builds a taxonomy where two declared destinations
+resolve to one display pair, drives a rebuild over it, and asserts the refusal,
+with a second for the node collision.
+
+---
+
+## R-315. The rebuild's actor is frozen on the payload and read by nothing
+
+**Found:** during U53, 2026-09-10.
+
+`crate rebuild` refuses an empty `--actor`, freezes it on the job payload, and
+`rebuild_argv` rebuilds it onto the resume command line. No worker reads it. The
+one place the engine records a decision against a person is the convergence
+disposition, which a rebuild does not write, and handing a frozen string to a
+call that records an assertion is exactly what R34 forbids.
+
+So the flag is a required input whose only effect is that it is recorded on the
+job row and reproduced on the resume.
+
+**Measured cost.** None to correctness. A person is required to name themselves
+for a value nothing consults, which is the shape that eventually gets defaulted
+by somebody who notices it does nothing.
+
+**Closes when:** either the actor reaches a record that keeps it, or the verb
+says plainly in its help that the name is recorded on the job and nowhere else.
+
+---
+
+## R-316. Neither new worker derives the vocal dimension, and no surface says so
+
+**Found:** during U53, 2026-09-10.
+
+`rebuild_governed_tree` passes `vocal_threshold=None`, which is the same answer
+the convergence report gives and for the same reason: nothing in this build
+reads the calibration file. `derive_from_taxonomy` then names `vocal` in its
+gaps tuple and `declared_membership` returns it, and the rebuild worker drops
+that tuple on the floor. The `route.inbox` apply drops it too.
+
+So a library whose taxonomy declares the additive vocal sub-playlist gets a
+rebuild that never writes it, and the envelope reports the write as ordinary.
+The engine did its part: it said what it did not compare. The two callers this
+unit added are where that sentence stops.
+
+**Measured cost.** A person with vocal playlists declared runs a rebuild, sees
+a clean job, and the vocal dimension is not filed. The convergence check names
+it under `not_compared`, so the answer exists in a verb they have not been told
+to run.
+
+**Closes when:** both workers carry the gaps into their envelope as a warning,
+which is the wording `handlers.drift_warnings` already establishes for
+"something about this run is not what you would assume".
+
+---
+
+## R-317. A confirmed intake plan does not say which trees it will be written into
+
+**Found:** during U53, 2026-09-10.
+
+`route.inbox` offers a plan whose items are the files in the intake folder and
+whose digest is over exactly those items. The apply then writes into EVERY tree
+the registry records as native. On today's shipped taxonomy that is one tree, so
+the two agree; on a library with several, a person confirms a list of files and
+gets writes into trees the plan never named.
+
+The digest deliberately does not cover the trees, because a decision bound to
+the registry would be refused as stale for a reason that has nothing to do with
+the offer the person read. So the fix is to SHOW the destination rather than to
+widen the digest.
+
+**Measured cost.** Unmeasured today: no shipped taxonomy declares two routing
+trees, and the registry cannot hold a native record for a tree the taxonomy does
+not declare. One candidate was driven, the shipped template, and it produces one.
+
+**Closes when:** the plan's totals name the trees the apply would write into.
+
+---
+
+## R-318. The apply counts what it skipped and never says which files
+
+**Found:** during U53, 2026-09-10.
+
+`write_tree_membership` returns a `skipped` tuple of `RowMatch` values, one per
+declared file that reached no single active row: not imported, claimed by two
+rows, or a path no prefix maps. `apply_inbox` reduces that to a count.
+
+The intake folder is exactly where the interesting case lives. A person drops
+twenty files in, imports none of them, confirms the plan, and is told
+`added: 0, skipped: 20` with no reason and no file names, which reads as a
+failure of the verb rather than as a step they have not taken yet.
+
+**Measured cost.** A confirmed apply over an unimported intake folder gives a
+person a number and no next act.
+
+**Closes when:** the totals carry a reason per skipped file, the way
+`routing_pass.resolve_placements` already does for the deferred pass, whose six
+placements are the vocabulary this should reuse rather than invent.
+
+---
+
+## R-319. A stray file in the intake folder is offered a placement it can never receive
+
+**Found:** during U53, 2026-09-10.
+
+`_inbox_items` lists every file in the intake folder that is not a dotfile,
+whatever its suffix. The apply reads tag truth for each one, and `read_truth`
+never raises for an unreadable file: an absent reading routes to the declared
+fallback. So a text file, a cover image or a partial download is offered a
+destination in the plan, and then reaches no collection row and lands in the
+skipped count of R-318.
+
+`library_truth` does not have this problem, because it filters on
+`tags.SUPPORTED_SUFFIXES`, derived from the tag module's own table. This lister
+predates that and filters on nothing.
+
+**Measured cost.** Plan noise, and a skipped count inflated by files that were
+never candidates. Nothing is written and nothing is lost.
+
+**Closes when:** `_inbox_items` filters on the same suffix table `library_truth`
+derives from, so the two agree by construction about what a track is.

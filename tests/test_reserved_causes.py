@@ -5062,7 +5062,21 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # got no answer carries, a warning and not a cause because the set did
     # queue. The monthly kind is one word, so it is not cause-shaped and this
     # population never held it.
-    assert (len(literals), len(literals - set(causes))) == (385, 232), (
+    # Re-pinned on U53, 2026-09-10: 385 to 389 distinct, 232 to 236 non-keys.
+    # FOUR literals joined and NOTHING left, differenced as SETS against `main`'s
+    # own `src` tree extracted into a scratch directory rather than inferred from
+    # the total moving by four. NONE of the four is a cause, so the reserved half
+    # does not move at all: route-inbox and route-resort are WORKFLOW names, the
+    # string a write records itself under in the session log, the same kind of
+    # literal as deferred-routing and tree-rebuild which this population has
+    # carried since U19 and U36; no-native-tree is the state a queued rebuild or
+    # resort reports when the library has flipped no tree and it therefore filed
+    # no job at all, a job_state value beside no-op, and it is the same word the
+    # reason field carries when a plan says the same thing; and inbox-empty is
+    # the plan reason a confirmed intake apply carries over an empty folder, the
+    # same kind of literal as no-tracks and nothing-identified. Every refusal
+    # these two verbs raise reuses a slug the table already reserves.
+    assert (len(literals), len(literals - set(causes))) == (389, 236), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

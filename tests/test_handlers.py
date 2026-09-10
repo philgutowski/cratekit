@@ -227,13 +227,22 @@ def test_exactly_one_place_in_the_package_calls_the_job_driver():
 
 
 def test_a_job_whose_key_has_no_handler_refuses_rather_than_reporting_success(cfg, queue):
+    """The subject is DERIVED from the unbound table rather than named.
+
+    It was named, and the name was ``rebuild``. U53 bound that key, so the test
+    went on passing for a reason that had nothing to do with the property: the
+    resolve succeeded, the handler ran, the item failed for want of a library and
+    ``drive`` raised ``no-evidence``, which is a different refusal entirely. A
+    fixed name here expires silently the day somebody binds it.
+    """
     store, _ = queue
+    unbound = sorted(handlers.HANDLERS_NOT_YET_BOUND)[0]
     job = jobs.enqueue(
-        store, handler_key="rebuild", payload={}, cfg=cfg, item_ids=("one",)
+        store, handler_key=unbound, payload={}, cfg=cfg, item_ids=("one",)
     )
     with pytest.raises(CratekitError) as caught:
         handlers.run_job(store, job)
-    assert "rebuild" in caught.value.cause.message
+    assert unbound in caught.value.cause.message
     assert jobs.items(store, job.job_id)[0].state == jobs.ItemState.PENDING
 
 

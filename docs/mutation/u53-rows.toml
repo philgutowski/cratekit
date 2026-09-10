@@ -1,0 +1,313 @@
+name = "u53-routing-and-rebuild-workers"
+pass_kind = "light"
+
+# U53's author table, scoped to the unit's own diff after the review's fix
+# round: the apply branch and the two hollow verbs in write/routing_cli.py, the
+# item derivation and the resume tail in cli/rebuild.py, and the two functions
+# this unit added to write/rebuild.py. Twenty five rows, the cap. Dropped rows
+# are listed at the foot with the reason each ranked below the cap.
+#
+# THE UNIT WRITES, so METHOD asks for the full twenty five and a composite on
+# every user facing zero.
+
+# ---------------------------------------------------------------------------
+# The apply branch, which is the line whose silent loss re-creates the hollow verb
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "A1_apply_call_removed"
+description = "The confirmed branch returns the plan without applying it, which is the defect this unit closed"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    result = apply_inbox(cfg, items)'''
+new = '''    result = {"applied": True, "reason": None, "added": 0, "skipped": 0, "trees": 0}'''
+
+[[rows]]
+id = "A2_abort_instead_of_not_apply"
+description = "The branch tests for abort rather than for apply, so an option nobody classified acquires the write"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    if option != "apply":
+        return ctx.envelope(data=_plan(items, kind="inbox", applied=False), outcome=Outcome.NO_OP)'''
+new = '''    if option == "abort":
+        return ctx.envelope(data=_plan(items, kind="inbox", applied=False), outcome=Outcome.NO_OP)'''
+
+[[rows]]
+id = "A3_empty_folder_shortcircuit_removed"
+description = "A confirmed apply over an empty intake folder derives and opens a database rather than stopping"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    if not items:
+        # AN EMPTY FOLDER IS NOT A WRITE.'''
+new = '''    if False:
+        # AN EMPTY FOLDER IS NOT A WRITE.'''
+
+[[rows]]
+id = "A4_native_check_removed"
+description = "The apply proceeds on a library whose trees are all still on the XML bridge"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    if not native:
+        return {"applied": False, "reason": "no-native-tree", "added": 0, "skipped": 0}'''
+new = '''    if False:
+        return {"applied": False, "reason": "no-native-tree", "added": 0, "skipped": 0}'''
+
+[[rows]]
+id = "A5_applied_always_true"
+description = "Every apply reports itself as having applied, whatever it did"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''        outcome=Outcome.OK if result["applied"] else Outcome.NO_OP,'''
+new = '''        outcome=Outcome.OK,'''
+
+[[rows]]
+id = "A6_inbox_watch_narrowed"
+description = "The apply arms its analysis watch over the music directory, where no analysis file lives"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''                analysis_roots=[Path(cfg.library.root)],
+                workflow=INBOX_WORKFLOW,'''
+new = '''                analysis_roots=[Path(cfg.library.root) / cfg.library.music_dir],
+                workflow=INBOX_WORKFLOW,'''
+
+# ---------------------------------------------------------------------------
+# The report that used to be a constant
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "U1_unplaced_constant_empty"
+description = "Unplaced reports nothing whatever the library holds, which is the defect verbatim"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    items = [
+        {"content_id": row.content_id, "path": row.recorded}
+        for row in active
+        if row.content_id not in held
+    ]'''
+new = '''    items = []'''
+
+[[rows]]
+id = "U2_compared_true_without_a_tree"
+description = "A library with nothing native reports an empty answer as a comparison it made"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''        return [], {"compared": False, "reason": "no-native-tree", "collection": 0}'''
+new = '''        return [], {"compared": True, "reason": None, "collection": 0}'''
+
+[[rows]]
+id = "U3_held_never_populated"
+description = "Nothing is read out of the tree, so every row in the library reports as unplaced"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''            for node in rebuild.read_tree(handle, root_id):
+                held |= set(node.content_ids)'''
+new = '''            rebuild.read_tree(handle, root_id)'''
+
+[[rows]]
+id = "U4_tombstones_reported"
+description = "A row rekordbox removed is reported as a track still waiting to be filed"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    active = [row for row in rows if not row.deleted]'''
+new = '''    active = list(rows)'''
+
+# ---------------------------------------------------------------------------
+# The item derivation, which is the other half of the zero item rule
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "I1_native_filter_dropped"
+description = "A resort queues an item for a tree still on the bridge, which no rebuild can write"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    return tuple(sorted(t for t in entries.tree_ids() if entries.is_database_native(t)))'''
+new = '''    return tuple(sorted(entries.tree_ids()))'''
+
+[[rows]]
+id = "I2_resort_items_dropped"
+description = "The resort files a job with no items, which the driver walks once and calls succeeded"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''            payload={},
+            item_ids=items,
+            cfg=cfg,'''
+new = '''            payload={},
+            cfg=cfg,'''
+
+[[rows]]
+id = "I3_rebuild_items_dropped"
+description = "The rebuild files a job with no items, the state every rebuild was in before this unit"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+old = '''            payload={"tree": tree_id, "actor": actor},
+            item_ids=items,'''
+new = '''            payload={"tree": tree_id, "actor": actor},'''
+
+[[rows]]
+id = "I4_resort_empty_job_filed"
+description = "A library with nothing native files an empty resort job instead of saying there was nothing to queue"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''        items = _native_trees(tree_registry.read(cfg))
+        if not items:'''
+new = '''        items = _native_trees(tree_registry.read(cfg))
+        if False:'''
+
+[[rows]]
+id = "I5_rebuild_empty_job_filed"
+description = "A library with nothing native files an empty rebuild job"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+old = '''        items = tree_items(entries, tree_id)
+        if not items:'''
+new = '''        items = tree_items(entries, tree_id)
+        if False:'''
+
+[[rows]]
+id = "I6_tree_items_ignores_native"
+description = "The rebuild's items include trees the registry says are still on the bridge"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+old = '''    native = tuple(sorted(t for t in entries.tree_ids() if entries.is_database_native(t)))'''
+new = '''    native = tuple(sorted(entries.tree_ids()))'''
+
+[[rows]]
+id = "I7_tree_items_ignores_the_named_tree"
+description = "A rebuild of one named tree quietly rebuilds every tree in the library"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+old = '''    if tree_id is None:
+        return native
+    return tuple(t for t in native if t == tree_id)'''
+new = '''    return native'''
+
+# ---------------------------------------------------------------------------
+# The resume tail, which the review's round rewrote in both verbs
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "R1_resort_drives_a_foreign_job"
+description = "The resort drives any queued job of any verb under its own envelope"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    if job.handler_key != ctx.entry.handler_key:
+        raise refuse(
+            "job-unknown",'''
+new = '''    if False:
+        raise refuse(
+            "job-unknown",'''
+
+[[rows]]
+id = "R2_rebuild_drives_a_foreign_job"
+description = "The rebuild drives another verb's job, without that verb's own resume checks"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+old = '''    if job.handler_key != ctx.entry.handler_key:
+        raise refuse(
+            "job-unknown",'''
+new = '''    if False:
+        raise refuse(
+            "job-unknown",'''
+
+[[rows]]
+id = "R3_resort_drives_an_itemless_job"
+description = "A resort queued by an older build drives to succeeded over a library nothing read"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''        if not jobs.items(store, job.job_id):
+            raise refuse(
+                "internal-error",'''
+new = '''        if False:
+            raise refuse(
+                "internal-error",'''
+
+[[rows]]
+id = "R4_rebuild_drives_an_itemless_job"
+description = "A rebuild queued by an older build drives to succeeded having rebuilt nothing"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+old = '''        if not jobs.items(store, job.job_id):
+            raise refuse(
+                "internal-error",'''
+new = '''        if False:
+            raise refuse(
+                "internal-error",'''
+
+[[rows]]
+id = "R5_resort_swallows_the_jobs_cause"
+description = "A resort that failed half its trees exits zero, which is R-225 inherited"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    if not job.is_open() and job.cause is not None:
+        raise CratekitError(job.cause)
+    return ctx.envelope(data=_reported(store, job), warnings=warnings)'''
+new = '''    return ctx.envelope(data=_reported(store, job), warnings=warnings)'''
+
+[[rows]]
+id = "R6_rebuild_swallows_the_jobs_cause"
+description = "A rebuild that failed some of its trees exits zero over the rest of the library"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+old = '''    if not job.is_open() and job.cause is not None:
+        raise CratekitError(job.cause)
+    return ctx.envelope(
+        data=_reported(store, job),'''
+new = '''    return ctx.envelope(
+        data=_reported(store, job),'''
+
+# ---------------------------------------------------------------------------
+# The two functions this unit added to the engine module
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "E1_addressability_check_dropped"
+description = "Two destinations sharing one display pair are merged rather than refused, which writes one bucket's tracks into another's playlist"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''    destinations = resolve_destinations(declared, placements, standing, record)
+    assert_addressable(tree_id, destinations, standing)'''
+new = '''    destinations = resolve_destinations(declared, placements, standing, record)'''
+
+[[rows]]
+id = "E2_rebuild_watch_narrowed"
+description = "The rebuild worker arms its analysis watch over the music directory, where no analysis file lives"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''            analysis_roots=[Path(cfg.library.root)],
+            vocal_threshold=vocal_threshold,'''
+new = '''            analysis_roots=[Path(cfg.library.root) / cfg.library.music_dir],
+            vocal_threshold=vocal_threshold,'''
+
+# ---------------------------------------------------------------------------
+# Considered and not run
+# ---------------------------------------------------------------------------
+
+[[dropped]]
+id = "R7_resort_reports_without_driving"
+description = "The resume reports the job again instead of calling run_job, which is the state before U46"
+reason = "the item state assertions in the two end to end tests read exactly this line, so R3 and R5 already measure whether anything drives; a third row over one call adds no independent evidence"
+
+[[dropped]]
+id = "R8_rebuild_reports_without_driving"
+description = "The same omission in the rebuild's resume"
+reason = "same as R7, and the rebuild arm of every parametrized resume test drives the same call"
+
+[[dropped]]
+id = "U5_unplaced_filter_inverted"
+description = "Unplaced reports the rows the tree DOES hold"
+reason = "U1 and U3 bracket this from both sides, an empty answer and an everything answer, and an inverted filter cannot survive either"
+
+[[dropped]]
+id = "E3_rows_left_as_a_cursor"
+description = "rebuild_governed_tree hands the engine the content row generator rather than a list"
+reason = "the engine materializes rows itself at its first line, so this mutation is inert in this build; a row known in advance to be inert is a finding to state, not a row to spend"
+
+[[dropped]]
+id = "E4_root_exists_always_true"
+description = "The worker answers that every root identifier exists"
+reason = "driven directly as a behaviour instead, in the test for a registry naming a root the database lacks, which is stronger than a count"
+
+[[dropped]]
+id = "A7_readings_scoped_to_the_library"
+description = "The apply reads tag truth from the whole music directory rather than from the intake folder"
+reason = "not expressible as one textual substitution without rewriting the derivation call, and the digest assertion already pins that the apply acts on the plan it offered"
