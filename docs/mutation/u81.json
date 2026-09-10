@@ -1,0 +1,230 @@
+{
+  "name": "u81",
+  "pass_kind": "light",
+  "branch": "relay/81",
+  "head": "f74070b",
+  "when": "2026-09-10 21:46 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7233,
+  "baseline_exit": 0,
+  "pytest_runs": 11,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to scripts/board.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "scripts/board.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "47ef6028b991eabc",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7233,
+    "baseline_collected": 7233,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B5_contradictions_by_number",
+      "description": "Index the graph by unit number again in contradictions()",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1c2927f6083ed142",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_closed_unit_a_register_still_owes_is_the_contradiction_the_audit_exits_2_on"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        number = issues_by_unit.get(uid)\n        node = graph.get(number) if number is not None else None",
+      "new": "        node = graph.get(uid)"
+    },
+    {
+      "id": "B5_composite",
+      "description": "What B5 does hold: report a contradiction over an OPEN issue as well",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": "B5_contradictions_by_number",
+      "fingerprint": "615407b1e720e7ab",
+      "subset": [
+        "tests/test_pending_units.py",
+        "tests/test_adoption.py",
+        "tests/test_cli_contract.py",
+        "tests/test_deferred_routing.py",
+        "tests/test_mutation_driver.py",
+        "tests/test_pool_sizing.py",
+        "tests/test_restore.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1776,
+      "baseline_collected": 1776,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_closed_unit_a_register_still_owes_is_the_contradiction_the_audit_exits_2_on"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if node and node[\"unit\"] and node[\"closed\"]:",
+      "new": "        if node and node[\"unit\"]:"
+    },
+    {
+      "id": "B5_residual_repoint_dropped",
+      "description": "Return only the register contradictions, dropping the repointed residuals",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "06525278f3323c42",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_repointed_residual_issue_is_reported_through_the_same_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return found + repointed_residuals(graph)",
+      "new": "    return found"
+    },
+    {
+      "id": "B5_unit_label_dropped",
+      "description": "Drop the unit-label term, keeping only the closure test",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "17a9856a620b82a3",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 7233,
+      "baseline_collected": 7233,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        if node and node[\"unit\"] and node[\"closed\"]:",
+      "new": "        if node and node[\"closed\"]:"
+    },
+    {
+      "id": "B5_owed_argument_ignored",
+      "description": "Ignore a supplied register and always read the live one",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "789c66d9cab48ba8",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "refused",
+      "deaths": 0,
+      "collected": 0,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "old text appears 2 times in the target, so the site is ambiguous. Widen the old text with surrounding lines until it is unique.",
+      "runs": 0,
+      "head_verified": true,
+      "old": "    owed = owed_by_unit() if owed is None else owed",
+      "new": "    owed = owed_by_unit()"
+    },
+    {
+      "id": "B5_heading_anchor_dropped",
+      "description": "Match a residual heading anywhere in a line rather than at its start",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "54419f161c7c6622",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 7233,
+      "baseline_collected": 7233,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        match = re.match(r\"^## R-(\\d+)\\.\\s*(.+?)\\s*$\", line)",
+      "new": "        match = re.search(r\"## R-(\\d+)\\.\\s*(.+?)\\s*$\", line)"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "B5_load_issues_field_list",
+      "description": "Remove a field from the --json list load_issues asks gh for",
+      "reason": "the honesty pin reads that literal and would go red, so the row measures the pin rather than the code, and the code's own response to a missing field is a KeyError in build_graph that no test can reach without a token"
+    },
+    {
+      "id": "B5_payload_state_spelling",
+      "description": "Read issue state as `closed` rather than `CLOSED` in build_graph",
+      "reason": "already pinned by the new payload driver as a side effect, since every closed node in the fixture would stop being closed, so the row would re-measure the closure term two rows above it already measure directly"
+    },
+    {
+      "id": "B5_audit_exit_code",
+      "description": "Return 1 rather than 2 from cmd_audit when a contradiction is found",
+      "reason": "ranked below the cap and honestly unreachable: cmd_audit calls load_issues, which shells out to gh, so a row over it cannot run without a token and the exit code is asserted nowhere; this is the remaining undriven surface after this task and it is recorded as such"
+    }
+  ]
+}

@@ -807,6 +807,14 @@ def test_the_unit_to_issue_map_is_read_off_the_titles_and_drops_a_duplicate():
     issue win would answer confidently about the wrong one. Dropped instead, so
     the contradiction check simply says nothing about that unit rather than
     saying something false.
+
+    THE UNIT LABEL IS PART OF THE ANSWER, AND ITS ABSENCE IS ASSERTED HERE. A
+    unit-shaped TITLE on an issue that carries no `unit` label is not a unit, and
+    excluding it is what makes the label test inside `contradictions` redundant
+    rather than load bearing. That redundancy was measured as a zero death row in
+    `docs/mutation/u81.md`, and this is the assertion that turns the zero into an
+    answer: the term cannot fire because nothing this function returns can name a
+    non-unit issue.
     """
     board = _board()
     graph = {
@@ -814,10 +822,12 @@ def test_the_unit_to_issue_map_is_read_off_the_titles_and_drops_a_duplicate():
         77: {"number": 77, "title": "U59: something else", "unit": True},
         90: {"number": 90, "title": "not a unit at all", "unit": False},
         91: {"number": 91, "title": "U59: a duplicate claim", "unit": True},
+        92: {"number": 92, "title": "U40: a unit-shaped title, unlabelled", "unit": False},
     }
     assert board.units_by_issue_number(graph) == {38: 51}, (
         "U59 is claimed by two issues and must be dropped rather than resolved "
-        "to whichever was seen last"
+        "to whichever was seen last, and #92 names a unit in its title without "
+        "carrying the label, so it is not one"
     )
 
 
