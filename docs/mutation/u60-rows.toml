@@ -15,7 +15,7 @@ pass_kind = "light"
 id = "C1_abort_test"
 description = "Never take the abort branch: an abort falls through to the baseline, empty or trash path"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''        if option == "abort":'''
 new = '''        if option == "cancel":'''
@@ -24,7 +24,7 @@ new = '''        if option == "cancel":'''
 id = "C2_abort_outcome"
 description = "An abort reports ok instead of no_op"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''            return ctx.envelope(data=_payload(cfg, offered), outcome=Outcome.NO_OP)'''
 new = '''            return ctx.envelope(data=_payload(cfg, offered), outcome=Outcome.OK)'''
@@ -33,7 +33,7 @@ new = '''            return ctx.envelope(data=_payload(cfg, offered), outcome=Ou
 id = "C3_no_auto_accept"
 description = "The gate stops confirming the offered set: unanswered items are never accepted, so trash moves nothing"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''                if item.verdict is None:'''
 new = '''                if item.verdict is not None:'''
@@ -42,7 +42,7 @@ new = '''                if item.verdict is not None:'''
 id = "C4_accept_as_reject"
 description = "The gate records the offered set as rejected rather than accepted"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''                        review.Verdict.ACCEPTED,'''
 new = '''                        review.Verdict.REJECTED,'''
@@ -51,7 +51,7 @@ new = '''                        review.Verdict.REJECTED,'''
 id = "C5_no_apply"
 description = "A confirmed trash never calls run.apply"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''        run.apply(cfg, handle, actor=ctx.args.actor)
 '''
@@ -61,7 +61,7 @@ new = ""
 id = "C6_no_digest"
 description = "The gate is asked with no digest, so a decision cannot go stale when the plan moves"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''        option = ctx.gate.require(spec, digest=_plan_digest(found), context=_shown(found))'''
 new = '''        option = ctx.gate.require(spec, digest=None, context=_shown(found))'''
@@ -70,7 +70,7 @@ new = '''        option = ctx.gate.require(spec, digest=None, context=_shown(fou
 id = "C7_digest_drops_size"
 description = "Sample: the plan digest stops carrying each file's observed size"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''                    "size": item.observed_size,
 '''
@@ -80,7 +80,7 @@ new = ""
 id = "C8_digest_carries_baseline"
 description = "Sample: the digest carries the watermark state, so a first run's decision is stale on resume"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''            "database_identity": found.database_identity,'''
 new = '''            "database_identity": found.database_identity,
@@ -94,7 +94,7 @@ new = '''            "database_identity": found.database_identity,
 id = "B1_drop_early_return"
 description = "Remove the baseline or empty plan early return, so a confirmed empty plan reaches apply"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''        if found.baselined or not found.deletable:
             return ctx.envelope(data=_payload(cfg, offered), outcome=Outcome.OK)
@@ -105,7 +105,7 @@ new = ""
 id = "B2_baseline_half"
 description = "Drop the baselined half of the early return, leaving only the empty plan test"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''        if found.baselined or not found.deletable:'''
 new = '''        if not found.deletable:'''
@@ -114,7 +114,7 @@ new = '''        if not found.deletable:'''
 id = "B3_empty_half"
 description = "Drop the empty plan half of the early return, leaving only the baseline test"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''        if found.baselined or not found.deletable:'''
 new = '''        if found.baselined:'''
@@ -123,7 +123,7 @@ new = '''        if found.baselined:'''
 id = "B4_empty_outcome"
 description = "A confirmed baseline or empty plan reports no_op instead of ok"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''        if found.baselined or not found.deletable:
             return ctx.envelope(data=_payload(cfg, offered), outcome=Outcome.OK)'''
@@ -138,7 +138,7 @@ new = '''        if found.baselined or not found.deletable:
 id = "S1_no_context"
 description = "The refusal carries no context, so the baseline is silent again"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''        option = ctx.gate.require(spec, digest=_plan_digest(found), context=_shown(found))'''
 new = '''        option = ctx.gate.require(spec, digest=_plan_digest(found))'''
@@ -147,7 +147,7 @@ new = '''        option = ctx.gate.require(spec, digest=_plan_digest(found))'''
 id = "S2_baselined_constant"
 description = "The context reports baselined false whatever the plan says"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''        "baselined": found.baselined,'''
 new = '''        "baselined": False,'''
@@ -156,7 +156,7 @@ new = '''        "baselined": False,'''
 id = "S3_history_zero"
 description = "The context reports no removals accepted as history"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''        "accepted_as_history": found.baselined_over,'''
 new = '''        "accepted_as_history": 0,'''
@@ -165,7 +165,7 @@ new = '''        "accepted_as_history": 0,'''
 id = "S4_offered_counts_candidates"
 description = "The context counts every candidate as offered, not only the deletable ones"
 file = "src/cratekit/deletion/cli.py"
-tests = ["tests/test_deletion.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "user"
 old = '''        "offered": len(found.deletable),'''
 new = '''        "offered": len(found.candidates),'''
@@ -178,7 +178,7 @@ new = '''        "offered": len(found.candidates),'''
 id = "G1_contract_restored"
 description = "Re-declare the queueing contract on delete.review with a builder that exists"
 file = "src/cratekit/cli/registry.py"
-tests = ["tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "maintainer"
 old = '''        handler_key="delete.review",
         feature_rows=(37,),
@@ -195,7 +195,7 @@ new = '''        handler_key="delete.review",
 id = "G2_unbound_restored"
 description = "Put delete.review back in HANDLERS_NOT_YET_BOUND"
 file = "src/cratekit/cli/handlers.py"
-tests = ["tests/test_handlers.py", "tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "maintainer"
 old = '''    "sync.all": "no worker yet, R-203",'''
 new = '''    "delete.review": "no worker yet, R-203",
@@ -205,7 +205,7 @@ new = '''    "delete.review": "no worker yet, R-203",
 id = "G3_post_init_rule"
 description = "Sample: Entry stops refusing a long-running verb with no builder"
 file = "src/cratekit/cli/registry.py"
-tests = ["tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "maintainer"
 old = '''        if self.long_running and not self.argv_builder:'''
 new = '''        if False and self.long_running and not self.argv_builder:'''
@@ -214,7 +214,7 @@ new = '''        if False and self.long_running and not self.argv_builder:'''
 id = "G4_sync_all_inline"
 description = "What the new guard holds: sync.all's shell stops enqueueing, so a queued verb does its work nowhere"
 file = "src/cratekit/sync/cli.py"
-tests = ["tests/test_cli_contract.py"]
+tests = ["tests/test_deletion.py", "tests/test_cli_contract.py", "tests/test_handlers.py", "tests/test_queued_resume_contract.py", "tests/test_jobs.py"]
 surface = "maintainer"
 old = '''enqueue('''
 new = '''enqueue_later('''
