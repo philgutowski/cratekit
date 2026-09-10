@@ -103,6 +103,7 @@ new = '''SOFT_DELETE_COLUMN = "rb_local_synced"'''
 id = "G1_load_context"
 description = "Count a Store target as a read again, re-admitting every row double"
 file = "tests/_source_guards.py"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_reserved_causes.py", "tests/test_review_queue.py", "tests/test_adoption.py", "tests/test_cli_contract.py", "tests/test_pool_sizing.py", "tests/modules/test_reports.py"]
 old = '''            if not isinstance(node.ctx, ast.Load):
                 continue'''
 new = ""
@@ -111,6 +112,7 @@ new = ""
 id = "G2_local_names_targets"
 description = "Recognize only a bare Name target, reopening the four shadowing routes"
 file = "tests/_source_guards.py"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_reserved_causes.py", "tests/test_review_queue.py", "tests/test_adoption.py", "tests/test_cli_contract.py", "tests/test_pool_sizing.py", "tests/modules/test_reports.py"]
 old = '''        for node in ast.walk(target):
             if isinstance(node, ast.Name):
                 found.add(node.id)'''
@@ -121,6 +123,7 @@ new = '''        if isinstance(target, ast.Name):
 id = "G3_with_as_dropped"
 description = "Drop `with ... as` from the binding forms alone, leaving the others"
 file = "tests/_source_guards.py"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_reserved_causes.py", "tests/test_review_queue.py", "tests/test_adoption.py", "tests/test_cli_contract.py", "tests/test_pool_sizing.py", "tests/modules/test_reports.py"]
 old = '''        elif isinstance(node, (ast.With, ast.AsyncWith)):
             for item in node.items:
                 bind(item.optional_vars)'''
@@ -130,6 +133,7 @@ new = ""
 id = "G4_except_as_dropped"
 description = "Drop `except ... as` alone, so one layer is removed by itself"
 file = "tests/_source_guards.py"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_reserved_causes.py", "tests/test_review_queue.py", "tests/test_adoption.py", "tests/test_cli_contract.py", "tests/test_pool_sizing.py", "tests/modules/test_reports.py"]
 old = '''        elif isinstance(node, ast.ExceptHandler) and node.name:
             found.add(node.name)'''
 new = ""
