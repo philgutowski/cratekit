@@ -10,8 +10,9 @@ told nothing.
 
 THREE SHIPPED VERBS HAD THAT SHAPE AND TWO WERE LIVE, measured 2026-08-23:
 ``adopt.apply`` (fixed in the unit that found it), ``export.playlist``, and
-``sync.favorites``. ``delete.review`` has the shape and is latent because nothing
-enqueues it.
+``sync.favorites``. ``delete.review`` had the shape and was latent because nothing
+enqueued it; U60 dropped its queueing contract rather than arming it, so it left
+this file's population by ceasing to be queued (R-149).
 
 WHY THE FIRST GUARD IS DERIVED FROM THE REGISTRY AND NOT A LIST OF THREE NAMES.
 The defect is a property of a COMBINATION any future verb can arrive at:
@@ -132,8 +133,8 @@ def test_a_payload_from_an_older_build_still_builds_a_valid_command_line(entry):
     )
     assert argv, f"{entry.name} returned an empty command line"
     assert all(isinstance(part, str) for part in argv)
-    # NOT "--job in argv". delete.review's resume is the same command and
-    # declares no --job argument, which is that verb's shape rather than a gap.
+    # NOT "--job in argv". The assertion is about where the root flag sits, and
+    # a builder is free to carry its resume on another argument or on none.
     assert argv[0] != "--run"
 
 

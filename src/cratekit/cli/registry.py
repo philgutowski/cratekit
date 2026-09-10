@@ -1417,6 +1417,14 @@ ENTRIES: tuple[Entry, ...] = (
     #
     # Splitting the module is what let ``tombstone.list`` land first. This half
     # stayed until the fixture existed.
+    #
+    # INLINE, NOT QUEUED, decided by U60. This entry used to declare
+    # ``long_running`` with ``argv_builder="delete_argv"``, which is the queueing
+    # contract, over a shell that plans, asks and trashes in the invocation that
+    # was typed and never enqueued anything (R-149). The drop is the direction
+    # taken: the gate is explicit and its digest is the plan, so the person who
+    # confirmed a set of files watches them go rather than receiving a job id,
+    # and a detached child would rebuild a plan nobody digested.
     Entry(
         name="delete.review",
         summary="review tracks removed from the collection and trash the confirmed files",
@@ -1425,8 +1433,6 @@ ENTRIES: tuple[Entry, ...] = (
         handler_key="delete.review",
         feature_rows=(37,),
         module_id="deletion",
-        argv_builder="delete_argv",
-        long_running=True,
         emits=frozenset({"review_set"}),
         output_schema="review_set/1",
         adjudicates=True,
