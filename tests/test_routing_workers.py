@@ -838,3 +838,108 @@ def test_a_resume_reads_no_registry_of_its_own(acknowledged, native):
         "the verb refused before it drove anything, so the item is still pending "
         "and the unreadable registry blocked a job whose items were already frozen"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The zero rows the first table found, turned into deaths
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: A second tree, still on the XML bridge. Membership written into the database
+#: for one of these is membership the next import overwrites, so no queued item
+#: may name it. Every fixture above holds ONE tree and it is native, which is why
+#: the first mutation table could not kill the filter that excludes this one.
+BRIDGE_TREE = "loose_shelf"
+
+
+@pytest.fixture
+def mixed(native, acknowledged) -> str:
+    """One tree that has cut over and one that has not, in one registry."""
+    entries = tree_registry.read(acknowledged)
+    tree_registry.write(
+        acknowledged,
+        tree_registry.Registry(
+            (
+                *entries.trees,
+                tree_registry.TreeRecord(tree_id=BRIDGE_TREE, mode=tree_registry.Mode.XML),
+            )
+        ),
+    )
+    return native
+
+
+@pytest.mark.parametrize(
+    "argv", [["rebuild", "--actor", "a-person"], ["route", "resort"]], ids=["rebuild", "resort"]
+)
+def test_neither_queued_verb_takes_an_item_for_a_tree_still_on_the_bridge(mixed, argv):
+    """A rebuild of a bridge tree writes membership the next import overwrites.
+
+    The filter that excludes it survived the unit's first mutation table with
+    zero deaths, and the reason was the fixtures rather than the guard: every one
+    of them held a single tree and that tree had cut over, so a run that ignored
+    the medium produced the same item list as one that respected it.
+    """
+    del mixed
+    code, envelope = _drive(argv)
+    assert code == int(ExitCode.OK), envelope
+    filed = _queued_jobs()
+    assert len(filed) == 1, filed
+    assert [item.item_id for item in _items(filed[0].job_id)] == [TREE_ID], (
+        "a tree still on the XML bridge was queued for a database write"
+    )
+
+
+def test_a_rebuild_of_one_named_tree_queues_that_tree_alone(acknowledged, native):
+    """The ``--tree`` flag scopes the work, and nothing drove it until now.
+
+    A rebuild that ignored the name would sweep every governed tree in the
+    library while reporting the one the person asked for, which on a library with
+    several trees is a great deal of writing nobody requested.
+    """
+    del native
+    entries = tree_registry.read(acknowledged)
+    second = tree_registry.TreeRecord(
+        tree_id="second_shelf",
+        mode=tree_registry.Mode.DATABASE,
+        cutover_on=date(2026, 8, 1),
+        root_id=entries.record(TREE_ID).root_id,
+        source=tree_registry.DerivationSource.TAXONOMY,
+    )
+    tree_registry.write(acknowledged, tree_registry.Registry((*entries.trees, second)))
+
+    code, envelope = _drive(["rebuild", "--actor", "a-person", "--tree", TREE_ID])
+    assert code == int(ExitCode.OK), envelope
+    assert [item.item_id for item in _items(envelope["data"]["job_id"])] == [TREE_ID]
+
+    code, both = _drive(["rebuild", "--actor", "a-person"])
+    assert code == int(ExitCode.OK), both
+    assert [item.item_id for item in _items(both["data"]["job_id"])] == [
+        "second_shelf",
+        TREE_ID,
+    ], "the unscoped rebuild is what proves the scoped one was scoped"
+
+
+def test_a_gate_answer_this_verb_does_not_recognise_writes_nothing(
+    acknowledged, native, monkeypatch
+):
+    """The branch direction, which no drive through the shipped gate can reach.
+
+    The gate declares two options, so the command line can produce ``apply`` and
+    ``abort`` and nothing else, and a branch written as "is abort" is therefore
+    indistinguishable from one written as "not apply" for as long as that stays
+    true. It will not stay true: an option added to this gate later would acquire
+    the writing behaviour purely by nobody having classified it, which is the
+    fail-open direction. Driven at the seam because the seam is where the third
+    answer can exist at all.
+    """
+    del acknowledged
+    from cratekit.write import routing_cli
+
+    monkeypatch.setattr(routing_cli, "_apply_gate", lambda ctx, plan: "later")
+    code, envelope = _drive(["route", "inbox"])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == str(Outcome.NO_OP), envelope
+    assert envelope["data"]["totals"]["applied"] is False
+    assert _membership(config.load(), native) == set(), (
+        "an answer this verb does not recognise wrote membership, so the gate "
+        "admits by omission rather than by decision"
+    )

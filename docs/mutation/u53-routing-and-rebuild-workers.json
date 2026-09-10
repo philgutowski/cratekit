@@ -1,0 +1,800 @@
+{
+  "name": "u53-routing-and-rebuild-workers",
+  "pass_kind": "light",
+  "branch": "relay/71",
+  "head": "d565375",
+  "when": "2026-09-10 13:07 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7136,
+  "baseline_exit": 0,
+  "pytest_runs": 34,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/routing_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/routing_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d24071f8a3353ece",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7136,
+    "baseline_collected": 7136,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_apply_call_removed",
+      "description": "The confirmed branch returns the plan without applying it, which is the defect this unit closed",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "065865642821f6a3",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_confirmed_inbox_on_a_library_with_no_native_tree_says_so",
+        "tests/test_routing_workers.py::test_a_confirmed_inbox_watches_the_grids_where_they_actually_live",
+        "tests/test_routing_workers.py::test_the_confirmed_inbox_applies_and_the_declined_one_does_not",
+        "tests/test_routing_workers.py::test_unplaced_over_a_fully_placed_library_reports_none"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    result = apply_inbox(cfg, items)",
+      "new": "    result = {\"applied\": True, \"reason\": None, \"added\": 0, \"skipped\": 0, \"trees\": 0}"
+    },
+    {
+      "id": "A2_abort_instead_of_not_apply",
+      "description": "The branch tests for abort rather than for apply, so an option nobody classified acquires the write",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "67281192cbc103d8",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 7136,
+      "baseline_collected": 7136,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    if option != \"apply\":\n        return ctx.envelope(data=_plan(items, kind=\"inbox\", applied=False), outcome=Outcome.NO_OP)",
+      "new": "    if option == \"abort\":\n        return ctx.envelope(data=_plan(items, kind=\"inbox\", applied=False), outcome=Outcome.NO_OP)"
+    },
+    {
+      "id": "A3_empty_folder_shortcircuit_removed",
+      "description": "A confirmed apply over an empty intake folder derives and opens a database rather than stopping",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a1d989ff604bbd98",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_confirmed_inbox_over_an_empty_folder_opens_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not items:\n        # AN EMPTY FOLDER IS NOT A WRITE.",
+      "new": "    if False:\n        # AN EMPTY FOLDER IS NOT A WRITE."
+    },
+    {
+      "id": "A4_native_check_removed",
+      "description": "The apply proceeds on a library whose trees are all still on the XML bridge",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "16d15da2040b0cf0",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_confirmed_inbox_on_a_library_with_no_native_tree_says_so"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not native:\n        return {\"applied\": False, \"reason\": \"no-native-tree\", \"added\": 0, \"skipped\": 0}",
+      "new": "    if False:\n        return {\"applied\": False, \"reason\": \"no-native-tree\", \"added\": 0, \"skipped\": 0}"
+    },
+    {
+      "id": "A5_applied_always_true",
+      "description": "Every apply reports itself as having applied, whatever it did",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2dbcb9252be18b49",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_confirmed_inbox_on_a_library_with_no_native_tree_says_so"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        outcome=Outcome.OK if result[\"applied\"] else Outcome.NO_OP,",
+      "new": "        outcome=Outcome.OK,"
+    },
+    {
+      "id": "A6_inbox_watch_narrowed",
+      "description": "The apply arms its analysis watch over the music directory, where no analysis file lives",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b21610af804661d0",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_confirmed_inbox_watches_the_grids_where_they_actually_live"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                analysis_roots=[Path(cfg.library.root)],\n                workflow=INBOX_WORKFLOW,",
+      "new": "                analysis_roots=[Path(cfg.library.root) / cfg.library.music_dir],\n                workflow=INBOX_WORKFLOW,"
+    },
+    {
+      "id": "U1_unplaced_constant_empty",
+      "description": "Unplaced reports nothing whatever the library holds, which is the defect verbatim",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f91fa323b94c1974",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_unplaced_does_not_report_a_row_rekordbox_removed",
+        "tests/test_routing_workers.py::test_unplaced_reports_the_rows_no_governed_tree_holds"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    items = [\n        {\"content_id\": row.content_id, \"path\": row.recorded}\n        for row in active\n        if row.content_id not in held\n    ]",
+      "new": "    items = []"
+    },
+    {
+      "id": "U2_compared_true_without_a_tree",
+      "description": "A library with nothing native reports an empty answer as a comparison it made",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "88f32581abb9e446",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_unplaced_says_when_it_could_not_compare"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return [], {\"compared\": False, \"reason\": \"no-native-tree\", \"collection\": 0}",
+      "new": "        return [], {\"compared\": True, \"reason\": None, \"collection\": 0}"
+    },
+    {
+      "id": "U3_held_never_populated",
+      "description": "Nothing is read out of the tree, so every row in the library reports as unplaced",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "afff6ecf78fee655",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_unplaced_over_a_fully_placed_library_reports_none"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            for node in rebuild.read_tree(handle, root_id):\n                held |= set(node.content_ids)",
+      "new": "            rebuild.read_tree(handle, root_id)"
+    },
+    {
+      "id": "U4_tombstones_reported",
+      "description": "A row rekordbox removed is reported as a track still waiting to be filed",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f9f1ccc03a358b33",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_unplaced_does_not_report_a_row_rekordbox_removed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    active = [row for row in rows if not row.deleted]",
+      "new": "    active = list(rows)"
+    },
+    {
+      "id": "I1_native_filter_dropped",
+      "description": "A resort queues an item for a tree still on the bridge, which no rebuild can write",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "37149b99daa7af87",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 7136,
+      "baseline_collected": 7136,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    return tuple(sorted(t for t in entries.tree_ids() if entries.is_database_native(t)))",
+      "new": "    return tuple(sorted(entries.tree_ids()))"
+    },
+    {
+      "id": "I2_resort_items_dropped",
+      "description": "The resort files a job with no items, which the driver walks once and calls succeeded",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "acb63ccfbfca1a6c",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_queued_resort_runs_its_item_and_the_tree_holds_the_track",
+        "tests/test_routing_workers.py::test_neither_queued_verb_files_a_job_with_no_items[resort]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            payload={},\n            item_ids=items,\n            cfg=cfg,",
+      "new": "            payload={},\n            cfg=cfg,"
+    },
+    {
+      "id": "I3_rebuild_items_dropped",
+      "description": "The rebuild files a job with no items, the state every rebuild was in before this unit",
+      "file": "src/cratekit/cli/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fd1885802bca63c9",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.cli.rebuild",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_driven_rebuild_over_an_absent_music_directory_fails_the_item",
+        "tests/test_routing_workers.py::test_a_driven_rebuild_watches_the_grids_where_they_actually_live",
+        "tests/test_routing_workers.py::test_a_driven_rebuild_whose_root_the_database_lacks_fails_the_item",
+        "tests/test_routing_workers.py::test_a_driven_rebuild_without_an_acknowledgment_refuses_through_the_real_gates",
+        "tests/test_routing_workers.py::test_a_queued_rebuild_runs_its_item_and_the_tree_holds_the_track",
+        "tests/test_routing_workers.py::test_a_resume_reads_no_registry_of_its_own",
+        "tests/test_routing_workers.py::test_neither_queued_verb_files_a_job_with_no_items[rebuild]",
+        "tests/test_routing_workers.py::test_unplaced_over_a_fully_placed_library_reports_none"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            payload={\"tree\": tree_id, \"actor\": actor},\n            item_ids=items,",
+      "new": "            payload={\"tree\": tree_id, \"actor\": actor},"
+    },
+    {
+      "id": "I4_resort_empty_job_filed",
+      "description": "A library with nothing native files an empty resort job instead of saying there was nothing to queue",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "37d8ed54eb46e1fc",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_neither_queued_verb_files_a_job_at_all_with_no_native_tree[resort]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        items = _native_trees(tree_registry.read(cfg))\n        if not items:",
+      "new": "        items = _native_trees(tree_registry.read(cfg))\n        if False:"
+    },
+    {
+      "id": "I5_rebuild_empty_job_filed",
+      "description": "A library with nothing native files an empty rebuild job",
+      "file": "src/cratekit/cli/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bf2d3ebdbfe5a400",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.cli.rebuild",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_neither_queued_verb_files_a_job_at_all_with_no_native_tree[rebuild]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        items = tree_items(entries, tree_id)\n        if not items:",
+      "new": "        items = tree_items(entries, tree_id)\n        if False:"
+    },
+    {
+      "id": "I6_tree_items_ignores_native",
+      "description": "The rebuild's items include trees the registry says are still on the bridge",
+      "file": "src/cratekit/cli/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8640847100d6bdfa",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.cli.rebuild",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 7136,
+      "baseline_collected": 7136,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    native = tuple(sorted(t for t in entries.tree_ids() if entries.is_database_native(t)))",
+      "new": "    native = tuple(sorted(entries.tree_ids()))"
+    },
+    {
+      "id": "I7_tree_items_ignores_the_named_tree",
+      "description": "A rebuild of one named tree quietly rebuilds every tree in the library",
+      "file": "src/cratekit/cli/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c247078a60cc62e0",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.cli.rebuild",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 7136,
+      "baseline_collected": 7136,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    if tree_id is None:\n        return native\n    return tuple(t for t in native if t == tree_id)",
+      "new": "    return native"
+    },
+    {
+      "id": "R1_resort_drives_a_foreign_job",
+      "description": "The resort drives any queued job of any verb under its own envelope",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "db9ec140c1ead8fb",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_neither_resume_drives_another_verbs_job[resort]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if job.handler_key != ctx.entry.handler_key:\n        raise refuse(\n            \"job-unknown\",",
+      "new": "    if False:\n        raise refuse(\n            \"job-unknown\","
+    },
+    {
+      "id": "R2_rebuild_drives_a_foreign_job",
+      "description": "The rebuild drives another verb's job, without that verb's own resume checks",
+      "file": "src/cratekit/cli/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f5a2a65772450270",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.cli.rebuild",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_neither_resume_drives_another_verbs_job[rebuild]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if job.handler_key != ctx.entry.handler_key:\n        raise refuse(\n            \"job-unknown\",",
+      "new": "    if False:\n        raise refuse(\n            \"job-unknown\","
+    },
+    {
+      "id": "R3_resort_drives_an_itemless_job",
+      "description": "A resort queued by an older build drives to succeeded over a library nothing read",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ae7af3e6da7a7049",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_neither_resume_drives_a_job_an_older_build_queued_with_no_items[resort]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not jobs.items(store, job.job_id):\n            raise refuse(\n                \"internal-error\",",
+      "new": "        if False:\n            raise refuse(\n                \"internal-error\","
+    },
+    {
+      "id": "R4_rebuild_drives_an_itemless_job",
+      "description": "A rebuild queued by an older build drives to succeeded having rebuilt nothing",
+      "file": "src/cratekit/cli/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "150ae52a0436910e",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.cli.rebuild",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_neither_resume_drives_a_job_an_older_build_queued_with_no_items[rebuild]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not jobs.items(store, job.job_id):\n            raise refuse(\n                \"internal-error\",",
+      "new": "        if False:\n            raise refuse(\n                \"internal-error\","
+    },
+    {
+      "id": "R5_resort_swallows_the_jobs_cause",
+      "description": "A resort that failed half its trees exits zero, which is R-225 inherited",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "28a7f966db52af7b",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_resume_whose_items_did_not_all_succeed_is_not_an_ok_exit[resort]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not job.is_open() and job.cause is not None:\n        raise CratekitError(job.cause)\n    return ctx.envelope(data=_reported(store, job), warnings=warnings)",
+      "new": "    return ctx.envelope(data=_reported(store, job), warnings=warnings)"
+    },
+    {
+      "id": "R6_rebuild_swallows_the_jobs_cause",
+      "description": "A rebuild that failed some of its trees exits zero over the rest of the library",
+      "file": "src/cratekit/cli/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e5d4208f699160d7",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.cli.rebuild",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_resume_whose_items_did_not_all_succeed_is_not_an_ok_exit[rebuild]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not job.is_open() and job.cause is not None:\n        raise CratekitError(job.cause)\n    return ctx.envelope(\n        data=_reported(store, job),",
+      "new": "    return ctx.envelope(\n        data=_reported(store, job),"
+    },
+    {
+      "id": "E1_addressability_check_dropped",
+      "description": "Two destinations sharing one display pair are merged rather than refused, which writes one bucket's tracks into another's playlist",
+      "file": "src/cratekit/write/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "591e35442056d5b5",
+      "subset": [
+        "tests/test_rebuild.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.rebuild",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 7136,
+      "baseline_collected": 7136,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    destinations = resolve_destinations(declared, placements, standing, record)\n    assert_addressable(tree_id, destinations, standing)",
+      "new": "    destinations = resolve_destinations(declared, placements, standing, record)"
+    },
+    {
+      "id": "E2_rebuild_watch_narrowed",
+      "description": "The rebuild worker arms its analysis watch over the music directory, where no analysis file lives",
+      "file": "src/cratekit/write/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "eb264a46fdbc8684",
+      "subset": [
+        "tests/test_rebuild.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.rebuild",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 129,
+      "baseline_collected": 129,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_driven_rebuild_watches_the_grids_where_they_actually_live"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            analysis_roots=[Path(cfg.library.root)],\n            vocal_threshold=vocal_threshold,",
+      "new": "            analysis_roots=[Path(cfg.library.root) / cfg.library.music_dir],\n            vocal_threshold=vocal_threshold,"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "R7_resort_reports_without_driving",
+      "description": "The resume reports the job again instead of calling run_job, which is the state before U46",
+      "reason": "the item state assertions in the two end to end tests read exactly this line, so R3 and R5 already measure whether anything drives; a third row over one call adds no independent evidence"
+    },
+    {
+      "id": "R8_rebuild_reports_without_driving",
+      "description": "The same omission in the rebuild's resume",
+      "reason": "same as R7, and the rebuild arm of every parametrized resume test drives the same call"
+    },
+    {
+      "id": "U5_unplaced_filter_inverted",
+      "description": "Unplaced reports the rows the tree DOES hold",
+      "reason": "U1 and U3 bracket this from both sides, an empty answer and an everything answer, and an inverted filter cannot survive either"
+    },
+    {
+      "id": "E3_rows_left_as_a_cursor",
+      "description": "rebuild_governed_tree hands the engine the content row generator rather than a list",
+      "reason": "the engine materializes rows itself at its first line, so this mutation is inert in this build; a row known in advance to be inert is a finding to state, not a row to spend"
+    },
+    {
+      "id": "E4_root_exists_always_true",
+      "description": "The worker answers that every root identifier exists",
+      "reason": "driven directly as a behaviour instead, in the test for a registry naming a root the database lacks, which is stronger than a count"
+    },
+    {
+      "id": "A7_readings_scoped_to_the_library",
+      "description": "The apply reads tag truth from the whole music directory rather than from the intake folder",
+      "reason": "not expressible as one textual substitution without rewriting the derivation call, and the digest assertion already pins that the apply acts on the plan it offered"
+    }
+  ]
+}
