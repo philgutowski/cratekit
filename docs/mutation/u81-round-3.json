@@ -1,0 +1,128 @@
+{
+  "name": "u81-round-3",
+  "pass_kind": "light",
+  "branch": "relay/81",
+  "head": "0a49edb",
+  "when": "2026-09-10 22:40 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7235,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to scripts/board.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "scripts/board.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "47ef6028b991eabc",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7235,
+    "baseline_collected": 7235,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B5_owed_default_dropped",
+      "description": "Collapse the no-register default into a falsy test, so an empty register reads as none",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "18c4a82e91e99b89",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_the_audit_reports_a_contradiction_as_exit_2_and_drift_as_exit_1",
+        "tests/test_pending_units.py::test_the_register_defaults_to_the_live_one_when_no_caller_supplies_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    owed = owed_by_unit() if owed is None else owed\n    issues_by_unit = units_by_issue_number(graph)",
+      "new": "    owed = owed or {}\n    issues_by_unit = units_by_issue_number(graph)"
+    },
+    {
+      "id": "B5_audit_exit_code",
+      "description": "Report a contradiction as exit 1, the code that sends a session to sync",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1b0b7549f380d77f",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_the_audit_reports_a_contradiction_as_exit_2_and_drift_as_exit_1"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return 2 if clashes else 1",
+      "new": "    return 1"
+    },
+    {
+      "id": "B5_audit_drops_the_detector",
+      "description": "Have the audit find no contradictions at all, keeping its drift report",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a91858956b0a35f3",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_the_audit_reports_a_contradiction_as_exit_2_and_drift_as_exit_1"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    clashes = contradictions(graph)",
+      "new": "    clashes = []"
+    }
+  ],
+  "dropped": []
+}

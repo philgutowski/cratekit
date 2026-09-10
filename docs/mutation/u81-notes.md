@@ -6,7 +6,8 @@ the three rows in that table that did not simply kill.
 
 ## The verdict R-322 asked for
 
-Four of six rows kill, and the two the residual is built out of are among them.
+Ten rows over three batches, eight deaths and two explained zeros. The two rows
+the residual is built out of are among the deaths.
 
 | row | U59 | here |
 | --- | --- | --- |
@@ -19,13 +20,14 @@ and not between two experiments. `B5_composite` becoming a killing row is the
 condition the brief sets, and it is proved by re-running the row rather than by
 asserting anything about it.
 
-Baseline green at 7233 collected, against U59's measured 7228, and the five are
+Baselines green: 7233 collected in rounds 1 and 2, and 7235 in round 3 after the
+fix round added two more tests, against U59's measured 7228. The seven are
 reconciled BY IDENTIFIER rather than by total. `tests/test_pending_units.py` is
 the only file this task changes, so the reconciliation is scoped to it: `main`'s
 copy declares 28 test functions, the branch collects those 28 plus exactly the
-five named in this task's commits, and nothing is lost. A total only check would
+seven this task's commits name, and nothing is lost. A total only check would
 have shown the same healthy rise over a file that had dropped a test and gained
-six. The null control killed zero in both batches.
+eight. The null control killed zero in all three batches.
 
 ## `B5_unit_label_dropped`, zero, maintainer facing
 
@@ -69,10 +71,48 @@ a hand rolled driver, it mutates the wrong site and returns a confident number
 about an experiment nobody ran. Re-run as its own batch with the following line
 for context, in `docs/mutation/u81-round-2-rows.toml`, and it kills.
 
+## Round 3, the fix round, and a correction to round 1's own record
+
+`/code-review` raised three findings and all three are driven rather than
+argued. `docs/mutation/u81-round-3.md` holds the measurement, three rows, three
+deaths.
+
+| row | kills |
+| --- | --- |
+| `B5_owed_default_dropped` | 2 |
+| `B5_audit_exit_code` | 1 |
+| `B5_audit_drops_the_detector` | 1 |
+
+**The first row is the hole the fix opened, one frame up.** Making the register
+injectable is what lets the drivers survive somebody discharging a marker, and it
+means every driver supplies a register while `cmd_audit`, the only production
+caller, supplies none. `owed = owed or {}` in place of the `is None` test keeps
+the whole battery green and stops `board.py audit` reporting register
+contradictions at all, returning 0 where it owes 2. That is R-322's own shape
+reproduced by the fix for R-322, which is METHOD's fifth pattern exactly: a fix
+round fixes the instance it was handed and reproduces the class one file over.
+
+**ROUND 1 DROPPED `B5_audit_exit_code` ON A FALSE PREMISE, and the correction
+belongs here rather than in the row file.** The reason logged was that
+`cmd_audit` shells out to `gh` for the issue list, so a row over it could not run
+without a token. Every name that function calls is module level and replaceable,
+`tests/test_pending_units.py` already replaces two of them the same way, and
+`_board()` returns a fresh module per call so nothing leaks. The claim was wrong
+and, worse than wrong, it certified the hole: the next reader would have found
+the gap considered and settled. `docs/mutation/u81-rows.toml` and the table
+generated from it are left as they were written, because a row file edited after
+the fact no longer describes the table it produced, and a record that quietly
+becomes correct is a record nobody can audit.
+
+The lesson is one this repository has already paid for once, in this same test
+file: an earlier version of the closing-spelling table asserted that `Fixes #36`
+does not close an issue and justified it with the repository's own contract. A
+test, or a dropped row, may not assert a limitation into a fact.
+
 ## What is still undriven after this task
 
-`cmd_audit` itself. It calls `load_issues`, which shells out to `gh`, so its exit
-code cannot be measured without a token and no test asserts it. The distance
-between what is now driven and what `audit` reports is one function call and one
-`return 2`, and that is the whole of the remaining gap. Logged as a dropped row
-in `docs/mutation/u81-rows.toml` rather than left implied.
+`reconcile` and the two board-writing paths under it. Those genuinely need a
+project-scoped token, and `audit --labels-only` exists because a
+repository-scoped one cannot read a user-owned project at all. Everything
+`cmd_audit` does with what `reconcile` returns is now driven, which is the half
+that decides the exit code.

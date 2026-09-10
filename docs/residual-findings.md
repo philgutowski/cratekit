@@ -14368,6 +14368,38 @@ double is acceptable here.
 **Closes when:** a test drives `contradictions()` over a graph with a closed
 owed unit and an open one, and `B5_composite` becomes a killing row.
 
+**Closed 2026-09-10 on `relay/81`, on the terms above and measured the same
+way.** Both rows were re-run verbatim from `docs/mutation/u59-rows.toml`, subsets
+included, so the comparison is two measurements of one experiment rather than
+two experiments: `B5_contradictions_by_number` goes from 0 to 1 and
+`B5_composite` from 0 to 1. `docs/mutation/u81.md` is the table and
+`docs/mutation/u81-notes.md` is the reading.
+
+**The decision this entry asked for, taken: a double is acceptable, and WHERE it
+sits is the whole answer.** Not a hand-built graph. Every derived key on a node
+would then be typed beside the test rather than produced by `build_graph`, which
+is this project's fourth defect pattern, a measurement taken on a fixture
+authored alongside the fix. The double is the `gh issue list --json` PAYLOAD and
+`build_graph` runs on it for real, so the fixture sits at the one boundary a test
+here cannot cross and everything downstream of it stays measured. The drift that
+shape leaves open, a payload that stops resembling what `load_issues` asks gh
+for, is closed by reading the field list out of that function's syntax tree and
+comparing it against the double's keys.
+
+`contradictions` also takes the owed register as an argument now, exactly as
+`unresolved_closes` does, for the reason this file gives elsewhere: a test keyed
+to whatever `main` owes today passes for a reason unrelated to the code and goes
+red the day somebody discharges a marker.
+
+**Two things the closing round found that the entry did not predict.** The fix
+reproduced this finding's own shape one frame up, since every driver supplies a
+register and `cmd_audit` supplies none, so the default read was undriven until a
+row measured it. And `cmd_audit` itself was recorded here as unreachable without
+a token, which is false: every name it calls is module level and replaceable.
+Both are driven now, and the false claim is corrected in the notes rather than
+edited out of the row file it was written in. What remains undriven after this
+is `reconcile` and the board writes under it, which is R-327.
+
 ---
 
 ## R-323. The closing check reads an issue number as a unit number when nothing maps them
@@ -14497,3 +14529,47 @@ those assertions.
 
 **Closes when:** nothing. Recorded so the brief and the tree do not disagree
 silently.
+
+---
+
+## R-327. `reconcile` and every board write under it are driven by nothing
+
+**Found:** 2026-09-10, on `relay/81`, while closing R-322 and correcting a false
+claim in that task's own row file.
+
+R-322 was the audit's DETECTOR being undriven. Closing it drove
+`contradictions`, `units_by_issue_number`, the residual repoint check, and
+`cmd_audit`'s exit codes. What that leaves is the other half of the audit:
+`reconcile`, `project_context`, `project_items`, and the four `gh project
+item-edit` writes they compose, none of which any test executes.
+
+**The distinction is real rather than a technicality, and it is why this is a
+residual rather than the next unit.** `cmd_audit` was recorded as unreachable
+without a token and was not: every name it calls is module level and
+replaceable, which is what made a driver possible in an afternoon. `reconcile`
+is a different case. It reads a USER-OWNED PROJECT, which a repository-scoped
+token cannot see at all, and `audit --labels-only` exists precisely because CI
+running as `GITHUB_TOKEN` gets nothing back. So a driver for it is a double of
+the GitHub project API rather than of one JSON payload, and R-322's own answer
+about where a double belongs, at the producer boundary with everything
+downstream measured, does not obviously transfer: there is no local function
+between the API and the writes for a payload double to feed.
+
+**Measured cost, and it is smaller than R-322's.** `sync` is idempotent and
+derives everything from closure state and the graph, so a wrong write is
+repairable by running it again, which is the property `board.py`'s own module
+docstring names. The unrepairable half of the board, the contradiction that
+`sync` refuses to touch, is the half R-322 closed. What is left is a status label
+that could be wrong until the next sync, plus one shape that is not repairable
+by a re-run: `reconcile` decides whether an issue is ADDED to the project at
+all, and an item never added is an item no later sync sees.
+
+**Two candidate producers were considered and neither was driven**, so the
+reachability here is unmeasured and this entry says so rather than claiming
+nothing produces it. `gh project item-add` failing silently, and an option id
+recreated on the Status field, which `board.py` already declines to pin for
+exactly that reason.
+
+**Closes when:** somebody decides the board's write half is worth a double, and
+says what shape keeps it honest given that there is no payload seam to build it
+at. Recorded rather than fixed because it did not meet the bar to hold a merge.
