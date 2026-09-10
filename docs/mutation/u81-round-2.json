@@ -1,0 +1,69 @@
+{
+  "name": "u81-round-2",
+  "pass_kind": "light",
+  "branch": "relay/81",
+  "head": "0bb1064",
+  "when": "2026-09-10 22:15 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7233,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to scripts/board.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "scripts/board.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "47ef6028b991eabc",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7233,
+    "baseline_collected": 7233,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B5_owed_argument_ignored",
+      "description": "Ignore a supplied register and always read the live one",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7369d2e493a30272",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_closed_unit_a_register_still_owes_is_the_contradiction_the_audit_exits_2_on"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    owed = owed_by_unit() if owed is None else owed\n    issues_by_unit = units_by_issue_number(graph)",
+      "new": "    owed = owed_by_unit()\n    issues_by_unit = units_by_issue_number(graph)"
+    }
+  ],
+  "dropped": []
+}
