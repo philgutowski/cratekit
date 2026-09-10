@@ -238,20 +238,52 @@ PENDING: dict[str, tuple[str, str]] = {
 }
 
 
-def _is_absent(key: str) -> bool:
-    """True when the thing named by ``key`` has not landed yet.
+#: The three answers a module probe can give, and they are not two.
+#:
+#: ``PRESENT`` and ``ABSENT`` are the countdown's own states. ``ANCESTOR_MISSING``
+#: is the one that was being read as ``ABSENT``, and the difference matters
+#: because the two expire differently. A module whose PARENT package exists is a
+#: file somebody is about to add, so the countdown is armed and will fire the day
+#: it lands. A module whose parent does not exist cannot be probed at all: nothing
+#: in the tree can distinguish "that package is coming" from "that name is
+#: misspelled and will never exist", so a marker in this state expires only if
+#: somebody happens to create exactly the ancestor it names.
+PRESENT = "present"
+ABSENT = "absent"
+ANCESTOR_MISSING = "ancestor-missing"
 
-    Import targets are probed with ``find_spec`` rather than a real import, so a
-    probe can never execute module-level code and never has an import failure of
-    its own to distinguish from absence.
+
+def module_state(name: str) -> str:
+    """Probe a dotted module name and say WHICH kind of missing it is.
+
+    ``find_spec`` is used rather than a real import, so a probe can never execute
+    module-level code and never has an import failure of its own to distinguish
+    from absence. What it does have is two failure modes that look identical from
+    the outside: it returns None when a module is missing from a package that
+    exists, and it RAISES ``ModuleNotFoundError`` when an ancestor package is
+    missing. Both were caught and read as "not present".
+
+    The third case is why the ancestor is walked rather than the exception simply
+    being classified. A ``ModuleNotFoundError`` can also come from INSIDE an
+    ancestor's ``__init__`` that imports something unavailable, and swallowing
+    that reports a defect in our own tree as a countdown ticking quietly. Here
+    the ancestors are probed from the top down, so the exception is only accepted
+    as absence when an ancestor is genuinely missing, and anything else
+    propagates.
     """
+    parts = name.split(".")
+    for depth in range(1, len(parts)):
+        ancestor = ".".join(parts[:depth])
+        if importlib.util.find_spec(ancestor) is None:
+            return ANCESTOR_MISSING
+    return PRESENT if importlib.util.find_spec(name) is not None else ABSENT
+
+
+def _is_absent(key: str) -> bool:
+    """True when the thing named by ``key`` has not landed yet."""
     if key.startswith("path:"):
         return not (REPO_ROOT / key[len("path:") :]).exists()
-    try:
-        return importlib.util.find_spec(key) is None
-    except ModuleNotFoundError:
-        # A parent package is missing, so the target is certainly missing too.
-        return True
+    return module_state(key) != PRESENT
 
 
 def requires(key: str) -> pytest.MarkDecorator:

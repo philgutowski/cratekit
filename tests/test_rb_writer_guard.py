@@ -1166,3 +1166,606 @@ def test_no_refusal_returns_a_bare_integer_or_raises_a_bare_exception():
     source = inspect.getsource(W)
     assert "RuntimeError(" not in source
     assert "SystemExit" not in source
+
+
+# ── the soft-delete marker: read it, never default it ────────────────────────
+#
+# THREE TIMES ON ONE COLUMN. U18 removed the permissive default, U19 shipped it
+# again and its review caught it as a blocking defect, and U21 shipped it a third
+# time on the genre lookup at ``write/metadata.py:195``, where it reached main.
+# That is not three careless authors, it is a rule that lived in a docstring.
+# ``tests/_source_guards.py:permissive_soft_delete_reads`` is the rule as code and
+# these are its fixtures, in both directions (P7).
+
+
+def _source_guard():
+    from tests import _source_guards
+
+    return _source_guards
+
+
+def test_the_soft_delete_guard_fires_on_every_evasion():
+    """The literal, the indirection, the mapping row, and the named default.
+
+    Each of these is a shape somebody reaches for when a guard is in the way, and
+    a guard that recognizes only the first is one rename from being switched off.
+    That is not hypothetical here: the armed copy of the comma-separated-writer
+    question in this repository was defeated by ``import csv as spreadsheet``.
+    """
+    guard = _source_guard()
+    fires = guard.permissive_soft_delete_reads
+
+    assert fires('x = getattr(row, "rb_local_deleted", 0)'), "the shape that reached main"
+    assert fires('x = getattr(row, "rb_local_deleted", False)')
+    assert fires('x = getattr(row, "rb_local_deleted", None)'), (
+        "bool(None) is the same permissive answer as 0, wearing a different word"
+    )
+    assert fires(
+        'COLUMN = "rb_local_deleted"\nx = getattr(row, COLUMN, 0)\n'
+    ), "the column named through a constant, which is one hop of indirection"
+    assert fires(
+        'ACTIVE = 0\nx = getattr(row, "rb_local_deleted", ACTIVE)\n'
+    ), "the same evasion pointed at the default instead of at the column"
+    assert fires(
+        "from cratekit.core.rb_writer import SOFT_DELETE_COLUMN\n"
+        "x = getattr(row, SOFT_DELETE_COLUMN, 0)\n"
+    ), "correct spelling of the column, still a permissive read"
+    assert fires(
+        "from cratekit.core import rb_writer as w\n"
+        "x = getattr(row, w.SOFT_DELETE_COLUMN, 0)\n"
+    ), "an aliased module is what defeated the last guard in this repository"
+    assert fires('def g(row):\n    return row.get("rb_local_deleted", 0)\n'), (
+        "a row that arrived as a mapping"
+    )
+    assert fires('def g(row):\n    return row.get("rb_local_deleted")\n'), (
+        "a one-argument get defaults to None all by itself, which is the "
+        "permissive answer arrived at by omission rather than by decision"
+    )
+    assert fires(
+        "import cratekit.core.rb_writer as W\n"
+        "M = W\n"
+        "x = getattr(row, M.SOFT_DELETE_COLUMN, 0)\n"
+    ), (
+        "an alias OF an alias. The previous version claimed one hop of "
+        "indirection in both directions and that claim was false for a module "
+        "alias at even one hop"
+    )
+    assert fires('x = getattr(row, "rb_local_deleted", int())'), (
+        "zero written as a constructor call rather than as the digit"
+    )
+    assert fires('x = getattr(row, "rb_local_deleted", 1 - 1)'), "zero written as arithmetic"
+    assert fires('x = getattr(row, "rb_local_deleted", "")'), "the empty string is falsey too"
+    assert fires('pair = ("rb_local_deleted", 0)\nx = getattr(row, *pair)\n'), (
+        "the arguments packed into a tuple and splatted back out"
+    )
+
+
+def test_the_soft_delete_guard_catches_a_read_laundered_one_line_later():
+    """The routes that are correct AT THE CALL and permissive by the next statement.
+
+    These matter more than the plain default, not less. The sentinel route is a
+    SINGLE EDIT from the shape this repository sanctions, and it reads as somebody
+    being careful: the sentinel is there, the comparison is there, and the branch
+    quietly answers "active" instead of refusing. A guard that checked only the
+    call site would certify it.
+
+    The try route is what a person reaches for first, because "the attribute
+    might not exist" is an AttributeError-shaped thought. The ternary is the same
+    idea written shorter. To an analyzer all three are one question: does a name
+    holding the marker get assigned something falsey in the same scope, or does
+    the marker sit in a conditional whose other branch is falsey.
+    """
+    guard = _source_guard()
+    fires = guard.permissive_soft_delete_reads
+
+    assert fires(
+        "_ABSENT = object()\n"
+        "def read(row):\n"
+        '    marker = getattr(row, "rb_local_deleted", _ABSENT)\n'
+        "    if marker is _ABSENT:\n"
+        "        marker = 0\n"
+        "    return marker\n"
+    ), "the sentinel taken and then thrown away, one edit from the correct shape"
+
+    assert fires(
+        "def read(row):\n"
+        "    try:\n"
+        "        marker = row.rb_local_deleted\n"
+        "    except AttributeError:\n"
+        "        marker = 0\n"
+        "    return marker\n"
+    ), "the shape somebody writes when the thought is 'it might not be there'"
+
+    assert fires(
+        'marker = row.rb_local_deleted if hasattr(row, "rb_local_deleted") else 0'
+    ), "the same idea as a conditional expression"
+
+    assert not fires(
+        "_ABSENT = object()\n"
+        "def read(row):\n"
+        '    marker = getattr(row, "rb_local_deleted", _ABSENT)\n'
+        "    if marker is _ABSENT:\n"
+        "        raise Refused()\n"
+        "    return marker\n"
+    ), "the sanctioned shape must survive the launder check, or nothing can pass"
+
+    # THE CONTROL THAT WAS INERT. This fixture used to write the read as
+    # `return getattr(...)`, which is not an assignment, so `holders` stayed
+    # empty and the assertion passed without exercising scoping at all. Written
+    # as an assignment to `marker` it is the same shape the real readers use, and
+    # against the previous `ast.walk` scoping it FAILS.
+    assert not fires(
+        "_ABSENT = object()\n"
+        "def unrelated():\n"
+        "    marker = 0\n"
+        "    return marker\n"
+        "def read(row):\n"
+        '    marker = getattr(row, "rb_local_deleted", _ABSENT)\n'
+        "    if marker is _ABSENT:\n"
+        "        raise Refused()\n"
+        "    return marker\n"
+    ), (
+        "two functions using the name 'marker' are not talking about one "
+        "variable; scoping this file-wide fires on unrelated code"
+    )
+
+
+def test_the_soft_delete_guard_survives_an_unrelated_edit_to_the_files_it_protects():
+    """The failure mode that ends a guard: firing on a one-line unrelated change.
+
+    Not a constructed fixture. Both shipped readers assign the sanctioned read to
+    a local named ``marker``, so this appends an ordinary helper that uses that
+    name as a counter to each REAL file and asserts the guard stays quiet. Under
+    the previous scoping, which yielded the module and then walked it, "module
+    scope" was the whole file and both fired.
+
+    A guard that goes red because somebody added an unrelated function to
+    `metadata.py` is a guard that gets deleted by the third person it stops, and
+    the column it protects is the one this repository has already got wrong three
+    times.
+    """
+    guard = _source_guard()
+    unrelated = (
+        "\n\ndef _unrelated_counter(rows):\n"
+        "    marker = 0\n"
+        "    for _ in rows:\n"
+        "        marker = marker + 1\n"
+        "    return marker\n"
+    )
+    for path, source in _package_sources():
+        if path not in SOFT_DELETE_READERS:
+            continue
+        assert not guard.permissive_soft_delete_reads(source), f"{path} is not clean"
+        assert not guard.permissive_soft_delete_reads(source + unrelated), (
+            f"appending a helper that uses the name 'marker' to {path} arms the "
+            f"guard against the file it exists to protect"
+        )
+
+
+def test_the_soft_delete_guard_stays_quiet_on_correct_code():
+    """The half that gets skipped, and the half that decides whether a guard survives.
+
+    A guard that fires on correct code gets switched off, and this repository has
+    already shipped that mistake once. Every shape here is a correct reader, and
+    every one of them fails loudly or not at all rather than answering "active"
+    for a row that never said so.
+    """
+    guard = _source_guard()
+    fires = guard.permissive_soft_delete_reads
+
+    assert not fires(
+        "_ABSENT = object()\n"
+        'marker = getattr(row, "rb_local_deleted", _ABSENT)\n'
+        "if marker is _ABSENT or marker is None:\n"
+        "    raise Refused()\n"
+    ), "the sanctioned shape: a sentinel the caller then compares against"
+    assert not fires('marker = getattr(row, "rb_local_deleted")'), (
+        "no default at all raises AttributeError, which is loud, not permissive"
+    )
+    assert not fires("marker = row.rb_local_deleted"), "a plain attribute access"
+    assert not fires('SOFT_DELETE_COLUMN = "rb_local_deleted"'), (
+        "defining the column is not reading it, or the module that owns the "
+        "name would have to be carved out of its own guard"
+    )
+    assert not fires('columns = {"rb_local_deleted", "usn"}'), "naming it in a set"
+    assert not fires('x = getattr(row, "rb_local_synced", 0)'), (
+        "a different bookkeeping column entirely, which this guard has no "
+        "opinion about"
+    )
+    assert not fires('x = getattr(row, "rb_local_deleted", SENTINEL)'), (
+        "an unresolvable name is not assumed permissive; assuming it would fire "
+        "on the correct shape whenever the sentinel is imported"
+    )
+    assert not fires(
+        "import cratekit.core.rb_writer as W\n"
+        "COLUMN_TYPES = {}\n"
+        "def kind():\n"
+        "    return COLUMN_TYPES.get(W.SOFT_DELETE_COLUMN)\n"
+    ), (
+        "a per-column lookup table asked about this column is not a row read, "
+        "and this repository already ships BOOKKEEPING_COLUMNS and "
+        "GRIDLESS_ON_CREATE_COLUMNS, so it is the in-house shape most likely to "
+        "arm the guard against correct code"
+    )
+    assert not fires(
+        'COLUMN = "rb_local_deleted"\n'
+        "LABELS = {}\n"
+        "def label():\n"
+        '    return LABELS.get(COLUMN, "")\n'
+    ), "the same table reached through the named constant"
+    assert not fires('line = f"deleted={row.rb_local_deleted}" if row else ""'), (
+        "an ordinary summary string. The conditional rule fired on any ternary "
+        "with the column on one side and a falsey literal on the other; what "
+        "makes the real shape a defect is that the CONDITION is about whether "
+        "the column is there"
+    )
+
+
+def test_the_lookup_table_exclusion_recognizes_this_repository_s_own_style():
+    """A guard that misses the house style fires on the house.
+
+    `MappingProxyType({...})` is how this package freezes a per-column table, and
+    all nineteen uses of it here are the BARE IMPORTED NAME, six of them in
+    `write/metadata.py`, which is a declared soft-delete reader. The exclusion
+    matched only the dotted `types.MappingProxyType(...)` form, which this
+    repository never writes, so it named the house style in its own comment and
+    then did not recognize it.
+
+    Driven against the REAL reader rather than a fixture, because that is where
+    it fired.
+    """
+    guard = _source_guard()
+    table = (
+        "\n\nSOFT_DELETE_LABEL: Mapping[str, str] = MappingProxyType(\n"
+        '    {rb_writer.SOFT_DELETE_COLUMN: "tombstoned"}\n)\n\n'
+        "def _label_for_soft_delete() -> str:\n"
+        '    return SOFT_DELETE_LABEL.get(rb_writer.SOFT_DELETE_COLUMN, "")\n'
+    )
+    for path, source in _package_sources():
+        if path != "src/cratekit/write/metadata.py":
+            continue
+        assert not guard.permissive_soft_delete_reads(source + table), (
+            "a frozen per-column table written the way this repository writes "
+            "every one of them arms the guard against a declared reader"
+        )
+        break
+    else:  # pragma: no cover - the corpus must contain the reader
+        raise AssertionError("write/metadata.py is not in the corpus")
+
+
+def test_the_lookup_table_exclusion_is_scope_aware_not_just_name_keyed():
+    """Shadowing, driven. The previous test claimed this and did not exercise it.
+
+    It used `row = None` at module level, which is excluded for a DIFFERENT
+    reason, that it is not a container, so it passed without a shadowing case
+    anywhere in it. A module-level `row = {}` IS a container, and the exclusion
+    was keyed on the name alone, so it silenced `row.get(SOFT_DELETE_COLUMN, 0)`
+    inside every function whose PARAMETER is named `row`. Round 3 narrowed the
+    evasion from any binding to any container-shaped binding; it did not close
+    it.
+
+    A name a scope binds itself is not the module-level name it happens to spell
+    the same way, and Python agrees.
+    """
+    guard = _source_guard()
+    fires = guard.permissive_soft_delete_reads
+    assert fires(
+        'COLUMN = "rb_local_deleted"\n'
+        "row = {}\n"
+        "def read(row):\n"
+        "    return row.get(COLUMN, 0)\n"
+    ), "a parameter shadows the module-level table of the same name"
+    assert fires(
+        'COLUMN = "rb_local_deleted"\n'
+        "row = dict(fetch_one())\n"
+        "def read(row):\n"
+        "    return row.get(COLUMN, 0)\n"
+    ), "a dict() call over a row is still a row to every caller of it"
+    assert fires(
+        'COLUMN = "rb_local_deleted"\n'
+        "row = {}\n"
+        "def read(rows):\n"
+        "    row = rows[0]\n"
+        "    return row.get(COLUMN, 0)\n"
+    ), "an assignment shadows it as surely as a parameter does"
+    assert not fires(
+        'COLUMN = "rb_local_deleted"\n'
+        "LABELS = {}\n"
+        "def label():\n"
+        '    return LABELS.get(COLUMN, "")\n'
+    ), "a table nothing shadows is still a table"
+
+
+def test_the_launder_rules_reach_a_class_body_and_a_nonlocal_rebinding():
+    """Two blind spots the scope fix opened, both of which fired before it.
+
+    `_own_nodes` stops at every scope boundary, which is what made scoping
+    correct, but `_scopes` yielded only functions and the module. So no scope
+    ever walked a CLASS BODY and the launder rules could not see a statement
+    written directly in a class. Adding `ClassDef` restores it without
+    reintroducing the false positive, because a class body is genuinely its own
+    scope.
+
+    And a nested function declaring `nonlocal marker` rebinds the OUTER
+    variable. `_own_nodes` stops at that function, so the overwrite was invisible
+    from the enclosing scope while the nested scope held no marker of its own,
+    and the launder was unseen in both. Python's semantics say it is one
+    variable, so the walk follows the declaration rather than the indentation.
+    """
+    guard = _source_guard()
+    fires = guard.permissive_soft_delete_reads
+
+    assert fires(
+        "_ABSENT = object()\n"
+        "class Reader:\n"
+        '    marker = getattr(_row, "rb_local_deleted", _ABSENT)\n'
+        "    marker = 0\n"
+    ), "a class body is a scope, and nothing was walking it"
+
+    assert fires(
+        "_ABSENT = object()\n"
+        "def outer(row):\n"
+        '    marker = getattr(row, "rb_local_deleted", _ABSENT)\n'
+        "    def clean():\n"
+        "        nonlocal marker\n"
+        "        marker = 0\n"
+        "    clean()\n"
+        "    return marker\n"
+    ), "nonlocal rebinds the outer variable; the indentation says otherwise"
+
+    assert not fires(
+        "_ABSENT = object()\n"
+        "def outer(row):\n"
+        '    marker = getattr(row, "rb_local_deleted", _ABSENT)\n'
+        "    def unrelated():\n"
+        "        marker = 0\n"
+        "        return marker\n"
+        "    return marker\n"
+    ), (
+        "without a nonlocal declaration the inner name is a new variable, and "
+        "firing on it is the whole false positive the scope fix removed"
+    )
+
+
+def test_a_conditional_defaulting_the_marker_fires_and_a_summary_string_does_not():
+    """The kept branch must BE the read, which is not the same as containing it.
+
+    Gating on the TEST killed one false positive and gave up five real shapes
+    with it. `deleted = row.rb_local_deleted if row else False` is the defect
+    class exactly, a missing row read as active, and the test names no column so
+    it went silent. Requiring the branch to be the read itself keeps the summary
+    string silent, because there the branch is a formatted string that merely
+    quotes the value.
+    """
+    guard = _source_guard()
+    fires = guard.permissive_soft_delete_reads
+    assert fires("deleted = row.rb_local_deleted if row else False")
+    assert fires('marker = row.rb_local_deleted if hasattr(row, "rb_local_deleted") else 0')
+    assert fires('marker = 0 if not row else row.rb_local_deleted')
+    assert not fires('line = f"deleted={row.rb_local_deleted}" if row else ""'), (
+        "an ordinary summary string quoting the value is not a defaulted read"
+    )
+
+
+def test_a_presence_flag_is_not_a_marker_holder():
+    """`hasattr` binds a boolean about the column, not the column's value.
+
+    It became a recognized read so the conditional rule could see the shape it
+    is the condition of, and that made `present = hasattr(row, COL)` followed by
+    `present = False` look like a laundered marker. It is somebody tracking
+    their own flag.
+
+    The widening it DID cause is intended and is not walked back: a module doing
+    only a presence test now counts as a reader against the exact-membership pin,
+    because asking whether the column is there is being in this conversation.
+    """
+    guard = _source_guard()
+    assert not guard.permissive_soft_delete_reads(
+        'COLUMN = "rb_local_deleted"\n'
+        "def read(row):\n"
+        "    present = hasattr(row, COLUMN)\n"
+        "    present = False\n"
+        "    return present\n"
+    )
+    assert guard.reads_soft_delete_marker(
+        'COLUMN = "rb_local_deleted"\n'
+        "def read(row):\n"
+        "    return hasattr(row, COLUMN)\n"
+    ), "a presence test is a read for the purposes of the reader pin"
+
+
+def test_the_lookup_table_exclusion_is_not_an_evasion_route():
+    """A row is not a dict literal, and the earlier test could not tell.
+
+    The exclusion that stops `COLUMN_TYPES.get(...)` firing was keyed on the NAME
+    being bound at module level, with no test of what it was bound TO. So one
+    module-level `row = fetch_one()` bought silence for every `row.get(COL, 0)`
+    below it, and two genuine false positives had been traded for a one-line
+    evasion. The binding must now be a container literal.
+    """
+    guard = _source_guard()
+    fires = guard.permissive_soft_delete_reads
+    assert fires(
+        'COLUMN = "rb_local_deleted"\n'
+        "row = fetch_one()\n"
+        "def read():\n"
+        "    return row.get(COLUMN, 0)\n"
+    ), "a module-level row is still a row"
+    assert fires(
+        'COLUMN = "rb_local_deleted"\n'
+        "row = None\n"
+        "def read(row):\n"
+        "    return row.get(COLUMN, 0)\n"
+    ), "a module-level name shadowed by a parameter is not a lookup table either"
+
+
+@pytest.mark.parametrize(
+    ("label", "body"),
+    (
+        ("plain assignment", "    TABLE = rows[0]\n    return TABLE.get(COLUMN, 0)\n"),
+        ("tuple unpacking", "    TABLE, meta = rows[0]\n    return TABLE.get(COLUMN, 0)\n"),
+        (
+            "nested unpacking",
+            "    (a, [TABLE, b]) = rows[0]\n    return TABLE.get(COLUMN, 0)\n",
+        ),
+        ("with as", "    with rows as TABLE:\n        return TABLE.get(COLUMN, 0)\n"),
+        ("for target", "    for TABLE, _ in rows:\n        return TABLE.get(COLUMN, 0)\n"),
+        (
+            "except as",
+            "    try:\n        pass\n"
+            "    except ValueError as TABLE:\n        return TABLE.get(COLUMN, 0)\n",
+        ),
+    ),
+)
+def test_every_way_of_shadowing_a_lookup_table_still_fires(label, body):
+    """The exclusion is only as good as the ways it knows a name can be bound.
+
+    A real per-column lookup table at module level is excused, correctly. The
+    evasion is to spell a local by the same name and read a real row off it, and
+    `_local_names` recognized exactly one spelling of that, the bare assignment.
+    Measured on 2026-09-10: tuple unpacking, `with ... as`, a tuple `for` target
+    and `except ... as` were each silent while the plain form fired, so the
+    exclusion swallowed a permissive read through four routes the two tests
+    above claimed were closed.
+
+    Parametrized rather than written as one row with four asserts, because a
+    single row stops at its first failure and would report one open route while
+    three others stayed hidden.
+    """
+    guard = _source_guard()
+    source = 'COLUMN = "rb_local_deleted"\nTABLE = {}\ndef read(rows):\n' + body
+    assert guard.permissive_soft_delete_reads(source), (
+        f"{label} shadows the module-level table with a real row, and the read "
+        f"was excused as a per-column lookup"
+    )
+
+
+def test_a_genuine_module_level_lookup_table_is_still_excused():
+    """The control the row above is worthless without.
+
+    Widening `_local_names` until everything fires would pass every row in that
+    parametrization and destroy the exclusion, which exists because this
+    repository writes `COLUMN_TYPES.get(SOFT_DELETE_COLUMN)` for real and a guard
+    that fires on the code most likely to be correct is a guard somebody deletes.
+    """
+    guard = _source_guard()
+    assert not guard.permissive_soft_delete_reads(
+        'COLUMN = "rb_local_deleted"\n'
+        "COLUMN_TYPES = {}\n"
+        "def kind():\n"
+        "    return COLUMN_TYPES.get(COLUMN, 0)\n"
+    ), "a per-column lookup table is not a row and must stay excused"
+
+
+def test_no_module_in_the_package_reads_the_soft_delete_marker_permissively():
+    """The guard, armed over every module we author. This is the assertion.
+
+    Walked rather than aimed at the two modules known to read the column, because
+    a check that names its targets is blind to the third one, and the third one is
+    always the defect.
+    """
+    guard = _source_guard()
+    offenders: dict[str, list[str]] = {}
+    for path, source in _package_sources():
+        found = guard.permissive_soft_delete_reads(source)
+        if found:
+            offenders[path] = found
+    assert not offenders, (
+        f"a soft-deleted row would read as active in: {offenders}. The column is "
+        f"bookkeeping, so a binding that stops exposing it applies this default "
+        f"to every row at once and nothing reports it."
+    )
+
+
+#: EXACT MEMBERSHIP, which is the only shape that catches a widening (R-15). The
+#: assertion above says what must not happen; this says who is allowed to be in
+#: the conversation at all, and a fourth reader is a two-line diff that passes
+#: every other assertion in this suite.
+#:
+#: IT IS ALSO THE RECONCILIATION MECHANISM, and the mechanism is not the one an
+#: earlier version of this comment claimed. U24 lands
+#: ``trees.soft_delete_marker`` as the single sanctioned implementation AND moves
+#: `routing_pass`'s direct read into it, so `routing_pass` drops OUT of this set
+#: while `trees` comes in. Simulated against that tree the pin goes from two
+#: readers to a DIFFERENT two, not from two to three. It still goes red, by set
+#: inequality rather than by growth, so the outcome the pin exists for is intact
+#: and the merge cannot quietly leave two implementations of one rule in the
+#: tree. The reason is corrected here because a pin whose stated mechanism is
+#: wrong is a pin somebody deletes when it fires the way it was not described.
+#:
+#: RE-PINNED AT THE U59 MERGE, AND THE PREDICTION ABOVE HELD EXACTLY. The set is
+#: differenced against the merged tree rather than adjusted to match a count.
+#: ``routing_pass`` left, because its direct read is now
+#: ``trees.soft_delete_marker(row)`` at ``routing_pass.py:695``. ``trees`` joined,
+#: because it holds that single sanctioned implementation at ``trees.py:204``.
+#: Two readers before, two after, a different two, which is the set inequality
+#: the pin was built to catch rather than a growth check that would have missed
+#: it. The third member the raw measurement reported,
+#: ``tests/test_adopt_collection.py``, was NOT admitted: it defines
+#: ``self.rb_local_deleted`` on a stand-in row and reads it nowhere, and
+#: ``_soft_delete_reads`` was narrowed to load context so a row double stops
+#: counting as a reader.
+SOFT_DELETE_READERS = {
+    "src/cratekit/write/metadata.py",
+    "src/cratekit/write/trees.py",
+}
+
+
+def test_defining_the_marker_on_a_row_double_is_not_reading_it():
+    """The narrowing, driven from both sides, because one side alone proves nothing.
+
+    A stand-in row assigns the attribute and is not a reader; anything that takes
+    the value back out is. Both halves are asserted here, so reverting the load
+    context test kills this row rather than quietly re-admitting every fixture in
+    the tree into the membership pin above.
+
+    The write shape is not invented. It is what ``tests/test_adopt_collection.py``
+    does at line 187, and it is the shape every stand-in row here is built from.
+    """
+    guard = _source_guard()
+    assert not guard.reads_soft_delete_marker(
+        "class Row:\n"
+        "    def __init__(self, deleted):\n"
+        "        self.rb_local_deleted = deleted\n"
+    ), "a row double DEFINING the column is a fixture, not a place the rule lives"
+    assert guard.reads_soft_delete_marker(
+        "def read(row):\n    return row.rb_local_deleted\n"
+    ), "taking the value back out is a read, and narrowing must not have lost it"
+
+
+def test_only_the_declared_modules_read_the_soft_delete_marker_at_all():
+    guard = _source_guard()
+    readers = {
+        path for path, source in _package_sources() if guard.reads_soft_delete_marker(source)
+    }
+    assert readers == SOFT_DELETE_READERS, (
+        f"the modules reading the soft-delete marker are {sorted(readers)}, and "
+        f"the pin declares {sorted(SOFT_DELETE_READERS)}. Every reader is a place "
+        f"the rule has to be got right again, so adding one is a decision rather "
+        f"than a diff."
+    )
+
+
+def _package_sources() -> list[tuple[str, str]]:
+    """Every module we author: the package, the scripts, and the test tree.
+
+    NOT JUST ``src``. A permissive read in a script or a test helper is a
+    permissive read, and the whole reason this guard exists is that the rule kept
+    being reimplemented by whoever needed it next. `scripts/` reads the registers
+    and `tests/` builds row doubles, so both are places somebody writes
+    `getattr(row, ..., 0)` without thinking of themselves as writing product
+    code. None exists in either today, which is the moment to arm it.
+
+    The vendored downloader is excluded. It is not ours to restyle and knows
+    nothing about rekordbox; holding it to a rule written after it was published
+    would only produce a suppression comment somebody later reads as permission.
+    """
+    repo = Path(W.__file__).resolve().parent.parent.parent.parent
+    trees = [repo / "src" / "cratekit", repo / "scripts", repo / "tests"]
+    return [
+        (path.relative_to(repo).as_posix(), path.read_text())
+        for root in trees
+        if root.is_dir()
+        for path in sorted(root.rglob("*.py"))
+        if "_vendor" not in path.parts
+    ]

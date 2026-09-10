@@ -1,6 +1,14 @@
-# Pre-commit hooks. Install once per clone:
+# Pre-commit hooks. Install once per clone, BOTH lines:
 #
-#     pip install pre-commit && pre-commit install
+#     pip install pre-commit
+#     pre-commit install --hook-type pre-commit --hook-type commit-msg
+#
+# The second hook type is not optional and not a footnote. `pre-commit install`
+# on its own writes .git/hooks/pre-commit and nothing else, so a developer
+# following a one-line setup gets the scan and the linter and silently does not
+# get the closing check. R1 already records that a hook absent from a clone is a
+# guard that is off exactly where it has never run; a hook type absent from the
+# install line is the same failure one level down.
 #
 # The repository scan is wired here AND as a CI gate, deliberately. The hook is
 # the one that matters: a credential or a personal path that reaches a commit has
@@ -11,6 +19,16 @@
 # Run it over everything at any time with:
 #
 #     pre-commit run --all-files
+#
+# The closing check is on the commit-msg stage, which is why the install line
+# above names both hook types. It is a hook because it judges the commit
+# MESSAGE, and the message exists for exactly one moment before it becomes
+# history, so this is the only wiring that can see it as it is written.
+#
+# It is NOT the wiring that is load-bearing. That is CI, which runs it on a
+# machine where no hook has ever been installed and nobody can skip it. This
+# copy is the one that gives the answer before the commit exists rather than
+# after it is pushed.
 repos:
   - repo: local
     hooks:
@@ -36,4 +54,26 @@ repos:
         entry: ruff check --force-exclude
         language: system
         types_or: [python, pyi]
+        require_serial: true
+
+      - id: board-closing
+        name: a unit cannot close while a register still owes it a module
+        # The comparison `board.py audit` makes, run BEFORE the close instead of
+        # after it. Afterwards the close has already cascaded to every dependent
+        # unit and `sync` deliberately will not repair it, so the repository is
+        # left holding a contradiction it has to resolve by hand.
+        #
+        # Network-free on purpose. The rest of the audit needs `gh`, which means
+        # it cannot bite on a machine with no token; this reads two files in the
+        # repository and the message being written.
+        #
+        # NO always_run. On the commit-msg stage pre-commit passes exactly one
+        # filename, the message file, so `always_run` adds nothing and takes
+        # something away: with no filenames the entry runs as a bare
+        # `--message-file` and argparse refuses every commit with a usage error
+        # about a flag the developer never typed.
+        entry: python3 scripts/board.py closing --message-file
+        language: system
+        stages: [commit-msg]
+        pass_filenames: true
         require_serial: true

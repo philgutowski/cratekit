@@ -2060,7 +2060,15 @@ def test_the_routing_verbs_have_landed():
 
 
 def test_the_routing_command_line_module_is_no_longer_owed_in_the_register():
-    """The countdown fired and was discharged, not left as a comment."""
+    """The countdown fired and was discharged, not left as a comment.
+
+    P5's obligation belongs in ``tests/_pending.py`` rather than in a docstring,
+    and since U59 ``scripts/board.py`` reads a SECOND register beside it, the
+    ``planned_in`` markers on the verb registry. Either one naming a closed unit
+    is now a reported contradiction. That is why the discharge has to be visible
+    here: an obligation recorded only as a ``planned_in`` marker is owned by
+    nobody the moment the unit carrying the marker closes.
+    """
     from tests import _pending
 
     assert "cratekit.write.routing_cli" not in _pending.PENDING

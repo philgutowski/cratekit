@@ -324,9 +324,12 @@ DEFERRED_MODULES: frozenset[str] = frozenset({"web", "desktop"})
 #: first unit that must ship a destructive database surface anyway, and these
 #: four ride with it.
 #:
-#: THE MARKER IS NOT THE RECORD. ``scripts/board.py`` reads ``tests/_pending.py``
-#: and nothing else, so this constant is a convenience for the reader and the
-#: obligation itself is registered there, against U20 (P5).
+#: THE MARKER IS NOT THE ONLY RECORD, and as of 2026-08-02 it is read. It used
+#: to say ``scripts/board.py`` reads ``tests/_pending.py`` "and nothing else",
+#: which was true when it was written and is now false: ``planned_units()``
+#: parses these markers, so a closed unit still carrying one is a contradiction
+#: the board reports. The obligation stays registered in ``tests/_pending.py`` as
+#: well, against U20, because that file is what a person reads (P5).
 ROUTING_CLI_UNIT = "U20"
 
 #: The unit that lands ``cratekit.cli.rebuild``, named ONCE so anything that

@@ -1714,6 +1714,23 @@ GRIDLESS_ON_CREATE_COLUMNS = frozenset(
     }
 )
 
+#: rekordbox's soft-delete marker, named once so a reader can be BOUND to it
+#: rather than to a string that looks like it.
+#:
+#: The column belongs to this module because the vocabulary of the binding does,
+#: and it is spelled out here rather than left as a literal inside
+#: :data:`BOOKKEEPING_COLUMNS` because a guard that can only recognize the literal
+#: is one indirection away from being switched off. A reader that says
+#: ``rb_writer.SOFT_DELETE_COLUMN`` is resolvable through the import graph; a
+#: reader that says ``"rb_local_deleted"`` is a string somebody typed.
+#:
+#: Naming it does NOT make it readable permissively. It is a bookkeeping column,
+#: so a binding that stops exposing it produces a row that cannot say whether it
+#: is a tombstone, and every default a reader could supply for that is the answer
+#: "active", which is the permissive one. See
+#: ``tests/_source_guards.py:permissive_soft_delete_reads``.
+SOFT_DELETE_COLUMN = "rb_local_deleted"
+
 #: Columns the binding and the object mapper bump on their own during a commit.
 #: TEN of them. Without every one, an otherwise legitimate write trips the guard,
 #: and a guard that fires on correct code gets disabled, which is the failure mode
@@ -1726,7 +1743,7 @@ BOOKKEEPING_COLUMNS = frozenset(
         "rb_local_usn",
         "rb_data_status",
         "rb_local_data_status",
-        "rb_local_deleted",
+        SOFT_DELETE_COLUMN,
         "rb_local_synced",
         "created_at",
         "updated_at",
@@ -2420,6 +2437,7 @@ __all__ = [
     "PERMITTED_ROW_TABLES",
     "ROOT_PARENT_SENTINELS",
     "SETTINGS_APP_DIRNAME",
+    "SOFT_DELETE_COLUMN",
     "TEST_DB_ENV",
     "TEST_SETTINGS_ENV",
     "TRACK_COLOR_POLICY",
