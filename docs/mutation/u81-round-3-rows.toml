@@ -1,0 +1,47 @@
+name = "u81-round-3"
+pass_kind = "light"
+
+# The fix round's own rows. `/code-review` raised two things the table above had
+# not reached, and a fix round that is not measured is a fix round that is
+# claimed, so both are measured here.
+#
+# Row 1 is the hole the FIX opened. Making the register injectable is what lets
+# the drivers say the same thing next year, and it means every one of them routes
+# around the default read, which is the only path production takes.
+#
+# Row 2 is the row round 1 DROPPED on a false premise. Its logged reason was that
+# `cmd_audit` shells out to `gh` so a row over it cannot run without a token.
+# Every name it calls is module level and replaceable, `tests/test_pending_units.py`
+# already replaces two of them the same way, and `_board()` returns a fresh
+# module per call so nothing leaks. `docs/mutation/u81-notes.md` carries the
+# correction, because the generated table for round 1 records what was claimed at
+# the time and is left as it was written.
+
+[[rows]]
+id = "B5_owed_default_dropped"
+description = "Collapse the no-register default into a falsy test, so an empty register reads as none"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+surface = "user"
+old = '''    owed = owed_by_unit() if owed is None else owed
+    issues_by_unit = units_by_issue_number(graph)'''
+new = '''    owed = owed or {}
+    issues_by_unit = units_by_issue_number(graph)'''
+
+[[rows]]
+id = "B5_audit_exit_code"
+description = "Report a contradiction as exit 1, the code that sends a session to sync"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+surface = "user"
+old = '''    return 2 if clashes else 1'''
+new = '''    return 1'''
+
+[[rows]]
+id = "B5_audit_drops_the_detector"
+description = "Have the audit find no contradictions at all, keeping its drift report"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+surface = "user"
+old = '''    clashes = contradictions(graph)'''
+new = '''    clashes = []'''

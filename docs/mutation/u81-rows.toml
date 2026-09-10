@@ -1,0 +1,94 @@
+name = "u81"
+pass_kind = "light"
+
+# R-322's task adds a driver and no guard. So the table is not scoped to new
+# guards, it is scoped to the two rows that MEASURED the absence, re-run to see
+# whether they now kill, plus the two terms of the function that the new tests
+# reach and the previous table never asked about.
+#
+# The first two rows are copied VERBATIM from `docs/mutation/u59-rows.toml`,
+# including their test subsets, because the brief asks for the second half of the
+# verification to be proved by re-running the row rather than by asserting it. A
+# row rewritten for the occasion proves something about the rewrite.
+
+# ---------------------------------------------------------------------------
+# The two rows R-322 is made of. Both killed zero on U59's full suite.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "B5_contradictions_by_number"
+description = "Index the graph by unit number again in contradictions()"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+surface = "user"
+old = '''        number = issues_by_unit.get(uid)
+        node = graph.get(number) if number is not None else None'''
+new = '''        node = graph.get(uid)'''
+
+[[rows]]
+id = "B5_composite"
+description = "What B5 does hold: report a contradiction over an OPEN issue as well"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py", "tests/test_adoption.py", "tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_mutation_driver.py", "tests/test_pool_sizing.py", "tests/test_restore.py"]
+pairs_with = "B5_contradictions_by_number"
+old = '''        if node and node["unit"] and node["closed"]:'''
+new = '''        if node and node["unit"]:'''
+
+# ---------------------------------------------------------------------------
+# The rest of the function, which the previous table never reached because
+# nothing drove any of it.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "B5_residual_repoint_dropped"
+description = "Return only the register contradictions, dropping the repointed residuals"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+surface = "user"
+old = '''    return found + repointed_residuals(graph)'''
+new = '''    return found'''
+
+[[rows]]
+id = "B5_unit_label_dropped"
+description = "Drop the unit-label term, keeping only the closure test"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+old = '''        if node and node["unit"] and node["closed"]:'''
+new = '''        if node and node["closed"]:'''
+
+[[rows]]
+id = "B5_owed_argument_ignored"
+description = "Ignore a supplied register and always read the live one"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+old = '''    owed = owed_by_unit() if owed is None else owed'''
+new = '''    owed = owed_by_unit()'''
+
+[[rows]]
+id = "B5_heading_anchor_dropped"
+description = "Match a residual heading anywhere in a line rather than at its start"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+old = '''        match = re.match(r"^## R-(\d+)\.\s*(.+?)\s*$", line)'''
+new = '''        match = re.search(r"## R-(\d+)\.\s*(.+?)\s*$", line)'''
+
+# ---------------------------------------------------------------------------
+# Rows considered and NOT run. The cap is 25 and this pass runs 6, so these are
+# ranked below the line on merit rather than truncated by it, and they are
+# logged because a gap nobody wrote down reads as coverage.
+# ---------------------------------------------------------------------------
+
+[[dropped]]
+id = "B5_load_issues_field_list"
+description = "Remove a field from the --json list load_issues asks gh for"
+reason = "the honesty pin reads that literal and would go red, so the row measures the pin rather than the code, and the code's own response to a missing field is a KeyError in build_graph that no test can reach without a token"
+
+[[dropped]]
+id = "B5_payload_state_spelling"
+description = "Read issue state as `closed` rather than `CLOSED` in build_graph"
+reason = "already pinned by the new payload driver as a side effect, since every closed node in the fixture would stop being closed, so the row would re-measure the closure term two rows above it already measure directly"
+
+[[dropped]]
+id = "B5_audit_exit_code"
+description = "Return 1 rather than 2 from cmd_audit when a contradiction is found"
+reason = "ranked below the cap and honestly unreachable: cmd_audit calls load_issues, which shells out to gh, so a row over it cannot run without a token and the exit code is asserted nowhere; this is the remaining undriven surface after this task and it is recorded as such"

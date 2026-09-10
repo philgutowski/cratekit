@@ -1,0 +1,27 @@
+name = "u81-round-2"
+pass_kind = "light"
+
+# One row, and it is here because round 1 REFUSED it rather than measured it.
+#
+# `owed = owed_by_unit() if owed is None else owed` is written twice in
+# `scripts/board.py`, once in `unresolved_closes` and once in `contradictions`,
+# because the two functions take the register the same way on purpose. The driver
+# refuses an ambiguous match rather than silently mutating the wrong site, which
+# is the behaviour that makes a refused row cheap and a hand rolled driver
+# expensive. The fix is context, not a narrower pattern: the line below it names
+# the graph, which only the second site has.
+#
+# Re-run as its own batch rather than by editing round 1's file, because round 1
+# produced `docs/mutation/u81.md` and a row file edited after the fact no longer
+# describes the table it generated.
+
+[[rows]]
+id = "B5_owed_argument_ignored"
+description = "Ignore a supplied register and always read the live one"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py"]
+surface = "user"
+old = '''    owed = owed_by_unit() if owed is None else owed
+    issues_by_unit = units_by_issue_number(graph)'''
+new = '''    owed = owed_by_unit()
+    issues_by_unit = units_by_issue_number(graph)'''

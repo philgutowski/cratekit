@@ -4,13 +4,38 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-10, U59 built on `relay/77`, taken from the board as
-issue #77 and run as relay task 77.** The unit ran the whole pipeline in one
-session: plan, the merge, the built in `/code-review`, a six finding fix round,
-a twenty five row mutation table with one composite, and this record. **The
-pending register is still EMPTY**, and the merge is what kept it that way: git
-took `main`'s empty `PENDING` and only the branch's three-state `module_state`
-probe, so nothing was re-armed and no `@requires` decorator exists anywhere.
+**Last session 2026-09-10, R-322 closed on `relay/81`, taken from the board as
+issue #81 and run as relay task 81.** The first residual issue to be worked
+rather than a unit, and the first work of the ninth line in METHOD's serialized
+order. It added SEVEN tests and thirteen lines of `scripts/board.py`, no new
+behaviour, and it closed the audit's detector being driven by nothing.
+
+**THE CONTRADICTION DETECTOR HAS A DRIVER NOW.** `contradictions()`,
+`units_by_issue_number`'s exclusion of unlabelled unit-shaped titles, the
+residual repoint half of the return, the default register read, and
+`cmd_audit`'s exit codes are all driven. Both rows R-322 was built out of went
+from zero to killing, re-run verbatim from U59's row file so the comparison is
+two measurements of one experiment. `docs/mutation/u81-notes.md` is the reading
+and it carries one correction to its own first row file.
+
+**THE DOUBLE IS THE `gh` PAYLOAD, NOT THE GRAPH, AND THAT IS THE DECISION R-322
+ASKED FOR.** A hand-built graph would type every key `build_graph` derives, so
+the producer could drift and the tests would stay green. The fixture is the issue
+list JSON, `build_graph` runs on it for real, and the field list is read out of
+`load_issues`'s syntax tree and compared against the double's keys. The learning
+is filed at
+`docs/solutions/workflow-issues/a-double-belongs-at-the-producer-boundary-not-at-the-shape-it-produces.md`
+and it carries two traps that cost a round here.
+
+**The pending register is still EMPTY** and nothing in this session touched it,
+so no `@requires` decorator exists anywhere.
+
+**U59, the session before this one, built on `relay/77`.** It ran the whole
+pipeline in one session: plan, the merge, the built in `/code-review`, a six
+finding fix round, a twenty five row mutation table with one composite, and its
+record. The merge is what kept the pending register empty: git took `main`'s
+empty `PENDING` and only the branch's three-state `module_state` probe, so
+nothing was re-armed.
 
 **THE SOFT DELETE DEFECT IS OFF MAIN.** `write/metadata.resolve_genre_id` no
 longer defaults the marker. A row that cannot report it refuses with
@@ -49,23 +74,31 @@ tree, which is the whole of what the entry now says.
     git status -sb                              # no ahead or behind count
     git status --porcelain                      # empty
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
-    .venv/bin/python scripts/board.py audit     # exit 2, and that is expected
+    .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
 
-The last measured suite was **7227 passed and 1 skipped**, taken on the branch
-before the record commit; the record touches documents only. Collected 7228,
-reconciled against `main`'s 7140 BY IDENTIFIER: zero ids lost, and the gain is
-`test_pending_units.py`, `test_rb_writer_guard.py`, `test_metadata_policy.py`
-and `test_genre_retag.py`. **Main's highest residual is R-326 once this branch
-merges**, no duplicate headings, no heading deleted. The branch's own R-18 and
-R-19 became R-320 and R-321, and their two source citations moved with them.
-Append only, and gaps are fine.
+The last measured suite was **7234 passed and 1 skipped**, collected 7235, taken
+on `relay/81` on a committed tree. Reconciled against U59's 7228 BY IDENTIFIER
+rather than by total, scoped to the one file that changed: `main`'s
+`tests/test_pending_units.py` declares 28 test functions, the branch collects
+those 28 plus exactly the seven R-322 added, and nothing is lost. A total only
+check shows the same healthy rise over a file that dropped one and gained eight.
+**Main's highest residual is R-327 once this branch merges**, no duplicate
+headings, no heading deleted, and R-322 gained a closure note in place rather
+than moving. Append only, and gaps are fine.
 
-**THE AUDIT EXITS 2 AND IT IS NOT DRIFT.** Issue #25 is closed while the verb
-registry still carries `planned_in="U25"` on two entries whose modules do not
-exist. This merge is what made that visible, because `contradictions()` read one
-register and there are two. It is R-324, it needs a decision rather than a
-repair, and `board.py sync` will not touch it on purpose. Do not weaken the
-check to get a green audit.
+**THE AUDIT EXITS 1 NOW, NOT 2, AND THE REASON IS A BOARD WRITE NOBODY RECORDED.**
+Measured on 2026-09-10 while closing R-322: issue #25 is OPEN with a state reason
+of REOPENED, so `contradictions()` returns nothing and the exit 2 U59 predicted
+is gone. The registry still owes U25 two modules, which is now the register
+working rather than a contradiction, and R-324 and #80 stay open because whether
+that is U25's answer is #80's judgement. Do not weaken the check to get a green
+audit; **the detector is now driven and softening it fails tests.**
+
+**The one thing the audit does report is R-265, and `sync` is the wrong answer to
+it.** `#81 status is In review, should be Ready`. `derive_status` knows five
+statuses and the field has six, so every relay card reads as drift for the whole
+of its run, and the remedy the audit prints would drag the card back to Ready
+mid review. Leave it. Confirmed a second time on #81.
 
 ## Read this before touching a write path again
 
@@ -102,13 +135,15 @@ Seven residuals, R-320 and R-321 renumbered in from the branch and R-322 through
 R-326 filed by this session, plus one learning. Four are worth knowing before
 touching the board tooling or a source guard again:
 
-- **R-324.** U25 is closed while the registry owes it two modules, so the audit
-  exits 2 until somebody rules on it. The section above says why that is not
-  drift.
-- **R-322.** `contradictions()` is driven by NOTHING. The zero row over it was
-  paired with a composite that deletes its closure test entirely, and the
-  composite killed zero as well, which is what turns the first zero from a
-  question into an answer.
+- **R-324.** The registry owes U25 two modules. Its issue was reopened by
+  somebody between the U59 merge and 2026-09-10, so the audit no longer exits 2
+  and the loud half is discharged while the substantive half is not. The section
+  above carries the measurement. #80 is still the decision.
+- **R-322. CLOSED on `relay/81`, and the head of this file says what it took.**
+  Both zero rows kill now. What replaced it is R-327, the board's WRITE half,
+  which is a harder case rather than the same one: `reconcile` reads a user-owned
+  project that a repository-scoped token cannot see at all, so there is no local
+  payload seam to build an honest double at.
 - **R-323.** A trailer names an ISSUE and both registers name a UNIT. Twenty
   four units are mismatched today and none of them is owed a module, which is why
   this was never seen. `audit` resolves the mapping through the issue titles now.
@@ -195,9 +230,14 @@ that U59 lands the conformance assertions R-5 records as gated. Read R-5 against
 the merged tree before assuming it, because two of those commits turned out to
 be on `main` already, which is R-326.
 
-Thirteen residual issues carry the `residual` label. They are the queue after
-the units, each done or closed back to the ledger. A2 is attended. R-324 is a
-fourteenth finding that needs a decision and has no issue yet.
+Residual issues carry the `residual` label. They are the queue after the units,
+each done or closed back to the ledger. A2 is attended. **#81, R-322, is the
+first of them to be worked and it is done**, which leaves the rest of that label
+as the live list; run
+`gh issue list --repo philgutowski/cratekit --label residual --state open` rather
+than trusting a count written here. R-324 is tracked on #80 and R-327 has no
+issue, which is the normal state for a residual: the ledger holds it until
+somebody decides to act on it.
 
 **Every unit in METHOD's serialized list is now built.** What is left on that
 list is Phillip's: the two explanations, the residual issues, and #29. #78 and
@@ -218,7 +258,8 @@ list is Phillip's: the two explanations, the residual issues, and #29. #78 and
 
 | branch | state |
 |---|---|
-| `relay/77` | U59, the branch this record is on; delete after the merge |
+| `relay/81` | R-322, the branch this record is on; delete after the merge |
+| `relay/77` | U59, merged to `main`; delete if it still exists |
 | `fix/conformance-3-and-soft-delete-reader` | LANDED into `relay/77` by merge. Still in `.worktrees/conformance`, untouched, and now redundant. Deleting it and the worktree is Phillip's call, not a session's, because the merge is not pushed yet |
 
 ## When a relay run is cut off mid unit
@@ -268,8 +309,17 @@ whole repair. native-relay's own `docs/solutions/` carries both halves.
 - **A guard that goes red at a merge is usually right and out of date.** Ask
   whether the RULE moved or the TREE did, and drive the answer. Weakening a stale
   guard to get green takes the rule with it. Four of them in U59, all four right.
-- **The audit exits 2 and it is R-324.** That is a decision waiting, not drift,
-  and not a reason to soften `contradictions()`.
+- **The audit's exit code is a measurement, not a constant.** It exited 2 for
+  R-324 until issue #25 was reopened and it exits 1 now for R-265, the `In
+  review` card. Read what it printed rather than what a record predicted, and do
+  not soften `contradictions()` either way. Softening it now fails tests, which
+  is new: R-322 put seven of them behind that function.
+- **A double belongs at the PRODUCER's boundary, not at the shape it produces.**
+  Hand-build the payload the network returns and let the real derivation run over
+  it. Hand-building the derived structure asserts what its author believes the
+  producer makes. And making an input injectable moves the undriven path one
+  frame UP, to the caller that supplies nothing, so write the row for the default
+  branch too.
 - **Never write a closing keyword next to an issue number in prose**, not even
   inside backticks and not even to quote one. GitHub reads the text and not the
   intent.
