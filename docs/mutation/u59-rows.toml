@@ -67,11 +67,23 @@ surface = "user"
 old = '''                "soft-delete-marker-unreadable",'''
 new = '''                "soft-delete-marker-unknown",'''
 
+# RECLASSIFIED TO MAINTAINER AFTER THE FIRST PASS, WITH THE REASON, which is one
+# of the two remedies the driver names for a user-facing zero. The other is a
+# composite, and there is room under the cap for exactly one of those, which
+# B5 takes because nothing in the suite drives its function at all.
+#
+# The refusal's SCOPE reaches a person only if the refusal itself does, and R-186
+# records that the producer of an unreadable marker was never driven: whether
+# pyrekordbox can hand this function a genre row that omits or nulls the column
+# is unmeasured, and the live database is off limits. So this field's user
+# surface is UNMEASURED rather than established, which is not the same claim.
+# What is established is that the refusal is pinned: M2 removes it entirely and
+# kills four.
 [[rows]]
 id = "M7_scope_narrowed"
 description = "Scope the refusal to the row rather than the run, making it per-row"
 file = "src/cratekit/write/metadata.py"
-surface = "user"
+surface = "maintainer"
 old = '''                scope=Scope.RUN,
                 origin=("write", "metadata"),'''
 new = '''                scope=Scope.ITEM,
@@ -239,6 +251,15 @@ old = '''            print("board: no commit range to read; nothing checked")
             return 0'''
 new = '''            print("board: no commit range to read; nothing checked")
             return 2'''
+
+[[rows]]
+id = "B5_composite"
+description = "What B5 does hold: report a contradiction over an OPEN issue as well"
+file = "scripts/board.py"
+tests = ["tests/test_pending_units.py", "tests/test_adoption.py", "tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_mutation_driver.py", "tests/test_pool_sizing.py", "tests/test_restore.py"]
+pairs_with = "B5_contradictions_by_number"
+old = '''        if node and node["unit"] and node["closed"]:'''
+new = '''        if node and node["unit"]:'''
 
 # ---------------------------------------------------------------------------
 # Rows considered and NOT run, logged because a truncation nobody recorded reads
