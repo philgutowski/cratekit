@@ -794,3 +794,183 @@ def test_a_near_miss_note_is_skipped_once_the_owed_module_actually_lands():
         "src/cratekit/write/rebuild.py and a note there would be a diagnosis of "
         "a problem that no longer exists"
     )
+
+
+class _ClosingArgs:
+    """The namespace `cmd_closing` reads, built here rather than through argparse.
+
+    Going through `main()` would drive the parser as well, and the parser is not
+    what is in question: what is untested is the GIT READING, which is the whole
+    of the CI path.
+    """
+
+    def __init__(self, *, since=None, message_file=None):
+        self.since = since
+        self.message_file = message_file
+
+
+def _seeded_repo(root: Path):
+    """A throwaway git repository with one commit, and a runner bound to it.
+
+    `--no-verify` throughout, because this repository's own commit-msg hook is
+    the thing under test and a fixture that inherited it through a global hooks
+    path would be measuring the hook rather than the function.
+    """
+    import subprocess
+
+    root.mkdir(parents=True, exist_ok=True)
+
+    def run(*argv, message_text=None):
+        done = subprocess.run(
+            argv,
+            cwd=root,
+            input=message_text,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert done.returncode == 0, f"{argv} failed: {done.stderr}"
+        return done.stdout.strip()
+
+    run("git", "init", "-q", "-b", "main")
+    run("git", "config", "user.email", "fixture@example.invalid")
+    run("git", "config", "user.name", "Fixture")
+    run("git", "config", "commit.gpgsign", "false")
+    (root / "seed.txt").write_text("seed\n")
+    run("git", "add", "seed.txt")
+    run("git", "commit", "-q", "--no-verify", "-m", "chore: seed")
+    return run, run("git", "rev-parse", "HEAD")
+
+
+@pytest.mark.parametrize("message", CLOSING_SPELLINGS_GITHUB_ACTS_ON)
+def test_every_spelling_is_refused_through_a_real_commit_range(
+    message, tmp_path, monkeypatch
+):
+    """The CI path, driven, and until now it was asserted only as source text.
+
+    `test_every_spelling_github_closes_on_is_refused` hands `unresolved_closes` a
+    string. That proves the regular expressions and nothing about the subcommand
+    CI actually runs, which shells out to `git log --format=%B base..HEAD` and
+    passes `raw=False`. Two things live only on this path and were driven
+    nowhere: whether a real commit body survives the round trip through git at
+    all, and the `raw=False` decision, which is the one that must NOT strip, on
+    the grounds that a `#`-leading body line is a real trailer git keeps.
+
+    The owed register is supplied rather than read off this repository. A test
+    keyed to whatever `main` happens to owe today passes for a reason that has
+    nothing to do with the code and fails the day somebody discharges a marker.
+    """
+    board = _board()
+    repo = tmp_path / "fixture"
+    run, base = _seeded_repo(repo)
+
+    (repo / "one.txt").write_text("one\n")
+    run("git", "add", "one.txt")
+    run("git", "commit", "-q", "--no-verify", "-F", "-", message_text=message)
+
+    monkeypatch.setattr(
+        board,
+        "owed_by_unit",
+        lambda: {36: ["cratekit.write.converge_cli"], 33: ["cratekit.export.cli"]},
+    )
+    monkeypatch.chdir(repo)
+    assert board.cmd_closing(_ClosingArgs(since=base)) == 2, (
+        f"{message!r} reached history through git and the range check reported "
+        f"clean, so CI would have let the close cascade"
+    )
+
+
+def test_a_hash_leading_body_line_survives_the_range_check(tmp_path, monkeypatch):
+    """The asymmetry that made `raw` a parameter, driven on the path it protects.
+
+    Git's `whitespace` cleanup, which `-F` and `-m` use, KEEPS a body line
+    beginning with `#`. So a real trailer can reach history on such a line, and
+    stripping comments on the range path would delete it and report clean. That
+    is the CI path, the copy this repository calls the load-bearing one, so the
+    strip would have done its only possible harm in the place it mattered most.
+    """
+    board = _board()
+    repo = tmp_path / "fixture"
+    run, base = _seeded_repo(repo)
+
+    (repo / "one.txt").write_text("one\n")
+    run("git", "add", "one.txt")
+    run(
+        "git",
+        "commit",
+        "-q",
+        "--no-verify",
+        "-F",
+        "-",
+        message_text="feat: x\n\n#36 was the tracker, and this Closes #36\n",
+    )
+
+    kept = run("git", "log", "--format=%B", f"{base}..HEAD")
+    assert "Closes #36" in kept, (
+        "git dropped the line, so this test is measuring git rather than the "
+        "check and its premise has changed"
+    )
+
+    monkeypatch.setattr(
+        board, "owed_by_unit", lambda: {36: ["cratekit.write.converge_cli"]}
+    )
+    monkeypatch.chdir(repo)
+    assert board.cmd_closing(_ClosingArgs(since=base)) == 2
+
+
+def test_an_unreadable_commit_range_is_nothing_to_judge_rather_than_a_refusal(
+    tmp_path, monkeypatch
+):
+    """A check that fails where it cannot read is a check somebody deletes.
+
+    CI fetches to a fixed depth and takes the merge base, and on a shallow clone
+    that ref may simply not be there. Exit 0 with a sentence is the designed
+    answer, and it is asserted here so that turning it into a refusal, or into a
+    traceback, fails a row.
+    """
+    board = _board()
+    empty = tmp_path / "not-a-repo"
+    empty.mkdir()
+    monkeypatch.chdir(empty)
+    assert board.cmd_closing(_ClosingArgs(since="deadbeef")) == 0
+
+
+def test_a_missing_message_file_refuses_with_a_sentence_not_a_traceback(tmp_path):
+    """The hook path's bad invocation, which surfaces in place of the editor.
+
+    An unhandled exception inside a commit-msg hook reads to the person running
+    it as the tool being broken rather than the invocation being wrong, and the
+    remedy they reach for is uninstalling the hook.
+    """
+    board = _board()
+    assert board.cmd_closing(_ClosingArgs(message_file=str(tmp_path / "nope"))) == 1
+
+
+def test_the_message_file_path_reads_the_file_and_refuses_on_it(tmp_path, monkeypatch):
+    """The hook path end to end, including the pre-cleanup strip it owes.
+
+    The template comment and the scissors block are what the hook sees and CI
+    never does, so this is the one path where stripping is correct. Both are in
+    the fixture, and the real trailer sits above them.
+    """
+    board = _board()
+    message = tmp_path / "COMMIT_EDITMSG"
+    message.write_text(
+        "feat(write): converge\n"
+        "\n"
+        "Closes #36\n"
+        "# Please enter the commit message for your changes.\n"
+        "# ------------------------ >8 ------------------------\n"
+        "+Closes #33\n"
+    )
+    monkeypatch.setattr(
+        board,
+        "owed_by_unit",
+        lambda: {36: ["cratekit.write.converge_cli"], 33: ["cratekit.export.cli"]},
+    )
+    refusals = board.unresolved_closes(message.read_text(), raw=True)
+    assert board.cmd_closing(_ClosingArgs(message_file=str(message))) == 2
+    assert len(refusals) == 1, (
+        "the diff below the scissors line was judged, so a commit --verbose "
+        "would be refused over a trailer it never wrote"
+    )
