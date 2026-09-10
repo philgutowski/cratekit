@@ -215,5 +215,10 @@ def handle(job, item, cfg) -> None:
     string, which is what R34 forbids.
     """
     del job
-    engine.rebuild_governed_tree(cfg, tree_id=str(item.item_id))
+    # THE WORKFLOW IS NAMED HERE RATHER THAN DEFAULTED, so both workers over this
+    # engine state what they write under and a reader comparing the two sees one
+    # difference rather than one name and one absence.
+    engine.rebuild_governed_tree(
+        cfg, tree_id=str(item.item_id), workflow=engine.REBUILD_WORKFLOW
+    )
     return None
