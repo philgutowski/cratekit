@@ -377,6 +377,143 @@ def test_template_credential_files_are_allowed():
     assert scan.credential_filename_violations("vendor/example.env") == []
 
 
+# ── an archive is refused, because nothing can read what is inside it ────────
+
+
+def _archive_findings(findings: list[str]) -> list[str]:
+    return [f for f in findings if "archive the scan cannot read inside" in f]
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "vendor/tidal_dl_ng-0.33.0.tar.gz",
+        "vendor/pkg.tgz",
+        "vendor/pkg.zip",
+        "vendor/pkg-1.0-py3-none-any.whl",
+        "vendor/pkg.tar",
+        "vendor/pkg.7z",
+        "vendor/PKG.TAR.XZ",
+        "vendor/pkg.tar.lz4",
+        "vendor/pkg.tar.Z",
+        "vendor/pkg.deb",
+        "vendor/pkg.rpm",
+        "vendor/pkg.cpio",
+        "vendor/pkg.cab",
+    ],
+)
+def test_an_archive_name_is_refused_whatever_its_bytes_are(tmp_path, name):
+    """The name tier. The bytes here are prose, so only the suffix can refuse it."""
+    path = tmp_path / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"not really an archive\n")
+    findings = scan.scan_tree(tmp_path, [path], check_identity=False)
+    assert _archive_findings(findings) == [
+        f"{name}: tracked file is an archive the scan cannot read inside: {name!r}; "
+        f"commit the tree unpacked with its provenance recorded instead"
+    ]
+
+
+def test_an_archive_carrying_a_session_file_is_caught(tmp_path):
+    """R-3 as it was written: a credential store inside a tarball.
+
+    Before the archive tier this tree scanned clean. The content scan returned
+    None for the tarball, and the credential filename rule sees only the outer
+    name, which says nothing about a session.
+    """
+    import io
+    import tarfile
+
+    payload = f'{{"refresh_token": "{_A_TOKEN}"}}\n'.encode()
+    archive = tmp_path / "vendor" / "tidal_dl_ng-0.33.0.tar.gz"
+    archive.parent.mkdir(parents=True)
+    with tarfile.open(archive, "w:gz") as bundle:
+        member = tarfile.TarInfo("tidal_dl_ng/tidal_session.json")
+        member.size = len(payload)
+        bundle.addfile(member, io.BytesIO(payload))
+    findings = scan.scan_tree(tmp_path, check_identity=False)
+    assert _archive_findings(findings)
+
+
+def _zip_bytes() -> bytes:
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as bundle:
+        bundle.writestr("inner/session.json", "{}")
+    return buffer.getvalue()
+
+
+def _tar_bytes() -> bytes:
+    import io
+    import tarfile
+
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as bundle:
+        member = tarfile.TarInfo("inner/session.json")
+        member.size = 2
+        bundle.addfile(member, io.BytesIO(b"{}"))
+    return buffer.getvalue()
+
+
+def _compressed(module_name: str) -> bytes:
+    import importlib
+
+    return importlib.import_module(module_name).compress(b"{}" * 64)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(_zip_bytes, id="zip"),
+        pytest.param(_tar_bytes, id="tar"),
+        pytest.param(lambda: _compressed("gzip"), id="gzip"),
+        pytest.param(lambda: _compressed("bz2"), id="bzip2"),
+        pytest.param(lambda: _compressed("lzma"), id="xz"),
+        # No standard library writer for these, so the header each extractor
+        # checks is written by hand, followed by what a real body would carry.
+        pytest.param(lambda: b"\x04\x22\x4d\x18\x64\x40\xa7" + b"\x00" * 32, id="lz4"),
+        pytest.param(lambda: b"\x02\x21\x4c\x18" + b"\x00" * 32, id="lz4-legacy"),
+        pytest.param(lambda: b"\x1f\x9d\x90" + b"\x00" * 32, id="compress"),
+        pytest.param(lambda: b"LZIP\x01\x0c" + b"\x00" * 32, id="lzip"),
+        pytest.param(lambda: b"!<arch>\ndebian-binary   " + b"\x00" * 32, id="ar-deb"),
+        pytest.param(lambda: b"\xed\xab\xee\xdb\x03\x00" + b"\x00" * 32, id="rpm"),
+        pytest.param(lambda: b"MSCF\x00\x00\x00\x00" + b"\x00" * 32, id="cab"),
+        pytest.param(lambda: b"070701" + b"0" * 104 + b"\x00", id="cpio"),
+        pytest.param(lambda: b"7z\xbc\xaf\x27\x1c\x00\x04" + b"\x00" * 32, id="7z"),
+        pytest.param(lambda: b"Rar!\x1a\x07\x01\x00" + b"\x00" * 32, id="rar"),
+        pytest.param(lambda: b"\x28\xb5\x2f\xfd\x04\x00" + b"\x00" * 32, id="zstd"),
+        pytest.param(lambda: b"PK\x05\x06" + b"\x00" * 18, id="empty-zip"),
+    ],
+)
+def test_an_archive_under_a_neutral_name_is_caught_by_its_bytes(tmp_path, build):
+    """The content tier. A renamed archive is still an archive to every extractor."""
+    path = tmp_path / "vendor" / "payload.dat"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(build())
+    findings = scan.scan_tree(tmp_path, [path], check_identity=False)
+    assert _archive_findings(findings)
+
+
+@pytest.mark.parametrize(
+    ("name", "body"),
+    [
+        pytest.param("docs/logo.png", b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR", id="png"),
+        pytest.param("docs/zip.md", b"PK is the key the zip format starts with.\n", id="pk-prose"),
+        pytest.param("docs/bz.md", b"BZh9 is where a bzip2 header begins.\n", id="bzh-prose"),
+        pytest.param("docs/cpio.md", b"070701 is the newc cpio marker.\n", id="cpio-prose"),
+        pytest.param("docs/ar.md", b"!<arch> opens an ar archive.\n", id="ar-prose"),
+        pytest.param("docs/empty.txt", b"", id="empty"),
+    ],
+)
+def test_the_archive_rule_stays_quiet_on_what_is_not_an_archive(tmp_path, name, body):
+    path = tmp_path / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body)
+    assert scan.scan_tree(tmp_path, [path], check_identity=False) == []
+
+
 def test_the_scan_reaches_vendored_trees(tmp_path):
     """``vendor/`` is not exempt. It is the highest-risk directory in the tree.
 
