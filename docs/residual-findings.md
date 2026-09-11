@@ -126,6 +126,22 @@ inspected.
 unpacked, with its provenance recorded, rather than as an archive. Vendoring is
 U13. If an archive must ship, the scan needs an archive-aware tier.
 
+**Closed 2026-09-10 on `relay/40`, and closed by refusal rather than by
+reading.** The closing condition was already met on the tree: U13 landed on
+2026-08-02, the downloader is committed unpacked at
+`src/cratekit/_vendor/tidal_dl_ng/` with its provenance in `vendor/README.md`,
+and `git ls-files` lists no archive and no binary of any kind. What held it was
+nothing. `_read_text` returned `None` for a compressed file and `scan_tree` moved
+on, so an archive committed later would have scanned clean over bytes nobody
+read. `archive_violations` in `scripts/scan_repo.py` now refuses a tracked
+archive by suffix, case folded, and by the header every extractor reads, so a
+renamed archive is refused too. An archive aware reader was not built: the
+policy is that third-party code ships unpacked, and refusing is the check that
+holds that policy. The built in review drove eight formats the first list
+missed, and they are covered. That the list is still closed is R-334. Fifteen
+mutation rows are committed in `docs/mutation/r-3-rows.toml` and unmeasured,
+for R-329's reason.
+
 ---
 
 ## R-4. Nine module toggles were added to satisfy R5, and two of them gate nothing
@@ -14765,6 +14781,12 @@ rows are committed in `docs/mutation/u61-rows.toml` and unmeasured, and
 `docs/mutation/u61-notes.md` holds the sampling. Options 1 and 3 stand as
 written.
 
+**A third table waits on it, 2026-09-10, relay task 40.** R-3's fifteen rows over
+the scan's archive tier are committed in `docs/mutation/r-3-rows.toml`, each with
+its expected kill written in the description, and not run, following the
+learning rather than spending ceiling length calls. The tier's own tests run in
+under five seconds, so the table is cheap the moment the preflight is.
+
 ---
 
 ## R-330. A job queued under `sync.all` by an older build stays in the queue with no worker and no way out but a cancel
@@ -14857,3 +14879,34 @@ style lists and so under reports.
 the fresh clone install line falls back to naming only the pre-commit type,
 which is the one line trap R-1 was widened over. The check reports the
 configuration itself as soon as that hook exists, so the gap lasts one run.
+
+---
+
+## R-334. The scan still reads a binary it does not recognise as clean
+
+**Found:** by the built in review on `relay/40`, 2026-09-10, closing R-3.
+
+R-3's fix refuses an archive the scan recognises, by suffix or by header. The
+list is closed. The review drove a `.tar.lz4` holding a session file through the
+first version and it scanned clean, and that format and seven more are now
+covered, but the shape survives for anything still off the list: a raw `.lzma`
+stream renamed to a neutral name (its header is three bytes that ordinary data
+can start with, so it is deliberately not matched), binary cpio, a disk image.
+And it survives one file over, for binaries that are not archives at all. A
+tracked `.db` or `.sqlite` file can hold a live token in plain bytes, and
+`_read_text` returns `None` for it exactly as it used to for a tarball.
+
+**Measured cost today, none.** `git ls-files` on `relay/40` lists 626 paths and
+not one binary, so no producer exists on the tree. The cost is to the next
+commit that adds one, which gets a clean report.
+
+**The conservative call taken here** was to extend the list and record the
+class, because the general fix changes what the scan accepts:
+
+1. Refuse every tracked file the reader cannot decode, unless its exact path is
+   in `ALLOWED_EXACT` with a comment saying who decided. Fail closed, and every
+   future image or font costs one reviewed line.
+2. Keep the closed list and add formats when one is met.
+
+**Closes when:** Phillip picks one. Option 1 closes it; option 2 closes it back
+to the ledger as accepted.

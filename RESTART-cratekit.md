@@ -4,8 +4,18 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-10, R-1 on `relay/38`, taken from the board as issue #38
-and run as relay task 38.** The second residual issue worked rather than a unit,
+**Last session 2026-09-10, R-3 on `relay/40`, taken from the board as issue #40
+and run as relay task 40.** The third residual issue worked, and the second of
+METHOD's guard group. `scripts/scan_repo.py` REFUSES a tracked archive now
+instead of skipping it, by suffix and by header, so a renamed archive is refused
+too. R-3's written closing condition was already true on the tree, since U13
+committed the downloader unpacked, and nothing kept it true. R-3 is closed in
+place. R-334 is the list still being closed, plus the same silent skip for a
+`.db` or `.sqlite` file, and the choice there is Phillip's. Fifteen mutation rows
+are committed in `docs/mutation/r-3-rows.toml` and unrun, for R-329's reason.
+
+**The session before, 2026-09-10, R-1 on `relay/38`, taken from the board as
+issue #38 and run as relay task 38.** The second residual issue worked rather than a unit,
 from the guard group in METHOD's ninth line. `crate doctor`'s `repo.commit_hook`
 now reads every hook type `.pre-commit-config.yaml` names and checks each
 installed hook, not only `.git/hooks/pre-commit`. R-1 is closed in place, and
@@ -20,7 +30,7 @@ mutation rows, all killing, are in `docs/mutation/r-1.md`. The driver outran
 the ten minute foreground ceiling twice, and a polling wait in the foreground
 carried it through.
 
-**The session before, 2026-09-10, U61 on `relay/79`, taken from the board as
+**Two sessions before, 2026-09-10, U61 on `relay/79`, taken from the board as
 issue #79 and run as relay task 79.** `crate sync all` is a COMPOSER now. It plans every
 enabled source, asks the favourites confirm once, then queues each source through
 that source's own `queue_sweep` under that source's own handler key, with one
@@ -40,7 +50,7 @@ control is hardcoded to the full suite at `scripts/mutate.py:1002`, so the
 driver's preflight is two full runs, about 720 seconds, whatever the rows say.
 R-329 carries the correction, `docs/mutation/u61-notes.md` the sampled timing.
 
-**Two sessions before, 2026-09-10, U60 on `relay/78`, taken from the board as
+**Three sessions before, 2026-09-10, U60 on `relay/78`, taken from the board as
 issue #78 and run as relay task 78.** `delete.review` stopped claiming a queue. Its entry
 dropped `long_running` and `argv_builder`, `delete_argv` is gone, and the verb
 left `HANDLERS_NOT_YET_BOUND`, so R-149 closed in the direction it left open.
@@ -62,7 +72,7 @@ ready, `docs/mutation/u60-notes.md` holds the measurements, and R-329 is the gap
 with three options, all Phillip's. The learning is
 `docs/solutions/workflow-issues/the-mutation-driver-does-not-fit-a-ten-minute-foreground-call.md`.
 
-**Three sessions before, 2026-09-10, R-322 closed on `relay/81`, taken from the
+**Four sessions before, 2026-09-10, R-322 closed on `relay/81`, taken from the
 board as issue #81 and run as relay task 81.** The first residual issue to be worked
 rather than a unit, and the first work of the ninth line in METHOD's serialized
 order. It added SEVEN tests and thirteen lines of `scripts/board.py`, no new
@@ -140,8 +150,8 @@ The last measured suite was **7275 passed and 1 skipped, 7276 collected**, taken
 on `relay/38` on a committed tree, and the mutation driver's own full baseline
 collected the same 7276. Against U61's 7254 BY TOTAL ONLY: the 22 are this
 branch's own tests in `tests/test_doctor.py`, and none was deleted. **Main's
-highest residual is R-333 once this branch merges**, no duplicate headings, no
-heading deleted, and R-1 gained its closing note in place rather than moving.
+highest residual is R-334 once this branch merges**, no duplicate headings, no
+heading deleted, and R-3 gained its closing note in place rather than moving.
 Append only, and gaps are fine.
 
 **The kebab literal pin in `tests/test_reserved_causes.py` moved 391 to 401.**
@@ -305,6 +315,7 @@ In METHOD's serialized order, which is what picks the work:
 | | #78 | U60, the deletion pass | DONE on `relay/78`, no mutation table (R-329) |
 | | #79 | U61, `crate sync all` composes the source increments | DONE on `relay/79`, no mutation table (R-329) |
 | 9 | #38 | R-1, doctor checks every configured hook type | DONE on `relay/38`, 25 of 25 rows killing |
+| | #40 | R-3, the scan refuses a tracked archive | DONE on `relay/40`, 15 rows committed and unrun (R-329) |
 | | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
 
 **Phase E is complete with the U53 merge, so line 7 is next and it is
@@ -347,7 +358,9 @@ issues, and #29.
 
 | branch | state |
 |---|---|
-| `relay/79` | U61, the branch this record is on; delete after the merge |
+| `relay/40` | R-3, the branch this record is on; delete after the merge |
+| `relay/38` | R-1, merged to `main`; delete if it still exists |
+| `relay/79` | U61, merged to `main`; delete if it still exists |
 | `relay/78` | U60, merged to `main`; delete if it still exists |
 | `relay/81` | R-322, merged to `main`; delete if it still exists |
 | `relay/77` | U59, merged to `main`; delete if it still exists |

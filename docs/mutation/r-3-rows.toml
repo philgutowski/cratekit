@@ -1,0 +1,137 @@
+# R-3, the archive tier in scripts/scan_repo.py. Author's rows, UNRUN.
+#
+# The full suite is about six minutes and the driver's preflight is two full
+# runs, so this table cannot finish inside a relay task's ten minute foreground
+# call. That is R-329, and the learning filed for it says to commit the rows
+# and record the gap rather than spend ceiling length calls. Run it attended:
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r-3-rows.toml
+#
+# Every row is maintainer facing: the scan guards the repository, not a verb.
+# Each row's expected kill is written in its description so a run can be read
+# against a prediction. M10 is the one expected zero and is last on purpose.
+
+name = "r-3"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_no_call"
+description = "Drop the archive tier's call in scan_tree. Expect every archive test to die"
+file = "scripts/scan_repo.py"
+old = '''        findings += [f"{relative}: {p}" for p in archive_violations(path, relative)]
+'''
+new = ""
+
+[[rows]]
+id = "M2_no_suffix_tier"
+description = "Drop the suffix check. Expect the name tier's prose-bodied rows to die"
+file = "scripts/scan_repo.py"
+old = '''    if any(name.endswith(suffix) for suffix in ARCHIVE_SUFFIXES):
+        return [message]
+'''
+new = ""
+
+[[rows]]
+id = "M3_no_magic_loop"
+description = "Drop the binary magic loop. Expect the neutral-name rows but bzip2 and cpio to die"
+file = "scripts/scan_repo.py"
+old = '''    for offset, magic in _ARCHIVE_MAGIC:
+        if head[offset : offset + len(magic)] == magic:
+            return [message]
+'''
+new = ""
+
+[[rows]]
+id = "M4_no_ascii_magic"
+description = "Drop the ASCII header check. Expect the bzip2 and cpio neutral-name rows to die"
+file = "scripts/scan_repo.py"
+old = '''    if any(pattern.match(head) for pattern in _ASCII_ARCHIVE_MAGIC):
+        return [message]
+'''
+new = ""
+
+[[rows]]
+id = "M5_no_case_fold"
+description = "Stop folding the name's case. Expect PKG.TAR.XZ and pkg.tar.Z to die"
+file = "scripts/scan_repo.py"
+old = '''    name = Path(relative_path).name.lower()
+'''
+new = '''    name = Path(relative_path).name
+'''
+
+[[rows]]
+id = "M6_no_tar_marker"
+description = "Drop the tar marker. Expect the tar neutral-name row to die"
+file = "scripts/scan_repo.py"
+old = '''    (257, b"ustar"),  # tar, whose marker sits after the first header's name field
+'''
+new = ""
+
+[[rows]]
+id = "M7_tar_offset"
+description = "Move the tar marker's offset from 257 to 256. Expect the tar row to die"
+file = "scripts/scan_repo.py"
+old = '''    (257, b"ustar"),'''
+new = '''    (256, b"ustar"),'''
+
+[[rows]]
+id = "M8_short_read"
+description = "Read 256 bytes instead of 512, short of the tar marker. Expect the tar row to die"
+file = "scripts/scan_repo.py"
+old = '''            head = handle.read(512)'''
+new = '''            head = handle.read(256)'''
+
+[[rows]]
+id = "M9_no_gzip"
+description = "Drop the gzip header. Expect the gzip neutral-name row to die"
+file = "scripts/scan_repo.py"
+old = '''    (0, b"\x1f\x8b"),  # gzip
+'''
+new = ""
+
+[[rows]]
+id = "M10_no_zip"
+description = "Drop the zip header. Expect the zip neutral-name row to die, the empty zip row survives on its own header"
+file = "scripts/scan_repo.py"
+old = '''    (0, b"PK\x03\x04"),  # zip, and every format built on it (wheel, jar)
+'''
+new = ""
+
+[[rows]]
+id = "M11_loose_bzip2"
+description = "Match bzip2 on BZh and the digit alone. Expect the bzh-prose quiet row to die"
+file = "scripts/scan_repo.py"
+old = '''    re.compile(rb"\ABZh[1-9]1AY&SY"),'''
+new = '''    re.compile(rb"\ABZh[1-9]"),'''
+
+[[rows]]
+id = "M12_loose_cpio"
+description = "Match cpio on 07070 alone. Expect the cpio-prose quiet row to die"
+file = "scripts/scan_repo.py"
+old = '''    re.compile(rb"\A07070[127][0-9A-Fa-f]{8}"),'''
+new = '''    re.compile(rb"\A07070"),'''
+
+[[rows]]
+id = "M13_loose_ar"
+description = "Match ar without its newline. Expect the ar-prose quiet row to die"
+file = "scripts/scan_repo.py"
+old = '''    (0, b"!<arch>\n"),  # ar, which is also every ``.deb``'''
+new = '''    (0, b"!<arch>"),  # ar, which is also every ``.deb``'''
+
+[[rows]]
+id = "M14_no_gz_suffix"
+description = "Drop .gz from the suffix set. Expect the prose-bodied tar.gz name row to die"
+file = "scripts/scan_repo.py"
+old = '''        ".zip", ".tar", ".gz", ".tgz",'''
+new = '''        ".zip", ".tar", ".tgz",'''
+
+[[rows]]
+id = "M15_no_symlink_skip"
+description = "Drop the symlink skip. Expected ZERO: the symlink tests use directory and relative file targets that are not archives"
+file = "scripts/scan_repo.py"
+old = '''    if path.is_symlink():
+        return []
+    try:
+        with path.open("rb") as handle:'''
+new = '''    try:
+        with path.open("rb") as handle:'''
