@@ -239,6 +239,26 @@ review store and the doctor check registry.
 its assertion from existence into behaviour, in the same commit that removes the
 pending entry.
 
+**Closed 2026-09-10 on `relay/42`.** The closing condition was already true on
+the tree. U11 and U27 are both closed, and neither assertion is an existence
+check any more. Conformance 4 offers a review item under every adjudicating
+verb's own handler key, resolves it through the real `review resolve` command
+line, and reads the verdict back from a fresh open of the store. Conformance 8
+runs the doctor twice over one configuration, once on a healthy machine and once
+on a broken one, and requires every declared precondition to pass on the first
+and refuse with a remedy on the second; a third test drives three stub doctors
+against that guard. No `@requires` names `cratekit.core.review` or
+`cratekit.cli.doctor`, and `PENDING` in `tests/_pending.py` holds no entry.
+
+What had stopped being true is the paragraph above headed "What is honestly NOT
+covered". Measured against the registry on 2026-09-10, twenty two of the twenty
+four destructive entries have landed, the two left being U25's vocals verbs,
+and every adjudicating entry has landed. The docstrings of conformance 4 and 6
+said the same stale thing and are corrected. The gap that paragraph described is
+still real, because neither assertion invokes a landed verb through the
+dispatcher, and it is R-335. No guard was added or changed, so there is no
+mutation table.
+
 ---
 
 ## R-6. Two shipped verbs have no argument surface beyond what U5 needed
@@ -14934,3 +14954,45 @@ class, because the general fix changes what the scan accepts:
 
 **Closes when:** Phillip picks one. Option 1 closes it; option 2 closes it back
 to the ledger as accepted.
+
+---
+
+## R-335. Conformance 4 and 6 drive the shared surface and not the landed verbs
+
+**Found:** closing R-5 on `relay/42`, 2026-09-10.
+
+Both assertions were written when no adjudicating and no destructive verb had
+landed, so each drives the shared machinery once per declared verb, under that
+verb's own name, rather than the verb. That was the strongest thing available
+then. It is not now: every adjudicating verb and twenty two of the twenty four
+destructive verbs have landed, and the two assertions still drive only the
+shared layer.
+
+What each one cannot see:
+
+1. Conformance 6 drives `session.assert_gates` directly. A landed destructive
+   verb whose handler writes before it enters its session, or never enters one,
+   passes it. adopt.apply's three refusals are driven in
+   `tests/test_adopt_apply_cli.py` through `apply_outstanding`, and the backup
+   restore's in `tests/test_write_session.py`, both below the dispatcher. No test
+   derived from the registry drives a lock held elsewhere, a missing
+   acknowledgment and a wrong volume through `cli.run` for a landed verb.
+2. Conformance 4 offers the review item itself. A landed adjudicating verb that
+   decides without offering anything to the queue passes it. Only its static
+   half, which walks the verb's own module for a comma separated writer, reads
+   the verb at all.
+
+**Measured cost today, unmeasured.** No candidate verb was driven to find one
+that writes before its session or decides without offering. The evidence that
+exists is per verb suites, which are not derived from the registry and so do not
+grow when a verb lands.
+
+**Why it was not built here.** Driving each landed verb through `cli.run` as far
+as its session needs an argument surface and fixtures per verb, twenty two of
+them, and each verb also declares doctor preconditions and explicit gates a
+drive has to account for. That is a unit, not a residual close.
+
+**Closes when:** conformance 6 invokes every landed destructive verb through the
+dispatcher with each of the three gates broken in turn and asserts the code and
+an unchanged filesystem, and conformance 4 asserts that a landed adjudicating
+verb's run leaves an item in the queue under its own handler key.
