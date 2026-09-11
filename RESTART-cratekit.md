@@ -4,8 +4,20 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-10, R-4 on `relay/41`, taken from the board as issue #41
-and run as relay task 41.** The fourth residual issue worked, and the first of
+**Last session 2026-09-10, R-5 on `relay/42`, taken from the board as issue #42
+and run as relay task 42.** The fifth residual issue worked, and the one METHOD's
+ninth line names first. It was a close, as that line guessed. R-5's closing
+condition was already true: U11 and U27 are closed, conformance 4 drives the
+review queue and conformance 8 drives the doctor, and neither is an existence
+check. What was false was the claim, in R-5 and in the docstrings of conformance
+4 and 6, that no adjudicating or destructive verb had landed. Every adjudicating
+verb has, and twenty five of twenty seven destructive ones. The docstrings are
+corrected. The gap they described, that neither assertion drives a landed verb
+through the dispatcher, is still real and is R-335. No guard changed, so there is
+no mutation table.
+
+**The session before, 2026-09-10, R-4 on `relay/41`, taken from the board as
+issue #41 and run as relay task 41.** The fourth residual issue worked, and the first of
 METHOD's surface group. R-4's written closing condition was already true: each
 of the nine toggles U5 declared gates a landed verb and none carries
 `planned_in`. `registry.Entry` now refuses an `extras` group that is not the
@@ -16,7 +28,7 @@ the resolver and parser in both directions. R-4 is closed in place, nothing new
 was filed, and six mutation rows are committed in `docs/mutation/r-4-rows.toml`
 and unrun, for R-329's reason.
 
-**The session before, 2026-09-10, R-3 on `relay/40`, taken from the board as issue #40
+**Two sessions back, 2026-09-10, R-3 on `relay/40`, taken from the board as issue #40
 and run as relay task 40.** The third residual issue worked, and the second of
 METHOD's guard group. `scripts/scan_repo.py` REFUSES a tracked archive now
 instead of skipping it, by suffix and by header, so a renamed archive is refused
@@ -26,7 +38,7 @@ place. R-334 is the list still being closed, plus the same silent skip for a
 `.db` or `.sqlite` file, and the choice there is Phillip's. Fifteen mutation rows
 are committed in `docs/mutation/r-3-rows.toml` and unrun, for R-329's reason.
 
-**Two sessions back, 2026-09-10, R-1 on `relay/38`, taken from the board as
+**Three sessions back, 2026-09-10, R-1 on `relay/38`, taken from the board as
 issue #38 and run as relay task 38.** The second residual issue worked rather than a unit,
 from the guard group in METHOD's ninth line. `crate doctor`'s `repo.commit_hook`
 now reads every hook type `.pre-commit-config.yaml` names and checks each
@@ -42,7 +54,7 @@ mutation rows, all killing, are in `docs/mutation/r-1.md`. The driver outran
 the ten minute foreground ceiling twice, and a polling wait in the foreground
 carried it through.
 
-**Two sessions before, 2026-09-10, U61 on `relay/79`, taken from the board as
+**Four sessions back, 2026-09-10, U61 on `relay/79`, taken from the board as
 issue #79 and run as relay task 79.** `crate sync all` is a COMPOSER now. It plans every
 enabled source, asks the favourites confirm once, then queues each source through
 that source's own `queue_sweep` under that source's own handler key, with one
@@ -62,7 +74,7 @@ control is hardcoded to the full suite at `scripts/mutate.py:1002`, so the
 driver's preflight is two full runs, about 720 seconds, whatever the rows say.
 R-329 carries the correction, `docs/mutation/u61-notes.md` the sampled timing.
 
-**Three sessions before, 2026-09-10, U60 on `relay/78`, taken from the board as
+**Five sessions back, 2026-09-10, U60 on `relay/78`, taken from the board as
 issue #78 and run as relay task 78.** `delete.review` stopped claiming a queue. Its entry
 dropped `long_running` and `argv_builder`, `delete_argv` is gone, and the verb
 left `HANDLERS_NOT_YET_BOUND`, so R-149 closed in the direction it left open.
@@ -84,7 +96,7 @@ ready, `docs/mutation/u60-notes.md` holds the measurements, and R-329 is the gap
 with three options, all Phillip's. The learning is
 `docs/solutions/workflow-issues/the-mutation-driver-does-not-fit-a-ten-minute-foreground-call.md`.
 
-**Four sessions before, 2026-09-10, R-322 closed on `relay/81`, taken from the
+**Six sessions back, 2026-09-10, R-322 closed on `relay/81`, taken from the
 board as issue #81 and run as relay task 81.** The first residual issue to be worked
 rather than a unit, and the first work of the ninth line in METHOD's serialized
 order. It added SEVEN tests and thirteen lines of `scripts/board.py`, no new
@@ -331,6 +343,7 @@ In METHOD's serialized order, which is what picks the work:
 | 9 | #38 | R-1, doctor checks every configured hook type | DONE on `relay/38`, 25 of 25 rows killing |
 | | #40 | R-3, the scan refuses a tracked archive | DONE on `relay/40`, 15 rows committed and unrun (R-329) |
 | | #41 | R-4, extras tied to their module and every toggle driven | DONE on `relay/41`, 6 rows committed and unrun (R-329) |
+| | #42 | R-5, conformance 4 and 8 already drive behaviour, closed in place | DONE on `relay/42`, no guard changed, R-335 filed |
 | | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
 
 **Phase E is complete with the U53 merge, so line 7 is next and it is
@@ -340,10 +353,8 @@ commit. A session does not run it.
 #78 and #79 are not in METHOD's list, which was serialized before they existed.
 Each was taken as a relay task, which is Phillip placing it.
 
-**#42, R-5 is now probably a close.** METHOD's line 9 says so, on the grounds
-that U59 lands the conformance assertions R-5 records as gated. Read R-5 against
-the merged tree before assuming it, because two of those commits turned out to
-be on `main` already, which is R-326.
+**#42, R-5 was a close**, read against the tree rather than assumed. Its
+successor is R-335, which has no issue.
 
 Residual issues carry the `residual` label. They are the queue after the units,
 each done or closed back to the ledger. A2 is attended. **#81, R-322, is the
@@ -373,7 +384,8 @@ issues, and #29.
 
 | branch | state |
 |---|---|
-| `relay/41` | R-4, the branch this record is on; delete after the merge |
+| `relay/42` | R-5, the branch this record is on; delete after the merge |
+| `relay/41` | R-4, merged to `main`; delete if it still exists |
 | `relay/40` | R-3, merged to `main`; delete if it still exists |
 | `relay/38` | R-1, merged to `main`; delete if it still exists |
 | `relay/79` | U61, merged to `main`; delete if it still exists |

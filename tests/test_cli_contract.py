@@ -1993,14 +1993,17 @@ def test_conformance_4_adjudication_goes_through_the_review_queue(entry, configu
     """Assertion 4, armed now that the review queue has landed (U11).
 
     WHAT IS DRIVEN, STATED PLAINLY, in the same shape assertion 6 uses for the
-    destructive verbs. Every adjudicating verb here carries a ``planned_in``
-    marker, so there is no landed one to invoke. What is driven instead is the
-    shared surface all of them must go through, once per declared adjudicating
-    verb and UNDER THAT VERB'S OWN handler key: an item is offered, it is
-    addressable by that key alone, a real command line resolves it, and a third
-    independent open of the store sees the verdict. That is behaviour rather than
-    an existence check, and it is the strongest thing available until the first
-    adjudicating verb lands.
+    destructive verbs. What is driven is the shared surface every adjudicating
+    verb goes through, once per declared adjudicating verb and UNDER THAT VERB'S
+    OWN handler key: an item is offered, it is addressable by that key alone, a
+    real command line resolves it, and a third independent open of the store sees
+    the verdict. That is behaviour rather than an existence check.
+
+    IT IS NOT A DRIVE OF THE VERB. This was written when no adjudicating verb had
+    landed. They have all landed since, and none is invoked here: the item is
+    offered by this test, so a verb that decides without offering anything to
+    the queue passes. The residual finding "Conformance 4 and 6 drive the shared
+    surface and not the landed verbs" records that gap.
 
     The static half is what bites afterwards, with no edit to this file: the
     moment a verb's module exists, its own source is walked for a comma separated
@@ -2116,14 +2119,18 @@ def test_conformance_6_destructive_verbs_refuse_without_the_session_gates(
     ``destructive``, not ``writes``, so a verb that trashes files while writing
     no database row is still covered.
 
-    WHAT IS DRIVEN, STATED PLAINLY. Every one of these entries carries a
-    ``planned_in`` marker, so there is no landed destructive verb to invoke
-    through the dispatcher yet. What is driven instead is the shared gate that
-    every one of them must pass through, once per declared destructive verb and
-    under that verb's own name. That is behaviour rather than an existence check,
-    and it is the strongest thing available until the first destructive verb
-    lands; ``tests/test_write_session.py`` drives the same three refusals through
-    a real destructive OPERATION, the backup restore, which does exist.
+    WHAT IS DRIVEN, STATED PLAINLY. What is driven is the shared gate every
+    destructive verb must pass through, once per declared destructive verb and
+    under that verb's own name. That is behaviour rather than an existence check.
+
+    IT IS NOT A DRIVE OF THE VERB. This was written when every one of these
+    entries carried a ``planned_in`` marker. Most have landed since, and none is
+    invoked here through the dispatcher, so a verb that writes before it enters
+    its session passes. ``tests/test_write_session.py`` drives the same three
+    refusals through the backup restore, and ``tests/test_adopt_apply_cli.py``
+    through ``apply_outstanding``, both below the dispatcher. The residual
+    finding "Conformance 4 and 6 drive the shared surface and not the landed
+    verbs" records that gap.
     """
     import importlib
 
