@@ -4,7 +4,21 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-11, R-10 on `relay/47`, taken from the board as issue #47
+**Last session 2026-09-11, R-11 on `relay/48`, taken from the board as issue #48
+and run as relay task 48.** The ninth residual issue worked, and the last of
+METHOD's surface group. Two of its four findings closed, two stay on the ledger.
+The CRLF absorption was three copies, not the four R-11 counted, since the
+catalog writer takes the break after a node rather than before it. The three are
+now `rbxml._absorb_lead_break`, and the goldens pass unchanged. The analysis
+watch is now driven through the database half:
+`test_a_grid_rewritten_during_a_membership_write_refuses_the_session` plants a
+real ANLZ file under the library root and asserts the `anlz-modified` refusal.
+`apply_rating_changes` stays kept, since the wrapper has grown nothing. The real
+label in two fixtures is still the author's decision about D1. Nothing new was
+filed. Six mutation rows are in `docs/mutation/r-11-rows.toml`, two checked red
+first by hand and the rest unrun, for R-329's reason.
+
+**The session before, 2026-09-11, R-10 on `relay/47`, taken from the board as issue #47
 and run as relay task 47.** The eighth residual issue worked, and the second of
 METHOD's correctness group. A fix, not a close. `rb_writer.add_memberships`
 takes one playlist and many content ids, reads what the playlist holds in one
@@ -386,6 +400,8 @@ In METHOD's serialized order, which is what picks the work:
 | | #42 | R-5, conformance 4 and 8 already drive behaviour, closed in place | DONE on `relay/42`, no guard changed, R-335 filed |
 | | #43 | R-6, the conformance drives cover sixty two landed verbs, closed in place | DONE on `relay/43`, no guard changed, nothing filed |
 | | #44 | R-7, doctor reports a trashing remote, closed in place with two rows fixed | DONE on `relay/44`, 6 rows committed and unrun (R-329), R-336 and R-337 filed |
+| | #47 | R-10, one membership call per playlist and one folder lookup per folder | DONE on `relay/47`, 8 rows committed and unrun (R-329) |
+| | #48 | R-11, the lead break helper and the watch driven through the database half | DONE on `relay/48`, 6 rows committed and unrun (R-329), two findings still open in the ledger |
 | | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
 
 **Phase E is complete with the U53 merge, so line 7 is next and it is
@@ -426,7 +442,9 @@ issues, and #29.
 
 | branch | state |
 |---|---|
-| `relay/44` | R-7, the branch this record is on; delete after the merge |
+| `relay/48` | R-11, the branch this record is on; delete after the merge |
+| `relay/47` | R-10, merged to `main`; delete if it still exists |
+| `relay/44` | R-7, merged to `main`; delete if it still exists |
 | `relay/43` | R-6, merged to `main`; delete if it still exists |
 | `relay/42` | R-5, merged to `main`; delete if it still exists |
 | `relay/41` | R-4, merged to `main`; delete if it still exists |

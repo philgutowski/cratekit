@@ -589,6 +589,35 @@ already baked into a committed golden file, so changing it means regenerating
 that golden. **Closes when:** the author decides D1's intent is broader than its
 three nouns, and both fixtures move to an invented label in one pass.
 
+**Worked 2026-09-11 on `relay/48`. Two findings closed, two stay open here.**
+
+The absorption closed, and the count above was wrong. Three writers absorb a
+LEAD break: `insert_root_playlist`, `remove_folder_node` and
+`insert_intake_playlist`. `insert_catalog_folder` absorbs the TRAILING break
+after a node it replaces in place, which is a different operation over a block
+rather than a lead-broken node, so it was left as it is and the helper's
+docstring says why. The three now call `rbxml._absorb_lead_break`.
+`tests/test_rbxml.py` and `tests/test_xml_splice_golden.py` pass unchanged, and a
+helper that absorbs nothing kills two of them.
+
+The watch closed as written.
+`test_a_grid_rewritten_during_a_membership_write_refuses_the_session` in
+`tests/test_tree_writer.py` plants a real ANLZ file under the library root, names
+that root, rewrites the file from inside `rb_writer.add_memberships`, and asserts
+the `anlz-modified` refusal naming it. Arming the session with no roots inside
+`write_tree_membership` kills it. Before this test nothing did, since every other
+membership write in that file names `root/Music`.
+
+`apply_rating_changes` is still kept. Read 2026-09-11, the `trees` wrapper is
+still one `dict` coercion and nothing else, so the condition for revisiting it
+has not arrived.
+
+The real label is untouched and still open. Its closing condition is the
+author's decision about D1's intent, which a session does not make.
+
+Six mutation rows are in `docs/mutation/r-11-rows.toml`. Two were checked red
+first by hand on a subset, and the table is unrun for R-329's reason.
+
 ---
 
 ## R-12. The membership write takes a snapshot that nothing protects

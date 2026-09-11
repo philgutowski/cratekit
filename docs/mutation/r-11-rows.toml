@@ -1,0 +1,83 @@
+# R-11, the lead break helper and the analysis watch driven through the
+# database half. Author's rows.
+#
+# The full suite is about six minutes and the driver's preflight is two full
+# runs, so this table cannot finish inside a relay task's ten minute foreground
+# call. That is R-329. Run it attended:
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r-11-rows.toml
+#
+# M1 and M3 were checked red first by hand on a subset before the record was
+# written, which is not the driver's measurement: M1 killed 2 of 110 in
+# tests/test_rbxml.py, tests/test_xml_splice_golden.py and
+# tests/test_tree_writer.py, and M3 killed the new test. The rest are unrun.
+# M1, M2 and M4 to M6 are user facing, each grows or truncates the document a
+# re-run writes. M3 is user facing, a grid rewritten mid session would report
+# clean. Each row's expected kill is in its description.
+
+name = "r-11"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_helper_absorbs_nothing"
+description = "The helper never moves start back. Expect the idempotent replace tests in test_rbxml and the intake replace case to die, since each replace leaves one blank line behind"
+file = "src/cratekit/write/rbxml.py"
+old = '''    if bytes(content[start - len(CRLF) : start]) == CRLF:
+        return start - len(CRLF)
+    return start
+'''
+new = '''    if bytes(content[start - len(CRLF) : start]) == CRLF:
+        return start
+    return start
+'''
+
+[[rows]]
+id = "M2_helper_absorbs_unconditionally"
+description = "The helper moves start back two bytes whatever sits there. Expect a remove or replace test to die on a document whose prior line is not CRLF terminated, or a byte comparison to catch two bytes of the previous line taken"
+file = "src/cratekit/write/rbxml.py"
+old = '''    if bytes(content[start - len(CRLF) : start]) == CRLF:
+        return start - len(CRLF)
+    return start
+'''
+new = '''    return start - len(CRLF)
+'''
+
+[[rows]]
+id = "M3_watch_disarmed_in_membership_write"
+description = "write_tree_membership arms the session with no analysis roots. Expect test_a_grid_rewritten_during_a_membership_write_refuses_the_session to die, and nothing else, which is the gap R-11 recorded"
+file = "src/cratekit/write/trees.py"
+old = '''        cfg, workflow=workflow, analysis_roots=watched, intent=intent
+'''
+new = '''        cfg, workflow=workflow, analysis_roots=(), intent=intent
+'''
+
+[[rows]]
+id = "M4_root_playlist_bypasses_helper"
+description = "insert_root_playlist deletes from the node's own line start. Expect test_insert_root_playlist_and_idempotent_replace to die"
+file = "src/cratekit/write/rbxml.py"
+old = '''        del content[_absorb_lead_break(content, existing.line_start) : existing.close_end]
+        root = root_node(content)
+'''
+new = '''        del content[existing.line_start : existing.close_end]
+        root = root_node(content)
+'''
+
+[[rows]]
+id = "M5_folder_removal_bypasses_helper"
+description = "remove_folder_node deletes from the node's own line start. Expect the remove_folder_node tests in test_rbxml to die on a leftover blank line"
+file = "src/cratekit/write/rbxml.py"
+old = '''    del content[_absorb_lead_break(content, target.line_start) : target.close_end]
+'''
+new = '''    del content[target.line_start : target.close_end]
+'''
+
+[[rows]]
+id = "M6_intake_replace_bypasses_helper"
+description = "insert_intake_playlist deletes from the node's own line start. Expect the intake replace case in test_rbxml to die on a leftover blank line"
+file = "src/cratekit/write/rbxml.py"
+old = '''        del content[_absorb_lead_break(content, existing.line_start) : existing.close_end]
+        replaced = True
+'''
+new = '''        del content[existing.line_start : existing.close_end]
+        replaced = True
+'''
