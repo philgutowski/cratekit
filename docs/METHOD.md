@@ -333,16 +333,16 @@ one session. The lines without an issue number are Phillip's, not a session's.
 9. Residual issues, thirteen, grouped so that one session can close several.
    Each is either done or closed back to the ledger with a comment saying why,
    and `gh issue list --repo philgutowski/cratekit --label residual --state open`
-   is the live list.
-   - **#42, R-5** first, because U59 lands the conformance assertions it
-     records as gated, so it is probably a close.
-   - The guard group: **#38 R-1**, **#40 R-3**, **#53 R-15**, **#54 R-102**.
-   - The correctness group: **#52 R-14**, **#47 R-10**, **#39 R-2**.
-   - The surface group: **#43 R-6**, **#44 R-7**, **#41 R-4**, **#48 R-11**.
-   - **#46, R-9** is on the do not touch list. Close it back to the ledger
-     with the hardware reason. Do not attempt it.
-10. Phase F explanation, over the U59 merge and the residual commits.
-11. **#29, U29.** Attended, per workflow, never batched, and never a session's
+   is the live list. The queue was worked 2026-09-10 to 2026-09-11. What remains
+   is not a session's: **#46, R-9** stays on the do not touch list, close it
+   back to the ledger with the hardware reason and do not attempt it; **#39,
+   R-2** closes when DJ_tools is retired at U29; **#80, R-324** is closed, the
+   answer being that U25 is not finished, which is the next line.
+10. **#25, U25.** The two remaining vocal CLI shells, `analyze.vocals` and
+    `metadata.mytags-vocals`. The DSP is in the tree. The original brief is
+    replaced. This is the next session.
+11. Phase F explanation, over the U59 merge and the residual commits.
+12. **#29, U29.** Attended, per workflow, never batched, and never a session's
     to take. This is the exit.
 
 ## Relay
