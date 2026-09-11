@@ -46,6 +46,7 @@ from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import (
+    analysis_store,
     config,
     convergence,
     jobs,
@@ -261,7 +262,7 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
                 # nothing and reports a clean session whatever happened to the
                 # grids. The empty-list refusal cannot catch that, because a
                 # barren list is not an empty one.
-                analysis_roots=[Path(cfg.library.root)],
+                analysis_roots=analysis_store.watch_roots(cfg),
                 workflow=INBOX_WORKFLOW,
             )
             added += report.added
@@ -522,7 +523,7 @@ def route_pending(ctx) -> Envelope:
                 declared=declared,
                 rows=rows,
                 root_exists=lambda root_id: root_id in known,
-                analysis_roots=[Path(cfg.library.root)],
+                analysis_roots=analysis_store.watch_roots(cfg),
             )
             if not routing_pass.read(cfg).outstanding(session_id):
                 _close_if_settled(cfg, session_id)

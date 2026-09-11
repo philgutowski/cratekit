@@ -83,6 +83,7 @@ from types import MappingProxyType
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.core import (
+    analysis_store,
     config,
     convergence,
     locations,
@@ -1701,8 +1702,9 @@ def rebuild_governed_tree(
             # reports a clean session whatever happened to the grids, which is
             # exactly the shape the empty-list refusal one layer down exists to
             # stop and cannot see, because a barren list is not an empty one.
-            # Every other caller in this package names the library root.
-            analysis_roots=[Path(cfg.library.root)],
+            # Every other caller in this package names the library root, and
+            # the share with it when the database sits outside the root (R-14).
+            analysis_roots=analysis_store.watch_roots(cfg),
             vocal_threshold=vocal_threshold,
             workflow=workflow,
         )

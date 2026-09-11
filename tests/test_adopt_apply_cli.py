@@ -247,6 +247,53 @@ def test_the_analysis_watch_is_armed_on_the_library_root(acknowledged, declared)
         )
 
 
+def test_the_analysis_watch_reaches_a_share_outside_the_library_root(
+    acknowledged, declared, tmp_path
+):
+    """R-14. The grids live beside the database, and the database may be elsewhere.
+
+    An acknowledged database outside the library root takes its analysis share
+    with it, so the library root holds no grid at all and a watch armed there
+    alone fingerprints nothing. The grid here is rewritten from inside the pass
+    and has to be seen, which the library root alone cannot do: measured by the
+    assertion before the drive rather than argued.
+    """
+    share = tmp_path / "home" / "rekordbox" / "share"
+    outside = replace(
+        acknowledged,
+        library=replace(
+            acknowledged.library,
+            db_path=share.parent / "master.db",
+            db_outside_root_acknowledged_on="2026-09-11",
+        ),
+    )
+    plan, _path = _one_track_plan(outside, declared)
+    grid = share / "PIONEER" / "USBANLZ" / "8d2" / "one" / "ANLZ0000.DAT"
+    grid.parent.mkdir(parents=True)
+    grid.write_bytes(b"not a real grid, and never written by this product")
+    assert grid not in session.analysis_files_under([outside.library.root]), (
+        "the grid sits under the library root, so this cannot show the root alone misses it"
+    )
+
+    def tag_value(_entry, _declared):
+        grid.write_bytes(b"a rewritten grid, longer than the one that was there")
+        return "Adopted Genre"
+
+    with pytest.raises(CratekitError) as excinfo:
+        apply_cli.apply_outstanding(
+            outside,
+            plan,
+            declared,
+            actor="a-person",
+            tag_value=tag_value,
+            identity_provider=_matching(outside),
+            mount_enumerator=lambda: (),
+        )
+    cause = excinfo.value.cause
+    assert cause.reason == "anlz-modified", cause
+    assert any(str(grid) in line for line in cause.detail["changed"]), cause.detail
+
+
 def test_the_workflow_name_and_the_registry_verb_name_cannot_drift():
     """One verb name lives in two modules, and nothing compared them.
 

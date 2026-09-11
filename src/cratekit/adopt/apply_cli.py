@@ -71,7 +71,15 @@ from cratekit.adopt import artifacts, collection, scan, shell
 from cratekit.adopt import plan as plan_engine
 from cratekit.adopt.approval import grant
 from cratekit.cli.output import Envelope
-from cratekit.core import config, jobs, rb_writer, session, taxonomy, tree_registry
+from cratekit.core import (
+    analysis_store,
+    config,
+    jobs,
+    rb_writer,
+    session,
+    taxonomy,
+    tree_registry,
+)
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import trees
@@ -269,7 +277,8 @@ def apply_outstanding(
     nothing when nobody names a root, which is worse than an absent guard because
     it reports a clean session either way. A tag write can touch any file under
     the library, so the library root is the honest answer and not a conservative
-    one.
+    one. The analysis share rides with it when the database sits outside the
+    root, because in that layout the root holds no grid at all (R-14).
 
     THE TWO PREFLIGHT SEAMS ARE FORWARDED AS THEY ARRIVE, ``None`` included.
     ``assert_gates`` reads ``None`` as "resolve the default", which is exactly
@@ -290,7 +299,7 @@ def apply_outstanding(
     them apart by the report.
     """
     gathered: dict[tuple[str, str], list[str]] = {}
-    watched: tuple[Path, ...] = (cfg.library.root,)
+    watched: tuple[Path, ...] = analysis_store.watch_roots(cfg)
     with session.assert_gates(
         cfg,
         workflow=WORKFLOW,
@@ -776,10 +785,11 @@ def _write_memberships(
             plan=membership_locations(plan.applicable(), declared),
             rows=collection.read_collection(cfg),
             root_exists=lambda root_id: root_id in known,
-            # THE LIBRARY ROOT, never empty. The watch it arms is the runtime half
-            # of R17's fifth surface and it watches nothing when nobody names a
-            # root, which reports a clean session either way.
-            analysis_roots=(cfg.library.root,),
+            # THE LIBRARY ROOT and the analysis share, never empty. The watch it
+            # arms is the runtime half of R17's fifth surface and it watches
+            # nothing when nobody names a root, which reports a clean session
+            # either way.
+            analysis_roots=analysis_store.watch_roots(cfg),
             prefix_map=collection.prefix_rules(cfg),
         )
     finally:

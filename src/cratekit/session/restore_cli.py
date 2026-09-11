@@ -79,7 +79,7 @@ from typing import Any
 # whose name would otherwise be ambiguous says what it is instead.
 from cratekit.cli import exit_codes as reservations
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import config, restore
+from cratekit.core import analysis_store, config, restore
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
 from cratekit.core.exit_codes import Remedy
 from cratekit.modules.tools import backup
@@ -511,7 +511,9 @@ def restore_under_one_session(
     ``analysis_roots`` NAMES THE LIBRARY ROOT rather than being left empty. A
     restore replaces the database and everything coupled to it, so anything under
     the library can move, and a watch that names nothing watches nothing while
-    still reporting a clean session.
+    still reporting a clean session. The analysis share rides with it when the
+    database sits outside the root, because in that layout the root holds no
+    grid at all (R-14).
 
     IT REPORTS BOTH HALVES SEPARATELY, and the earlier shape that returned only
     the capture outcome was wrong in a way a person would have met. A run that
@@ -522,7 +524,7 @@ def restore_under_one_session(
     converged over state nothing looked at, and ``pulled`` carries the other half
     so the absence of one is not read as the absence of both.
     """
-    watched: tuple[Path, ...] = (Path(cfg.library.root),)
+    watched: tuple[Path, ...] = analysis_store.watch_roots(cfg)
     with restore.recovery_session(
         cfg,
         analysis_roots=watched,

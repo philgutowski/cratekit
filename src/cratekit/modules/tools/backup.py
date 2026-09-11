@@ -68,7 +68,7 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
 
-from cratekit.core import backup_facts, binaries, config, session
+from cratekit.core import analysis_store, backup_facts, binaries, config, session
 from cratekit.core.processes import (
     REKORDBOX_PROCESSES,
     ProcessLister,
@@ -132,6 +132,12 @@ LIST_SNAPSHOTS = "list-snapshots"
 #: table.
 ARCHIVE_LISTING_FAILED = "archive-listing-failed"
 ARCHIVE_PURGE_FAILED = "archive-purge-failed"
+
+#: The warning code for an analysis share neither portion reaches (R-14). Not a
+#: refusal for the same reason as the two above: the database portion still runs
+#: and still protects the database, and what it cannot say on its own is that
+#: the grids beside it are in no copy at all.
+ANALYSIS_SHARE_NOT_CARRIED = "analysis-share-not-carried"
 
 #: Labels whose command TRANSFERS data, so a dry run must neutralize them.
 #: Derived membership, checked by a test, so a transferring command added later
@@ -246,12 +252,18 @@ class PortionPlan:
     ``refusal`` and ``commands`` are mutually exclusive by construction: a
     refused portion carries no commands, so a caller cannot execute a plan it was
     told would not run.
+
+    ``warnings`` is what the plan already knows the run will NOT cover, in the
+    same ``code`` and ``message`` pair :class:`PortionOutcome` carries. It rides
+    through to the outcome whether or not the portion runs, because it is a fact
+    about what the backup reaches rather than about how this run went.
     """
 
     portion: backup_facts.Portion
     refusal: Refusal | None = None
     detail: str = ""
     commands: tuple[Command, ...] = field(default_factory=tuple)
+    warnings: tuple[Mapping[str, str], ...] = field(default_factory=tuple)
 
     @property
     def will_run(self) -> bool:
@@ -571,6 +583,7 @@ def _plan_database(
     process_lister: ProcessLister | None,
     settings_dirs: Sequence[Path] | None,
 ) -> PortionPlan:
+    uncovered = _uncovered_analysis_share(cfg)
     running = rekordbox_processes_running(lister=process_lister)
     if running:
         return PortionPlan(
@@ -582,6 +595,7 @@ def _plan_database(
                 f"missing whatever the agent was writing, which is worse than no "
                 f"copy at all. Previous dated snapshots remain the backstop."
             ),
+            warnings=uncovered,
         )
     database = config.state_path("rekordbox_db", cfg)
     if not database.is_file():
@@ -589,6 +603,7 @@ def _plan_database(
             portion=backup_facts.Portion.DATABASE,
             refusal=Refusal.DATABASE_ABSENT,
             detail=f"no rekordbox database at the configured path {database}",
+            warnings=uncovered,
         )
 
     destination = f"{cfg.backup.db_dest_root}/{stamp}"
@@ -627,7 +642,42 @@ def _plan_database(
                 ),
             )
         )
-    return PortionPlan(portion=backup_facts.Portion.DATABASE, commands=tuple(commands))
+    return PortionPlan(
+        portion=backup_facts.Portion.DATABASE, commands=tuple(commands), warnings=uncovered
+    )
+
+
+def _uncovered_analysis_share(cfg: config.Config) -> tuple[Mapping[str, str], ...]:
+    """A warning when the analysis share sits where neither portion reaches.
+
+    R-14. The share beside the database holds every beat grid, and the mirror
+    carries it only because it normally sits under the library root: the mirror
+    excludes the database fileset by name and nothing else. A database outside the
+    root is an acknowledged configuration, and in that layout the share is outside
+    it too, so the mirror never sees it and the snapshot copies the database file
+    alone. A restore from that backup brings back rows without their grids, and
+    the rows look fine.
+
+    SAID RATHER THAN CARRIED. Carrying it is a choice with a real cost, the share
+    is gigabytes and a dated snapshot copies whole, and it is recorded as a
+    residual with its options rather than made here. What is not acceptable is a
+    backup that reports complete over the one tree it exists to protect.
+    """
+    share = analysis_store.share_root(cfg)
+    if analysis_store.watch_roots(cfg) == (Path(cfg.library.root),):
+        return ()
+    return (
+        {
+            "code": ANALYSIS_SHARE_NOT_CARRIED,
+            "message": (
+                f"the analysis share {share} sits outside the library root "
+                f"{cfg.library.root}, so neither the mirror nor the database "
+                f"snapshot carries it. It holds this library's beat grids, and a "
+                f"database restored without it brings back every row without its "
+                f"analysis"
+            ),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -696,13 +746,17 @@ def run_backup(
         if entry.refusal is not None:
             outcomes.append(
                 PortionOutcome(
-                    portion=entry.portion, ran=False, refusal=entry.refusal, detail=entry.detail
+                    portion=entry.portion,
+                    ran=False,
+                    refusal=entry.refusal,
+                    detail=entry.detail,
+                    warnings=entry.warnings,
                 )
             )
             continue
 
         results: list[CommandResult] = []
-        warnings: list[Mapping[str, str]] = []
+        warnings: list[Mapping[str, str]] = list(entry.warnings)
         failed: CommandResult | None = None
         for command in entry.commands:
             if command.label == PRUNE_ARCHIVE:
@@ -1188,6 +1242,7 @@ def plan_payload(plan: BackupPlan) -> dict:
                 "commands": [
                     {"label": c.label, "argv": list(c.argv)} for c in entry.commands
                 ],
+                "warnings": [dict(warning) for warning in entry.warnings],
             }
             for entry in plan.portions
         ],

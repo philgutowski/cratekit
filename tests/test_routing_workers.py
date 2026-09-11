@@ -658,8 +658,13 @@ def planted_grid(configured) -> Path:
     that names the music directory fingerprints an empty set, which reports a
     clean session whatever happened to the grids. That is a barren watch rather
     than an absent one, so the empty-list refusal one layer down cannot see it.
+
+    IN THE SHARE BESIDE THE DATABASE, which is the analysis store (R-14). The
+    ``PIONEER/USBANLZ/P0xx`` tree at the volume root is the USB export cache, and
+    no row's analysis resolves into it.
     """
-    grid = Path(configured.library.root) / "PIONEER" / "USBANLZ" / "P001" / "ANLZ0000.DAT"
+    share = Path(configured.library.db_path).parent / "share"
+    grid = share / "PIONEER" / "USBANLZ" / "8d2" / "one" / "ANLZ0000.DAT"
     grid.parent.mkdir(parents=True)
     grid.write_bytes(b"PMAI")
     return grid
