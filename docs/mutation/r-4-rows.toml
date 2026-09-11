@@ -1,0 +1,73 @@
+# R-4, the extras guard in registry.Entry and the toggle round trip. Author's
+# rows, UNRUN.
+#
+# The full suite is about six minutes and the driver's preflight is two full
+# runs, so this table cannot finish inside a relay task's ten minute foreground
+# call. That is R-329. Run it attended:
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r-4-rows.toml
+#
+# This is a static registry, so the table is scoped to the two new guards and
+# a sample of the toggle path the new round trip test drives. M1 and M2 are
+# maintainer facing: they refuse an entry at import. M3 to M5 are user facing,
+# a verb reachable in a profile that should not have it. M6 is an existing guard
+# sampled for comparison. Each row's expected kill is in its description.
+
+name = "r-4"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_extras_any_module"
+description = "Let extras name another module. Expect the 'is not this verb's own module' row to die"
+file = "src/cratekit/cli/registry.py"
+old = '''        if self.extras is not None and self.extras != self.module_id:
+'''
+new = '''        if self.extras is not None and False:
+'''
+
+[[rows]]
+id = "M2_extras_not_backed"
+description = "Let extras name a module with no extras group. Expect the 'has no extras group' row to die"
+file = "src/cratekit/cli/registry.py"
+old = '''        if self.extras is not None and self.extras not in profiles.EXTRAS_BACKED:
+'''
+new = '''        if self.extras is not None and False:
+'''
+
+[[rows]]
+id = "M3_parser_ignores_membership"
+description = "build_parser attaches every verb regardless of profile. Expect every round trip case and the slim removal tests to die"
+file = "src/cratekit/cli/__init__.py"
+old = '''        if not entry.available_to(resolved):
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "M4_available_always"
+description = "available_to answers True for every verb. Expect the round trip cases and the master and backup slim tests to die"
+file = "src/cratekit/cli/registry.py"
+old = '''        return self.module_id is None or self.module_id in membership.available
+'''
+new = '''        return True
+'''
+
+[[rows]]
+id = "M5_explicit_off_ignored"
+description = "An explicit toggle can add but never subtract. Expect every round trip case's full minus toggle assertion to die"
+file = "src/cratekit/core/profiles.py"
+old = '''        else:
+            enabled.discard(name)
+'''
+new = '''        else:
+            pass
+'''
+
+[[rows]]
+id = "M6_install_command_any_module"
+description = "Sampled existing guard, install_command names an extras group for every module. Expect the favorites None assertion in test_config to die"
+file = "src/cratekit/core/profiles.py"
+old = '''    return module if module in EXTRAS_BACKED else None
+'''
+new = '''    return module
+'''

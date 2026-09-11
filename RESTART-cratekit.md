@@ -4,7 +4,19 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-10, R-3 on `relay/40`, taken from the board as issue #40
+**Last session 2026-09-10, R-4 on `relay/41`, taken from the board as issue #41
+and run as relay task 41.** The fourth residual issue worked, and the first of
+METHOD's surface group. R-4's written closing condition was already true: each
+of the nine toggles U5 declared gates a landed verb and none carries
+`planned_in`. `registry.Entry` now refuses an `extras` group that is not the
+verb's own `module_id` or is missing from `EXTRAS_BACKED`, because the stub
+prints that field as the install command and nothing tied it to pyproject. A
+derived parametrized test drives all thirteen toggles with landed verbs through
+the resolver and parser in both directions. R-4 is closed in place, nothing new
+was filed, and six mutation rows are committed in `docs/mutation/r-4-rows.toml`
+and unrun, for R-329's reason.
+
+**The session before, 2026-09-10, R-3 on `relay/40`, taken from the board as issue #40
 and run as relay task 40.** The third residual issue worked, and the second of
 METHOD's guard group. `scripts/scan_repo.py` REFUSES a tracked archive now
 instead of skipping it, by suffix and by header, so a renamed archive is refused
@@ -14,7 +26,7 @@ place. R-334 is the list still being closed, plus the same silent skip for a
 `.db` or `.sqlite` file, and the choice there is Phillip's. Fifteen mutation rows
 are committed in `docs/mutation/r-3-rows.toml` and unrun, for R-329's reason.
 
-**The session before, 2026-09-10, R-1 on `relay/38`, taken from the board as
+**Two sessions back, 2026-09-10, R-1 on `relay/38`, taken from the board as
 issue #38 and run as relay task 38.** The second residual issue worked rather than a unit,
 from the guard group in METHOD's ninth line. `crate doctor`'s `repo.commit_hook`
 now reads every hook type `.pre-commit-config.yaml` names and checks each
@@ -146,13 +158,14 @@ tree, which is the whole of what the entry now says.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
 
-The last measured suite was **7312 passed and 1 skipped**, in 359 seconds, taken
-on `relay/40` on a committed tree. Against R-1's 7275 BY TOTAL ONLY: the 37 are
-this branch's own archive tests in `tests/test_portability.py`, 13 by name, 1
-for the session tarball, 17 by header and 6 quiet. That file collected 60 on
-`main`, 77 after the build and 97 after the review round. **Main's
-highest residual is R-334 once this branch merges**, no duplicate headings, no
-heading deleted, and R-3 gained its closing note in place rather than moving.
+The last measured suite was **7328 passed and 1 skipped**, in 351 seconds, taken
+on `relay/41` on a committed tree. Against R-3's 7312 the 16 are this branch's
+own, reconciled by identifier in `tests/test_cli_contract.py`: two rejection
+rows in `test_an_entry_missing_its_metadata_fails_to_register`,
+`test_every_live_toggle_is_driven_by_the_toggle_test_below`, and thirteen cases
+of `test_a_module_toggle_alone_switches_its_landed_verbs_on_and_off`. **Main's
+highest residual stays R-334 once this branch merges**, no duplicate headings, no
+heading deleted, and R-4 gained its closing note in place rather than moving.
 Append only, and gaps are fine.
 
 **The kebab literal pin in `tests/test_reserved_causes.py` moved 391 to 401.**
@@ -317,6 +330,7 @@ In METHOD's serialized order, which is what picks the work:
 | | #79 | U61, `crate sync all` composes the source increments | DONE on `relay/79`, no mutation table (R-329) |
 | 9 | #38 | R-1, doctor checks every configured hook type | DONE on `relay/38`, 25 of 25 rows killing |
 | | #40 | R-3, the scan refuses a tracked archive | DONE on `relay/40`, 15 rows committed and unrun (R-329) |
+| | #41 | R-4, extras tied to their module and every toggle driven | DONE on `relay/41`, 6 rows committed and unrun (R-329) |
 | | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
 
 **Phase E is complete with the U53 merge, so line 7 is next and it is
@@ -359,7 +373,8 @@ issues, and #29.
 
 | branch | state |
 |---|---|
-| `relay/40` | R-3, the branch this record is on; delete after the merge |
+| `relay/41` | R-4, the branch this record is on; delete after the merge |
+| `relay/40` | R-3, merged to `main`; delete if it still exists |
 | `relay/38` | R-1, merged to `main`; delete if it still exists |
 | `relay/79` | U61, merged to `main`; delete if it still exists |
 | `relay/78` | U60, merged to `main`; delete if it still exists |

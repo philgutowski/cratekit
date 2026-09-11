@@ -169,6 +169,30 @@ existing extras assertion would catch the mismatch.
 `planned_in` marker clears, at which point the toggle is exercised end to end
 rather than only declared.
 
+**Closed 2026-09-10 on `relay/41`, both halves.** The closing condition was
+already true on the tree: each of the nine toggles gates at least one landed
+verb and none of those verbs carries `planned_in`. The only markers left are
+U25's two vocals entries, and `vocals` is not one of the nine. What was not
+true is "exercised end to end", so
+`test_a_module_toggle_alone_switches_its_landed_verbs_on_and_off` in
+`tests/test_cli_contract.py` now drives every toggle that gates a landed verb,
+thirteen on the tree, through the real resolver and the real parser: off in
+slim, on with that toggle alone, off again when subtracted from full. The
+parametrisation is derived from the registry, and a second test stops it
+shrinking silently.
+
+The still open half was sharper than the entry said. `Entry.extras` is the text
+the missing extra stub prints as the install command, and nothing tied it to the
+entry's own module, to `EXTRAS_BACKED`, or to pyproject. Driven: an entry giving
+`setbuilder` an extras group registered cleanly and printed `pip install
+'cratekit[setbuilder]'` for a group pyproject does not declare, with
+`tests/test_config.py` still green. `Entry.__post_init__` now refuses an extras
+group that is not the verb's own `module_id` and one `EXTRAS_BACKED` does not
+carry, and `tests/test_config.py` already holds `EXTRAS_BACKED` equal to
+pyproject, so the chain from a verb to the file pip reads is closed. The built
+in review found no defect. Six mutation rows are committed in
+`docs/mutation/r-4-rows.toml` and unrun, for R-329's reason.
+
 ---
 
 ## R-5. Four conformance assertions are written in full and gated on units that have not landed
