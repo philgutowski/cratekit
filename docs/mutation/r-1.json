@@ -2,13 +2,13 @@
   "name": "r-1",
   "pass_kind": "light",
   "branch": "relay/38",
-  "head": "612ee9d",
-  "when": "2026-09-11 01:46 UTC",
+  "head": "c6a2ed3",
+  "when": "2026-09-11 02:13 UTC",
   "valid": true,
   "invalid_reason": "",
   "baseline_collected": 7276,
   "baseline_exit": 0,
-  "pytest_runs": 27,
+  "pytest_runs": 4,
   "control": {
     "id": "NULL_CONTROL",
     "description": "Automatic control: append a comment line to src/cratekit/cli/doctor.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
@@ -476,7 +476,7 @@
       "kind": "mutation",
       "surface": "user",
       "pairs_with": null,
-      "fingerprint": "8b378be021145898",
+      "fingerprint": "8e78e8ccbdb5e6ff",
       "subset": [
         "tests/test_cli_contract.py",
         "tests/test_config.py",
@@ -484,20 +484,22 @@
         "tests/test_packaging.py"
       ],
       "subset_reason": "test files importing cratekit.cli.doctor",
-      "status": "refused",
-      "deaths": 0,
-      "collected": 0,
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1005,
       "baseline_collected": 1005,
       "collect_drift": false,
       "collect_errors": [],
-      "killed": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_commit_msg_hook_that_cannot_be_read_is_unknown_not_missing"
+      ],
       "promoted": false,
       "subset_deaths": null,
-      "note": "old text is not present in the target; the row cannot be applied. Copy the text out of the file rather than retyping it.",
-      "runs": 0,
+      "note": "",
+      "runs": 1,
       "head_verified": true,
-      "old": "        except (OSError, UnicodeDecodeError) as exc:\n            # The same split the pre-commit hook makes above\n",
-      "new": "        except (OSError, UnicodeDecodeError) as exc:\n            continue\n            # The same split the pre-commit hook makes above\n"
+      "old": "        except (OSError, UnicodeDecodeError) as exc:\n            # The same split the pre-commit hook makes above:",
+      "new": "        except (OSError, UnicodeDecodeError) as exc:\n            continue\n            # The same split the pre-commit hook makes above:"
     },
     {
       "id": "T15_other_dispatch",

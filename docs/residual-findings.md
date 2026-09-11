@@ -45,6 +45,23 @@ bearing, but the doctor check should look for **every** hook type this
 repository configures rather than the one it happened to have when this was
 written.
 
+**Closed 2026-09-10 on `relay/38`, both halves.** `repo.commit_hook` in
+`src/cratekit/cli/doctor.py` reads the configuration the pre-commit hook
+dispatches to and derives every hook type it names: each hook's `stages`,
+`default_stages` and `default_install_hook_types`, legacy spellings mapped,
+`manual` dropped. Each installed hook is held to the same dispatch requirements
+the pre-commit hook already was, and to naming the same configuration. Every
+remedy is the exact line, `pre-commit install --hook-type pre-commit --hook-type
+commit-msg`, carrying `--config` when the configuration is not the default. A
+configuration it cannot read, parse, or understand is a FAIL with a sentence,
+never a fall back to the one type the check used to know.
+
+Driven on the primary checkout the same day, it FAILs: `.git/hooks/commit-msg`
+is absent there, so the closing check has never run locally. That is the gap
+this entry described, measured on the tree rather than on a fixture. Twenty five
+mutation rows, every one killing, are in `docs/mutation/r-1.md`. The one
+conservative call it made is R-333.
+
 ---
 
 ## R-2. Four live portability and layering violations in the source repository
@@ -14812,3 +14829,31 @@ the registry refusal on the next pass.
 
 **Not fixed here** because a cause carries one reason and one remediation by
 contract, and a composite cause is a vocabulary change.
+
+---
+
+## R-333. A checkout without the dev extra fails the commit hook check with every hook installed
+
+**Found:** closing R-1, 2026-09-10.
+
+The hook types are read from `.pre-commit-config.yaml` with PyYAML, which arrives
+with the `dev` extra through pre-commit and is not a runtime dependency. A
+checkout whose interpreter cannot import it gets FAIL at `repo.commit_hook`,
+naming `pip install -e '.[dev]'`, even when both hooks are installed and
+pre-commit itself runs from somewhere else, a pipx or Homebrew install.
+
+**Measured cost.** Driven by
+`tests/test_doctor.py::test_no_yaml_reader_is_unknown_rather_than_one_hook_type`,
+and `crate doctor` exits non zero over it. Reachability on a real machine is
+unmeasured: no checkout without the dev extra was driven.
+
+**The decision is Phillip's.** (a) Keep the FAIL, the conservative call taken
+here, because every alternative can report green over the gap R-1 exists to
+close. (b) Report INFO when PyYAML is missing and both default hook files exist.
+(c) Read the stages with a narrow text reader and no parser, which misses block
+style lists and so under reports.
+
+**A smaller second leg.** When the default configuration cannot be read at all,
+the fresh clone install line falls back to naming only the pre-commit type,
+which is the one line trap R-1 was widened over. The check reports the
+configuration itself as soon as that hook exists, so the gap lasts one run.
