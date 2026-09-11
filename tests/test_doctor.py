@@ -863,6 +863,178 @@ def test_a_worktree_finds_the_hook_in_the_common_git_directory(tmp_path):
     assert doctor._git_dir(tmp_path / "main") == (common, None, None)
 
 
+#: The shape of this repository's own configuration that decides the answer: one
+#: hook on the default stage and one on the commit-msg stage.
+TWO_STAGE_CONFIG = (
+    "repos:\n"
+    "  - repo: local\n"
+    "    hooks:\n"
+    "      - id: scan\n"
+    "        name: scan\n"
+    "        entry: 'true'\n"
+    "        language: system\n"
+    "      - id: closing\n"
+    "        name: closing\n"
+    "        entry: 'true'\n"
+    "        language: system\n"
+    "        stages: [commit-msg]\n"
+)
+
+#: What pre-commit's installer writes for the second type: the same template,
+#: bound to the other stage.
+INSTALLED_COMMIT_MSG_HOOK = INSTALLED_HOOK.replace(
+    "--hook-type=pre-commit", "--hook-type=commit-msg"
+)
+
+TWO_STAGE_COMMAND = "pre-commit install --hook-type pre-commit --hook-type commit-msg"
+
+
+def two_stage_checkout(root: Path, *, commit_msg: str | None = INSTALLED_COMMIT_MSG_HOOK):
+    """A synthetic checkout configured for two stages, with the pre-commit hook installed."""
+    hooked_checkout(root)
+    (root / ".pre-commit-config.yaml").write_text(TWO_STAGE_CONFIG)
+    if commit_msg is not None:
+        (root / ".git" / "hooks" / "commit-msg").write_text(commit_msg)
+    return root
+
+
+def test_a_configured_commit_msg_stage_with_no_hook_is_refused(library, tmp_path):
+    """The widened half of the residual finding "The commit hook is off by default
+    on a fresh clone".
+
+    `pre-commit install` alone writes the pre-commit hook and nothing else, so a
+    clone set up from a one-line instruction has the scan and silently lacks the
+    closing check on the commit-msg stage. The check looked at one file and said
+    green over that clone.
+    """
+    finding = hook_finding(library, two_stage_checkout(tmp_path / "checkout", commit_msg=None))
+    assert finding.status is doctor.Status.FAIL, finding.detail
+    assert "no commit-msg hook" in finding.detail
+    assert TWO_STAGE_COMMAND in finding.detail
+
+
+def test_every_configured_hook_type_installed_passes_the_check(library, tmp_path):
+    """The other half of every guard: the correct setup is green, and says why."""
+    finding = hook_finding(library, two_stage_checkout(tmp_path / "checkout"))
+    assert finding.status is doctor.Status.OK, finding.detail
+    assert "commit-msg" in finding.detail
+
+
+def test_a_commit_msg_hook_installed_for_another_stage_is_refused(library, tmp_path):
+    """A pre-commit hook copied into the commit-msg slot runs the scan, not the closing check."""
+    checkout = two_stage_checkout(tmp_path / "checkout", commit_msg=INSTALLED_HOOK)
+    finding = hook_finding(library, checkout)
+    assert finding.status is doctor.Status.FAIL, finding.detail
+    assert "--hook-type=commit-msg" in finding.detail
+    assert TWO_STAGE_COMMAND in finding.detail
+
+
+def test_a_fresh_clone_is_told_the_whole_install_line(library, tmp_path):
+    """R-1's own scenario, a clone with no hook at all, gets the line that installs both."""
+    checkout = tmp_path / "checkout"
+    (checkout / ".git" / "hooks").mkdir(parents=True)
+    (checkout / ".pre-commit-config.yaml").write_text(TWO_STAGE_CONFIG)
+    finding = hook_finding(library, checkout)
+    assert finding.status is doctor.Status.FAIL, finding.detail
+    assert "no pre-commit hook" in finding.detail
+    assert TWO_STAGE_COMMAND in finding.detail
+
+
+def test_a_commit_msg_hook_that_cannot_be_read_is_unknown_not_missing(library, tmp_path):
+    """The split the pre-commit hook already makes, carried to every other type."""
+    checkout = two_stage_checkout(tmp_path / "checkout")
+    other = checkout / ".git" / "hooks" / "commit-msg"
+    other.chmod(0o000)
+    try:
+        finding = hook_finding(library, checkout)
+    finally:
+        other.chmod(0o644)
+    assert finding.status is doctor.Status.FAIL, finding.detail
+    assert "unknown rather than no" in finding.detail
+    assert "no commit-msg hook" not in finding.detail
+    assert finding.remedy is Remedy.GRANT_PATH_ACCESS
+
+
+def test_a_configuration_that_does_not_parse_is_not_read_as_one_hook_type(library, tmp_path):
+    """Falling back to the floor would report green over the gap this check closes."""
+    checkout = two_stage_checkout(tmp_path / "checkout", commit_msg=None)
+    (checkout / ".pre-commit-config.yaml").write_text("repos: [\n")
+    finding = hook_finding(library, checkout)
+    assert finding.status is doctor.Status.FAIL, finding.detail
+    assert "not valid YAML" in finding.detail
+
+
+def test_no_yaml_reader_is_unknown_rather_than_one_hook_type(library, tmp_path, monkeypatch):
+    """PyYAML arrives with the dev extra, not the runtime, so its absence is reachable."""
+    monkeypatch.setitem(sys.modules, "yaml", None)
+    finding = hook_finding(library, two_stage_checkout(tmp_path / "checkout"))
+    assert finding.status is doctor.Status.FAIL, finding.detail
+    assert "PyYAML is not importable" in finding.detail
+    assert "pip install -e '.[dev]'" in finding.detail
+
+
+def _stage_config(stages: str) -> str:
+    return (
+        "repos:\n"
+        "  - repo: local\n"
+        "    hooks:\n"
+        "      - id: one\n"
+        "        name: one\n"
+        "        entry: 'true'\n"
+        "        language: system\n"
+        f"        stages: {stages}\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("repos: []\n", ("pre-commit",)),
+        (TWO_STAGE_CONFIG, ("pre-commit", "commit-msg")),
+        ("default_install_hook_types: [pre-push]\nrepos: []\n", ("pre-commit", "pre-push")),
+        # A legacy spelling names the hook it always named.
+        ("default_stages: [push]\nrepos: []\n", ("pre-commit", "pre-push")),
+        (_stage_config("[commit, merge-commit]"), ("pre-commit", "pre-merge-commit")),
+        # Manual is run by hand and has no git hook to install.
+        (_stage_config("[manual]"), ("pre-commit",)),
+        # Named twice, needed once, in first-named order.
+        (_stage_config("[prepare-commit-msg, commit-msg, prepare-commit-msg]"),
+         ("pre-commit", "prepare-commit-msg", "commit-msg")),
+    ],
+)
+def test_the_hook_types_a_configuration_needs(tmp_path, text, expected):
+    config_file = tmp_path / ".pre-commit-config.yaml"
+    config_file.write_text(text)
+    assert doctor._configured_hook_types(config_file) == (expected, None, None)
+
+
+@pytest.mark.parametrize(
+    "text, because",
+    [
+        (_stage_config("[on-commit]"), "'on-commit'"),
+        (_stage_config("[{stage: commit}]"), "installs no hook for"),
+        ("- just\n- a list\n", "is not a pre-commit configuration"),
+    ],
+)
+def test_a_configuration_this_cannot_understand_is_a_sentence(tmp_path, text, because):
+    """An unknown stage is not a stage that needs nothing."""
+    config_file = tmp_path / ".pre-commit-config.yaml"
+    config_file.write_text(text)
+    types, problem, _remedy = doctor._configured_hook_types(config_file)
+    assert types == ()
+    assert problem is not None and because in problem
+
+
+def test_this_repositorys_own_configuration_needs_both_hook_types():
+    """Pinned against the tree rather than a fixture authored beside the reader."""
+    root = doctor._checkout_root()
+    if root is None:  # pragma: no cover - an installed wheel has no checkout
+        return
+    types, problem, _remedy = doctor._configured_hook_types(root / ".pre-commit-config.yaml")
+    assert problem is None, problem
+    assert types == ("pre-commit", "commit-msg")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. The wizard
 # ═══════════════════════════════════════════════════════════════════════════

@@ -1929,7 +1929,132 @@ _HOOK_CONFIG_DEFAULT = ".pre-commit-config.yaml"
 #: What a generated pre-commit hook actually contains: a call into the tool's own
 #: hook implementation, bound to the stage it was installed for.
 _HOOK_DISPATCH = "hook-impl"
-_HOOK_STAGE = "--hook-type=pre-commit"
+
+#: Every git hook type pre-commit can install. Copied from its own constants
+#: rather than imported, because this check runs in checkouts that never
+#: installed the dev extra, and it must not need the tool in order to report that
+#: the tool's hooks are missing.
+_HOOK_TYPES = frozenset(
+    {
+        "commit-msg",
+        "post-checkout",
+        "post-commit",
+        "post-merge",
+        "post-rewrite",
+        "pre-commit",
+        "pre-merge-commit",
+        "pre-push",
+        "pre-rebase",
+        "prepare-commit-msg",
+    }
+)
+
+#: The legacy stage spellings pre-commit still accepts, and the hook each one names.
+_STAGE_ALIASES = {"commit": "pre-commit", "merge-commit": "pre-merge-commit", "push": "pre-push"}
+
+
+def _config_path(named: str, root: Path) -> Path:
+    """Where a configuration name from a hook's dispatch line points.
+
+    Relative names are resolved by pre-commit against the repository it runs in,
+    which is this one.
+    """
+    configured = Path(named)
+    return configured if configured.is_absolute() else root / configured
+
+
+def _configured_hook_types(
+    config_file: Path,
+) -> tuple[tuple[str, ...], str | None, Remedy | None]:
+    """Every hook type ``config_file`` needs installed, pre-commit first, or why that is unknown.
+
+    THE WIDENED HALF OF THE RESIDUAL FINDING "The commit hook is off by default on
+    a fresh clone". ``pre-commit install`` on its own writes the pre-commit hook
+    and nothing else, and this repository also runs a check on the commit-msg
+    stage. A clone with a perfectly good pre-commit hook and no commit-msg hook
+    reported green here while that check never ran. So the answer is read from
+    the configuration rather than assumed to be the one type the check happened
+    to know when it was written.
+
+    A type is needed when the configuration NAMES it: a hook's ``stages``, the
+    ``default_stages``, or ``default_install_hook_types``. A hook that names no
+    stage runs on every stage that is installed, which makes no further type
+    necessary, so pre-commit itself is the floor and is always first.
+
+    UNKNOWN IS NOT ONE. A configuration this cannot read, parse, or understand
+    comes back as a sentence rather than as ``("pre-commit",)``, because that
+    tuple is the answer that reports green over exactly the gap this exists to
+    close.
+    """
+    try:
+        text = config_file.read_text()
+    except (OSError, UnicodeDecodeError) as exc:
+        return (
+            (),
+            f"{config_file} could not be read ({exc})",
+            access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
+        )
+    try:
+        # The dev extra's, through pre-commit. Not a runtime dependency, and not
+        # worth making one for a check that only speaks in a checkout.
+        import yaml
+    except ImportError:
+        return (
+            (),
+            (
+                f"PyYAML is not importable from this interpreter, so the hook types "
+                f"{config_file.name} configures could not be read. Install the dev "
+                f"extra, `pip install -e '.[dev]'`"
+            ),
+            None,
+        )
+    try:
+        document = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        return (), f"{config_file} is not valid YAML ({exc})", None
+    if not isinstance(document, dict):
+        return (), f"{config_file} is not a pre-commit configuration", None
+
+    named: list[object] = []
+    named.extend(document.get("default_install_hook_types") or [])
+    named.extend(document.get("default_stages") or [])
+    for repo in document.get("repos") or []:
+        hooks = repo.get("hooks") if isinstance(repo, dict) else None
+        for hook in hooks or []:
+            if isinstance(hook, dict):
+                named.extend(hook.get("stages") or [])
+
+    types = ["pre-commit"]
+    for stage in named:
+        hook_type = _STAGE_ALIASES.get(stage, stage) if isinstance(stage, str) else None
+        if hook_type == "manual":  # run by hand, never by git
+            continue
+        if hook_type not in _HOOK_TYPES:
+            return (
+                (),
+                f"{config_file} names a stage pre-commit installs no hook for, {stage!r}",
+                None,
+            )
+        if hook_type not in types:
+            types.append(hook_type)
+    return tuple(types), None, None
+
+
+def _install_command(types: Sequence[str]) -> str:
+    """The one line that installs every hook type in ``types``."""
+    return "pre-commit install " + " ".join(f"--hook-type {kind}" for kind in types)
+
+
+def _remedy_command(root: Path) -> str:
+    """The install line for this checkout, naming every type its configuration needs.
+
+    ``pre-commit install`` writes its hooks against the default configuration,
+    so that is the one read. When it cannot be read the line falls back to the
+    floor, and the check reports the configuration itself once that hook exists.
+    """
+    types, problem, _remedy = _configured_hook_types(root / _HOOK_CONFIG_DEFAULT)
+    return _install_command(types if problem is None else ("pre-commit",))
+
 
 def _hook_config_name(body: str) -> str:
     """Which configuration file the hook's dispatch line names.
@@ -1960,8 +2085,8 @@ def _hook_config_name(body: str) -> str:
     return _HOOK_CONFIG_DEFAULT
 
 
-def _hook_dispatch_problem(body: str, root: Path) -> str | None:
-    """Why this hook does not run THIS repository's pre-commit, or None.
+def _hook_dispatch_problem(body: str, root: Path, hook_type: str = "pre-commit") -> str | None:
+    """Why this hook does not run THIS repository's pre-commit for ``hook_type``, or None.
 
     Substring-matching ``pre-commit`` was the whole test before, and it is
     satisfied by a hook whose entire content is the comment ``# pre-commit``, and
@@ -1975,23 +2100,20 @@ def _hook_dispatch_problem(body: str, root: Path) -> str | None:
     Three positive requirements, each killing one of those:
 
     * the body calls pre-commit's own hook implementation;
-    * it was installed for the pre-commit STAGE, not for some other hook type
+    * it was installed for ``hook_type``'s STAGE, not for some other hook type
       that happens to have been copied into this file;
     * the configuration it names resolves INSIDE this checkout and exists. A hook
       pointing at another repository's configuration runs that repository's
       checks over these commits.
     """
+    stage = f"--hook-type={hook_type}"
     if _HOOK_DISPATCH not in body:
         return f"it never invokes pre-commit's {_HOOK_DISPATCH}"
-    if _HOOK_STAGE not in body:
-        return f"it does not carry {_HOOK_STAGE}"
+    if stage not in body:
+        return f"it does not carry {stage}"
     named = _hook_config_name(body)
-    # Relative names are resolved by pre-commit against the repository it runs
-    # in, which is this one.
-    configured = Path(named)
-    resolved = configured if configured.is_absolute() else root / configured
     try:
-        resolved = resolved.resolve()
+        resolved = _config_path(named, root).resolve()
     except (OSError, RuntimeError) as exc:
         # ``RuntimeError`` IS THE ONE THAT HAPPENS. ``Path.resolve`` does not
         # raise for an absent path, so an ``OSError`` alone was a handler for a
@@ -2071,7 +2193,7 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
             detail=(
                 f"no pre-commit hook at {hook}, so the repository scan does not run "
                 f"before a commit and a personal path or a credential reaches the "
-                f"history unchallenged. Run `pre-commit install` in {root}"
+                f"history unchallenged. Run `{_remedy_command(root)}` in {root}"
             ),
         )
     except (OSError, UnicodeDecodeError) as exc:
@@ -2107,16 +2229,82 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
             detail=(
                 f"the hook at {hook} does not dispatch to this repository's "
                 f"pre-commit configuration ({problem}), so the scan it is supposed "
-                f"to run does not run. Run `pre-commit install` in {root}"
+                f"to run does not run. Run `{_remedy_command(root)}` in {root}"
             ),
         )
+
+    # EVERY OTHER TYPE THE CONFIGURATION NEEDS, read from the configuration this
+    # hook actually dispatches to. A pre-commit hook alone was reported green
+    # while the commit-msg stage, and the closing check on it, never ran.
+    config_name = _hook_config_name(body)
+    types, unknown, unknown_remedy = _configured_hook_types(_config_path(config_name, root))
+    if unknown is not None:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"{hook} runs the pre-commit stage, and which other hook types "
+                f"{config_name} needs was not established: {unknown}. A stage it "
+                f"configures with no hook installed does not run, so the answer is "
+                f"unknown rather than no"
+            ),
+            remedy=unknown_remedy,
+        )
+    command = _install_command(types)
+    absent: list[str] = []
+    for hook_type in types[1:]:
+        other = git_dir / "hooks" / hook_type
+        try:
+            other_body = other.read_text()
+        except (FileNotFoundError, NotADirectoryError):
+            absent.append(f"no {hook_type} hook at {other}")
+            continue
+        except (OSError, UnicodeDecodeError) as exc:
+            # The same split the pre-commit hook makes above: a file this account
+            # cannot open is not a file that is missing, and git runs it anyway.
+            return Finding(
+                key=key,
+                title=title,
+                status=Status.FAIL,
+                detail=(
+                    f"the {hook_type} hook at {other} could not be read ({exc}), so "
+                    f"whether the checks {config_name} configures for that stage run "
+                    f"was not established. Git runs the file regardless of whether "
+                    f"this check can open it, so the answer is unknown rather than no"
+                ),
+                remedy=access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
+            )
+        other_problem = _hook_dispatch_problem(other_body, root, hook_type)
+        if other_problem is not None:
+            absent.append(
+                f"the hook at {other} does not dispatch to this repository's "
+                f"pre-commit configuration ({other_problem})"
+            )
+    if absent:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"{hook} runs the pre-commit stage, and {config_name} also configures "
+                f"{', '.join(types[1:])}, where {'; '.join(absent)}. The checks on "
+                f"those stages do not run before the commit they judge. Run "
+                f"`{command}` in {root}"
+            ),
+        )
+    others = (
+        f", and so does the hook for every other stage it configures, {', '.join(types[1:])}"
+        if len(types) > 1
+        else ""
+    )
     return Finding(
         key=key,
         title=title,
         status=Status.OK,
         detail=(
             f"{hook} invokes pre-commit's hook implementation for the pre-commit "
-            f"stage against this repository's own {_hook_config_name(body)}"
+            f"stage against this repository's own {config_name}{others}"
         ),
     )
 
