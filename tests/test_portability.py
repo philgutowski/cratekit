@@ -394,6 +394,12 @@ def _archive_findings(findings: list[str]) -> list[str]:
         "vendor/pkg.tar",
         "vendor/pkg.7z",
         "vendor/PKG.TAR.XZ",
+        "vendor/pkg.tar.lz4",
+        "vendor/pkg.tar.Z",
+        "vendor/pkg.deb",
+        "vendor/pkg.rpm",
+        "vendor/pkg.cpio",
+        "vendor/pkg.cab",
     ],
 )
 def test_an_archive_name_is_refused_whatever_its_bytes_are(tmp_path, name):
@@ -465,6 +471,20 @@ def _compressed(module_name: str) -> bytes:
         pytest.param(lambda: _compressed("gzip"), id="gzip"),
         pytest.param(lambda: _compressed("bz2"), id="bzip2"),
         pytest.param(lambda: _compressed("lzma"), id="xz"),
+        # No standard library writer for these, so the header each extractor
+        # checks is written by hand, followed by what a real body would carry.
+        pytest.param(lambda: b"\x04\x22\x4d\x18\x64\x40\xa7" + b"\x00" * 32, id="lz4"),
+        pytest.param(lambda: b"\x02\x21\x4c\x18" + b"\x00" * 32, id="lz4-legacy"),
+        pytest.param(lambda: b"\x1f\x9d\x90" + b"\x00" * 32, id="compress"),
+        pytest.param(lambda: b"LZIP\x01\x0c" + b"\x00" * 32, id="lzip"),
+        pytest.param(lambda: b"!<arch>\ndebian-binary   " + b"\x00" * 32, id="ar-deb"),
+        pytest.param(lambda: b"\xed\xab\xee\xdb\x03\x00" + b"\x00" * 32, id="rpm"),
+        pytest.param(lambda: b"MSCF\x00\x00\x00\x00" + b"\x00" * 32, id="cab"),
+        pytest.param(lambda: b"070701" + b"0" * 104 + b"\x00", id="cpio"),
+        pytest.param(lambda: b"7z\xbc\xaf\x27\x1c\x00\x04" + b"\x00" * 32, id="7z"),
+        pytest.param(lambda: b"Rar!\x1a\x07\x01\x00" + b"\x00" * 32, id="rar"),
+        pytest.param(lambda: b"\x28\xb5\x2f\xfd\x04\x00" + b"\x00" * 32, id="zstd"),
+        pytest.param(lambda: b"PK\x05\x06" + b"\x00" * 18, id="empty-zip"),
     ],
 )
 def test_an_archive_under_a_neutral_name_is_caught_by_its_bytes(tmp_path, build):
@@ -482,6 +502,8 @@ def test_an_archive_under_a_neutral_name_is_caught_by_its_bytes(tmp_path, build)
         pytest.param("docs/logo.png", b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR", id="png"),
         pytest.param("docs/zip.md", b"PK is the key the zip format starts with.\n", id="pk-prose"),
         pytest.param("docs/bz.md", b"BZh9 is where a bzip2 header begins.\n", id="bzh-prose"),
+        pytest.param("docs/cpio.md", b"070701 is the newc cpio marker.\n", id="cpio-prose"),
+        pytest.param("docs/ar.md", b"!<arch> opens an ar archive.\n", id="ar-prose"),
         pytest.param("docs/empty.txt", b"", id="empty"),
     ],
 )

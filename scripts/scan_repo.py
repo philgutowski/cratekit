@@ -71,7 +71,8 @@ ALLOWED_EXACT: frozenset[str] = frozenset()
 ARCHIVE_SUFFIXES = frozenset(
     {
         ".zip", ".tar", ".gz", ".tgz", ".bz2", ".tbz", ".tbz2", ".xz", ".txz",
-        ".7z", ".rar", ".zst", ".lz", ".lzma", ".whl", ".jar", ".egg",
+        ".7z", ".rar", ".zst", ".lz", ".lzma", ".lz4", ".z", ".whl", ".jar",
+        ".egg", ".deb", ".rpm", ".cpio", ".cab", ".ar",
     }
 )
 
@@ -99,11 +100,23 @@ _ARCHIVE_MAGIC: tuple[tuple[int, bytes], ...] = (
     (0, b"7z\xbc\xaf\x27\x1c"),  # 7z
     (0, b"Rar!\x1a\x07"),  # rar
     (0, b"\x28\xb5\x2f\xfd"),  # zstd
+    (0, b"\x04\x22\x4d\x18"),  # lz4 frame
+    (0, b"\x02\x21\x4c\x18"),  # lz4 legacy frame
+    (0, b"\x1f\x9d"),  # Unix compress, ``.Z``
+    (0, b"LZIP\x01"),  # lzip
+    (0, b"!<arch>\n"),  # ar, which is also every ``.deb``
+    (0, b"\xed\xab\xee\xdb"),  # rpm
+    (0, b"MSCF\x00\x00\x00\x00"),  # cab
     (257, b"ustar"),  # tar, whose marker sits after the first header's name field
 )
-# bzip2's marker is three ASCII letters, so it is matched with the block size
-# digit and the block magic after it, never on ``BZh`` alone.
-_BZIP2_MAGIC = re.compile(rb"\ABZh[1-9]1AY&SY")
+# Two markers are ASCII, so each is matched with the structure that follows it
+# rather than on its letters alone, which ordinary prose could start with:
+# bzip2's ``BZh`` with its block size digit and block magic, and cpio's
+# ``07070`` with its variant digit and the hex field after it.
+_ASCII_ARCHIVE_MAGIC: tuple[re.Pattern[bytes], ...] = (
+    re.compile(rb"\ABZh[1-9]1AY&SY"),
+    re.compile(rb"\A07070[127][0-9A-Fa-f]{8}"),
+)
 
 # ---------------------------------------------------------------------------
 # Portability: path and account SHAPES, not fixed strings.
@@ -441,7 +454,7 @@ def archive_violations(path: Path, relative_path: str) -> list[str]:
     for offset, magic in _ARCHIVE_MAGIC:
         if head[offset : offset + len(magic)] == magic:
             return [message]
-    if _BZIP2_MAGIC.match(head):
+    if any(pattern.match(head) for pattern in _ASCII_ARCHIVE_MAGIC):
         return [message]
     return []
 
