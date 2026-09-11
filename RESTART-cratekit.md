@@ -218,8 +218,13 @@ tree, which is the whole of what the entry now says.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
 
-The last measured suite was **7334 passed and 1 skipped**, in 358 seconds, taken
-on `relay/44` on a committed tree. Against R-6's 7328 the six are R-7's own in
+The last measured suite was **7338 passed and 1 skipped**, in 352 seconds, taken
+on `relay/48` on a committed tree. One of the four since R-7's 7334 is R-11's
+`test_a_grid_rewritten_during_a_membership_write_refuses_the_session`; the other
+three arrived with R-10, whose own count was not recorded, so that split is not
+reconciled by identifier. **Main's highest residual stays R-337 once this branch
+merges**, since R-11 filed nothing. The earlier record follows. Against R-6's
+7328 the six are R-7's own in
 `tests/test_doctor.py`: four cases of
 `test_a_onedrive_remote_where_hard_delete_does_nothing_is_a_note` and two of
 `test_dropbox_is_not_told_to_set_an_option_rclone_does_not_have`. **Main's
