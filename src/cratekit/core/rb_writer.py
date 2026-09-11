@@ -1541,21 +1541,45 @@ def ensure_playlist(db: Any, name: str, parent: Any) -> Any:
     return db.create_playlist(name, parent=parent)
 
 
-def add_membership(db: Any, playlist: Any, content_id: str) -> bool:
-    """Add a track to a playlist when absent. True when it inserted.
+def add_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> list[str]:
+    """Add each track to a playlist when absent. Returns the ids it inserted, in order.
+
+    THIS IS WHERE THE "ONLY WHEN ABSENT" RULE LIVES, and :func:`add_membership`
+    is a one-id call into it rather than a second spelling. A caller that wants
+    to batch must come here instead of asking the database what a playlist
+    holds and deciding for itself, because two implementations of one rule is
+    how a track comes to be silently inserted twice or silently skipped (R-10).
+
+    ONE presence query per call, not one per track. The playlist's current
+    content ids are read once, and each insert joins that set, so an id named
+    twice in one call lands once and its second mention reads as present, which
+    is what the per-track read answered when the first insert was still pending.
 
     Read-then-insert, which is race-free ONLY under the write-session lock. That
     is not a caveat, it is a requirement: the same lock is what makes the update
     counter's autoincrement safe, so a caller outside the lock is already unsafe
     for a second reason.
     """
-    existing = db.get_playlist_songs(
-        PlaylistID=str(playlist.ID), ContentID=str(content_id)
-    ).first()
-    if existing is not None:
-        return False
-    db.add_to_playlist(playlist, content_id)
-    return True
+    present = {
+        str(song.ContentID) for song in db.get_playlist_songs(PlaylistID=str(playlist.ID))
+    }
+    inserted: list[str] = []
+    for content_id in content_ids:
+        key = str(content_id)
+        if key in present:
+            continue
+        db.add_to_playlist(playlist, key)
+        present.add(key)
+        inserted.append(key)
+    return inserted
+
+
+def add_membership(db: Any, playlist: Any, content_id: str) -> bool:
+    """Add a track to a playlist when absent. True when it inserted.
+
+    One id through :func:`add_memberships`, which owns the rule.
+    """
+    return bool(add_memberships(db, playlist, [content_id]))
 
 
 def _mytag_templates(db: Any) -> tuple[Any, Any, Any]:
@@ -2451,6 +2475,7 @@ __all__ = [
     "RunStateVocabulary",
     "SQLITE_HEADER",
     "add_membership",
+    "add_memberships",
     "add_my_tag",
     "assert_app_version",
     "assert_binding_version",
