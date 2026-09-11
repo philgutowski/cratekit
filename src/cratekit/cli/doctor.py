@@ -1638,8 +1638,8 @@ class TrashPolicy:
     ``option`` is the per-remote setting that turns trashing off, and ``disabled``
     is the value of that setting which MEANS off. Both are needed because the
     providers disagree about the sense: Drive's ``use_trash`` has to be false,
-    while OneDrive's ``hard_delete`` and Dropbox's ``permanent_delete`` have to be
-    true. One shared "is it false" test read the two backwards, which would have
+    while OneDrive's ``hard_delete`` has to be true. One shared "is it false" test
+    read the two backwards, which would have
     reported a correctly configured remote as trashing and a trashing one as
     correct.
 
@@ -1647,10 +1647,18 @@ class TrashPolicy:
     at all. That is a real state and it is not a failure: there is nothing for the
     user to set, so reporting red every run would train them past it (P7). It is a
     note naming the consequence.
+
+    ``applies_when`` is the remote setting that names an account kind and the
+    values of it on which ``option`` does anything at all. OneDrive's
+    ``hard_delete`` is honoured on business drives and document libraries and
+    ignored on a personal drive, so reading the option alone reported a personal
+    remote green on a setting that changes nothing. Outside those values, an
+    unset setting included, the answer is a note: nothing can be set there.
     """
 
     option: str | None
     disabled: str = "false"
+    applies_when: tuple[str, frozenset[str]] | None = None
 
 
 #: What each rclone remote type does on delete. The residual finding "Backup pruning
@@ -1669,9 +1677,16 @@ class TrashPolicy:
 _REMOTE_TRASH_POLICY: Mapping[str, TrashPolicy] = MappingProxyType(
     {
         "drive": TrashPolicy(option="use_trash", disabled="false"),
-        "onedrive": TrashPolicy(option="hard_delete", disabled="true"),
-        "dropbox": TrashPolicy(option="permanent_delete", disabled="true"),
-        # Both keep a recycle bin and neither exposes a per-remote way out.
+        "onedrive": TrashPolicy(
+            option="hard_delete",
+            disabled="true",
+            applies_when=("drive_type", frozenset({"business", "documentLibrary"})),
+        ),
+        # All three keep deleted files and none exposes a per-remote way out.
+        # Dropbox's row used to name a permanent_delete option, and rclone's
+        # Dropbox backend has no such option, measured against rclone 1.74.3's
+        # own backend help: every run failed with a fix nothing could apply.
+        "dropbox": TrashPolicy(option=None),
         "box": TrashPolicy(option=None),
         "pcloud": TrashPolicy(option=None),
     }
@@ -1792,6 +1807,23 @@ def _check_backup_remote(inputs: _Inputs) -> Finding:
                 f"emptying it is done at the provider"
             ),
         )
+    if policy.applies_when is not None:
+        setting, honoured = policy.applies_when
+        value = str(settings.get(setting, ""))
+        if value not in honoured:
+            return Finding(
+                key=key,
+                title=title,
+                status=Status.INFO,
+                detail=(
+                    f"{named!r} is a {kind} remote whose {setting} is "
+                    f"{value or 'unset'}. rclone honours {policy.option} only where "
+                    f"{setting} is {' or '.join(sorted(honoured))}, so on this remote "
+                    f"it cannot stop a pruned archive going to the recycle bin, and "
+                    f"whatever it is set to says nothing about the quota. Emptying it "
+                    f"is done at the provider"
+                ),
+            )
     if str(settings.get(policy.option, "")).lower() == policy.disabled:
         return Finding(
             key=key,
