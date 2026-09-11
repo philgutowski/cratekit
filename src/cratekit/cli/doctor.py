@@ -2048,8 +2048,14 @@ def _install_command(types: Sequence[str], config_name: str = _HOOK_CONFIG_DEFAU
     given. Without it that is the default, which may not exist, so following the
     advice would break a pre-commit hook that was working.
     """
-    config = "" if config_name == _HOOK_CONFIG_DEFAULT else f" --config {shlex.quote(config_name)}"
-    return f"pre-commit install{config} " + " ".join(f"--hook-type {kind}" for kind in types)
+    words = ["pre-commit", "install"]
+    if config_name != _HOOK_CONFIG_DEFAULT:
+        words += ["--config", config_name]
+    for kind in types:
+        words += ["--hook-type", kind]
+    # ``shlex.join``, as pre-commit builds its own argument vector, so a name
+    # needing quotes comes out quoted.
+    return shlex.join(words)
 
 
 def _remedy_command(root: Path) -> str:

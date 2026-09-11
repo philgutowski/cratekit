@@ -211,8 +211,8 @@ id = "T17_install_config_flag"
 description = "The install line never names a non-default configuration"
 file = "src/cratekit/cli/doctor.py"
 surface = "user"
-old = '''    config = "" if config_name == _HOOK_CONFIG_DEFAULT else f" --config {shlex.quote(config_name)}"'''
-new = '''    config = ""'''
+old = '''    if config_name != _HOOK_CONFIG_DEFAULT:'''
+new = '''    if False:'''
 
 [[rows]]
 id = "T18_remedy_floor"
