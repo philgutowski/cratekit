@@ -413,8 +413,12 @@ def sweep_items(held: labels.Registry) -> tuple[str, ...]:
     return tuple(entry.label_id for entry in held.labels.values())
 
 
-def _sweep_items_or_refuse() -> tuple[str, ...]:
+def sweep_items_or_refuse() -> tuple[str, ...]:
     """The sweep's items, or the refusal an empty registry earns.
+
+    PUBLIC because ``crate sync all`` asks it too, before it queues anything,
+    so an empty registry is reported for the labels source rather than
+    discovered after another source was already queued.
 
     THE ZERO ITEM RULE, enforced before anything is written. A job with no items
     drives straight to SUCCEEDED, so queueing one here would file a sweep that
@@ -445,9 +449,9 @@ def sync_labels(ctx) -> Envelope:
     if ctx.args.job:
         return _resume(ctx, ctx.args.job)
     # THE CONFIGURATION IS READ BEFORE THE ITEMS ARE DERIVED, and the order is
-    # the fix rather than an ornament. ``_sweep_items_or_refuse()`` is an
-    # ARGUMENT to ``_queue``, so it is evaluated before ``_queue``'s own
-    # ``_load()`` ever runs, and the favourite label registry is installation
+    # the fix rather than an ornament. When the items were an ARGUMENT to the
+    # shared queue helper they were evaluated before that helper's own
+    # ``_load()`` ever ran, and the favourite label registry is installation
     # scoped (KTD6) so it reads perfectly well on a machine that has never been
     # set up. A fresh install therefore got ``label-registry-empty`` and was told
     # to run ``crate label registry add``, which would not have moved the real
@@ -459,12 +463,38 @@ def sync_labels(ctx) -> Envelope:
     # on ``(path, inode, mtime, size)`` and every write here goes through an
     # atomic replace, so ``_queue``'s call is a memo hit rather than a second
     # parse, and this does not become a reason to thread a ``Config`` through.
-    _load()
+    cfg = _load()
     run_id = getattr(ctx.args, "run_id", None) or ctx.run.run_id
-    return _queue(
-        ctx,
+    items = sweep_items_or_refuse()
+    with jobs.open_store() as store:
+        job = queue_sweep(
+            store, cfg, handler_key=ctx.entry.handler_key, run_id=run_id, item_ids=items
+        )
+        return ctx.envelope(data=_reported(store, job), warnings=queue_warnings())
+
+
+def queue_sweep(
+    store, cfg: config.Config, *, handler_key: str, run_id: str, item_ids: tuple[str, ...]
+) -> jobs.Job:
+    """Queue one label sweep. The one spelling of what a sweep job is.
+
+    TWO CALLERS, ONE JOB. ``sync labels`` passes its own handler key and
+    ``crate sync all`` passes the key ``cratekit.sync.sources`` declares for the
+    labels source, which is the same key, so a sweep queued by either verb is the
+    same job shape and the same worker runs it. A second copy of this payload in
+    the composer would be the place the two drift.
+
+    ``item_ids`` comes from :func:`sweep_items_or_refuse`, which refuses an empty
+    registry before anything is written, so neither caller can file a sweep with
+    nothing to claim (the ZERO ITEM RULE). ``run_id`` is the INTAKE run, shared
+    with the other sources of one sync so their workers write one file (R29).
+    """
+    return jobs.enqueue(
+        store,
+        handler_key=handler_key,
         payload={"source_id": "labels", "run_id": run_id},
-        item_ids=_sweep_items_or_refuse(),
+        item_ids=item_ids,
+        cfg=cfg,
     )
 
 
@@ -929,10 +959,12 @@ __all__ = [
     "playlist_tracks_or_refuse",
     "import_label",
     "label_import_argv",
+    "queue_sweep",
     "queue_warnings",
     "registry_cmd",
     "run_increment",
     "sweep_items",
+    "sweep_items_or_refuse",
     "sync_labels",
     "sync_labels_argv",
 ]

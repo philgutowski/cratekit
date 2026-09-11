@@ -532,6 +532,28 @@ The sync scope rule: take the newest N items the source listed, then drop any
 identity the library already holds. That is how a second run processes only what
 is new, without reading the sync watermark.
 
+### Composer
+A verb that queues no work of its own and queues other verbs' work through
+THEIR queueing paths, under THEIR handler keys. `crate sync all` is the one
+composer: it plans every enabled source, asks the one question favourites needs,
+then queues each source's own job, so the workers that already run `sync labels`
+and `sync favorites` run what it queues. It declares no `long_running` and no
+`argv_builder`, because nothing is ever queued under its own key.
+
+*Avoid:* a composer that spells a source's payload again. Each source owns one
+`queue_sweep`, and the composer calls it.
+
+### Hand off
+Carrying a decision recorded on one run to a new run owned by another verb, so
+that verb's queued job can resume. The dispatcher refuses a `--run` whose record
+belongs to a different verb, so a composer cannot give a job its own run as the
+gate run. `Gates.hand_off` copies the option, actor, time and digest onto a run
+of the target verb, and refuses unless a digest compared decision was recorded
+and the target verb declares the target gate offering that option.
+
+*Avoid:* reading it as a way to answer a gate. It copies an answer a person gave
+and never supplies one.
+
 ## Review
 
 ### Review item

@@ -1451,10 +1451,16 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # destructive session, which is what lets the verb exit OK on a machine
         # that has never acknowledged a backup.
         "adopt.apply": [],
-        # U22. No positional argument: the verb queues one job per enabled
-        # source from the active profile. The configured fixture is the full
-        # profile, so three jobs land, and queueing needs no database.
-        "sync.all": [],
+        # U61. The composer takes the favourites source's export, the same
+        # document ``sync.favorites`` is driven with below, so its confirm gate
+        # is reachable and conformance 3 can drive it. The registry on this
+        # fixture is empty, so the labels source refuses for itself and the
+        # pass still reaches OK once favourites is confirmed. The composition
+        # itself is driven in tests/test_sync_all.py.
+        "sync.all": [
+            "--export",
+            str(outbound_fakes.write_export(library / "outbound")),
+        ],
         # U20. Inbox, unplaced and pending take no positional argument: an empty
         # intake folder and an empty ledger are the state a fresh install is
         # genuinely in, and each verb must still emit a well-formed plan and
@@ -2495,11 +2501,15 @@ def test_a_verb_carrying_a_resume_argv_builder_declares_that_it_queues():
     Measured again on 2026-09-10 by U60: 20, because ``delete.review`` stopped
     declaring BOTH halves in one commit. The floor below now sits exactly on the
     count, so the next verb to stop queueing has to move it on purpose.
+
+    Measured again on 2026-09-10 by U61: 19, because ``sync.all`` stopped
+    declaring both halves in one commit. It composes other verbs' queueing paths
+    and queues nothing under its own key, so it has nothing to resume.
     """
     carriers = [entry for entry in registry.ENTRIES if entry.argv_builder]
-    assert len(carriers) >= 20, (
+    assert len(carriers) >= 19, (
         f"only {len(carriers)} entries declare a resume argv builder, which is "
-        f"below the 20 measured when U60 last moved this floor; either the "
+        f"below the 19 measured when U61 last moved this floor; either the "
         f"registry shrank or this guard has stopped deriving anything"
     )
     mislabelled = sorted(entry.name for entry in carriers if not entry.long_running)

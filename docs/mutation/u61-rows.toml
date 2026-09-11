@@ -1,0 +1,230 @@
+name = "u61"
+pass_kind = "light"
+
+# U61 turns `crate sync all` into a composer. The brief scopes the table to the
+# source loop, the gate branch and the nothing queued branch. It adds the review
+# fix's queue time branch, `Gates.hand_off`'s guards, because the gate branch
+# rests on them, and one row on the favourites factoring. 21 rows against a cap
+# of 25, nothing dropped.
+#
+# ONE SUBSET FOR EVERY ROW, `tests/test_sync_all.py`, and the first row targets
+# `src/cratekit/sync/cli.py` so the null control runs on a subset too. R-329
+# measured that the driver's unconditional full baseline takes about six minutes
+# of a ten minute foreground call, so the rows have to be cheap to fit behind it.
+# A death on the subset is a real death. A zero cannot be promoted inside the
+# same call, and the notes say which rows that leaves.
+
+# ---------------------------------------------------------------------------
+# The source loop
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "P1_not_built_reads_as_would_queue"
+description = "A source with no worker is planned as though it could queue, so playlists reads as ok instead of not built"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''        return _Plan(spec=spec, not_queued=NOT_BUILT)'''
+new = '''        return _Plan(spec=spec)'''
+
+[[rows]]
+id = "P2_a_source_refusal_ends_the_pass"
+description = "A source's own precondition refusal is raised instead of recorded, so an empty registry stops favourites"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''        return _Plan(spec=spec, refused=exc.cause, not_queued=exc.cause.reason)'''
+new = '''        raise'''
+
+[[rows]]
+id = "P3_profile_ignored"
+description = "Every declared source is planned whatever the profile enables"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''    plans = [_plan(spec, ctx) for spec in sources.enabled_specs(membership)]'''
+new = '''    plans = [_plan(spec, ctx) for spec in sources.SPECS]'''
+
+[[rows]]
+id = "P4_one_intake_run_per_source"
+description = "Each source is queued under its own intake run rather than the pass's one run, breaking R29"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''                    plan.job = queue(store, cfg, run_id)'''
+new = '''                    plan.job = queue(store, cfg, plan.spec.source_id)'''
+
+[[rows]]
+id = "P5_labels_under_sync_all"
+description = "The labels sweep is queued under sync.all, the key nothing runs"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''            store, cfg, handler_key=str(spec.handler_key), run_id=run_id, item_ids=items'''
+new = '''            store, cfg, handler_key="sync.all", run_id=run_id, item_ids=items'''
+
+[[rows]]
+id = "P6_favorites_under_sync_all"
+description = "The favourites sweep is queued under sync.all, the key nothing runs"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''                handler_key=str(spec.handler_key),'''
+new = '''                handler_key="sync.all",'''
+
+# ---------------------------------------------------------------------------
+# The gate branch
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "G1_abort_never_taken"
+description = "An abort falls through and queues the favourites sweep anyway"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''        if option == "abort":'''
+new = '''        if option == "cancel":'''
+
+[[rows]]
+id = "G2_decline_unreported"
+description = "A declined favourites source is not named as declined in the report"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''            plan.not_queued = DECLINED'''
+new = '''            plan.not_queued = None'''
+
+[[rows]]
+id = "G3_gate_offers_no_digest"
+description = "The gate is asked with no digest, so a stale plan could be confirmed"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''            digest=favorites_cli.sweep_digest(exported, resolved),'''
+new = '''            digest=None,'''
+
+[[rows]]
+id = "G4_own_run_as_gate_run"
+description = "The favourites job freezes sync.all's own run as its gate run, the design the dispatcher refuses on resume"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''        gate_run = ctx.gate.hand_off(gate, verb=FAVORITES_VERB, gate=FAVORITES_CONFIRM)'''
+new = '''        gate_run = ctx.run.run_id'''
+
+[[rows]]
+id = "G5_gate_shows_nothing"
+description = "The gate refusal carries no account of what is and is not queued"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''            context=_awaiting(plans),'''
+new = '''            context=None,'''
+
+# ---------------------------------------------------------------------------
+# The nothing queued branch, and the queue time branch the review added
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "N1_nothing_queued_is_not_refused"
+description = "A pass where every source refused reports a no-op instead of the refusal"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''    if not queued_any and refused:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "N2_honest_zero_reads_ok"
+description = "A pass that queued nothing reports ok instead of no-op"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''    outcome = Outcome.OK if queued_any else Outcome.NO_OP'''
+new = '''    outcome = Outcome.OK'''
+
+[[rows]]
+id = "N3_queue_time_refusal_raised"
+description = "A refusal at queue time is raised, hiding the favourites job already filed"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''                    plan.refused, plan.not_queued = exc.cause, exc.cause.reason'''
+new = '''                    raise'''
+
+[[rows]]
+id = "N4_refusal_warning_renamed"
+description = "The warning a pass carries for a refused source changes its code"
+file = "src/cratekit/sync/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''                    "code": "sync-source-not-queued",'''
+new = '''                    "code": "sync-source-refused",'''
+
+# ---------------------------------------------------------------------------
+# The favourites factoring
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "F1_intake_run_as_gate_run"
+description = "The favourites job freezes the intake run as its gate run, conflating the two runs"
+file = "src/cratekit/favorites/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''            jobs.GATE_RUN_KEY: gate_run,'''
+new = '''            jobs.GATE_RUN_KEY: run_id,'''
+
+# ---------------------------------------------------------------------------
+# Gates.hand_off, each guard layer alone
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "H1_digest_not_required"
+description = "A hand off accepts a recorded decision with no digest"
+file = "src/cratekit/cli/gates.py"
+tests = ["tests/test_sync_all.py"]
+surface = "maintainer"
+old = '''        if recorded is None or recorded.digest is None:'''
+new = '''        if recorded is None:'''
+
+[[rows]]
+id = "H4_actor_replaced"
+description = "The handed decision names the composer instead of the person who answered"
+file = "src/cratekit/cli/gates.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''                    actor=recorded.actor,'''
+new = '''                    actor="sync.all",'''
+
+[[rows]]
+id = "H5_digest_dropped"
+description = "The handed decision carries no digest, so the resumed child cannot detect a moved plan"
+file = "src/cratekit/cli/gates.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''                    digest=recorded.digest,'''
+new = '''                    digest=None,'''
+
+# ---------------------------------------------------------------------------
+# Two guard layers each covered by the other, LAST ON PURPOSE. Every test
+# target that fails one also fails the other, so each is expected to measure
+# zero, and a zero's promotion to the full suite cannot fit inside the call.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "H2_option_not_checked"
+description = "A hand off stops checking the target gate offers the chosen option"
+file = "src/cratekit/cli/gates.py"
+tests = ["tests/test_sync_all.py"]
+surface = "maintainer"
+old = '''            or recorded.option not in target.options'''
+new = '''            or False'''
+
+[[rows]]
+id = "H3_digest_source_not_checked"
+description = "A hand off stops checking the target gate compares a digest"
+file = "src/cratekit/cli/gates.py"
+tests = ["tests/test_sync_all.py"]
+surface = "maintainer"
+old = '''            or target.digest_source is None'''
+new = '''            or False'''

@@ -1251,16 +1251,32 @@ ENTRIES: tuple[Entry, ...] = (
     # ── Sync ────────────────────────────────────────────────────────────────
     Entry(
         name="sync.all",
-        summary="queue every source's increment; there is no monolithic gated run",
+        summary="queue each enabled source's own increment under one intake run",
         module="cratekit.sync.cli",
         builder="build_all",
         handler_key="sync.all",
         feature_rows=(25,),
         source_scripts=("dj-sync",),
-        argv_builder="sync_argv",
-        long_running=True,
+        # NOT long_running, AND NO argv_builder, since U61. This verb queues
+        # nothing under its own key: it composes each source's own queueing
+        # path under that source's own handler key, so a job under ``sync.all``
+        # cannot exist and there is nothing for a builder to resume (R-203).
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
+        gates=(
+            # THE SAME QUESTION ``sync.favorites.confirm`` ASKS, over the same
+            # digest, asked once for the whole pass. A separate name because a
+            # decision is recorded against the run's own verb, and this run is
+            # ``sync.all``'s. ``Gates.hand_off`` carries the recorded answer to a
+            # run the favourites job's resume can load.
+            GateSpec(
+                name="sync.all.favorites.confirm",
+                options=("sync", "abort"),
+                prompt="Heart matching tracks on the streaming service? This never removes a heart.",
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
     ),
     Entry(
         name="sync.labels",

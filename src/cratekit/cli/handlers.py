@@ -120,7 +120,6 @@ HANDLERS_NOT_YET_BOUND: Mapping[str, str] = {
         "the resume verb itself: it spawns the child that drives a job, and is "
         "never queued under its own key"
     ),
-    "sync.all": "no worker yet, R-203",
 }
 
 
