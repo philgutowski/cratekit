@@ -8404,6 +8404,10 @@ the real resume. The attended half is unchanged: no real folder has been
 analysed and the 18GB run has not happened. `analyze.vocals` is still
 planned, and R-277 records what its absence now costs.
 
+**U25 landed the shells, 2026-09-11.** `analyze.vocals` and
+`metadata.mytags-vocals` exist, R-277 is closed, and the 18 GB full-library
+run is still the whole of what this entry says. It stays attended.
+
 ---
 
 ## R-134. The first delete.review drive baselines before the confirm gate
@@ -13508,6 +13512,10 @@ finished file to reach the one pass that is missing.
 **Closes when:** `analyze.vocals` lands with a path that scores files already
 carrying the head.
 
+**CLOSED by U25, 2026-09-11.** `cratekit.vocals.cli.handle` scores a
+Camelot-prefixed file and writes the three vocal tags. `analyze.run` still
+skips the same name. Driven through the dispatcher on a fixture.
+
 ---
 
 ## R-278. The calibrated head decodes and measures twice, and no feature vector survives
@@ -15344,3 +15352,82 @@ report can reach without the name check seeing the call.
 **Closes when:** a report calling a named writer through another admitted
 module's attribute is reported by `filesystem_mutations`, and a planted report
 drives it.
+
+---
+
+## R-341. Thirteen user facing zeros in U25's table, none with a composite
+
+**Found:** 2026-09-11, U25's mutation table, twenty five rows, measured by
+`scripts/mutate.py` in 6131 seconds. Eleven killed, thirteen zero on the
+full suite, one refused.
+
+METHOD accepts a user facing zero only with a composite. The cap was
+spent, so none of these has one. Every zero here reads as the author
+could not kill it.
+
+The ones that are backstops of a killing row, so a composite would have
+been cheap and was not run:
+
+- **`G2_worker_extra`.** The worker extras check. `G1` already kills the
+  queue check, which is the path a slim install meets. The worker copy
+  is for a resume after the extra disappeared, and nothing in the suite
+  queues with the extra and then unbinds it.
+- **`G23_failed_job_ok`.** Re-raising a job cause. The extras refusal
+  happens at the queue, so a failed item is not how the slim path ends.
+
+The rest are unreached producers, not missing assertions about a path
+the suite already drives:
+
+- **`G5_inactive_still_writes`.** No fixture scores inactive then asserts
+  the tags stayed absent.
+- **`G7_foreign_job`** and **`G8_empty_resume`.** No test resumes a
+  vocals job that belongs to another verb, or one with no items.
+- **`G9_default_cut_zero`.** The fixture's track is at voxlevel 80, above
+  both 12 and 0. `G10` already kills ignoring the cut on the unit table.
+- **`G14_open_without_closed`.** Tests patch rekordbox closed, so the
+  flag cannot fail.
+- **`G16_no_verified_capture`** and **`G17_no_rollback`.** The apply
+  path's happy tests never fail the capture or the write.
+- **`G18_include_deleted`** and **`G19_unresolved_as_file`.** No deleted
+  row and no unresolved path in the apply fixture.
+- **`G21_dotfiles_queued`** and **`G22_folder_absent_as_empty`.** No
+  sidecar and no missing folder in the vocals tests.
+
+`G25_message_reword` refused: the old text as typed was not in the file,
+so the row never ran. The extras message is still driven by `G1` and
+`G3`.
+
+**Measured cost.** None of these zeros was a silent user facing hole on
+a path the suite already takes. The cost is the untested resume, the
+untested missing folder, and the untested tombstone, each still possible
+on a real library.
+
+**Why not fixed here.** Two fix rounds are spent. Adding tests now would
+not re-measure the table.
+
+**Closes when:** each zero either has a composite, or a test that kills
+it, or is reclassified maintainer facing with the reason.
+
+---
+
+## R-342. A corrupt vocal calibration is read as the default cut
+
+**Found:** 2026-09-11, U25 review, by the absence pattern.
+
+`vocal_cut` returns 12.0 when the calibration file is missing, which is
+honest, and also when the file is unreadable, which is not. Energy's
+loader refuses a corrupt calibration so a restamp cannot proceed as if
+the library had never been calibrated. This one would tag from a cut
+nobody fitted.
+
+**Measured cost.** Unmeasured on the tree. `energy.write_json` is atomic,
+so the producer the calibrate verb uses does not leave a half written
+file. A hand edited or truncated state file would.
+
+**Why not fixed here.** A new cause slug is pin churn, and no existing
+slug names a vocal calibration. The default on absence is the product
+decision the plan path needs so conformance 2 can drive an uncalibrated
+fixture.
+
+**Closes when:** an unreadable vocal calibration refuses by name, and a
+missing one still defaults.
