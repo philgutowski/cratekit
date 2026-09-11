@@ -480,7 +480,7 @@ In METHOD's serialized order, which is what picks the work:
 | 8 | #77 | U59, land the conformance branch | DONE on `relay/77` |
 | | #78 | U60, the deletion pass | DONE on `relay/78`, no mutation table (R-329) |
 | | #79 | U61, `crate sync all` composes the source increments | DONE on `relay/79`, no mutation table (R-329) |
-| 9 | #38 | R-1, doctor checks every configured hook type | DONE on `relay/38`, 25 of 25 rows killing |
+| 9 | #38 | R-1, doctor checks every configured hook type | DONE on `relay/38`, 25 of 25 rows killing. Halted `partial_landing`, repaired by hand 2026-09-11 |
 | | #40 | R-3, the scan refuses a tracked archive | DONE on `relay/40`, 15 rows committed and unrun (R-329) |
 | | #41 | R-4, extras tied to their module and every toggle driven | DONE on `relay/41`, 6 rows committed and unrun (R-329) |
 | | #42 | R-5, conformance 4 and 8 already drive behaviour, closed in place | DONE on `relay/42`, no guard changed, R-335 filed |
@@ -489,6 +489,21 @@ In METHOD's serialized order, which is what picks the work:
 | | #47 | R-10, one membership call per playlist and one folder lookup per folder | DONE on `relay/47`, 8 rows committed and unrun (R-329) |
 | | #48 | R-11, the lead break helper and the watch driven through the database half | DONE on `relay/48`, 6 rows committed and unrun (R-329), two findings still open in the ledger |
 | | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
+
+**#38 is the one task in that run that did not verify itself.** It landed at
+`d3fe927` with its whole pipeline complete, seven commits through the review
+round, the mutation table, the record and the restart, and only the tracker
+writes failed, so the record halted `partial_landing`. Repaired by hand on
+2026-09-11: the issue was closed with a comment naming `d3fe927`, `relay/38` was
+deleted, and `verify` then returned every check green. **Its record still reads
+`halted` and always will**, because that manifest is finished and nothing will
+start against it again. See the `verify` confirms section below before treating
+that as a second repair.
+
+**The board is clean as of 2026-09-11**: 61 units, 59 done, 2 ready, 0 blocked,
+`board.py audit` printing that the board matches the repository. The two ready
+are #29, attended and not a session's, and #25, reopened on 2026-09-10 and
+unplaced in METHOD's order.
 
 **Phase E is complete with the U53 merge, so line 7 is next and it is
 Phillip's**: the explainer over the range from `46d5a4c` to the U53 merge
