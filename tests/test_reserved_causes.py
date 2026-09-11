@@ -4233,6 +4233,10 @@ CITED_RESIDUALS = (
     # with no test failing. Both are titles now.
     "Guard whitelists assert what is forbidden, never what is permitted",
     "What the soft-delete guard cannot see, and two gaps in the gate contract",
+    # Declared on relay/54, 2026-09-11, by the closure that closed it. Cited from
+    # tests/modules/test_reports.py, above ALLOWED_IMPORTS and in the closure's
+    # own docstring.
+    "The reports allowlist audit is one hop deep",
 )
 
 #: WHAT A CITATION LOOKS LIKE, as a form rather than as a convention: the word

@@ -1644,7 +1644,8 @@ def test_every_report_runs_with_the_library_directory_read_only(
 #: those two in step as those modules change.
 #:
 #: WHAT THE LIST ADMITS IS NOT WHAT IT REACHES, and the audit read only the first
-#: until R-102. An admitted module's own imports are attributes of it, so
+#: until the residual "The reports allowlist audit is one hop deep" was closed.
+#: An admitted module's own imports are attributes of it, so
 #: ``rbxml.tree_registry`` is reachable from here without ``tree_registry`` being
 #: listed, and the walk out of ``rbxml`` through ``tree_registry`` and ``session``
 #: arrives at ``cratekit.core.rb_writer``, which opens the rekordbox database. The
@@ -1760,7 +1761,7 @@ FILESYSTEM_MUTATIONS = frozenset(
 #: change, rather than a reviewer's snapshot of them.
 #:
 #: THE SECOND BLOCK IS THE CLOSURE'S, and it is long because the closure reaches
-#: the write path itself. R-102 found the audit one hop deep: it read the admitted
+#: the write path itself. The audit was found one hop deep: it read the admitted
 #: modules and nothing they import. Following the imports out of ``rbxml``,
 #: ``review`` and ``taxonomy`` reaches ``tree_registry``, ``session``,
 #: ``snapshot``, ``reconcile``, ``backup_facts`` and ``rb_writer``, and every name
@@ -1908,7 +1909,7 @@ def _resolved_imports(source: str, module: str, root: Path = SRC_ROOT) -> list[s
     reported as an import of something unnameable rather than ignored.
 
     ``root`` is the tree the package and relative import questions are asked of.
-    It defaults to this repository, and the R-102 closure passes a planted one,
+    It defaults to this repository, and the import closure passes a planted one,
     since a planted three level package asked about here would otherwise be read
     against the real tree and resolve to the wrong module.
     """
@@ -5127,7 +5128,7 @@ def _import_module_calls(source: str) -> list[str]:
     this is the third spelling, which the report side never needed because
     ``importlib`` is not on the allowlist. A module in the closure is held to no
     allowlist, so ``importlib.import_module("cratekit.core.access_probe")`` in
-    ``cause`` was R-102's delegation with no import statement for the closure to
+    ``cause`` was the one hop delegation with no import statement for the closure to
     follow, driven by the built in review and green.
 
     The call is matched on any receiver's ``import_module`` and on a bare name
@@ -5168,7 +5169,8 @@ def _admitted_closure(
 ) -> tuple[list[tuple[str, Path]], list[str]]:
     """Every first party module the allowlist admits OR REACHES, and what it could not follow.
 
-    R-102. The audit read the admitted modules and nothing they import, and
+    The residual "The reports allowlist audit is one hop deep". The audit read
+    the admitted modules and nothing they import, and
     nothing constrains what an admitted module may import, so a thin caller in
     ``cause`` could hand the actual write to a module the list does not name and
     the audit would read the caller as ordinary code. An admitted module's
@@ -5334,7 +5336,7 @@ def test_the_allowlist_admits_no_writer_this_guard_cannot_name():
     correct: name the writer in the set, or take the module off the allowlist.
     What is not available is leaving the argument written down and untrue.
 
-    THE WALK IS THE CLOSURE, not the list, since R-102. An admitted module that
+    THE WALK IS THE CLOSURE, not the list. An admitted module that
     delegates its write to a module the list does not name is still reachable
     from the package, and the modules named below past the first five are the
     ones only the closure reaches. A walk that collapsed back to one hop would
@@ -5636,7 +5638,7 @@ def _plant(root: Path, modules: dict[str, str]) -> Path:
     return root
 
 
-#: R-102's own driven relocation. ``cause`` keeps a thin caller and the raw
+#: The one hop audit's own driven relocation. ``cause`` keeps a thin caller and the raw
 #: ``os.open`` moves into ``access_probe``, a module the allowlist does not name.
 #: Driven on the real tree on 2026-08-14, it took the one hop audit from red to
 #: green with the package's reach to a write capable handle unchanged.
@@ -5656,7 +5658,7 @@ def open_for_probe(path):
     return os.open(path, os.O_RDWR | os.O_CREAT)
 """
 
-#: The SIDEWAYS case R-102 says the layering guard cannot see: an admitted module
+#: The SIDEWAYS case the layering guard cannot see: an admitted module
 #: delegating to a module at its own layer, two hops deep, with a cycle back to
 #: the admitted module so the walk has to end on what it has seen.
 SIDEWAYS_RBXML = """
@@ -5801,7 +5803,7 @@ def stash(path, data):
 def test_the_audit_follows_an_admitted_module_to_the_module_that_writes(
     tmp_path, entries, modules, reported
 ):
-    """R-102, driven on a planted tree rather than argued.
+    """The one hop audit's hole, driven on a planted tree rather than argued.
 
     Each tree is one an ordinary tidy up produces: a write moved out of an
     admitted module into a new one beside it. The ONE HOP walk is asserted to
