@@ -583,7 +583,7 @@ def _plan_database(
     process_lister: ProcessLister | None,
     settings_dirs: Sequence[Path] | None,
 ) -> PortionPlan:
-    uncovered = _uncovered_analysis_share(cfg)
+    uncovered = uncovered_analysis_share(cfg)
     running = rekordbox_processes_running(lister=process_lister)
     if running:
         return PortionPlan(
@@ -647,7 +647,7 @@ def _plan_database(
     )
 
 
-def _uncovered_analysis_share(cfg: config.Config) -> tuple[Mapping[str, str], ...]:
+def uncovered_analysis_share(cfg: config.Config) -> tuple[Mapping[str, str], ...]:
     """A warning when the analysis share sits where neither portion reaches.
 
     R-14. The share beside the database holds every beat grid, and the mirror

@@ -1274,6 +1274,56 @@ def test_queueing_still_needs_nothing_from_the_machine(cfg, no_rclone, monkeypat
     assert len(_item_states(envelope["data"]["job_id"])) == len(backup_facts.Portion)
 
 
+def _share_warnings(envelope: dict) -> list[dict]:
+    return [
+        w for w in envelope.get("warnings", []) if w["code"] == backup.ANALYSIS_SHARE_NOT_CARRIED
+    ]
+
+
+def test_an_outside_analysis_share_is_warned_at_queue_and_at_resume(cfg, rclone, tmp_path):
+    """R-14, through the dispatcher, because the item's own report reaches nobody.
+
+    The work body's report does not leave a claimed item (R-221), so a warning
+    carried only on the plan and the outcome would be true and unseen. The
+    acknowledged layout puts the database, and the analysis share beside it, off
+    the library volume, where neither the mirror nor the snapshot reaches.
+    """
+    home = tmp_path / "home" / "rekordbox"
+    home.mkdir(parents=True)
+    outside = replace(
+        cfg,
+        library=replace(
+            cfg.library,
+            db_path=home / "master.db",
+            db_outside_root_acknowledged_on="2026-09-11",
+        ),
+    )
+    config.save(outside)
+    config.reset_cache()
+    (home / "master.db").write_bytes(b"database, generation one")
+
+    code, queued = _drive(["backup", "run"])
+    assert code == int(ExitCode.OK), queued
+    assert len(_share_warnings(queued)) == 1, queued
+
+    code, resumed = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
+    assert code == int(ExitCode.OK), resumed
+    said = _share_warnings(resumed)
+    assert len(said) == 1, resumed
+    assert str(home / "share") in said[0]["message"], said
+
+
+def test_a_contained_analysis_share_draws_no_warning_from_the_verb(cfg, rclone):
+    """The companion, so a warning raised unconditionally cannot pass the drive above."""
+    code, queued = _drive(["backup", "run"])
+    assert code == int(ExitCode.OK), queued
+    assert _share_warnings(queued) == [], queued
+
+    code, resumed = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
+    assert code == int(ExitCode.OK), resumed
+    assert _share_warnings(resumed) == [], resumed
+
+
 def test_a_queued_backup_runs_every_portion_through_the_real_resume(cfg, rclone):
     """R-198's whole claim, closed for this verb and driven end to end.
 

@@ -5104,7 +5104,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # against, commit-msg, post-checkout, post-commit, post-merge, post-rewrite,
     # pre-merge-commit, pre-push, pre-rebase and prepare-commit-msg, plus
     # merge-commit, the legacy stage spelling mapped to pre-merge-commit.
-    assert (len(literals), len(literals - set(causes))) == (401, 248), (
+    # Re-pinned on the residual finding "Analysis-file paths are share-relative,
+    # and the wrong join finds nothing", 2026-09-11: 401 to 402 distinct, 248 to
+    # 249 non-keys.
+    # ONE literal joined and NOTHING left, differenced over the branch's diff of
+    # `src` against `main`, which removes no kebab literal. It is not a cause:
+    # analysis-share-not-carried, the WARNING code a backup carries when the
+    # analysis share sits outside the library root and neither portion copies
+    # it, a warning and not a cause because the database portion still runs.
+    assert (len(literals), len(literals - set(causes))) == (402, 249), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
