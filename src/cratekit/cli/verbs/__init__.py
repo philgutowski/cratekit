@@ -1,9 +1,9 @@
-"""The verbs this unit ships, and the shape every later verb copies.
+"""The core verbs that belong to no feature module, and the shape every verb copies.
 
-Kept deliberately thin. U5's job is the CONTRACTS, and the plan says to set them
+Kept deliberately thin. U5's job was the CONTRACTS, and the plan said to set them
 with a vertical slice rather than in the abstract, because every later unit
-consumes them and retrofitting is the expensive path. So there are exactly
-enough verbs here to exercise each contract end to end:
+consumes them and retrofitting is the expensive path. So U5 put exactly enough
+verbs here to exercise each contract end to end:
 
 * ``profile show`` emits a structured surface and nothing else;
 * ``profile set`` reaches a real gate, refuses without a decision, and applies
