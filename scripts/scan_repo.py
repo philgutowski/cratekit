@@ -64,19 +64,46 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # ---------------------------------------------------------------------------
 ALLOWED_EXACT: frozenset[str] = frozenset()
 
+# Compressed and packed containers. The content scan cannot read inside one, so
+# a tracked archive is REFUSED rather than skipped: skipping it reported a clean
+# tree over bytes nobody read (R-3). Third-party code is committed unpacked with
+# its provenance recorded, which is what vendor/README.md does.
+ARCHIVE_SUFFIXES = frozenset(
+    {
+        ".zip", ".tar", ".gz", ".tgz", ".bz2", ".tbz", ".tbz2", ".xz", ".txz",
+        ".7z", ".rar", ".zst", ".lz", ".lzma", ".whl", ".jar", ".egg",
+    }
+)
+
 # Extensions with no text to scan. Read as bytes and skipped early, both to save
 # work and because a binary blob produces meaningless "violations" otherwise.
-# Note the honest limit: a credential INSIDE an archive is not readable this way,
-# which is why CREDENTIAL_FILENAMES below also matches on the name.
-BINARY_SUFFIXES = frozenset(
+# Archives are in this set for the read, and refused separately above it.
+BINARY_SUFFIXES = ARCHIVE_SUFFIXES | frozenset(
     {
         ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".icns",
-        ".pdf", ".zip", ".gz", ".tgz", ".bz2", ".xz", ".7z",
+        ".pdf",
         ".db", ".sqlite", ".sqlite3", ".pyc", ".so", ".dylib", ".dll",
         ".flac", ".wav", ".aiff", ".aif", ".mp3", ".m4a", ".mp4", ".mov",
         ".woff", ".woff2", ".ttf", ".otf",
     }
 )
+
+# An archive carried under a name that does not say so is still an archive. The
+# leading bytes are what every extractor reads, so they are what this reads.
+# Offsets, then the bytes expected there.
+_ARCHIVE_MAGIC: tuple[tuple[int, bytes], ...] = (
+    (0, b"PK\x03\x04"),  # zip, and every format built on it (wheel, jar)
+    (0, b"PK\x05\x06"),  # an empty zip
+    (0, b"\x1f\x8b"),  # gzip
+    (0, b"\xfd7zXZ\x00"),  # xz
+    (0, b"7z\xbc\xaf\x27\x1c"),  # 7z
+    (0, b"Rar!\x1a\x07"),  # rar
+    (0, b"\x28\xb5\x2f\xfd"),  # zstd
+    (257, b"ustar"),  # tar, whose marker sits after the first header's name field
+)
+# bzip2's marker is three ASCII letters, so it is matched with the block size
+# digit and the block magic after it, never on ``BZh`` alone.
+_BZIP2_MAGIC = re.compile(rb"\ABZh[1-9]1AY&SY")
 
 # ---------------------------------------------------------------------------
 # Portability: path and account SHAPES, not fixed strings.
@@ -390,6 +417,35 @@ def credential_filename_violations(relative_path: str) -> list[str]:
     return []
 
 
+def archive_violations(path: Path, relative_path: str) -> list[str]:
+    """Return a message when a tracked file is a compressed or packed archive.
+
+    Judged by name first and by leading bytes second, so an archive renamed to
+    something neutral is still refused. A symlink is left to the symlink rule,
+    which owns it, rather than followed here to whatever it points at.
+    """
+    message = (
+        f"tracked file is an archive the scan cannot read inside: {relative_path!r}; "
+        f"commit the tree unpacked with its provenance recorded instead"
+    )
+    name = Path(relative_path).name.lower()
+    if any(name.endswith(suffix) for suffix in ARCHIVE_SUFFIXES):
+        return [message]
+    if path.is_symlink():
+        return []
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(512)
+    except OSError:
+        return []
+    for offset, magic in _ARCHIVE_MAGIC:
+        if head[offset : offset + len(magic)] == magic:
+            return [message]
+    if _BZIP2_MAGIC.match(head):
+        return [message]
+    return []
+
+
 def _elide(span: str, keep: int = 12) -> str:
     """Show enough of a finding to locate it, never enough to leak it.
 
@@ -512,6 +568,9 @@ def scan_tree(
         # Before the content read, because a symlink has no content to read and
         # is otherwise skipped entirely.
         findings += [f"{relative}: {p}" for p in symlink_violations(path, root)]
+        # Also before the content read, because the reader returns None for an
+        # archive and the loop would otherwise move on as though it were clean.
+        findings += [f"{relative}: {p}" for p in archive_violations(path, relative)]
 
         text = _read_text(path)
         if text is None:
