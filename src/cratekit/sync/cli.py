@@ -262,11 +262,20 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
     if ready:
         with jobs.open_store() as store:
             for plan, queue in ready:
-                plan.job = queue(store, cfg, run_id)
+                # EACH ENQUEUE IS ITS OWN TRANSACTION, so a source that refuses
+                # here leaves the sources before it queued. Recorded against that
+                # source rather than raised, or the refusal would carry no word
+                # of the jobs already filed and the natural recovery, running
+                # the pass again, would queue each of them a second time.
+                try:
+                    plan.job = queue(store, cfg, run_id)
+                except CratekitError as exc:
+                    plan.refused, plan.not_queued = exc.cause, exc.cause.reason
 
     data = _report(plans, run_id)
+    queued_any = any(p.job is not None for p in plans)
     refused = [p.refused for p in plans if p.refused is not None]
-    if not ready and refused:
+    if not queued_any and refused:
         # NOTHING QUEUED AND A SOURCE REFUSED. Not a no-op: a person who ran a
         # sync and got nothing because of something they can fix is told so
         # with that source's own remedy, and the whole pass rides the detail.
@@ -288,7 +297,7 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
             )
     # THE HONEST ZERO. Nothing refused and nothing queued is the slim profile's
     # every run, or a declined confirmation, and it is a no-op rather than an ok.
-    outcome = Outcome.OK if ready else Outcome.NO_OP
+    outcome = Outcome.OK if queued_any else Outcome.NO_OP
     return data, outcome, tuple(warnings)
 
 

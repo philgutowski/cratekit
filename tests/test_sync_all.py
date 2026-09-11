@@ -375,3 +375,28 @@ def test_a_hand_off_to_a_gate_that_could_not_mean_the_same_refuses(installed, ve
     asked.state.decisions[spec.name] = gates.Decision("sync", "a-person", "now", "d1")
     with pytest.raises(CratekitError):
         asked.hand_off(spec, verb=verb, gate=gate)
+
+
+def test_a_source_refused_at_queue_time_leaves_the_queued_ones_named(
+    installed, exported, monkeypatch
+):
+    """The review's finding, driven. Favourites queues first and each enqueue is
+    its own transaction, so a labels refusal at that moment leaves a favourites
+    job filed. The pass must say so, or rerunning it queues favourites twice."""
+    del installed
+    from cratekit.core.cause import refuse
+    from cratekit.label import cli as label_cli
+
+    def refusing(*args, **kwargs):
+        raise refuse("internal-error", "the queue refused this source")
+
+    monkeypatch.setattr(label_cli, "queue_sweep", refusing)
+    register(LABELS[0])
+    _, code, passed = _confirmed(exported)
+    assert code == int(ExitCode.OK), passed
+    (job,) = _jobs()
+    assert job.handler_key == "sync.favorites"
+    summary = passed["data"]["summary"]
+    assert [j["job_id"] for j in summary["jobs"]] == [job.job_id]
+    assert summary["not_queued"]["labels"] == "internal-error"
+    assert "sync-source-not-queued" in {w["code"] for w in passed["warnings"]}
