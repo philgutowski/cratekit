@@ -2516,8 +2516,12 @@ def test_a_module_toggle_alone_switches_its_landed_verbs_on_and_off(module, slim
     Nine toggles were added by U5 before any verb stood behind them. Each one is
     exercised here through the real resolver and the real parser, in both
     directions an explicit toggle can move: added to slim, and subtracted from
-    full. A verb that stays reachable with its module off is a Module row
+    full. A gated verb that stays reachable with its module off is a Module row
     shipping as core, which is exactly what R5 forbids.
+
+    It sees only verbs that already name a module. A verb declared core by
+    mistake carries no ``module_id`` and never enters this set; the Feature
+    Inventory parity check above is what holds that direction.
     """
     verbs = [entry.path for entry in registry.landed_entries() if entry.module_id == module]
     added = _verb_paths(cli.build_parser(membership=profiles.resolve("slim", {module: True})))
