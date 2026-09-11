@@ -10890,7 +10890,8 @@ WORKER, 2026-09-10.** It left by ceasing to be queued: its entry dropped
 always inline and never enqueued anything. So ONE queued verb has no worker as of
 2026-09-10, `sync.all`. Measured, not subtracted: `HANDLERS_NOT_YET_BOUND` holds
 two keys, one of which is the `job.resume` exemption, and the registry holds
-twenty landed `long_running` entries where it held twenty one. Read the count
+nineteen landed `long_running` entries where it held twenty, seventeen of them
+bound, with `analyze.vocals` declared and not yet landed. Read the count
 honestly: this unit bound nothing, and the closing condition below is met by one
 more binding, not by one more drop. A drop is legitimate only where the verb
 genuinely does not queue, which
@@ -14674,3 +14675,38 @@ own call graph would be a larger guard than the class it catches today.
 **Closes when:** the guard follows each verb's handler, the function its builder
 binds as `_handler`, through to an `enqueue` call, or a shared-module pair is
 split so the module bar becomes a per-verb bar.
+
+---
+
+## R-329. The mutation driver cannot finish a batch inside a ten minute foreground call
+
+**Found:** by U60, 2026-09-10, running its table as relay task 78.
+
+`scripts/mutate.py` runs a full suite baseline on EVERY call, `--resume`
+included (`scripts/mutate.py:957`), and `--resume` reuses finished rows only. The
+full suite is 358 seconds on this tree. The null control runs on the first Python
+row's derived importer subset, which is the full suite again when nothing
+imports that module. A relay task runs every command in the foreground under a
+600 second ceiling, and METHOD forbids a backgrounded driver. Two attempts, both
+stopped by SIGINT at 570 and 575 seconds, measured zero finished rows and left
+the tree clean. `docs/mutation/u60-notes.md` holds both measurements.
+
+**Measured cost.** U60 lands with no mutation table, not even the author's. Its
+rows are committed and ready. Every later unit run as an unattended relay task
+meets the same wall, because the baseline alone is sixty percent of the ceiling
+and grows with the suite. And promoting a zero needs a second full run inside
+the same call, so a zero could never be confirmed there even if the preflight
+fit.
+
+**Options, none taken here**, because each changes the driver or how a unit is
+run, and that is Phillip's decision:
+
+1. `--resume` reuses a stored full baseline when it was taken on the same HEAD.
+   Cheapest. It relaxes the check that catches a red baseline, so the sidecar
+   has to carry the sha the baseline was measured on.
+2. A row file names the null control's subset rather than deriving it.
+3. The table runs attended, or as a runner step outside the task session, where
+   no ten minute ceiling applies.
+
+**Closes when:** U60's committed rows are measured by any route, and the route is
+one a relay task can take.
