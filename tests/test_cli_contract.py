@@ -2501,11 +2501,15 @@ def test_a_verb_carrying_a_resume_argv_builder_declares_that_it_queues():
     Measured again on 2026-09-10 by U60: 20, because ``delete.review`` stopped
     declaring BOTH halves in one commit. The floor below now sits exactly on the
     count, so the next verb to stop queueing has to move it on purpose.
+
+    Measured again on 2026-09-10 by U61: 19, because ``sync.all`` stopped
+    declaring both halves in one commit. It composes other verbs' queueing paths
+    and queues nothing under its own key, so it has nothing to resume.
     """
     carriers = [entry for entry in registry.ENTRIES if entry.argv_builder]
-    assert len(carriers) >= 20, (
+    assert len(carriers) >= 19, (
         f"only {len(carriers)} entries declare a resume argv builder, which is "
-        f"below the 20 measured when U60 last moved this floor; either the "
+        f"below the 19 measured when U61 last moved this floor; either the "
         f"registry shrank or this guard has stopped deriving anything"
     )
     mislabelled = sorted(entry.name for entry in carriers if not entry.long_running)

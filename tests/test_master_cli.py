@@ -796,13 +796,19 @@ def test_a_handler_that_raises_an_undeclared_error_fails_the_item_not_the_driver
     assert item.cause is not None and item.cause.reason == "internal-error"
 
 
-def test_a_job_show_says_when_a_queued_verb_has_no_worker(configured):
+def test_a_job_show_says_when_a_queued_verb_has_no_worker(configured, monkeypatch):
     """One verb working and nineteen silent is worse than all of them silent.
 
     THE UNBOUND SUBJECT IS DERIVED, never named. It was ``rebuild`` until U53
     bound that key, and a name here expires silently every time a unit binds one:
     the assertion would then be reading a bound verb's answer and comparing it to
     the unbound wording.
+
+    AND SINCE U61 IT IS MADE UNBOUND HERE, because R-203 closed: every queued
+    verb now has a worker, and the one declaration left in the unbound table is
+    ``job.resume``, which is never queued. The property is ``job show`` reading
+    the table, which is the same whichever key the table names, so one bound key
+    is moved across for this test and the reading is asserted over it.
     """
     source = configured.library.root / "REC001.wav"
     job_id = _queued(source)
@@ -812,15 +818,21 @@ def test_a_job_show_says_when_a_queued_verb_has_no_worker(configured):
     assert envelope["data"]["progress"]["worker"] == "bound"
     assert envelope["data"]["progress"]["worker_reason"] is None
 
-    unbound = sorted(
-        key for key, reason in handlers.HANDLERS_NOT_YET_BOUND.items() if "R-203" in reason
+    moved = sorted(handlers.HANDLERS)[0]
+    reason = "no worker in this build, a declaration this test made"
+    monkeypatch.setattr(
+        handlers, "HANDLERS", {k: v for k, v in handlers.HANDLERS.items() if k != moved}
     )
-    assert unbound, "no queued verb is recorded as unbound, so this has nothing to measure"
+    monkeypatch.setattr(
+        handlers,
+        "HANDLERS_NOT_YET_BOUND",
+        {**handlers.HANDLERS_NOT_YET_BOUND, moved: reason},
+    )
     with jobs.open_store() as store:
-        other = jobs.enqueue(store, handler_key=unbound[0], payload={}, cfg=configured)
+        other = jobs.enqueue(store, handler_key=moved, payload={}, cfg=configured)
     code, envelope = _drive(["job", "show", other.job_id])
     assert envelope["data"]["progress"]["worker"] == "none"
-    assert "R-203" in envelope["data"]["progress"]["worker_reason"]
+    assert envelope["data"]["progress"]["worker_reason"] == reason
 
 
 def test_a_relative_output_dir_is_frozen_absolute_too(configured, tmp_path, monkeypatch):

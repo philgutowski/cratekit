@@ -16,19 +16,26 @@ refusal.
 
 ## Sync queues, it does not run
 
-`crate sync all` freezes the configuration, queues one increment job per source
-the active profile enables, and reports what it queued. There is no monolithic
-gated run to sit and watch, so the verb returning almost immediately is the
-design rather than a failure.
+`crate sync all` queues each enabled source's own increment, the same job that
+source's own verb would queue, and reports every source: what it queued and
+under which job, and why anything was not queued. There is no monolithic gated
+run to sit and watch, so the verb returning almost immediately is the design
+rather than a failure.
 
 ```bash
 crate status
-crate sync all
+crate sync all --export COLLECTION-EXPORT
 ```
 
 Run the status verb first. It answers per source sync state, open runs, and
 unconverged trees, which is what says whether the last increment finished
 cleanly before you queue another one on top of it.
+
+The export is what the favourites source reads. Without it the other sources
+still queue and favourites is reported as not queued, with the reason. When
+favourites is enabled the pass asks one confirm gate, `sync.all.favorites.confirm`,
+before it queues anything at all, so answering it and running again never queues
+a source twice.
 
 Every job queued by one invocation shares a single run identifier, so all the
 sources append to one importable file instead of producing one apiece. That
@@ -37,8 +44,9 @@ and it is why queueing sources one at a time by hand costs you an import per
 source.
 
 Which sources exist is a property of the profile, not of this verb. A slim
-profile queues fewer jobs and reports fewer, and that is the profile answering,
-not the sync failing.
+profile enables playlists alone, which has no worker yet, so a slim pass queues
+nothing, names playlists as not built, and reports a no-op rather than an ok.
+That is the profile answering, not the sync failing.
 
 ## Driving the queue
 
@@ -58,11 +66,13 @@ declared states are queued, running, blocked, succeeded, failed, and cancelled.
 Cancelled is its own state rather than a flavour of failed, so a job somebody
 stopped on purpose is never read as one that broke.
 
-`--job` on a sync verb does not start anything. It reconciles the increment
-already queued under that identifier, which is what a resume re-invokes.
+`--job` on a source's own sync verb does not start anything. It continues the
+increment already queued under that identifier, which is what a resume
+re-invokes. `sync all` takes no `--job`, because it queues nothing under its own
+name: resume the source's job instead.
 
 ```bash
-crate sync all --job JOB-ID
+crate sync labels --job JOB-ID
 ```
 
 ## A cursor advances only on a clean pass

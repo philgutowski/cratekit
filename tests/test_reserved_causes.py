@@ -5087,7 +5087,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # the plan reason a confirmed intake apply carries over an empty folder, the
     # same kind of literal as no-tracks and nothing-identified. Every refusal
     # these two verbs raise reuses a slug the table already reserves.
-    assert (len(literals), len(literals - set(causes))) == (389, 236), (
+    # Re-pinned on U61, 2026-09-10: 389 to 391 distinct, 236 to 238 non-keys.
+    # TWO literals joined and NOTHING left, differenced as SETS against `main`'s
+    # own `src` tree read through `git show` rather than inferred from the total.
+    # Neither is a cause: not-built, the reason `sync all` reports for a source
+    # with no worker yet, which is playlists on every profile; and
+    # sync-source-not-queued, the WARNING code a pass carries for a source whose
+    # own precondition refused while another source did queue, a warning and not
+    # a cause because the pass did queue. Every refusal the composer raises is a
+    # source's own, reusing a slug the table already reserves.
+    assert (len(literals), len(literals - set(causes))) == (391, 238), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

@@ -88,9 +88,10 @@ def build_all(parser, entry) -> None:
     parser.set_defaults(_handler=all_sources)
 
 
-#: What planning one source yields: how to queue it once the pass may proceed,
-#: and the warnings its own verb would have shown at the same moment.
-Queue = Callable[[Any, config.Config, str], jobs.Job]
+#: How a planned source is queued once the pass may proceed. A forward
+#: reference, because ``tests/test_config.py`` refuses any module-level binding
+#: that reaches into ``config`` and cannot tell an annotation from a snapshot.
+Queue = Callable[[Any, "config.Config", str], "jobs.Job"]
 
 
 @dataclasses.dataclass
