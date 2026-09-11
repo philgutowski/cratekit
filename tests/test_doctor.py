@@ -2411,15 +2411,61 @@ def test_a_provider_whose_no_trash_option_is_set_the_other_way_round_is_read_cor
     document["backup"] = {"remote": "archive:"}
     cfg = config.from_dict(document)
 
-    hardened = probes(
-        rclone_remotes=lambda _r: {"archive": {"type": "onedrive", "hard_delete": "true"}}
-    )
+    business = {"type": "onedrive", "drive_type": "business"}
+    hardened = probes(rclone_remotes=lambda _r: {"archive": {**business, "hard_delete": "true"}})
     assert find(doctor.run(cfg, probes=hardened), "backup.remote").status is doctor.Status.OK
 
-    trashing = probes(
-        rclone_remotes=lambda _r: {"archive": {"type": "onedrive", "hard_delete": "false"}}
-    )
+    trashing = probes(rclone_remotes=lambda _r: {"archive": {**business, "hard_delete": "false"}})
     assert find(doctor.run(cfg, probes=trashing), "backup.remote").failed
+
+
+@pytest.mark.parametrize("drive_type", ["personal", None])
+@pytest.mark.parametrize("hard_delete", ["true", "false"])
+def test_a_onedrive_remote_where_hard_delete_does_nothing_is_a_note(
+    configured, drive_type, hard_delete
+):
+    """rclone honours hard_delete on business drives and document libraries only.
+
+    Its own backend help says a personal account does not support the permanent
+    delete call. Reading the option alone reported that remote green on a setting
+    that changes nothing, and red on one that nothing could change. An unset
+    drive_type is the same answer, because which kind of drive it is was not read.
+    """
+    document = document_for(configured.library.root)
+    document["backup"] = {"remote": "archive:"}
+    cfg = config.from_dict(document)
+    settings = {"type": "onedrive", "hard_delete": hard_delete}
+    if drive_type is not None:
+        settings["drive_type"] = drive_type
+    finding = find(
+        doctor.run(cfg, probes=probes(rclone_remotes=lambda _r: {"archive": settings})),
+        "backup.remote",
+    )
+    assert finding.status is doctor.Status.INFO, finding.detail
+    assert f"drive_type is {drive_type or 'unset'}" in finding.detail
+
+
+@pytest.mark.parametrize("extra", [{}, {"permanent_delete": "true"}])
+def test_dropbox_is_not_told_to_set_an_option_rclone_does_not_have(configured, extra):
+    """rclone's Dropbox backend has no per-remote delete option at all.
+
+    The row used to name ``permanent_delete``, so every Dropbox remote failed
+    with a fix nothing could apply, and one where somebody wrote that key by
+    hand went green while every prune still went to Dropbox's deleted files.
+    """
+    document = document_for(configured.library.root)
+    document["backup"] = {"remote": "archive:"}
+    cfg = config.from_dict(document)
+    finding = find(
+        doctor.run(
+            cfg,
+            probes=probes(rclone_remotes=lambda _r: {"archive": {"type": "dropbox", **extra}}),
+        ),
+        "backup.remote",
+    )
+    assert finding.status is doctor.Status.INFO, finding.detail
+    assert "permanent_delete" not in finding.detail
+    assert "no per-remote option" in finding.detail
 
 
 def test_a_remote_type_with_no_row_says_so_rather_than_passing(configured):
@@ -3327,6 +3373,8 @@ def test_the_two_remote_tables_never_answer_for_the_same_type():
     assert not overlap, overlap
     for kind, policy in doctor._REMOTE_TRASH_POLICY.items():
         assert policy.option is None or policy.disabled in ("true", "false"), kind
+        # A gate on an option that does not exist is a gate on nothing.
+        assert policy.applies_when is None or policy.option is not None, kind
 
 
 # ── the write refusals, driven rather than read off the table ────────────────

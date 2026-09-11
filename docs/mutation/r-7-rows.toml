@@ -1,0 +1,69 @@
+# R-7, the backup.remote rows corrected against rclone's own backend help.
+# Author's rows, UNRUN.
+#
+# The full suite is about six minutes and the driver's preflight is two full
+# runs, so this table cannot finish inside a relay task's ten minute foreground
+# call. That is R-329. Run it attended:
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r-7-rows.toml
+#
+# A read only doctor check, so the table is scoped to the new gate and the
+# corrected row, with one existing guard sampled. All six are user facing: each
+# changes what a person is told about their backup remote. Each row's expected
+# kill is in its description.
+
+name = "r-7"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_gate_branch_removed"
+description = "Skip the applies_when branch. Expect every personal and unset case of the onedrive note test to die, since hard_delete then reads OK or FAIL"
+file = "src/cratekit/cli/doctor.py"
+old = '''    if policy.applies_when is not None:
+'''
+new = '''    if False:
+'''
+
+[[rows]]
+id = "M2_personal_honoured"
+description = "Treat a personal drive as one where hard_delete works. Expect the two personal cases of the onedrive note test to die and the unset cases to survive"
+file = "src/cratekit/cli/doctor.py"
+old = '''        if value not in honoured:
+'''
+new = '''        if value not in honoured | {"personal"}:
+'''
+
+[[rows]]
+id = "M3_unset_read_as_business"
+description = "Read an unset drive_type as business. Expect the two unset cases of the onedrive note test to die, which is absence read as evidence"
+file = "src/cratekit/cli/doctor.py"
+old = '''        value = str(settings.get(setting, ""))
+'''
+new = '''        value = str(settings.get(setting, "business"))
+'''
+
+[[rows]]
+id = "M4_dropbox_row_restored"
+description = "Put back the permanent_delete row. Expect both cases of the dropbox test to die, the plain one on FAIL and the hand written key on OK"
+file = "src/cratekit/cli/doctor.py"
+old = '''        "dropbox": TrashPolicy(option=None),
+'''
+new = '''        "dropbox": TrashPolicy(option="permanent_delete", disabled="true"),
+'''
+
+[[rows]]
+id = "M5_onedrive_gate_dropped"
+description = "Remove the gate from the onedrive row, the data layer rather than the branch M1 removes. Expect the same four personal and unset cases to die"
+file = "src/cratekit/cli/doctor.py"
+old = '''            applies_when=("drive_type", frozenset({"business", "documentLibrary"})),
+'''
+new = ""
+
+[[rows]]
+id = "M6_disabled_sense_flipped"
+description = "Existing guard, sampled. Compare the option with != instead of ==. Expect the drive, business onedrive and remote path tests to die"
+file = "src/cratekit/cli/doctor.py"
+old = '''    if str(settings.get(policy.option, "")).lower() == policy.disabled:
+'''
+new = '''    if str(settings.get(policy.option, "")).lower() != policy.disabled:
+'''

@@ -4,7 +4,18 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-11, R-6 on `relay/43`, taken from the board as issue #43
+**Last session 2026-09-11, R-7 on `relay/44`, taken from the board as issue #44
+and run as relay task 44.** The seventh residual issue worked, and the third of
+METHOD's surface group. A close, since U27's doctor already reports a trashing
+remote with its option unset, and setup runs doctor. Read against rclone
+1.74.3's own backend help, two of that check's rows were wrong and are fixed.
+Dropbox's row named an option the Dropbox backend does not have, so it failed
+every run with a fix nothing could apply. OneDrive's `hard_delete` does nothing
+on a personal drive and read green there. `TrashPolicy.applies_when` now gates
+it on `drive_type`. R-336 and R-337 are filed. Six mutation rows are committed in
+`docs/mutation/r-7-rows.toml` and unrun, for R-329's reason.
+
+**The session before, 2026-09-11, R-6 on `relay/43`, taken from the board as issue #43
 and run as relay task 43.** The sixth residual issue worked, and the second of
 METHOD's surface group. Another close, measured on the registry: sixty four
 entries, sixty two landed, and conformance 1, 2 and 3 parametrise over all
@@ -180,9 +191,14 @@ tree, which is the whole of what the entry now says.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
 
-The last measured suite was **7328 passed and 1 skipped**, in 361 seconds, taken
-on `relay/43` on a committed tree. R-5 and R-6 changed no test, so the count is
-R-4's unchanged. Against R-3's 7312 the 16 are R-4's
+The last measured suite was **7334 passed and 1 skipped**, in 358 seconds, taken
+on `relay/44` on a committed tree. Against R-6's 7328 the six are R-7's own in
+`tests/test_doctor.py`: four cases of
+`test_a_onedrive_remote_where_hard_delete_does_nothing_is_a_note` and two of
+`test_dropbox_is_not_told_to_set_an_option_rclone_does_not_have`. **Main's
+highest residual is R-337 once this branch merges**, R-336 and R-337 being this
+branch's, with no duplicate headings and none deleted. R-5 and R-6 changed no
+test. Against R-3's 7312 the 16 before those are R-4's
 own, reconciled by identifier in `tests/test_cli_contract.py`: two rejection
 rows in `test_an_entry_missing_its_metadata_fails_to_register`,
 `test_every_live_toggle_is_driven_by_the_toggle_test_below`, and thirteen cases
@@ -356,6 +372,7 @@ In METHOD's serialized order, which is what picks the work:
 | | #41 | R-4, extras tied to their module and every toggle driven | DONE on `relay/41`, 6 rows committed and unrun (R-329) |
 | | #42 | R-5, conformance 4 and 8 already drive behaviour, closed in place | DONE on `relay/42`, no guard changed, R-335 filed |
 | | #43 | R-6, the conformance drives cover sixty two landed verbs, closed in place | DONE on `relay/43`, no guard changed, nothing filed |
+| | #44 | R-7, doctor reports a trashing remote, closed in place with two rows fixed | DONE on `relay/44`, 6 rows committed and unrun (R-329), R-336 and R-337 filed |
 | | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
 
 **Phase E is complete with the U53 merge, so line 7 is next and it is
@@ -396,7 +413,8 @@ issues, and #29.
 
 | branch | state |
 |---|---|
-| `relay/43` | R-6, the branch this record is on; delete after the merge |
+| `relay/44` | R-7, the branch this record is on; delete after the merge |
+| `relay/43` | R-6, merged to `main`; delete if it still exists |
 | `relay/42` | R-5, merged to `main`; delete if it still exists |
 | `relay/41` | R-4, merged to `main`; delete if it still exists |
 | `relay/40` | R-3, merged to `main`; delete if it still exists |
