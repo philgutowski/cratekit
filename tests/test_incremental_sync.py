@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import config, profiles
+from cratekit.core import config
 from cratekit.core.cause import CratekitError
 from cratekit.sync import artifacts, marks, run, scope, sources, watermarks
 
@@ -469,31 +469,3 @@ def test_declared_sources_are_stable_ids_not_display_names():
         assert source_id.islower()
         assert " " not in source_id
 
-
-def test_sync_all_queues_one_job_per_enabled_source(cfg):
-    from cratekit.core import jobs
-    from cratekit.sync import cli
-
-    class Args:
-        job = None
-
-    class Ctx:
-        args = Args()
-        entry = type("E", (), {"handler_key": "sync.all", "name": "sync.all"})()
-
-        def envelope(self, *, data, outcome=None):
-            return data
-
-    payload = cli.queue_all(Ctx())
-    expected = sources.enabled(profiles.resolve(cfg.profile.name, cfg.modules.explicit))
-    assert payload["summary"]["queued"] == len(expected)
-    assert tuple(payload["summary"]["sources"]) == expected
-    with jobs.open_store() as store:
-        queued = list(jobs.list_jobs(store))
-    assert len(queued) == len(expected)
-    assert {job.payload["source_id"] for job in queued} == set(expected)
-    run_ids = {job.payload.get("run_id") for job in queued}
-    assert len(run_ids) == 1 and None not in run_ids, (
-        "every source in one sync.all invocation must share one run id, or "
-        "each increment writes its own intake file and R29 is broken"
-    )

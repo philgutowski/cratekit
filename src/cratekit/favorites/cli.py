@@ -176,14 +176,11 @@ def sync_favorites(ctx) -> Envelope:
             ctx, spec, ctx.args.job, digest=confirm_digest, summary=summary
         )
 
-    exported = source.required_path(getattr(ctx.args, "export", None))
-    wanted = str(
-        getattr(ctx.args, "favorites_playlist", None)
-        or source.DEFAULT_FAVORITES_PLAYLIST
+    exported, resolved = resolve_sweep(
+        getattr(ctx.args, "export", None), getattr(ctx.args, "favorites_playlist", None)
     )
-    resolved = source.resolve(source.read_library(exported), wanted)
 
-    option = ctx.gate.require(spec, digest=confirm_digest(resolved.key, str(exported), resolved.track_ids))
+    option = ctx.gate.require(spec, digest=sweep_digest(exported, resolved))
     if option == "abort":
         # THE DECLARED SHAPE, and nothing about the playlist. See
         # ``shell.declined``: this verb declares ``job_state/1`` and the payload
@@ -192,29 +189,77 @@ def sync_favorites(ctx) -> Envelope:
     cfg = shell.load_config("favorites.cli")
     run_id = getattr(ctx.args, "run_id", None) or ctx.run.run_id
     with jobs.open_store() as store:
-        job = jobs.enqueue(
+        job = queue_sweep(
             store,
+            cfg,
             handler_key=ctx.entry.handler_key,
-            # TWO RUNS, TWO KEYS, on purpose. ``run_id`` is the intake run this
-            # sync shares across its sources. The gate run is the one the
-            # confirm decision was recorded against, and conflating them is the
-            # defect ``sync_favorites_argv`` describes.
-            payload={
-                "source_id": "favorites",
-                "run_id": run_id,
-                PLAYLIST: resolved.key,
-                EXPORT: str(exported),
-                shell.TRACKS: list(resolved.track_ids),
-                jobs.GATE_RUN_KEY: ctx.run.run_id,
-            },
-            # ONE FAVOURITE IS ONE ITEM, so the sweep cannot queue empty work.
-            item_ids=resolved.track_ids,
-            cfg=cfg,
+            run_id=run_id,
+            gate_run=ctx.run.run_id,
+            exported=exported,
+            resolved=resolved,
         )
         return ctx.envelope(
             data=shell.reported(store, job, cfg, summary),
             warnings=shell.queue_warnings(resolved, noun="favourite"),
         )
+
+
+def resolve_sweep(
+    export: str | None, playlist: str | None
+) -> tuple[Path, source.ResolvedPlaylist]:
+    """The export and the favourites playlist a sweep would queue, or a refusal.
+
+    PUBLIC because ``crate sync all`` resolves the same sweep before it asks its
+    own confirm, and the digest it asks over has to be the one this verb would
+    compute. One resolution, two callers, one digest.
+    """
+    exported = source.required_path(export)
+    wanted = str(playlist or source.DEFAULT_FAVORITES_PLAYLIST)
+    return exported, source.resolve(source.read_library(exported), wanted)
+
+
+def sweep_digest(exported: Path, resolved: source.ResolvedPlaylist) -> str:
+    """The confirm digest for one resolved sweep, as both queueing verbs ask it."""
+    return confirm_digest(resolved.key, str(exported), resolved.track_ids)
+
+
+def queue_sweep(
+    store,
+    cfg: config.Config,
+    *,
+    handler_key: str,
+    run_id: str,
+    gate_run: str,
+    exported: Path,
+    resolved: source.ResolvedPlaylist,
+) -> jobs.Job:
+    """Queue one favourites sweep. The one spelling of what a sweep job is.
+
+    ``gate_run`` IS A RUN OWNED BY ``sync.favorites``, whichever verb queued the
+    job. The resume :func:`sync_favorites_argv` builds loads it with ``--run``,
+    and the dispatcher refuses a run whose record belongs to another verb, so
+    ``crate sync all`` hands its recorded answer to a run of this verb before it
+    calls here (``Gates.hand_off``) rather than passing its own run.
+    """
+    return jobs.enqueue(
+        store,
+        handler_key=handler_key,
+        # TWO RUNS, TWO KEYS, on purpose. ``run_id`` is the intake run this
+        # sync shares across its sources. The gate run is the one the
+        # confirm decision was recorded against, and conflating them is the
+        # defect ``sync_favorites_argv`` describes.
+        payload={
+            "source_id": "favorites",
+            "run_id": run_id,
+            PLAYLIST: resolved.key,
+            EXPORT: str(exported),
+            shell.TRACKS: list(resolved.track_ids),
+            jobs.GATE_RUN_KEY: gate_run,
+        },
+        # ONE FAVOURITE IS ONE ITEM, so the sweep cannot queue empty work.
+        item_ids=resolved.track_ids,
+        cfg=cfg,
+    )
 
 
 def run_heart_item(
@@ -277,8 +322,11 @@ __all__ = [
     "build_sync",
     "confirm_digest",
     "handle",
+    "queue_sweep",
+    "resolve_sweep",
     "run_heart_item",
     "summary",
+    "sweep_digest",
     "sync_favorites",
     "sync_favorites_argv",
 ]

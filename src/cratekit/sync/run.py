@@ -79,8 +79,9 @@ class IncrementResult:
     R-136 records that widening as a contract change of its own, and
     :func:`run_independent` hands back a mixed dictionary with no per-source
     signal either. A caller that needs the distinction must read
-    ``source.acquires`` off the source it passed in, and ``sync.all`` is the
-    caller that will need it first.
+    ``source.acquires`` off the source it passed in. ``sync.all`` does not call
+    this engine: since U61 it queues each source under that source's own worker,
+    and the worker is the caller.
     """
 
     source_id: str

@@ -43,6 +43,7 @@ from typing import Any, Mapping
 
 from cratekit.cli import output
 from cratekit.cli.registry import Entry, GateSpec
+from cratekit.cli.registry import entry as declared_entry
 from cratekit.core import config
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope
 from cratekit.core.exit_codes import ExitCode, Remedy
@@ -437,6 +438,77 @@ class Gates:
             )
         self.state.open_gate = None
         return chosen
+
+    def hand_off(self, spec: GateSpec, *, verb: str, gate: str) -> str:
+        """Carry the answer recorded on ``spec`` to a new run owned by ``verb``.
+
+        WHY THIS EXISTS. A verb that queues another verb's job has to freeze a
+        gate run the job's resume can load, and the dispatcher refuses a
+        ``--run`` whose record belongs to a different verb. So ``crate sync all``
+        cannot hand the favourites job its own run: the child ``sync favorites``
+        would be refused on every respawn. This mints the run that child can
+        load, holding the decision already given.
+
+        IT COPIES AN ANSWER, IT NEVER SUPPLIES ONE. It refuses unless ``spec``
+        holds a RECORDED decision with a digest, which after ``require`` returned
+        is the decision a person gave, with its actor, against the artifact they
+        were offered. The copy keeps that actor, that time and that digest, so
+        the resumed child meets ``DecisionStale`` if what it rebuilds from the
+        payload is not what the person saw. The target gate must be declared by
+        ``verb``, must offer the chosen option, and must compare a digest, or the
+        copy would answer a question the person was never asked.
+
+        Returns the new run's identifier, saved before returning.
+        """
+        recorded = self.state.decisions.get(spec.name)
+        if recorded is None or recorded.digest is None:
+            raise CratekitError(
+                Cause(
+                    reason="internal-error",
+                    message=(
+                        f"{spec.name!r} holds no recorded decision with a digest, "
+                        f"so there is no answer to carry to {verb}"
+                    ),
+                    remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
+                    origin=("gates",),
+                    detail={"gate": spec.name, "verb": verb},
+                )
+            )
+        target = next((g for g in declared_entry(verb).gates if g.name == gate), None)
+        if (
+            target is None
+            or recorded.option not in target.options
+            or target.digest_source is None
+        ):
+            raise CratekitError(
+                Cause(
+                    reason="internal-error",
+                    message=(
+                        f"{verb} declares no digest-compared gate {gate!r} offering "
+                        f"{recorded.option!r}, so the answer on {spec.name!r} "
+                        f"cannot stand for it"
+                    ),
+                    remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
+                    origin=("gates",),
+                    detail={"gate": spec.name, "verb": verb, "target": gate},
+                )
+            )
+        handed = RunState(
+            run_id=output.new_run_id(),
+            verb=verb,
+            created=output.timestamp(),
+            decisions={
+                gate: Decision(
+                    option=recorded.option,
+                    actor=recorded.actor,
+                    recorded=recorded.recorded,
+                    digest=recorded.digest,
+                )
+            },
+            offers={gate: recorded.digest},
+        )
+        save(handed)
+        return handed.run_id
 
 
 def record(state: RunState, spec: GateSpec, option: str, *, actor: str) -> None:

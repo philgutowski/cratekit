@@ -1451,10 +1451,16 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # destructive session, which is what lets the verb exit OK on a machine
         # that has never acknowledged a backup.
         "adopt.apply": [],
-        # U22. No positional argument: the verb queues one job per enabled
-        # source from the active profile. The configured fixture is the full
-        # profile, so three jobs land, and queueing needs no database.
-        "sync.all": [],
+        # U61. The composer takes the favourites source's export, the same
+        # document ``sync.favorites`` is driven with below, so its confirm gate
+        # is reachable and conformance 3 can drive it. The registry on this
+        # fixture is empty, so the labels source refuses for itself and the
+        # pass still reaches OK once favourites is confirmed. The composition
+        # itself is driven in tests/test_sync_all.py.
+        "sync.all": [
+            "--export",
+            str(outbound_fakes.write_export(library / "outbound")),
+        ],
         # U20. Inbox, unplaced and pending take no positional argument: an empty
         # intake folder and an empty ledger are the state a fresh install is
         # genuinely in, and each verb must still emit a well-formed plan and
