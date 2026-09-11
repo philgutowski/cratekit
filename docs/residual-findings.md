@@ -14808,6 +14808,15 @@ the register working rather than the board contradicting the repository. Issue
 the answer for U25 or merely the quieter state is the judgement #80 exists to
 make, and the session that closed R-322 did not take it.
 
+**Closed 2026-09-11, on the terms above.** U25 is not finished. That is the
+answer #80 existed to take, and it is the same answer the 2026-09-10 reopen
+already wrote on #25. What was still missing was a brief a session can build
+against: the issue body still described the DSP port, which is in the tree.
+The body now names the two remaining shells, `analyze.vocals` and
+`metadata.mytags-vocals`, the engines they sit on, R-277 as the cost of the
+missing re-score, and R-133 left attended. #80 closes. The modules existing is
+U25's close, not this entry's.
+
 ---
 
 ## R-325. Four maintainer facing zeros in U59's table, each with what it means

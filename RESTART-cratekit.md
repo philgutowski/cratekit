@@ -4,7 +4,16 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-11, R-102 on `relay/54`, taken from the board as issue #54
+**Last session 2026-09-11, brief rewrite for U25, not a unit.** #80 is closed.
+U25 is not finished. That was the answer R-324 asked for, and the 2026-09-10
+reopen of #25 had already taken it. What was still missing was a brief a session
+can build against: the issue body still described the DSP port, which is in the
+tree. The body now names the two remaining shells, `analyze.vocals` and
+`metadata.mytags-vocals`, the engines they sit on, R-277, and R-133 left
+attended. METHOD's serialized order places #25 as line 10, the next session.
+Do not take #29.
+
+**The session before, 2026-09-11, R-102 on `relay/54`, taken from the board as issue #54
 and run as relay task 54.** The twelfth residual issue worked, and the last of
 METHOD's guard group. Test work, closed in place, with one piece filed. The
 reports allowlist audit in `tests/modules/test_reports.py` now walks the IMPORT
@@ -488,7 +497,8 @@ In METHOD's serialized order, which is what picks the work:
 | | #44 | R-7, doctor reports a trashing remote, closed in place with two rows fixed | DONE on `relay/44`, 6 rows committed and unrun (R-329), R-336 and R-337 filed |
 | | #47 | R-10, one membership call per playlist and one folder lookup per folder | DONE on `relay/47`, 8 rows committed and unrun (R-329) |
 | | #48 | R-11, the lead break helper and the watch driven through the database half | DONE on `relay/48`, 6 rows committed and unrun (R-329), two findings still open in the ledger |
-| | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
+| 10 | #25 | U25, vocal restamp and My Tags shells | Ready. Brief rewritten 2026-09-11. Next session. |
+| 12 | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
 
 **#38 is the one task in that run that did not verify itself.** It landed at
 `d3fe927` with its whole pipeline complete, seven commits through the review
@@ -502,12 +512,12 @@ that as a second repair.
 
 **The board is clean as of 2026-09-11**: 61 units, 59 done, 2 ready, 0 blocked,
 `board.py audit` printing that the board matches the repository. The two ready
-are #29, attended and not a session's, and #25, reopened on 2026-09-10 and
-unplaced in METHOD's order.
+are #29, attended and not a session's, and #25, whose brief now names the two
+remaining shells. METHOD line 10 is #25. Take that.
 
-**Phase E is complete with the U53 merge, so line 7 is next and it is
-Phillip's**: the explainer over the range from `46d5a4c` to the U53 merge
-commit. A session does not run it.
+**Phase E is complete with the U53 merge.** Line 7 is Phillip's, the explainer
+over the range from `46d5a4c` to the U53 merge commit. A session does not run
+it. The next session is line 10, #25.
 
 #78 and #79 are not in METHOD's list, which was serialized before they existed.
 Each was taken as a relay task, which is Phillip placing it.
@@ -520,24 +530,24 @@ each done or closed back to the ledger. A2 is attended. **#81, R-322, is the
 first of them to be worked and it is done**, which leaves the rest of that label
 as the live list; run
 `gh issue list --repo philgutowski/cratekit --label residual --state open` rather
-than trusting a count written here. R-324 is tracked on #80 and R-327 has no
+than trusting a count written here. R-324 is closed on #80. R-327 has no
 issue, which is the normal state for a residual: the ledger holds it until
 somebody decides to act on it.
 
-**Every unit in METHOD's serialized list is now built, and so are #78 and #79.**
-What is left on that list is Phillip's: the two explanations, the residual
-issues, and #29.
+**Every unit in METHOD's serialized list is built except #25 and #29, and so
+are #78 and #79.** #25 is the next session. What is left after that is
+Phillip's: the two explanations, #46 and #39, and #29.
 
 ## Do this first
 
 1. `CLAUDE.md`, then `docs/METHOD.md`. The pipeline section is the sequence and
-   the do-not-touch section binds.
-2. `board.py next`. It names #29. Do not take it. METHOD's serialized order is
-   what picks the work, not the ranking.
+   the do-not-touch section binds. Line 10 is #25.
+2. `board.py next`. It names #29 first by reach. Do not take it. Take #25.
+   `board.py start 25`.
 3. Grep `docs/solutions/` for the module you are about to touch. A unit that
    opens a destructive write reads the barren list entry before it names an
    `analysis_roots`; a worker that moves files reads the rename intent entry
-   before it binds.
+   before it binds. Read R-277 before touching `analyze.vocals`.
 
 ## The branches
 
