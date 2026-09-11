@@ -4,7 +4,18 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-11, R-6 on `relay/43`, taken from the board as issue #43
+**Last session 2026-09-11, R-7 on `relay/44`, taken from the board as issue #44
+and run as relay task 44.** The seventh residual issue worked, and the third of
+METHOD's surface group. A close, since U27's doctor already reports a trashing
+remote with its option unset, and setup runs doctor. Read against rclone
+1.74.3's own backend help, two of that check's rows were wrong and are fixed.
+Dropbox's row named an option the Dropbox backend does not have, so it failed
+every run with a fix nothing could apply. OneDrive's `hard_delete` does nothing
+on a personal drive and read green there. `TrashPolicy.applies_when` now gates
+it on `drive_type`. R-336 and R-337 are filed. Six mutation rows are committed in
+`docs/mutation/r-7-rows.toml` and unrun, for R-329's reason.
+
+**The session before, 2026-09-11, R-6 on `relay/43`, taken from the board as issue #43
 and run as relay task 43.** The sixth residual issue worked, and the second of
 METHOD's surface group. Another close, measured on the registry: sixty four
 entries, sixty two landed, and conformance 1, 2 and 3 parametrise over all
@@ -356,6 +367,7 @@ In METHOD's serialized order, which is what picks the work:
 | | #41 | R-4, extras tied to their module and every toggle driven | DONE on `relay/41`, 6 rows committed and unrun (R-329) |
 | | #42 | R-5, conformance 4 and 8 already drive behaviour, closed in place | DONE on `relay/42`, no guard changed, R-335 filed |
 | | #43 | R-6, the conformance drives cover sixty two landed verbs, closed in place | DONE on `relay/43`, no guard changed, nothing filed |
+| | #44 | R-7, doctor reports a trashing remote, closed in place with two rows fixed | DONE on `relay/44`, 6 rows committed and unrun (R-329), R-336 and R-337 filed |
 | | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
 
 **Phase E is complete with the U53 merge, so line 7 is next and it is
@@ -396,7 +408,8 @@ issues, and #29.
 
 | branch | state |
 |---|---|
-| `relay/43` | R-6, the branch this record is on; delete after the merge |
+| `relay/44` | R-7, the branch this record is on; delete after the merge |
+| `relay/43` | R-6, merged to `main`; delete if it still exists |
 | `relay/42` | R-5, merged to `main`; delete if it still exists |
 | `relay/41` | R-4, merged to `main`; delete if it still exists |
 | `relay/40` | R-3, merged to `main`; delete if it still exists |

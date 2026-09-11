@@ -322,6 +322,30 @@ exists; what is missing is the prompt.
 **Closes when:** the setup wizard asks, or doctor reports, that a remote whose
 provider trashes on delete has the per-remote option set. Both land in U27.
 
+**Closed 2026-09-11 on `relay/44`.** The closing condition was already true on
+the tree. U27 landed `backup.remote` in `cratekit.cli.doctor`, which reads
+`rclone config dump`, looks the configured remote up by name, and FAILs a
+trashing provider whose per remote option is not set, naming the option and the
+value. `crate setup` ends by running doctor and exits on its verdict, so the
+wizard reports it too. The Drive case this entry was written about is
+`test_a_remote_whose_provider_trashes_on_delete_is_reported`.
+
+Read against rclone 1.74.3's own backend help, two rows of that check were
+wrong, and both are corrected here. Dropbox's row named a `permanent_delete`
+option the Dropbox backend does not have, so every Dropbox remote failed with a
+fix nothing could apply. It is an option-less row now, like Box and pCloud.
+OneDrive's `hard_delete` is honoured on business drives and document libraries
+only, and a personal remote with it set read green. `TrashPolicy.applies_when`
+gates the option on `drive_type`, and a remote outside those values, an unset
+one included, is a note. Whether `config dump` passes a key rclone does not
+know through was not measured, because the scratch configuration run was
+refused in this session; the Dropbox test drives that input either way.
+
+What is still open sits in two new entries. R-336 is the quota sentence on the
+option-less rows, which nobody measured. R-337 is five providers rclone gives a
+delete option that the table has no row for. Six mutation rows are committed in
+`docs/mutation/r-7-rows.toml` and unrun, for R-329's reason.
+
 ---
 
 ## R-8. The backup restore is not yet bound to the destructive-session gates
@@ -15015,3 +15039,52 @@ drive has to account for. That is a unit, not a residual close.
 dispatcher with each of the three gates broken in turn and asserts the code and
 an unchanged filesystem, and conformance 4 asserts that a landed adjudicating
 verb's run leaves an item in the queue under its own handler key.
+
+---
+
+## R-336. The option-less trash rows state a quota consequence nobody measured
+
+**Found:** closing R-7 on `relay/44`, 2026-09-11.
+
+Dropbox, Box and pCloud each have a row with no option, and the note they share
+says a pruned archive "keeps counting against the quota until the provider's
+own retention expires". That is a claim about each provider's billing, not about
+rclone, and rclone's backend help does not make it. Whether deleted files count
+against the quota was not measured for any of the three. If one of them does not
+count them, a person is told a prune reclaimed nothing when it did.
+
+**Measured cost today, unmeasured.** The finding is INFO, so it refuses nothing
+and fails nothing. Its only cost is a sentence that may be false.
+
+**Why it was not settled here.** Measuring it means a real account per provider
+or the provider's own documentation, and neither was available unattended.
+
+**Closes when:** each option-less row carries a quota sentence measured against
+its provider, or the shared sentence is reworded to claim only what rclone
+states, that the provider keeps deleted files.
+
+---
+
+## R-337. Five providers rclone gives a delete option have no row
+
+**Found:** closing R-7 on `relay/44`, 2026-09-11.
+
+rclone 1.74.3's backend help lists a per remote delete option for `mega`
+(`hard_delete`), `b2` (`hard_delete`), `jottacloud` (`hard_delete`), `yandex`
+(`hard_delete`) and `pikpak` (`use_trash`). None has a row in
+`_REMOTE_TRASH_POLICY`, so each reads "no row, nothing asserted", which is
+honest and is not the instruction R-7 asked for. A person on one of them who
+never set the option is not told it exists.
+
+**Measured cost today, unmeasured.** No remote of those five types was driven.
+The answer is INFO, never a false green.
+
+**Why it was not built here.** Each row asserts a default and a sense, true or
+false, that was only read from help text, and `b2`'s is a hide rather than a
+trash, whose quota behaviour depends on the bucket's lifecycle rules. Asserting
+all five from help text is the one-provider guess R-7 was about, repeated five
+times.
+
+**Closes when:** each of the five has a row whose default and sense are checked
+against rclone's source or a real remote, or is named in
+`_NON_TRASHING_REMOTE_TYPES` with the same evidence.
