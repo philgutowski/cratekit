@@ -1360,10 +1360,7 @@ def insert_root_playlist(
     if isinstance(existing, str):
         return existing
     if existing is not None:
-        start = existing.line_start
-        if bytes(content[start - len(CRLF) : start]) == CRLF:
-            start -= len(CRLF)
-        del content[start : existing.close_end]
+        del content[_absorb_lead_break(content, existing.line_start) : existing.close_end]
         root = root_node(content)
         if root is None:  # pragma: no cover - the delete cannot remove the root
             return "ROOT node not found"
@@ -1454,10 +1451,7 @@ def remove_folder_node(
     if target is None:
         return f"folder node not found: {folder_name}"
 
-    start = target.line_start
-    if bytes(content[start - len(CRLF) : start]) == CRLF:
-        start -= len(CRLF)
-    del content[start : target.close_end]
+    del content[_absorb_lead_break(content, target.line_start) : target.close_end]
     _bump_count(content, parent, -1)
     return None
 
@@ -1491,10 +1485,7 @@ def insert_intake_playlist(
     if isinstance(existing, str):
         return existing
     if existing is not None:
-        start = existing.line_start
-        if bytes(content[start - len(CRLF) : start]) == CRLF:
-            start -= len(CRLF)
-        del content[start : existing.close_end]
+        del content[_absorb_lead_break(content, existing.line_start) : existing.close_end]
         replaced = True
         refreshed = _tree_node(content, tree)
         if isinstance(refreshed, str):  # pragma: no cover - the tree cannot vanish
@@ -1717,6 +1708,24 @@ def _first_child_offset(content: bytes, parent: NodeSpan) -> int | None:
     if bytes(content[at : at + len(CRLF)]) != CRLF:
         return None
     return at + len(CRLF)
+
+
+def _absorb_lead_break(content: bytes, start: int) -> int:
+    """Where a node's removal begins once the break ending the line before is taken.
+
+    Every insert here emits its node as a leading break followed by the node, so a
+    delete that took only the node's own lines would leave that break behind and
+    each replace would grow the document by one blank line. Returns ``start`` moved
+    back over one CRLF when one sits directly before it, and ``start`` unchanged
+    otherwise.
+
+    A LEAD break, never a trailing one. The catalog writer replaces a node in
+    place and takes the break AFTER it instead, because what lands there is a
+    block rather than a lead-broken node, so it does not call this.
+    """
+    if bytes(content[start - len(CRLF) : start]) == CRLF:
+        return start - len(CRLF)
+    return start
 
 
 def _bump_count(content: bytearray, node: NodeSpan, delta: int) -> None:
