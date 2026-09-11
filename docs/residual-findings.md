@@ -6863,6 +6863,34 @@ is stricter than the tree can currently satisfy and would need measuring first.
 Either way the fix is driven by planting the delegating module above and
 confirming the audit now reports it.
 
+**CLOSED 2026-09-11 on `relay/54`, taken from the board as issue #54 and run as
+relay task 54.** The first option, the closure. `_admitted_closure` in
+`tests/modules/test_reports.py` follows every first party import out of the
+allowlist in one worklist pass, reading import statements, `__import__` and
+`importlib.import_module`, and returns what it could not follow instead of
+dropping it. The audit walks the closure and refuses an unfollowed import.
+
+**Driven on the real tree**: the relocation above, `cause` calling a planted
+`access_probe` holding the raw `os.open`, reads `{}` to the one hop walk and turns
+the audit red. Planted trees drive the same loop for the delegated down case,
+the sideways case two hops deep with a cycle, a delegation out of `review`, both
+`import_module` spellings, and a relative import in a three level package.
+
+**The closure is eighteen modules, not eight, and it reaches the write path**:
+`rbxml` imports `tree_registry`, which imports `session`, which imports
+`rb_writer`. Forty nine writers the audit had never read are now named in
+`QUALIFIED_MUTATIONS`, measured to a fixed point in five rounds, most of
+`rb_writer`'s only because they call `config.load`. The cheaper alternative was
+measured too and is as strict as predicted: `config`, `review`, `taxonomy` and
+`rbxml` each import a first party module the allowlist does not name.
+
+**What the closure does not follow**, on purpose: implicit parent package
+initializers, since importing `cratekit.cli.output` runs `cratekit/cli/__init__.py`
+and following it would pull the whole command line in, and a binding of
+`import_module` to a variable. Naming a writer protects the package only if a
+report calling it is caught, and one reached through another module's attribute
+is not. That is R-340.
+
 <!-- ------------------------------------------------------------------ -->
 
 ## The twelve findings below arrived with the U12 merge, 2026-08-14, and seven were renumbered
@@ -15260,3 +15288,50 @@ brief asked for the AST assertion:
 
 **Closes when:** an open whose connection is not the target file is refused by a
 check on the connection, and a test drives that refusal.
+
+---
+
+## R-340. A report reaching a writer through another module's attribute is not caught
+
+**Found:** by R-102, 2026-09-11, on `relay/54`.
+
+R-102 closed with the allowlist audit following imports to their closure, and
+the audit's argument is that every writer the closure reaches is a name
+`FILESYSTEM_MUTATIONS` or `QUALIFIED_MUTATIONS` carries, **so a report calling it
+is caught**. The second half is `filesystem_mutations`, and it resolves a
+receiver to a module only when the report bound that module itself. An admitted
+module's own imports are its attributes, and a chain through one is not read.
+
+**Driven on the tree after the naming**, five report sources, each read by
+`filesystem_mutations` and `forbidden_imports`:
+
+| Report line | `filesystem_mutations` | `forbidden_imports` |
+| --- | --- | --- |
+| `config.save(c)`, `config` imported | caught | clean |
+| `taxonomy.config.save(c)` | nothing | clean |
+| `review.config.save(c)` | nothing | clean |
+| `rbxml.tree_registry.write(x)` | nothing | clean |
+| `rbxml.tree_registry.session.rb_writer.write_session_lock(p)` | nothing | clean |
+
+The last one takes the rekordbox write lock from a read only report with both
+structural guards green. `config` through `taxonomy` predates R-102, so the hole
+is not new. What R-102 changed is that the closure made its size visible: every
+module past the allowlist is reachable this way, `rb_writer` included.
+
+**Measured cost.** None to a user. No report module spells an attribute chain
+into an admitted module today; five candidates were driven and none is in the
+tree. The cost is that `QUALIFIED_MUTATIONS` now names forty nine writers a
+report can reach without the name check seeing the call.
+
+**Options, none taken here**, since R-102's brief was the audit:
+
+1. Resolve an attribute chain rooted at an admitted module through the
+   closure's own import table, so `rbxml.tree_registry` resolves to
+   `tree_registry` and the qualified check applies. Closes the class.
+2. Refuse, in a report, any attribute read on an admitted module that names a
+   module rather than a function or a class. Cheaper, and strict: it would need
+   measuring against the three report modules first.
+
+**Closes when:** a report calling a named writer through another admitted
+module's attribute is reported by `filesystem_mutations`, and a planted report
+drives it.
