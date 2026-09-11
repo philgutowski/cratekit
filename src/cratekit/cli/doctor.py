@@ -2040,9 +2040,16 @@ def _configured_hook_types(
     return tuple(types), None, None
 
 
-def _install_command(types: Sequence[str]) -> str:
-    """The one line that installs every hook type in ``types``."""
-    return "pre-commit install " + " ".join(f"--hook-type {kind}" for kind in types)
+def _install_command(types: Sequence[str], config_name: str = _HOOK_CONFIG_DEFAULT) -> str:
+    """The one line that installs every hook type in ``types`` against ``config_name``.
+
+    The configuration is named whenever it is not the default, because the
+    installer rewrites every hook it writes to dispatch to whichever one it was
+    given. Without it that is the default, which may not exist, so following the
+    advice would break a pre-commit hook that was working.
+    """
+    config = "" if config_name == _HOOK_CONFIG_DEFAULT else f" --config {shlex.quote(config_name)}"
+    return f"pre-commit install{config} " + " ".join(f"--hook-type {kind}" for kind in types)
 
 
 def _remedy_command(root: Path) -> str:
@@ -2237,7 +2244,8 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
     # hook actually dispatches to. A pre-commit hook alone was reported green
     # while the commit-msg stage, and the closing check on it, never ran.
     config_name = _hook_config_name(body)
-    types, unknown, unknown_remedy = _configured_hook_types(_config_path(config_name, root))
+    config_file = _config_path(config_name, root)
+    types, unknown, unknown_remedy = _configured_hook_types(config_file)
     if unknown is not None:
         return Finding(
             key=key,
@@ -2251,7 +2259,7 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
             ),
             remedy=unknown_remedy,
         )
-    command = _install_command(types)
+    command = _install_command(types, config_name)
     absent: list[str] = []
     for hook_type in types[1:]:
         other = git_dir / "hooks" / hook_type
@@ -2281,6 +2289,15 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
                 f"the hook at {other} does not dispatch to this repository's "
                 f"pre-commit configuration ({other_problem})"
             )
+            continue
+        # THE SAME configuration, not merely one inside the checkout. The types
+        # were read from the pre-commit hook's configuration, so a hook for one of
+        # them that dispatches anywhere else runs a stage that configuration does
+        # not describe, and the check it configures there never runs. Both paths
+        # already resolved once, in the dispatch checks above.
+        other_name = _hook_config_name(other_body)
+        if _config_path(other_name, root).resolve() != config_file.resolve():
+            absent.append(f"the hook at {other} dispatches to {other_name}, not {config_name}")
     if absent:
         return Finding(
             key=key,

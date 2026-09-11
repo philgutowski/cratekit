@@ -1035,6 +1035,44 @@ def test_this_repositorys_own_configuration_needs_both_hook_types():
     assert types == ("pre-commit", "commit-msg")
 
 
+def test_a_commit_msg_hook_on_another_configuration_is_refused(library, tmp_path):
+    """The types were read from the pre-commit hook's configuration, so a hook for
+    one of them dispatching to any other file runs a stage that configuration does
+    not describe, and its closing check never runs.
+    """
+    checkout = two_stage_checkout(
+        tmp_path / "checkout",
+        commit_msg=INSTALLED_COMMIT_MSG_HOOK.replace(
+            ".pre-commit-config.yaml", "tools/other.yaml"
+        ),
+    )
+    (checkout / "tools").mkdir()
+    (checkout / "tools" / "other.yaml").write_text("repos: []\n")
+    finding = hook_finding(library, checkout)
+    assert finding.status is doctor.Status.FAIL, finding.detail
+    assert "dispatches to tools/other.yaml, not .pre-commit-config.yaml" in finding.detail
+
+
+def test_the_install_line_names_a_configuration_that_is_not_the_default(library, tmp_path):
+    """The installer rewrites every hook to the configuration it is given, and with
+    none that is the default. Advice that omits it breaks a hook that was working.
+    """
+    checkout = tmp_path / "checkout"
+    (checkout / "tools").mkdir(parents=True)
+    (checkout / "tools" / "hooks.yaml").write_text(TWO_STAGE_CONFIG)
+    hooked_checkout(
+        checkout,
+        INSTALLED_HOOK.replace(".pre-commit-config.yaml", "tools/hooks.yaml"),
+        config_file=False,
+    )
+    finding = hook_finding(library, checkout)
+    assert finding.status is doctor.Status.FAIL, finding.detail
+    assert (
+        "pre-commit install --config tools/hooks.yaml "
+        "--hook-type pre-commit --hook-type commit-msg"
+    ) in finding.detail
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. The wizard
 # ═══════════════════════════════════════════════════════════════════════════
