@@ -122,10 +122,10 @@ tree, which is the whole of what the entry now says.
 
 The last measured suite was **7253 passed and 1 skipped**, taken on `relay/79` on
 a committed tree. Against U60's 7235 BY TOTAL ONLY, not by identifier, which is
-a gap: `tests/test_sync_all.py` arrived with twenty two tests and the old
-`queue_all` test in `tests/test_incremental_sync.py` was deleted because its claim
-is what this unit falsified, which accounts for twenty one of the eighteen moved,
-so three parametrised cases left somewhere and were not named. **Main's highest residual is R-332 once this branch merges**, no
+a gap: `tests/test_sync_all.py` arrived with twenty tests, measured by a collect
+run, and the old `queue_all` test in `tests/test_incremental_sync.py` was deleted
+because its claim is what this unit falsified. That is nineteen against the
+eighteen moved, so one parametrised case left somewhere and was not named. **Main's highest residual is R-332 once this branch merges**, no
 duplicate headings, no heading deleted, and R-203 and R-329 gained notes in place
 rather than moving. Append only, and gaps are fine.
 
