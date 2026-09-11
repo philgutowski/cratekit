@@ -1,0 +1,127 @@
+# R-15, exact membership of the guard's ceilings, and the database open audit.
+# Author's rows.
+#
+# Every row is a WIDENING, the edit R-15 says a green suite let through. The full
+# suite is about six minutes and the driver's preflight is two full runs, so this
+# table cannot finish inside a relay task's ten minute foreground call. That is
+# R-329. Run it attended:
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r-15-rows.toml
+#
+# Measured before the pins existed, on the full suite: M1, M2 and M5 applied
+# together gave 1 failed, 7351 passed, 1 skipped. The one death was M2's, in
+# tests/test_rb_writer_guard.py, whose assertion names the widened column. M1
+# and M5 killed nothing. The other rows were not measured before the pins.
+#
+# Every row was checked red by hand against tests/test_whitelist_membership.py
+# after the pins were written, with the collected count checked at 19 on each,
+# restored, and checked against HEAD. That is a subset, not the driver's
+# measurement. The counts are in docs/mutation/r-15.md.
+#
+# All ten are maintainer facing in the sense METHOD uses: each guards a
+# constant or a call shape, and the user facing surface is the guard the
+# constant feeds, which the existing suites drive.
+
+name = "r-15"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_sixth_permitted_table"
+description = "PERMITTED_ROW_TABLES gains djmdCue, a real table that none of the negative assertions name. Expect test_the_permitted_tables_are_exactly_these_five to die. Before the pins this killed nothing on the full suite"
+file = "src/cratekit/core/rb_writer.py"
+old = '''    {"djmdPlaylist", "djmdSongPlaylist", "djmdMyTag", "djmdSongMyTag", "djmdKey"}
+'''
+new = '''    {"djmdPlaylist", "djmdSongPlaylist", "djmdMyTag", "djmdSongMyTag", "djmdKey", "djmdCue"}
+'''
+
+[[rows]]
+id = "M2_baseline_content_column"
+description = "The track colour policy also declares DJPlayCount, widening the baseline content allow list. Expect the baseline pin and the all enabled pin to die. Before the pins one existing test caught it, test_a_registration_widens_the_gate_by_exactly_its_declared_fields"
+file = "src/cratekit/core/rb_writer.py"
+old = '''    fields=MappingProxyType({"ColorID": Ownership.OWNED}),
+'''
+new = '''    fields=MappingProxyType({"ColorID": Ownership.OWNED, "DJPlayCount": Ownership.OWNED}),
+'''
+
+[[rows]]
+id = "M3_metadata_operation_column"
+description = "The genre retag also declares ReleaseYear. Expect the per operation pin and the all enabled pin to die"
+file = "src/cratekit/write/metadata.py"
+old = '''            fields=MappingProxyType({"GenreID": rb_writer.Ownership.OWNED}),
+'''
+new = '''            fields=MappingProxyType(
+                {"GenreID": rb_writer.Ownership.OWNED, "ReleaseYear": rb_writer.Ownership.OWNED}
+            ),
+'''
+
+[[rows]]
+id = "M4_rating_becomes_owned"
+description = "The rating backfill moves from fill if empty to owned, a widening that adds no column. Expect the per operation pin to die"
+file = "src/cratekit/write/metadata.py"
+old = '''            fields=MappingProxyType({"Rating": rb_writer.Ownership.FILL_IF_EMPTY}),
+'''
+new = '''            fields=MappingProxyType({"Rating": rb_writer.Ownership.OWNED}),
+'''
+
+[[rows]]
+id = "M5_bookkeeping_swap"
+description = "rb_local_synced is traded for Commnt, keeping the count at ten, so a comment edit is ignored rather than refused. Expect the bookkeeping pin to die. Before the pins this killed nothing on the full suite"
+file = "src/cratekit/core/rb_writer.py"
+old = '''        "rb_local_synced",
+'''
+new = '''        "Commnt",
+'''
+
+[[rows]]
+id = "M6_bookkeeping_addition"
+description = "Commnt is added beside the ten. Expect the bookkeeping pin to die, and on the full suite the existing count test as well"
+file = "src/cratekit/core/rb_writer.py"
+old = '''        "rb_local_synced",
+'''
+new = '''        "rb_local_synced",
+        "Commnt",
+'''
+
+[[rows]]
+id = "M7_gridless_loses_cue_updated"
+description = "CueUpdated leaves the gridless on create set, so a created row may declare it. Expect the gridless pin to die"
+file = "src/cratekit/core/rb_writer.py"
+old = '''        "CueUpdated",
+'''
+new = ''''''
+
+[[rows]]
+id = "M8_unwritable_loses_comment"
+description = "Commnt leaves the unwritable metadata fields, so an operation may register it. Expect the unwritable pin to die"
+file = "src/cratekit/write/metadata.py"
+old = '''        "Commnt": (
+            "the comment field is the user's own free text. Nothing this product "
+            "computes belongs in it, and it has no formatting an operation could "
+            "claim to own"
+        ),
+'''
+new = ''''''
+
+[[rows]]
+id = "M9_open_by_db_dir"
+description = "The writer opens with db_dir and no path, which reads the configured live library. Expect test_every_database_open_in_src_names_the_file_it_opens to die"
+file = "src/cratekit/core/rb_writer.py"
+old = '''        db = Rekordbox6Database(path=str(target), unlock=unlock)
+'''
+new = '''        db = Rekordbox6Database(db_dir=str(target.parent), unlock=unlock)
+'''
+
+[[rows]]
+id = "M10_aliased_open_by_db_dir"
+description = "The constructor is imported under an alias and called with db_dir alone. Expect the tree scan to die, which it can only do by resolving the alias"
+file = "src/cratekit/core/rb_writer.py"
+old = '''    from pyrekordbox import Rekordbox6Database
+
+    try:
+        db = Rekordbox6Database(path=str(target), unlock=unlock)
+'''
+new = '''    from pyrekordbox import Rekordbox6Database as _open_database
+
+    try:
+        db = _open_database(db_dir=str(target.parent), unlock=unlock)
+'''
