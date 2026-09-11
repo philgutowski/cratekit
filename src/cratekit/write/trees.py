@@ -886,6 +886,12 @@ def write_tree_membership(
         # registry exists to prevent, arriving through the check meant to prevent
         # it. The root row is resolved once, here, and every folder hangs off it.
         anchor = _root_row(db, root_id)
+        # One lookup per FOLDER rather than per plan entry. Every folder here
+        # hangs off the one anchor, so the display name alone is the key, and
+        # the answer ``ensure_folder`` gave for it holds for the rest of this
+        # session: a folder it just created is pending on this handle and a
+        # second lookup would only find the same row again (R-10).
+        folders: dict[str, Any] = {}
 
         try:
             for (folder_display, sub_display), requested in sorted(plan.items()):
@@ -905,14 +911,17 @@ def write_tree_membership(
                 if not resolved_ids:
                     continue
 
-                folder = rb_writer.ensure_folder(db, folder_display, parent=anchor)
+                folder = folders.get(folder_display)
+                if folder is None:
+                    folder = rb_writer.ensure_folder(db, folder_display, parent=anchor)
+                    folders[folder_display] = folder
                 playlist = rb_writer.ensure_playlist(db, sub_display, folder)
                 touched.append(f"{folder_display}/{sub_display}")
-                for content_id in resolved_ids:
-                    if rb_writer.add_membership(db, playlist, content_id):
-                        added += 1
-                    else:
-                        already_present += 1
+                # One call per playlist. Which ids are new is the writer's
+                # question to answer, not this loop's (R-10).
+                inserted = rb_writer.add_memberships(db, playlist, resolved_ids)
+                added += len(inserted)
+                already_present += len(resolved_ids) - len(inserted)
 
             rb_writer.commit_guarded(db)
         except BaseException:

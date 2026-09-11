@@ -522,6 +522,31 @@ next has a reason to touch that module.
 entries sharing a folder re-issue the same lookup. Bounded to a few hundred extra
 local queries per sweep, sub-second, and it closes with the same batch primitive.
 
+**Closed 2026-09-11 on `relay/47`.** The closing condition is met as written.
+`rb_writer.add_memberships` takes one playlist and many content ids, reads the
+content ids the playlist already holds in one `get_playlist_songs(PlaylistID=...)`
+query, inserts each absent id, and returns the ids it inserted. Each insert joins
+the presence set, so an id named twice in one call lands once and its second
+mention counts as present, which is what the per track read answered while the
+first insert was pending. `add_membership` is a one id call into it, so the rule
+still lives in one module. `write_tree_membership` makes one call per plan entry.
+`test_the_batch_membership_primitive_reads_presence_once_and_inserts_what_is_absent`
+counts the reads at the binding and asserts the rows afterwards.
+
+The second half did not close with the batch primitive, since a folder lookup is
+not a membership. It closed in the caller instead. Every folder hangs off the one
+anchored root, so the display name alone keys a map held for the session, and
+entries sharing a folder resolve it once. `ensure_playlist` was already one call
+per entry, because plan keys are unique. That half is pinned by
+`test_entries_sharing_a_folder_resolve_it_once_and_insert_once_per_playlist`.
+
+What remains per inserted track is the binding's own work inside
+`add_to_playlist`: a content lookup by id and a count of the playlist's rows for
+the track number. That cost falls on new tracks only, not on a re-run over tracks
+already in place, and removing it means bypassing the binding's insert. It was not
+measured here and is not filed. Eight mutation rows are committed in
+`docs/mutation/r-10-rows.toml` and unrun, for R-329's reason.
+
 
 ---
 

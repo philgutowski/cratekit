@@ -932,6 +932,81 @@ def test_a_second_pass_adds_nothing(cfg, gates_pass, db, adopted_root):
     assert second.added == 0 and second.already_present == 1
 
 
+def test_entries_sharing_a_folder_resolve_it_once_and_insert_once_per_playlist(
+    cfg, gates_pass, db, adopted_root, monkeypatch
+):
+    """R-10. One folder lookup per folder and one membership call per playlist.
+
+    Counted at the writer primitives, because the cost R-10 recorded was the
+    number of round trips and a green count of added rows cannot see it. The
+    rows are asserted too, so a loop that made fewer calls by writing less
+    would fail here rather than pass.
+    """
+    from pyrekordbox.db6 import tables
+
+    real_folder = rb_writer.ensure_folder
+    real_batch = rb_writer.add_memberships
+    folder_lookups: list[str] = []
+    batches: list[list[str]] = []
+
+    def counting_folder(db_handle, name, parent=None):
+        folder_lookups.append(name)
+        return real_folder(db_handle, name, parent=parent)
+
+    def counting_batch(db_handle, playlist, content_ids):
+        batches.append(list(content_ids))
+        return real_batch(db_handle, playlist, content_ids)
+
+    monkeypatch.setattr(trees.rb_writer, "ensure_folder", counting_folder)
+    monkeypatch.setattr(trees.rb_writer, "add_memberships", counting_batch)
+    report = _write(
+        cfg,
+        db,
+        plan={
+            (FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"],
+            (FOLDER_DISPLAY, "A Second Sub"): [f"{cfg.library.root}/Music/two.flac"],
+        },
+        root_id=str(adopted_root.ID),
+    )
+
+    assert folder_lookups == [FOLDER_DISPLAY]
+    assert sorted(batches) == [["1"], ["2"]]
+    assert report.added == 2 and report.already_present == 0
+    folders = [
+        row for row in db.session.query(tables.DjmdPlaylist).all() if row.Name == FOLDER_DISPLAY
+    ]
+    assert len(folders) == 1
+    subs = [
+        row
+        for row in db.session.query(tables.DjmdPlaylist).all()
+        if row.Name in (SUB_DISPLAY, "A Second Sub")
+    ]
+    assert sorted(str(row.ParentID) for row in subs) == [str(folders[0].ID)] * 2
+
+
+def test_a_track_named_twice_in_one_entry_lands_once(cfg, gates_pass, db, adopted_root):
+    """The second mention reads as present, as it did when each track was its own read.
+
+    The batch answers presence from one read taken before any insert, so an id
+    the batch itself just inserted has to join that answer. If it did not, the
+    second mention would insert a duplicate the user cannot remove by removing
+    it once.
+    """
+    from pyrekordbox.db6 import tables
+
+    path = f"{cfg.library.root}/Music/one.flac"
+    report = _write(
+        cfg, db, plan={(FOLDER_DISPLAY, SUB_DISPLAY): [path, path]}, root_id=str(adopted_root.ID)
+    )
+    assert report.added == 1 and report.already_present == 1
+    songs = [
+        row
+        for row in db.session.query(tables.DjmdSongPlaylist).all()
+        if str(row.ContentID) == "1"
+    ]
+    assert len(songs) == 1
+
+
 def test_a_second_pass_adopts_the_folder_the_first_pass_made(cfg, gates_pass, db, adopted_root):
     """The plan's second scenario, asserted by COUNTING rows rather than by name.
 
@@ -1048,16 +1123,18 @@ def test_a_failure_mid_loop_leaves_nothing_pending_on_the_handle(
     """
     from pyrekordbox.db6 import tables
 
-    real_add = rb_writer.add_membership
+    # Faulted at the binding's insert rather than at a writer primitive, so the
+    # fault lands between two real inserts whichever primitive the loop calls.
+    real_insert = db.add_to_playlist
     calls = {"n": 0}
 
-    def explode_on_the_second(db_handle, playlist, content_id):
+    def explode_on_the_second(playlist, content, *args, **kwargs):
         calls["n"] += 1
         if calls["n"] == 2:
             raise RuntimeError("the library went away mid-sweep")
-        return real_add(db_handle, playlist, content_id)
+        return real_insert(playlist, content, *args, **kwargs)
 
-    monkeypatch.setattr(trees.rb_writer, "add_membership", explode_on_the_second)
+    monkeypatch.setattr(db, "add_to_playlist", explode_on_the_second)
     with pytest.raises(RuntimeError, match="mid-sweep"):
         _write(
             cfg,

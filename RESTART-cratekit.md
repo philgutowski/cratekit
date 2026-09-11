@@ -4,7 +4,20 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-11, R-7 on `relay/44`, taken from the board as issue #44
+**Last session 2026-09-11, R-10 on `relay/47`, taken from the board as issue #47
+and run as relay task 47.** The eighth residual issue worked, and the second of
+METHOD's correctness group. A fix, not a close. `rb_writer.add_memberships`
+takes one playlist and many content ids, reads what the playlist holds in one
+query, and returns the ids it inserted. `add_membership` is a one id call into
+it, so the only when absent rule still lives in one place. `write_tree_membership`
+makes one call per playlist instead of one per track, and resolves each folder
+once per session instead of once per plan entry. What remains per inserted track
+is the binding's own content lookup and track count inside `add_to_playlist`,
+which R-10 did not describe. R-10 is closed in place and nothing new was filed.
+Eight mutation rows are committed in `docs/mutation/r-10-rows.toml` and unrun,
+for R-329's reason.
+
+**The session before, 2026-09-11, R-7 on `relay/44`, taken from the board as issue #44
 and run as relay task 44.** The seventh residual issue worked, and the third of
 METHOD's surface group. A close, since U27's doctor already reports a trashing
 remote with its option unset, and setup runs doctor. Read against rclone

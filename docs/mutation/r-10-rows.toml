@@ -1,0 +1,94 @@
+# R-10, the batch membership primitive and the per session folder lookup.
+# Author's rows, UNRUN.
+#
+# The full suite is about six minutes and the driver's preflight is two full
+# runs, so this table cannot finish inside a relay task's ten minute foreground
+# call. That is R-329. Run it attended:
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r-10-rows.toml
+#
+# A write path, so every new guard gets a row, and one existing guard is
+# sampled, the rollback, because its test was re-faulted on this branch. Rows
+# M1 to M3 and M5 to M7 are user facing: each either inserts a duplicate
+# membership, skips one, or misreports a count. M4 is maintainer facing, the
+# folder lookup count, and a zero there gets one line. Each row's expected kill
+# is in its description.
+
+name = "r-10"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_presence_read_ignored"
+description = "Start the presence set empty. Expect the batch primitive test, the tree primitive idempotency test and test_a_second_pass_adds_nothing to die, since every re-run inserts again"
+file = "src/cratekit/core/rb_writer.py"
+old = '''    present = {
+        str(song.ContentID) for song in db.get_playlist_songs(PlaylistID=str(playlist.ID))
+    }
+'''
+new = '''    present = set()
+    db.get_playlist_songs(PlaylistID=str(playlist.ID))
+'''
+
+[[rows]]
+id = "M2_insert_not_joined_to_presence"
+description = "Drop present.add after an insert. Expect test_a_track_named_twice_in_one_entry_lands_once and the batch primitive test to die, since an id named twice lands twice"
+file = "src/cratekit/core/rb_writer.py"
+old = '''        present.add(key)
+'''
+new = '''        pass
+'''
+
+[[rows]]
+id = "M3_presence_keyed_on_row_id"
+description = "Build the presence set from the membership row's own ID instead of its ContentID. Expect the same deaths as M1, since nothing a caller names ever matches"
+file = "src/cratekit/core/rb_writer.py"
+old = '''        str(song.ContentID) for song in db.get_playlist_songs(PlaylistID=str(playlist.ID))
+'''
+new = '''        str(song.ID) for song in db.get_playlist_songs(PlaylistID=str(playlist.ID))
+'''
+
+[[rows]]
+id = "M4_folder_never_remembered"
+description = "Never store the folder in the session map. Expect only the folder lookup count in the shared folder test to die, since rows are unchanged. Maintainer facing"
+file = "src/cratekit/write/trees.py"
+old = '''                    folders[folder_display] = folder
+'''
+new = '''                    pass
+'''
+
+[[rows]]
+id = "M5_single_id_contract_inverted"
+description = "Invert add_membership's delegate. Expect the tree primitive idempotency test to die on its first assertion"
+file = "src/cratekit/core/rb_writer.py"
+old = '''    return bool(add_memberships(db, playlist, [content_id]))
+'''
+new = '''    return not add_memberships(db, playlist, [content_id])
+'''
+
+[[rows]]
+id = "M6_added_counts_every_resolved_id"
+description = "Count every resolved id as added. Expect test_a_second_pass_adds_nothing and the named twice test to die, since a re-run reports additions it did not make"
+file = "src/cratekit/write/trees.py"
+old = '''                added += len(inserted)
+'''
+new = '''                added += len(resolved_ids)
+'''
+
+[[rows]]
+id = "M7_already_present_dropped"
+description = "Never count a present track. Expect test_a_second_pass_adds_nothing and the named twice test to die, and the adopt worker already_present assertion with them"
+file = "src/cratekit/write/trees.py"
+old = '''                already_present += len(resolved_ids) - len(inserted)
+'''
+new = '''                already_present += 0
+'''
+
+[[rows]]
+id = "M8_sampled_rollback_removed"
+description = "Existing guard, sampled. Remove the rollback after a failed write. Expect test_a_failure_mid_loop_leaves_nothing_pending_on_the_handle to die, which shows its fault still lands between two real inserts now that it sits at the binding"
+file = "src/cratekit/write/trees.py"
+old = '''            _rollback_quietly(db)
+            raise
+'''
+new = '''            raise
+'''

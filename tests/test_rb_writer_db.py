@@ -428,6 +428,40 @@ def test_the_tree_primitives_are_idempotent(opened, cloud_sync_off):
     assert W.add_membership(opened, playlist, "1") is False
 
 
+def test_the_batch_membership_primitive_reads_presence_once_and_inserts_what_is_absent(
+    opened, cloud_sync_off, monkeypatch
+):
+    """R-10. One presence read per call, whatever the number of tracks.
+
+    The read is counted at the binding, because the cost R-10 recorded was round
+    trips and a correct return value cannot see how many were made. The rows are
+    asserted from the database afterwards, so a primitive that read less by
+    deciding wrongly fails here too.
+    """
+    folder = W.ensure_folder(opened, "a folder")
+    playlist = W.ensure_playlist(opened, "a playlist", folder)
+    W.commit_guarded(opened)
+    assert W.add_membership(opened, playlist, "1") is True
+    W.commit_guarded(opened)
+
+    real_read = opened.get_playlist_songs
+    reads = {"n": 0}
+
+    def counting_read(**kwargs):
+        reads["n"] += 1
+        return real_read(**kwargs)
+
+    monkeypatch.setattr(opened, "get_playlist_songs", counting_read)
+
+    assert W.add_memberships(opened, playlist, ["1", "2", "2"]) == ["2"]
+    assert reads["n"] == 1
+    W.commit_guarded(opened)
+    assert W.add_memberships(opened, playlist, ["2", "1"]) == []
+
+    held = sorted(str(song.ContentID) for song in real_read(PlaylistID=str(playlist.ID)))
+    assert held == ["1", "2"]
+
+
 def test_the_tag_primitives_mirror_an_existing_category(opened, cloud_sync_off):
     value = W.ensure_my_tag_value(opened, "a category", "a value")
     W.commit_guarded(opened)
