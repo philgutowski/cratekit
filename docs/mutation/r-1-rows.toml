@@ -175,13 +175,11 @@ file = "src/cratekit/cli/doctor.py"
 surface = "user"
 old = '''
         except (OSError, UnicodeDecodeError) as exc:
-            # The same split the pre-commit hook makes above
-'''
+            # The same split the pre-commit hook makes above:'''
 new = '''
         except (OSError, UnicodeDecodeError) as exc:
             continue
-            # The same split the pre-commit hook makes above
-'''
+            # The same split the pre-commit hook makes above:'''
 
 [[rows]]
 id = "T15_other_dispatch"
