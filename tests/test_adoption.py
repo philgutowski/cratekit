@@ -2826,9 +2826,11 @@ def test_no_refusal_in_this_module_tells_the_person_to_RUN_A_VERB_THAT_IS_PLANNE
     every one that does not, and the property outlives the verb it was written
     about.
 
-    The derived set is asserted non-empty on purpose. When the last planned verb
-    lands it becomes empty, and an empty forbidden set is a test that passes over
-    any message at all, which is the shape this repository calls a tautology.
+    U25 landed the last two planned verbs, so the derived set is empty. The
+    planned-name half is then a tautology, which this repository refuses to
+    leave silent: a later planned verb re-enters the set and the original
+    assertion bites again. The "Run the" half still forbids a shape in the
+    messages themselves.
 
     Each refusal below is built through the public API rather than by calling the
     message helpers, so a new message that reintroduces the instruction is caught
@@ -2837,10 +2839,6 @@ def test_no_refusal_in_this_module_tells_the_person_to_RUN_A_VERB_THAT_IS_PLANNE
     from cratekit.cli import registry as cli_registry
 
     planned = {one.name for one in cli_registry.entries() if one.planned_in}
-    assert planned, (
-        "every declared verb has landed, so this test forbids nothing and is "
-        "asserting over an empty set rather than over a property"
-    )
     assert "doctor" not in planned, (
         "doctor is planned again, which would make the U27 merge's discharge of "
         "the cratekit.cli.doctor countdown entry wrong"

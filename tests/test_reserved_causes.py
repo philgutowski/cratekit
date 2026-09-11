@@ -5116,7 +5116,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # analysis-share-not-carried, the WARNING code a backup carries when the
     # analysis share sits outside the library root and neither portion copies
     # it, a warning and not a cause because the database portion still runs.
-    assert (len(literals), len(literals - set(causes))) == (402, 249), (
+    # Re-pinned on U25, 2026-09-11: 402 to 403 distinct, 249 to 250 non-keys.
+    # ONE literal joined and NOTHING left, differenced over the branch's diff of
+    # `src` against `main`, which removes no kebab literal. It is not a cause:
+    # mytags-vocals, the WORKFLOW name the My Tags write records itself under
+    # in the session log, the same kind of literal as route-inbox and
+    # route-resort.
+    assert (len(literals), len(literals - set(causes))) == (403, 250), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5483,7 +5489,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # sixteen for one build, the width of a recognised track's identifier,
     # and the review's fix round replaced it with the match module's own
     # digest, so it never reached a pinned measurement.
-    assert (len(literal_holders), len(literal_both)) == (90, 19), (
+    # Re-pinned on U25, 2026-09-11: 90 to 92 holders. TWO modules joined and
+    # none left, and both are new files. vocals/cli.py and write/metadata_cli.py
+    # name config-unusable the same way the other shells do. Differenced as
+    # SETS over the branch's src against main. The also-holds-an-integer half
+    # stays 19: neither file holds an in-range integer.
+    assert (len(literal_holders), len(literal_both)) == (92, 19), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
