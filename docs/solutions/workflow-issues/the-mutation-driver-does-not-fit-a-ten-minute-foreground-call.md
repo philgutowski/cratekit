@@ -39,15 +39,16 @@ the tree stayed clean, which is the one thing that went right.
 - **The full baseline is paid on every call.** `measure_batch` runs the whole
   suite at `scripts/mutate.py:957` unconditionally, `--resume` included, and
   `--resume` reuses finished rows and nothing else. The suite was 358 seconds.
-- **The null control can be a second full run.** It targets the first Python
-  row's file and runs on that module's derived importer subset. When no test
-  file imports the module, and a CLI shell driven through `cli.run` is exactly
-  that case, the subset is empty and the control runs the full suite. That was
-  attempt one: interrupted inside the control at 570 seconds.
-- **Moving the control to a small subset was not enough.** Attempt two put a row
-  whose target has one importing test file first. It still finished no row in
-  575 seconds, and where that time went was not captured, so the remaining cost
-  is unmeasured rather than explained.
+- **The null control IS a second full run, always.** CORRECTED BY U61. This
+  bullet first said the control runs on the first Python row's derived importer
+  subset. It does not: `measure_batch` passes subset `None` and the label
+  `"full suite"` for it at `scripts/mutate.py:1002`. U61 measured the stages by
+  sampling the driver's pytest children every three seconds: the baseline ran 3
+  to 363 seconds, the control started at 366 as a second full run, and SIGINT at
+  570 found it still going. The preflight is two full runs before any row.
+- **So moving the control to a small subset cannot work.** Attempt two put a row
+  whose target has one importing test file first, on the wrong reading above.
+  It finished no row in 575 seconds for the reason the bullet above gives.
 - **A zero can never be promoted inside the ceiling.** Promotion is a second full
   run inside the same call, after the full baseline. So even a preflight that
   fits leaves every zero unconfirmed.
@@ -73,10 +74,20 @@ own measurements, and land the unit. Do not spend ceiling length calls finding
 out. If the table must run, it runs attended or outside the task session, and the
 committed rows file is all it needs.
 
-When a rows file does run, put a row whose target has a small importer set first,
-so the null control does not become a second full suite.
+Row order does not change the control, which is a full run whatever comes first.
+Order does matter for one thing: a zero row's promotion cannot finish, and every
+row after an unfinished one waits behind it, so put the rows expected to measure
+zero last.
+
+To find out where a driver call's time goes, sample its children rather than
+reading its output, because it prints nothing until it finishes. U61's wrapper
+forks the driver, polls `pgrep -lf pytest` every three seconds, prints what
+changed with the elapsed time, and sends SIGINT before the ceiling so the
+driver's own restore runs.
 
 ## Related
 
-- R-329 in `docs/residual-findings.md`, with three options for the driver.
-- `docs/mutation/u60-notes.md`, both attempts' measurements.
+- R-329 in `docs/residual-findings.md`, with three options for the driver and
+  U61's correction to the second.
+- `docs/mutation/u60-notes.md`, both of U60's attempts, and
+  `docs/mutation/u61-notes.md`, the sampled stage timing.

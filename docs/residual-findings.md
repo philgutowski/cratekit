@@ -10899,6 +10899,26 @@ genuinely does not queue, which
 now checks by parsing each shell for an `enqueue` call. `sync.all` calls it, so
 it cannot leave this list the way `delete.review` did.
 
+**U61 CLOSED THIS ENTRY, 2026-09-10, relay task 79, in commit `0afe75d`.** The
+last key left by COMPOSITION, and the paragraph above is right that it could
+not leave the way `delete.review` did: the work is still queued. What changed is
+WHERE. `crate sync all` no longer queues anything under `sync.all`. It calls each
+enabled source's own queueing path under that source's own handler key,
+`sync.favorites` and `sync.labels`, whose workers already existed, so a pass's
+jobs run through bound workers and the entry's `long_running` and
+`argv_builder` went because nothing is ever queued under its key to resume.
+Measured, not subtracted: `HANDLERS_NOT_YET_BOUND` holds ONE key, the
+`job.resume` exemption this entry has described since U46, which was never one of
+its lines, and the registry holds eighteen landed `long_running` entries,
+seventeen of them in `HANDLERS` and `job.resume` exempt by role. The closing
+condition above says the table is empty; read with the exemption the entry
+always carried, it is met, and every line this entry ever listed is gone. The
+count in the title stays at eighteen for the reason the first correction gives.
+U61 is the seventh worked example of the claim: binding the composition needed a
+way for a queued favourites job to carry a gate run its own resume can load,
+because the dispatcher refuses a run owned by another verb, which is
+`Gates.hand_off` and is R-331's subject.
+
 ---
 
 ## R-204. The acquisition first caller obligation did not transfer, and why
@@ -14710,3 +14730,85 @@ run, and that is Phillip's decision:
 
 **Closes when:** U60's committed rows are measured by any route, and the route is
 one a relay task can take.
+
+**U61's correction and measurement, 2026-09-10, relay task 79. THE NULL CONTROL
+DOES NOT RUN ON A DERIVED SUBSET.** `measure_batch` passes `None` and
+`"full suite"` for the control at `scripts/mutate.py:1002`, whatever the first
+row targets and whatever subsets the rows name. The paragraph above,
+`docs/mutation/u60-notes.md` and the learning all said the control runs on the
+first Python row's derived importer subset, and U60's second attempt moved a row
+on that reading. The code does not do it, so that attempt could not have fit, and
+option 2 above is a driver change rather than a row file change. Measured by
+sampling the driver's pytest children every three seconds: the full baseline ran
+from 3 to 363 seconds, the control started at 366 seconds as a second full suite
+run, and SIGINT arrived at 570 seconds with the control still running. The
+preflight is TWO full suite runs, about 720 seconds on this tree, before any row
+and before any promotion, which no ten minute call can hold. U61's twenty one
+rows are committed in `docs/mutation/u61-rows.toml` and unmeasured, and
+`docs/mutation/u61-notes.md` holds the sampling. Options 1 and 3 stand as
+written.
+
+---
+
+## R-330. A job queued under `sync.all` by an older build stays in the queue with no worker and no way out but a cancel
+
+**Found:** by U61, 2026-09-10, at its review.
+
+Before U61 `crate sync all` queued one itemless job per enabled source under
+`sync.all`. U61 took the key out of both handler tables, because nothing can
+queue under it now. A queue written by an older build can still hold those rows.
+`job list` and `job show` report their worker through `handlers.unbound_reason`,
+which for a key in neither table says the job was queued by a different build or
+under a verb that has since been removed, and a resume refuses at
+`handlers._declaration` with `internal-error` and a report defect remedy. Nothing
+cancels them.
+
+**Measured cost.** Argued from the source, not driven. The producer is the pre
+U61 build, and whether any real queue holds such a row is unmeasured. The rows
+held no items and had no worker, so no work is lost. The cost is a stale row that
+reads as a defect until somebody runs `crate job cancel` on it.
+
+**Not fixed here** because cancelling jobs by handler key on upgrade is a queue
+migration, and the refusal already says what happened.
+
+---
+
+## R-331. A handed decision carries no record that it was handed
+
+**Found:** by U61, 2026-09-10, while writing `Gates.hand_off`.
+
+`hand_off` copies the answer recorded on `sync.all.favorites.confirm` onto a new
+run owned by `sync.favorites`, under `sync.favorites.confirm`, keeping the option,
+the actor, the time and the digest. `Decision` has no field for provenance, so
+`crate run show` on the handed run shows the person's name against a gate they
+were never shown by that name, and nothing in the run record links it to the
+`sync.all` run they actually answered. The job payload holds both runs, the
+intake `run_id` and the gate run, so the link is recoverable from the job and not
+from the run record.
+
+**Measured cost.** An audit reading run records alone cannot tell a handed
+decision from one given directly. Nothing reads run records for that today.
+
+**Not fixed here** because a provenance field is a run record schema change,
+`RUN_SCHEMA_VERSION` 1 to 2, which every reader of that file owes a migration
+for.
+
+---
+
+## R-332. A pass that queued nothing because two sources refused names one remedy
+
+**Found:** by U61, 2026-09-10.
+
+When every built source refuses for itself, `sync all` raises the FIRST refusal
+in declared order, with the whole per source report under `detail.sources`. On a
+full profile with neither an export nor a registered label, the person is told
+`outbound-export-required` and its remedy, and the label registry's refusal
+rides the detail only. The human rendering prints the first cause.
+
+**Measured cost.** Driven by
+`tests/test_sync_all.py::test_nothing_queued_because_every_source_refused_is_a_refusal`,
+whose refusal reason is the favourites one. A person who fixes the export meets
+the registry refusal on the next pass.
+
+**Not fixed here** because a cause carries one reason and one remediation by
+contract, and a composite cause is a vocabulary change.

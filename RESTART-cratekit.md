@@ -4,8 +4,28 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-10, U60 on `relay/78`, taken from the board as issue #78
-and run as relay task 78.** `delete.review` stopped claiming a queue. Its entry
+**Last session 2026-09-10, U61 on `relay/79`, taken from the board as issue #79
+and run as relay task 79.** `crate sync all` is a COMPOSER now. It plans every
+enabled source, asks the favourites confirm once, then queues each source through
+that source's own `queue_sweep` under that source's own handler key, with one
+intake run. Nothing is queued under `sync.all`, so its entry dropped
+`long_running` and `argv_builder` and **R-203 CLOSED**: `HANDLERS_NOT_YET_BOUND`
+holds only the `job.resume` exemption. Playlists has no worker and is reported as
+not built, so a slim pass is a no-op rather than an ok.
+
+**A COMPOSED JOB NEEDS A RUN ITS OWN VERB OWNS.** The dispatcher refuses a `--run`
+whose record belongs to another verb, so the favourites job could not carry the
+pass's run as its gate run. `Gates.hand_off` copies the recorded answer onto a new
+run owned by `sync.favorites`. The learning is
+`docs/solutions/integration-issues/a-verb-that-queues-another-verbs-job-must-hand-it-a-run-that-verb-owns.md`.
+
+**U61 HAS NO MUTATION TABLE EITHER, and the reason is now measured.** The null
+control is hardcoded to the full suite at `scripts/mutate.py:1002`, so the
+driver's preflight is two full runs, about 720 seconds, whatever the rows say.
+R-329 carries the correction, `docs/mutation/u61-notes.md` the sampled timing.
+
+**The session before, 2026-09-10, U60 on `relay/78`, taken from the board as
+issue #78 and run as relay task 78.** `delete.review` stopped claiming a queue. Its entry
 dropped `long_running` and `argv_builder`, `delete_argv` is gone, and the verb
 left `HANDLERS_NOT_YET_BOUND`, so R-149 closed in the direction it left open.
 R-134 closed too, at a schema cost of zero fields: the first run's baseline rides
@@ -26,7 +46,7 @@ ready, `docs/mutation/u60-notes.md` holds the measurements, and R-329 is the gap
 with three options, all Phillip's. The learning is
 `docs/solutions/workflow-issues/the-mutation-driver-does-not-fit-a-ten-minute-foreground-call.md`.
 
-**The session before, 2026-09-10, R-322 closed on `relay/81`, taken from the
+**Two sessions before, 2026-09-10, R-322 closed on `relay/81`, taken from the
 board as issue #81 and run as relay task 81.** The first residual issue to be worked
 rather than a unit, and the first work of the ninth line in METHOD's serialized
 order. It added SEVEN tests and thirteen lines of `scripts/board.py`, no new
@@ -82,11 +102,12 @@ rather than an empty one. Both workers go through
 `rebuild.rebuild_governed_tree`, which is the FIRST CALLER of `rebuild_tree`
 anywhere in `src`.
 
-**ONE QUEUED VERB HAS NO WORKER, `sync.all`**, with `job.resume` exempt by role.
-Measured: nineteen landed verbs queue and seventeen are bound. `delete.review`
-left the population in U60 by ceasing to be queued, NOT by gaining a worker, and
-R-203's own correction says so. Its title stays at eighteen on purpose, because
-the title names what was true when the entry was written.
+**EVERY QUEUED VERB HAS A WORKER**, with `job.resume` exempt by role. Measured:
+eighteen landed verbs queue and seventeen are bound. `delete.review` left the
+population in U60 by ceasing to be queued, and `sync.all` left it in U61 by
+queueing its work under keys that have workers. R-203 is closed with a note in
+place. Its title stays at eighteen on purpose, because the title names what was
+true when the entry was written.
 
 **R-131 IS DOWN TO ITS ATTENDED HALF.** Everything in it that a session could do
 is done and driven against a disposable database copy. Nothing has run on a live
@@ -99,15 +120,14 @@ tree, which is the whole of what the entry now says.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
 
-The last measured suite was **7235 passed and 1 skipped**, collected 7236, taken
-on `relay/78` on a committed tree in 358 seconds. Reconciled against R-322's
-7235 by naming what moved rather than by total: three `delete.review`
-parametrised cases left, `test_conformance_5_long_work_is_queued_rather_than_run_inline[delete.review]`
-and its two cases in `tests/test_queued_resume_contract.py`, and four tests
-arrived, the registry guard and three deletion drives. `delete.review` keeps its
-seven other conformance cases. **Main's highest residual is R-329 once this
-branch merges**, no duplicate headings, no heading deleted, and R-149, R-134 and
-R-203 gained notes in place rather than moving. Append only, and gaps are fine.
+The last measured suite was **7253 passed and 1 skipped**, taken on `relay/79` on
+a committed tree. Against U60's 7235 BY TOTAL ONLY, not by identifier, which is
+a gap: `tests/test_sync_all.py` arrived with twenty two tests and the old
+`queue_all` test in `tests/test_incremental_sync.py` was deleted because its claim
+is what this unit falsified, which accounts for twenty one of the eighteen moved,
+so three parametrised cases left somewhere and were not named. **Main's highest residual is R-332 once this branch merges**, no
+duplicate headings, no heading deleted, and R-203 and R-329 gained notes in place
+rather than moving. Append only, and gaps are fine.
 
 **THE AUDIT EXITS 1 NOW, NOT 2, AND THE REASON IS A BOARD WRITE NOBODY RECORDED.**
 Measured on 2026-09-10 while closing R-322: issue #25 is OPEN with a state reason
@@ -151,6 +171,19 @@ exits zero over half a library.
 **THE RESORT IS ADDITIVE**, which is R-312. There is no database removal path in
 this build, so a genre change leaves the track in its old sub as well as its new
 one and the convergence check names the leftovers.
+
+## What U61 left behind
+
+Three residuals, two notes in place, one learning and one learning corrected.
+
+- **R-330.** A job an older build queued under `sync.all` stays in the queue with
+  no worker and reads as a defect until somebody cancels it.
+- **R-331.** A handed decision carries no record that it was handed, so a run
+  record alone cannot tell it from one given directly.
+- **R-332.** A pass where every source refused raises the first refusal, so the
+  person sees one remedy and meets the other on the next pass.
+- **R-329's second option was written on a wrong reading of the driver**, and the
+  learning about the ten minute ceiling said the same thing. Both are corrected.
 
 ## What U60 left behind
 
@@ -251,7 +284,7 @@ In METHOD's serialized order, which is what picks the work:
 | 7 | | Phase E explanation, Phillip's and not a session's | |
 | 8 | #77 | U59, land the conformance branch | DONE on `relay/77` |
 | | #78 | U60, the deletion pass | DONE on `relay/78`, no mutation table (R-329) |
-| | #79 | U61, `crate sync all` composes the source increments | Ready |
+| | #79 | U61, `crate sync all` composes the source increments | DONE on `relay/79`, no mutation table (R-329) |
 | | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
 
 **Phase E is complete with the U53 merge, so line 7 is next and it is
@@ -259,8 +292,7 @@ Phillip's**: the explainer over the range from `46d5a4c` to the U53 merge
 commit. A session does not run it.
 
 #78 and #79 are not in METHOD's list, which was serialized before they existed.
-#78 was taken as relay task 78, which is Phillip placing it. #79 is still
-unplaced, so a session does not take it.
+Each was taken as a relay task, which is Phillip placing it.
 
 **#42, R-5 is now probably a close.** METHOD's line 9 says so, on the grounds
 that U59 lands the conformance assertions R-5 records as gated. Read R-5 against
@@ -276,9 +308,9 @@ than trusting a count written here. R-324 is tracked on #80 and R-327 has no
 issue, which is the normal state for a residual: the ledger holds it until
 somebody decides to act on it.
 
-**Every unit in METHOD's serialized list is now built.** What is left on that
-list is Phillip's: the two explanations, the residual issues, and #29. #79
-exists and is not placed, which is his call.
+**Every unit in METHOD's serialized list is now built, and so are #78 and #79.**
+What is left on that list is Phillip's: the two explanations, the residual
+issues, and #29.
 
 ## Do this first
 
@@ -295,7 +327,8 @@ exists and is not placed, which is his call.
 
 | branch | state |
 |---|---|
-| `relay/78` | U60, the branch this record is on; delete after the merge |
+| `relay/79` | U61, the branch this record is on; delete after the merge |
+| `relay/78` | U60, merged to `main`; delete if it still exists |
 | `relay/81` | R-322, merged to `main`; delete if it still exists |
 | `relay/77` | U59, merged to `main`; delete if it still exists |
 | `fix/conformance-3-and-soft-delete-reader` | LANDED into `relay/77` by merge. Still in `.worktrees/conformance`, untouched, and now redundant. Deleting it and the worktree is Phillip's call, not a session's, because the merge is not pushed yet |

@@ -366,7 +366,10 @@ def test_a_hand_off_of_a_decision_with_no_digest_refuses(installed):
         ("sync.favorites", "write.cloudsync.unreadable"),
         ("export.playlist", "export.playlist.confirm"),
     ],
-    ids=["undeclared", "option-not-offered", "another-verb"],
+    # WHICH GUARD EACH CASE REACHES. The cloud sync gate offers neither the
+    # option nor a digest, so both layers refuse it. The export gate compares a
+    # digest and does not offer "sync", so only the option layer refuses it.
+    ids=["undeclared", "offers-neither", "option-not-offered"],
 )
 def test_a_hand_off_to_a_gate_that_could_not_mean_the_same_refuses(installed, verb, gate):
     del installed
@@ -400,3 +403,30 @@ def test_a_source_refused_at_queue_time_leaves_the_queued_ones_named(
     assert [j["job_id"] for j in summary["jobs"]] == [job.job_id]
     assert summary["not_queued"]["labels"] == "internal-error"
     assert "sync-source-not-queued" in {w["code"] for w in passed["warnings"]}
+
+
+def test_a_hand_off_to_a_gate_that_compares_no_digest_refuses(installed, monkeypatch):
+    """The digest layer alone. No declared gate offers "sync" without comparing a
+    digest, so one is made here: the real favourites entry with its confirm's
+    digest source removed. Without that layer the resumed child would never
+    meet ``DecisionStale``, whatever the plan became after the answer."""
+    import dataclasses
+
+    del installed
+    owner = registry.entry("sync.favorites")
+    blind = tuple(
+        dataclasses.replace(g, digest_source=None)
+        if g.name == "sync.favorites.confirm"
+        else g
+        for g in owner.gates
+    )
+    monkeypatch.setattr(
+        registry,
+        "_BY_NAME",
+        {**dict(registry._BY_NAME), owner.name: dataclasses.replace(owner, gates=blind)},
+    )
+    (spec,) = SYNC_ALL.gates
+    asked = _gates()
+    asked.state.decisions[spec.name] = gates.Decision("sync", "a-person", "now", "d1")
+    with pytest.raises(CratekitError):
+        asked.hand_off(spec, verb="sync.favorites", gate="sync.favorites.confirm")
