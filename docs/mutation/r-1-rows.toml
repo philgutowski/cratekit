@@ -1,0 +1,292 @@
+name = "r-1"
+pass_kind = "light"
+
+# The residual finding "The commit hook is off by default on a fresh clone",
+# widened half: doctor's repository commit hook check reading every hook type the
+# configuration names. 23 rows over this round's own guards, 2 over the existing
+# dispatch guards as the fixed sample. Every row is in src/cratekit/cli/doctor.py.
+
+[[rows]]
+id = "T1_manual_skip"
+description = "Stop skipping the manual stage, so a manual-only hook reads as an unknown stage"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+        if hook_type == "manual":  # run by hand, never by git
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "T2_alias_map"
+description = "Stop mapping the legacy stage spellings (commit, push, merge-commit) to their hook types"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''hook_type = _STAGE_ALIASES.get(stage, stage) if isinstance(stage, str) else None'''
+new = '''hook_type = stage if isinstance(stage, str) else None'''
+
+[[rows]]
+id = "T3_default_install_types"
+description = "Ignore default_install_hook_types when deriving the needed hook types"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+    named.extend(document.get("default_install_hook_types") or [])
+'''
+new = ""
+
+[[rows]]
+id = "T4_default_stages"
+description = "Ignore default_stages when deriving the needed hook types"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+    named.extend(document.get("default_stages") or [])
+'''
+new = ""
+
+[[rows]]
+id = "T5_hook_stages"
+description = "Ignore every hook's own stages, the reading that finds this repository's commit-msg stage"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''                named.extend(hook.get("stages") or [])'''
+new = '''                pass'''
+
+[[rows]]
+id = "T6_unknown_stage"
+description = "Skip an unknown stage instead of refusing the configuration"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+        if hook_type not in _HOOK_TYPES:
+            return (
+                (),
+                f"{config_file} names a stage pre-commit installs no hook for, {stage!r}",
+                None,
+            )
+'''
+new = '''
+        if hook_type not in _HOOK_TYPES:
+            continue
+'''
+
+[[rows]]
+id = "T7_dedupe"
+description = "Append a type every time it is named rather than once"
+file = "src/cratekit/cli/doctor.py"
+surface = "maintainer"
+old = '''
+        if hook_type not in types:
+            types.append(hook_type)
+'''
+new = '''
+        types.append(hook_type)
+'''
+
+[[rows]]
+id = "T8_not_a_mapping"
+description = "Drop the guard refusing a configuration whose top level is not a mapping"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+    if not isinstance(document, dict):
+        return (), f"{config_file} is not a pre-commit configuration", None
+'''
+new = ""
+
+[[rows]]
+id = "T9_yaml_error_falls_back"
+description = "A configuration that does not parse falls back to the pre-commit floor instead of a sentence"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+    except yaml.YAMLError as exc:
+        return (), f"{config_file} is not valid YAML ({exc})", None
+'''
+new = '''
+    except yaml.YAMLError:
+        return ("pre-commit",), None, None
+'''
+
+[[rows]]
+id = "T10_no_yaml_falls_back"
+description = "PyYAML missing falls back to the pre-commit floor instead of a sentence"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+    except ImportError:
+        return (
+            (),
+            (
+                f"PyYAML is not importable from this interpreter, so the hook types "
+                f"{config_file.name} configures could not be read. Install the dev "
+                f"extra, `pip install -e '.[dev]'`"
+            ),
+            None,
+        )
+'''
+new = '''
+    except ImportError:
+        return ("pre-commit",), None, None
+'''
+
+[[rows]]
+id = "T11_unreadable_config_falls_back"
+description = "A configuration that cannot be read falls back to the pre-commit floor instead of a sentence"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+        return (
+            (),
+            f"{config_file} could not be read ({exc})",
+            access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
+        )
+'''
+new = '''
+        return ("pre-commit",), None, None
+'''
+
+[[rows]]
+id = "T12_caller_ignores_unknown"
+description = "The check ignores an unknown configuration and reports on no extra types"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''    if unknown is not None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "T13_missing_other_hook"
+description = "A configured hook type with no hook file is not reported"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+            absent.append(f"no {hook_type} hook at {other}")
+            continue
+'''
+new = '''
+            continue
+'''
+
+[[rows]]
+id = "T14_unreadable_other_hook"
+description = "A configured hook file this account cannot read is skipped instead of reported unknown"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+        except (OSError, UnicodeDecodeError) as exc:
+            # The same split the pre-commit hook makes above
+'''
+new = '''
+        except (OSError, UnicodeDecodeError) as exc:
+            continue
+            # The same split the pre-commit hook makes above
+'''
+
+[[rows]]
+id = "T15_other_dispatch"
+description = "A configured hook that does not dispatch for its own stage is not reported"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+        if other_problem is not None:
+            absent.append(
+'''
+new = '''
+        if other_problem is not None:
+            continue
+            absent.append(
+'''
+
+[[rows]]
+id = "T16_same_configuration"
+description = "Drop the requirement that every other hook dispatches to the pre-commit hook's configuration"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''        if _config_path(other_name, root).resolve() != config_file.resolve():'''
+new = '''        if False:'''
+
+[[rows]]
+id = "T17_install_config_flag"
+description = "The install line never names a non-default configuration"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''    config = "" if config_name == _HOOK_CONFIG_DEFAULT else f" --config {shlex.quote(config_name)}"'''
+new = '''    config = ""'''
+
+[[rows]]
+id = "T18_remedy_floor"
+description = "With no readable configuration the install line names no type at all"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''    return _install_command(types if problem is None else ("pre-commit",))'''
+new = '''    return _install_command(types)'''
+
+[[rows]]
+id = "T19_remedy_reads_config"
+description = "The fresh clone install line stops reading the configuration and names only pre-commit"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''    types, problem, _remedy = _configured_hook_types(root / _HOOK_CONFIG_DEFAULT)'''
+new = '''    types, problem, _remedy = ("pre-commit",), None, None'''
+
+[[rows]]
+id = "T20_stage_parameter"
+description = "The dispatch check ignores the hook type it was asked about and always wants pre-commit"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''    stage = f"--hook-type={hook_type}"'''
+new = '''    stage = "--hook-type=pre-commit"'''
+
+[[rows]]
+id = "T21_ok_names_others"
+description = "The OK detail stops naming the other stages it verified"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+        if len(types) > 1
+'''
+new = '''
+        if False
+'''
+
+[[rows]]
+id = "T22_pre_commit_floor"
+description = "Pre-commit is no longer the floor of the needed types"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+    types = ["pre-commit"]
+    for stage in named:
+'''
+new = '''
+    types = []
+    for stage in named:
+'''
+
+[[rows]]
+id = "T23_alias_value"
+description = "Map merge-commit to a realistic nearby wrong hook, pre-commit"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''"merge-commit": "pre-merge-commit"'''
+new = '''"merge-commit": "pre-commit"'''
+
+[[rows]]
+id = "E1_dispatch_impl"
+description = "Existing guard, sample: drop the requirement that the hook invokes hook-impl"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+    if _HOOK_DISPATCH not in body:
+        return f"it never invokes pre-commit's {_HOOK_DISPATCH}"
+'''
+new = ""
+
+[[rows]]
+id = "E2_config_inside_checkout"
+description = "Existing guard, sample: drop the requirement that the named configuration is inside the checkout"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''    if root.resolve() not in resolved.parents and resolved != root.resolve():'''
+new = '''    if False:'''

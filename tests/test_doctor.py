@@ -964,6 +964,36 @@ def test_a_configuration_that_does_not_parse_is_not_read_as_one_hook_type(librar
     assert "not valid YAML" in finding.detail
 
 
+def test_a_configuration_that_cannot_be_read_is_unknown_and_asks_for_access(
+    library, tmp_path
+):
+    """The hook names a file that is there; this account cannot open it. That is a
+    permission to grant, and the stages it configures are unknown rather than none.
+    """
+    checkout = two_stage_checkout(tmp_path / "checkout", commit_msg=None)
+    config_file = checkout / ".pre-commit-config.yaml"
+    config_file.chmod(0o000)
+    try:
+        finding = hook_finding(library, checkout)
+    finally:
+        config_file.chmod(0o644)
+    assert finding.status is doctor.Status.FAIL, finding.detail
+    assert "could not be read" in finding.detail
+    assert "unknown rather than no" in finding.detail
+    assert finding.remedy is Remedy.GRANT_PATH_ACCESS
+
+
+def test_a_clone_with_no_configuration_is_told_the_floor(library, tmp_path):
+    """No configuration to read means the line names the one type that is always needed,
+    rather than a bare installer call with nothing after it.
+    """
+    checkout = tmp_path / "checkout"
+    (checkout / ".git" / "hooks").mkdir(parents=True)
+    finding = hook_finding(library, checkout)
+    assert finding.status is doctor.Status.FAIL, finding.detail
+    assert "Run `pre-commit install --hook-type pre-commit` in" in finding.detail
+
+
 def test_no_yaml_reader_is_unknown_rather_than_one_hook_type(library, tmp_path, monkeypatch):
     """PyYAML arrives with the dev extra, not the runtime, so its absence is reachable."""
     monkeypatch.setitem(sys.modules, "yaml", None)
