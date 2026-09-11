@@ -11,7 +11,7 @@ condition was already true: U11 and U27 are closed, conformance 4 drives the
 review queue and conformance 8 drives the doctor, and neither is an existence
 check. What was false was the claim, in R-5 and in the docstrings of conformance
 4 and 6, that no adjudicating or destructive verb had landed. Every adjudicating
-verb has, and twenty five of twenty seven destructive ones. The docstrings are
+verb has, and twenty two of twenty four destructive ones. The docstrings are
 corrected. The gap they described, that neither assertion drives a landed verb
 through the dispatcher, is still real and is R-335. No guard changed, so there is
 no mutation table.

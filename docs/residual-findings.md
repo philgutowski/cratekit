@@ -251,8 +251,8 @@ against that guard. No `@requires` names `cratekit.core.review` or
 `cratekit.cli.doctor`, and `PENDING` in `tests/_pending.py` holds no entry.
 
 What had stopped being true is the paragraph above headed "What is honestly NOT
-covered". Measured against the registry on 2026-09-10, twenty five of the twenty
-seven destructive entries have landed, the two left being U25's vocals verbs,
+covered". Measured against the registry on 2026-09-10, twenty two of the twenty
+four destructive entries have landed, the two left being U25's vocals verbs,
 and every adjudicating entry has landed. The docstrings of conformance 4 and 6
 said the same stale thing and are corrected. The gap that paragraph described is
 still real, because neither assertion invokes a landed verb through the
@@ -14964,7 +14964,7 @@ to the ledger as accepted.
 Both assertions were written when no adjudicating and no destructive verb had
 landed, so each drives the shared machinery once per declared verb, under that
 verb's own name, rather than the verb. That was the strongest thing available
-then. It is not now: every adjudicating verb and twenty five of the twenty seven
+then. It is not now: every adjudicating verb and twenty two of the twenty four
 destructive verbs have landed, and the two assertions still drive only the
 shared layer.
 
@@ -14988,7 +14988,7 @@ exists is per verb suites, which are not derived from the registry and so do not
 grow when a verb lands.
 
 **Why it was not built here.** Driving each landed verb through `cli.run` as far
-as its session needs an argument surface and fixtures per verb, twenty five of
+as its session needs an argument surface and fixtures per verb, twenty two of
 them, and each verb also declares doctor preconditions and explicit gates a
 drive has to account for. That is a unit, not a residual close.
 
