@@ -203,11 +203,13 @@ def test_every_database_open_in_src_names_the_file_it_opens():
     """R-15's related half. ``db_dir`` is not the database.
 
     ``Rekordbox6Database(db_dir=...)`` does not open the database in that
-    directory. ``db_dir`` names only where the binding looks for its playlist
-    XML. The database comes from ``path``, and with ``path`` empty the binding
-    falls back to the rekordbox configuration's ``db_path``, which is the live
-    library. A call passing ``db_dir`` alone reads live while appearing to read a
-    copy, and returns entirely plausible rows.
+    directory. In the pinned binding ``db_dir`` names where it looks for its
+    playlist XML and sets the ``share`` directory analysis paths resolve under.
+    The database comes from ``path``, and with ``path`` empty the binding falls
+    back to the rekordbox configuration's ``db_path``, which is the live library.
+    A call passing ``db_dir`` alone reads live rows while appearing to read a
+    copy, resolves their analysis paths into the copy's share, and returns
+    entirely plausible results from two libraries at once.
 
     In the guard's own terms: refusing the live path as an argument is not the
     same as not reading it. This pins the argument, which is the cheap half. What

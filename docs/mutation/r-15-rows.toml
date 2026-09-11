@@ -8,6 +8,10 @@
 #
 #     ./.venv/bin/python scripts/mutate.py docs/mutation/r-15-rows.toml
 #
+# The batch is named r-15-driver so the driver writes r-15-driver.md and .json
+# and cannot overwrite r-15.md, the hand record holding the only measurement
+# taken before the pins existed.
+#
 # Measured before the pins existed, on the full suite: M1, M2 and M5 applied
 # together gave 1 failed, 7351 passed, 1 skipped. The one death was M2's, in
 # tests/test_rb_writer_guard.py, whose assertion names the widened column. M1
@@ -22,7 +26,7 @@
 # constant or a call shape, and the user facing surface is the guard the
 # constant feeds, which the existing suites drive.
 
-name = "r-15"
+name = "r-15-driver"
 pass_kind = "light"
 
 [[rows]]
