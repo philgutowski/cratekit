@@ -4,14 +4,31 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-11, brief rewrite for U25, not a unit.** #80 is closed.
-U25 is not finished. That was the answer R-324 asked for, and the 2026-09-10
+**Last session 2026-09-11, U25 on `unit/u25-vocal-restamp-and-my-tags-shells`.**
+The two remaining vocal CLI shells landed. `cratekit.vocals.cli` queues
+`analyze.vocals` and scores files that already carry a Camelot head, which
+closes R-277. `analyze.run` still skips a prefixed name. `cratekit.write.metadata_cli`
+plans My Tags by default and writes them when apply is requested, through the guarded
+writer on the configured database, never the live one. Both `planned_in`
+markers are gone, `analyze.vocals` is bound in `HANDLERS`, and
+`owed_by_unit()` no longer lists 25. Nineteen landed verbs now queue and
+eighteen are bound; `job.resume` remains the unbound exemption. R-133's 18 GB
+run stays attended. Do not take #29.
+
+**THE DRIVER RAN.** Twenty five rows in `docs/mutation/u25-rows.toml`,
+measured by `scripts/mutate.py` in 6131 seconds, eleven killing, thirteen
+zero on the full suite, one refused. Null control 0 of 7401. The zeros
+have no composite, which is R-341. A corrupt vocal calibration still
+defaults to the 12.0 cut, which is R-342. The reading is
+`docs/mutation/u25-notes.md`.
+
+**The session before, 2026-09-11, brief rewrite for U25, not a unit.** #80 is closed.
+U25 was not finished. That was the answer R-324 asked for, and the 2026-09-10
 reopen of #25 had already taken it. What was still missing was a brief a session
-can build against: the issue body still described the DSP port, which is in the
-tree. The body now names the two remaining shells, `analyze.vocals` and
+could build against: the issue body still described the DSP port, which is in the
+tree. The body then named the two remaining shells, `analyze.vocals` and
 `metadata.mytags-vocals`, the engines they sit on, R-277, and R-133 left
-attended. METHOD's serialized order places #25 as line 10, the next session.
-Do not take #29.
+attended.
 
 **The session before, 2026-09-11, R-102 on `relay/54`, taken from the board as issue #54
 and run as relay task 54.** The twelfth residual issue worked, and the last of
@@ -285,7 +302,14 @@ tree, which is the whole of what the entry now says.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
 
-**Main's highest residual is R-340 once `relay/54` merges**, R-340 being that
+**Main's highest residual is R-342 once this branch merges**, R-341 and R-342
+being U25's, with R-277 closed in place, no duplicate heading and no heading
+moved. Mutation baseline collected **7401** on a committed tree. The last
+full battery before the record was **7399 passed and 1 skipped**, in 374
+seconds, then one more test landed (the missing My Tag template through
+the dispatcher).
+
+**Main's highest residual was R-340 once `relay/54` merged**, R-340 being that
 branch's only filing, with R-102 closed in place, no duplicate heading and no
 heading moved. Its suite was **7379 passed and 1 skipped**, in 358 seconds, on
 `relay/54` on a committed tree. The eight since R-15's 7371 are this branch's
@@ -497,7 +521,8 @@ In METHOD's serialized order, which is what picks the work:
 | | #44 | R-7, doctor reports a trashing remote, closed in place with two rows fixed | DONE on `relay/44`, 6 rows committed and unrun (R-329), R-336 and R-337 filed |
 | | #47 | R-10, one membership call per playlist and one folder lookup per folder | DONE on `relay/47`, 8 rows committed and unrun (R-329) |
 | | #48 | R-11, the lead break helper and the watch driven through the database half | DONE on `relay/48`, 6 rows committed and unrun (R-329), two findings still open in the ledger |
-| 10 | #25 | U25, vocal restamp and My Tags shells | Ready. Brief rewritten 2026-09-11. Next session. |
+| 10 | #25 | U25, vocal restamp and My Tags shells | DONE on `unit/u25-vocal-restamp-and-my-tags-shells` |
+| 11 | | Phase F explanation, Phillip's and not a session's | |
 | 12 | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
 
 **#38 is the one task in that run that did not verify itself.** It landed at
@@ -510,14 +535,14 @@ deleted, and `verify` then returned every check green. **Its record still reads
 start against it again. See the `verify` confirms section below before treating
 that as a second repair.
 
-**The board is clean as of 2026-09-11**: 61 units, 59 done, 2 ready, 0 blocked,
-`board.py audit` printing that the board matches the repository. The two ready
-are #29, attended and not a session's, and #25, whose brief now names the two
-remaining shells. METHOD line 10 is #25. Take that.
+**The board after this merge**: 61 units, 60 done, 1 ready, 0 blocked, once
+main is pushed. The one ready is #29, attended and not a session's. METHOD
+line 10 is done. Line 11 is Phillip's. Do not take #29.
 
 **Phase E is complete with the U53 merge.** Line 7 is Phillip's, the explainer
 over the range from `46d5a4c` to the U53 merge commit. A session does not run
-it. The next session is line 10, #25.
+it. Phase F's explainer is line 11, over the U59 merge and the residual
+commits plus this one.
 
 #78 and #79 are not in METHOD's list, which was serialized before they existed.
 Each was taken as a relay task, which is Phillip placing it.
@@ -534,16 +559,16 @@ than trusting a count written here. R-324 is closed on #80. R-327 has no
 issue, which is the normal state for a residual: the ledger holds it until
 somebody decides to act on it.
 
-**Every unit in METHOD's serialized list is built except #25 and #29, and so
-are #78 and #79.** #25 is the next session. What is left after that is
-Phillip's: the two explanations, #46 and #39, and #29.
+**Every unit in METHOD's serialized list is built except #29, and so
+are #78 and #79.** What is left is Phillip's: the two explanations, #46 and
+#39, and #29.
 
 ## Do this first
 
 1. `CLAUDE.md`, then `docs/METHOD.md`. The pipeline section is the sequence and
-   the do-not-touch section binds. Line 10 is #25.
-2. `board.py next`. It names #29 first by reach. Do not take it. Take #25.
-   `board.py start 25`.
+   the do-not-touch section binds. Line 10 is done. Line 12 is #29, attended.
+2. `board.py next`. It names #29 first by reach. Do not take it. There is no
+   unit left that a session may take.
 3. Grep `docs/solutions/` for the module you are about to touch. A unit that
    opens a destructive write reads the barren list entry before it names an
    `analysis_roots`; a worker that moves files reads the rename intent entry

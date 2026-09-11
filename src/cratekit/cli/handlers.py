@@ -81,6 +81,7 @@ HANDLERS: Mapping[str, str] = {
     # would have the second one's binding read as the first's.
     "analyze.restamp": "cratekit.analysis.cli:handle_restamp",
     "analyze.run": "cratekit.analysis.cli:handle_run",
+    "analyze.vocals": "cratekit.vocals.cli:handle",
     "backup.run": "cratekit.backup.cli:handle",
     "export.playlist": "cratekit.export.cli:handle",
     # ONE WORKER UNDER TWO KEYS, for the reason the label pair below gives: a

@@ -1,0 +1,367 @@
+# U25, vocal restamp and My Tags shells. Author's rows.
+#
+# The full suite is about six minutes and the driver's preflight is two full
+# runs, so this table cannot finish inside a ten minute foreground call. That
+# is R-329. Run it attended:
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/u25-rows.toml
+#
+# Every row names its subset so a death on the new tests is a real death. A
+# zero on that subset is not yet a zero and must be promoted.
+
+name = "u25"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_queue_extra"
+description = "Drop the extras check at the queue so a slim machine files a job"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''    if not items:
+        return _nothing_to_queue(ctx, folder)
+    _require_extra()
+'''
+new = '''    if not items:
+        return _nothing_to_queue(ctx, folder)
+'''
+
+[[rows]]
+id = "G2_worker_extra"
+description = "Drop the extras check in the worker so an unbound process scores as inactive"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''    path = _item_path(job, item)
+    _require_extra()
+    _bind_defaults()
+'''
+new = '''    path = _item_path(job, item)
+    _bind_defaults()
+'''
+
+[[rows]]
+id = "G3_extra_available_always"
+description = "Treat a missing torch as present, so the extras refusal never fires"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''    except ImportError:
+        return False
+    return True
+'''
+new = '''    except ImportError:
+        return True
+    return True
+'''
+
+[[rows]]
+id = "G4_empty_folder_still_requires_extra"
+description = "Check extras before noticing the folder is empty"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''    items = _audio_in(folder)
+    if not items:
+        return _nothing_to_queue(ctx, folder)
+    _require_extra()
+'''
+new = '''    items = _audio_in(folder)
+    _require_extra()
+    if not items:
+        return _nothing_to_queue(ctx, folder)
+'''
+
+[[rows]]
+id = "G5_inactive_still_writes"
+description = "Write vocal tags even when the model did not score"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''    if not scored.get("vocal_active"):
+        return artifacts.produced(
+'''
+new = '''    if False and not scored.get("vocal_active"):
+        return artifacts.produced(
+'''
+
+[[rows]]
+id = "G6_always_rewrite"
+description = "Rewrite vocal tags even when the values did not move"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''    if (previous_level, previous_gender, previous_conf) != (level, gender, conf):
+        _write_or_refuse(
+'''
+new = '''    if True or (previous_level, previous_gender, previous_conf) != (level, gender, conf):
+        _write_or_refuse(
+'''
+
+[[rows]]
+id = "G7_foreign_job"
+description = "Drive a job queued for another verb"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''    if job.handler_key != ctx.entry.handler_key:
+'''
+new = '''    if False and job.handler_key != ctx.entry.handler_key:
+'''
+
+[[rows]]
+id = "G8_empty_resume"
+description = "Drive a vocals job that recorded no items"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''        if not jobs.items(store, job.job_id):
+'''
+new = '''        if False and not jobs.items(store, job.job_id):
+'''
+
+[[rows]]
+id = "G9_default_cut_zero"
+description = "An absent calibration cuts at zero, tagging every scored track"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''DEFAULT_VOCAL_THRESHOLD = 12.0
+'''
+new = '''DEFAULT_VOCAL_THRESHOLD = 0.0
+'''
+
+[[rows]]
+id = "G10_ignore_cut"
+description = "Every scored track is tagged, including those below the cut"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''    if voxlevel is None or voxlevel < cut:
+        return []
+'''
+new = '''    if voxlevel is None:
+        return []
+'''
+
+[[rows]]
+id = "G11_gender_without_vox"
+description = "Gender tags are applied even when the track is below the cut"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''    if voxlevel is None or voxlevel < cut:
+        return []
+    values = [VALUE_VOX]
+    if voxgender == "M":
+        values.append(VALUE_MALE)
+    elif voxgender == "F":
+        values.append(VALUE_FEMALE)
+    return values
+'''
+new = '''    values = []
+    if voxlevel is not None and voxlevel >= cut:
+        values.append(VALUE_VOX)
+    if voxgender == "M":
+        values.append(VALUE_MALE)
+    elif voxgender == "F":
+        values.append(VALUE_FEMALE)
+    return values
+'''
+
+[[rows]]
+id = "G12_apply_by_default"
+description = "The plan path writes, so a dry run mutates the database"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''        action="store_true",
+        default=False,
+'''
+new = '''        action="store_true",
+        default=True,
+'''
+
+[[rows]]
+id = "G13_skip_apply_gate"
+description = "Return the plan even when apply was requested, so nothing is written"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''        if not writing:
+            return ctx.envelope(data=plan, outcome=Outcome.OK)
+'''
+new = '''        if True:
+            return ctx.envelope(data=plan, outcome=Outcome.OK)
+'''
+
+[[rows]]
+id = "G14_open_without_closed"
+description = "A write open no longer requires rekordbox closed"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''        require_closed=writing,
+'''
+new = '''        require_closed=False,
+'''
+
+[[rows]]
+id = "G15_barren_watch"
+description = "Watch Music, which holds no ANLZ file, instead of watch_roots"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''            analysis_roots=analysis_store.watch_roots(cfg),
+'''
+new = '''            analysis_roots=(Path(cfg.library.root) / "Music",),
+'''
+
+[[rows]]
+id = "G16_no_verified_capture"
+description = "Commit without asserting the capture verified"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''            capture = snapshot.capture(cfg, db=db)
+            snapshot.assert_verified(capture)
+'''
+new = '''            capture = snapshot.capture(cfg, db=db)
+'''
+
+[[rows]]
+id = "G17_no_rollback"
+description = "Leave pending My Tag rows on a failed apply"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''            except BaseException:
+                _rollback_quietly(db)
+                raise
+'''
+new = '''            except BaseException:
+                raise
+'''
+
+[[rows]]
+id = "G18_include_deleted"
+description = "Soft-deleted rows receive My Tags"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''        if row.deleted:
+            continue
+'''
+new = '''        if False and row.deleted:
+            continue
+'''
+
+[[rows]]
+id = "G19_unresolved_as_file"
+description = "A row whose path did not resolve is still tagged"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''        if path is None:
+            unresolved += 1
+            continue
+'''
+new = '''        if path is None:
+            unresolved += 1
+            path = Path(cfg.library.root)
+'''
+
+[[rows]]
+id = "G20_loader_short_circuit"
+description = "A bound fake is ignored, so tests without torch refuse at the queue"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''    if scoring.loader_bound() or extra_available():
+        return
+'''
+new = '''    if extra_available():
+        return
+'''
+
+[[rows]]
+id = "G21_dotfiles_queued"
+description = "Dotfile sidecars are queued as audio"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''        if path.is_file()
+        and not path.name.startswith(".")
+        and path.suffix.lower() in AUDIO_EXTS
+'''
+new = '''        if path.is_file()
+        and path.suffix.lower() in AUDIO_EXTS
+'''
+
+[[rows]]
+id = "G22_folder_absent_as_empty"
+description = "A missing folder reports no-audio, hiding an unmounted volume"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''    if folder.is_dir():
+        return ctx.envelope(data=_no_op("no-audio"), outcome=Outcome.NO_OP)
+'''
+new = '''    if True:
+        return ctx.envelope(data=_no_op("no-audio"), outcome=Outcome.NO_OP)
+'''
+
+[[rows]]
+id = "G23_failed_job_ok"
+description = "A job that ended with a cause still reports OK"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''    if not job.is_open() and job.cause is not None:
+        raise CratekitError(job.cause)
+'''
+new = '''    if False and not job.is_open() and job.cause is not None:
+        raise CratekitError(job.cause)
+'''
+
+[[rows]]
+id = "G24_content_column"
+description = "The My Tags apply also writes Rating, a content column"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''            if rb_writer.add_my_tag(db, value_row, content_id):
+                written += 1
+            else:
+                already += 1
+'''
+new = '''            if rb_writer.add_my_tag(db, value_row, content_id):
+                written += 1
+            else:
+                already += 1
+            row = db.get_content(ID=content_id)
+            if row is not None:
+                row.Rating = 5
+'''
+
+[[rows]]
+id = "G25_message_reword"
+description = "Reword the extras refusal, never append"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''        "scoring vocals needs the 'vocals' extra, and it is not installed in "
+        "the process running this job"
+'''
+new = '''        "the vocals extra is missing from this process"
+'''
+
+[[dropped]]
+id = "G26_unlock_always_true"
+description = "Always unlock, which fails a disposable unencrypted database"
+reason = "ranked below the cap: the open path is already driven by the apply tests, and this is the encrypted live database case this unit must not touch"
+
+[[dropped]]
+id = "G27_default_cut_zero"
+description = "An absent calibration cuts at zero, tagging every scored track"
+reason = "ranked below the cap: same family as G10, which already removes the cut"

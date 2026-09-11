@@ -710,20 +710,47 @@ def test_a_job_queued_for_a_handler_this_build_does_not_register_refuses(queue, 
 
 
 def test_a_job_queued_for_a_verb_that_has_not_landed_refuses_rather_than_importing(
-    queue, cfg
+    queue, cfg, monkeypatch
 ):
-    """Derived rather than named, so it keeps biting as later units land."""
+    """The landed check in argv_for, held after the last planned queued verb.
+
+    Until U25 this derived the subject from the registry. That population is
+    now empty, so a synthetic planned entry keeps the refusal from rotting.
+    """
+    from dataclasses import replace
+
     from cratekit.cli import jobs as jobs_cli  # noqa: PLC0415
     from cratekit.cli import registry  # noqa: PLC0415
 
     store, _ = queue
     unlanded = [e for e in registry.entries() if not e.landed and e.argv_builder]
-    assert unlanded, "every verb has landed; this guard has nothing left to check"
-    job = jobs.enqueue(store, handler_key=unlanded[0].handler_key, payload={}, cfg=cfg)
+    assert not unlanded, (
+        f"these queued verbs still carry planned_in: {[e.name for e in unlanded]}"
+    )
+    missing = "cratekit.vocals.missing_shell"
+    fake = replace(
+        registry.entry("analyze.vocals"),
+        planned_in="U99",
+        module=missing,
+    )
+    monkeypatch.setattr(
+        registry,
+        "ENTRIES",
+        tuple(fake if e.name == fake.name else e for e in registry.ENTRIES),
+    )
+    monkeypatch.setattr(
+        registry, "_BY_NAME", {**dict(registry._BY_NAME), fake.name: fake}
+    )
+    monkeypatch.setattr(
+        registry,
+        "_BY_HANDLER",
+        {**dict(getattr(registry, "_BY_HANDLER", {})), fake.handler_key: fake},
+    )
+    job = jobs.enqueue(store, handler_key=fake.handler_key, payload={}, cfg=cfg)
     with pytest.raises(CratekitError) as excinfo:
         jobs_cli.argv_for(job)
     assert excinfo.value.cause.reason == "internal-error"
-    assert unlanded[0].module not in sys.modules
+    assert missing not in sys.modules
 
 
 def test_the_resume_builder_turns_a_frozen_job_back_into_a_command_line(queue, cfg):
