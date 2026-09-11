@@ -1849,7 +1849,7 @@ _PACKAGE_DEPTH = 2
 _COMPUTED_IMPORT = "<computed import>"
 
 
-def _is_package(dotted: str) -> bool:
+def _is_package(dotted: str, root: Path = SRC_ROOT) -> bool:
     """Whether a dotted path names a DIRECTORY in this repository's source tree.
 
     The depth rule below covers ``cratekit``, ``cratekit.<subpackage>`` and the
@@ -1861,10 +1861,10 @@ def _is_package(dotted: str) -> bool:
     the answer that cannot drift, and it answers False for everything outside the
     tree, which is where guessing would be dangerous.
     """
-    return SRC_ROOT.joinpath(*dotted.split(".")).is_dir()
+    return root.joinpath(*dotted.split(".")).is_dir()
 
 
-def _package_of(module: str) -> str:
+def _package_of(module: str, root: Path = SRC_ROOT) -> str:
     """The package a module's relative imports resolve against.
 
     A PACKAGE's own ``__init__`` resolves ``from . import aging`` against itself;
@@ -1876,12 +1876,12 @@ def _package_of(module: str) -> str:
     positive, which is the failure that gets a guard switched off, and it would
     have fired on the first correct relative import anybody wrote there.
     """
-    if SRC_ROOT.joinpath(*module.split(".")).is_dir():
+    if root.joinpath(*module.split(".")).is_dir():
         return module
     return module.rsplit(".", 1)[0]
 
 
-def _resolved_imports(source: str, module: str) -> list[str]:
+def _resolved_imports(source: str, module: str, root: Path = SRC_ROOT) -> list[str]:
     """Every module ``source`` depends on, as absolute dotted paths.
 
     Resolved through the import GRAPH rather than matched by name, in all four
@@ -1906,8 +1906,13 @@ def _resolved_imports(source: str, module: str) -> list[str]:
     ``os``, ``subprocess`` and ``sqlite3`` one builtin call away from this
     package. The builtin is read here too, and an argument this cannot read is
     reported as an import of something unnameable rather than ignored.
+
+    ``root`` is the tree the package and relative import questions are asked of.
+    It defaults to this repository, and the R-102 closure passes a planted one,
+    since a planted three level package asked about here would otherwise be read
+    against the real tree and resolve to the wrong module.
     """
-    package = _package_of(module)
+    package = _package_of(module, root)
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
@@ -1917,7 +1922,7 @@ def _resolved_imports(source: str, module: str) -> list[str]:
             if node.level:
                 parts = package.split(".")
                 base = ".".join([*parts[: len(parts) - node.level + 1], *([base] if base else [])])
-            if len(base.split(".")) <= _PACKAGE_DEPTH or _is_package(base):
+            if len(base.split(".")) <= _PACKAGE_DEPTH or _is_package(base, root):
                 found += [f"{base}.{alias.name}" for alias in node.names]
             else:
                 found.append(base)
@@ -5078,20 +5083,84 @@ def _first_party_module(target: str, root: Path = SRC_ROOT) -> tuple[str, Path] 
 
     ``_resolved_imports`` spells ``from X import y`` as ``X.y`` whenever X is a
     package, and ``y`` may be a module or only a name X's initializer binds. So
-    the target itself is tried first and then its parent, and nothing further:
-    a target whose parent is not a module either names nothing on disk, and
-    walking further up would quietly land it on ``cratekit/__init__.py`` and read
-    as followed.
+    the target itself is tried first, and the package's initializer only when it
+    BINDS that name. Falling back to the parent unconditionally made
+    ``import cratekit.core.probe_generated``, with no file behind it, land on
+    ``cratekit/core/__init__.py`` and read as followed, which the built in review
+    drove on a planted tree. A star import in the initializer binds nothing this
+    can read, so it stays unfollowed and is reported.
     """
-    for dotted in (target, target.rpartition(".")[0]):
-        if not dotted:
-            continue
-        base = root.joinpath(*dotted.split("."))
-        if base.with_suffix(".py").is_file():
-            return dotted, base.with_suffix(".py")
-        if (base / "__init__.py").is_file():
-            return dotted, base / "__init__.py"
+    base = root.joinpath(*target.split("."))
+    if base.with_suffix(".py").is_file():
+        return target, base.with_suffix(".py")
+    if (base / "__init__.py").is_file():
+        return target, base / "__init__.py"
+    parent, _, name = target.rpartition(".")
+    initializer = root.joinpath(*parent.split("."), "__init__.py")
+    if parent and initializer.is_file() and name in _names_bound_by(initializer.read_text()):
+        return parent, initializer
     return None
+
+
+def _names_bound_by(source: str) -> frozenset[str]:
+    """Every name a module's top level binds, read off its own statements."""
+    names: set[str] = set()
+    for node in ast.parse(source).body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            names.update(target.id for target in targets if isinstance(target, ast.Name))
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            names.update(
+                alias.asname or alias.name.split(".", 1)[0]
+                for alias in node.names
+                if alias.name != "*"
+            )
+    return frozenset(names)
+
+
+def _import_module_calls(source: str) -> list[str]:
+    """Every ``importlib.import_module`` in ``source``, as a target or as unreadable.
+
+    ``_resolved_imports`` reads the statement and the ``__import__`` builtin, and
+    this is the third spelling, which the report side never needed because
+    ``importlib`` is not on the allowlist. A module in the closure is held to no
+    allowlist, so ``importlib.import_module("cratekit.core.access_probe")`` in
+    ``cause`` was R-102's delegation with no import statement for the closure to
+    follow, driven by the built in review and green.
+
+    The call is matched on any receiver's ``import_module`` and on a bare name
+    ``from importlib import import_module`` bound, alias included. A literal
+    absolute name is a target. Anything else, a computed name or a relative one
+    whose package this does not resolve, is unreadable and is reported as such.
+    """
+    tree = ast.parse(source)
+    bare = {"import_module"} | {
+        alias.asname
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "importlib"
+        for alias in node.names
+        if alias.name == "import_module" and alias.asname
+    }
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (
+            (isinstance(func, ast.Attribute) and func.attr == "import_module")
+            or (isinstance(func, ast.Name) and func.id in bare)
+        ):
+            continue
+        first = node.args[0] if node.args else None
+        literal = (
+            first.value
+            if isinstance(first, ast.Constant) and isinstance(first.value, str)
+            else ""
+        )
+        found.append(literal if literal and not literal.startswith(".") else _COMPUTED_IMPORT)
+    return found
 
 
 def _admitted_closure(
@@ -5110,7 +5179,8 @@ def _admitted_closure(
     what it imports is queued if it has not been seen, and a cycle ends because
     a seen module is never queued again. Imports are read through
     ``_resolved_imports``, so an alias, a relative import and a literal
-    ``__import__`` are followed the way the report side reads them.
+    ``__import__`` are followed the way the report side reads them, and through
+    ``_import_module_calls``, which is the spelling only the closure needs.
 
     WHAT CANNOT BE FOLLOWED IS RETURNED, NOT DROPPED. A computed ``__import__``
     and a first party target with no file behind it are modules the audit cannot
@@ -5125,7 +5195,8 @@ def _admitted_closure(
     unfollowed: list[str] = []
     while waiting:
         dotted = waiting.pop()
-        for target in _resolved_imports(found[dotted].read_text(), dotted):
+        source = found[dotted].read_text()
+        for target in _resolved_imports(source, dotted, root) + _import_module_calls(source):
             if target == _COMPUTED_IMPORT:
                 unfollowed.append(f"{dotted}: {target}")
                 continue
@@ -5627,6 +5698,43 @@ def keep(path):
     path.touch()
 """
 
+#: The same delegation with NO import statement for the closure to read, once
+#: through the module attribute and once through an aliased bare name. The
+#: built in review drove the first against the closure's first version and it
+#: came back green.
+IMPORT_MODULE_CAUSE = """
+import importlib
+
+
+def probe(path):
+    return importlib.import_module("cratekit.core.access_probe").open_for_probe(path)
+"""
+
+ALIASED_IMPORT_MODULE_CAUSE = """
+from importlib import import_module as load
+
+
+def probe(path):
+    return load("cratekit.core.access_probe").open_for_probe(path)
+"""
+
+#: A relative import inside a THREE level package, which the resolver answers
+#: by asking the tree whether the base is a directory. Asked of the real tree,
+#: the planted ``cratekit.modules.planted`` is no directory, the import reads as
+#: the package itself, and ``stash`` is never reached.
+RELATIVE_OPENER = """
+from . import keeper
+
+
+def go(path, data):
+    return keeper.stash(path, data)
+"""
+
+RELATIVE_KEEPER = """
+def stash(path, data):
+    path.write_bytes(data)
+"""
+
 
 @pytest.mark.parametrize(
     ("entries", "modules", "reported"),
@@ -5656,8 +5764,39 @@ def keep(path):
             },
             {"cratekit.core.ledger": ["keep"]},
         ),
+        (
+            {"cratekit.core.cause"},
+            {
+                "cratekit.core.cause": IMPORT_MODULE_CAUSE,
+                "cratekit.core.access_probe": DELEGATED_PROBE,
+            },
+            {"cratekit.core.access_probe": ["open_for_probe"]},
+        ),
+        (
+            {"cratekit.core.cause"},
+            {
+                "cratekit.core.cause": ALIASED_IMPORT_MODULE_CAUSE,
+                "cratekit.core.access_probe": DELEGATED_PROBE,
+            },
+            {"cratekit.core.access_probe": ["open_for_probe"]},
+        ),
+        (
+            {"cratekit.modules.planted.opener"},
+            {
+                "cratekit.modules.planted.opener": RELATIVE_OPENER,
+                "cratekit.modules.planted.keeper": RELATIVE_KEEPER,
+            },
+            {"cratekit.modules.planted.keeper": ["stash"]},
+        ),
     ],
-    ids=["delegated-down", "sideways-two-hops-with-a-cycle", "through-the-sanctioned-module"],
+    ids=[
+        "delegated-down",
+        "sideways-two-hops-with-a-cycle",
+        "through-the-sanctioned-module",
+        "through-import-module",
+        "through-an-aliased-import-module",
+        "relative-in-a-three-level-package",
+    ],
 )
 def test_the_audit_follows_an_admitted_module_to_the_module_that_writes(
     tmp_path, entries, modules, reported
@@ -5692,18 +5831,29 @@ def test_the_closure_reports_an_import_it_cannot_follow(tmp_path):
     root = _plant(
         tmp_path,
         {
+            "cratekit.core.__init__": "",
             "cratekit.core.cause": (
-                "import cratekit.nowhere.probe\n\n\n"
-                "def load(name):\n    return __import__(name)\n"
+                "import importlib\n"
+                "import cratekit.nowhere.probe\n"
+                "import cratekit.core.probe_generated\n\n\n"
+                "def load(name):\n    return __import__(name)\n\n\n"
+                "def later(name):\n    return importlib.import_module(name)\n\n\n"
+                "def sibling():\n"
+                "    return importlib.import_module('.probe', 'cratekit.core')\n"
             ),
         },
     )
     audited, unfollowed = _admitted_closure({"cratekit.core.cause"}, root)
     assert [dotted for dotted, _ in audited] == ["cratekit.core.cause"]
-    assert sorted(unfollowed) == [
-        f"cratekit.core.cause: {_COMPUTED_IMPORT}",
-        "cratekit.core.cause: cratekit.nowhere.probe",
-    ]
+    assert sorted(unfollowed) == sorted(
+        [
+            f"cratekit.core.cause: {_COMPUTED_IMPORT}",
+            f"cratekit.core.cause: {_COMPUTED_IMPORT}",
+            f"cratekit.core.cause: {_COMPUTED_IMPORT}",
+            "cratekit.core.cause: cratekit.core.probe_generated",
+            "cratekit.core.cause: cratekit.nowhere.probe",
+        ]
+    )
 
 
 def test_a_symbol_imported_from_a_package_follows_the_package_initializer(tmp_path):
@@ -5726,6 +5876,7 @@ def test_a_symbol_imported_from_a_package_follows_the_package_initializer(tmp_pa
         root / "cratekit" / "core" / "__init__.py",
     )
     assert _first_party_module("cratekit.core.absent.deeper", root) is None
+    assert _first_party_module("cratekit.core.unbound", root) is None
     audited, unfollowed = _admitted_closure({"cratekit.core.cause"}, root)
     assert unfollowed == []
     assert [dotted for dotted, _ in audited] == ["cratekit.core", "cratekit.core.cause"]
