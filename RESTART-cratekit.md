@@ -146,10 +146,11 @@ tree, which is the whole of what the entry now says.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
 
-The last measured suite was **7275 passed and 1 skipped, 7276 collected**, taken
-on `relay/38` on a committed tree, and the mutation driver's own full baseline
-collected the same 7276. Against U61's 7254 BY TOTAL ONLY: the 22 are this
-branch's own tests in `tests/test_doctor.py`, and none was deleted. **Main's
+The last measured suite was **7312 passed and 1 skipped**, in 359 seconds, taken
+on `relay/40` on a committed tree. Against R-1's 7275 BY TOTAL ONLY: the 37 are
+this branch's own archive tests in `tests/test_portability.py`, 13 by name, 1
+for the session tarball, 17 by header and 6 quiet. That file collected 60 on
+`main`, 77 after the build and 97 after the review round. **Main's
 highest residual is R-334 once this branch merges**, no duplicate headings, no
 heading deleted, and R-3 gained its closing note in place rather than moving.
 Append only, and gaps are fine.
