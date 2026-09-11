@@ -916,7 +916,9 @@ def test_a_grid_rewritten_during_a_membership_write_refuses_the_session(
     which is the shape of write the runtime half exists to catch.
     """
     root = Path(cfg.library.root)
-    grid = root / "PIONEER" / "USBANLZ" / "one" / "ANLZ0000.DAT"
+    # In the share beside the database, the analysis store (R-14), rather than
+    # the USB export cache at the volume root that no row resolves into.
+    grid = Path(cfg.library.db_path).parent / "share" / "PIONEER" / "USBANLZ" / "8d2" / "ANLZ0000.DAT"
     grid.parent.mkdir(parents=True, exist_ok=True)
     grid.write_bytes(b"analysis")
     assert grid in session.analysis_files_under([root]), "the watch cannot see the grid"

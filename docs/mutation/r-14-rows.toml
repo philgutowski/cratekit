@@ -1,0 +1,119 @@
+# R-14, the analysis share join, the watch roots, and the share warning.
+# Author's rows.
+#
+# The full suite is about six minutes and the driver's preflight is two full
+# runs, so this table cannot finish inside a relay task's ten minute foreground
+# call. That is R-329. Run it attended:
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r-14-rows.toml
+#
+# M1 and M2 were checked red first by hand on a subset before the record was
+# written, which is not the driver's measurement: M1 killed 5 of 88 in
+# tests/test_analysis_store.py, tests/test_adopt_apply_cli.py and
+# tests/test_backup_cli.py, and M2 killed 3 of 11 in tests/test_analysis_store.py.
+# Both were restored and checked against HEAD. The rest are unrun.
+# M1, M2 and M9 are user facing, a grid moved in an outside share would report
+# clean or a row's grid would resolve to nothing. M5 to M8 are user facing, a
+# backup would report clean over the one tree it exists to protect. M3, M4 and
+# M10 are maintainer facing. Each row's expected kill is in its description.
+
+name = "r-14"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_watch_drops_the_outside_share"
+description = "watch_roots returns the library root alone in both layouts. Expect the outside watch test, the adopt apply drive with an outside database, and every outside backup warning test to die, since the warning keys on the same answer"
+file = "src/cratekit/core/analysis_store.py"
+old = '''        return (root,)
+    return (root, share)
+'''
+new = '''        return (root,)
+    return (root,)
+'''
+
+[[rows]]
+id = "M2_join_to_the_library_root"
+description = "analysis_file joins the stored value to the library root, the wrong join R-14 names. Expect the join pin over both trees, the outside layout join, and the Windows separator join to die"
+file = "src/cratekit/core/analysis_store.py"
+old = '''    return share_root(cfg).joinpath(*parts)
+'''
+new = '''    return Path(cfg.library.root).joinpath(*parts)
+'''
+
+[[rows]]
+id = "M3_no_climb_refusal"
+description = "The dot dot refusal is removed. Expect test_a_stored_path_that_climbs_out_of_the_share_is_refused to die"
+file = "src/cratekit/core/analysis_store.py"
+old = '''    if ".." in parts:
+'''
+new = '''    if ".." in parts and False:
+'''
+
+[[rows]]
+id = "M4_empty_value_joins"
+description = "An empty stored value returns the share itself rather than None. Expect the empty value test to die"
+file = "src/cratekit/core/analysis_store.py"
+old = '''    if not parts:
+        return None
+'''
+new = '''    if not parts:
+        return share_root(cfg)
+'''
+
+[[rows]]
+id = "M5_no_share_warning"
+description = "uncovered_analysis_share never warns. Expect the plan, outcome, refused portion and dispatcher warning tests to die"
+file = "src/cratekit/modules/tools/backup.py"
+old = '''    if analysis_store.watch_roots(cfg) == (Path(cfg.library.root),):
+        return ()
+'''
+new = '''    if analysis_store.watch_roots(cfg) != ():
+        return ()
+'''
+
+[[rows]]
+id = "M6_refused_portion_drops_warnings"
+description = "A refused portion's outcome drops the plan's warnings. Expect test_the_share_warning_survives_a_refused_database_portion to die"
+file = "src/cratekit/modules/tools/backup.py"
+old = '''                    detail=entry.detail,
+                    warnings=entry.warnings,
+'''
+new = '''                    detail=entry.detail,
+                    warnings=(),
+'''
+
+[[rows]]
+id = "M7_resume_envelope_drops_the_share"
+description = "The resumed verb's envelope no longer asks for the share warning. Expect the dispatcher test to die at the resume assertion"
+file = "src/cratekit/backup/cli.py"
+old = '''                *map(dict, backup.uncovered_analysis_share(jobs.frozen_config(job))),
+'''
+new = '''                *(),
+'''
+
+[[rows]]
+id = "M8_queue_envelope_drops_the_share"
+description = "The queue time envelope no longer carries the share warning. Expect the dispatcher test to die at the queue assertion"
+file = "src/cratekit/backup/cli.py"
+old = '''            warnings=tuple(map(dict, backup.uncovered_analysis_share(cfg))),
+'''
+new = '''            warnings=(),
+'''
+
+[[rows]]
+id = "M9_adopt_apply_watches_the_root_alone"
+description = "adopt.apply arms its watch over a hand listed library root again. Expect the adopt apply drive with an outside database and the AST guard to die"
+file = "src/cratekit/adopt/apply_cli.py"
+old = '''    watched: tuple[Path, ...] = analysis_store.watch_roots(cfg)
+'''
+new = '''    watched: tuple[Path, ...] = (cfg.library.root,)
+'''
+
+[[rows]]
+id = "M10_one_routing_site_hand_lists"
+description = "One route call site hand lists the library root again. Expect the AST guard to die, and nothing behavioural, since no route drive uses an outside database"
+file = "src/cratekit/write/rebuild.py"
+old = '''            analysis_roots=analysis_store.watch_roots(cfg),
+'''
+new = '''            analysis_roots=[Path(cfg.library.root)],
+'''

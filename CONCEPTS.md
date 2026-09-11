@@ -239,6 +239,15 @@ A mapping that carries the tag spelling of tempo is treated as a write, even
 when it never reaches a file. The domain word may live on an attribute. The
 serialized key may not.
 
+### Analysis share
+The `share` directory beside the rekordbox database, where every track's
+analysis files and beat grids live. On an external volume it is
+`PIONEER/Master/share`. `AnalysisDataPath` is stored relative to it, so
+`core.analysis_store` is the one place that joins the two. Not to be confused
+with `PIONEER/USBANLZ` at the volume root, which is the USB export cache: a
+different key shape, regenerable, and no row resolves into it. A database
+outside the library root takes its share with it.
+
 ### Pending register
 The one declaration of guards whose subject does not exist yet. Each entry names
 the missing thing, the unit that will land it, and what the guard behind it

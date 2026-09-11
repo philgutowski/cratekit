@@ -861,6 +861,30 @@ them against, not a patch to apply after.
 **Closes when:** every place that resolves, backs up or verifies analysis data joins
 to the share, and a test pins the join so the wrong one cannot come back.
 
+**Closed 2026-09-11 on `relay/52`.** Read against the tree, nothing in `src`
+joined `AnalysisDataPath` to anything, and U23 reads no analysis of its own
+(`adopt/plan.py` says so). What did exist was seven call sites arming the analysis
+watch over the library root alone, and a backup that carries the share only when
+it happens to sit under that root. Both are right in the external volume layout
+and both miss every grid when the database sits outside the root, which is an
+acknowledged configuration and the platform default.
+
+`core.analysis_store` now owns the join. `share_root` is the directory beside
+the configured database, `analysis_file` joins a stored value to it and refuses
+one containing `..`, and `watch_roots` is the library root plus the share when the
+share sits outside it. The seven sites take `watch_roots`. The backup plan, its
+outcome and the verb's envelope carry `analysis-share-not-carried` when the share
+sits outside the root. Carrying it is R-338. Two fixtures that planted their grid
+in the export cache now plant it in the share.
+
+Pinned by `tests/test_analysis_store.py`: the join over a volume holding both
+trees, where the library root join is shown to find nothing, and an AST guard
+refusing a hand listed watch root anywhere in `src`. The watch is driven through
+`adopt.apply` with an outside database in `tests/test_adopt_apply_cli.py`, and the
+warning through the dispatcher in `tests/test_backup_cli.py`. `analysis_file` has
+no caller in `src` yet. Its first caller owns it, and that caller is whichever unit
+first needs a row's grid.
+
 ---
 
 ## R-15. Guard whitelists assert what is forbidden, never what is permitted
@@ -15142,3 +15166,45 @@ times.
 **Closes when:** each of the five has a row whose default and sense are checked
 against rclone's source or a real remote, or is named in
 `_NON_TRASHING_REMOTE_TYPES` with the same evidence.
+
+---
+
+## R-338. An analysis share outside the library root is in no backup, and no restore puts it back
+
+**Found:** closing R-14 on `relay/52`, 2026-09-11.
+
+The analysis share is the `share` directory beside the rekordbox database, and
+it holds every beat grid. The mirror carries it only because it normally sits
+under the library root. With the database outside the root, which
+`library.db_outside_root_acknowledged_on` permits and which is where rekordbox
+puts it by default, the share is outside too. The mirror never sees it, the
+database snapshot copies the database file and its sidecars, and the settings
+directory the snapshot also copies, `Application Support/Pioneer/rekordbox6` on
+macOS, does not hold it. A dead drive restored from that backup brings back every
+row without its analysis, and the rows look fine.
+
+**Measured cost.** Driven in `tests/test_analysis_store.py` and
+`tests/test_backup_cli.py`: no command in the plan names the share, and the plan,
+the outcome and the verb's envelope each carry `analysis-share-not-carried`. The
+envelope warns at queue time and at resume. A resume whose database portion
+refused raises the refusal instead of building an envelope, so that one drive
+shows no warning, and the queue time warning is what that person has seen.
+
+**Options, none taken here**, because each spends a person's storage or changes a
+destructive path:
+
+1. The share rides the database portion into each dated snapshot, as the
+   settings directories do. Simplest, and it inherits the right gate, since
+   rekordbox writes the share while it analyses. The source library's share
+   is 3.4 GB, and a dated snapshot copies whole, so every run uploads it again.
+2. The share is mirrored to one stable destination with its own dated archive,
+   as the library is. Cheap per run, and it needs a fourth configured
+   destination, so setup changes.
+3. Either way a restore needs a matching half, and it must be planned from a
+   listing. The restore clears the database's sidecars before its first
+   transfer, so a copy from a snapshot that holds no share fails after the
+   clearing, which is the refusal `_ran` describes.
+
+**Closes when:** a backup in the outside layout carries the share, a restore
+from it puts the share back beside the restored database, and the warning code
+has no producer left.

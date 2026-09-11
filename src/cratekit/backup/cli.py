@@ -361,6 +361,15 @@ def backup_library(ctx) -> Envelope:
             # envelope describes THIS job, so it answers from the configuration
             # this job ran against.
             reported["ages"] = published_ages(jobs.frozen_config(job))
+            # THE SHARE WARNING IS ASKED HERE AND NOT READ FROM THE ITEM. The work
+            # body's report does not leave a claimed item (R-221), so the warning
+            # the plan carries would reach nobody. It is a fact about the frozen
+            # configuration rather than about how the transfer went, so asking the
+            # configuration again is the same answer rather than a second rule.
+            warnings = (
+                *warnings,
+                *map(dict, backup.uncovered_analysis_share(jobs.frozen_config(job))),
+            )
             return ctx.envelope(data=reported, warnings=warnings)
         job = jobs.enqueue(
             store,
@@ -373,7 +382,12 @@ def backup_library(ctx) -> Envelope:
             item_ids=backup_items(),
             cfg=cfg,
         )
-        return ctx.envelope(data=_reported(store, job))
+        # Said at queue time as well, because a person who never resumes the job
+        # by hand would otherwise learn about the share only from a later run.
+        return ctx.envelope(
+            data=_reported(store, job),
+            warnings=tuple(map(dict, backup.uncovered_analysis_share(cfg))),
+        )
 
 
 def published_ages(cfg: config.Config, *, now: datetime | None = None) -> list[dict]:
