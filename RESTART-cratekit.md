@@ -4,7 +4,25 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-11, R-14 on `relay/52`, taken from the board as issue #52
+**Last session 2026-09-11, R-15 on `relay/53`, taken from the board as issue #53
+and run as relay task 53.** The eleventh residual issue worked, and the third of
+METHOD's guard group. Test work, closed in place, with one piece filed. Measured
+before any pin: a sixth permitted table and a bookkeeping column swapped for a
+content column killed nothing in the full suite. `tests/test_whitelist_membership.py`
+pins `PERMITTED_ROW_TABLES`, `BOOKKEEPING_COLUMNS`, and the content allow list,
+which is registry derived here and so is pinned at baseline, per metadata
+operation with its ownership mode, and fully enabled. The two deny lists beside
+them, `GRIDLESS_ON_CREATE_COLUMNS` and the unwritable metadata fields, are pinned
+too, since a removal is their widening. An AST audit holds every
+`Rekordbox6Database` call in `src` to an explicit non empty `path=`. The built in
+review found that `db_dir` also sets the binding's share directory, and that the
+rows file's batch name would have let the driver overwrite the hand record, now
+`r-15-driver`. Checking which file the connection opened is R-339. Ten widening
+rows are in `docs/mutation/r-15-rows.toml`, all ten checked red by hand on the pin
+file and recorded in `docs/mutation/r-15.md`, and unrun by the driver, for R-329's
+reason.
+
+**The session before, 2026-09-11, R-14 on `relay/52`, taken from the board as issue #52
 and run as relay task 52.** The tenth residual issue worked, and the first of
 METHOD's correctness group. A fix, closed in place, with one piece filed. Read
 against the tree, nothing in `src` joined `AnalysisDataPath` to anything. What
@@ -236,10 +254,15 @@ tree, which is the whole of what the entry now says.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
 
-**Main's highest residual is R-338 once `relay/52` merges**, R-338 being that
-branch's only filing, with R-14 closed in place and no heading moved. Its suite
-was **7352 passed and 1 skipped**, in 352 seconds, on `relay/52` at the record
-commit. The fourteen since R-11's 7338 are this branch's own: eleven in the new
+**Main's highest residual is R-339 once `relay/53` merges**, R-339 being that
+branch's only filing, with R-15 closed in place, no duplicate heading and no
+heading moved. Its suite was **7371 passed and 1 skipped**, in 356 seconds, on
+`relay/53` on a committed tree. The nineteen since R-14's 7352 are all in the new
+`tests/test_whitelist_membership.py`: seven membership pins, the tree open audit,
+ten audit refusals and one acceptance. The R-14 record follows.
+
+R-14's suite was **7352 passed and 1 skipped**, in 352 seconds, on `relay/52` at
+the record commit. The fourteen since R-11's 7338 are this branch's own: eleven in the new
 `tests/test_analysis_store.py`, `test_the_analysis_watch_reaches_a_share_outside_the_library_root`
 in `tests/test_adopt_apply_cli.py`, and the outside and contained drives in
 `tests/test_backup_cli.py`. The R-11 record follows.
