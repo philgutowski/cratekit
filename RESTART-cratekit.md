@@ -238,7 +238,11 @@ tree, which is the whole of what the entry now says.
 
 **Main's highest residual is R-338 once `relay/52` merges**, R-338 being that
 branch's only filing, with R-14 closed in place and no heading moved. Its suite
-count is recorded in the commit after this paragraph's. The R-11 record follows.
+was **7352 passed and 1 skipped**, in 352 seconds, on `relay/52` at the record
+commit. The fourteen since R-11's 7338 are this branch's own: eleven in the new
+`tests/test_analysis_store.py`, `test_the_analysis_watch_reaches_a_share_outside_the_library_root`
+in `tests/test_adopt_apply_cli.py`, and the outside and contained drives in
+`tests/test_backup_cli.py`. The R-11 record follows.
 
 The last measured suite was **7338 passed and 1 skipped**, in 352 seconds, taken
 on `relay/48` on a committed tree. One of the four since R-7's 7334 is R-11's
