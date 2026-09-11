@@ -1243,7 +1243,6 @@ ENTRIES: tuple[Entry, ...] = (
         destructive=True,
         taxonomy_terms=("with_vox",),
         doctor_checks=("binary.ffmpeg",),
-        planned_in="U25",
     ),
     Entry(
         name="metadata.mytags-vocals",
@@ -1264,7 +1263,6 @@ ENTRIES: tuple[Entry, ...] = (
         #: This verb writes My Tags rather than content columns, so U21's per-field
         #: policy does not govern it at all. It is the vocal module's own surface
         #: and belongs with U25, beside the entry above it.
-        planned_in="U25",
     ),
     # ── Sync ────────────────────────────────────────────────────────────────
     Entry(

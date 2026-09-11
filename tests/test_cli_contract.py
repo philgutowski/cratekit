@@ -1182,27 +1182,32 @@ def test_the_registry_is_the_source_of_the_verb_names_the_layering_guard_reads()
     assert len(registry.VERB_NAMES) == len(registry.entries())
 
 
-@pytest.mark.parametrize(
-    "entry", [e for e in registry.entries() if not e.landed], ids=lambda e: e.name
-)
-def test_a_planned_verb_whose_module_has_landed_must_lose_its_marker(entry):
+def test_a_planned_verb_whose_module_has_landed_must_lose_its_marker():
     """The countdown, in the same shape as the pending register.
 
     A declared-but-absent verb is how parity stays checkable before the units
     that implement it exist. The marker has to expire on its own, or it becomes a
-    comment nobody re-reads.
+    comment nobody re-reads. Walked rather than parametrized so an empty set,
+    which is the state after the last planned verb lands, is still a valid
+    derived population (P3) rather than a collection error.
     """
     import importlib.util
 
-    try:
-        present = importlib.util.find_spec(entry.module) is not None
-    except ModuleNotFoundError:
-        present = False
-    assert not present, (
-        f"{entry.module} now exists, so {entry.planned_in} has landed. Clear "
-        f"planned_in on {entry.name!r} so the conformance assertions start "
-        f"driving it."
-    )
+    leftover = []
+    for entry in registry.entries():
+        if entry.landed:
+            continue
+        try:
+            present = importlib.util.find_spec(entry.module) is not None
+        except ModuleNotFoundError:
+            present = False
+        if present:
+            leftover.append(
+                f"{entry.module} now exists, so {entry.planned_in} has landed. "
+                f"Clear planned_in on {entry.name!r} so the conformance "
+                f"assertions start driving it."
+            )
+    assert not leftover, leftover
 
 
 #: The planned verbs whose module ``tests/_pending.PENDING`` also owes, written
@@ -1555,6 +1560,8 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "analyze.calibrate": [],
         "analyze.validate": [],
         "analyze.restamp": [str(library / "Music")],
+        "analyze.vocals": [str(library / "Music")],
+        "metadata.mytags-vocals": [],
         # U26. Registry list is the empty-install state. Import of a name that
         # is not registered must refuse with a vocabulary code. Harvest of an
         # unreachable playlist must refuse rather than invent labels.
@@ -2946,12 +2953,10 @@ def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
     """One gate is exempt. A second one is a decision, not a diff.
 
     Note what this pin does NOT prove, so nobody reads more into a green run than
-    is there: the map is INERT against the real registry today. All twelve
-    entries declaring `write.cloudsync.unreadable` are planned, and `profile.set`
-    is the only landed entry with a gate at all, so no parametrized run of
-    assertion 3 exercises the exemption. Its behaviour, including its
-    self-expiry, is proved by the synthetic tests above and by nothing else until
-    the first such verb lands.
+    is there: the map is still a named exemption, not a drive of the unreadable
+    state. Landed verbs that declare `write.cloudsync.unreadable` now go through
+    assertion 3, and the exemption is what lets them reach OK without firing
+    that gate. Its self-expiry is still proved by the synthetic tests above.
     """
     assert set(UNREACHABLE_GATES) == EXPECTED_UNREACHABLE_GATES, (
         f"the exemption set is {sorted(UNREACHABLE_GATES)} and this file "
