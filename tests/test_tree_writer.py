@@ -904,6 +904,48 @@ def test_naming_no_analysis_root_is_refused_rather_than_watching_nothing(cfg, ga
         )
 
 
+def test_a_grid_rewritten_during_a_membership_write_refuses_the_session(
+    cfg, gates_pass, db, adopted_root, monkeypatch
+):
+    """R-11. The watch this writer arms, driven over a root that holds a grid.
+
+    Every other write in this file names ``root/Music``, which holds no analysis
+    file, so the watch fingerprints nothing and would pass whatever happened to a
+    grid. Here a real analysis file sits where rekordbox keeps one, the library
+    root is named, and the membership primitive rewrites it as a side effect,
+    which is the shape of write the runtime half exists to catch.
+    """
+    root = Path(cfg.library.root)
+    grid = root / "PIONEER" / "USBANLZ" / "one" / "ANLZ0000.DAT"
+    grid.parent.mkdir(parents=True, exist_ok=True)
+    grid.write_bytes(b"analysis")
+    assert grid in session.analysis_files_under([root]), "the watch cannot see the grid"
+
+    real_batch = rb_writer.add_memberships
+
+    def rewriting_batch(db_handle, playlist, content_ids):
+        grid.write_bytes(b"a rewritten grid, longer than what was there")
+        return real_batch(db_handle, playlist, content_ids)
+
+    monkeypatch.setattr(trees.rb_writer, "add_memberships", rewriting_batch)
+    with pytest.raises(CratekitError) as excinfo:
+        trees.write_tree_membership(
+            cfg,
+            db,
+            tree_id=TREE_ID,
+            registry=_registry(tree_registry.Mode.DATABASE, root_id=str(adopted_root.ID)),
+            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{root}/Music/one.flac"]},
+            rows=_rows(root),
+            root_exists=lambda _root: True,
+            analysis_roots=[root],
+        )
+
+    cause = excinfo.value.cause
+    assert cause.reason == "anlz-modified"
+    assert cause.code is ExitCode.REFUSED_BY_POLICY
+    assert any(str(grid) in line for line in cause.detail["changed"])
+
+
 def test_membership_lands_in_the_named_folder_and_sub(cfg, gates_pass, db, adopted_root):
     """The happy path, end to end through the gates and a real commit."""
     report = _write(
