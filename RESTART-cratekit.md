@@ -4,7 +4,25 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-11, R-11 on `relay/48`, taken from the board as issue #48
+**Last session 2026-09-11, R-14 on `relay/52`, taken from the board as issue #52
+and run as relay task 52.** The tenth residual issue worked, and the first of
+METHOD's correctness group. A fix, closed in place, with one piece filed. Read
+against the tree, nothing in `src` joined `AnalysisDataPath` to anything. What
+did exist was seven call sites arming the analysis watch over the library root
+alone. With an acknowledged database outside the root, the share and every grid
+sit outside it too, so each of those sessions watched nothing. `core.analysis_store`
+now owns the join. `share_root` is the directory beside the configured database,
+`analysis_file` joins a stored value to it, and `watch_roots` adds the share when it
+sits outside the root. The seven sites take `watch_roots`, and an AST guard in
+`tests/test_analysis_store.py` refuses a hand listed root. The backup carries the
+share only when it sits under the root. Outside it, the plan, the outcome and the
+verb's envelope now say `analysis-share-not-carried`, which the built in review
+found reached nobody until the envelope asked for it. Carrying the share is R-338.
+The kebab literal pin moved 401 to 402. Ten mutation rows are in
+`docs/mutation/r-14-rows.toml`, two checked red first by hand and the rest unrun,
+for R-329's reason.
+
+**The session before, 2026-09-11, R-11 on `relay/48`, taken from the board as issue #48
 and run as relay task 48.** The ninth residual issue worked, and the last of
 METHOD's surface group. Two of its four findings closed, two stay on the ledger.
 The CRLF absorption was three copies, not the four R-11 counted, since the
@@ -218,6 +236,10 @@ tree, which is the whole of what the entry now says.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
 
+**Main's highest residual is R-338 once `relay/52` merges**, R-338 being that
+branch's only filing, with R-14 closed in place and no heading moved. Its suite
+count is recorded in the commit after this paragraph's. The R-11 record follows.
+
 The last measured suite was **7338 passed and 1 skipped**, in 352 seconds, taken
 on `relay/48` on a committed tree. One of the four since R-7's 7334 is R-11's
 `test_a_grid_rewritten_during_a_membership_write_refuses_the_session`; the other
@@ -239,9 +261,10 @@ highest residual stays R-335 once this branch merges**, no duplicate headings, n
 heading deleted, and R-6 gained its closing note in place rather than moving.
 Append only, and gaps are fine.
 
-**The kebab literal pin in `tests/test_reserved_causes.py` moved 391 to 401.**
-The ten are git hook type names, differenced as sets against `main`, and none is
-a cause.
+**The kebab literal pin in `tests/test_reserved_causes.py` moved 401 to 402** on
+R-14, for `analysis-share-not-carried`, a warning code and not a cause. Before
+that it moved 391 to 401 for ten git hook type names, differenced as sets
+against `main`, none of them a cause.
 
 **THE AUDIT EXITS 1 NOW, NOT 2, AND THE REASON IS A BOARD WRITE NOBODY RECORDED.**
 Measured on 2026-09-10 while closing R-322: issue #25 is OPEN with a state reason

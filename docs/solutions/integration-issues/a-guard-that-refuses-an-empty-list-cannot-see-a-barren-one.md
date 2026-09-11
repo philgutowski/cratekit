@@ -12,7 +12,7 @@ symptoms:
   - "A new destructive write passes every session gate and its analysis watch fingerprints zero files"
   - "write_tree_membership's ValueError about an empty analysis_roots never fires, because the list has one entry"
   - "The whole suite is green, the mutation table kills the row, and the watch is still armed over nothing"
-  - "A caller names root/Music while rekordbox keeps its ANLZ files under root/PIONEER/USBANLZ"
+  - "A caller names root/Music while rekordbox keeps its ANLZ files in the share beside the database, PIONEER/Master/share/PIONEER/USBANLZ, and not in the export cache at root/PIONEER/USBANLZ (R-14)"
 applies_when:
   - "A unit adds a new caller of write_tree_membership, restore, or anything else taking analysis_roots"
   - "A guard refuses an empty collection and the caller supplies a non-empty one whose CONTENTS are empty"
