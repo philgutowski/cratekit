@@ -162,6 +162,19 @@ old = '''                    "code": "sync-source-not-queued",'''
 new = '''                    "code": "sync-source-refused",'''
 
 # ---------------------------------------------------------------------------
+# The favourites factoring
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "F1_intake_run_as_gate_run"
+description = "The favourites job freezes the intake run as its gate run, conflating the two runs"
+file = "src/cratekit/favorites/cli.py"
+tests = ["tests/test_sync_all.py"]
+surface = "user"
+old = '''            jobs.GATE_RUN_KEY: gate_run,'''
+new = '''            jobs.GATE_RUN_KEY: run_id,'''
+
+# ---------------------------------------------------------------------------
 # Gates.hand_off, each guard layer alone
 # ---------------------------------------------------------------------------
 
@@ -173,24 +186,6 @@ tests = ["tests/test_sync_all.py"]
 surface = "maintainer"
 old = '''        if recorded is None or recorded.digest is None:'''
 new = '''        if recorded is None:'''
-
-[[rows]]
-id = "H2_option_not_checked"
-description = "A hand off stops checking the target gate offers the chosen option"
-file = "src/cratekit/cli/gates.py"
-tests = ["tests/test_sync_all.py"]
-surface = "maintainer"
-old = '''            or recorded.option not in target.options'''
-new = '''            or False'''
-
-[[rows]]
-id = "H3_digest_source_not_checked"
-description = "A hand off stops checking the target gate compares a digest"
-file = "src/cratekit/cli/gates.py"
-tests = ["tests/test_sync_all.py"]
-surface = "maintainer"
-old = '''            or target.digest_source is None'''
-new = '''            or False'''
 
 [[rows]]
 id = "H4_actor_replaced"
@@ -211,14 +206,25 @@ old = '''                    digest=recorded.digest,'''
 new = '''                    digest=None,'''
 
 # ---------------------------------------------------------------------------
-# The favourites factoring
+# Two guard layers each covered by the other, LAST ON PURPOSE. Every test
+# target that fails one also fails the other, so each is expected to measure
+# zero, and a zero's promotion to the full suite cannot fit inside the call.
 # ---------------------------------------------------------------------------
 
 [[rows]]
-id = "F1_intake_run_as_gate_run"
-description = "The favourites job freezes the intake run as its gate run, conflating the two runs"
-file = "src/cratekit/favorites/cli.py"
+id = "H2_option_not_checked"
+description = "A hand off stops checking the target gate offers the chosen option"
+file = "src/cratekit/cli/gates.py"
 tests = ["tests/test_sync_all.py"]
-surface = "user"
-old = '''            jobs.GATE_RUN_KEY: gate_run,'''
-new = '''            jobs.GATE_RUN_KEY: run_id,'''
+surface = "maintainer"
+old = '''            or recorded.option not in target.options'''
+new = '''            or False'''
+
+[[rows]]
+id = "H3_digest_source_not_checked"
+description = "A hand off stops checking the target gate compares a digest"
+file = "src/cratekit/cli/gates.py"
+tests = ["tests/test_sync_all.py"]
+surface = "maintainer"
+old = '''            or target.digest_source is None'''
+new = '''            or False'''
