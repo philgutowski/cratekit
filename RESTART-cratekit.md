@@ -562,11 +562,22 @@ branch, merge, and close the issue from there. **Do not re-run the unit from the
 board as though nothing had landed.**
 
 **`verify` needs the issue named as `#N`.** After a hand landing, `relay_cli.py
-verify <manifest> <task>` promotes the record only when it can find the link. It
-derives one from a default branch commit naming `#N` when the record carries no
-`landing_ref`; when the record already carries one, as a `partial_landing` record
-does, it instead wants a tracker COMMENT naming that sha, and one comment is the
-whole repair. native-relay's own `docs/solutions/` carries both halves.
+verify <manifest> <task>` reaches a landed verdict only when it can find the
+link. It derives one from a default branch commit naming `#N` when the record
+carries no `landing_ref`; when the record already carries one, as a
+`partial_landing` record does, it instead wants a tracker COMMENT naming that
+sha, and one comment is the whole repair. native-relay's own `docs/solutions/`
+carries both halves.
+
+**`verify` confirms, it does not promote.** `cmd_verify` computes the verdict,
+prints the checks, and returns an exit code; it writes nothing to the record
+(`cli.py:395`). A halted record stays halted, reading `partial_landing`, however
+green the verdict is. Promotion happens at the NEXT run's startup, where
+`startup_reverify` re-runs the full verdict on every halted record and promotes
+the ones that now pass. So a repaired task whose manifest is finished keeps a
+halted record forever, and that is cosmetic rather than a second repair to chase.
+Measured on #38, 2026-09-11: every check green, `38: landed` printed, record
+still `halted`.
 
 ## Standing decisions
 
