@@ -180,14 +180,15 @@ tree, which is the whole of what the entry now says.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
 
-The last measured suite was **7328 passed and 1 skipped**, in 351 seconds, taken
-on `relay/41` on a committed tree. Against R-3's 7312 the 16 are this branch's
+The last measured suite was **7328 passed and 1 skipped**, in 361 seconds, taken
+on `relay/43` on a committed tree. R-5 and R-6 changed no test, so the count is
+R-4's unchanged. Against R-3's 7312 the 16 are R-4's
 own, reconciled by identifier in `tests/test_cli_contract.py`: two rejection
 rows in `test_an_entry_missing_its_metadata_fails_to_register`,
 `test_every_live_toggle_is_driven_by_the_toggle_test_below`, and thirteen cases
 of `test_a_module_toggle_alone_switches_its_landed_verbs_on_and_off`. **Main's
-highest residual stays R-334 once this branch merges**, no duplicate headings, no
-heading deleted, and R-4 gained its closing note in place rather than moving.
+highest residual stays R-335 once this branch merges**, no duplicate headings, no
+heading deleted, and R-6 gained its closing note in place rather than moving.
 Append only, and gaps are fine.
 
 **The kebab literal pin in `tests/test_reserved_causes.py` moved 391 to 401.**
