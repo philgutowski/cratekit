@@ -918,6 +918,25 @@ and the pins are worth writing deliberately rather than alongside something else
 **Closes when:** the permitted-tables set, the content-column allow-list and the
 bookkeeping set each carry an exact-membership assertion, each verified to fail on a
 deliberate widening rather than merely existing.
+
+**Closed 2026-09-11 on `relay/53`.** Measured on this tree first: a sixth
+permitted table and a bookkeeping column swapped for a content column, applied
+together with a widened content column, gave one failure in the full suite, and
+that one was the content column's. The table and the swap killed nothing.
+`tests/test_whitelist_membership.py` now pins all three as exact sets. The
+content allow list is registry derived here rather than a constant, so it is
+pinned at baseline, per metadata operation with its ownership mode, and fully
+enabled. The bookkeeping set had a count, which misses a swap. The same shape one
+file over is pinned too: `GRIDLESS_ON_CREATE_COLUMNS` and the unwritable metadata
+fields are deny lists, where the widening is a removal. Ten widening rows, each
+checked red by hand on the pin file, are in `docs/mutation/r-15-rows.toml` and
+`docs/mutation/r-15.md`.
+
+The related half landed as the AST audit this entry asked for, and it resolves
+aliased imports and refuses a bare reference. One correction to the text above,
+read from the pinned binding: `db_dir` also sets the `share` directory analysis
+paths resolve under, so a `db_dir` only open mixes live rows with the copy's
+share. Checking which file the connection actually opened is R-339.
 ---
 
 ## R-16. What the U36 and U32 merge owes, verified rather than inferred
@@ -15208,3 +15227,36 @@ destructive path:
 **Closes when:** a backup in the outside layout carries the share, a restore
 from it puts the share back beside the restored database, and the warning code
 has no producer left.
+
+---
+
+## R-339. The open pins the argument, and nothing checks which file the connection opened
+
+**Found:** by R-15, 2026-09-11, on `relay/53`.
+
+R-15's related half landed as an AST audit in `tests/test_whitelist_membership.py`:
+every `Rekordbox6Database` call in `src` passes an explicit, non empty `path=`.
+That is the argument. The entry's own general form says why it is the cheap half:
+refusing the live path as an argument is not the same as not reading it. The
+binding decides what to open from `path`, and falls back to the rekordbox
+configuration's `db_path` when `path` is empty, so a value that is present in the
+source and empty at run time still opens the live library. The audit refuses only
+a literal empty value. Read from the pinned binding, it also does not connect
+while it constructs, so the file is chosen at the first query.
+
+**Measured cost.** None driven. `core/rb_writer.py` refuses a missing target
+before it constructs, so no producer of an empty `path` at run time was found,
+and none was driven. One candidate was read and none produces it.
+
+**Options, none taken here**, because each changes the write open path, and the
+brief asked for the AST assertion:
+
+1. After construction, compare the engine's database file with the target, and
+   refuse the session on a mismatch. Cheap, and it checks the binding's
+   intention rather than the connection.
+2. After the canary's first query, ask SQLite which file it attached
+   (`PRAGMA database_list`) and compare that. The connection that actually
+   opened, which is the check R-15 names.
+
+**Closes when:** an open whose connection is not the target file is refused by a
+check on the connection, and a test drives that refusal.
