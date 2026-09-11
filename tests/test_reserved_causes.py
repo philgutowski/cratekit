@@ -5096,7 +5096,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # own precondition refused while another source did queue, a warning and not
     # a cause because the pass did queue. Every refusal the composer raises is a
     # source's own, reusing a slug the table already reserves.
-    assert (len(literals), len(literals - set(causes))) == (391, 238), (
+    # Re-pinned on the widened half of the residual finding "The commit hook is
+    # off by default on a fresh clone", 2026-09-10: 391 to 401 distinct, 238 to
+    # 248 non-keys. TEN literals joined and NOTHING left, differenced as SETS
+    # against `main`'s own `src` tree read through `git show`. None is a cause:
+    # they are git hook type names doctor reads a pre-commit configuration
+    # against, commit-msg, post-checkout, post-commit, post-merge, post-rewrite,
+    # pre-merge-commit, pre-push, pre-rebase and prepare-commit-msg, plus
+    # merge-commit, the legacy stage spelling mapped to pre-merge-commit.
+    assert (len(literals), len(literals - set(causes))) == (401, 248), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
