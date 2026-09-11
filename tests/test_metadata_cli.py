@@ -93,16 +93,10 @@ def ready(tmp_path, monkeypatch, silence):
 def test_vocal_tag_values_are_empty_below_the_cut():
     assert metadata_cli.vocal_tag_values(None, "M", 12.0) == []
     assert metadata_cli.vocal_tag_values(11, "M", 12.0) == []
-    assert metadata_cli.vocal_tag_values(12, None, 12.0) == [metadata_cli.VALUE_VOX]
-    assert metadata_cli.vocal_tag_values(12, "M", 12.0) == [
-        metadata_cli.VALUE_VOX,
-        metadata_cli.VALUE_MALE,
-    ]
-    assert metadata_cli.vocal_tag_values(90, "F", 12.0) == [
-        metadata_cli.VALUE_VOX,
-        metadata_cli.VALUE_FEMALE,
-    ]
-    assert metadata_cli.vocal_tag_values(90, "U", 12.0) == [metadata_cli.VALUE_VOX]
+    assert metadata_cli.vocal_tag_values(12, None, 12.0) == ["vox"]
+    assert metadata_cli.vocal_tag_values(12, "M", 12.0) == ["vox", "male vox"]
+    assert metadata_cli.vocal_tag_values(90, "F", 12.0) == ["vox", "female vox"]
+    assert metadata_cli.vocal_tag_values(90, "U", 12.0) == ["vox"]
 
 
 def test_the_plan_names_existing_rows_and_writes_nothing(ready):
@@ -171,3 +165,34 @@ def test_a_second_apply_is_idempotent(ready):
     assert envelope["data"]["totals"]["written"] == 0
     assert envelope["data"]["totals"]["already"] == 2
     del db_path
+
+
+def test_a_library_with_no_tag_category_refuses_through_the_verb(ready, monkeypatch):
+    """First caller of ensure_my_tag_value: the writer's refusal must reach the person."""
+    cfg, audio, db_path = ready
+    del audio
+    db_path.unlink()
+    _build_disposable_database(db_path, with_tag_category=False)
+    from pyrekordbox.db6 import tables
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as db_session:
+        db_session.add(
+            _row(
+                tables.DjmdContent,
+                ID="3",
+                Title="voiced.flac",
+                rb_local_deleted=0,
+                FolderPath=locations.location_url(
+                    Path(cfg.library.root) / "Music" / "voiced.flac"
+                ),
+            )
+        )
+        db_session.commit()
+    engine.dispose()
+    del monkeypatch
+    code, envelope = drive(["metadata", "mytags-vocals", "--apply"])
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "mytag-category-template-missing"
