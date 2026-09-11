@@ -2491,12 +2491,16 @@ def test_a_verb_carrying_a_resume_argv_builder_declares_that_it_queues():
     Measured over the registry on 2026-08-26: 21 entries declare ``long_running``
     and every one declares a builder, so the implication holds in the tree today
     and this is what stops it drifting.
+
+    Measured again on 2026-09-10 by U60: 20, because ``delete.review`` stopped
+    declaring BOTH halves in one commit. The floor below now sits exactly on the
+    count, so the next verb to stop queueing has to move it on purpose.
     """
     carriers = [entry for entry in registry.ENTRIES if entry.argv_builder]
     assert len(carriers) >= 20, (
         f"only {len(carriers)} entries declare a resume argv builder, which is "
-        f"far below the 21 measured when this guard landed; either the registry "
-        f"shrank a great deal or this guard has stopped deriving anything"
+        f"below the 20 measured when U60 last moved this floor; either the "
+        f"registry shrank or this guard has stopped deriving anything"
     )
     mislabelled = sorted(entry.name for entry in carriers if not entry.long_running)
     assert not mislabelled, (
@@ -2504,6 +2508,67 @@ def test_a_verb_carrying_a_resume_argv_builder_declares_that_it_queues():
         f"long_running: {mislabelled}. Either the builder is dead code, or the "
         f"verb queues and has just dropped out of every derived guard in "
         f"tests/test_queued_resume_contract.py"
+    )
+
+
+#: Long-running entries whose shell legitimately files no job under its own key,
+#: with the reason. Not a list of verbs that are allowed to lie: a verb goes here
+#: only when queueing is not what it DOES, as opposed to what it has not done yet.
+QUEUES_BY_ROLE_NOT_BY_ENQUEUE: Mapping[str, str] = MappingProxyType(
+    {
+        "job.resume": (
+            "the resume verb spawns the child that drives an existing job and "
+            "never files one of its own"
+        ),
+    }
+)
+
+
+def _enqueue_calls(tree: ast.AST) -> int:
+    found = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        callee = node.func
+        if isinstance(callee, ast.Attribute) and callee.attr == "enqueue":
+            found += 1
+        elif isinstance(callee, ast.Name) and callee.id == "enqueue":
+            found += 1
+    return found
+
+
+def test_a_verb_declaring_the_queueing_contract_has_a_shell_that_queues():
+    """R-149's class, the direction no other guard here can see. U60, 2026-09-10.
+
+    ``long_running`` plus an ``argv_builder`` says a job driver re-invokes this
+    verb as a subprocess. Every guard in ``tests/test_queued_resume_contract.py``
+    and ``tests/test_handlers.py`` trusts that sentence and derives its population
+    from it, so an entry that declares it over a shell doing the work inline puts
+    a verb into every one of those populations with nothing behind it: a builder
+    nothing calls, and an unbound handler key that tells a person the work is
+    queued when it is not. ``delete.review`` sat in that state from U24 until U60.
+
+    PARSED RATHER THAN SEARCHED, for the reason
+    ``tests/test_handlers.py::_drive_calls`` gives: prose that names ``enqueue``
+    is not a call to it. A call anywhere in the verb's module is the bar, not a
+    call on the handler's own path, because several shells enqueue from a helper.
+    """
+    queued = [e for e in registry.ENTRIES if e.landed and e.long_running]
+    assert queued, "no landed verb queues, so this guard derives nothing"
+    stale = sorted(set(QUEUES_BY_ROLE_NOT_BY_ENQUEUE) - {e.name for e in queued})
+    assert not stale, f"exemptions naming no landed long-running verb: {stale}"
+
+    inline = []
+    for entry in queued:
+        if entry.name in QUEUES_BY_ROLE_NOT_BY_ENQUEUE:
+            continue
+        path = SRC_ROOT / Path(*entry.module.split(".")).with_suffix(".py")
+        if not _enqueue_calls(ast.parse(path.read_text())):
+            inline.append(entry.name)
+    assert not inline, (
+        f"these verbs declare long_running and an argv builder and their shell "
+        f"never calls enqueue: {inline}. Either the verb does its work inline and "
+        f"the entry should stop claiming a queue, or the shell should queue"
     )
 
 

@@ -8188,6 +8188,28 @@ shell defect.
 envelope, or written only after a recorded decision that names history
 as the thing being accepted.
 
+**CLOSED by U60, 2026-09-10, on the first condition, commit `a5a2e33`, and the
+schema cost measured was ZERO fields rather than one.** The brief expected a
+field on `review_set/1`, which declares `additionalProperties: False`. The refuse
+envelope is not that payload. It is the `decision-required` cause, and the gate
+already carries a display context onto it: `gates.Gates.require(context=...)`
+lands as `cause.detail.shown` on both refusals, and `render.render_gate` prints it
+for a person, which is the channel `session.ack` already uses. So `review_removals`
+passes `{baselined, accepted_as_history, offered}` and `review_set/1` and its lock
+hash are untouched. The context is not read by `_plan_digest`, so the first run's
+recorded decision is not stale on the resume that no longer baselines.
+
+**Driven through the shipped verb, measured:** a library with one prior removal,
+first run, the refusal shows `baselined: true, accepted_as_history: 1, offered: 0`,
+abort, the resume reports `no_op` and moves nothing; a second run's refusal shows
+`baselined: false, accepted_as_history: 0, offered: 0`, and confirming it returns
+ok with `items: []` and the file still in place. So the removal IS history after
+an abort, exactly as before; what changed is that the person was told so before
+answering. `tests/test_deletion.py::test_delete_review_says_on_the_refusal_that_a_first_run_accepted_history`
+holds it. The second closing condition, writing the baseline only after a
+recorded decision, is a change to R35's first-run rule and stays a product
+decision nobody has asked for.
+
 ---
 
 ## R-135. An empty label listing is treated as a verified empty catalogue
@@ -8915,6 +8937,20 @@ all. Guessing here would either delete a declared capability or invent one.
 **Closes when:** the entry and the shell agree, in whichever direction U24
 chooses, and the derived guard in `tests/test_queued_resume_contract.py` keeps
 holding whichever verb remains in its population.
+
+**CLOSED by U60, 2026-09-10, in the direction this entry left open: the entry
+dropped the queueing contract, commit `a5a2e33`.** `delete.review` no longer
+declares `long_running` or an `argv_builder`, `delete_argv` is deleted, and the
+verb left `HANDLERS_NOT_YET_BOUND`. The rejected direction was a queued deletion
+pass with its own job surface; it was rejected because the gate is explicit and
+its digest is the plan, and a detached child would rebuild a plan nobody
+digested. The derived guard still holds: `tests/test_queued_resume_contract.py`
+now parametrises over one verb fewer, and every remaining case passes. What
+stops this recurring is new and derived rather than named:
+`tests/test_cli_contract.py::test_a_verb_declaring_the_queueing_contract_has_a_shell_that_queues`
+parses every landed long-running verb's module for an `enqueue` call, with
+`job.resume` exempt by role, and it failed on `main` for `delete.review` alone.
+Its one limit is R-328.
 
 ---
 
@@ -10847,6 +10883,21 @@ other's module because one is a CLI verb and one is a write-layer verb, so what
 they share had to move down to the engine rather than sideways. The items were
 the decision, as the paragraph above predicts: a rebuild's item is a tree, and a
 library that has flipped no tree therefore files no job rather than an empty one.
+
+**U60 removed `delete.review` from the population, and NOT BY GIVING IT A
+WORKER, 2026-09-10.** It left by ceasing to be queued: its entry dropped
+`long_running` and its `argv_builder` (R-149, closed), because the verb was
+always inline and never enqueued anything. So ONE queued verb has no worker as of
+2026-09-10, `sync.all`. Measured, not subtracted: `HANDLERS_NOT_YET_BOUND` holds
+two keys, one of which is the `job.resume` exemption, and the registry holds
+nineteen landed `long_running` entries where it held twenty, seventeen of them
+bound, with `analyze.vocals` declared and not yet landed. Read the count
+honestly: this unit bound nothing, and the closing condition below is met by one
+more binding, not by one more drop. A drop is legitimate only where the verb
+genuinely does not queue, which
+`tests/test_cli_contract.py::test_a_verb_declaring_the_queueing_contract_has_a_shell_that_queues`
+now checks by parsing each shell for an `enqueue` call. `sync.all` calls it, so
+it cannot leave this list the way `delete.review` did.
 
 ---
 
@@ -14599,3 +14650,63 @@ exactly that reason.
 says what shape keeps it honest given that there is no payload seam to build it
 at. Recorded rather than fixed because it did not meet the bar to hold a merge.
 
+
+---
+
+## R-328. The queueing guard accepts an `enqueue` call anywhere in a verb's module
+
+**Found:** by the `/code-review` pass on U60, 2026-09-10. Recorded rather than
+fixed.
+
+`tests/test_cli_contract.py::test_a_verb_declaring_the_queueing_contract_has_a_shell_that_queues`
+parses each landed long-running verb's MODULE for a call to `enqueue`. It does not
+follow the verb's own handler. So two verbs sharing a module pass on one call:
+`sync.labels` and `label.import` live in `cratekit.label.cli`, and if one of them
+stopped queueing while the other still did, the guard would stay green over the
+false claim R-149 was.
+
+**Measured cost: none today.** Every landed long-running verb except the
+`job.resume` exemption has an `enqueue` call in its module, measured on this
+branch, and the shared-module pairs share a worker too, so both halves of each
+pair genuinely queue. The bar is stated in the guard's docstring: several shells
+enqueue from a helper rather than from the handler, so following the handler's
+own call graph would be a larger guard than the class it catches today.
+
+**Closes when:** the guard follows each verb's handler, the function its builder
+binds as `_handler`, through to an `enqueue` call, or a shared-module pair is
+split so the module bar becomes a per-verb bar.
+
+---
+
+## R-329. The mutation driver cannot finish a batch inside a ten minute foreground call
+
+**Found:** by U60, 2026-09-10, running its table as relay task 78.
+
+`scripts/mutate.py` runs a full suite baseline on EVERY call, `--resume`
+included (`scripts/mutate.py:957`), and `--resume` reuses finished rows only. The
+full suite is 358 seconds on this tree. The null control runs on the first Python
+row's derived importer subset, which is the full suite again when nothing
+imports that module. A relay task runs every command in the foreground under a
+600 second ceiling, and METHOD forbids a backgrounded driver. Two attempts, both
+stopped by SIGINT at 570 and 575 seconds, measured zero finished rows and left
+the tree clean. `docs/mutation/u60-notes.md` holds both measurements.
+
+**Measured cost.** U60 lands with no mutation table, not even the author's. Its
+rows are committed and ready. Every later unit run as an unattended relay task
+meets the same wall, because the baseline alone is sixty percent of the ceiling
+and grows with the suite. And promoting a zero needs a second full run inside
+the same call, so a zero could never be confirmed there even if the preflight
+fit.
+
+**Options, none taken here**, because each changes the driver or how a unit is
+run, and that is Phillip's decision:
+
+1. `--resume` reuses a stored full baseline when it was taken on the same HEAD.
+   Cheapest. It relaxes the check that catches a red baseline, so the sidecar
+   has to carry the sha the baseline was measured on.
+2. A row file names the null control's subset rather than deriving it.
+3. The table runs attended, or as a runner step outside the task session, where
+   no ten minute ceiling applies.
+
+**Closes when:** U60's committed rows are measured by any route, and the route is
+one a relay task can take.

@@ -4,8 +4,30 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-10, R-322 closed on `relay/81`, taken from the board as
-issue #81 and run as relay task 81.** The first residual issue to be worked
+**Last session 2026-09-10, U60 on `relay/78`, taken from the board as issue #78
+and run as relay task 78.** `delete.review` stopped claiming a queue. Its entry
+dropped `long_running` and `argv_builder`, `delete_argv` is gone, and the verb
+left `HANDLERS_NOT_YET_BOUND`, so R-149 closed in the direction it left open.
+R-134 closed too, at a schema cost of zero fields: the first run's baseline rides
+the gate's existing context onto the refusal as `cause.detail.shown`, which
+`render_gate` prints for a person, and `review_set/1` is untouched.
+
+**A NEW REGISTRY GUARD HOLDS THE CLASS.**
+`test_a_verb_declaring_the_queueing_contract_has_a_shell_that_queues` parses every
+landed long-running verb's module for an `enqueue` call, with `job.resume` exempt
+by role. It failed on `main` for `delete.review` alone. Its module-wide bar is
+R-328.
+
+**U60 HAS NO MUTATION TABLE, AND THAT IS A MEASURED GAP, NOT A CLEAN ONE.**
+`scripts/mutate.py` reruns a six minute full baseline on every call, and a relay
+task runs every command in the foreground under a ten minute ceiling, so two
+attempts ended in preflight with no row measured. The rows are committed and
+ready, `docs/mutation/u60-notes.md` holds the measurements, and R-329 is the gap
+with three options, all Phillip's. The learning is
+`docs/solutions/workflow-issues/the-mutation-driver-does-not-fit-a-ten-minute-foreground-call.md`.
+
+**The session before, 2026-09-10, R-322 closed on `relay/81`, taken from the
+board as issue #81 and run as relay task 81.** The first residual issue to be worked
 rather than a unit, and the first work of the ninth line in METHOD's serialized
 order. It added SEVEN tests and thirteen lines of `scripts/board.py`, no new
 behaviour, and it closed the audit's detector being driven by nothing.
@@ -60,10 +82,11 @@ rather than an empty one. Both workers go through
 `rebuild.rebuild_governed_tree`, which is the FIRST CALLER of `rebuild_tree`
 anywhere in `src`.
 
-**TWO QUEUED VERBS HAVE NO WORKER.** `delete.review` and `sync.all`, with
-`job.resume` exempt by role. Seventeen are bound. R-203 carries the correction
-and its title stays at eighteen on purpose, because the title names what was
-true when the entry was written.
+**ONE QUEUED VERB HAS NO WORKER, `sync.all`**, with `job.resume` exempt by role.
+Measured: nineteen landed verbs queue and seventeen are bound. `delete.review`
+left the population in U60 by ceasing to be queued, NOT by gaining a worker, and
+R-203's own correction says so. Its title stays at eighteen on purpose, because
+the title names what was true when the entry was written.
 
 **R-131 IS DOWN TO ITS ATTENDED HALF.** Everything in it that a session could do
 is done and driven against a disposable database copy. Nothing has run on a live
@@ -76,15 +99,15 @@ tree, which is the whole of what the entry now says.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
 
-The last measured suite was **7234 passed and 1 skipped**, collected 7235, taken
-on `relay/81` on a committed tree. Reconciled against U59's 7228 BY IDENTIFIER
-rather than by total, scoped to the one file that changed: `main`'s
-`tests/test_pending_units.py` declares 28 test functions, the branch collects
-those 28 plus exactly the seven R-322 added, and nothing is lost. A total only
-check shows the same healthy rise over a file that dropped one and gained eight.
-**Main's highest residual is R-327 once this branch merges**, no duplicate
-headings, no heading deleted, and R-322 gained a closure note in place rather
-than moving. Append only, and gaps are fine.
+The last measured suite was **7235 passed and 1 skipped**, collected 7236, taken
+on `relay/78` on a committed tree in 358 seconds. Reconciled against R-322's
+7235 by naming what moved rather than by total: three `delete.review`
+parametrised cases left, `test_conformance_5_long_work_is_queued_rather_than_run_inline[delete.review]`
+and its two cases in `tests/test_queued_resume_contract.py`, and four tests
+arrived, the registry guard and three deletion drives. `delete.review` keeps its
+seven other conformance cases. **Main's highest residual is R-329 once this
+branch merges**, no duplicate headings, no heading deleted, and R-149, R-134 and
+R-203 gained notes in place rather than moving. Append only, and gaps are fine.
 
 **THE AUDIT EXITS 1 NOW, NOT 2, AND THE REASON IS A BOARD WRITE NOBODY RECORDED.**
 Measured on 2026-09-10 while closing R-322: issue #25 is OPEN with a state reason
@@ -128,6 +151,19 @@ exits zero over half a library.
 **THE RESORT IS ADDITIVE**, which is R-312. There is no database removal path in
 this build, so a genre change leaves the track in its old sub as well as its new
 one and the convergence check names the leftovers.
+
+## What U60 left behind
+
+Two residuals and one learning.
+
+- **R-328.** The new queueing guard accepts an `enqueue` call anywhere in a
+  verb's module, so two verbs sharing a module pass on one call. Nothing
+  exploits it today: every shared-module pair also shares a worker.
+- **R-329.** The mutation driver cannot finish a batch inside a relay task's ten
+  minute foreground ceiling. U60's twenty rows are committed and unmeasured.
+  **Read the learning before an unattended session plans a table**: if the
+  battery's full suite is past roughly four minutes, commit the rows, record the
+  gap and land, rather than spending ceiling length calls finding out.
 
 ## What U59 left behind, beyond the code
 
@@ -214,7 +250,7 @@ In METHOD's serialized order, which is what picks the work:
 |---|---|---|---|
 | 7 | | Phase E explanation, Phillip's and not a session's | |
 | 8 | #77 | U59, land the conformance branch | DONE on `relay/77` |
-| | #78 | U60, the deletion pass | Ready |
+| | #78 | U60, the deletion pass | DONE on `relay/78`, no mutation table (R-329) |
 | | #79 | U61, `crate sync all` composes the source increments | Ready |
 | | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
 
@@ -223,7 +259,8 @@ Phillip's**: the explainer over the range from `46d5a4c` to the U53 merge
 commit. A session does not run it.
 
 #78 and #79 are not in METHOD's list, which was serialized before they existed.
-Where they fall is Phillip's to say, so a session does not take them.
+#78 was taken as relay task 78, which is Phillip placing it. #79 is still
+unplaced, so a session does not take it.
 
 **#42, R-5 is now probably a close.** METHOD's line 9 says so, on the grounds
 that U59 lands the conformance assertions R-5 records as gated. Read R-5 against
@@ -240,8 +277,8 @@ issue, which is the normal state for a residual: the ledger holds it until
 somebody decides to act on it.
 
 **Every unit in METHOD's serialized list is now built.** What is left on that
-list is Phillip's: the two explanations, the residual issues, and #29. #78 and
-#79 exist and are not placed, which is his call.
+list is Phillip's: the two explanations, the residual issues, and #29. #79
+exists and is not placed, which is his call.
 
 ## Do this first
 
@@ -258,7 +295,8 @@ list is Phillip's: the two explanations, the residual issues, and #29. #78 and
 
 | branch | state |
 |---|---|
-| `relay/81` | R-322, the branch this record is on; delete after the merge |
+| `relay/78` | U60, the branch this record is on; delete after the merge |
+| `relay/81` | R-322, merged to `main`; delete if it still exists |
 | `relay/77` | U59, merged to `main`; delete if it still exists |
 | `fix/conformance-3-and-soft-delete-reader` | LANDED into `relay/77` by merge. Still in `.worktrees/conformance`, untouched, and now redundant. Deleting it and the worktree is Phillip's call, not a session's, because the merge is not pushed yet |
 

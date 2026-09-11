@@ -6011,6 +6011,114 @@ def test_delete_review_trashes_a_confirmed_file(review_cli, tmp_path, monkeypatc
     assert code == int(ExitCode.OK), err or out
     assert not music.exists()
     assert any(home.joinpath(".Trash").iterdir()), "the confirmed file never reached the Trash"
+    # U60: the whole of what the inline pass owes, asserted through the SHIPPED
+    # verb rather than the engine, since nothing queues it and no worker will
+    # ever finish it later. A tombstone per trashed file, and the watermark
+    # moved past the row it handled so the next run does not offer it again.
+    assert len(stores.list_tombstones(review_cli)) == 1
+    assert watermark.WatermarkStore(review_cli).read().sequence >= 50
+
+
+def _history(cfg) -> Path:
+    """A library whose collection already carries one removal nobody has reviewed.
+
+    No watermark exists yet, so the next ``crate delete review`` is a FIRST run,
+    which is the one R-134 is about: it baselines over this removal before the
+    gate can ask anything.
+    """
+    music = _music(cfg, ONE)
+    _write_rows(
+        Path(cfg.library.db_path),
+        [("1", str(music), True, 50, music.stat().st_size, Path(ONE).stem)],
+    )
+    return music
+
+
+def _fake_trash(tmp_path, monkeypatch) -> Path:
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    monkeypatch.setattr("cratekit.deletion.trash.Path.home", lambda: home)
+    return home / ".Trash"
+
+
+def test_delete_review_says_on_the_refusal_that_a_first_run_accepted_history(
+    review_cli, tmp_path, monkeypatch
+):
+    """R-134, driven through the shipped verb, and what an abort can and cannot undo.
+
+    The baseline is written inside ``plan`` before the gate refuses, and R35 wants
+    it written. What was wrong was that the refusal said nothing about it, so a
+    person who aborted believed nothing had been recorded. The refusal now carries
+    the baseline, and this measures the rest of the sequence as it really is: the
+    abort moves nothing and reports no_op, and the removal is then history, so a
+    second run offers nothing and the file stays where it is.
+    """
+    trash = _fake_trash(tmp_path, monkeypatch)
+    music = _history(review_cli)
+
+    code, out, err = _drive(["--output", "json", "delete", "review"])
+    assert code == int(ExitCode.DECISION_REQUIRED), err or out
+    refused = json.loads(out)
+    assert refused["cause"]["detail"]["shown"] == {
+        "baselined": True,
+        "accepted_as_history": 1,
+        "offered": 0,
+    }
+    run_id = refused["run_id"]
+    _drive(["run", "decide", run_id, "delete.review.confirm", "abort", "--actor", "a-person"])
+    code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
+    assert code == int(ExitCode.OK), err or out
+    assert json.loads(out)["outcome"] == "no_op"
+    assert music.exists() and not any(trash.iterdir())
+
+    code, out, err = _drive(["--output", "json", "delete", "review"])
+    assert code == int(ExitCode.DECISION_REQUIRED), err or out
+    second = json.loads(out)
+    assert second["cause"]["detail"]["shown"] == {
+        "baselined": False,
+        "accepted_as_history": 0,
+        "offered": 0,
+    }
+    _drive(
+        ["run", "decide", second["run_id"], "delete.review.confirm", "trash", "--actor", "a-person"]
+    )
+    code, out, err = _drive(["--output", "json", "--run", second["run_id"], "delete", "review"])
+    assert code == int(ExitCode.OK), err or out
+    assert json.loads(out)["data"]["items"] == []
+    assert music.exists() and not any(trash.iterdir())
+
+
+def test_delete_review_first_run_confirmed_reports_ok_and_trashes_nothing(
+    review_cli, tmp_path, monkeypatch
+):
+    """Conformance 3's other half: the gate fires on a baseline and a trash answer is OK.
+
+    ``review_removals`` returns before ``run.apply`` on a baseline, so a confirmed
+    first run opens no destructive session and moves nothing, and still reports
+    ok rather than no_op, because the person said yes to a plan that was empty.
+    """
+    trash = _fake_trash(tmp_path, monkeypatch)
+    music = _history(review_cli)
+
+    code, out, err = _drive(["--output", "json", "delete", "review"])
+    assert code == int(ExitCode.DECISION_REQUIRED), err or out
+    run_id = json.loads(out)["run_id"]
+    _drive(["run", "decide", run_id, "delete.review.confirm", "trash", "--actor", "a-person"])
+    code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
+    assert code == int(ExitCode.OK), err or out
+    envelope = json.loads(out)
+    assert envelope["outcome"] == "ok"
+    assert envelope["data"]["items"] == []
+    assert music.exists() and not any(trash.iterdir())
+    assert stores.list_tombstones(review_cli) == ()
+
+
+def test_delete_review_prints_the_baseline_to_a_person_not_only_to_json(review_cli):
+    """The display half. A context that stopped at the envelope reaches no human."""
+    _history(review_cli)
+    code, out, err = _drive(["delete", "review"])
+    assert code == int(ExitCode.DECISION_REQUIRED), err or out
+    assert "accepted_as_history: 1" in out + err
 
 
 def test_delete_review_names_a_missing_library_directory(review_cli):

@@ -337,6 +337,14 @@ is what made its builder read as correct. `adopt.apply` moved onto the same key.
 armed, though the mismatch between its registry entry and its shell is recorded
 separately as R-149.
 
+**Update, U60, 2026-09-10.** The latent case is gone rather than disarmed.
+`delete.review` stopped declaring `long_running` and its `argv_builder`, and
+`delete_argv` was deleted, because the verb never queued: the person who confirms
+a deletion watches it happen. A registry entry can claim the queueing contract
+over a shell that does its work inline, and every guard derived from that claim
+then trusts it, so `tests/test_cli_contract.py` now parses each long-running
+verb's module for an `enqueue` call.
+
 THE GUARD IS DERIVED FROM THE REGISTRY, in
 `tests/test_queued_resume_contract.py`. It walks every landed entry that is
 `long_running`, names an `argv_builder`, and declares a non exempt `explicit`
