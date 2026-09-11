@@ -4,7 +4,29 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-11, R-15 on `relay/53`, taken from the board as issue #53
+**Last session 2026-09-11, R-102 on `relay/54`, taken from the board as issue #54
+and run as relay task 54.** The twelfth residual issue worked, and the last of
+METHOD's guard group. Test work, closed in place, with one piece filed. The
+reports allowlist audit in `tests/modules/test_reports.py` now walks the IMPORT
+CLOSURE of `ALLOWED_IMPORTS`, not the list: `_admitted_closure` follows import
+statements, `__import__` and `importlib.import_module` in one worklist pass and
+returns what it cannot follow, which the audit refuses. Driven on the real tree,
+`cause` calling a planted `access_probe` reads clean to the one hop walk and red
+to the closure. **The closure is eighteen modules and reaches `rb_writer`**
+through `rbxml`, `tree_registry` and `session`, so forty nine writers are now
+named in `QUALIFIED_MUTATIONS`. **A unit that adds a writer to the write path
+will now fail `test_reports.py`**, and the learning is
+`docs/solutions/workflow-issues/the-reports-allowlist-audit-reaches-the-write-path-so-a-new-writer-there-fails-test-reports.md`.
+The built in review drove three holes in the first version, `import_module`
+unread, an unconditional package fallback, and a resolver asking the real tree
+for a planted one, and all three are fixed and driven. R-340 is the report side:
+a report calling a named writer through another module's attribute is not
+caught. Sixteen rows are in `docs/mutation/r-102-rows.toml`, fourteen killing
+and two predicted maintainer facing zeros, checked by hand on the one file and
+recorded in `docs/mutation/r-102.md`, and unrun by the driver, for R-329's
+reason.
+
+**The session before, 2026-09-11, R-15 on `relay/53`, taken from the board as issue #53
 and run as relay task 53.** The eleventh residual issue worked, and the third of
 METHOD's guard group. Test work, closed in place, with one piece filed. Measured
 before any pin: a sixth permitted table and a bookkeeping column swapped for a
@@ -254,9 +276,18 @@ tree, which is the whole of what the entry now says.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
 
-**Main's highest residual is R-339 once `relay/53` merges**, R-339 being that
-branch's only filing, with R-15 closed in place, no duplicate heading and no
-heading moved. Its suite was **7371 passed and 1 skipped**, in 356 seconds, on
+**Main's highest residual is R-340 once `relay/54` merges**, R-340 being that
+branch's only filing, with R-102 closed in place, no duplicate heading and no
+heading moved. Its suite was **7379 passed and 1 skipped**, in 358 seconds, on
+`relay/54` on a committed tree. The eight since R-15's 7371 are this branch's
+eight new identifiers in `tests/modules/test_reports.py`: six cases of
+`test_the_audit_follows_an_admitted_module_to_the_module_that_writes`,
+`test_the_closure_reports_an_import_it_cannot_follow`, and
+`test_a_symbol_imported_from_a_package_follows_the_package_initializer`. That is
+the new names matched against the delta, not the full collection differenced
+against `main`. The R-15 record follows.
+
+R-15's suite was **7371 passed and 1 skipped**, in 356 seconds, on
 `relay/53` on a committed tree. The nineteen since R-14's 7352 are all in the new
 `tests/test_whitelist_membership.py`: seven membership pins, the tree open audit,
 ten audit refusals and one acceptance. The R-14 record follows.
