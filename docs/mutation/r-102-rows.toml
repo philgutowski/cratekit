@@ -1,0 +1,214 @@
+# R-102, the allowlist audit followed to its import closure. Author's rows.
+#
+# Every guard this change adds lives in tests/modules/test_reports.py, so every
+# row targets that file and the subset the driver derives is that file. The full
+# suite is about six minutes and the driver's preflight is two full runs, so the
+# table cannot finish inside a relay task's ten minute foreground call. That is
+# R-329. Run it attended:
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r-102-rows.toml
+#
+# The batch is named r-102-driver so the driver writes r-102-driver.md and .json
+# and cannot overwrite r-102.md, the hand record.
+#
+# Every row was checked by hand on tests/modules/test_reports.py alone, each
+# applied alone, the collected count checked on every row, node ids read from
+# JUnit XML, the file restored from an in memory snapshot and compared against
+# HEAD outside the run. The counts are in docs/mutation/r-102.md.
+
+name = "r-102-driver"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_closure_follows_nothing"
+description = "The closure reads no import at all, so it is the one hop walk again. Expect the planted drivers and the audit's transitive floor to die"
+file = "tests/modules/test_reports.py"
+old = '''
+        for target in _resolved_imports(source, dotted, root) + _import_module_calls(source):
+'''
+new = '''
+        for target in []:
+'''
+
+[[rows]]
+id = "M2_closure_is_one_layer_deep"
+description = "A module the closure reaches is recorded but never read, so it stops one layer past the allowlist. Expect the two hop planted row and the floor naming rb_writer to die"
+file = "tests/modules/test_reports.py"
+old = '''
+                found[landed[0]] = landed[1]
+                waiting.append(landed[0])
+'''
+new = '''
+                found[landed[0]] = landed[1]
+'''
+
+[[rows]]
+id = "M3_computed_import_dropped"
+description = "A computed import is skipped instead of reported as unfollowed. Expect the unfollowable import test to die"
+file = "tests/modules/test_reports.py"
+old = '''
+            if target == _COMPUTED_IMPORT:
+                unfollowed.append(f"{dotted}: {target}")
+                continue
+'''
+new = '''
+            if target == _COMPUTED_IMPORT:
+                continue
+'''
+
+[[rows]]
+id = "M4_missing_module_dropped"
+description = "A first party target with no file behind it is skipped instead of reported. Expect the unfollowable import test to die"
+file = "tests/modules/test_reports.py"
+old = '''
+            if landed is None:
+                unfollowed.append(f"{dotted}: {target}")
+'''
+new = '''
+            if landed is None:
+                continue
+'''
+
+[[rows]]
+id = "M5_parent_fallback_unconditional"
+description = "The package initializer answers for any name under it, the review's second finding restored. Expect the unfollowable import test and the symbol test to die"
+file = "tests/modules/test_reports.py"
+old = '''
+    if parent and initializer.is_file() and name in _names_bound_by(initializer.read_text()):
+'''
+new = '''
+    if parent and initializer.is_file():
+'''
+
+[[rows]]
+id = "M6_import_module_not_read"
+description = "The closure reads import statements only, the review's first finding restored. Expect both import_module planted rows and the unfollowable import test to die"
+file = "tests/modules/test_reports.py"
+old = '''
+        for target in _resolved_imports(source, dotted, root) + _import_module_calls(source):
+'''
+new = '''
+        for target in _resolved_imports(source, dotted, root):
+'''
+
+[[rows]]
+id = "M7_aliased_import_module_missed"
+description = "An aliased import_module binding is not read. Expect the aliased planted row to die"
+file = "tests/modules/test_reports.py"
+old = '''
+        if alias.name == "import_module" and alias.asname
+'''
+new = '''
+        if alias.name == "import_module_" and alias.asname
+'''
+
+[[rows]]
+id = "M8_relative_import_module_taken_as_literal"
+description = "A relative import_module name is passed on as a target, and a target not under cratekit is skipped silently. Expect the unfollowable import test to die"
+file = "tests/modules/test_reports.py"
+old = '''
+        found.append(literal if literal and not literal.startswith(".") else _COMPUTED_IMPORT)
+'''
+new = '''
+        found.append(literal if literal else _COMPUTED_IMPORT)
+'''
+
+[[rows]]
+id = "M9_closure_asks_the_real_tree"
+description = "The closure's import reader asks the repository rather than the planted root, the review's third finding restored. Expect the three level relative planted row to die"
+file = "tests/modules/test_reports.py"
+old = '''
+        for target in _resolved_imports(source, dotted, root) + _import_module_calls(source):
+'''
+new = '''
+        for target in _resolved_imports(source, dotted) + _import_module_calls(source):
+'''
+
+[[rows]]
+id = "M10_sanctioned_module_is_a_door"
+description = "The closure does not follow out of the sanctioned module, so what review imports is exempt with it. Expect the sanctioned planted row to die"
+file = "tests/modules/test_reports.py"
+old = '''
+        dotted = waiting.pop()
+        source = found[dotted].read_text()
+'''
+new = '''
+        dotted = waiting.pop()
+        if dotted == SANCTIONED_PERSISTENCE:
+            continue
+        source = found[dotted].read_text()
+'''
+
+[[rows]]
+id = "M11_tree_registry_write_unnamed"
+description = "tree_registry.write, a first round closure writer, drops out of QUALIFIED_MUTATIONS. Expect the audit to die"
+file = "tests/modules/test_reports.py"
+old = '''
+        "tree_registry.write",
+    }
+'''
+new = '''
+    }
+'''
+
+[[rows]]
+id = "M12_rb_writer_integrity_ok_unnamed"
+description = "rb_writer.integrity_ok, a third round cascade writer, drops out of QUALIFIED_MUTATIONS. Expect the audit to die"
+file = "tests/modules/test_reports.py"
+old = '''
+        "rb_writer.integrity_ok",
+'''
+new = '''
+'''
+
+[[rows]]
+id = "M13_session_write_record_unnamed"
+description = "session.write_record, the root of the session cascade, drops out of QUALIFIED_MUTATIONS. Expect the audit to die"
+file = "tests/modules/test_reports.py"
+old = '''
+        "session.write_record",
+'''
+new = '''
+'''
+
+[[rows]]
+id = "M14_unfollowed_assertion_removed"
+description = "The audit stops refusing an import it could not follow. Maintainer facing, and nothing on the tree is unfollowed today, so a zero is expected"
+file = "tests/modules/test_reports.py"
+old = '''
+    assert not unfollowed, (
+        f"the audit could not follow {unfollowed} out of the allowlist. A module "
+'''
+new = '''
+    assert True or not unfollowed, (
+        f"the audit could not follow {unfollowed} out of the allowlist. A module "
+'''
+
+[[rows]]
+id = "M15_transitive_floor_removed"
+description = "The floor stops naming the three modules only the closure reaches. Maintainer facing, a zero is expected alone, and M2 is its composite"
+file = "tests/modules/test_reports.py"
+old = '''
+        "cratekit.cli.output",
+        "cratekit.core.rb_writer",
+        "cratekit.core.tree_registry",
+    }, (
+'''
+new = '''
+    }, (
+'''
+
+[[rows]]
+id = "M16_sanctioned_exemption_removed"
+description = "The audit's loop stops exempting review itself. A sample of the existing guard through the refactored loop. Expect the audit to die"
+file = "tests/modules/test_reports.py"
+old = '''
+    for dotted, path in audited:
+        if dotted == SANCTIONED_PERSISTENCE:
+            continue
+        found = _unnamed_writers(dotted, path.read_text())
+'''
+new = '''
+    for dotted, path in audited:
+        found = _unnamed_writers(dotted, path.read_text())
+'''

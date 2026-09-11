@@ -1643,6 +1643,15 @@ def test_every_report_runs_with_the_library_directory_read_only(
 #: ``test_the_allowlist_admits_no_writer_this_guard_cannot_name`` is what keeps
 #: those two in step as those modules change.
 #:
+#: WHAT THE LIST ADMITS IS NOT WHAT IT REACHES, and the audit read only the first
+#: until the residual "The reports allowlist audit is one hop deep" was closed.
+#: An admitted module's own imports are attributes of it, so
+#: ``rbxml.tree_registry`` is reachable from here without ``tree_registry`` being
+#: listed, and the walk out of ``rbxml`` through ``tree_registry`` and ``session``
+#: arrives at ``cratekit.core.rb_writer``, which opens the rekordbox database. The
+#: audit now follows every first party import to its closure, and forty nine
+#: writers it had never read are named below as a result.
+#:
 #: ``cratekit.core.review`` is the single deliberate exception and is the reason
 #: this is an allowlist rather than a blocklist. The package IS allowed to
 #: persist, through exactly one surface, which is the whole of R12. Anything else
@@ -1750,6 +1759,16 @@ FILESYSTEM_MUTATIONS = frozenset(
 #: claiming a target filename is what a WRITER does with a name this package only
 #: ever parses. The walking audit is what keeps this list true as those modules
 #: change, rather than a reviewer's snapshot of them.
+#:
+#: THE SECOND BLOCK IS THE CLOSURE'S, and it is long because the closure reaches
+#: the write path itself. The audit was found one hop deep: it read the admitted
+#: modules and nothing they import. Following the imports out of ``rbxml``,
+#: ``review`` and ``taxonomy`` reaches ``tree_registry``, ``session``,
+#: ``snapshot``, ``reconcile``, ``backup_facts`` and ``rb_writer``, and every name
+#: below is one the audit found there, measured to a fixed point in five rounds.
+#: Most of ``rb_writer``'s are writers only because they call ``config.load``,
+#: which writes the file back. That is the audit being consistent rather than
+#: generous: a report calling any of them changes a file.
 QUALIFIED_MUTATIONS = frozenset(
     {
         "config._exclusive_lock",
@@ -1758,6 +1777,55 @@ QUALIFIED_MUTATIONS = frozenset(
         "config.load_from_path",
         "config.save",
         "naming.claim_target",
+        "backup_facts.record",
+        "rb_writer._candidate_app_paths",
+        "rb_writer._loaded_config",
+        "rb_writer._pins",
+        "rb_writer.assert_app_version",
+        "rb_writer.assert_binding_version",
+        "rb_writer.assert_schema_version",
+        "rb_writer.default_protected_snapshot_paths",
+        "rb_writer.integrity_ok",
+        "rb_writer.live_db_path",
+        "rb_writer.open_db",
+        "rb_writer.pin_validated_on",
+        "rb_writer.pinned_app_version",
+        "rb_writer.pinned_db_version",
+        "rb_writer.pinned_pyrekordbox",
+        "rb_writer.prune_snapshots",
+        "rb_writer.read_installed_app_version",
+        "rb_writer.restore_from_snapshot",
+        "rb_writer.snapshot_db",
+        "rb_writer.snapshot_root",
+        "rb_writer.write_lock_path",
+        "rb_writer.write_session_lock",
+        "reconcile._locked",
+        "reconcile._write",
+        "reconcile.close_marker",
+        "reconcile.record_markers",
+        "reconcile.retract_in_flight",
+        "session._open_lock_file",
+        "session._write_holder",
+        "session.assert_gates",
+        "session.attach_capture",
+        "session.close_session",
+        "session.commit_sources",
+        "session.mark_awaiting_import",
+        "session.open_session",
+        "session.record_acknowledgment",
+        "session.release_stale_lock",
+        "session.resolve_unverified_session",
+        "session.session_lock",
+        "session.verify_commit",
+        "session.write_record",
+        "snapshot._chmod",
+        "snapshot._harden",
+        "snapshot._verify",
+        "snapshot.capture",
+        "tree_registry.flip",
+        "tree_registry.record_cutover",
+        "tree_registry.revert_cutover",
+        "tree_registry.write",
     }
 )
 
@@ -1782,7 +1850,7 @@ _PACKAGE_DEPTH = 2
 _COMPUTED_IMPORT = "<computed import>"
 
 
-def _is_package(dotted: str) -> bool:
+def _is_package(dotted: str, root: Path = SRC_ROOT) -> bool:
     """Whether a dotted path names a DIRECTORY in this repository's source tree.
 
     The depth rule below covers ``cratekit``, ``cratekit.<subpackage>`` and the
@@ -1794,10 +1862,10 @@ def _is_package(dotted: str) -> bool:
     the answer that cannot drift, and it answers False for everything outside the
     tree, which is where guessing would be dangerous.
     """
-    return SRC_ROOT.joinpath(*dotted.split(".")).is_dir()
+    return root.joinpath(*dotted.split(".")).is_dir()
 
 
-def _package_of(module: str) -> str:
+def _package_of(module: str, root: Path = SRC_ROOT) -> str:
     """The package a module's relative imports resolve against.
 
     A PACKAGE's own ``__init__`` resolves ``from . import aging`` against itself;
@@ -1809,12 +1877,12 @@ def _package_of(module: str) -> str:
     positive, which is the failure that gets a guard switched off, and it would
     have fired on the first correct relative import anybody wrote there.
     """
-    if SRC_ROOT.joinpath(*module.split(".")).is_dir():
+    if root.joinpath(*module.split(".")).is_dir():
         return module
     return module.rsplit(".", 1)[0]
 
 
-def _resolved_imports(source: str, module: str) -> list[str]:
+def _resolved_imports(source: str, module: str, root: Path = SRC_ROOT) -> list[str]:
     """Every module ``source`` depends on, as absolute dotted paths.
 
     Resolved through the import GRAPH rather than matched by name, in all four
@@ -1839,8 +1907,13 @@ def _resolved_imports(source: str, module: str) -> list[str]:
     ``os``, ``subprocess`` and ``sqlite3`` one builtin call away from this
     package. The builtin is read here too, and an argument this cannot read is
     reported as an import of something unnameable rather than ignored.
+
+    ``root`` is the tree the package and relative import questions are asked of.
+    It defaults to this repository, and the import closure passes a planted one,
+    since a planted three level package asked about here would otherwise be read
+    against the real tree and resolve to the wrong module.
     """
-    package = _package_of(module)
+    package = _package_of(module, root)
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
@@ -1850,7 +1923,7 @@ def _resolved_imports(source: str, module: str) -> list[str]:
             if node.level:
                 parts = package.split(".")
                 base = ".".join([*parts[: len(parts) - node.level + 1], *([base] if base else [])])
-            if len(base.split(".")) <= _PACKAGE_DEPTH or _is_package(base):
+            if len(base.split(".")) <= _PACKAGE_DEPTH or _is_package(base, root):
                 found += [f"{base}.{alias.name}" for alias in node.names]
             else:
                 found.append(base)
@@ -4967,7 +5040,9 @@ def test_no_report_module_calls_a_filesystem_mutation():
 SANCTIONED_PERSISTENCE = "cratekit.core.review"
 
 
-def _admitted_repository_modules(entries=ALLOWED_IMPORTS) -> list[tuple[str, Path]]:
+def _admitted_repository_modules(
+    entries=ALLOWED_IMPORTS, root: Path = SRC_ROOT
+) -> list[tuple[str, Path]]:
     """Every module in THIS repository that the allowlist admits.
 
     Walked from the allowlist rather than listed (P3). A module added to the
@@ -4985,22 +5060,173 @@ def _admitted_repository_modules(entries=ALLOWED_IMPORTS) -> list[tuple[str, Pat
 
     ``entries`` is a parameter so the resolution itself can be driven, since the
     allowlist has no package entry today and a rule nothing exercises is the
-    shape this suite exists to remove.
+    shape this suite exists to remove. ``root`` is one for the same reason: the
+    closure below is driven over a planted tree, and a planted tree is not here.
     """
     out: list[tuple[str, Path]] = []
     for dotted in sorted(entries):
         if not dotted.startswith("cratekit."):
             continue
-        base = SRC_ROOT.joinpath(*dotted.split("."))
+        base = root.joinpath(*dotted.split("."))
         if base.with_suffix(".py").is_file():
             out.append((dotted, base.with_suffix(".py")))
             continue
         for path in sorted(base.rglob("*.py")):
-            parts = list(path.relative_to(SRC_ROOT).with_suffix("").parts)
+            parts = list(path.relative_to(root).with_suffix("").parts)
             if parts[-1] == "__init__":
                 parts.pop()
             out.append((".".join(parts), path))
     return out
+
+
+def _first_party_module(target: str, root: Path = SRC_ROOT) -> tuple[str, Path] | None:
+    """The file one resolved first party import executes, or None.
+
+    ``_resolved_imports`` spells ``from X import y`` as ``X.y`` whenever X is a
+    package, and ``y`` may be a module or only a name X's initializer binds. So
+    the target itself is tried first, and the package's initializer only when it
+    BINDS that name. Falling back to the parent unconditionally made
+    ``import cratekit.core.probe_generated``, with no file behind it, land on
+    ``cratekit/core/__init__.py`` and read as followed, which the built in review
+    drove on a planted tree. A star import in the initializer binds nothing this
+    can read, so it stays unfollowed and is reported.
+    """
+    base = root.joinpath(*target.split("."))
+    if base.with_suffix(".py").is_file():
+        return target, base.with_suffix(".py")
+    if (base / "__init__.py").is_file():
+        return target, base / "__init__.py"
+    parent, _, name = target.rpartition(".")
+    initializer = root.joinpath(*parent.split("."), "__init__.py")
+    if parent and initializer.is_file() and name in _names_bound_by(initializer.read_text()):
+        return parent, initializer
+    return None
+
+
+def _names_bound_by(source: str) -> frozenset[str]:
+    """Every name a module's top level binds, read off its own statements."""
+    names: set[str] = set()
+    for node in ast.parse(source).body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            names.update(target.id for target in targets if isinstance(target, ast.Name))
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            names.update(
+                alias.asname or alias.name.split(".", 1)[0]
+                for alias in node.names
+                if alias.name != "*"
+            )
+    return frozenset(names)
+
+
+def _import_module_calls(source: str) -> list[str]:
+    """Every ``importlib.import_module`` in ``source``, as a target or as unreadable.
+
+    ``_resolved_imports`` reads the statement and the ``__import__`` builtin, and
+    this is the third spelling, which the report side never needed because
+    ``importlib`` is not on the allowlist. A module in the closure is held to no
+    allowlist, so ``importlib.import_module("cratekit.core.access_probe")`` in
+    ``cause`` was the one hop delegation with no import statement for the closure to
+    follow, driven by the built in review and green.
+
+    The call is matched on any receiver's ``import_module`` and on a bare name
+    ``from importlib import import_module`` bound, alias included. A literal
+    absolute name is a target. Anything else, a computed name or a relative one
+    whose package this does not resolve, is unreadable and is reported as such.
+    """
+    tree = ast.parse(source)
+    bare = {"import_module"} | {
+        alias.asname
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "importlib"
+        for alias in node.names
+        if alias.name == "import_module" and alias.asname
+    }
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (
+            (isinstance(func, ast.Attribute) and func.attr == "import_module")
+            or (isinstance(func, ast.Name) and func.id in bare)
+        ):
+            continue
+        first = node.args[0] if node.args else None
+        literal = (
+            first.value
+            if isinstance(first, ast.Constant) and isinstance(first.value, str)
+            else ""
+        )
+        found.append(literal if literal and not literal.startswith(".") else _COMPUTED_IMPORT)
+    return found
+
+
+def _admitted_closure(
+    entries=ALLOWED_IMPORTS, root: Path = SRC_ROOT
+) -> tuple[list[tuple[str, Path]], list[str]]:
+    """Every first party module the allowlist admits OR REACHES, and what it could not follow.
+
+    The residual "The reports allowlist audit is one hop deep". The audit read
+    the admitted modules and nothing they import, and
+    nothing constrains what an admitted module may import, so a thin caller in
+    ``cause`` could hand the actual write to a module the list does not name and
+    the audit would read the caller as ordinary code. An admitted module's
+    imports are its attributes, which makes them reachable from the reports
+    package whatever the allowlist says.
+
+    ONE PASS, A WORKLIST, rather than a layer per run: each module is read once,
+    what it imports is queued if it has not been seen, and a cycle ends because
+    a seen module is never queued again. Imports are read through
+    ``_resolved_imports``, so an alias, a relative import and a literal
+    ``__import__`` are followed the way the report side reads them, and through
+    ``_import_module_calls``, which is the spelling only the closure needs.
+
+    WHAT CANNOT BE FOLLOWED IS RETURNED, NOT DROPPED. A computed ``__import__``
+    and a first party target with no file behind it are modules the audit cannot
+    read, and a closure that skipped them would be absence read as evidence of
+    absence one more time. Implicit parent package initializers are NOT followed:
+    importing ``cratekit.cli.output`` runs ``cratekit/cli/__init__.py``, which is
+    import time behaviour rather than a callable the package can reach, and
+    following it would pull the whole command line in.
+    """
+    found = dict(_admitted_repository_modules(entries, root))
+    waiting = sorted(found)
+    unfollowed: list[str] = []
+    while waiting:
+        dotted = waiting.pop()
+        source = found[dotted].read_text()
+        for target in _resolved_imports(source, dotted, root) + _import_module_calls(source):
+            if target == _COMPUTED_IMPORT:
+                unfollowed.append(f"{dotted}: {target}")
+                continue
+            if target != "cratekit" and not target.startswith("cratekit."):
+                continue
+            landed = _first_party_module(target, root)
+            if landed is None:
+                unfollowed.append(f"{dotted}: {target}")
+            elif landed[0] not in found:
+                found[landed[0]] = landed[1]
+                waiting.append(landed[0])
+    return sorted(found.items()), unfollowed
+
+
+def _unnamed_writers_in(audited: list[tuple[str, Path]]) -> dict[str, list[str]]:
+    """The audit's loop, named once so a planted closure runs the same one.
+
+    ``SANCTIONED_PERSISTENCE`` is exempt as ITSELF and not as a door: what it
+    imports is in the closure and is audited like anything else.
+    """
+    unnamed: dict[str, list[str]] = {}
+    for dotted, path in audited:
+        if dotted == SANCTIONED_PERSISTENCE:
+            continue
+        found = _unnamed_writers(dotted, path.read_text())
+        if found:
+            unnamed[dotted] = found
+    return unnamed
 
 
 def _unnamed_writers(dotted: str, source: str) -> list[str]:
@@ -5109,26 +5335,33 @@ def test_the_allowlist_admits_no_writer_this_guard_cannot_name():
     licenses to persist. There are two ways to answer a failure and both are
     correct: name the writer in the set, or take the module off the allowlist.
     What is not available is leaving the argument written down and untrue.
+
+    THE WALK IS THE CLOSURE, not the list. An admitted module that
+    delegates its write to a module the list does not name is still reachable
+    from the package, and the modules named below past the first five are the
+    ones only the closure reaches. A walk that collapsed back to one hop would
+    drop them, and this floor is what says so.
     """
-    audited = _admitted_repository_modules()
+    audited, unfollowed = _admitted_closure()
+    assert not unfollowed, (
+        f"the audit could not follow {unfollowed} out of the allowlist. A module "
+        f"it cannot read is a module whose writers it cannot name."
+    )
     assert {dotted for dotted, _ in audited} >= {
         "cratekit.core.config",
         "cratekit.core.naming",
         SANCTIONED_PERSISTENCE,
         "cratekit.core.taxonomy",
         "cratekit.write.rbxml",
+        "cratekit.cli.output",
+        "cratekit.core.rb_writer",
+        "cratekit.core.tree_registry",
     }, (
         f"the audit walked {sorted(dotted for dotted, _ in audited)}, which does "
         f"not include the modules whose writers this test was written about. An "
         f"audit that walks nothing reports nothing, and reads as a pass."
     )
-    unnamed: dict[str, list[str]] = {}
-    for dotted, path in audited:
-        if dotted == SANCTIONED_PERSISTENCE:
-            continue
-        found = _unnamed_writers(dotted, path.read_text())
-        if found:
-            unnamed[dotted] = found
+    unnamed = _unnamed_writers_in(audited)
 
     assert not unnamed, (
         f"the reports allowlist admits modules whose writers this guard cannot "
@@ -5394,6 +5627,261 @@ def test_a_package_on_the_allowlist_audits_every_module_underneath_it():
     assert _admitted_repository_modules({"cratekit.core.config"}) == [
         ("cratekit.core.config", SRC_ROOT / "cratekit" / "core" / "config.py")
     ]
+
+
+def _plant(root: Path, modules: dict[str, str]) -> Path:
+    """Write a source tree of dotted modules under ``root``, and return it."""
+    for dotted, source in modules.items():
+        path = root.joinpath(*dotted.split(".")).with_suffix(".py")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source)
+    return root
+
+
+#: The one hop audit's own driven relocation. ``cause`` keeps a thin caller and the raw
+#: ``os.open`` moves into ``access_probe``, a module the allowlist does not name.
+#: Driven on the real tree on 2026-08-14, it took the one hop audit from red to
+#: green with the package's reach to a write capable handle unchanged.
+DELEGATING_CAUSE = """
+from cratekit.core import access_probe
+
+
+def probe(path):
+    return access_probe.open_for_probe(path)
+"""
+
+DELEGATED_PROBE = """
+import os
+
+
+def open_for_probe(path):
+    return os.open(path, os.O_RDWR | os.O_CREAT)
+"""
+
+#: The SIDEWAYS case the layering guard cannot see: an admitted module
+#: delegating to a module at its own layer, two hops deep, with a cycle back to
+#: the admitted module so the walk has to end on what it has seen.
+SIDEWAYS_RBXML = """
+from cratekit.write import helper
+
+
+def build(path, data):
+    return helper.relay(path, data)
+"""
+
+SIDEWAYS_HELPER = """
+from cratekit.write import deeper
+
+
+def relay(path, data):
+    return deeper.stash(path, data)
+"""
+
+SIDEWAYS_DEEPER = """
+from cratekit.write import rbxml
+
+
+def stash(path, data):
+    path.write_text(data)
+"""
+
+#: The sanctioned module delegating. ``review`` is exempt as itself, and the
+#: exemption is not a door: a writer it imports is audited like any other.
+SANCTIONED_REVIEW = """
+from cratekit.core import ledger
+
+
+def offer(path):
+    ledger.keep(path)
+"""
+
+SANCTIONED_LEDGER = """
+def keep(path):
+    path.touch()
+"""
+
+#: The same delegation with NO import statement for the closure to read, once
+#: through the module attribute and once through an aliased bare name. The
+#: built in review drove the first against the closure's first version and it
+#: came back green.
+IMPORT_MODULE_CAUSE = """
+import importlib
+
+
+def probe(path):
+    return importlib.import_module("cratekit.core.access_probe").open_for_probe(path)
+"""
+
+ALIASED_IMPORT_MODULE_CAUSE = """
+from importlib import import_module as load
+
+
+def probe(path):
+    return load("cratekit.core.access_probe").open_for_probe(path)
+"""
+
+#: A relative import inside a THREE level package, which the resolver answers
+#: by asking the tree whether the base is a directory. Asked of the real tree,
+#: the planted ``cratekit.modules.planted`` is no directory, the import reads as
+#: the package itself, and ``stash`` is never reached.
+RELATIVE_OPENER = """
+from . import keeper
+
+
+def go(path, data):
+    return keeper.stash(path, data)
+"""
+
+RELATIVE_KEEPER = """
+def stash(path, data):
+    path.write_bytes(data)
+"""
+
+
+@pytest.mark.parametrize(
+    ("entries", "modules", "reported"),
+    [
+        (
+            {"cratekit.core.cause"},
+            {
+                "cratekit.core.cause": DELEGATING_CAUSE,
+                "cratekit.core.access_probe": DELEGATED_PROBE,
+            },
+            {"cratekit.core.access_probe": ["open_for_probe"]},
+        ),
+        (
+            {"cratekit.write.rbxml"},
+            {
+                "cratekit.write.rbxml": SIDEWAYS_RBXML,
+                "cratekit.write.helper": SIDEWAYS_HELPER,
+                "cratekit.write.deeper": SIDEWAYS_DEEPER,
+            },
+            {"cratekit.write.deeper": ["stash"]},
+        ),
+        (
+            {SANCTIONED_PERSISTENCE},
+            {
+                SANCTIONED_PERSISTENCE: SANCTIONED_REVIEW,
+                "cratekit.core.ledger": SANCTIONED_LEDGER,
+            },
+            {"cratekit.core.ledger": ["keep"]},
+        ),
+        (
+            {"cratekit.core.cause"},
+            {
+                "cratekit.core.cause": IMPORT_MODULE_CAUSE,
+                "cratekit.core.access_probe": DELEGATED_PROBE,
+            },
+            {"cratekit.core.access_probe": ["open_for_probe"]},
+        ),
+        (
+            {"cratekit.core.cause"},
+            {
+                "cratekit.core.cause": ALIASED_IMPORT_MODULE_CAUSE,
+                "cratekit.core.access_probe": DELEGATED_PROBE,
+            },
+            {"cratekit.core.access_probe": ["open_for_probe"]},
+        ),
+        (
+            {"cratekit.modules.planted.opener"},
+            {
+                "cratekit.modules.planted.opener": RELATIVE_OPENER,
+                "cratekit.modules.planted.keeper": RELATIVE_KEEPER,
+            },
+            {"cratekit.modules.planted.keeper": ["stash"]},
+        ),
+    ],
+    ids=[
+        "delegated-down",
+        "sideways-two-hops-with-a-cycle",
+        "through-the-sanctioned-module",
+        "through-import-module",
+        "through-an-aliased-import-module",
+        "relative-in-a-three-level-package",
+    ],
+)
+def test_the_audit_follows_an_admitted_module_to_the_module_that_writes(
+    tmp_path, entries, modules, reported
+):
+    """The one hop audit's hole, driven on a planted tree rather than argued.
+
+    Each tree is one an ordinary tidy up produces: a write moved out of an
+    admitted module into a new one beside it. The ONE HOP walk is asserted to
+    miss it first, because a closure test that passes on a tree the old walk
+    also caught would be proving nothing about the hole. Then the closure is
+    asserted to reach every planted module and the audit's own loop to report
+    exactly the writer.
+    """
+    root = _plant(tmp_path, modules)
+    one_hop = _admitted_repository_modules(entries, root)
+    assert _unnamed_writers_in(one_hop) == {}
+
+    audited, unfollowed = _admitted_closure(entries, root)
+    assert unfollowed == []
+    assert {dotted for dotted, _ in audited} == set(modules)
+    assert _unnamed_writers_in(audited) == reported
+
+
+def test_the_closure_reports_an_import_it_cannot_follow(tmp_path):
+    """A module the closure cannot read is reported, never skipped.
+
+    A computed ``__import__`` names nothing this can open, and a first party
+    target with no file behind it is either a typo or a module made at run time.
+    Either way the audit cannot name its writers, and treating it as clean is the
+    shape this file keeps finding.
+    """
+    root = _plant(
+        tmp_path,
+        {
+            "cratekit.core.__init__": "",
+            "cratekit.core.cause": (
+                "import importlib\n"
+                "import cratekit.nowhere.probe\n"
+                "import cratekit.core.probe_generated\n\n\n"
+                "def load(name):\n    return __import__(name)\n\n\n"
+                "def later(name):\n    return importlib.import_module(name)\n\n\n"
+                "def sibling():\n"
+                "    return importlib.import_module('.probe', 'cratekit.core')\n"
+            ),
+        },
+    )
+    audited, unfollowed = _admitted_closure({"cratekit.core.cause"}, root)
+    assert [dotted for dotted, _ in audited] == ["cratekit.core.cause"]
+    assert sorted(unfollowed) == sorted(
+        [
+            f"cratekit.core.cause: {_COMPUTED_IMPORT}",
+            f"cratekit.core.cause: {_COMPUTED_IMPORT}",
+            f"cratekit.core.cause: {_COMPUTED_IMPORT}",
+            "cratekit.core.cause: cratekit.core.probe_generated",
+            "cratekit.core.cause: cratekit.nowhere.probe",
+        ]
+    )
+
+
+def test_a_symbol_imported_from_a_package_follows_the_package_initializer(tmp_path):
+    """``from cratekit.core import thing`` where ``thing`` is not a module.
+
+    ``_resolved_imports`` spells it ``cratekit.core.thing`` either way, so the
+    closure falls back to the package's initializer exactly once, and a target
+    whose parent is not a module either stays unfollowed rather than climbing to
+    ``cratekit/__init__.py`` and reading as followed.
+    """
+    root = _plant(
+        tmp_path,
+        {
+            "cratekit.core.__init__": "def thing():\n    return 1\n",
+            "cratekit.core.cause": "from cratekit.core import thing\n",
+        },
+    )
+    assert _first_party_module("cratekit.core.thing", root) == (
+        "cratekit.core",
+        root / "cratekit" / "core" / "__init__.py",
+    )
+    assert _first_party_module("cratekit.core.absent.deeper", root) is None
+    assert _first_party_module("cratekit.core.unbound", root) is None
+    audited, unfollowed = _admitted_closure({"cratekit.core.cause"}, root)
+    assert unfollowed == []
+    assert [dotted for dotted, _ in audited] == ["cratekit.core", "cratekit.core.cause"]
 
 
 #: The REAL module every shape below is driven against. ``aging`` imports
