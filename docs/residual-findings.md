@@ -279,6 +279,25 @@ on the whole surface.
 module is still genuinely absent is what forces that to happen rather than being
 remembered.
 
+**Closed 2026-09-11 on `relay/43`.** Measured against the registry, not read off
+a record: sixty four entries are declared and sixty two have landed. Conformance
+1, 2 and 3 parametrise over `LANDED` in `tests/test_cli_contract.py`, so they
+drive sixty two verbs rather than four, and conformance 7 and 8 read all sixty
+four. The sample this entry worried about is the whole landed surface now.
+
+The two markers left are `analyze.vocals` and `metadata.mytags-vocals`, both
+`planned_in="U25"`. That tail is R-324's, and U25 is an open issue again, so it
+is not carried here as well: one fact with two records is how the two come to
+disagree. The forcing function this entry names still stands unchanged,
+`test_a_planned_verb_whose_module_has_landed_must_lose_its_marker`, and it will
+go red the moment U25's modules exist.
+
+The title's four verbs keep the argument surface their jobs need: `profile set`
+takes a profile name, `run show` a run, and `run decide` a run, a gate, an
+option and an actor. The docstring of `cratekit.cli.verbs` said the package held
+exactly those four; it also holds `login`, and it is corrected. No guard was
+added or changed, so there is no mutation table.
+
 ---
 
 ## R-7. Backup pruning reclaims space only if the remote is configured to

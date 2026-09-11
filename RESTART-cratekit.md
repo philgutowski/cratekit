@@ -4,7 +4,17 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-10, R-5 on `relay/42`, taken from the board as issue #42
+**Last session 2026-09-11, R-6 on `relay/43`, taken from the board as issue #43
+and run as relay task 43.** The sixth residual issue worked, and the second of
+METHOD's surface group. Another close, measured on the registry: sixty four
+entries, sixty two landed, and conformance 1, 2 and 3 parametrise over all
+sixty two rather than the four R-6 described. The two markers left are U25's
+vocals verbs, which R-324 and the reopened issue already own, so R-6 did not
+carry them a second time. The `cratekit.cli.verbs` docstring said the package
+held exactly U5's four verbs and it also holds `login`; it is corrected. No guard
+changed, so there is no mutation table, and nothing new was filed.
+
+**The session before, 2026-09-10, R-5 on `relay/42`, taken from the board as issue #42
 and run as relay task 42.** The fifth residual issue worked, and the one METHOD's
 ninth line names first. It was a close, as that line guessed. R-5's closing
 condition was already true: U11 and U27 are closed, conformance 4 drives the
@@ -344,6 +354,7 @@ In METHOD's serialized order, which is what picks the work:
 | | #40 | R-3, the scan refuses a tracked archive | DONE on `relay/40`, 15 rows committed and unrun (R-329) |
 | | #41 | R-4, extras tied to their module and every toggle driven | DONE on `relay/41`, 6 rows committed and unrun (R-329) |
 | | #42 | R-5, conformance 4 and 8 already drive behaviour, closed in place | DONE on `relay/42`, no guard changed, R-335 filed |
+| | #43 | R-6, the conformance drives cover sixty two landed verbs, closed in place | DONE on `relay/43`, no guard changed, nothing filed |
 | | #29 | U29, cutover | Ready by dependencies, ATTENDED, not a session's to take |
 
 **Phase E is complete with the U53 merge, so line 7 is next and it is
@@ -384,7 +395,8 @@ issues, and #29.
 
 | branch | state |
 |---|---|
-| `relay/42` | R-5, the branch this record is on; delete after the merge |
+| `relay/43` | R-6, the branch this record is on; delete after the merge |
+| `relay/42` | R-5, merged to `main`; delete if it still exists |
 | `relay/41` | R-4, merged to `main`; delete if it still exists |
 | `relay/40` | R-3, merged to `main`; delete if it still exists |
 | `relay/38` | R-1, merged to `main`; delete if it still exists |
