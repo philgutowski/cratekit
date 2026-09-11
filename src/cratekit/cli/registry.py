@@ -181,6 +181,24 @@ class Entry:
                 "an extras group names the third-party modules it provides, or "
                 "the stub cannot tell a missing extra from a defect in our own code"
             )
+        # The stub prints ``extras`` as the install command, so it must name a
+        # group that exists. Extras are named one to one with modules (KTD7), and
+        # tests/test_config.py holds EXTRAS_BACKED equal to pyproject's groups, so
+        # these two checks close the chain from a verb to the file pip reads. A
+        # module that grows a heavy dependency now has to grow its extras group
+        # too, rather than send a user to install one that is not there (R-4).
+        if self.extras is not None and self.extras != self.module_id:
+            problems.append(
+                f"the extras group {self.extras!r} is not this verb's own module "
+                f"{self.module_id!r}, and extras are named one to one with "
+                "modules (KTD7)"
+            )
+        if self.extras is not None and self.extras not in profiles.EXTRAS_BACKED:
+            problems.append(
+                f"{self.extras!r} has no extras group in profiles.EXTRAS_BACKED, "
+                "so the stub would print an install command for a group "
+                "pyproject does not declare"
+            )
         if ("files" in self.writes or self.name.startswith("delete.")) and not self.destructive:
             problems.append(
                 "anything that writes files or deletes is destructive by "

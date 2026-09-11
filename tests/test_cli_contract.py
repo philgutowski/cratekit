@@ -26,6 +26,7 @@ source system:
 
 from __future__ import annotations
 
+import argparse
 import ast
 import contextlib
 import enum
@@ -1152,6 +1153,14 @@ def test_a_profile_that_switches_a_module_off_removes_its_verbs(configured):
         ({"long_running": True}, "argv builder"),
         ({"module_id": "not-a-module"}, "not a declared feature module"),
         ({"extras": "analysis"}, "names the third-party modules"),
+        (
+            {"module_id": "vocals", "extras": "analysis", "extras_modules": ("x",)},
+            "is not this verb's own module",
+        ),
+        (
+            {"module_id": "setbuilder", "extras": "setbuilder", "extras_modules": ("x",)},
+            "has no extras group",
+        ),
     ],
 )
 def test_an_entry_missing_its_metadata_fails_to_register(kwargs, expected):
@@ -2458,6 +2467,67 @@ def test_every_declared_module_toggle_is_used_by_at_least_one_verb():
         f"declared modules no verb is gated by: {unused}. Either a verb is "
         f"missing its module_id or the toggle should not exist."
     )
+
+
+def _verb_paths(
+    parser: argparse.ArgumentParser, prefix: tuple[str, ...] = ()
+) -> set[tuple[str, ...]]:
+    """Every command path a built parser answers to, walked through its subparsers."""
+    found: set[tuple[str, ...]] = set()
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for word, child in action.choices.items():
+                found.add((*prefix, word))
+                found |= _verb_paths(child, (*prefix, word))
+    return found
+
+
+#: Every toggle that gates at least one LANDED verb, derived from the registry so
+#: a toggle whose first verb lands joins the parametrisation on its own.
+_TOGGLES_WITH_LANDED_VERBS = sorted(
+    {entry.module_id for entry in registry.landed_entries()}
+    - {None}
+    - profiles.ALWAYS_AVAILABLE
+)
+
+
+@pytest.fixture(scope="module")
+def slim_verb_paths():
+    return _verb_paths(cli.build_parser(membership=profiles.resolve("slim")))
+
+
+def test_every_live_toggle_is_driven_by_the_toggle_test_below():
+    """The parametrisation below is derived, so this is what stops it shrinking.
+
+    A toggle that is neither deferred nor waiting on a planned verb must gate a
+    landed one, or the round trip below silently stops covering it.
+    """
+    waiting = {entry.module_id for entry in registry.entries() if not entry.landed}
+    live = set(profiles.MODULES) - registry.DEFERRED_MODULES - waiting
+    assert live <= set(_TOGGLES_WITH_LANDED_VERBS), sorted(
+        live - set(_TOGGLES_WITH_LANDED_VERBS)
+    )
+
+
+@pytest.mark.parametrize("module", _TOGGLES_WITH_LANDED_VERBS)
+def test_a_module_toggle_alone_switches_its_landed_verbs_on_and_off(module, slim_verb_paths):
+    """R-4's closing condition, driven rather than declared.
+
+    Nine toggles were added by U5 before any verb stood behind them. Each one is
+    exercised here through the real resolver and the real parser, in both
+    directions an explicit toggle can move: added to slim, and subtracted from
+    full. A verb that stays reachable with its module off is a Module row
+    shipping as core, which is exactly what R5 forbids.
+    """
+    verbs = [entry.path for entry in registry.landed_entries() if entry.module_id == module]
+    added = _verb_paths(cli.build_parser(membership=profiles.resolve("slim", {module: True})))
+    removed = _verb_paths(
+        cli.build_parser(membership=profiles.resolve("full", {module: False}))
+    )
+    for path in verbs:
+        assert path not in slim_verb_paths, f"{path} is on in the slim profile"
+        assert path in added, f"turning {module} on did not reach {path}"
+        assert path not in removed, f"turning {module} off left {path} reachable"
 
 
 def test_a_verb_carrying_a_resume_argv_builder_declares_that_it_queues():
