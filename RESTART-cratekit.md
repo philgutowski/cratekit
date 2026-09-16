@@ -24,7 +24,9 @@ on subsets, 24 killing, C2's zero closed with a test, C3 a maintainer zero on th
 full suite. Three reserved cause population pins moved and are re-pinned with
 their sets named. **R-358 and R-359 are the ones to read before the attended
 sitting**: a swept playlist is never renamed, and swept means resolved rather than
-acquired. R-360 to R-364 are filed beside them. Do not take #29.
+acquired. R-360 to R-364 are filed beside them. Battery on the recorded tree: ruff clean,
+`scan_repo.py` exit 0, pytest 7522 passed and 1 skipped in 392 seconds. Do not
+take #29.
 
 **The session before, 2026-09-16, U63 (#85) on `relay/85`, unattended.** The outbound
 account seam is bound. `modules.outbound.tidal_account.TidalAccount` implements
