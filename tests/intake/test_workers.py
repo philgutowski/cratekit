@@ -629,11 +629,11 @@ def test_a_playlist_job_runs_pending_to_done_through_the_resume_path(cfg, librar
     assert envelope["data"]["progress"]["acquired"] == 0
 
 
-def test_an_unbound_catalogue_refuses_honestly_and_queues_nothing(cfg):
-    assert catalogue.bound() is False
+def test_no_provider_session_refuses_honestly_and_queues_nothing(cfg):
+    assert catalogue.bound() is True
     code, envelope = drive(["intake", "playlist", "pl-1"])
     assert code != int(ExitCode.OK)
-    assert envelope["cause"]["reason"] in {"credential-missing", "label-catalogue-unbound"}
+    assert envelope["cause"]["reason"] == "credential-missing"
     with jobs.open_store() as store:
         assert jobs.list_jobs(store) == ()
 

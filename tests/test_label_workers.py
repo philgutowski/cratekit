@@ -385,20 +385,20 @@ def test_an_import_against_an_empty_registry_refuses_the_unknown_name(installed)
     [["sync", "labels"], ["label", "import", "Kompakt"]],
     ids=["sync.labels", "label.import"],
 )
-def test_both_queueing_paths_warn_that_no_catalogue_adapter_is_bound(installed, verb):
-    """Told at the moment it is still actionable, and still queued.
+def test_both_queueing_paths_queue_without_a_warning_now_an_adapter_is_bound(installed, verb):
+    """U62 flipped the warning, and the job still queues.
 
-    A refusal here would refuse work a later build could run, which is the reason
-    ``catalogue.bound`` gives for existing beside ``catalogue.resolve``. So the
-    assertion is BOTH halves: the warning is present and the job is queued anyway.
+    Before a catalogue adapter shipped, both paths warned that the job would fail
+    at the provider seam. A warning that stays after the adapter lands tells a
+    person their sweep will fail when it will not.
     """
     del installed
-    assert catalogue.bound() is False
+    assert catalogue.bound() is True
     register(*LABELS)
     code, queued = drive(verb)
     assert code == int(ExitCode.OK), queued
     codes = {warning["code"] for warning in queued.get("warnings") or ()}
-    assert "label-catalogue-unbound" in codes
+    assert "label-catalogue-unbound" not in codes
     assert queued_items(queued["data"]["job_id"])
 
 
@@ -408,10 +408,15 @@ def test_both_queueing_paths_warn_that_no_catalogue_adapter_is_bound(installed, 
     ids=["sync.labels", "label.import"],
 )
 def test_the_unbound_warning_says_the_job_will_fail_at_the_provider_seam(
-    installed, verb
+    installed, verb, monkeypatch
 ):
-    """A code alone is a slug; the sentence is what a person reads."""
+    """A code alone is a slug; the sentence is what a person reads.
+
+    Driven on a build whose adapter does not import, which is the only build the
+    warning still describes, and the job is queued anyway.
+    """
     del installed
+    monkeypatch.setattr(catalogue, "bound", lambda: False)
     register(*LABELS)
     code, queued = drive(verb)
     assert code == int(ExitCode.OK), queued
@@ -421,6 +426,7 @@ def test_the_unbound_warning_says_the_job_will_fail_at_the_provider_seam(
         if warning["code"] == "label-catalogue-unbound"
     ]
     assert said and "provider seam" in said[0], queued.get("warnings")
+    assert queued_items(queued["data"]["job_id"])
 
 
 def test_a_refused_sweep_carries_no_warning_because_nothing_was_queued(installed):
@@ -435,7 +441,7 @@ def test_a_refused_sweep_carries_no_warning_because_nothing_was_queued(installed
     assert not (refused.get("warnings") or ())
 
 
-def test_the_warning_rides_the_envelope_rather_than_the_job_state_payload(installed):
+def test_the_warning_rides_the_envelope_rather_than_the_job_state_payload(installed, monkeypatch):
     """KTD7: the payload stays exactly the four ``job_state/1`` keys.
 
     ``cli.output`` closes that surface with ``additionalProperties: false`` and
@@ -444,6 +450,7 @@ def test_the_warning_rides_the_envelope_rather_than_the_job_state_payload(instal
     sibling of ``data`` and not a field inside it.
     """
     del installed
+    monkeypatch.setattr(catalogue, "bound", lambda: False)
     register(*LABELS)
     code, queued = drive(["sync", "labels"])
     assert code == int(ExitCode.OK), queued

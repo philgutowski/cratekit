@@ -137,6 +137,26 @@ def _isolate_keychain(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_live_provider_client(monkeypatch):
+    """Refuse the live provider client in every test, structurally.
+
+    U62 bound the label catalogue, so a test that records a provider session in
+    the isolated keychain and asks ``catalogue.resolve`` for a catalogue would
+    otherwise log a real client in against the real provider with the battery
+    green. A test that wants a client replaces ``CLIENT_FACTORY`` itself.
+    """
+    from cratekit.acquire import provider_session
+
+    def refused():
+        raise AssertionError(
+            "a test reached the live provider client; set "
+            "provider_session.CLIENT_FACTORY to a fake"
+        )
+
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", refused)
+
+
+@pytest.fixture(autouse=True)
 def _no_paid_recognition(monkeypatch):
     """Refuse the live recognition transport in every test, structurally.
 
