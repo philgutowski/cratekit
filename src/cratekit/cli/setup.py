@@ -944,6 +944,17 @@ def _capture_credentials(wizard: _Wizard, cfg: config.Config) -> None:
             try:
                 value = wizard.prompter.secret(f"Value for {name}")
                 secrets.set(str(name), value)
+            except prompt.NothingEntered:
+                # An offer accepted and then left empty is the same fact as a
+                # no: nothing recorded, doctor reports it. A FAIL here failed the
+                # whole wizard over a session blob only login can produce (R-347).
+                wizard.note(
+                    f"setup.credential.{name}",
+                    f"credential {name}",
+                    doctor.Status.INFO,
+                    f"{name} is not recorded and was not entered; doctor reports it",
+                )
+                continue
             except prompt.PromptUnavailable as exc:
                 wizard.note(
                     f"setup.credential.{name}",

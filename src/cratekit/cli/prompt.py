@@ -67,6 +67,16 @@ class PromptUnavailable(Exception):
     """
 
 
+class NothingEntered(PromptUnavailable):
+    """The question was read and answered with nothing.
+
+    A subclass rather than a sibling, so every caller that treats an unanswered
+    question as unavailable keeps doing so. The one caller that needs the
+    difference is the wizard's credential offer, where an empty answer is a
+    person with nothing to type and not a stream that failed (R-347).
+    """
+
+
 Reader = Callable[[], str]
 SecretReader = Callable[[str], str]
 Writer = Callable[[str], None]
@@ -81,7 +91,10 @@ def _read_line() -> str:
 
 
 def _write(text: str) -> None:
-    print(text, file=sys.stderr, end="")
+    # FLUSHED, because a question has no newline and standard error is line
+    # buffered. Without it the prompt sat in the buffer while the read below
+    # blocked, and a real terminal showed nothing to answer (R-346).
+    print(text, file=sys.stderr, end="", flush=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,8 +175,16 @@ class Prompter:
             raise PromptUnavailable(str(exc) or type(exc).__name__) from exc
         value = value.strip()
         if not value:
-            raise PromptUnavailable(f"nothing entered for {question!r}")
+            raise NothingEntered(f"nothing entered for {question!r}")
         return value
 
 
-__all__ = ["MAX_ATTEMPTS", "Prompter", "PromptUnavailable", "Reader", "SecretReader", "Writer"]
+__all__ = [
+    "MAX_ATTEMPTS",
+    "NothingEntered",
+    "PromptUnavailable",
+    "Prompter",
+    "Reader",
+    "SecretReader",
+    "Writer",
+]
