@@ -37,7 +37,7 @@ from __future__ import annotations
 import importlib
 
 from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken
-from cratekit.acquire.provider_session import ProviderUnavailable, _rejected
+from cratekit.acquire.provider_session import ProviderUnavailable
 from cratekit.core import config, secrets
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
@@ -84,6 +84,26 @@ def forget() -> None:
     _OPENED = None
 
 
+#: Statuses that judge the SESSION on a call made after login. Narrower than
+#: ``provider_session.REJECTED_STATUSES``, which includes 400 because a login's
+#: bad request is a bad token; a heart or a playlist add answered 400 is a bad
+#: request about that item, and telling that person to log in again is wrong.
+SESSION_REFUSED_STATUSES = frozenset({401, 403})
+
+
+def _session_refused(exc: BaseException) -> bool:
+    """Whether a failure after login is the provider refusing the session."""
+    seen: BaseException | None = exc
+    while seen is not None:
+        status = getattr(getattr(seen, "response", None), "status_code", None)
+        if status in SESSION_REFUSED_STATUSES:
+            return True
+        if type(seen).__name__ == "AuthenticationError":
+            return True
+        seen = seen.__cause__
+    return False
+
+
 def provider_failure(exc: BaseException, doing: str) -> CratekitError:
     """One provider call's failure, as the cause of the ITEM that made it.
 
@@ -99,7 +119,11 @@ def provider_failure(exc: BaseException, doing: str) -> CratekitError:
     """
     if isinstance(exc, CratekitError):
         return exc
-    if _rejected(exc):
+    if _session_refused(exc):
+        # The held adapter's client is dead, so the next item resolves a fresh
+        # one from the keychain rather than failing on this one for the rest of
+        # the process, and a login made meanwhile is picked up.
+        forget()
         return refuse(
             "credential-missing",
             f"the streaming provider rejected the session while trying to {doing} "
@@ -185,4 +209,11 @@ def resolve(cfg: config.Config) -> RemoteAccount:
     return opened
 
 
-__all__ = ["ADAPTER_MODULE", "bound", "forget", "provider_failure", "resolve"]
+__all__ = [
+    "ADAPTER_MODULE",
+    "SESSION_REFUSED_STATUSES",
+    "bound",
+    "forget",
+    "provider_failure",
+    "resolve",
+]

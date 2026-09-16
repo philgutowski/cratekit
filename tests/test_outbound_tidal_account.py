@@ -459,6 +459,83 @@ def test_a_playlist_create_is_never_retried_into_a_second_playlist():
     assert excinfo.value.cause.reason == "unavailable-transient"
 
 
+def test_an_add_the_client_answers_with_nothing_is_not_recorded_as_a_member():
+    """The client skips a track it cannot find and raises nothing."""
+    playlist = Playlist("00000000-0000-4000-8000-00000000000b", ["11"])
+    playlist.add = lambda media_ids, allow_duplicates=False: []
+    client = FakeClient(playlists={playlist.id: playlist})
+    remote = adapter(client)
+
+    with pytest.raises(CratekitError) as excinfo:
+        remote.add_to_playlist(playlist.id, "14")
+
+    assert excinfo.value.cause.scope is Scope.ITEM
+    assert remote.playlist_tracks(playlist.id) == ("11",)
+
+
+def test_an_empty_answer_for_a_track_the_playlist_now_holds_is_not_a_failure():
+    playlist = Playlist("00000000-0000-4000-8000-00000000000c", ["11"])
+
+    def add_elsewhere(media_ids, allow_duplicates=False):
+        del allow_duplicates
+        playlist.members.extend(media_ids)
+        return []
+
+    playlist.add = add_elsewhere
+    client = FakeClient(playlists={playlist.id: playlist})
+    remote = adapter(client)
+
+    remote.add_to_playlist(playlist.id, "15")
+
+    assert remote.playlist_tracks(playlist.id) == ("11", "15")
+
+
+def test_an_add_to_a_playlist_deleted_mid_run_is_the_items_cause():
+    playlist = Playlist("00000000-0000-4000-8000-00000000000d", ["11"])
+
+    def gone(media_ids, allow_duplicates=False):
+        raise ObjectNotFound(playlist.id)
+
+    playlist.add = gone
+    client = FakeClient(playlists={playlist.id: playlist})
+    remote = adapter(client)
+
+    with pytest.raises(CratekitError) as excinfo:
+        remote.add_to_playlist(playlist.id, "16")
+
+    assert excinfo.value.cause.reason == "unavailable-transient"
+    assert "16" not in remote.playlist_tracks(playlist.id)
+
+
+def test_a_bad_request_on_a_write_is_not_read_as_a_rejected_session():
+    client = FakeClient()
+    client.user.favorites.fail = [HTTPFailure(400), HTTPFailure(400)]
+
+    with pytest.raises(CratekitError) as excinfo:
+        adapter(client).add_heart("8")
+
+    assert excinfo.value.cause.reason == "unavailable-transient"
+
+
+def test_a_session_rejected_mid_run_drops_the_held_account(installed, monkeypatch):
+    use_client(monkeypatch, FakeClient())
+    record_session()
+    held = account.resolve(installed)
+
+    account.provider_failure(HTTPFailure(401), "heart a track")
+
+    assert account.resolve(installed) is not held
+
+
+def test_a_build_whose_client_library_does_not_import_is_not_bound(monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "tidalapi", None)
+    monkeypatch.delitem(sys.modules, account.ADAPTER_MODULE, raising=False)
+
+    assert account.bound() is False
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 5. The real workers, end to end, against the fake client
 # ═══════════════════════════════════════════════════════════════════════════

@@ -47,6 +47,10 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlsplit
 
+# Imported at module top rather than deferred, because ``account.bound`` asks
+# whether THIS module imports, and the answer has to include the client library.
+import tidalapi  # noqa: F401
+
 from cratekit.acquire import listing, provider_session
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.modules.outbound import account
@@ -262,10 +266,28 @@ class TidalAccount:
         if identifier in members:
             return
         playlist = self._playlist(playlist_id)
-        self._call(
-            f"add the track {identifier} to the playlist {playlist_id}",
-            lambda: playlist.add([identifier]),
-        )
+        doing = f"add the track {identifier} to the playlist {playlist_id}"
+        added = self._call(doing, lambda: playlist.add([identifier]))
+        if added is _ABSENT:
+            raise account.provider_failure(
+                LookupError(f"the provider no longer has the playlist {playlist_id!r}"),
+                doing,
+            )
+        # THE CLIENT SKIPS A TRACK IT CANNOT FIND AND RAISES NOTHING, answering
+        # with the identifiers it added. An answer that does not name this track
+        # is read again from the playlist rather than trusted either way: the
+        # track may have been added elsewhere since the membership was read, and
+        # recording one the playlist does not hold would make a resume skip it.
+        if identifier not in {str(item) for item in added or ()}:
+            del self._members[playlist_id]
+            if identifier not in self._membership(playlist_id):
+                raise account.provider_failure(
+                    LookupError(
+                        f"the provider added nothing for the track {identifier!r}"
+                    ),
+                    doing,
+                )
+            return
         members.append(identifier)
 
     def playlist_tracks(self, playlist_id: str) -> tuple[str, ...]:
