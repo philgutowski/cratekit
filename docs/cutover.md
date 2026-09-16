@@ -34,7 +34,7 @@ R-348), two are product gaps (R-345, R-349), one is a driver question (R-343).
 
 The board is complete and the product cannot yet do its central workflow,
 because two seams have no adapter behind them and one source has no listing.
-Each is a residual today and none is a unit:
+Each was a residual and is a unit on the board since this sitting: U62 (#84) the catalogue, U63 (#85) the account, U64 (#86) the playlists source, with U29 declared dependent on all three.
 
 1. **R-258, the catalogue.** `label.catalogue.resolve` refuses
    `label-catalogue-unbound` on every real invocation once a session exists.
