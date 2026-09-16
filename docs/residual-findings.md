@@ -12963,6 +12963,17 @@ the board.
 `bound()` stops being a constant, and one real label sweep and one real playlist
 harvest run against a live provider.
 
+**Agent half CLOSED by U62, 2026-09-16, on `relay/84`.** `label.tidal_catalogue`
+implements `Catalogue` over a client `acquire.provider_session.client_session`
+logs in from the stored session, `resolve` returns it once a session is recorded,
+and `bound()` answers whether that module imports. Driven against a fake client
+injected at `provider_session.CLIENT_FACTORY` in
+`tests/test_label_tidal_catalogue.py`, including `crate intake playlist` end to
+end and the download verb accepting the resulting document. **The live half stays
+open**: one real label sweep and one real playlist harvest are the next attended
+sitting's, recorded in `docs/cutover.md`. `label-catalogue-unbound` survives only
+for a build whose adapter does not import.
+
 ---
 
 ## R-259. The labels path applies no ownership filtering at all
@@ -15617,4 +15628,99 @@ the command by hand.
 
 **Closes when:** the outcome payload is persisted with the job, the foreground
 envelope carries it, and `job show` prints it.
+
+---
+
+## R-350. A token refresh after the catalogue opens lives only in memory
+
+**Found:** during U62, 2026-09-16, writing `provider_session.client_session`.
+
+The factory logs the client in inside `materialised_session` and writes the
+session's tokens back before the scope closes, so a refresh performed DURING the
+login reaches the keychain. The scope then closes and the client is returned. A
+refresh the client performs later, in the middle of a long crawl, updates only the
+in memory client. **Measured cost: none observed and unmeasured live.** The stored
+refresh token stays valid, so the next invocation logs in again from it. It costs
+something only if the provider rotates refresh tokens on use, which nobody has
+measured against this provider.
+
+**Closes when:** a live sitting records whether a refresh rotates the refresh
+token, and if it does, the catalogue writes the client's tokens back when its
+work ends.
+
+---
+
+## R-351. A seed artist cannot be pinned by identifier, so a shared name blocks a label
+
+**Found:** during U62's code review, 2026-09-16.
+
+`TidalCatalogue.artist_for` resolves the label name and every seed by exact
+folded name, and refuses the label when two provider artists carry that name
+exactly, because crawling the first could offer an unrelated act's releases and
+verify none of them. `registry.LabelEntry.seed_artists` holds names only, so a
+person whose seed shares a name with another act has no way to say which one
+they mean. **Measured cost:** that label refuses on every sweep with a message
+naming the collision, and the person's only move is to remove the seed. Driven
+against a fake with two artists of one name; how often real names collide is
+unmeasured.
+
+**Closes when:** a seed can be recorded by provider identifier and the adapter
+reads it without searching.
+
+---
+
+## R-352. The adapter's roster is narrower than the source system's discovery
+
+**Found:** during U62, 2026-09-16, reading `DJ_tools` `label_playlists.discover`.
+
+The source system seeded a crawl from album searches for the label name and its
+numbered compilations, kept albums whose copyright matched, and then walked every
+credited artist breadth first. `artist_for` crawls the label's own artist page,
+when one is named exactly for the label, and the registry's seed artists, and
+nothing else. **Measured cost, by reading and not by a live run:** a label whose
+releases are credited to artists outside that roster is offered only the part the
+roster released, and a label with no artist page and no seeds refuses by name
+rather than returning a partial answer. The refusal is honest; the narrower
+coverage is a silent shortfall against the source system on labels whose seeds
+are incomplete.
+
+**Closes when:** the attended sitting compares one real sweep against the source
+system's discovery for the same label, and either the gap is measured as
+acceptable or discovery is ported behind the same seam.
+
+---
+
+## R-353. The login classification is read off a fake's shape, not a live rejection
+
+**Found:** during U62's review fix round, 2026-09-16.
+
+`provider_session._rejected` reads a rejected session as a response status of
+400, 401 or 403 anywhere in the exception's cause chain, or an exception class
+named `AuthenticationError`, and everything else as `ProviderUnavailable`. The
+client source shows `raise_for_status` re-raising an HTTP error that carries its
+response, which is what the fake models. **What a live expired session actually
+raises was not observed**, and a shape the classification does not read would be
+reported as `unavailable-transient` with retry later, telling a person to wait on
+a session that will never work again. METHOD's pattern four applies: the
+justifying shape was authored alongside the fix.
+
+**Closes when:** the attended sitting records what a revoked session raises and a
+test pins that shape.
+
+---
+
+## R-354. The playlist reference refuses the app scheme and embed URLs
+
+**Found:** during U62, 2026-09-16, writing `tidal_catalogue.playlist_id`.
+
+The parser accepts a bare identifier, an `http` or `https` URL on `tidal.com`,
+`www.tidal.com` or `listen.tidal.com` whose path ends `playlist/<id>`, and that URL
+with a query string. It refuses `link.tidal.com` short links by name, and it
+refuses everything else generically, including an app scheme link and an embed
+URL. **Measured cost:** a person who pastes one of those is told it is not a
+playlist reference, and nothing is listed wrongly. Which shapes the provider's
+share sheet produces today was not observed.
+
+**Closes when:** the attended sitting records the share sheet's actual output and
+the parser accepts every shape it produces.
 

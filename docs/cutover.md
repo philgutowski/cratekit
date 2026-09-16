@@ -36,8 +36,13 @@ The board is complete and the product cannot yet do its central workflow,
 because two seams have no adapter behind them and one source has no listing.
 Each was a residual and is a unit on the board since this sitting: U62 (#84) the catalogue, U63 (#85) the account, U64 (#86) the playlists source, with U29 declared dependent on all three.
 
-1. **R-258, the catalogue.** `label.catalogue.resolve` refuses
-   `label-catalogue-unbound` on every real invocation once a session exists.
+1. **R-258, the catalogue.** U62 landed its agent half on 2026-09-16:
+   `label.catalogue.resolve` now returns `label.tidal_catalogue.TidalCatalogue`
+   over the stored session, proven against a fake client only. **Owed to the
+   next attended sitting:** one real `crate intake playlist`, one real label
+   sweep and one real harvest, plus the observations R-350, R-352, R-353 and
+   R-354 close on. Before U62, `label.catalogue.resolve` refused
+   `label-catalogue-unbound` on every real invocation once a session existed.
    `intake playlist`, the label sweep and the playlist harvest all end there.
    Consequence for acquisition: `acquire download` refuses a text list and
    needs a provider list document, and nothing in the product can produce one.

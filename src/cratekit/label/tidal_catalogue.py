@@ -134,15 +134,16 @@ class LabelRoster:
         self._listed = {method: self._list(method) for method in listing.RELEASE_METHODS}
 
     def _list(self, method: str) -> list[Any]:
+        """Every artist's releases for one listing, concatenated.
+
+        NOT DEDUPLICATED HERE. ``listing.artist_releases`` deduplicates by
+        identifier when the crawl pages this roster, and the copy that used to sit
+        here killed no test in U62's mutation table because that one always ran
+        after it. One place decides what a repeat is.
+        """
         held: list[Any] = []
-        seen: set[str] = set()
         for artist in self.artists:
-            for release in listing.artist_releases(artist, methods=(method,)):
-                identity = str(getattr(release, "id", "") or "")
-                if identity and identity in seen:
-                    continue
-                seen.add(identity)
-                held.append(release)
+            held.extend(listing.artist_releases(artist, methods=(method,)))
         return held
 
     def get_albums(self, limit: int, offset: int = 0) -> list[Any]:
