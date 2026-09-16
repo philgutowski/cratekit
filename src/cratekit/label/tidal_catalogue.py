@@ -38,6 +38,7 @@ import tidalapi
 from cratekit.acquire import listing, provider_session
 from cratekit.label import harvest, registry
 from cratekit.label import verify as label_verify
+from cratekit.label.catalogue import AccountPlaylist
 
 #: A provider playlist identifier. The provider mints playlists as UUIDs, so a
 #: reference that is not one cannot name a playlist and is refused before a
@@ -167,7 +168,7 @@ def _copyright_label(release: Any) -> str:
 
 
 class TidalCatalogue:
-    """The four provider reads the label package makes, over one logged in client."""
+    """The five provider reads the ``Catalogue`` seam declares, over one logged in client."""
 
     def __init__(self, session: Any) -> None:
         self._session = session
@@ -288,6 +289,39 @@ class TidalCatalogue:
             "source": SOURCE,
             "notes": "no release found crediting this label",
         }
+
+    def account_playlists(self) -> tuple[AccountPlaylist, ...]:
+        """The playlists the logged in user created, paged through the listing.
+
+        OWN ONLY, BY CREATOR IDENTIFIER. The provider's only paged listing mixes
+        the account's playlists with the ones it follows, and sweeping a followed
+        editorial playlist would queue somebody else's selection. A client that
+        cannot say who is logged in is REFUSED rather than read as owning
+        nothing, because an empty answer here is a clean sweep of an account
+        nobody looked at.
+        """
+        user = getattr(self._session, "user", None)
+        user_id = str(getattr(user, "id", "") or "")
+        if not user_id:
+            raise LookupError(
+                "the provider client did not say which account is logged in, so "
+                "its own playlists cannot be told from the ones it follows"
+            )
+        own: list[AccountPlaylist] = []
+        for playlist in listing.account_playlists(self._session):
+            creator = str(getattr(getattr(playlist, "creator", None), "id", "") or "")
+            identity = str(getattr(playlist, "id", "") or "")
+            if creator != user_id or not identity:
+                continue
+            count = getattr(playlist, "num_tracks", None)
+            own.append(
+                AccountPlaylist(
+                    playlist_id=identity,
+                    name=str(getattr(playlist, "name", "") or ""),
+                    tracks=count if isinstance(count, int) and not isinstance(count, bool) else None,
+                )
+            )
+        return tuple(own)
 
 
 def open_catalogue() -> TidalCatalogue:

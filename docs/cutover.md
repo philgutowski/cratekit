@@ -56,8 +56,17 @@ Each was a residual and is a unit on the board since this sitting: U62 (#84) the
    closing condition. **Read R-355 first**: the rows those verbs build carry no
    ISRC, so a live run today matches nothing and writes nothing until the rows
    gain one. R-356 and R-357 are the observations the same sitting can make.
-3. **The playlists source.** `sync/sources.py` declares it with no handler and
-   no listing, so `crate sync all` reports it as not built.
+3. **The playlists source.** U64 landed its agent half on 2026-09-16:
+   `crate sync all` lists the account's own playlists through the catalogue's
+   new `account_playlists` read, excludes the `DOWNLOADED ` prefixed ones, the
+   ids in the playlists cursor, the favourites placeholders, open jobs and empty
+   playlists, and queues each remaining one as an `intake.playlist` job under
+   the pass's run id. Proven against a fake catalogue only. **Owed to the next
+   attended sitting:** one real `crate sync all` on the slim or full profile,
+   reading the `playlists` block of its summary against the live account, which
+   is what R-361 closes on. **Read R-358 and R-359 first**: a swept playlist is
+   not renamed on the account, so DJ_tools sweeps it again while both run, and
+   swept means resolved, not acquired.
 
 Until those three land, "the author lives on Cratekit through a full sync
 cycle" cannot start, and DJ_tools stays the live system for everything that

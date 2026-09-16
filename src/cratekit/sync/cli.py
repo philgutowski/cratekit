@@ -19,6 +19,11 @@ ONE INTAKE RUN (R29). Every job carries ``ctx.run.run_id`` as its intake run,
 which is the value each source's own verb uses when run alone, so the workers of
 one pass write one intake file.
 
+ONE SOURCE MAY FILE SEVERAL JOBS (U64). Labels and favourites each queue one job.
+Playlists queue one ``intake.playlist`` job per account playlist that is new, so
+a plan carries the jobs it filed as a list, and a refusal part way through keeps
+the ones already filed named in the report.
+
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23), and each source's module is imported only when
 the profile enables it.
@@ -49,6 +54,9 @@ FAVORITES_CONFIRM = "sync.favorites.confirm"
 #: Why a source was not queued, when the reason is not a refusal's own slug.
 NOT_BUILT = "not-built"
 DECLINED = "declined"
+#: The source listed and found nothing new to queue. Not a refusal, and not a
+#: clean sweep either: the check says what each playlist was excluded for.
+NOTHING_NEW = "nothing-new"
 
 
 def _load() -> config.Config:
@@ -88,10 +96,12 @@ def build_all(parser, entry) -> None:
     parser.set_defaults(_handler=all_sources)
 
 
-#: How a planned source is queued once the pass may proceed. A forward
-#: reference, because ``tests/test_config.py`` refuses any module-level binding
-#: that reaches into ``config`` and cannot tell an annotation from a snapshot.
-Queue = Callable[[Any, "config.Config", str], "jobs.Job"]
+#: How a planned source is queued once the pass may proceed. It appends each job
+#: to the list it is handed AS IT IS FILED, so a refusal part way through leaves
+#: the filed ones visible to the caller. A forward reference, because
+#: ``tests/test_config.py`` refuses any module-level binding that reaches into
+#: ``config`` and cannot tell an annotation from a snapshot.
+Queue = Callable[[Any, "config.Config", str, "list[jobs.Job]"], None]
 
 
 @dataclasses.dataclass
@@ -103,7 +113,11 @@ class _Plan:
     warnings: tuple[dict[str, str], ...] = ()
     refused: Cause | None = None
     not_queued: str | None = None
-    job: jobs.Job | None = None
+    filed: list[jobs.Job] = dataclasses.field(default_factory=list)
+    #: A source's own block for the summary, keyed by its identifier there.
+    detail: dict[str, Any] | None = None
+    #: Rebuilds ``detail`` from what was filed, once queueing is over.
+    describe: Callable[[list[jobs.Job]], dict[str, Any]] | None = None
     #: The question this source needs answered before it may queue, asked after
     #: every source is planned so the refusal can say what the pass would do.
     ask: Callable[[list[_Plan]], None] | None = None
@@ -114,9 +128,11 @@ def _plan_labels(spec: sources.SourceSpec, ctx) -> _Plan:
 
     items = label_cli.sweep_items_or_refuse()
 
-    def queue(store, cfg: config.Config, run_id: str) -> jobs.Job:
-        return label_cli.queue_sweep(
-            store, cfg, handler_key=str(spec.handler_key), run_id=run_id, item_ids=items
+    def queue(store, cfg: config.Config, run_id: str, filed: list[jobs.Job]) -> None:
+        filed.append(
+            label_cli.queue_sweep(
+                store, cfg, handler_key=str(spec.handler_key), run_id=run_id, item_ids=items
+            )
         )
 
     return _Plan(spec=spec, queue=queue, warnings=label_cli.queue_warnings())
@@ -144,20 +160,65 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
             return
         gate_run = ctx.gate.hand_off(gate, verb=FAVORITES_VERB, gate=FAVORITES_CONFIRM)
 
-        def queue(store, cfg: config.Config, run_id: str) -> jobs.Job:
-            return favorites_cli.queue_sweep(
-                store,
-                cfg,
-                handler_key=str(spec.handler_key),
-                run_id=run_id,
-                gate_run=gate_run,
-                exported=exported,
-                resolved=resolved,
+        def queue(store, cfg: config.Config, run_id: str, filed: list[jobs.Job]) -> None:
+            filed.append(
+                favorites_cli.queue_sweep(
+                    store,
+                    cfg,
+                    handler_key=str(spec.handler_key),
+                    run_id=run_id,
+                    gate_run=gate_run,
+                    exported=exported,
+                    resolved=resolved,
+                )
             )
 
         plan.queue = queue
 
     plan.ask = ask
+    return plan
+
+
+def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
+    """List the account and decide every playlist. Queueing waits for the pass.
+
+    THE CATALOGUE IS LOOKED UP ON ITS MODULE AT CALL TIME, as ``intake playlist``
+    looks it up, so a missing credential refuses this source before anything is
+    listed and the other sources still run.
+    """
+    from cratekit.label import catalogue
+    from cratekit.sync import playlists
+
+    cfg = _load()
+    handler_key = str(spec.handler_key)
+    found = catalogue.resolve(cfg)
+    with jobs.open_store() as store:
+        sweep = playlists.plan(store, cfg, found, handler_key=handler_key)
+
+    def describe(filed: list[jobs.Job]) -> dict[str, Any]:
+        return playlists.report(sweep, filed)
+
+    plan = _Plan(spec=spec, describe=describe, detail=describe([]))
+    if sweep.unreadable:
+        plan.warnings = (
+            {
+                "code": "sync-playlists-unreadable",
+                "message": (
+                    f"{len(sweep.unreadable)} account playlist(s) could not be "
+                    f"listed and were not queued; the next sync offers them again"
+                ),
+            },
+        )
+    if not sweep.ready:
+        plan.not_queued = NOTHING_NEW
+        return plan
+
+    def queue(store, cfg: config.Config, run_id: str, filed: list[jobs.Job]) -> None:
+        playlists.queue(
+            store, cfg, sweep, handler_key=handler_key, run_id=run_id, filed=filed
+        )
+
+    plan.queue = queue
     return plan
 
 
@@ -167,6 +228,7 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
 PLANNERS: dict[str, Callable[[sources.SourceSpec, Any], _Plan]] = {
     "favorites": _plan_favorites,
     "labels": _plan_labels,
+    "playlists": _plan_playlists,
 }
 
 
@@ -202,8 +264,14 @@ def _check(plan: _Plan) -> dict[str, Any]:
         "detail": "",
         "remedy": None,
     }
-    if plan.job is not None:
-        check["detail"] = f"queued as {plan.job.job_id} under {plan.job.handler_key}"
+    if plan.filed:
+        check["detail"] = "queued as " + ", ".join(
+            f"{job.job_id} under {job.handler_key}" for job in plan.filed
+        )
+        if plan.refused is not None:
+            check["status"] = "fail"
+            check["detail"] += f"; then not queued: {plan.refused.message}"
+            check["remedy"] = str(plan.refused.remediation.remedy)
     elif plan.refused is not None:
         check["status"] = "fail"
         check["detail"] = f"not queued: {plan.refused.message}"
@@ -213,6 +281,21 @@ def _check(plan: _Plan) -> dict[str, Any]:
         check["detail"] = (
             "not built: this source has no listing and no worker yet, so nothing "
             "was queued for it"
+        )
+    elif plan.not_queued == NOTHING_NEW:
+        check["status"] = "info"
+        excluded = (plan.detail or {}).get("excluded") or {}
+        tally: dict[str, int] = {}
+        for said in excluded.values():
+            tally[said["reason"]] = tally.get(said["reason"], 0) + 1
+        listed = (plan.detail or {}).get("listed", 0)
+        check["detail"] = (
+            f"nothing new: {listed} playlist(s) listed and none queued"
+            + (
+                " (" + ", ".join(f"{n} {why}" for why, n in sorted(tally.items())) + ")"
+                if tally
+                else ""
+            )
         )
     else:
         check["status"] = "info"
@@ -224,27 +307,30 @@ def _check(plan: _Plan) -> dict[str, Any]:
 
 
 def _report(plans: list[_Plan], run_id: str) -> dict[str, Any]:
-    queued = [p for p in plans if p.job is not None]
-    return {
-        "checks": [_check(p) for p in plans],
-        "summary": {
-            "run_id": run_id,
-            "queued": len(queued),
-            "sources": [p.spec.source_id for p in queued],
-            "jobs": [
-                {
-                    "source": p.spec.source_id,
-                    "job_id": p.job.job_id,
-                    "handler_key": p.job.handler_key,
-                }
-                for p in queued
-                if p.job is not None
-            ],
-            "not_queued": {
-                p.spec.source_id: p.not_queued for p in plans if p.not_queued is not None
-            },
+    queued = [p for p in plans if p.filed]
+    summary: dict[str, Any] = {
+        "run_id": run_id,
+        "queued": sum(len(p.filed) for p in queued),
+        "sources": [p.spec.source_id for p in queued],
+        "jobs": [
+            {
+                "source": p.spec.source_id,
+                "job_id": job.job_id,
+                "handler_key": job.handler_key,
+            }
+            for p in queued
+            for job in p.filed
+        ],
+        "not_queued": {
+            p.spec.source_id: p.not_queued for p in plans if p.not_queued is not None
         },
     }
+    for plan in plans:
+        if plan.describe is not None:
+            plan.detail = plan.describe(plan.filed)
+        if plan.detail is not None:
+            summary[plan.spec.source_id] = plan.detail
+    return {"checks": [_check(p) for p in plans], "summary": summary}
 
 
 def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
@@ -268,12 +354,12 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
                 # of the jobs already filed and the natural recovery, running
                 # the pass again, would queue each of them a second time.
                 try:
-                    plan.job = queue(store, cfg, run_id)
+                    queue(store, cfg, run_id, plan.filed)
                 except CratekitError as exc:
                     plan.refused, plan.not_queued = exc.cause, exc.cause.reason
 
     data = _report(plans, run_id)
-    queued_any = any(p.job is not None for p in plans)
+    queued_any = any(p.filed for p in plans)
     refused = [p.refused for p in plans if p.refused is not None]
     if not queued_any and refused:
         # NOTHING QUEUED AND A SOURCE REFUSED. Not a no-op: a person who ran a
@@ -286,9 +372,9 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
 
     warnings: list[dict[str, str]] = []
     for plan in plans:
-        if plan.job is not None:
+        if plan.filed or plan.not_queued == NOTHING_NEW:
             warnings.extend(plan.warnings)
-        elif plan.refused is not None:
+        if plan.refused is not None:
             warnings.append(
                 {
                     "code": "sync-source-not-queued",

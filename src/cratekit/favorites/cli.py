@@ -37,6 +37,7 @@ from typing import Any
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, jobs
 from cratekit.core.cause import Outcome, refuse
+from cratekit.favorites import placeholders
 from cratekit.modules.outbound import account, artifacts, hearts, shell, source
 
 #: The two payload keys both outbound verbs freeze, spelled once in
@@ -44,6 +45,13 @@ from cratekit.modules.outbound import account, artifacts, hearts, shell, source
 #: them to rebuild the confirm digest.
 PLAYLIST = shell.PLAYLIST
 EXPORT = shell.EXPORT
+
+#: The quarterly placeholder playlists this source owns, spelled in
+#: :mod:`cratekit.favorites.placeholders` so the core playlists source can
+#: exclude them without importing this CLI.
+PLACEHOLDER_NAME = placeholders.PLACEHOLDER_NAME
+BACKLOG = placeholders.BACKLOG
+placeholder_name = placeholders.placeholder_name
 
 
 def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
@@ -319,9 +327,12 @@ def handle(job, item, cfg) -> jobs.Produced:
 
 
 __all__ = [
+    "BACKLOG",
+    "PLACEHOLDER_NAME",
     "build_sync",
     "confirm_digest",
     "handle",
+    "placeholder_name",
     "queue_sweep",
     "resolve_sweep",
     "run_heart_item",

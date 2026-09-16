@@ -37,6 +37,7 @@ PROTOCOL_METHODS = frozenset(
         "playlist_for",
         "search_release",
         "check_label",
+        "account_playlists",
     }
 )
 
@@ -169,9 +170,14 @@ class FakeCatalogue:
         *,
         confirmed: set[str] | frozenset[str] | None = None,
         known_labels: set[str] | frozenset[str] | None = None,
+        account: list[Any] | None = None,
     ) -> None:
         self.artists = dict(artists or {})
         self.playlists = dict(playlists or {})
+        #: The account's own playlists, as ``AccountPlaylist`` records, in the
+        #: order the listing serves them.
+        self.account = list(account or [])
+        self.account_listings = 0
         self.confirmed = None if confirmed is None else frozenset(confirmed)
         self.known_labels = None if known_labels is None else frozenset(known_labels)
         self.asked_for: list[str] = []
@@ -209,6 +215,10 @@ class FakeCatalogue:
             "source": "fake-catalogue",
             "notes": "",
         }
+
+    def account_playlists(self) -> tuple[Any, ...]:
+        self.account_listings += 1
+        return tuple(self.account)
 
     def check_label(self, name: str) -> dict:
         if self.known_labels is not None and name not in self.known_labels:

@@ -2,6 +2,15 @@
 
 The document is library-scoped and coupled (R25, R30, KTD21). A cursor is a
 record of how far a source got, not a floor the next increment filters by.
+
+**THE PLAYLISTS CURSOR IS A SET, NOT A POSITION (U64).** A labels increment has
+a newest item and a cursor naming it. A playlists sweep does not: each account
+playlist is swept once, in no order, and what the next pass needs is WHICH
+playlists completed. ``swept`` holds those provider identifiers, and it is the
+one record a later pass does filter by: ``sync.playlists`` excludes those ids.
+It is an exclusion by identity, never a date floor. It is optional
+on every record, so a document written before it existed still reads, and it is
+written only when it has something in it. It never holds a title (D5).
 """
 
 from __future__ import annotations
@@ -10,7 +19,7 @@ import json
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Iterator, Mapping, Sequence
 
 from cratekit.cli.output import timestamp
 from cratekit.core import config
@@ -29,15 +38,20 @@ class SourceWatermark:
     items: int
     recorded: str
     library_id: str
+    #: The identifiers a set shaped source has completed. Empty for every other.
+    swept: tuple[str, ...] = ()
 
     def to_json(self) -> dict[str, Any]:
-        return {
+        record: dict[str, Any] = {
             "source_id": self.source_id,
             "cursor": self.cursor,
             "items": self.items,
             "recorded": self.recorded,
             "library_id": self.library_id,
         }
+        if self.swept:
+            record["swept"] = list(self.swept)
+        return record
 
 
 class WatermarkStore:
@@ -124,12 +138,20 @@ class WatermarkStore:
                     f"source {source_id!r} was recorded against library "
                     f"{library_id} and this library is {self.cfg.library.volume_id}"
                 )
+            swept = value.get("swept", [])
+            if not isinstance(swept, list) or not all(
+                isinstance(identity, str) and identity for identity in swept
+            ):
+                raise self._unusable(
+                    f"source {source_id!r} has a swept list that is not identifiers"
+                )
             found[source_id] = SourceWatermark(
                 source_id=source_id,
                 cursor=cursor,
                 items=items,
                 recorded=str(value.get("recorded") or ""),
                 library_id=library_id,
+                swept=tuple(swept),
             )
         return found
 
@@ -169,6 +191,48 @@ class WatermarkStore:
         )
         with self._locked():
             records = self._load()
+            records[source_id] = mark
+            self._write(records)
+        return mark
+
+    def record_swept(
+        self,
+        source_id: str,
+        identities: Sequence[str],
+        *,
+        library_id: str,
+        now: str | None = None,
+    ) -> SourceWatermark | None:
+        """Add completed identifiers to a set shaped source's cursor.
+
+        NOTHING TO RECORD RECORDS NOTHING, and returns the record as it stands.
+        A pass that swept nothing is not a clean completion of anything, and
+        rewriting the record would move its timestamp as if it were (R-135).
+
+        The union keeps first seen order and is taken UNDER THE LOCK, so two
+        passes recording at once both land. ``cursor`` names the last identifier
+        this call added and ``items`` counts the whole set.
+        """
+        wanted = [str(identity) for identity in identities if str(identity)]
+        with self._locked():
+            records = self._load()
+            existing = records.get(source_id)
+            if not wanted:
+                return existing
+            merged = list(existing.swept) if existing is not None else []
+            known = set(merged)
+            for identity in wanted:
+                if identity not in known:
+                    known.add(identity)
+                    merged.append(identity)
+            mark = SourceWatermark(
+                source_id=source_id,
+                cursor=wanted[-1],
+                items=len(merged),
+                recorded=now or timestamp(),
+                library_id=library_id,
+                swept=tuple(merged),
+            )
             records[source_id] = mark
             self._write(records)
         return mark

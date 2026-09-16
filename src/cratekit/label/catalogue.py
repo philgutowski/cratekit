@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken
@@ -53,10 +54,26 @@ from cratekit.label import registry
 ADAPTER_MODULE = "cratekit.label.tidal_catalogue"
 
 
-class Catalogue(Protocol):
-    """Every provider read the label package makes, and nothing more.
+@dataclass(frozen=True, slots=True)
+class AccountPlaylist:
+    """One playlist the account itself created, reduced to what a sweep decides on.
 
-    FOUR MEMBERS BECAUSE THERE ARE FOUR CALL SITES, and the protocol is the list
+    ``playlist_id`` is the identity every record keys on (D5). ``name`` is read
+    only for the swept prefix and the favourites placeholder pattern, which are
+    conventions spelled in the name by the systems that apply them, and is never
+    stored. ``tracks`` is the count the listing reported, or ``None`` when it
+    reported none, which is unknown rather than empty.
+    """
+
+    playlist_id: str
+    name: str
+    tracks: int | None = None
+
+
+class Catalogue(Protocol):
+    """Every provider read the product makes through this seam, and nothing more.
+
+    FIVE MEMBERS BECAUSE THERE ARE FIVE CALL SITES, and the protocol is the list
     rather than a description of a provider. A method nobody calls is a method an
     adapter has to implement for no reason, and it is the shape by which a seam
     stops being a seam and becomes a client library.
@@ -110,6 +127,16 @@ class Catalogue(Protocol):
         The callable ``harvest.from_tracks`` takes as its ``verify`` argument,
         with that signature. A copyright string is a heuristic, so an unconfirmed
         name is dropped rather than offered.
+        """
+
+    def account_playlists(self) -> tuple[AccountPlaylist, ...]:
+        """Every playlist the logged in account CREATED, across every page.
+
+        Consumed by ``sync.playlists``, the third R25 source. Followed and
+        editorial playlists are not the account's to sweep and are left out.
+        RAISES when the listing cannot be read, on the same contract as the two
+        lookups above: an empty tuple means the provider answered and the account
+        has no playlists, never that nobody could ask.
         """
 
 
@@ -206,4 +233,4 @@ def resolve(cfg: config.Config) -> Catalogue:
         ) from exc
 
 
-__all__ = ["ADAPTER_MODULE", "Catalogue", "bound", "resolve"]
+__all__ = ["ADAPTER_MODULE", "AccountPlaylist", "Catalogue", "bound", "resolve"]

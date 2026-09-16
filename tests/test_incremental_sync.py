@@ -469,3 +469,78 @@ def test_declared_sources_are_stable_ids_not_display_names():
         assert source_id.islower()
         assert " " not in source_id
 
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U64: the playlists cursor is a set of identifiers
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_recording_swept_ids_unions_them_in_first_seen_order(cfg):
+    store = watermarks.WatermarkStore(cfg)
+    lib = cfg.library.volume_id
+    store.record_swept("playlists", ["pl-a", "pl-b"], library_id=lib)
+    mark = store.record_swept("playlists", ["pl-b", "pl-c"], library_id=lib)
+    assert mark is not None
+    assert mark.swept == ("pl-a", "pl-b", "pl-c")
+    assert (mark.cursor, mark.items) == ("pl-c", 3)
+    assert store.read("playlists").swept == ("pl-a", "pl-b", "pl-c")
+
+
+def test_recording_nothing_swept_records_nothing(cfg):
+    """R-135. A pass that completed no playlist is not a clean completion."""
+    store = watermarks.WatermarkStore(cfg)
+    assert store.record_swept("playlists", [], library_id=cfg.library.volume_id) is None
+    assert not store.path.exists()
+    store.record_swept("playlists", ["pl-a"], library_id=cfg.library.volume_id, now="t1")
+    kept = store.record_swept("playlists", [], library_id=cfg.library.volume_id, now="t2")
+    assert kept is not None and kept.recorded == "t1"
+
+
+def test_a_record_with_no_swept_list_writes_none_and_reads_as_empty(cfg):
+    """The other sources' records are unchanged by the new field."""
+    store = watermarks.WatermarkStore(cfg)
+    store.advance("labels", cursor="r1", items=1, library_id=cfg.library.volume_id)
+    assert "swept" not in store.path.read_text(encoding="utf-8")
+    assert store.read("labels").swept == ()
+
+
+@pytest.mark.parametrize("swept", ["pl-a", ["pl-a", ""], ["pl-a", 7]])
+def test_a_swept_list_that_is_not_identifiers_is_unusable(cfg, swept):
+    import json
+
+    store = watermarks.WatermarkStore(cfg)
+    store.record_swept("playlists", ["pl-a"], library_id=cfg.library.volume_id)
+    document = json.loads(store.path.read_text(encoding="utf-8"))
+    document["sources"]["playlists"]["swept"] = swept
+    store.path.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(CratekitError) as caught:
+        store.read("playlists")
+    assert caught.value.cause.reason == "sync-watermark-unusable"
+
+
+def test_the_playlist_exclusions_in_the_order_a_person_is_told():
+    from cratekit.favorites import placeholders
+    from cratekit.label.catalogue import AccountPlaylist
+    from cratekit.sync import playlists
+
+    def decide(name, playlist_id="pl-1", tracks=None, recorded=(), in_flight=()):
+        return playlists.exclusion(
+            AccountPlaylist(playlist_id, name, tracks),
+            recorded=frozenset(recorded),
+            in_flight=frozenset(in_flight),
+        )
+
+    E = playlists.Excluded
+    assert decide("Warmup") is None
+    assert decide("Warmup", tracks=3) is None
+    assert decide(playlists.SWEPT_PREFIX + "Warmup", recorded={"pl-1"}) is E.SWEPT
+    assert decide("Warmup", recorded={"pl-1"}, in_flight={"pl-1"}) is E.RECORDED
+    assert decide(placeholders.placeholder_name("2026-Q1"), in_flight={"pl-1"}) is E.PLACEHOLDER
+    assert decide("Warmup", in_flight={"pl-1"}, tracks=0) is E.IN_FLIGHT
+    assert decide("Warmup", tracks=0) is E.EMPTY
+    assert decide("Warmup", recorded={"pl-2"}, in_flight={"pl-2"}) is None
+    # A TITLE IN THE CURSOR IS NOT AN IDENTIFIER IN IT.
+    assert decide("Warmup", recorded={"Warmup"}) is None
+    assert decide("downloaded Warmup") is None
+    assert decide("DOWNLOADEDWarmup") is None

@@ -15804,3 +15804,132 @@ adapter, so a login made meanwhile is picked up. `export.apply` still asks
 `playlist_tracks` once per item, which is now memory rather than a listing.
 
 **Closes when:** a run that must see concurrent edits is a requirement, or never.
+
+---
+
+## R-358. A swept playlist is never marked on the account, so the source system sweeps it again
+
+**Found:** during U64, 2026-09-16, building the deferred mark step.
+
+`sync/marks.py` renames a provider playlist only after the importable file exists
+and a recheck holds. Neither half is available to the playlists source.
+`modules.outbound.service.RemoteAccount` declares six add only members and no
+rename, so there is nothing to apply the `DOWNLOADED ` prefix through; and the
+intake worker a sweep composes writes no importable file, because it resolves
+tracks and does not acquire them. `sync.playlists` therefore reports
+`"mark": "unbound"` on every pass and the cursor is the only record a sweep
+leaves. **Driven:** every playlists test in `tests/test_sync_all.py` reads the
+block, and `test_a_slim_pass_queues_each_new_account_playlist_under_the_shared_run`
+asserts the value.
+
+**Measured cost.** Cratekit itself does not sweep a recorded playlist twice. The
+source system does not read Cratekit's cursor, so while DJ_tools and Cratekit both
+run against one account, a playlist Cratekit swept is new to DJ_tools' next
+`dj-sync`. Not observed live.
+
+**Why not fixed here.** A rename is an account write, and U63's adapter is add only
+by type. Adding one is a change to the outbound seam the brief placed out of scope.
+
+**Closes when:** the account seam can rename a playlist it did not create, and a
+sweep that produced an importable file marks through `marks.apply_deferred`.
+
+---
+
+## R-359. A playlist is recorded as swept once its tracks are resolved, not once they are acquired
+
+**Found:** during U64, 2026-09-16, deciding what clean completion means.
+
+The brief makes the cursor advance on clean completion, and the only job a sweep
+queues is `intake.playlist`, whose worker reports each track OWNED, OFFERED or
+MISSING and acquires nothing. `sync.playlists.reconcile` records a playlist when
+that job SUCCEEDED, which is every item resolved. **Measured cost:** a playlist
+holding tracks the library does not own is recorded as swept, and the next pass
+excludes it as `recorded`, so its missing tracks are reported once, in that job's
+per item reports, and never offered by a later sync. That is R-140's shape one
+level up: a completed resolution read as a completed intake.
+
+**The conservative call made here.** Follow the brief: record on success, because
+the alternative, holding the cursor until every MISSING item is acquired, needs an
+acquisition step the sync pass does not compose yet. The options are Phillip's:
+record only a playlist with no MISSING item, or compose `acquire download` over
+the missing rows and record after it.
+
+**Closes when:** swept means the library holds what the playlist held, or the
+report says in words that it does not.
+
+---
+
+## R-360. The playlists cursor moves only when a pass runs, not when the job finishes
+
+**Found:** during U64, 2026-09-16.
+
+`reconcile` runs at the start of `crate sync all`. A playlist whose job succeeded
+an hour ago is still `never` in the watermark status rows until the next pass, and
+that pass reports it under `recorded_now`. **Measured cost:** a status read
+between the job finishing and the next pass undercounts what was swept. Nothing
+is swept twice, because the open job excluded it as `in-flight` and the next pass
+records it before deciding.
+
+**Closes when:** the job completion path records the cursor, or the status verb
+reconciles before it reports.
+
+---
+
+## R-361. The source system's label run debris is swept as ordinary playlists
+
+**Found:** during U64, 2026-09-16, reading `DJ_sync/plan.py`'s filter.
+
+`filter_account_playlists` in the source system also dropped playlists named
+`<label> LIBRARY`, the throwaway playlists its label batch leaves behind, and any
+playlist id a manifest registered as run created. `sync.playlists` excludes the
+swept prefix, the cursor, the favourites placeholders, open jobs and empty
+playlists, and nothing else, because the brief named those. **Measured cost:
+unmeasured live.** Any such playlist still on the account is queued as intake, and
+its tracks are resolved and reported. Nothing is written to the library or the
+account.
+
+**Closes when:** the attended sitting reads the live account's playlist names and
+either finds no debris or a rule is decided for it.
+
+---
+
+## R-362. The favourites placeholders are recognised by the source system's names alone
+
+**Found:** during U64, 2026-09-16, writing `favorites/placeholders.py`.
+
+Cratekit's favourites source creates no placeholder playlists. The pattern
+`Favorites YYYY-Qn` or `Favorites (undated backlog)` is the source system's, and
+the source system records their ids in its own run state, which Cratekit does not
+read. **Measured cost:** a placeholder a person renamed is swept by the playlists
+source as well as by the source system's favourites run. The review's one finding
+was the backlog name this pattern first missed, fixed and driven in the same unit.
+
+**Closes when:** Cratekit's favourites source owns its placeholders by id, or the
+source system is retired.
+
+---
+
+## R-363. Two passes started together can each queue the same playlist
+
+**Found:** during U64, 2026-09-16, by the built in review.
+
+The in flight check reads the queue, and the enqueue is a later transaction per
+playlist, so two `crate sync all` runs whose planning overlaps both see a playlist
+as new. **Measured cost: unmeasured, not driven.** The second job resolves the same
+tracks again and reports them again. No write to the library or account follows.
+
+**Closes when:** the check and the enqueue share a transaction, or concurrent
+passes are refused.
+
+---
+
+## R-364. The handler key filter on the playlists source's jobs kills nothing
+
+**Found:** during U64, 2026-09-16, mutation row C3.
+
+`sync.playlists.source_jobs` filters by handler key, `source_id` and library.
+Removing the key filter killed zero tests on the subset and zero on the full suite,
+7523 collected, because no producer queues a job carrying `source_id` `playlists`
+under another key. Maintainer facing. Kept as defence.
+
+**Closes when:** a second key carries this source's jobs, or the filter is removed.
