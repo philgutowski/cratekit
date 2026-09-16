@@ -1,0 +1,267 @@
+name = "u62"
+pass_kind = "light"
+
+# U62 adds a catalogue adapter that reads and never writes. The brief scopes the
+# table to the reference parser, the absence contract and the paging, and the
+# review round added the login classification and the ambiguity refusal, so those
+# are here too. Subsets are the files importing the mutated module; a zero on a
+# subset is promoted to the full suite before it is reported.
+
+# ---------------------------------------------------------------------------
+# The reference parser
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "P1_bare_id_accepts_anything"
+description = "Accept any bare text as an identifier: fullmatch weakened to match"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py"]
+surface = "user"
+old = '''    if _UUID.fullmatch(text):
+        return text.lower()'''
+new = '''    if _UUID.match(text):
+        return text.lower()'''
+
+[[rows]]
+id = "P2_short_link_not_named"
+description = "Drop the short link refusal, so it falls to the generic refusal"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py"]
+surface = "user"
+old = '''    if parts.scheme in {"http", "https"} and host == SHORT_LINK_HOST:'''
+new = '''    if parts.scheme in {"http", "https"} and host == "short.invalid":'''
+
+[[rows]]
+id = "P3_any_host"
+description = "Accept a playlist path on any host"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py"]
+surface = "user"
+old = '''    if parts.scheme in {"http", "https"} and host in PLAYLIST_HOSTS:'''
+new = '''    if parts.scheme in {"http", "https"}:'''
+
+[[rows]]
+id = "P4_any_scheme"
+description = "Accept a provider host under any scheme"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py"]
+surface = "user"
+old = '''    if parts.scheme in {"http", "https"} and host in PLAYLIST_HOSTS:'''
+new = '''    if host in PLAYLIST_HOSTS:'''
+
+[[rows]]
+id = "P5_any_resource_kind"
+description = "Accept an identifier under any resource segment, an album URL included"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py"]
+surface = "user"
+old = '''            and segments[-2] == "playlist"'''
+new = '''            and segments[-2] != ""'''
+
+[[rows]]
+id = "P6_id_anywhere_in_path"
+description = "Take the identifier from anywhere in the path rather than the last segment"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py"]
+surface = "user"
+old = '''        if (
+            len(segments) >= 2
+            and segments[-2] == "playlist"
+            and _UUID.fullmatch(segments[-1])
+        ):
+            return segments[-1].lower()'''
+new = '''        for segment in segments:
+            if _UUID.fullmatch(segment):
+                return segment.lower()'''
+
+# ---------------------------------------------------------------------------
+# The absence contract
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "A1_missing_playlist_returns_none"
+description = "Return None for a playlist the client returned nothing for"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py"]
+surface = "user"
+old = '''        if playlist is None:
+            raise PlaylistUnresolvable('''
+new = '''        if playlist is None:
+            return None
+            raise PlaylistUnresolvable('''
+
+[[rows]]
+id = "A2_unresolved_seed_skipped"
+description = "Crawl the seeds that resolved and skip the one that did not"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py"]
+surface = "user"
+old = '''        if unresolved:
+            raise LabelUnresolvable('''
+new = '''        if unresolved and not artists:
+            raise LabelUnresolvable('''
+
+[[rows]]
+id = "A3_empty_roster_returned"
+description = "Return an empty roster for a label nothing resolved"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+surface = "user"
+old = '''        if not artists:
+            raise LabelUnresolvable('''
+new = '''        if not artists:
+            return LabelRoster([])
+            raise LabelUnresolvable('''
+
+[[rows]]
+id = "A4_first_hit_not_exact"
+description = "Take any hit the search returned rather than an exact name"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py"]
+surface = "user"
+old = '''            if label_verify.fold_label(str(getattr(artist, "name", "") or "")) == wanted'''
+new = '''            if label_verify.fold_label(str(getattr(artist, "name", "") or ""))'''
+
+[[rows]]
+id = "A5_ambiguity_takes_first"
+description = "Take the first of two artists named exactly the label"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py"]
+surface = "user"
+old = '''        if len(distinct) > 1:'''
+new = '''        if len(distinct) > 2:'''
+
+[[rows]]
+id = "A6_no_reread_for_missing_copyright"
+description = "Judge a release with no copyright line unconfirmed instead of re-reading it"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py"]
+surface = "user"
+old = '''        if not resolved and identity:'''
+new = '''        if not resolved and not identity:'''
+
+[[rows]]
+id = "A7_any_search_hit_confirms"
+description = "Confirm a harvested label on any album with a copyright line"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py"]
+surface = "user"
+old = '''            if resolved and label_verify.labels_match(name, resolved):'''
+new = '''            if resolved:'''
+
+# ---------------------------------------------------------------------------
+# The paging
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "G1_roster_no_dedup"
+description = "Keep a release two roster artists both list"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py"]
+surface = "user"
+old = '''                if identity and identity in seen:'''
+new = '''                if identity and identity in seen and False:'''
+
+[[rows]]
+id = "G2_roster_one_page"
+description = "Read one server page per artist instead of paging through listing"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py"]
+surface = "user"
+old = '''            for release in listing.artist_releases(artist, methods=(method,)):'''
+new = '''            for release in getattr(artist, method)(limit=100, offset=0):'''
+
+# ---------------------------------------------------------------------------
+# The session factory and the seam
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "S1_device_flow_login"
+description = "Log in as a device flow session rather than PKCE"
+file = "src/cratekit/acquire/provider_session.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py"]
+surface = "user"
+old = '''                is_pkce=True,'''
+new = '''                is_pkce=False,'''
+
+[[rows]]
+id = "S2_401_not_rejected"
+description = "Drop 401 from the statuses read as a rejected session"
+file = "src/cratekit/acquire/provider_session.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py"]
+surface = "user"
+old = '''REJECTED_STATUSES = frozenset({400, 401, 403})'''
+new = '''REJECTED_STATUSES = frozenset({400, 403})'''
+
+[[rows]]
+id = "S3_cause_chain_not_walked"
+description = "Read only the outermost exception's status"
+file = "src/cratekit/acquire/provider_session.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py"]
+surface = "user"
+old = '''        seen = seen.__cause__'''
+new = '''        seen = None'''
+
+[[rows]]
+id = "S4_every_failure_rejected"
+description = "Read every login failure as a rejected session, the pre review behaviour"
+file = "src/cratekit/acquire/provider_session.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py"]
+surface = "user"
+old = '''            if _rejected(exc):'''
+new = '''            if True:'''
+
+[[rows]]
+id = "S5_blob_without_token_logged_in"
+description = "Hand a blob with no access token to the provider"
+file = "src/cratekit/acquire/provider_session.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py"]
+surface = "user"
+old = '''        if not isinstance(stored, dict) or not stored.get("access_token"):'''
+new = '''        if not isinstance(stored, dict):'''
+
+[[rows]]
+id = "S6_refresh_not_written_back"
+description = "Write the stored blob back unchanged instead of the refreshed tokens"
+file = "src/cratekit/acquire/provider_session.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py"]
+surface = "user"
+old = '''            if value is not None:
+                refreshed[field] = _epoch(value)'''
+new = '''            if value is not None and False:
+                refreshed[field] = _epoch(value)'''
+
+[[rows]]
+id = "S7_naive_expiry_as_local"
+description = "Read the client's naive expiry as local time"
+file = "src/cratekit/acquire/provider_session.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py"]
+surface = "maintainer"
+old = '''        if value.tzinfo is None:'''
+new = '''        if value.tzinfo is None and False:'''
+
+[[rows]]
+id = "C1_bound_constant_true"
+description = "Answer bound() True without asking whether the adapter imports"
+file = "src/cratekit/label/catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/intake/test_workers.py"]
+surface = "user"
+old = '''    try:
+        importlib.import_module(ADAPTER_MODULE)
+    except ImportError:
+        return False
+    return True'''
+new = '''    return True'''
+
+[[rows]]
+id = "C2_outage_as_credential"
+description = "Refuse an unreachable provider as a credential problem"
+file = "src/cratekit/label/catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/intake/test_workers.py"]
+surface = "user"
+old = '''    except ProviderUnavailable as exc:
+        raise refuse(
+            "unavailable-transient",'''
+new = '''    except ProviderUnavailable as exc:
+        raise refuse(
+            "credential-missing",'''
