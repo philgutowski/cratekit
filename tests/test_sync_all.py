@@ -411,21 +411,28 @@ def test_the_favourites_placeholders_are_left_to_the_favourites_source(slim, mon
     names are playlists a person made and are swept."""
     del slim
     placeholder = favorites_cli.placeholder_name("2026-Q2")
+    backlog = favorites_cli.placeholder_name(favorites_cli.BACKLOG)
     assert favorites_cli.PLACEHOLDER_NAME.fullmatch(placeholder)
-    near = [f"All {placeholder.split()[0]}", f"{placeholder} copy"]
+    assert favorites_cli.PLACEHOLDER_NAME.fullmatch(backlog)
+    near = [f"All {placeholder.split()[0]}", f"{placeholder} copy", f"{backlog} old"]
     assert not any(favorites_cli.PLACEHOLDER_NAME.fullmatch(name) for name in near)
     bind_playlists(
         monkeypatch,
         (_playlist("pl-q", placeholder), _tracks("101")),
+        (_playlist("pl-backlog", backlog), _tracks("102")),
         (_playlist("pl-all", near[0]), _tracks("201")),
         (_playlist("pl-copy", near[1]), _tracks("301")),
+        (_playlist("pl-old", near[2]), _tracks("401")),
     )
     code, passed = drive(["sync", "all"])
     assert code == int(ExitCode.OK), passed
-    assert {job.payload[intake_cli.SOURCE] for job in _playlist_jobs()} == {"pl-all", "pl-copy"}
-    assert passed["data"]["summary"]["playlists"]["excluded"]["pl-q"]["reason"] == (
-        "favorites-placeholder"
-    )
+    assert {job.payload[intake_cli.SOURCE] for job in _playlist_jobs()} == {
+        "pl-all",
+        "pl-copy",
+        "pl-old",
+    }
+    excluded = passed["data"]["summary"]["playlists"]["excluded"]
+    assert {excluded[k]["reason"] for k in ("pl-q", "pl-backlog")} == {"favorites-placeholder"}
 
 
 def test_the_cursor_records_ids_only_once_a_job_succeeds(slim, monkeypatch):

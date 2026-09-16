@@ -23,9 +23,17 @@ import re
 #: The leading word every placeholder name carries, followed by its quarter.
 PLACEHOLDER_PREFIX = "Favorites "
 
-#: A whole placeholder name. Anchored at both ends by ``fullmatch`` at the call
-#: site, so ``All Favorites`` and ``Favorites 2026-Q2 copy`` are not placeholders.
-PLACEHOLDER_NAME = re.compile(re.escape(PLACEHOLDER_PREFIX) + r"\d{4}-Q[1-4]")
+#: The quarter the source system could not date a heart into. Its hearts sit in
+#: this one playlist until a later run resolves a date and moves them, so it is
+#: the favourites source's in exactly the way a dated quarter is.
+BACKLOG = "(undated backlog)"
+
+#: A whole placeholder name, a dated quarter or the backlog. Anchored at both
+#: ends by ``fullmatch`` at the call site, so ``All Favorites`` and
+#: ``Favorites 2026-Q2 copy`` are not placeholders.
+PLACEHOLDER_NAME = re.compile(
+    re.escape(PLACEHOLDER_PREFIX) + r"(?:\d{4}-Q[1-4]|" + re.escape(BACKLOG) + r")"
+)
 
 
 def placeholder_name(quarter: str) -> str:
@@ -34,8 +42,14 @@ def placeholder_name(quarter: str) -> str:
 
 
 def is_placeholder(name: str) -> bool:
-    """Whether ``name`` is exactly a quarterly favourites placeholder's name."""
+    """Whether ``name`` is exactly a favourites placeholder's name, dated or backlog."""
     return PLACEHOLDER_NAME.fullmatch(str(name or "")) is not None
 
 
-__all__ = ["PLACEHOLDER_NAME", "PLACEHOLDER_PREFIX", "is_placeholder", "placeholder_name"]
+__all__ = [
+    "BACKLOG",
+    "PLACEHOLDER_NAME",
+    "PLACEHOLDER_PREFIX",
+    "is_placeholder",
+    "placeholder_name",
+]

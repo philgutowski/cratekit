@@ -50,6 +50,7 @@ EXPORT = shell.EXPORT
 #: :mod:`cratekit.favorites.placeholders` so the core playlists source can
 #: exclude them without importing this CLI.
 PLACEHOLDER_NAME = placeholders.PLACEHOLDER_NAME
+BACKLOG = placeholders.BACKLOG
 placeholder_name = placeholders.placeholder_name
 
 
@@ -326,6 +327,7 @@ def handle(job, item, cfg) -> jobs.Produced:
 
 
 __all__ = [
+    "BACKLOG",
     "PLACEHOLDER_NAME",
     "build_sync",
     "confirm_digest",
