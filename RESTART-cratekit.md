@@ -4,7 +4,29 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-16, U63 (#85) on `relay/85`, unattended.** The outbound
+**Last session 2026-09-16, U64 (#86) on `relay/86`, unattended.** The playlists
+source runs. `crate sync all` lists the account through a fifth `Catalogue` read,
+`account_playlists`, which `TidalCatalogue` answers through `listing` and keeps to
+playlists whose creator is the logged in user, refusing a client that cannot name
+its account. `sync.playlists` excludes, in this order, the `DOWNLOADED ` prefix,
+an id in the playlists cursor, a favourites placeholder by
+`favorites.placeholders.PLACEHOLDER_NAME` (a dated quarter or the undated
+backlog), an open job this source queued, and an empty playlist, then queues each
+remaining one through `intake.cli.queue_playlist` under the pass's run id with
+`source_id` `playlists`. A plan in `sync/cli.py` now carries every job its source
+filed, and the summary gains a `playlists` block. The cursor is a `swept` id list
+on the watermark record, written by `WatermarkStore.record_swept`, and
+`reconcile` records a playlist at the start of a pass once its job SUCCEEDED, for
+this library only. The mark is reported `unbound` every pass, because the account
+seam has no rename. Review drove one finding, the undated backlog placeholder.
+Mutation table `docs/mutation/u64.md`, 25 rows through the driver's own functions
+on subsets, 24 killing, C2's zero closed with a test, C3 a maintainer zero on the
+full suite. Three reserved cause population pins moved and are re-pinned with
+their sets named. **R-358 and R-359 are the ones to read before the attended
+sitting**: a swept playlist is never renamed, and swept means resolved rather than
+acquired. R-360 to R-364 are filed beside them. Do not take #29.
+
+**The session before, 2026-09-16, U63 (#85) on `relay/85`, unattended.** The outbound
 account seam is bound. `modules.outbound.tidal_account.TidalAccount` implements
 the six add only `RemoteAccount` members over U62's `client_session`, imports
 nothing vendored, and pages through `acquire.listing`. `account.resolve` refuses
@@ -61,7 +83,7 @@ outcome is owed to the ledger. Seven findings are filed, R-343 to R-349.
 **THE BOARD IS COMPLETE AND THE PRODUCT CANNOT SYNC.** `docs/cutover.md` says
 why in one section: R-258 and R-226 are unbound adapter seams and the playlists
 source has no listing, so nothing in the product lists Tidal. That was the
-remaining build, on the board as U62 (#84), U63 (#85) and U64 (#86), with #29 declared dependent on all three. U62 and U63 have since landed their agent halves, and R-355 means the account half matches nothing live yet. R-9's real backup run outcome is owed to the ledger; the job id is in that entry. Do not take #29.
+remaining build, on the board as U62 (#84), U63 (#85) and U64 (#86), with #29 declared dependent on all three. U62, U63 and U64 have since landed their agent halves, R-355 means the account half matches nothing live yet, and R-358 means a playlist Cratekit sweeps is not marked on the account. R-9's real backup run outcome is owed to the ledger; the job id is in that entry. Do not take #29.
 
 **The session before, 2026-09-11, U25 on `unit/u25-vocal-restamp-and-my-tags-shells`.**
 The two remaining vocal CLI shells landed. `cratekit.vocals.cli` queues

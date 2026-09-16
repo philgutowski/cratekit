@@ -6,7 +6,9 @@ record of how far a source got, not a floor the next increment filters by.
 **THE PLAYLISTS CURSOR IS A SET, NOT A POSITION (U64).** A labels increment has
 a newest item and a cursor naming it. A playlists sweep does not: each account
 playlist is swept once, in no order, and what the next pass needs is WHICH
-playlists completed. ``swept`` holds those provider identifiers. It is optional
+playlists completed. ``swept`` holds those provider identifiers, and it is the
+one record a later pass does filter by: ``sync.playlists`` excludes those ids.
+It is an exclusion by identity, never a date floor. It is optional
 on every record, so a document written before it existed still reads, and it is
 written only when it has something in it. It never holds a title (D5).
 """

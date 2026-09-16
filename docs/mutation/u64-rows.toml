@@ -1,0 +1,271 @@
+name = "u64-driver"
+pass_kind = "light"
+
+[[rows]]
+id = "X1_swept_prefix"
+description = "Drop the swept prefix exclusion"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''    if is_swept_name(playlist.name):
+        return Excluded.SWEPT
+'''
+new = ""
+
+[[rows]]
+id = "X2_prefix_case"
+description = "Match the swept prefix case insensitively"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''return str(name or "").startswith(SWEPT_PREFIX)'''
+new = '''return str(name or "").lower().startswith(SWEPT_PREFIX.lower().strip())'''
+
+[[rows]]
+id = "X3_recorded"
+description = "Drop the recorded identifier exclusion"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''    if playlist.playlist_id in recorded:
+        return Excluded.RECORDED
+'''
+new = ""
+
+[[rows]]
+id = "X4_recorded_by_title"
+description = "Key the recorded exclusion on the title rather than the identifier"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''    if playlist.playlist_id in recorded:'''
+new = '''    if playlist.name in recorded:'''
+
+[[rows]]
+id = "X5_placeholder"
+description = "Drop the favourites placeholder exclusion"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''    if placeholders.is_placeholder(playlist.name):
+        return Excluded.PLACEHOLDER
+'''
+new = ""
+
+[[rows]]
+id = "X6_backlog"
+description = "Drop the undated backlog from the placeholder pattern"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''r"(?:\d{4}-Q[1-4]|" + re.escape(BACKLOG) + r")"'''
+new = '''r"(?:\d{4}-Q[1-4])"'''
+
+[[rows]]
+id = "X7_placeholder_prefix_match"
+description = "Match a placeholder by leading match rather than the whole name"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''PLACEHOLDER_NAME.fullmatch(str(name or ""))'''
+new = '''PLACEHOLDER_NAME.match(str(name or ""))'''
+
+[[rows]]
+id = "X8_in_flight"
+description = "Drop the in flight exclusion"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''    if playlist.playlist_id in in_flight:
+        return Excluded.IN_FLIGHT
+'''
+new = ""
+
+[[rows]]
+id = "X9_counted_empty"
+description = "Drop the exclusion of a playlist the listing counts as empty"
+file = "src/cratekit/sync/playlists.py"
+surface = "maintainer"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''    if playlist.tracks == 0:
+        return Excluded.EMPTY
+'''
+new = ""
+
+[[rows]]
+id = "X10_listed_empty"
+description = "Queue a playlist whose tracks come back empty"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''        if not tracks:
+            # THE COUNT WAS UNKNOWN OR STALE, and the listing is what answers.
+            sweep.excluded[playlist.playlist_id] = Excluded.EMPTY
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "X11_unreadable_raises"
+description = "End the source on a single unreadable playlist"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''            if exc.cause.reason not in PER_PLAYLIST_REASONS:'''
+new = '''            if True:'''
+
+[[rows]]
+id = "C1_source_filter"
+description = "Count a hand queued intake playlist job as this source's"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''        and (job.payload or {}).get("source_id") == SOURCE_ID
+'''
+new = ""
+
+[[rows]]
+id = "C2_library_filter"
+description = "Count another library's jobs as this library's"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''        and job.library_id == cfg.library.volume_id
+'''
+new = ""
+
+[[rows]]
+id = "C3_handler_filter"
+description = "Drop the handler key filter on this source's jobs"
+file = "src/cratekit/sync/playlists.py"
+surface = "maintainer"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''        if job.handler_key == handler_key
+        and'''
+new = '''        if'''
+
+[[rows]]
+id = "C4_terminal_is_clean"
+description = "Record a playlist whose job reached any terminal state"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''        if job.state == jobs.JobState.SUCCEEDED and identity and identity not in seen:'''
+new = '''        if job.state in jobs.TERMINAL_STATES and identity and identity not in seen:'''
+
+[[rows]]
+id = "C5_queued_is_clean"
+description = "Record a playlist as soon as its job exists"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''        if job.state == jobs.JobState.SUCCEEDED and identity and identity not in seen:'''
+new = '''        if identity and identity not in seen:'''
+
+[[rows]]
+id = "C6_every_job_open"
+description = "Treat a finished job as still in flight"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''_playlist_of(job) for job in found if job.is_open() and _playlist_of(job)'''
+new = '''_playlist_of(job) for job in found if _playlist_of(job)'''
+
+[[rows]]
+id = "C7_no_reconcile"
+description = "Skip reconciling the cursor before a pass lists"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''    recorded_now = reconcile(store, cfg, handler_key=handler_key)'''
+new = '''    recorded_now = ()'''
+
+[[rows]]
+id = "C8_source_id_unset"
+description = "Queue the playlist jobs without the source identifier"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''                source_id=SOURCE_ID,'''
+new = '''                source_id=None,'''
+
+[[rows]]
+id = "W1_empty_records"
+description = "Rewrite the record when there is nothing to record"
+file = "src/cratekit/sync/watermarks.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''            if not wanted:
+                return existing
+'''
+new = '''            if not wanted and existing is not None:
+                wanted = [existing.cursor]
+            elif not wanted:
+                wanted = ["none"]
+'''
+
+[[rows]]
+id = "W2_union"
+description = "Replace the swept set rather than union it"
+file = "src/cratekit/sync/watermarks.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''            merged = list(existing.swept) if existing is not None else []'''
+new = '''            merged = []'''
+
+[[rows]]
+id = "W3_swept_validation"
+description = "Accept a swept list that is not identifiers"
+file = "src/cratekit/sync/watermarks.py"
+surface = "maintainer"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''            if not isinstance(swept, list) or not all(
+                isinstance(identity, str) and identity for identity in swept
+            ):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "W4_write_empty_swept"
+description = "Write an empty swept list on every record"
+file = "src/cratekit/sync/watermarks.py"
+surface = "maintainer"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''        if self.swept:
+            record["swept"] = list(self.swept)'''
+new = '''        record["swept"] = list(self.swept)'''
+
+[[rows]]
+id = "A1_creator_filter"
+description = "Keep followed playlists in the account listing"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''            if creator != user_id or not identity:'''
+new = '''            if not identity:'''
+
+[[rows]]
+id = "A2_unknown_account"
+description = "Read an account the client cannot name as owning nothing"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if not user_id:
+            raise LookupError('''
+new = '''        if not user_id:
+            return ()
+            raise LookupError('''
+
+[[dropped]]
+id = "D1_listing_failure_refusal"
+description = "Return an empty listing when account_playlists raises"
+reason = "ranked below the cap: the R-135 refusal is driven by test_an_account_listing_that_fails_is_a_refusal_not_an_empty_account, and the exclusion and cursor rows were the brief's named scope"
+
+[[dropped]]
+id = "D2_partial_filed_report"
+description = "Report only the last job when a later playlist refuses at queue time"
+reason = "ranked below the cap: composer reporting, not an exclusion or the cursor"
+
+[[dropped]]
+id = "D3_nothing_new_warnings"
+description = "Drop the unreadable warning on a pass that queued nothing"
+reason = "ranked below the cap: a warning line, maintainer facing in its effect on the report"

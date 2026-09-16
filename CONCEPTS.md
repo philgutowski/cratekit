@@ -534,7 +534,21 @@ actually processed items. A listing that failed entirely is not an empty
 catalogue, and it does not write one. Status reads the record. Restore replaces
 the coupled file. Scope does not read it.
 
+The one exception is the playlists source's record, which is a set rather than a
+position: its `swept` list holds the provider ids of playlists whose intake job
+succeeded, and the next pass excludes those ids. It is still never a date floor
+and never a title.
+
 *Avoid:* treating this as the deletion watermark, or as a date floor.
+
+### Swept playlist
+An account playlist the playlists source will not queue again: its name carries
+the source system's `DOWNLOADED ` prefix, or its id is in the playlists record
+because a job this source queued for it SUCCEEDED for this library. Queued is not
+swept, and in this build swept means every track was resolved against the library,
+not that any was acquired (R-359).
+
+*Avoid:* reading swept as downloaded, or deciding it from a title.
 
 ### Owned dedup
 The sync scope rule: take the newest N items the source listed, then drop any
