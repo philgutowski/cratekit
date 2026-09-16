@@ -1,0 +1,26 @@
+name = "r83-round-2"
+pass_kind = "light"
+
+[[rows]]
+id = "I1_fold_case"
+description = "R-344, after fix round 1: normalize_identity strips but no longer folds the case"
+file = "src/cratekit/core/preflight.py"
+surface = "user"
+old = '''    return identity.strip().lower()'''
+new = '''    return identity.strip()'''
+
+[[rows]]
+id = "I3_configured_compare_exact"
+description = "R-344, after fix round 1: the configured mount's compare goes back to exact equality"
+file = "src/cratekit/core/preflight.py"
+surface = "user"
+old = '''    if same_identity(recorded_identity, observed):'''
+new = '''    if observed == recorded_identity:'''
+
+[[rows]]
+id = "I4_elsewhere_compare_exact"
+description = "R-344, after fix round 1: the mounted elsewhere sweep's compare goes back to exact equality, the round 1 zero"
+file = "src/cratekit/core/preflight.py"
+surface = "user"
+old = '''        if found is not None and same_identity(recorded_identity, found):'''
+new = '''        if found == recorded_identity:'''

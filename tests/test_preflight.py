@@ -453,6 +453,17 @@ def test_the_precondition_has_no_default_library_root():
 # R-344: the case of a spelling is not part of an identity
 # ═══════════════════════════════════════════════════════════════════════════
 
+#: Hex with LETTERS in it, unlike ``RECORDED``. An all digit identity is its own
+#: uppercase, so a case fold asserted over one is X equals X, and the first
+#: mutation table over these tests measured exactly that as a zero.
+LETTERED = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+OTHER_LETTERED = "fedcba98-7654-4321-8fed-cba987654321"
+
+
+def test_the_case_fold_fixtures_can_tell_a_fold_from_no_fold():
+    assert LETTERED.upper() != LETTERED
+    assert OTHER_LETTERED.upper() != OTHER_LETTERED
+
 
 def test_an_identity_recorded_in_uppercase_matches_the_lowercase_the_kernel_reports(tmp_path):
     """``diskutil info`` prints the UUID in uppercase and ``getattrlist`` reads it
@@ -462,8 +473,8 @@ def test_an_identity_recorded_in_uppercase_matches_the_lowercase_the_kernel_repo
     mount = containing_mount(tmp_path)
     status = resolve_mount_state(
         tmp_path,
-        RECORDED.upper(),
-        identity_provider=fake_identity({mount: RECORDED}),
+        LETTERED.upper(),
+        identity_provider=fake_identity({mount: LETTERED}),
         mount_enumerator=fake_mounts(),
     )
     assert status.state is MountState.OK
@@ -476,9 +487,9 @@ def test_an_identity_in_another_case_is_still_found_where_it_is_mounted(tmp_path
     elsewhere = tmp_path / "elsewhere"
     status = resolve_mount_state(
         configured,
-        RECORDED.upper(),
+        LETTERED.upper(),
         identity_provider=fake_identity(
-            {containing_mount(configured): FOREIGN, elsewhere: RECORDED}
+            {containing_mount(configured): OTHER_LETTERED, elsewhere: LETTERED}
         ),
         mount_enumerator=fake_mounts(elsewhere),
     )
@@ -490,8 +501,8 @@ def test_folding_the_case_does_not_make_a_different_volume_the_same_one(tmp_path
     """The other half. A fold that also matched a different UUID is no identity."""
     status = resolve_mount_state(
         tmp_path,
-        RECORDED.upper(),
-        identity_provider=fake_identity({containing_mount(tmp_path): FOREIGN.upper()}),
+        LETTERED.upper(),
+        identity_provider=fake_identity({containing_mount(tmp_path): OTHER_LETTERED.upper()}),
         mount_enumerator=fake_mounts(),
     )
     assert status.state is MountState.FOREIGN_VOLUME
