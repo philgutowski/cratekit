@@ -1,0 +1,294 @@
+name = "u63-driver"
+pass_kind = "light"
+
+# U63 binds the outbound account adapter, which WRITES to a person's streaming
+# account, so the table is the full 25 rows. The brief scopes it to matching,
+# idempotence and the one read rule; the review round added the add answer check,
+# the 400 reading and the dropped account, so those are here too. Every row names
+# its subset. The batch name is `u63-driver` so an attended driver run writes
+# `u63-driver.md` beside the hand record `u63.md` rather than over it.
+
+# ---------------------------------------------------------------------------
+# Matching
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "M1_isrc_ambiguity_takes_first"
+description = "An ISRC naming two tracks returns the lowest id instead of None"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''                if len(distinct) > 1:
+                    return None'''
+new = '''                if len(distinct) > 1:
+                    return sorted(distinct)[0]'''
+
+[[rows]]
+id = "M2_bare_number_is_a_reference"
+description = "A bare number is read as a provider track id"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''    parts = urlsplit(str(identity or "").strip())
+    if parts.scheme not in {"http", "https"}:'''
+new = '''    parts = urlsplit(str(identity or "").strip())
+    if _TRACK_ID.fullmatch(str(identity or "").strip()):
+        return str(identity).strip()
+    if parts.scheme not in {"http", "https"}:'''
+
+[[rows]]
+id = "M3_any_host"
+description = "A track URL on any host is a reference"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''    if (parts.hostname or "").lower() not in TRACK_HOSTS:
+        return None'''
+new = '''    if False:
+        return None'''
+
+[[rows]]
+id = "M4_any_resource_kind"
+description = "Any path segment before the id is accepted, album as well as track"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''segments[-2] == "track" and'''
+new = '''segments[-2] != "" and'''
+
+[[rows]]
+id = "M5_resolved_id_not_compared"
+description = "The looked up track is trusted without comparing its id to the reference"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''        return resolved if resolved == reference else None'''
+new = '''        return reference'''
+
+[[rows]]
+id = "M6_not_found_name_layer_removed"
+description = "Remove the NOT_FOUND_NAMES layer alone; classify_unavailable still reads NotFound"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "maintainer"
+old = '''    if type(exc).__name__ in NOT_FOUND_NAMES:
+        return True'''
+new = '''    if False:
+        return True'''
+
+[[rows]]
+id = "M7_not_found_retried_and_raised"
+description = "An explicit not found is re-raised into the retry instead of returned as absent"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''                if _not_found(exc):
+                    return _ABSENT
+                raise'''
+new = '''                raise'''
+
+# ---------------------------------------------------------------------------
+# The one read rule and idempotence
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "R1_favourites_read_per_question"
+description = "The favourites are read again for every has_heart"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''        if self._hearts is None:'''
+new = '''        if True:'''
+
+[[rows]]
+id = "R2_heart_written_without_check"
+description = "add_heart writes a heart the account already holds"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''        if identifier in hearts:
+            return'''
+new = '''        if False:
+            return'''
+
+[[rows]]
+id = "R3_false_heart_accepted"
+description = "A heart the client answers False is recorded as held"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''        if accepted is False or accepted is _ABSENT:'''
+new = '''        if accepted is _ABSENT:'''
+
+[[rows]]
+id = "R4_member_written_without_check"
+description = "add_to_playlist writes a track the playlist already holds"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''        members = self._membership(playlist_id)
+        if identifier in members:
+            return'''
+new = '''        members = self._membership(playlist_id)
+        if False:
+            return'''
+
+[[rows]]
+id = "R5_membership_read_per_call"
+description = "The playlist membership is read again on every call"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "maintainer"
+old = '''        if playlist_id not in self._members:'''
+new = '''        if True:'''
+
+[[rows]]
+id = "R6_add_answer_trusted"
+description = "An add the client answers without naming the track is recorded as a member"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''        if identifier not in {str(item) for item in added or ()}:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "R7_deleted_playlist_not_named"
+description = "Drop the absent answer check on an add"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''        if added is _ABSENT:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "R8_created_id_not_returned"
+description = "create_playlist returns the name instead of the assigned identifier"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''        self._members[identifier] = []
+        return identifier'''
+new = '''        self._members[identifier] = []
+        return name'''
+
+# ---------------------------------------------------------------------------
+# Retries and failure translation
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "F1_two_retries"
+description = "A write is retried twice rather than once (coefficient)"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''WRITE_RETRIES = 1'''
+new = '''WRITE_RETRIES = 2'''
+
+[[rows]]
+id = "F2_no_retry"
+description = "A write is not retried at all (coefficient)"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''WRITE_RETRIES = 1'''
+new = '''WRITE_RETRIES = 0'''
+
+[[rows]]
+id = "F3_create_retried"
+description = "A playlist create is retried once"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+surface = "user"
+old = '''            retries=0,'''
+new = '''            retries=1,'''
+
+[[rows]]
+id = "F4_bad_request_is_rejected_session"
+description = "A 400 after login is read as a rejected session"
+file = "src/cratekit/modules/outbound/account.py"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''SESSION_REFUSED_STATUSES = frozenset({401, 403})'''
+new = '''SESSION_REFUSED_STATUSES = frozenset({400, 401, 403})'''
+
+[[rows]]
+id = "F5_rejected_session_kept"
+description = "A rejected session mid run does not drop the held account"
+file = "src/cratekit/modules/outbound/account.py"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''        # the process, and a login made meanwhile is picked up.
+        forget()'''
+new = '''        # the process, and a login made meanwhile is picked up.
+        pass'''
+
+[[rows]]
+id = "F6_provider_failure_at_run_scope"
+description = "A transient provider failure condemns the run instead of the item"
+file = "src/cratekit/modules/outbound/account.py"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''        f"the job to retry this item",
+        remedy=Remedy.RETRY_LATER,
+        scope=Scope.ITEM,'''
+new = '''        f"the job to retry this item",
+        remedy=Remedy.RETRY_LATER,
+        scope=Scope.RUN,'''
+
+[[rows]]
+id = "F7_cause_chain_not_walked"
+description = "The session refusal reads only the outer exception"
+file = "src/cratekit/modules/outbound/account.py"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''        seen = seen.__cause__
+    return False
+
+
+def provider_failure('''
+new = '''        seen = None
+    return False
+
+
+def provider_failure('''
+
+# ---------------------------------------------------------------------------
+# The seam
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "S1_no_process_cache"
+description = "resolve opens a new adapter, and logs in, on every call"
+file = "src/cratekit/modules/outbound/account.py"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''    if _OPENED is not None:
+        return _OPENED'''
+new = '''    if False:
+        return _OPENED'''
+
+[[rows]]
+id = "S2_bound_constant_true"
+description = "bound answers True whether or not the adapter imports"
+file = "src/cratekit/modules/outbound/account.py"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''    except ImportError:
+        return False
+    return True'''
+new = '''    except ImportError:
+        return True
+    return True'''
+
+[[rows]]
+id = "S3_login_outage_as_credential"
+description = "A login that could not be asked is reported as a credential problem"
+file = "src/cratekit/modules/outbound/account.py"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''    except ProviderUnavailable as exc:
+        raise refuse(
+            "unavailable-transient",'''
+new = '''    except ProviderUnavailable as exc:
+        raise refuse(
+            "credential-missing",'''

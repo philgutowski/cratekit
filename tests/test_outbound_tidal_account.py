@@ -341,6 +341,30 @@ def test_a_reference_to_a_track_the_provider_lacks_is_no_match():
     assert client.track_asked == ["9"]
 
 
+def test_a_reference_the_provider_answers_with_another_track_is_no_match():
+    """A lookup that lands on a different identifier is a redirect, not the track."""
+    client = FakeClient(tracks={"9"})
+    client.track = lambda track_id: Track("10")
+    assert adapter(client).match_track(identity="https://tidal.com/track/9") is None
+
+
+class InvalidISRC(Exception):
+    """Named as the client names an ISRC it will not accept."""
+
+
+def test_an_isrc_the_provider_will_not_accept_is_no_match_and_is_not_retried():
+    client = FakeClient()
+    asked: list[str] = []
+
+    def refuse_isrc(isrc: str):
+        asked.append(isrc)
+        raise InvalidISRC(isrc)
+
+    client.get_tracks_by_isrc = refuse_isrc
+    assert adapter(client).match_track(identity="1", isrc="bad") is None
+    assert asked == ["bad"]
+
+
 def test_a_row_with_neither_an_isrc_nor_a_reference_asks_the_provider_nothing():
     client = FakeClient(isrcs={"AA0000000001": ["101"]})
     assert adapter(client).match_track(identity="1", isrc="") is None
@@ -436,6 +460,21 @@ def test_a_rejected_session_mid_sweep_asks_for_a_login_at_item_scope():
 
     assert excinfo.value.cause.reason == "credential-missing"
     assert excinfo.value.cause.scope is Scope.ITEM
+
+
+def test_a_rejection_the_client_rewraps_is_still_read_as_a_rejected_session():
+    client = FakeClient()
+    try:
+        raise HTTPFailure(401)
+    except HTTPFailure as inner:
+        wrapped = RuntimeError("the client's own error")
+        wrapped.__cause__ = inner
+    client.user.favorites.fail = [wrapped, wrapped]
+
+    with pytest.raises(CratekitError) as excinfo:
+        adapter(client).add_heart("8")
+
+    assert excinfo.value.cause.reason == "credential-missing"
 
 
 def test_a_heart_the_client_answers_false_is_not_recorded_as_held():
