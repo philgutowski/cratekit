@@ -255,8 +255,16 @@ def raise_if_session_dead(exc: BaseException) -> None:
     heuristic belongs to code whose upstream is gone, so a local narrowing is a
     patch to re-apply forever, while an ordering is a property of our own call.
     """
-    from cratekit.acquire.adapter import TrackOutcome, classify_unavailable  # noqa: PLC0415
+    from cratekit.acquire.adapter import (  # noqa: PLC0415
+        TrackOutcome,
+        classify_unavailable,
+        raise_if_defect,
+    )
 
+    # A defect first, because the authentication heuristic below matches the
+    # word "token" anywhere, and ``'NoneType' object has no attribute 'token'``
+    # is a bug in code, not a dead session (R-348).
+    raise_if_defect(exc)
     if classify_unavailable(exc) is TrackOutcome.UNAVAILABLE_PERMANENT:
         return
     if is_authentication_failure(exc):

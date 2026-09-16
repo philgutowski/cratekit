@@ -1926,3 +1926,110 @@ def test_the_logger_handed_to_the_vendored_tool_has_every_method_the_tool_calls(
     assert callable(logger), "the tool's annotation promises a callable"
     assert logger("also fine as a call") is None
 
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-348: a Python error class no provider raises is a defect, not an outage
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: The message the first real download produced, verbatim.
+FIRST_REAL_DEFECT = "'function' object has no attribute 'info'"
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        AttributeError(FIRST_REAL_DEFECT),
+        TypeError("item() got an unexpected keyword argument 'quality'"),
+        NameError("name 'track' is not defined"),
+        UnboundLocalError("cannot access local variable 'path'"),
+    ],
+    ids=lambda exc: type(exc).__name__,
+)
+def test_a_defect_raised_during_a_lookup_breaks_the_adapter_and_asks_for_a_report(
+    adapter_name, settings, stored_session, defect
+):
+    """Driven through the loop, not asked of the classifier alone.
+
+    Classified transient it was retryable forever. As an invocation failure it
+    stops the run, names the remedy that can actually change the answer, and
+    keeps every track that did not land queued, including the ones never reached.
+    """
+    source = Scripted(
+        plan={"landed": Offer(lossless=True), "broken": defect, "unreached": Offer(lossless=True)}
+    )
+    result = registry.build(adapter_name, settings, source=source).acquire(
+        [TrackRequest(key="landed"), TrackRequest(key="broken"), TrackRequest(key="unreached")]
+    )
+
+    assert result.outcome is InvocationOutcome.ADAPTER_BROKEN
+    assert result.remedy is Remedy.REPORT_DEFECT
+    assert type(defect).__name__ in result.detail
+    assert result.requeue_keys() == ("broken", "unreached")
+    assert all(r.outcome is not TrackOutcome.UNAVAILABLE_TRANSIENT for r in result.results)
+
+
+def test_a_defect_raised_during_a_download_breaks_the_adapter_the_same_way(
+    settings, stored_session
+):
+    """The fetch half of the same rule. Two halves with two rules is how the
+    source system's two call sites disagreed.
+    """
+    source = Scripted(
+        plan={"a": Offer(lossless=True)},
+        fetch_failures={"a": AttributeError(FIRST_REAL_DEFECT)},
+    )
+    result = vendored.VendoredAdapter(settings, source=source).acquire([TrackRequest(key="a")])
+
+    assert result.outcome is InvocationOutcome.ADAPTER_BROKEN
+    assert result.remedy is Remedy.REPORT_DEFECT
+
+
+def test_a_defect_stops_the_paced_pool_rather_than_being_retried(settings):
+    """The download verb runs the pool, not the sequential loop, and the first
+    real defect arrived through it.
+    """
+    from cratekit.acquire.download import Pacing, acquire_concurrently
+
+    source = Scripted(
+        plan={"a": Offer(lossless=True)},
+        fetch_failures={"a": AttributeError(FIRST_REAL_DEFECT)},
+    )
+    run = acquire_concurrently(
+        adapter="fake",
+        source=source,
+        requests=[TrackRequest(key="a")],
+        settings=settings,
+        pacing=Pacing(base_delay_s=0.0),
+        sleep=lambda _s: None,
+    )
+
+    assert run.invocation.outcome is InvocationOutcome.ADAPTER_BROKEN
+    assert run.invocation.remedy is Remedy.REPORT_DEFECT
+    assert run.invocation.requeue_keys() == ("a",)
+
+
+def test_an_ordinary_provider_error_is_still_transient_and_retryable(settings, stored_session):
+    """The other half. A guard that also caught the unknown provider error would
+    turn every flaky response into a stopped run.
+    """
+    source = Scripted(plan={"a": RuntimeError("connection reset by peer")})
+    result = vendored.VendoredAdapter(settings, source=source).acquire([TrackRequest(key="a")])
+
+    assert result.outcome is InvocationOutcome.OK
+    assert result.results[0].outcome is TrackOutcome.UNAVAILABLE_TRANSIENT
+    assert result.results[0].remedy is Remedy.RETRY_LATER
+
+
+def test_the_vendored_source_reads_a_defect_naming_a_token_as_a_defect(settings, tmp_path):
+    """The authentication heuristic matches "token" anywhere, so a defect that
+    names a ``token`` attribute was one step from being read as a dead session
+    and sending the person to log in again.
+    """
+    session = _ToolSession({"x": AttributeError("'NoneType' object has no attribute 'token'")})
+    source = vendored._VendoredSource(settings, tmp_path / "token.json", session=session)
+
+    with pytest.raises(AdapterBroken) as caught:
+        source.offer(TrackRequest(key="x"))
+    assert not isinstance(caught.value, AdapterAuthFailed)
+    assert caught.value.remedy is Remedy.REPORT_DEFECT
