@@ -34,6 +34,7 @@ Layer: modules.
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Mapping
 from typing import Any, Protocol
 
@@ -42,6 +43,13 @@ from cratekit.core import config, secrets
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.label import registry
+
+#: The module that implements :class:`Catalogue`. Imported by NAME through
+#: ``importlib`` rather than by a ``from`` import, because a ``from`` import
+#: answers from the package attribute once the module has loaded anywhere in the
+#: process, and would then say the adapter imports in a build that has just been
+#: told it does not.
+ADAPTER_MODULE = "cratekit.label.tidal_catalogue"
 
 
 class Catalogue(Protocol):
@@ -117,7 +125,7 @@ def bound() -> bool:
     U62 it returned a constant ``False``.
     """
     try:
-        import cratekit.label.tidal_catalogue  # noqa: F401, PLC0415 - the question asked
+        importlib.import_module(ADAPTER_MODULE)
     except ImportError:
         return False
     return True
@@ -170,7 +178,7 @@ def resolve(cfg: config.Config) -> Catalogue:
             detail={"credential": str(secrets.Credential.PROVIDER_SESSION)},
         )
     try:
-        from cratekit.label import tidal_catalogue  # noqa: PLC0415 - see bound()
+        tidal_catalogue = importlib.import_module(ADAPTER_MODULE)
     except ImportError as exc:
         raise _unbound(exc) from exc
     try:
@@ -187,4 +195,4 @@ def resolve(cfg: config.Config) -> Catalogue:
         ) from exc
 
 
-__all__ = ["Catalogue", "bound", "resolve"]
+__all__ = ["ADAPTER_MODULE", "Catalogue", "bound", "resolve"]
