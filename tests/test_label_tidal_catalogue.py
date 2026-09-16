@@ -228,10 +228,44 @@ def test_with_no_session_the_seam_still_refuses_the_credential_and_builds_no_cli
     assert client.logins == []
 
 
+class Response:
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+
+
+class HTTPFailure(Exception):
+    """The client's HTTP error, carrying the response the way the real one does."""
+
+    def __init__(self, status_code: int) -> None:
+        super().__init__(f"{status_code} response")
+        self.response = Response(status_code)
+
+
+class AuthenticationError(Exception):
+    """Named as the provider client names its own authentication failure."""
+
+
+def _wrapped(inner: Exception) -> Exception:
+    try:
+        try:
+            raise inner
+        except Exception as exc:
+            raise RuntimeError("client re-raised") from exc
+    except RuntimeError as outer:
+        return outer
+
+
 @pytest.mark.parametrize(
     "client",
-    [FakeClient(accept=False), FakeClient(raises=RuntimeError("401"))],
-    ids=["refused", "raised"],
+    [
+        FakeClient(accept=False),
+        FakeClient(raises=HTTPFailure(401)),
+        FakeClient(raises=HTTPFailure(403)),
+        FakeClient(raises=HTTPFailure(400)),
+        FakeClient(raises=AuthenticationError("expired")),
+        FakeClient(raises=_wrapped(HTTPFailure(401))),
+    ],
+    ids=["refused", "401", "403", "400", "client-auth-error", "chained-401"],
 )
 def test_a_session_the_provider_rejects_asks_for_a_new_login_not_a_first_one(
     cfg, monkeypatch, client
@@ -246,6 +280,25 @@ def test_a_session_the_provider_rejects_asks_for_a_new_login_not_a_first_one(
     cause = excinfo.value.cause
     assert cause.reason == "credential-missing"
     assert cause.remediation.remedy == Remedy.REAUTHENTICATE_PROVIDER
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [ConnectionError("refused"), TimeoutError("slow"), HTTPFailure(503), ValueError("not json")],
+    ids=["connection", "timeout", "server-error", "unparseable-page"],
+)
+def test_a_provider_that_cannot_be_reached_is_a_wait_not_a_new_login(cfg, monkeypatch, failure):
+    """Review finding: an outage told the person to log in again with a good session."""
+    use_client(monkeypatch, FakeClient(raises=failure))
+    record_session()
+
+    with pytest.raises(CratekitError) as excinfo:
+        catalogue.resolve(cfg)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "unavailable-transient"
+    assert cause.remediation.remedy == Remedy.RETRY_LATER
+    assert secrets.get_json(secrets.Credential.PROVIDER_SESSION) == STORED
 
 
 def test_a_stored_blob_with_no_access_token_never_reaches_the_provider(cfg, monkeypatch):
@@ -266,7 +319,7 @@ def test_a_refresh_during_login_is_written_back_to_the_keychain(monkeypatch):
         def load_oauth_session(self, *args, **kwargs):
             accepted = super().load_oauth_session(*args, **kwargs)
             self.access_token = "FAKE-value-3"
-            self.expiry_time = datetime(2031, 1, 1, tzinfo=timezone.utc)
+            self.expiry_time = datetime(2031, 1, 1)  # the client's naive UTC
             return accepted
 
     use_client(monkeypatch, Refreshing())
@@ -431,6 +484,30 @@ def test_a_seed_that_does_not_resolve_refuses_the_label_rather_than_narrowing_it
     with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
         adapter.artist_for(entry)
     assert "Gone Act" in str(excinfo.value)
+
+
+def test_two_artists_named_exactly_the_label_refuse_rather_than_guess():
+    """Review finding: the first exact hit could be an unrelated act of one name."""
+    twin = ProviderArtist("Harbour Lights", [Release("x1")])
+    twin.id = "2"
+    first = ProviderArtist("Harbour Lights", [Release("r1")])
+    first.id = "1"
+    adapter = tidal_catalogue.TidalCatalogue(FakeClient(artists=[first, twin]))
+    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
+        adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+    assert "2 provider artists" in str(excinfo.value)
+
+
+def test_the_roster_lists_once_when_it_is_built_and_the_crawl_reads_memory():
+    """Review finding: a lazy listing ran a retry ladder inside the crawl's own."""
+    artist = ProviderArtist("Harbour Lights", [Release("r1")], [Release("s1")])
+    adapter = tidal_catalogue.TidalCatalogue(FakeClient(artists=[artist]))
+    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+    listed = list(artist.asked)
+    assert {call[0] for call in listed} == {"get_albums", "get_ep_singles"}
+
+    assert [release.id for release in listing.artist_releases(roster)] == ["r1", "s1"]
+    assert artist.asked == listed, "the crawl reached the provider again"
 
 
 def test_a_near_name_is_not_the_label():

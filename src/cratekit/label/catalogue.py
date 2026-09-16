@@ -39,6 +39,7 @@ from collections.abc import Mapping
 from typing import Any, Protocol
 
 from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken
+from cratekit.acquire.provider_session import ProviderUnavailable
 from cratekit.core import config, secrets
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
@@ -158,7 +159,8 @@ def _unbound(exc: BaseException) -> Exception:
 def resolve(cfg: config.Config) -> Catalogue:
     """The catalogue this library's label reads go through, or why there is none.
 
-    THREE REFUSALS, EACH UNDONE BY A DIFFERENT ACT. A missing credential is the
+    FOUR REFUSALS, EACH UNDONE BY A DIFFERENT ACT. A provider that could not be
+    reached is a wait, and the stored session is kept because nobody judged it. A missing credential is the
     person's to record and doctor already says how. A stored session the
     provider rejects, or a keychain that cannot be read, is the same slug with
     the remedy the session module chose, because a person told only that a
@@ -183,6 +185,15 @@ def resolve(cfg: config.Config) -> Catalogue:
         raise _unbound(exc) from exc
     try:
         return tidal_catalogue.open_catalogue()
+    except ProviderUnavailable as exc:
+        raise refuse(
+            "unavailable-transient",
+            f"the streaming provider could not be reached to open the catalogue "
+            f"({exc}); the stored session was not judged and is kept",
+            remedy=Remedy.RETRY_LATER,
+            scope=Scope.RUN,
+            origin=("label", "catalogue"),
+        ) from exc
     except (AdapterAuthFailed, AdapterBroken) as exc:
         raise refuse(
             "credential-missing",

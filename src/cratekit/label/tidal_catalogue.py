@@ -72,7 +72,11 @@ class PlaylistUnresolvable(LookupError):
 
 
 class LabelUnresolvable(LookupError):
-    """A favourite label none of whose names, or one of whose seeds, resolved."""
+    """A favourite label none of whose names, or one of whose seeds, resolved.
+
+    Also raised for a name more than one provider artist carries exactly, since
+    picking one of them is a guess.
+    """
 
 
 def playlist_id(reference: str) -> str:
@@ -114,35 +118,38 @@ class LabelRoster:
     ``Catalogue.artist_for`` hands ``crawl.releases`` ONE object, and a label on
     the provider is a roster: the label's own artist page when it has one, plus
     the seed artists the registry names. This presents the roster in the shape
-    ``listing.artist_releases`` pages, and each method serves slices of a list
-    that was itself read through ``listing``, so the wrapper's short page rule
-    ends the outer read and no page is ever fetched here by hand.
+    ``listing.artist_releases`` pages.
+
+    THE LISTING HAPPENS HERE, ONCE, AT CONSTRUCTION, and the two methods serve
+    slices of what it read. Listing lazily inside a method the crawl pages would
+    run a whole retry ladder inside each attempt of the crawl's own ladder, so
+    one failure that does not clear would be retried dozens of times and every
+    retry would list every artist from the start. Built eagerly, a failure
+    raises out of ``artist_for``, which is where a sweep already turns a foreign
+    exception into its refusal, and the crawl pages memory that cannot fail.
     """
 
     def __init__(self, artists: list[Any]) -> None:
         self.artists = list(artists)
-        self._listed: dict[str, list[Any]] = {}
+        self._listed = {method: self._list(method) for method in listing.RELEASE_METHODS}
 
-    def _all(self, method: str) -> list[Any]:
-        held = self._listed.get(method)
-        if held is None:
-            held = []
-            seen: set[str] = set()
-            for artist in self.artists:
-                for release in listing.artist_releases(artist, methods=(method,)):
-                    identity = str(getattr(release, "id", "") or "")
-                    if identity and identity in seen:
-                        continue
-                    seen.add(identity)
-                    held.append(release)
-            self._listed[method] = held
+    def _list(self, method: str) -> list[Any]:
+        held: list[Any] = []
+        seen: set[str] = set()
+        for artist in self.artists:
+            for release in listing.artist_releases(artist, methods=(method,)):
+                identity = str(getattr(release, "id", "") or "")
+                if identity and identity in seen:
+                    continue
+                seen.add(identity)
+                held.append(release)
         return held
 
     def get_albums(self, limit: int, offset: int = 0) -> list[Any]:
-        return self._all("get_albums")[offset : offset + limit]
+        return self._listed["get_albums"][offset : offset + limit]
 
     def get_ep_singles(self, limit: int, offset: int = 0) -> list[Any]:
-        return self._all("get_ep_singles")[offset : offset + limit]
+        return self._listed["get_ep_singles"][offset : offset + limit]
 
 
 def _results(found: Any, key: str) -> list[Any]:
@@ -165,12 +172,18 @@ class TidalCatalogue:
         self._session = session
 
     def _artist_named(self, name: str) -> Any | None:
-        """The artist whose name folds to exactly ``name``, or ``None``.
+        """The one artist whose name folds to exactly ``name``, or ``None``.
 
         ``None`` is private to this class and never leaves it: the public method
         turns it into a raise. Exact rather than first hit, because a search for
         a label name ranks similarly named acts beside it and crawling one of
         those would offer another label's releases.
+
+        TWO EXACT MATCHES RAISE rather than take the first. The provider carries
+        unrelated acts under one name, and crawling the wrong one verifies no
+        release and reports a label with nothing new, which is R-135 again. The
+        registry names seeds by name and cannot pin one by identifier, so a
+        refusal naming the collision is the honest answer.
         """
         wanted = label_verify.fold_label(name)
         if not wanted:
@@ -178,10 +191,18 @@ class TidalCatalogue:
         found = self._session.search(
             name, models=[tidalapi.artist.Artist], limit=SEARCH_LIMIT
         )
-        for artist in _results(found, "artists"):
-            if label_verify.fold_label(str(getattr(artist, "name", "") or "")) == wanted:
-                return artist
-        return None
+        exact = [
+            artist
+            for artist in _results(found, "artists")
+            if label_verify.fold_label(str(getattr(artist, "name", "") or "")) == wanted
+        ]
+        distinct = {str(getattr(artist, "id", "") or id(artist)) for artist in exact}
+        if len(distinct) > 1:
+            raise LabelUnresolvable(
+                f"{len(distinct)} provider artists are named exactly {name!r}, and "
+                f"crawling the wrong one would offer another act's releases"
+            )
+        return exact[0] if exact else None
 
     def artist_for(self, entry: registry.LabelEntry) -> LabelRoster:
         """The label's roster: its own artist page if one exists, and every seed.
