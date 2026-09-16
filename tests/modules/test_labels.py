@@ -472,20 +472,31 @@ class HarvestCtx:
         )
 
 
-def test_harvest_on_a_build_with_no_adapter_refuses_that_nothing_is_bound(cfg):
-    """R14, and the false statement this unit removes.
+def _adapter_absent(monkeypatch):
+    """Make the catalogue adapter fail to import, the one build ``label-catalogue-unbound``
+    still describes after U62. A ``None`` in ``sys.modules`` is what Python itself
+    reads as a module that cannot be imported."""
+    import sys
+
+    monkeypatch.setitem(sys.modules, "cratekit.label.tidal_catalogue", None)
+
+
+def test_harvest_on_a_build_with_no_adapter_refuses_that_nothing_is_bound(cfg, monkeypatch):
+    """R14, and the false statement U52 removed.
 
     The old refusal told a person their playlist could not be listed, on every
     call, having contacted nothing at all. That is a refusal whose stated cause
     is false, and it sends somebody to check a playlist that is fine. The
-    message assertion is the whole point of the unit rather than a nicety: the
-    slug and the sentence have to agree about which of the two failed.
+    message assertion is the whole point rather than a nicety: the slug and the
+    sentence have to agree about which of the two failed. Since U62 an adapter
+    ships, so the build without one is made here by failing its import.
     """
     from cratekit.core import secrets
     from cratekit.core.cause import CratekitError
     from cratekit.label import cli as label_cli
 
     secrets.set_json(secrets.Credential.PROVIDER_SESSION, {"token": "recorded"})
+    _adapter_absent(monkeypatch)
 
     with pytest.raises(CratekitError) as excinfo:
         label_cli.harvest_playlist(HarvestCtx())
@@ -564,7 +575,9 @@ def test_with_no_provider_session_the_catalogue_seam_names_the_credential(cfg):
     assert cause.detail["credential"] == str(secrets.Credential.PROVIDER_SESSION)
 
 
-def test_with_a_session_recorded_the_catalogue_seam_refuses_that_nothing_is_bound(cfg):
+def test_with_a_session_recorded_and_no_adapter_the_seam_refuses_that_nothing_is_bound(
+    cfg, monkeypatch
+):
     """The credential is real here, recorded through the module that owns it.
 
     Recorded rather than monkeypatched, because the point of the second refusal
@@ -578,6 +591,7 @@ def test_with_a_session_recorded_the_catalogue_seam_refuses_that_nothing_is_boun
 
     secrets.set_json(secrets.Credential.PROVIDER_SESSION, {"token": "recorded"})
     assert secrets.exists(str(secrets.Credential.PROVIDER_SESSION))
+    _adapter_absent(monkeypatch)
 
     with pytest.raises(CratekitError) as excinfo:
         catalogue.resolve(cfg)
@@ -592,7 +606,12 @@ def test_with_a_session_recorded_the_catalogue_seam_refuses_that_nothing_is_boun
 
 
 def test_the_catalogue_seam_answers_bound_without_reading_a_credential(cfg, monkeypatch):
-    """Asked at enqueue, where the answer is still useful, so it must not raise."""
+    """Asked at enqueue, where the answer is still useful, so it must not raise.
+
+    Both answers are driven. The shipped build imports its adapter and says so,
+    and a build whose adapter does not import says the opposite, so the answer
+    is read off the build rather than written down as a constant.
+    """
     from cratekit.core import secrets
     from cratekit.label import catalogue
 
@@ -605,6 +624,8 @@ def test_the_catalogue_seam_answers_bound_without_reading_a_credential(cfg, monk
         )
 
     monkeypatch.setattr(secrets, "exists", _refuse_to_be_asked)
+    assert catalogue.bound() is True
+    _adapter_absent(monkeypatch)
     assert catalogue.bound() is False
 
 

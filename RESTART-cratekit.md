@@ -4,7 +4,25 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-16, the first attended U29 sitting, on `main` with
+**Last session 2026-09-16, U62 (#84) on `relay/84`, unattended.** The label
+catalogue seam is bound. `acquire.provider_session.client_session` is the one
+factory that logs a provider client in from the keychain inside the materialised
+scope; U63 is meant to reuse it. `label.tidal_catalogue.TidalCatalogue`
+implements the four `Catalogue` reads, pages through `acquire.listing`, imports
+nothing vendored, and raises named errors rather than returning `None`.
+`catalogue.bound()` answers whether that module imports, so the enqueue warning
+is gone in a shipped build. A conftest autouse guard replaces
+`provider_session.CLIENT_FACTORY` so no test can reach the live provider; a test
+that wants a client sets it. The factory's tests live in
+`tests/test_label_tidal_catalogue.py` rather than `tests/test_adapter_contract.py`.
+Review drove three findings: an outage is `unavailable-transient` rather than a
+new login, the roster lists once at construction, and a name two artists share
+refuses. Mutation table `docs/mutation/u62.md`, 24 rows, 23 killed, the one zero
+removed as redundant. R-258's agent half is closed; its live half and R-350 to
+R-354 are the next attended sitting's, listed in `docs/cutover.md`. Next unit is
+U63 (#85). Do not take #29.
+
+**The session before, 2026-09-16, the first attended U29 sitting, on `main` with
 Phillip present.** Not a unit. `docs/cutover.md` now exists and is the record.
 Setup ran for real against the live library volume, the pin 7.2.18.0311 is
 recorded, three credentials are in the keychain, the doctor reports no failing
@@ -20,8 +38,8 @@ outcome is owed to the ledger. Seven findings are filed, R-343 to R-349.
 
 **THE BOARD IS COMPLETE AND THE PRODUCT CANNOT SYNC.** `docs/cutover.md` says
 why in one section: R-258 and R-226 are unbound adapter seams and the playlists
-source has no listing, so nothing in the product lists Tidal. That is the
-remaining build, and it is on the board now as U62 (#84), U63 (#85) and U64 (#86), with #29 declared dependent on all three so `board.py next` ranks #84. R-9's real backup run outcome is owed to the ledger; the job id is in that entry. Do not take #29.
+source has no listing, so nothing in the product lists Tidal. That was the
+remaining build, on the board as U62 (#84), U63 (#85) and U64 (#86), with #29 declared dependent on all three. U62 has since landed its agent half. R-9's real backup run outcome is owed to the ledger; the job id is in that entry. Do not take #29.
 
 **The session before, 2026-09-11, U25 on `unit/u25-vocal-restamp-and-my-tags-shells`.**
 The two remaining vocal CLI shells landed. `cratekit.vocals.cli` queues

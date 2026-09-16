@@ -43,11 +43,13 @@ import tomllib
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import tomli_w
 
-from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken, Remedy
+from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken, AdapterError, Remedy
 from cratekit.core import config, secrets
 
 #: Fields that make a session blob usable. A write-back missing all of them is a
@@ -143,6 +145,136 @@ def materialised_session(
         shutil.rmtree(directory, ignore_errors=True)
 
 
+def _tidalapi_client() -> Any:
+    """A fresh, unauthenticated client of the provider's own library.
+
+    Imported here rather than at module top so the downloader half of the
+    product, which never asks for a client, does not pay for the import.
+    """
+    import tidalapi  # noqa: PLC0415 - deferred on purpose, see docstring
+
+    return tidalapi.Session()
+
+
+#: How :func:`client_session` builds the unauthenticated client it logs in. A
+#: module attribute looked up at call time, so a suite substitutes a fake client
+#: here and nowhere else, and the conftest guard replaces it for every test so no
+#: test can reach the live provider by recording a session and asking for one.
+CLIENT_FACTORY: Callable[[], Any] = _tidalapi_client
+
+
+#: Response statuses that mean the provider judged the CREDENTIAL. Every other
+#: failure of a login, a refused connection, a timeout, a server error page the
+#: client then fails to parse, says nothing about the session, and telling that
+#: person to log in again sends them to fix a session that is fine.
+REJECTED_STATUSES = frozenset({400, 401, 403})
+
+
+class ProviderUnavailable(AdapterError):
+    """The login could not be ASKED, as distinct from being refused."""
+
+    remedy = Remedy.RETRY_LATER
+
+
+def _rejected(exc: BaseException) -> bool:
+    """Whether a login failure is the provider refusing this session.
+
+    Read off the response status the client attaches, or the client's own
+    authentication error by name, walking the cause chain because the client
+    re-raises its HTTP error under its own types.
+    """
+    seen: BaseException | None = exc
+    while seen is not None:
+        status = getattr(getattr(seen, "response", None), "status_code", None)
+        if status in REJECTED_STATUSES:
+            return True
+        if type(seen).__name__ == "AuthenticationError":
+            return True
+        seen = seen.__cause__
+    return False
+
+
+def _epoch(value: Any) -> Any:
+    """An expiry the session file can hold. The client stores a datetime after a
+    refresh, and JSON has no datetime, so a refreshed session that cannot be
+    encoded would leave the keychain holding the token the refresh replaced.
+
+    The client's datetime is NAIVE UTC, so it is read as UTC here. Read as local
+    time, which is what ``timestamp`` does with a naive value, it lands hours off.
+    """
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.timestamp()
+    return value
+
+
+def client_session(name: str = secrets.Credential.PROVIDER_SESSION) -> Any:
+    """An authenticated provider client, built from the stored session.
+
+    THE ONE PLACE A CATALOGUE OR ACCOUNT READS AND WRITES BACK THE TOKEN, and it
+    is built inside :func:`materialised_session` rather than beside it so that
+    stays true: the downloader and the catalogue then read the same stored blob
+    through the same scope, and a refresh the login performed goes back to the
+    keychain through the same validated :func:`write_back`.
+
+    PKCE ALWAYS, matching the downloader's ``login_token(do_pkce=True)``, because
+    that is the path the attended sitting proved against the live provider. A
+    device flow session on the same account was served lossy audio (R-210).
+
+    THE SCOPE CLOSES BEFORE THE CLIENT IS RETURNED. The client is an in memory
+    object and does not need the file, so no token sits on disk for the life of
+    a long crawl. What that costs is named rather than hidden: a refresh the
+    client performs AFTER this returns lives only in memory. The stored refresh
+    token stays valid, so the next invocation logs in again from it.
+
+    Raises :class:`AdapterAuthFailed` for a stored blob that is not a session or
+    that the provider rejects, :class:`ProviderUnavailable` for a login that
+    could not be asked at all, and lets :func:`materialised_session`'s own
+    translation of a keychain failure through unchanged.
+    """
+    with materialised_session(name) as scope:
+        stored = JSON.loads(scope.path.read_text(encoding="utf-8"))
+        if not isinstance(stored, dict) or not stored.get("access_token"):
+            raise AdapterAuthFailed(
+                "the stored provider session carries no access token",
+                remedy=Remedy.REAUTHENTICATE_PROVIDER,
+            )
+        client = CLIENT_FACTORY()
+        try:
+            authorised = client.load_oauth_session(
+                stored.get("token_type") or "Bearer",
+                stored["access_token"],
+                stored.get("refresh_token"),
+                stored.get("expiry_time"),
+                is_pkce=True,
+            )
+        except Exception as exc:  # noqa: BLE001 - translated, never swallowed
+            if _rejected(exc):
+                raise AdapterAuthFailed(
+                    f"the provider rejected the stored session ({exc})",
+                    remedy=Remedy.REAUTHENTICATE_PROVIDER,
+                ) from exc
+            raise ProviderUnavailable(
+                f"the provider could not be reached to open the stored session ({exc})",
+                remedy=Remedy.RETRY_LATER,
+            ) from exc
+        if not authorised:
+            raise AdapterAuthFailed(
+                "the stored provider session is no longer valid",
+                remedy=Remedy.REAUTHENTICATE_PROVIDER,
+            )
+        refreshed = dict(stored)
+        for field in SESSION_FIELDS:
+            value = getattr(client, field, None)
+            if value is not None:
+                refreshed[field] = _epoch(value)
+        config.atomic_write_bytes(
+            JSON.dumps(refreshed), scope.path, mode=config.PRIVATE_FILE_MODE
+        )
+    return client
+
+
 def write_back(name: str, path: Path, *, codec: Codec = JSON) -> bool:
     """Return a refreshed session to the keychain, or leave the keychain alone.
 
@@ -170,11 +302,15 @@ def write_back(name: str, path: Path, *, codec: Codec = JSON) -> bool:
 
 
 __all__ = [
+    "CLIENT_FACTORY",
     "JSON",
+    "REJECTED_STATUSES",
     "SESSION_FIELDS",
     "TOML",
     "Codec",
+    "ProviderUnavailable",
     "SessionScope",
+    "client_session",
     "materialised_session",
     "write_back",
 ]
