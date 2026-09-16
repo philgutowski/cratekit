@@ -5122,7 +5122,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # mytags-vocals, the WORKFLOW name the My Tags write records itself under
     # in the session log, the same kind of literal as route-inbox and
     # route-resort.
-    assert (len(literals), len(literals - set(causes))) == (403, 250), (
+    # Re-pinned on U64, 2026-09-16: 403 to 408 distinct, 250 to 255 non-keys.
+    # FIVE literals joined and NOTHING left, differenced as SETS over every
+    # `src` module read through `git show` on `main` and on the branch. None is
+    # a cause: already-swept, recorded's neighbours favorites-placeholder,
+    # in-flight and the reused empty are the reasons `sync all` reports for an
+    # account playlist it did not queue; nothing-new is the not-queued reason
+    # beside not-built for a source that listed and found nothing to queue; and
+    # sync-playlists-unreadable is the WARNING code a pass carries when one
+    # playlist could not be listed while the others still queued. Every refusal
+    # the playlists source raises reuses a slug the table already reserves.
+    assert (len(literals), len(literals - set(causes))) == (408, 255), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5201,7 +5211,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # this composite exists to make visible rather than to hide: a module holding
     # a cause name AND an in-range integer is worth a look, and the look is what
     # says a duration is not a code.
-    assert (len(without), len(with_own), len(both)) == (9, 22, 13), (
+    #
+    # Re-pinned on U64, 2026-09-16: with-own 22 to 23, the other two halves
+    # unchanged. Named from this derivation's own output: `sync/playlists.py`
+    # joined through its `Excluded` enum, whose members already-swept,
+    # favorites-placeholder and in-flight are the reasons a playlist was not
+    # queued, declared in the file that uses them. It holds no in-range integer
+    # and names no cause declared elsewhere, so THE WITHOUT-OWN HALF IS STILL 9.
+    assert (len(without), len(with_own), len(both)) == (9, 23, 13), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "
@@ -5494,7 +5511,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # name config-unusable the same way the other shells do. Differenced as
     # SETS over the branch's src against main. The also-holds-an-integer half
     # stays 19: neither file holds an in-range integer.
-    assert (len(literal_holders), len(literal_both)) == (92, 19), (
+    # Re-pinned on U64, 2026-09-16: 92 to 93 holders. ONE module joined and
+    # none left, and it is a new file. sync/playlists.py names
+    # sync-source-lookups-failed at the raise for an account listing that could
+    # not be read, and label-playlist-unreadable and intake-list-unusable in
+    # the set of refusals it reports per playlist rather than raises. It holds
+    # no in-range integer, so the also-holds-an-integer half stays 19.
+    assert (len(literal_holders), len(literal_both)) == (93, 19), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
