@@ -483,6 +483,21 @@ builds.
 with its dry run, then for real, and records the outcome. That is an attended
 step, like the other live-hardware gates in this plan.
 
+**2026-09-16, the attended U29 sitting: the remote is configured and the dry
+run ran. The real run was launched and its outcome is recorded below when it
+completes.** the Drive remote with `use_trash` set to false, destinations
+the mirror folder, the archive folder and the database snapshot root,
+the layout the source system's `backup.sh` already used, so the product took
+over the existing mirror. The verb's own dry run succeeded in four seconds
+because the first configuration named bare folders and rclone read them as
+local paths, which is R-345, and because the verb's report reaches nobody,
+which is R-349. The mirror command run by hand with `--dry-run` against Drive
+took fifty one minutes to list both sides and reported 52 copies of about 1 GiB,
+1139 moves into the dated archive (992 analysis files and 141 tracks gone from
+the volume since the 2026-08-03 mirror), 0 deletes and 0 errors. rclone accepted
+every argument vector, which was the one uncovered surface. The real run is job
+`2026-09-16T16:30:43Z-4c99`, resumed as a detached worker.
+
 ---
 
 ## R-10. Membership insertion is one database round trip per track
@@ -11419,6 +11434,23 @@ observation. Every guard is pinned; the thing the guards are about is not.
 **Closes when:** an attended run records both observations, the PKCE landing with
 no tempo tag and the fresh device-flow control.
 
+**CLOSED 2026-09-16, both observations recorded, in the attended U29 sitting.**
+The PKCE session minted that day through the vendored login survived the two
+command hop into the keychain, was accepted by `login_mode`, and refreshed
+through `login_token(do_pkce=True)`. The first real download died inside the
+tool, because the adapter handed it a function where it calls a logger (#82,
+fixed and merged the same sitting). After the fix `acquire download` landed
+Tidal track 341726337, Mood II Swing, Chicago Blues, as a 38 MB FLAC, 16 bit,
+44.1 kHz, with title, artist, album, ISRC, date and embedded art, and no tempo
+or BPM tag in any block. The control ran in the same minute against the same
+account and the same track: a device-flow session minted through
+`tidalapi.Session.login_oauth` and never persisted was served `HIGH`, codec
+`MP4A`, through a BTS manifest, where the PKCE session was served `LOSSLESS`,
+codec `FLAC`, through DASH. The gate is the client, not the token's age, and
+R-196's decision stands on observation now. The probe script and both answers
+are not committed, since they hold nothing a test could re-run without an
+account; the numbers here are the record.
+
 ---
 
 ## R-211. Under `allow_lossy_marked` an unmarked lossy file is still reachable
@@ -15431,3 +15463,158 @@ fixture.
 
 **Closes when:** an unreadable vocal calibration refuses by name, and a
 missing one still defaults.
+
+---
+
+## R-343. A mutation driver run wrote 343 files into the real state directory
+
+**Found:** 2026-09-16, first act of the attended U29 sitting, on this machine.
+
+the installation state directory held a config, 16 jobs and 326 run
+records, every one written at 07:20 on 2026-09-09, which is inside U54's
+mutation driver run. The config pointed the library root at a pytest temporary
+directory that no longer existed and named the `fake` adapter. Every run record
+was `acquire.download`. One pytest process, under one mutant, defeated the
+`_isolate_state_roots` redirect for its whole life and wrote to the real home.
+
+**What is known and what is not.** The full suite run on 2026-09-16 on the
+clean tree touched nothing under that path, so the leak is not live in the
+current tree. Which mutant defeated the redirect was not established. The
+conftest sets `HOME`, the four XDG variables and both `CRATEKIT_*` overrides,
+and `platformdirs` honours `HOME`, so a mutant in `config_dir()` alone should
+not have reached the real path; the answer is somewhere the sitting did not
+look. `G19_frozen_config` in `docs/mutation/u54-rows.toml`, which swaps a
+frozen configuration for a fresh `_load()`, is the row nearest the symptom.
+
+**Cost.** Setup could not run until the directory was deleted, since the leaked
+config is what every verb loaded. On a machine that had been set up for real
+first, the same leak would have overwritten a real configuration with a
+pytest one.
+
+**Why not fixed here.** The sitting was attended and the driver is a script;
+finding the mutant means re-running U54's rows under a watch on the real
+directory, which is a session's work and not a sitting's.
+
+**Closes when:** the mutant is named, the driver refuses to run a row while the
+real state directory is writable by the child, or the redirect is proven to
+hold under every row in the committed tables, whichever is cheapest.
+
+---
+
+## R-344. The volume identity is compared case sensitively and the wizard accepts diskutil's spelling
+
+**Found:** 2026-09-16, first `crate setup` of the attended U29 sitting.
+
+`diskutil info` prints the volume UUID in uppercase. Passed to `--volume-id`
+as printed, setup recorded it as typed, and `preflight` then compared it with
+`==` against the lowercase it observes through `getattrlist`, so the very
+volume the wizard had just been pointed at was reported `foreign_volume`,
+`library.mounted` and `library.identity` failed, and the taxonomy was not
+written. A second run with the UUID lowercased passed every check.
+
+**Why not fixed here.** A sitting fix on the identity compare is a change to
+the guard every destructive verb asserts, and it belongs in a session with the
+mutation table that guard already has.
+
+**Closes when:** the recorded identity and the observed one are compared case
+folded, or the wizard folds the case at record time, and a test drives an
+uppercase UUID through setup and the mount check.
+
+---
+
+## R-345. The backup destinations are used verbatim as rclone targets and nothing validates them
+
+**Found:** 2026-09-16, first backup dry run of the attended U29 sitting.
+
+`BackupConfig` says every field is wizard supplied and the wizard never asks
+for any of them, so the four values are typed into the TOML by hand. `dest`,
+`archive_root` and `db_dest_root` are passed to rclone exactly as typed and
+`remote` is read only by the refusal for an unset value and by the doctor's
+trash check. Typed as bare folder names, the plan was
+`rclone sync <library root> <bare folder name>`, a local relative path, and
+the dry run succeeded in four seconds because listing a folder that does not
+exist is instant. A real run under that configuration would have copied the
+library into a folder beside whatever the detached worker's working directory
+was, and published a backup age for it.
+
+**Why not fixed here.** The validation belongs in `core/config` beside the
+containment rule, with the wizard question beside the others, and both are a
+session's work.
+
+**Closes when:** each destination is refused unless it names a configured
+rclone remote with a colon, `remote` is derived from them or checked against
+them, and the wizard asks for the four values when the backup module is on.
+
+---
+
+## R-346. The prompter never flushes, so a real terminal shows no question
+
+**Found:** 2026-09-16, the first interactive `crate setup` ever run.
+
+`cli/prompt._write` prints the question to standard error with `end=""` and
+no flush, then `_read_line` blocks on standard input. Python line buffers
+standard error, and a question with no newline never leaves the buffer, so the
+wizard sat at a black prompt waiting for an answer to a question it had not
+shown. Every test injects the writer, so no test could see it, and every
+earlier run was non interactive, where the buffer drains at exit. The
+workaround that carried the sitting is `PYTHONUNBUFFERED=1`.
+
+**Why not fixed here.** One flush, and it was not made in the sitting because
+the sitting was mid cutover and the rule is one unit per session.
+
+**Closes when:** `_write` flushes after every question, and a test drives the
+prompter through a real pipe rather than an injected writer.
+
+---
+
+## R-347. A credential offered, accepted and left empty fails the whole wizard
+
+**Found:** 2026-09-16, the second interactive `crate setup` of the sitting.
+
+Answering yes to "Record the credential provider-session now?" and then
+pressing Enter at the secret prompt is recorded as `setup.credential` FAIL and
+the verb exits `PRECONDITION`, although the pin and the config were written
+and every other check was ok. The person had nothing to type: the value is a
+session blob that only the login step produces. The note path for a no answer
+is INFO; the empty answer should be the same fact.
+
+**Closes when:** an empty secret at that prompt is recorded as the same INFO
+note as a no, and the exit code follows the doctor's own verdict.
+
+---
+
+## R-348. An AttributeError inside the vendored tool is classified as a transient outage
+
+**Found:** 2026-09-16, the first real download through the adapter, before #82.
+
+`'function' object has no attribute 'info'` raised inside the wrapped tool
+was reported as `unavailable-transient`, `retryable: true`, remedy
+`retry-later`, and the run said the provider was unavailable. It was a code
+defect in this repository, and a job that retried it would have retried it
+forever. The classification reads the exception's text for provider signals
+and treats everything else as transient, which is the honest choice for an
+unknown provider error and the wrong one for a Python error class that a
+provider cannot raise.
+
+**Closes when:** `AttributeError`, `TypeError`, `NameError` and their kin
+raised from inside the tool are classified as `AdapterBroken` with remedy
+`report-defect`, and a test drives one through the loop.
+
+---
+
+## R-349. The backup verb's per command report reaches nobody
+
+**Found:** 2026-09-16, the attended U29 sitting, reading a dry run that
+succeeded in four seconds.
+
+`run_backup` returns a `BackupOutcome` with every command's argv and return
+code, and `handle` returns nothing to the engine. The detached worker's log
+holds `backup.run: ok` and a run id. The foreground `--job` envelope holds the
+job's counts and the published ages. There is no place a person can read which
+rclone commands ran, what each returned, or what a dry run would have
+transferred, which is why R-345's misconfiguration was only visible by running
+the command by hand.
+
+**Closes when:** the outcome payload is persisted with the job, the foreground
+envelope carries it, and `job show` prints it.
+

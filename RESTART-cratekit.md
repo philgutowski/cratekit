@@ -4,7 +4,26 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-11, U25 on `unit/u25-vocal-restamp-and-my-tags-shells`.**
+**Last session 2026-09-16, the first attended U29 sitting, on `main` with
+Phillip present.** Not a unit. `docs/cutover.md` now exists and is the record.
+Setup ran for real against the live library volume, the pin 7.2.18.0311 is
+recorded, three credentials are in the keychain, the doctor reports no failing
+check, and the commit-msg hook is installed in this checkout so `repo.commit_hook`
+is green. **R-210 is CLOSED on observation**: a real FLAC landed with no tempo
+tag through the PKCE session, and a fresh device-flow session on the same
+account and track was served AAC. The first real download found **#82**, the
+adapter handing the vendored tool a function where it calls a logger, fixed and
+merged as `8f89efc` with a guard that reads the method set off the vendored
+tree. R-9's dry run ran and its real run was launched as a detached job; its
+outcome is owed to the ledger. Seven findings are filed, R-343 to R-349.
+**Setup from a real terminal needs `PYTHONUNBUFFERED=1` until R-346 is fixed.**
+
+**THE BOARD IS COMPLETE AND THE PRODUCT CANNOT SYNC.** `docs/cutover.md` says
+why in one section: R-258 and R-226 are unbound adapter seams and the playlists
+source has no listing, so nothing in the product lists Tidal. That is the
+remaining build, and it is residuals today, not units. Do not take #29.
+
+**The session before, 2026-09-11, U25 on `unit/u25-vocal-restamp-and-my-tags-shells`.**
 The two remaining vocal CLI shells landed. `cratekit.vocals.cli` queues
 `analyze.vocals` and scores files that already carry a Camelot head, which
 closes R-277. `analyze.run` still skips a prefixed name. `cratekit.write.metadata_cli`
