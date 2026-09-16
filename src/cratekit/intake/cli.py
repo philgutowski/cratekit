@@ -550,6 +550,47 @@ def _playlist_rows(found: catalogue.Catalogue, reference: str) -> tuple[Wanted, 
         raise _unusable(str(exc), source=reference) from exc
 
 
+def list_playlist(found: catalogue.Catalogue, reference: str) -> dict[str, dict[str, Any]]:
+    """One playlist's tracks, frozen and keyed by item, as a playlist job queues them.
+
+    PUBLIC because ``crate sync all`` lists each account playlist it sweeps
+    through exactly this path, so a row this verb refuses is refused there too.
+    An empty mapping is a playlist the provider listed with nothing in it.
+    """
+    return frozen_rows(_playlist_rows(found, reference))
+
+
+def queue_playlist(
+    store,
+    cfg: config.Config,
+    *,
+    handler_key: str,
+    reference: str,
+    tracks: Mapping[str, Mapping[str, Any]],
+    run_id: str | None = None,
+    source_id: str | None = None,
+) -> jobs.Job:
+    """Queue one playlist job, one item per frozen track. The one spelling of it.
+
+    ``run_id`` and ``source_id`` are what ``crate sync all`` adds: the intake run
+    its sources share (R29) and the source that queued the job, which is how the
+    playlists cursor later finds the jobs it may record. A playlist queued by
+    this verb alone carries neither, exactly as before.
+    """
+    payload: dict[str, Any] = {SOURCE: reference, TRACKS: dict(tracks)}
+    if run_id is not None:
+        payload["run_id"] = run_id
+    if source_id is not None:
+        payload["source_id"] = source_id
+    return jobs.enqueue(
+        store,
+        handler_key=handler_key,
+        payload=payload,
+        cfg=cfg,
+        item_ids=tuple(tracks),
+    )
+
+
 def intake_playlist(ctx) -> Envelope:
     """List the playlist through the catalogue seam and queue one item per track.
 
@@ -565,15 +606,11 @@ def intake_playlist(ctx) -> Envelope:
             return _resume(ctx, store, ctx.args.job)
         reference = str(ctx.args.source)
         found = catalogue.resolve(cfg)
-        tracks = frozen_rows(_playlist_rows(found, reference))
+        tracks = list_playlist(found, reference)
         if not tracks:
             return ctx.envelope(data=_no_op("no-tracks", source=reference), outcome=Outcome.NO_OP)
-        job = jobs.enqueue(
-            store,
-            handler_key=ctx.entry.handler_key,
-            payload={SOURCE: reference, TRACKS: tracks},
-            cfg=cfg,
-            item_ids=tuple(tracks),
+        job = queue_playlist(
+            store, cfg, handler_key=ctx.entry.handler_key, reference=reference, tracks=tracks
         )
         return ctx.envelope(data=_reported(store, job))
 
@@ -737,7 +774,9 @@ __all__ = [
     "intake_playlist",
     "intake_set",
     "item_key",
+    "list_playlist",
     "playlist_argv",
+    "queue_playlist",
     "reset_cache",
     "resolve_track",
     "set_argv",

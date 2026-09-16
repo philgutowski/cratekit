@@ -27,6 +27,7 @@ from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue, sweep, tidal_catalogue
 from cratekit.label import cli as label_cli
 from cratekit.label import registry as labels
+from cratekit.label.catalogue import AccountPlaylist
 from cratekit.sync import run
 from tests.cli_drive import drive
 from tests.test_config import valid_data
@@ -466,6 +467,69 @@ def test_the_rows_read_through_the_provider_row_reader_with_every_field():
 # ═══════════════════════════════════════════════════════════════════════════
 # The label roster and the absence contract
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+class Creator:
+    def __init__(self, creator_id) -> None:
+        self.id = creator_id
+
+
+class AccountEntry:
+    """One playlist the account listing serves, own or followed."""
+
+    def __init__(self, playlist_id, name, creator_id, num_tracks=None) -> None:
+        self.id = playlist_id
+        self.name = name
+        self.creator = Creator(creator_id)
+        self.num_tracks = num_tracks
+
+
+class AccountUser:
+    def __init__(self, user_id, entries) -> None:
+        self.id = user_id
+        self._entries = list(entries)
+        self.pages: list[tuple[int, int]] = []
+
+    def playlist_and_favorite_playlists(self, limit: int | None = None, offset: int = 0):
+        size = 50 if limit is None else limit
+        self.pages.append((size, offset))
+        return self._entries[offset : offset + size]
+
+
+def test_the_account_listing_keeps_the_playlists_the_account_created():
+    client = FakeClient()
+    client.user = AccountUser(
+        42,
+        [
+            AccountEntry("pl-own", "Warmup", 42, num_tracks=12),
+            AccountEntry("pl-followed", "Editorial", 7, num_tracks=40),
+            AccountEntry("pl-anon", "No Creator", None),
+            AccountEntry("pl-empty", "Empty", 42, num_tracks=0),
+            AccountEntry("pl-bool", "Odd Count", 42, num_tracks=True),
+        ],
+    )
+    listed = tidal_catalogue.TidalCatalogue(client).account_playlists()
+    assert listed == (
+        AccountPlaylist("pl-own", "Warmup", 12),
+        AccountPlaylist("pl-empty", "Empty", 0),
+        AccountPlaylist("pl-bool", "Odd Count", None),
+    )
+    assert client.user.pages, "the account was not listed through the paging wrapper"
+
+
+def test_the_account_listing_pages_past_the_first_page():
+    entries = [AccountEntry(f"pl-{n}", f"List {n}", 42) for n in range(130)]
+    client = FakeClient()
+    client.user = AccountUser(42, entries)
+    listed = tidal_catalogue.TidalCatalogue(client).account_playlists()
+    assert len(listed) == 130
+
+
+def test_a_client_that_cannot_name_its_account_refuses_rather_than_owning_nothing():
+    client = FakeClient()
+    client.user = AccountUser(None, [AccountEntry("pl-own", "Warmup", None)])
+    with pytest.raises(LookupError):
+        tidal_catalogue.TidalCatalogue(client).account_playlists()
 
 
 def test_an_unresolvable_label_raises_and_never_returns_none():

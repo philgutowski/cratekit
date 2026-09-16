@@ -38,9 +38,9 @@ class SourceSpec:
 SPECS: tuple[SourceSpec, ...] = (
     SourceSpec("favorites", module_id="favorites", handler_key="sync.favorites"),
     SourceSpec("labels", module_id="labels", handler_key="sync.labels"),
-    # NO WORKER AND NO LISTING. Playlists ride the increment engine once a
-    # listing exists, and until then ``sync all`` names them as not built.
-    SourceSpec("playlists"),
+    # NO WORKER OF ITS OWN (U64). Each new account playlist is queued as the
+    # job ``crate intake playlist`` queues, so the intake worker runs it.
+    SourceSpec("playlists", handler_key="intake.playlist"),
 )
 
 #: Derived from SPECS, never listed again (P3).
