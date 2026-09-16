@@ -503,6 +503,34 @@ def test_a_playlist_queued_by_hand_is_not_this_sources_to_record(slim, monkeypat
     assert _swept(cfg) is None
 
 
+def test_another_librarys_finished_job_is_not_this_librarys_sweep(slim, monkeypatch):
+    """The queue is installation scoped and the cursor is per library. A playlist
+    another library's pass swept is still new to this one."""
+    import dataclasses
+
+    cfg = slim
+    bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    elsewhere = dataclasses.replace(
+        cfg, library=dataclasses.replace(cfg.library, volume_id="0000-0000")
+    )
+    with jobs.open_store() as store:
+        job = intake_cli.queue_playlist(
+            store,
+            elsewhere,
+            handler_key=INTAKE_PLAYLIST,
+            reference="pl-a",
+            tracks={"101": {"title": "Title 101"}},
+            run_id="another-run",
+            source_id=playlists.SOURCE_ID,
+        )
+        jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert passed["data"]["summary"]["playlists"]["recorded_now"] == []
+    assert _swept(cfg) is None
+    assert [row["playlist_id"] for row in passed["data"]["summary"]["playlists"]["queued"]] == ["pl-a"]
+
+
 def test_an_unreadable_playlist_is_reported_and_the_rest_still_queue(slim, monkeypatch):
     del slim
     bind_playlists(
