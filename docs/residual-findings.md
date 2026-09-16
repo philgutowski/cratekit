@@ -498,6 +498,21 @@ the volume since the 2026-08-03 mirror), 0 deletes and 0 errors. rclone accepted
 every argument vector, which was the one uncovered surface. The real run is job
 `2026-09-16T16:30:43Z-4c99`, resumed as a detached worker.
 
+**2026-09-16, the real run ended succeeded.** `crate job show` on job
+`2026-09-16T16:30:43Z-4c99` reports state `succeeded`, attempts 1, two items
+done and none failed, queued 16:30:43Z and last updated 17:38:27Z. Because the
+verb's report reaches nobody (R-349), the state alone was not taken as the
+outcome, and the Drive side was read back. The configured destinations all
+carry the `gdrive:` remote, so the R-345 local path trap was not in play. The
+dated archive folder `2026-09-16T163043Z` holds 1139 objects, 6.911 GiB,
+which is exactly the 1139 moves the hand dry run predicted. The database
+snapshot `2026-09-16T173512Z` holds 82 objects, 504 MiB, and its `master.db` is
+281153536 bytes with modification time 2026-08-26 09:10:16, the same size and
+time as the live database on the library volume. Not measured: a full
+`rclone check` of the mirror against the volume, which would repeat the fifty
+one minute listing. **Still open:** the restore rehearsal to a scratch
+directory, the second of the two gates this entry names, has not run.
+
 ---
 
 ## R-10. Membership insertion is one database round trip per track
