@@ -299,8 +299,8 @@ def handle(job, item, cfg) -> jobs.Produced:
 
     THE ACCOUNT IS RESOLVED AT CALL TIME through the module attribute, so a test
     can put a stand in in front of it. It is the only route to a provider in this
-    file, and in this build it always refuses; the queued envelope already warned
-    the person that it would.
+    file. Since U63 it opens the provider account from the stored session, and it
+    refuses with a named cause when there is none.
     """
     payload = dict(job.payload or {})
     report = run_export_item(payload, str(item.item_id), cfg, account.resolve(cfg))

@@ -155,6 +155,15 @@ def _no_live_provider_client(monkeypatch):
 
     monkeypatch.setattr(provider_session, "CLIENT_FACTORY", refused)
 
+    # U63: the outbound seam holds the account it opened for the life of the
+    # process, so an adapter one test opened over its fake client would answer
+    # the next test's resolve. Dropped on both sides of every test.
+    from cratekit.modules.outbound import account
+
+    account.forget()
+    yield
+    account.forget()
+
 
 @pytest.fixture(autouse=True)
 def _no_paid_recognition(monkeypatch):

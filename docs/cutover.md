@@ -48,9 +48,14 @@ Each was a residual and is a unit on the board since this sitting: U62 (#84) the
    needs a provider list document, and nothing in the product can produce one.
    The download smoke test above used a hand written document carrying a
    track id found through the library the adapter sits on.
-2. **R-226, the outbound account.** `modules.outbound.account.resolve` refuses
-   `outbound-account-unbound` the same way, so the favourites sweep and the
-   heart back cannot reach the account, and R-144 cannot close.
+2. **R-226, the outbound account.** U63 landed its agent half on 2026-09-16:
+   `modules.outbound.account.resolve` now returns
+   `modules.outbound.tidal_account.TidalAccount` over the stored session, proven
+   against a fake client only. **Owed to the next attended sitting:** one real
+   `crate export playlist` and one real `crate sync favorites`, which is R-144's
+   closing condition. **Read R-355 first**: the rows those verbs build carry no
+   ISRC, so a live run today matches nothing and writes nothing until the rows
+   gain one. R-356 and R-357 are the observations the same sitting can make.
 3. **The playlists source.** `sync/sources.py` declares it with no handler and
    no listing, so `crate sync all` reports it as not built.
 

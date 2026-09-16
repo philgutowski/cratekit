@@ -4,7 +4,29 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-16, U62 (#84) on `relay/84`, unattended.** The label
+**Last session 2026-09-16, U63 (#85) on `relay/85`, unattended.** The outbound
+account seam is bound. `modules.outbound.tidal_account.TidalAccount` implements
+the six add only `RemoteAccount` members over U62's `client_session`, imports
+nothing vendored, and pages through `acquire.listing`. `account.resolve` refuses
+`credential-missing` with no session, logs in ONCE and holds the adapter for the
+process, because both workers resolve per item; `account.forget()` drops it, and
+a conftest autouse calls it around every test. `bound()` answers whether the
+adapter imports, so the queued warning is gone in a shipped build. Matching is an
+ISRC naming exactly one track, then an exact provider track URL, else `None`.
+`has_heart` answers from one paged favourites read, `add_heart` and
+`add_to_playlist` check first, writes retry once, a create never. A provider
+failure is an ITEM scoped cause through `account.provider_failure`: 401, 403 or
+the client's authentication error is `credential-missing` and drops the held
+account, everything else `unavailable-transient`. Review drove four findings: an
+add the client answers without the track, a 400 read as a rejected session, the
+dead client kept, and `bound()` not importing the client library. Mutation table
+`docs/mutation/u63.md`, 25 rows, all killing on subsets, checked by hand for
+R-329's reason, three zeros closed with tests. R-226's agent half is closed.
+**R-355 is the one to read before the attended sitting: no shipped row carries an
+ISRC, so a live sweep or export today matches nothing and writes nothing.** R-356
+and R-357 are filed beside it. Next unit is U64 (#86). Do not take #29.
+
+**The session before, 2026-09-16, U62 (#84) on `relay/84`, unattended.** The label
 catalogue seam is bound. `acquire.provider_session.client_session` is the one
 factory that logs a provider client in from the keychain inside the materialised
 scope; U63 is meant to reuse it. `label.tidal_catalogue.TidalCatalogue`
@@ -39,7 +61,7 @@ outcome is owed to the ledger. Seven findings are filed, R-343 to R-349.
 **THE BOARD IS COMPLETE AND THE PRODUCT CANNOT SYNC.** `docs/cutover.md` says
 why in one section: R-258 and R-226 are unbound adapter seams and the playlists
 source has no listing, so nothing in the product lists Tidal. That was the
-remaining build, on the board as U62 (#84), U63 (#85) and U64 (#86), with #29 declared dependent on all three. U62 has since landed its agent half. R-9's real backup run outcome is owed to the ledger; the job id is in that entry. Do not take #29.
+remaining build, on the board as U62 (#84), U63 (#85) and U64 (#86), with #29 declared dependent on all three. U62 and U63 have since landed their agent halves, and R-355 means the account half matches nothing live yet. R-9's real backup run outcome is owed to the ledger; the job id is in that entry. Do not take #29.
 
 **The session before, 2026-09-11, U25 on `unit/u25-vocal-restamp-and-my-tags-shells`.**
 The two remaining vocal CLI shells landed. `cratekit.vocals.cli` queues
@@ -339,7 +361,15 @@ tree, which is the whole of what the entry now says.
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
 
-**Main's highest residual is R-342 once this branch merges**, R-341 and R-342
+**Main's highest residual is R-357 once `relay/85` merges**, R-355 to R-357 being
+U63's, with R-226's agent half closed in place, no duplicate heading and no
+heading moved. U63's full suite before the review round was **7491 passed and 1
+skipped** in 400 seconds on a committed tree, and after the review round, the
+zero row tests and the record it was **7500 passed and 1 skipped** in 397 seconds.
+The nine are six review fix tests and three zero row tests, all in
+`tests/test_outbound_tidal_account.py`.
+
+**Main's highest residual was R-342 once U25 merged**, R-341 and R-342
 being U25's, with R-277 closed in place, no duplicate heading and no heading
 moved. Mutation baseline collected **7401** on a committed tree. The last
 full battery before the record was **7399 passed and 1 skipped**, in 374
