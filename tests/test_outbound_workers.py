@@ -576,12 +576,21 @@ def test_with_no_credential_the_seam_refuses_with_the_credential_cause(installed
     assert excinfo.value.cause.code is not ExitCode.INTERNAL
 
 
-def test_with_a_credential_stored_the_seam_refuses_that_no_adapter_is_bound(
+def unimportable_adapter(monkeypatch) -> None:
+    """A build whose account adapter does not import, which is the one case the
+    unbound refusal and the queued warning still describe since U63."""
+    monkeypatch.setattr(
+        account_module, "ADAPTER_MODULE", "cratekit.modules.outbound.no_such_adapter"
+    )
+
+
+def test_with_a_credential_stored_and_no_adapter_the_seam_refuses_unbound(
     installed, monkeypatch
 ):
     from cratekit.core import secrets
 
     monkeypatch.setattr(secrets, "exists", lambda name: True)
+    unimportable_adapter(monkeypatch)
     with pytest.raises(CratekitError) as excinfo:
         account_module.resolve(installed)
     assert excinfo.value.cause.reason == "outbound-account-unbound"
@@ -589,12 +598,19 @@ def test_with_a_credential_stored_the_seam_refuses_that_no_adapter_is_bound(
     assert excinfo.value.cause.remediation is not None
 
 
-def test_the_queued_envelope_warns_that_no_provider_adapter_is_bound(
-    installed, exported
+@pytest.mark.parametrize("adapter_imports", [True, False], ids=["bound", "unbound"])
+def test_the_queued_envelope_warns_only_when_no_provider_adapter_is_bound(
+    installed, exported, monkeypatch, adapter_imports
 ):
-    """Told at the moment it is still actionable, not after the job has failed."""
+    """Told at the moment it is still actionable, not after the job has failed.
+
+    Since U63 a shipped build is bound, so the warning is gone there, and a build
+    whose adapter does not import still carries it.
+    """
     del installed
-    assert account_module.bound() is False
+    if not adapter_imports:
+        unimportable_adapter(monkeypatch)
+    assert account_module.bound() is adapter_imports
     code, refused = drive(export_verb(exported))
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     detail = refused["cause"]["detail"]
@@ -613,7 +629,7 @@ def test_the_queued_envelope_warns_that_no_provider_adapter_is_bound(
     code, queued = drive(["--run", refused["run_id"], *export_verb(exported)])
     assert code == int(ExitCode.OK), queued
     codes = {warning["code"] for warning in queued.get("warnings") or ()}
-    assert "outbound-account-unbound" in codes
+    assert ("outbound-account-unbound" in codes) is not adapter_imports
 
 
 def test_a_job_driven_with_no_adapter_fails_rather_than_reporting_success(
@@ -1073,7 +1089,9 @@ def test_a_failed_favourite_leaves_the_sweep_resumable(
     assert account.hearted.count("tid-1") == 1
 
 
-def test_both_provider_refusals_carry_a_remediation_a_person_can_act_on(installed):
+def test_both_provider_refusals_carry_a_remediation_a_person_can_act_on(
+    installed, monkeypatch
+):
     """Not merely non-None: a remedy token or a step, or the refusal says nothing."""
     from cratekit.core import secrets
 
@@ -1082,13 +1100,11 @@ def test_both_provider_refusals_carry_a_remediation_a_person_can_act_on(installe
     assert missing.value.cause.remediation is not None
     assert str(missing.value.cause.remediation.remedy)
 
-    original = secrets.exists
-    try:
-        secrets.exists = lambda name: True
-        with pytest.raises(CratekitError) as unbound:
-            account_module.resolve(installed)
-    finally:
-        secrets.exists = original
+    monkeypatch.setattr(secrets, "exists", lambda name: True)
+    unimportable_adapter(monkeypatch)
+    with pytest.raises(CratekitError) as unbound:
+        account_module.resolve(installed)
+    assert unbound.value.cause.reason == "outbound-account-unbound"
     remediation = unbound.value.cause.remediation
     assert remediation is not None
     assert remediation.steps or str(remediation.remedy)

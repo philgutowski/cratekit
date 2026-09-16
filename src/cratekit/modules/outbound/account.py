@@ -1,45 +1,62 @@
 """The one place a worker gets the streaming account it writes through.
 
-**THIS BUILD RETURNS NOTHING, AND THAT IS THE POINT OF NAMING IT.** No
-implementation of :class:`~cratekit.modules.outbound.service.RemoteAccount`
-ships: every reference to that protocol in ``src`` is its own definition, an
-import, or a parameter annotation. Before this module the consequence was
-invisible, because nothing called the outbound engines at all. Now two verbs do,
-so the gap has to be somewhere a person can meet it with a sentence they can act
-on, rather than as an ``AttributeError`` inside a detached child.
+**U63 BOUND IT.** ``cratekit.modules.outbound.tidal_account`` implements
+:class:`~cratekit.modules.outbound.service.RemoteAccount` over a provider client
+that ``acquire.provider_session.client_session`` logs in from the stored session,
+the same factory the label catalogue uses. Before that unit no implementation
+shipped and this module refused every call with ``outbound-account-unbound``.
+That refusal is kept for the one case it still describes truthfully: a build in
+which the adapter or its client library does not import.
 
 **IT IS NOT A SECOND OWNER OF THE PROVIDER CREDENTIAL.**
 ``cratekit.acquire.provider_session`` opens by declaring itself the sole owner
 under R4, and both outbound verbs already declare the ``credential.provider``
 doctor check, which resolves ``secrets.Credential.PROVIDER_SESSION``. So this
-module reads whether that credential is RECORDED and nothing else. Without the
-split, ``crate doctor`` would report the provider credential healthy while the
-verb said only that nothing was bound, and a person would go looking for a login
-problem they do not have.
+module reads whether that credential is RECORDED, and every read of the token
+itself is the session module's.
 
-**WHAT A LIVE ADAPTER OWES WHEN IT LANDS HERE.** This is the seam R-144's
-closing condition runs through, and it inherits one rule from the source system
-that is not obvious from the protocol: matching is by ISRC or an equally exact
-identity, never by a text search over title and artist. A collection export
-carries no ISRC, so the favourites sweep offers this seam a rekordbox row
-identifier and nothing more, and an adapter that closed that gap with a search
-would heart the wrong recording on a catalogue full of remasters and edits.
+**MATCHING IS EXACT OR IT IS NOTHING.** Inherited from the source system and not
+obvious from the protocol: matching is by ISRC or an equally exact identity,
+never by a text search over title and artist. A collection export carries no
+ISRC, so the favourites sweep offers this seam a rekordbox row identifier and
+nothing more, and an adapter that closed that gap with a search would heart the
+wrong recording on a catalogue full of remasters and edits.
 
-**THE TEST SUBSTITUTION IS IN PROCESS ONLY.** A test replaces :func:`resolve` on
-this module and the workers pick it up because they look it up at call time. The
-child ``crate job resume`` spawns is a fresh process and inherits nothing, so
-there is no supported way to bind an account in a detached run until an adapter
-exists. R-226, rather than something worked around.
+**ONE ADAPTER PER PROCESS.** Both workers call :func:`resolve` once per ITEM. A
+fresh adapter per item would log in per item and read the favourites per item,
+which is the thousand listing calls the adapter's one read rule exists to avoid.
+So the first successful resolve is held and handed to every later call in the
+process; :func:`forget` drops it. A detached ``crate job resume`` is its own
+process and resolves its own.
 
 Layer: modules.
 """
 
 from __future__ import annotations
 
+import importlib
+
+from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken
+from cratekit.acquire.provider_session import ProviderUnavailable, _rejected
 from cratekit.core import config, secrets
-from cratekit.core.cause import Scope, refuse
+from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.modules.outbound.service import RemoteAccount
+
+#: The module that implements :class:`RemoteAccount`. Imported by NAME for the
+#: reason ``label.catalogue.ADAPTER_MODULE`` gives: a ``from`` import answers from
+#: the package attribute once the module has loaded anywhere in the process.
+ADAPTER_MODULE = "cratekit.modules.outbound.tidal_account"
+
+#: The adapter this process already opened, if any. See the module docstring.
+_OPENED: RemoteAccount | None = None
+
+#: The session module's remedy, carried into the product's vocabulary, as
+#: ``label.catalogue`` carries it.
+_REMEDIES = {
+    Remedy.REAUTHENTICATE_PROVIDER.value: Remedy.REAUTHENTICATE_PROVIDER,
+    Remedy.REPAIR_CREDENTIAL_STORE.value: Remedy.REPAIR_CREDENTIAL_STORE,
+}
 
 
 def bound() -> bool:
@@ -47,24 +64,73 @@ def bound() -> bool:
 
     A queueing verb asks this so it can warn a person BEFORE they confirm, at the
     one moment the information is still useful to them. :func:`resolve` is the
-    wrong question there: it is the worker's, it raises, and asking it at enqueue
-    would refuse work a later build could run.
+    wrong question there: it is the worker's, it reads the credential and logs a
+    client in, and asking it at enqueue would spend a login on a warning.
 
-    It returns a constant because the answer is a constant in this build. The day
-    an adapter lands, this is the line that stops being one.
+    It answers about THIS BUILD and not this machine, so it reads no credential:
+    whether the adapter module imports, which includes its client library. Until
+    U63 it returned a constant ``False``.
     """
-    return False
+    try:
+        importlib.import_module(ADAPTER_MODULE)
+    except ImportError:
+        return False
+    return True
+
+
+def forget() -> None:
+    """Drop the adapter this process holds, so the next resolve opens a new one."""
+    global _OPENED
+    _OPENED = None
+
+
+def provider_failure(exc: BaseException, doing: str) -> CratekitError:
+    """One provider call's failure, as the cause of the ITEM that made it.
+
+    ITEM SCOPE ON PURPOSE. A heart or a playlist add that the provider refused
+    condemns that item, and the job engine fails it and claims the next. A
+    foreign exception reaching the engine instead would read as an internal
+    defect, and a run scoped cause would read one refused track as a dead sweep.
+
+    A cause the product already raised passes through untouched. A rejected
+    credential keeps its own slug and the reauthenticate remedy, because a person
+    told only that the provider was unavailable would wait for an outage that is
+    not happening. Everything else is a wait.
+    """
+    if isinstance(exc, CratekitError):
+        return exc
+    if _rejected(exc):
+        return refuse(
+            "credential-missing",
+            f"the streaming provider rejected the session while trying to {doing} "
+            f"({exc}); nothing further was written for this item",
+            remedy=Remedy.REAUTHENTICATE_PROVIDER,
+            scope=Scope.ITEM,
+            origin=("outbound", "account"),
+            detail={"credential": str(secrets.Credential.PROVIDER_SESSION)},
+        )
+    return refuse(
+        "unavailable-transient",
+        f"the streaming provider failed while trying to {doing} ({exc}); resume "
+        f"the job to retry this item",
+        remedy=Remedy.RETRY_LATER,
+        scope=Scope.ITEM,
+        origin=("outbound", "account"),
+    )
 
 
 def resolve(cfg: config.Config) -> RemoteAccount:
     """The account this library's outbound writes go to, or why there is none.
 
-    TWO REFUSALS, NOT ONE, because they are undone by different acts. A missing
-    credential is the person's to fix and doctor already says how; a missing
-    adapter is this build's own limitation and authenticating again would not
-    move it. Collapsing them would send somebody to a login screen over a gap in
-    the software.
+    FOUR REFUSALS, EACH UNDONE BY A DIFFERENT ACT, the same four
+    ``label.catalogue.resolve`` raises. A provider that could not be reached is a
+    wait, and the stored session is kept because nobody judged it. A missing
+    credential is the person's to record and doctor already says how. A stored
+    session the provider rejects, or a keychain that cannot be read, is the same
+    slug with the remedy the session module chose. An adapter that does not
+    import is this build's own gap, and authenticating again would not move it.
     """
+    global _OPENED
     del cfg  # the credential is installation scoped; the library does not pick it
     if not secrets.exists(str(secrets.Credential.PROVIDER_SESSION)):
         raise refuse(
@@ -76,18 +142,47 @@ def resolve(cfg: config.Config) -> RemoteAccount:
             origin=("outbound", "account"),
             detail={"credential": str(secrets.Credential.PROVIDER_SESSION)},
         )
-    raise refuse(
-        "outbound-account-unbound",
-        "a provider session is stored and this build has no adapter that can "
-        "use it to write a playlist or a heart, so the queued work cannot be "
-        "carried out. Nothing was written to the streaming account",
-        steps=(
-            "run the export or the hearts sweep from the source system until a "
-            "provider adapter ships here",
-        ),
-        scope=Scope.RUN,
-        origin=("outbound", "account"),
-    )
+    if _OPENED is not None:
+        return _OPENED
+    try:
+        adapter = importlib.import_module(ADAPTER_MODULE)
+    except ImportError as exc:
+        raise refuse(
+            "outbound-account-unbound",
+            "a provider session is stored and the account adapter that would use "
+            f"it to write a playlist or a heart does not import in this build "
+            f"({exc}), so the queued work cannot be carried out. Nothing was "
+            "written to the streaming account",
+            steps=(
+                "reinstall the product so its core dependencies are present, then "
+                "retry",
+            ),
+            scope=Scope.RUN,
+            origin=("outbound", "account"),
+        ) from exc
+    try:
+        opened = adapter.open_account()
+    except ProviderUnavailable as exc:
+        raise refuse(
+            "unavailable-transient",
+            f"the streaming provider could not be reached to open the account "
+            f"({exc}); the stored session was not judged and is kept",
+            remedy=Remedy.RETRY_LATER,
+            scope=Scope.RUN,
+            origin=("outbound", "account"),
+        ) from exc
+    except (AdapterAuthFailed, AdapterBroken) as exc:
+        raise refuse(
+            "credential-missing",
+            f"the stored streaming provider session could not be used to open "
+            f"the account ({exc})",
+            remedy=_REMEDIES.get(exc.remedy.value, Remedy.REAUTHENTICATE_PROVIDER),
+            scope=Scope.RUN,
+            origin=("outbound", "account"),
+            detail={"credential": str(secrets.Credential.PROVIDER_SESSION)},
+        ) from exc
+    _OPENED = opened
+    return opened
 
 
-__all__ = ["bound", "resolve"]
+__all__ = ["ADAPTER_MODULE", "bound", "forget", "provider_failure", "resolve"]
