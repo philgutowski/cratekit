@@ -21,7 +21,7 @@ outcome is owed to the ledger. Seven findings are filed, R-343 to R-349.
 **THE BOARD IS COMPLETE AND THE PRODUCT CANNOT SYNC.** `docs/cutover.md` says
 why in one section: R-258 and R-226 are unbound adapter seams and the playlists
 source has no listing, so nothing in the product lists Tidal. That is the
-remaining build, and it is residuals today, not units. Do not take #29.
+remaining build, and it is on the board now as U62 (#84), U63 (#85) and U64 (#86), with #29 declared dependent on all three so `board.py next` ranks #84. R-9's real backup run outcome is owed to the ledger; the job id is in that entry. Do not take #29.
 
 **The session before, 2026-09-11, U25 on `unit/u25-vocal-restamp-and-my-tags-shells`.**
 The two remaining vocal CLI shells landed. `cratekit.vocals.cli` queues
