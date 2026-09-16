@@ -11971,6 +11971,19 @@ it, and one real playlist and one real hearts sweep run through these two verbs
 against a live account. That is also R-144's closing condition, which this unit
 advances and does not claim.
 
+**Agent half CLOSED by U63, 2026-09-16, on `relay/85`.**
+`modules.outbound.tidal_account.TidalAccount` implements `RemoteAccount` over a
+client `acquire.provider_session.client_session` logs in from the stored session,
+`account.resolve` returns it once a session is recorded and holds it for the
+process, and `bound()` answers whether that module imports. Driven against a fake
+client injected at `provider_session.CLIENT_FACTORY` in
+`tests/test_outbound_tidal_account.py`, including a hearts sweep and a playlist
+export through the real workers to done with the ledger recording every write.
+**Those two drives give the rows an ISRC by substitution, and the shipped rows
+carry none, which is R-355: a live sweep today matches nothing.** The live half
+stays open with R-144, recorded in `docs/cutover.md`. `outbound-account-unbound`
+survives only for a build whose adapter does not import.
+
 ---
 
 ## R-227. The library both outbound verbs read is an export the operator makes by hand
@@ -15724,3 +15737,70 @@ share sheet produces today was not observed.
 **Closes when:** the attended sitting records the share sheet's actual output and
 the parser accepts every shape it produces.
 
+
+---
+
+## R-355. The bound account matches nothing, because no shipped row carries an ISRC
+
+**Found:** during U63, 2026-09-16, driving the adapter through the real workers.
+
+`TidalAccount.match_track` takes an ISRC naming exactly one provider track, then
+an identity that is an exact provider track URL, and returns `None` otherwise, as
+`modules/outbound/account.py` requires: never a text search, never a bare number
+read as a provider identifier. The rows both outbound workers hand it come from
+`modules/outbound/source.local_tracks` and `heart_candidates`, which set no ISRC
+because a rekordbox collection export carries none, and whose identity is the
+rekordbox `TrackID`, a bare number. **Driven, not argued:**
+`test_the_shipped_rows_carry_no_isrc_so_a_sweep_matches_nothing` queues a sweep
+over a client that knows both tracks, and the job ends succeeded with every row
+unmatched and no call made to the provider.
+
+**Measured cost.** Nothing wrong is written: an unmatched row is reported, not
+guessed. What a person gets from a live `crate sync favorites` or
+`crate export playlist` today is a clean job that hearts nothing and adds nothing,
+with every track listed as unmatched. The attended R-144 sitting would meet this
+first.
+
+**Why not fixed here.** The ISRC has to come from somewhere the export does not
+carry, most plausibly the audio file's own tag at the row's `Location`, and that
+is a change to the outbound source and to R-227's reading of the library, which
+the brief placed out of scope. Both choices are Phillip's: read the file tag in
+`source`, or wait for a live database reader that carries the provider id.
+
+**Closes when:** the rows the outbound workers build carry an ISRC or an exact
+provider reference for a track that has one, and a live sweep matches it.
+
+---
+
+## R-356. An ISRC several provider tracks carry is unmatched rather than resolved
+
+**Found:** during U63, 2026-09-16, writing `TidalAccount.match_track`.
+
+One recording is commonly on the provider several times, as a single, an album cut
+and a compilation track, each with its own identifier and the same ISRC. The
+adapter returns `None` when the ISRC answer holds more than one distinct
+identifier, because which release gets the heart is not something the ISRC
+decides, and the brief forbids a first result. **Measured cost: unmeasured live.**
+Every such track is reported unmatched and is not hearted. How many of a real
+library's recordings the provider carries more than once was not observed.
+
+**Closes when:** a rule that picks among same ISRC releases without guessing is
+decided, for example the one already in the favourites, and pinned by a test.
+
+---
+
+## R-357. The held account answers from what it read at open, for the life of the process
+
+**Found:** during U63, 2026-09-16, making `account.resolve` hold one adapter.
+
+The workers resolve the account once per item, so the seam holds the first adapter
+for the process and the adapter holds the favourites it read once and each
+playlist's membership it read once, updated by its own writes. A heart removed or
+a track taken off a playlist from another device during a run is still read as
+present. **Measured cost:** that item is reported as already present and nothing
+is written, so an add only sweep can under write and cannot over write. A detached
+resume is its own process and reads afresh. A rejected session drops the held
+adapter, so a login made meanwhile is picked up. `export.apply` still asks
+`playlist_tracks` once per item, which is now memory rather than a listing.
+
+**Closes when:** a run that must see concurrent edits is a requirement, or never.
