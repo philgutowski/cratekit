@@ -61,7 +61,7 @@ outcome is owed to the ledger. Seven findings are filed, R-343 to R-349.
 **THE BOARD IS COMPLETE AND THE PRODUCT CANNOT SYNC.** `docs/cutover.md` says
 why in one section: R-258 and R-226 are unbound adapter seams and the playlists
 source has no listing, so nothing in the product lists Tidal. That was the
-remaining build, on the board as U62 (#84), U63 (#85) and U64 (#86), with #29 declared dependent on all three. U62 has since landed its agent half. R-9's real backup run outcome is owed to the ledger; the job id is in that entry. Do not take #29.
+remaining build, on the board as U62 (#84), U63 (#85) and U64 (#86), with #29 declared dependent on all three. U62 and U63 have since landed their agent halves, and R-355 means the account half matches nothing live yet. R-9's real backup run outcome is owed to the ledger; the job id is in that entry. Do not take #29.
 
 **The session before, 2026-09-11, U25 on `unit/u25-vocal-restamp-and-my-tags-shells`.**
 The two remaining vocal CLI shells landed. `cratekit.vocals.cli` queues
