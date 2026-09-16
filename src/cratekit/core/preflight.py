@@ -240,6 +240,28 @@ def windows_volume_identity(path: Path) -> str | None:  # pragma: no cover - nee
     return f"{serial.value:08x}"
 
 
+def normalize_identity(identity: str) -> str:
+    """One spelling of a volume identity: surrounding space gone, case folded.
+
+    Both shipped adapters report lowercase hex, and the tools a person reads an
+    identity from do not: ``diskutil info`` prints the same UUID in uppercase.
+    Hex is case blind, so the case carries no identity and must not decide one.
+    """
+    return identity.strip().lower()
+
+
+def same_identity(recorded: str, observed: str) -> bool:
+    """Whether two spellings name one volume.
+
+    Folded at COMPARE time only, and never at record time. Setup records what it
+    was given, because the recorded value is also the ``library_id`` jobs and
+    watermarks were stamped with and are matched on exactly, so a re-run that
+    rewrote its case would orphan them. An exact compare here reported the very
+    volume setup had just been pointed at as foreign (R-344).
+    """
+    return normalize_identity(recorded) == normalize_identity(observed)
+
+
 def null_volume_identity(path: Path) -> str | None:
     """No adapter for this platform. Always None, which is a refusal upstream.
 
@@ -703,7 +725,7 @@ def resolve_mount_state(
             recorded_identity=recorded_identity,
         )
 
-    if observed == recorded_identity:
+    if same_identity(recorded_identity, observed):
         return MountStatus(
             MountState.OK if root_exists else MountState.LIBRARY_PATH_MISSING,
             configured_root=root,
@@ -713,7 +735,8 @@ def resolve_mount_state(
         )
 
     for candidate in enumerate_mounts():
-        if identity_of(Path(candidate)) == recorded_identity:
+        found = identity_of(Path(candidate))
+        if found is not None and same_identity(recorded_identity, found):
             return MountStatus(
                 MountState.MOUNTED_ELSEWHERE,
                 configured_root=root,

@@ -447,3 +447,51 @@ def test_the_precondition_has_no_default_library_root():
     """A default root would be one person's disk baked into shipped code (R1)."""
     with pytest.raises(TypeError):
         assert_library_mounted([])  # type: ignore[call-arg]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-344: the case of a spelling is not part of an identity
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_an_identity_recorded_in_uppercase_matches_the_lowercase_the_kernel_reports(tmp_path):
+    """``diskutil info`` prints the UUID in uppercase and ``getattrlist`` reads it
+    in lowercase. Compared exactly, the volume setup was just pointed at was
+    reported foreign.
+    """
+    mount = containing_mount(tmp_path)
+    status = resolve_mount_state(
+        tmp_path,
+        RECORDED.upper(),
+        identity_provider=fake_identity({mount: RECORDED}),
+        mount_enumerator=fake_mounts(),
+    )
+    assert status.state is MountState.OK
+
+
+def test_an_identity_in_another_case_is_still_found_where_it_is_mounted(tmp_path):
+    """The sweep over every mount compares the same way the configured one does."""
+    configured = tmp_path / "configured"
+    configured.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    status = resolve_mount_state(
+        configured,
+        RECORDED.upper(),
+        identity_provider=fake_identity(
+            {containing_mount(configured): FOREIGN, elsewhere: RECORDED}
+        ),
+        mount_enumerator=fake_mounts(elsewhere),
+    )
+    assert status.state is MountState.MOUNTED_ELSEWHERE
+    assert status.found_at == elsewhere
+
+
+def test_folding_the_case_does_not_make_a_different_volume_the_same_one(tmp_path):
+    """The other half. A fold that also matched a different UUID is no identity."""
+    status = resolve_mount_state(
+        tmp_path,
+        RECORDED.upper(),
+        identity_provider=fake_identity({containing_mount(tmp_path): FOREIGN.upper()}),
+        mount_enumerator=fake_mounts(),
+    )
+    assert status.state is MountState.FOREIGN_VOLUME
