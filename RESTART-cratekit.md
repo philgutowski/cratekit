@@ -364,8 +364,10 @@ tree, which is the whole of what the entry now says.
 **Main's highest residual is R-357 once `relay/85` merges**, R-355 to R-357 being
 U63's, with R-226's agent half closed in place, no duplicate heading and no
 heading moved. U63's full suite before the review round was **7491 passed and 1
-skipped** in 400 seconds on a committed tree; the battery after the record is the
-next line's number.
+skipped** in 400 seconds on a committed tree, and after the review round, the
+zero row tests and the record it was **7500 passed and 1 skipped** in 397 seconds.
+The nine are six review fix tests and three zero row tests, all in
+`tests/test_outbound_tidal_account.py`.
 
 **Main's highest residual was R-342 once U25 merged**, R-341 and R-342
 being U25's, with R-277 closed in place, no duplicate heading and no heading
