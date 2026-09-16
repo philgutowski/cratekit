@@ -15544,6 +15544,18 @@ mutation table that guard already has.
 folded, or the wizard folds the case at record time, and a test drives an
 uppercase UUID through setup and the mount check.
 
+**Closed 2026-09-16 on `relay/83`, taking the FIRST condition and not the
+second.** `preflight.same_identity` folds the case on both sides and both
+compares in `resolve_mount_state` go through it, the configured mount and the
+mounted elsewhere sweep. Setup still records the identity as given, on purpose:
+the recorded value is also the `library_id` that jobs and watermarks are stamped
+with and matched on exactly, so folding it at record time would orphan them on a
+re-run that spelled it differently. The setup side test drives an uppercase UUID
+through `_resolve_volume_id`, the mount check and the taxonomy write the sitting
+could not make. The first mutation table caught the preflight tests asserting a
+fold over an all digit identity, which is its own uppercase; they now use
+lettered hex, and `docs/mutation/r83-round-2.md` shows all three compares killing.
+
 ---
 
 ## R-345. The backup destinations are used verbatim as rclone targets and nothing validates them
@@ -15589,6 +15601,11 @@ the sitting was mid cutover and the rule is one unit per session.
 **Closes when:** `_write` flushes after every question, and a test drives the
 prompter through a real pipe rather than an injected writer.
 
+**Closed 2026-09-16 on `relay/83`.** `_write` flushes. The test starts a real
+interpreter over real pipes with `PYTHONUNBUFFERED` removed and requires the
+question on standard error before it sends the answer; the unflushed writer
+kills it (`docs/mutation/r83.md`, P1).
+
 ---
 
 ## R-347. A credential offered, accepted and left empty fails the whole wizard
@@ -15604,6 +15621,12 @@ is INFO; the empty answer should be the same fact.
 
 **Closes when:** an empty secret at that prompt is recorded as the same INFO
 note as a no, and the exit code follows the doctor's own verdict.
+
+**Closed 2026-09-16 on `relay/83`.** `Prompter.secret` raises `NothingEntered`,
+a subclass of `PromptUnavailable`, for an empty value, and the credential offer
+records it as the INFO note a no gets. An unreadable prompt still fails. Driven
+end to end through the dispatcher: with the offer accepted and left empty, the
+only failing check is `rekordbox.pins`, the one a clean machine owes doctor.
 
 ---
 
@@ -15623,6 +15646,14 @@ provider cannot raise.
 **Closes when:** `AttributeError`, `TypeError`, `NameError` and their kin
 raised from inside the tool are classified as `AdapterBroken` with remedy
 `report-defect`, and a test drives one through the loop.
+
+**Closed 2026-09-16 on `relay/83`.** `adapter.raise_if_defect` escalates the
+three classes, and `UnboundLocalError` through `NameError`, from an offer or a
+fetch to `AdapterBroken` with the new adapter token `report-defect`. Driven
+through both adapters' sequential loop and through the paced pool the download
+verb runs, with every unlanded track still queued. The vendored source asks the
+same question before its authentication heuristic, which reads the word token
+anywhere. R-365 and R-366 are what this left open.
 
 ---
 
@@ -15933,3 +15964,55 @@ Removing the key filter killed zero tests on the subset and zero on the full sui
 under another key. Maintainer facing. Kept as defence.
 
 **Closes when:** a second key carries this source's jobs, or the filter is removed.
+
+---
+
+## R-365. A TypeError from a malformed provider response now stops the batch
+
+**Found:** 2026-09-16, `/code-review` of `relay/83`. Not driven.
+
+R-348's closing condition makes every `TypeError`, `AttributeError` and
+`NameError` under an offer or a fetch an invocation failure. The class alone
+cannot tell a defect in this repository from the vendored tool or the provider
+client tripping over one track whose response is missing a field, for example
+`'NoneType' object is not subscriptable`. Before, that one track was transient
+and the batch carried on. Now the run stops with `report-defect`, every unlanded
+track stays queued, and a re-run stops on the same track again, so the batch
+never passes it.
+
+**Reachability unmeasured.** The reviewer read the client's track parsing, which
+checks for a missing album, and the vendored downloader, which catches most
+errors itself, and found no producer. No real response was driven.
+
+**Why not fixed here.** The ledger condition names these classes, the cost is a
+visible stop naming the class and the message rather than a silent retry, and
+narrowing it needs a real malformed response to decide against.
+
+**Closes when:** a real run observes the shape and the per track path learns to
+tell a malformed provider record from a defect, or a sitting of real downloads
+shows the shape does not arise.
+
+---
+
+## R-366. Defect classes are escalated only inside the acquisition loop
+
+**Found:** 2026-09-16, the hunt for R-348's shape one file over, on `relay/83`.
+Read, not driven.
+
+`raise_if_defect` runs under `acquire_one` and at the top of the vendored
+source's `raise_if_session_dead`. Three neighbours still translate any exception
+into a provider answer. `_VendoredSource.authenticate` and the streamrip source's
+login wrap everything in `AdapterAuthFailed` with `reauthenticate-provider`, so a
+defect at login sends a person to log in again. `label.catalogue.resolve` and
+`modules.outbound.account.resolve` report an `AdapterBroken` from opening as
+`credential-missing`, and `modules.outbound.account.provider_failure`, which
+every `TidalAccount` provider call goes through, reads anything that is not an
+authentication failure as `unavailable-transient` without the defect question.
+
+**Why not fixed here.** Outside the four residuals this unit closes, and each
+site has its own cause vocabulary to decide against.
+
+**Closes when:** each of those paths asks the defect question before reading a
+failure as a session or a provider answer, with a test per path, or the entry
+records why a path is exempt.
+

@@ -1,0 +1,172 @@
+name = "r83"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_flush"
+description = "R-346: drop the flush from the prompter's writer, the defect as found"
+file = "src/cratekit/cli/prompt.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    print(text, file=sys.stderr, end="", flush=True)'''
+new = '''    print(text, file=sys.stderr, end="")'''
+
+[[rows]]
+id = "P2_nothing_entered_raise"
+description = "R-347: an empty secret raises the plain PromptUnavailable again"
+file = "src/cratekit/cli/prompt.py"
+surface = "user"
+old = '''            raise NothingEntered(f"nothing entered for {question!r}")'''
+new = '''            raise PromptUnavailable(f"nothing entered for {question!r}")'''
+
+[[rows]]
+id = "P3_empty_secret_note_status"
+description = "R-347: the wizard's empty credential note is FAIL instead of INFO"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+old = '''                # whole wizard over a session blob only login can produce (R-347).
+                wizard.note(
+                    f"setup.credential.{name}",
+                    f"credential {name}",
+                    doctor.Status.INFO,'''
+new = '''                # whole wizard over a session blob only login can produce (R-347).
+                wizard.note(
+                    f"setup.credential.{name}",
+                    f"credential {name}",
+                    doctor.Status.FAIL,'''
+
+[[rows]]
+id = "P4_empty_secret_branch"
+description = "R-347: remove the NothingEntered branch so the unreadable branch catches it"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+old = '''            except prompt.NothingEntered:
+                # An offer accepted and then left empty is the same fact as a
+                # no: nothing recorded, doctor reports it. A FAIL here failed the
+                # whole wizard over a session blob only login can produce (R-347).
+                wizard.note(
+                    f"setup.credential.{name}",
+                    f"credential {name}",
+                    doctor.Status.INFO,
+                    f"{name} is not recorded and was not entered; doctor reports it",
+                )
+                continue
+'''
+new = ""
+
+[[rows]]
+id = "I1_fold_case"
+description = "R-344: normalize_identity strips but no longer folds the case"
+file = "src/cratekit/core/preflight.py"
+surface = "user"
+old = '''    return identity.strip().lower()'''
+new = '''    return identity.strip()'''
+
+[[rows]]
+id = "I2_fold_strip"
+description = "R-344: normalize_identity folds the case but no longer strips surrounding space"
+file = "src/cratekit/core/preflight.py"
+surface = "maintainer"
+old = '''    return identity.strip().lower()'''
+new = '''    return identity.lower()'''
+
+[[rows]]
+id = "I3_configured_compare_exact"
+description = "R-344: the configured mount's compare goes back to exact equality"
+file = "src/cratekit/core/preflight.py"
+surface = "user"
+old = '''    if same_identity(recorded_identity, observed):'''
+new = '''    if observed == recorded_identity:'''
+
+[[rows]]
+id = "I4_elsewhere_compare_exact"
+description = "R-344: the mounted elsewhere sweep's compare goes back to exact equality"
+file = "src/cratekit/core/preflight.py"
+surface = "user"
+old = '''        if found is not None and same_identity(recorded_identity, found):'''
+new = '''        if found == recorded_identity:'''
+
+[[rows]]
+id = "I5_elsewhere_none_guard"
+description = "R-344: drop the None guard in the sweep, so a mount with no identity reaches same_identity"
+file = "src/cratekit/core/preflight.py"
+surface = "maintainer"
+old = '''        if found is not None and same_identity(recorded_identity, found):'''
+new = '''        if same_identity(recorded_identity, found or ""):'''
+
+[[rows]]
+id = "D1_offer_defect"
+description = "R-348: acquire_one no longer asks the defect question after a failed offer"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+old = '''    except Exception as exc:  # noqa: BLE001 - one dead track never sinks the run
+        raise_if_defect(exc)
+'''
+new = '''    except Exception as exc:  # noqa: BLE001 - one dead track never sinks the run
+'''
+
+[[rows]]
+id = "D2_fetch_defect"
+description = "R-348: acquire_one no longer asks the defect question after a failed fetch"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+old = '''    except Exception as exc:  # noqa: BLE001 - same rule as the lookup above
+        raise_if_defect(exc)
+'''
+new = '''    except Exception as exc:  # noqa: BLE001 - same rule as the lookup above
+'''
+
+[[rows]]
+id = "D3_drop_attribute_error"
+description = "R-348: AttributeError leaves the defect classes, the class the sitting found"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+old = '''DEFECT_ERRORS: tuple[type[BaseException], ...] = (AttributeError, TypeError, NameError)'''
+new = '''DEFECT_ERRORS: tuple[type[BaseException], ...] = (TypeError, NameError)'''
+
+[[rows]]
+id = "D4_drop_type_error"
+description = "R-348: TypeError leaves the defect classes"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+old = '''DEFECT_ERRORS: tuple[type[BaseException], ...] = (AttributeError, TypeError, NameError)'''
+new = '''DEFECT_ERRORS: tuple[type[BaseException], ...] = (AttributeError, NameError)'''
+
+[[rows]]
+id = "D5_drop_name_error"
+description = "R-348: NameError, and with it UnboundLocalError, leaves the defect classes"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+old = '''DEFECT_ERRORS: tuple[type[BaseException], ...] = (AttributeError, TypeError, NameError)'''
+new = '''DEFECT_ERRORS: tuple[type[BaseException], ...] = (AttributeError, TypeError)'''
+
+[[rows]]
+id = "D6_remedy"
+description = "R-348: the defect carries switch-adapter instead of report-defect"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+old = '''            remedy=Remedy.REPORT_DEFECT,
+        ) from exc'''
+new = '''            remedy=Remedy.SWITCH_ADAPTER,
+        ) from exc'''
+
+[[rows]]
+id = "D7_detail_names_class"
+description = "R-348: the detail no longer names the exception class"
+file = "src/cratekit/acquire/adapter.py"
+surface = "maintainer"
+old = '''            f"({type(exc).__name__}: {exc})",'''
+new = '''            f"({exc})",'''
+
+[[rows]]
+id = "D8_vendored_defect_first"
+description = "R-348: the vendored source no longer asks the defect question before the token heuristic"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''    raise_if_defect(exc)
+    if classify_unavailable(exc)'''
+new = '''    if classify_unavailable(exc)'''
+
+[[dropped]]
+id = "P5_real_pipe_timeout"
+description = "Halve the pipe test's fifteen second deadline"
+reason = "a test coefficient, not a guard in src; the flush row P1 measures what the test holds"

@@ -1462,6 +1462,126 @@ def test_only_the_wizard_is_declared_interactive_and_it_reads_no_standard_input(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def test_a_credential_offer_accepted_and_left_empty_is_the_same_note_as_a_no(configured):
+    """R-347. The provider session is a blob only login produces, so a person who
+    says yes and then has nothing to type has told the wizard the same fact as a
+    no, and it used to fail the whole run.
+    """
+    wizard = setup_verb._Wizard({}, Scripted(["yes", "yes", "yes"], ["", "  ", ""]))
+    setup_verb._capture_credentials(wizard, configured)
+
+    offered = [note for note in wizard.notes if note.key.startswith("setup.credential.")]
+    assert offered, "no credential was offered, so nothing here was exercised"
+    assert all(note.status is doctor.Status.INFO for note in offered)
+    assert not secrets.recorded()
+
+
+def test_a_credential_offer_that_could_not_be_read_still_fails(configured):
+    """The other half. An empty answer is a person; a dead stream is not."""
+    wizard = setup_verb._Wizard({}, Scripted(["yes", "yes", "yes"]))
+    setup_verb._capture_credentials(wizard, configured)
+
+    offered = [note for note in wizard.notes if note.key.startswith("setup.credential.")]
+    assert offered
+    assert all(note.status is doctor.Status.FAIL for note in offered)
+
+
+def test_an_empty_credential_leaves_the_exit_code_to_doctor(tmp_path, monkeypatch):
+    """R-347 end to end. With the offer accepted and left empty, the only failing
+    check is the one doctor itself reports on a clean machine, the unset pin.
+    """
+    root = tmp_path / "fresh"
+    (root / "Music").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    monkeypatch.setattr(doctor, "Probes", lambda: probes())
+    scripted = Scripted(["no", "yes", "yes", "yes"], ["", "", ""])
+    monkeypatch.setattr(setup_verb.prompt, "Prompter", lambda: scripted)
+
+    code, out, err = drive(
+        [
+            "--output", "json", "setup",
+            "--library-root", str(root),
+            "--db-path", str(root / "db" / "master.db"),
+            "--volume-id", VOLUME,
+            "--staging", str(tmp_path / "staging"),
+            "--profile", "slim",
+            "--taxonomy", "default",
+        ]
+    )
+    checks = json.loads(out)["data"]["checks"]
+    credential = [c for c in checks if c["key"].startswith("setup.credential.")]
+    assert credential and all(c["status"] == "info" for c in credential), (checks, err)
+    failing = [c["key"] for c in checks if c["status"] == "fail"]
+    assert failing == ["rekordbox.pins"], (checks, err)
+    assert code == int(ExitCode.PRECONDITION)
+
+
+def test_an_identity_typed_as_diskutil_prints_it_passes_the_mount_check(library):
+    """R-344 through setup. The uppercase UUID is recorded as given, the platform
+    reports it lowercase, and the taxonomy the sitting could not write is written.
+    """
+    reported = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    wizard = setup_verb._Wizard({}, silent())
+    recorded = setup_verb._resolve_volume_id(wizard, str(library), reported.upper(), probes())
+    cfg = config.from_dict(document_for(library, volume_id=recorded))
+    machine = probes(identity_provider=lambda _path: reported)
+
+    status = setup_verb.preflight.resolve_mount_state(
+        cfg.library.root,
+        cfg.library.volume_id,
+        identity_provider=machine.identity_provider,
+        mount_enumerator=machine.mount_enumerator,
+    )
+    assert status.state is setup_verb.preflight.MountState.OK
+
+    setup_verb._seed_taxonomy(wizard, cfg, machine)
+    assert not [note for note in wizard.notes if note.status is doctor.Status.FAIL]
+    assert config.state_path("taxonomy_active", cfg).is_file()
+
+
+def test_a_question_reaches_a_real_pipe_before_its_answer_is_read():
+    """R-346. Every other test injects the writer, which is why none could see it.
+
+    A real interpreter, real pipes, and no ``PYTHONUNBUFFERED``: the question must
+    arrive on standard error while the child is still blocked waiting for the
+    answer. Unflushed, it sat in the buffer and a terminal showed nothing.
+    """
+    import select
+    import subprocess
+    import time
+
+    environment = {k: v for k, v in os.environ.items() if k != "PYTHONUNBUFFERED"}
+    script = (
+        "import sys\n"
+        "from cratekit.cli import prompt\n"
+        "sys.stdout.write(prompt.Prompter().ask('Which crate'))\n"
+    )
+    child = subprocess.Popen(
+        [sys.executable, "-c", script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=environment,
+    )
+    try:
+        shown = b""
+        deadline = time.monotonic() + 15
+        while b"Which crate: " not in shown:
+            remaining = deadline - time.monotonic()
+            assert remaining > 0, f"the question never reached the pipe: {shown!r}"
+            ready, _, _ = select.select([child.stderr], [], [], remaining)
+            assert ready, f"the question never reached the pipe: {shown!r}"
+            chunk = os.read(child.stderr.fileno(), 4096)
+            assert chunk, f"the child closed standard error first: {shown!r}"
+            shown += chunk
+        answered, _ = child.communicate(b"techno\n", timeout=15)
+        assert answered == b"techno"
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
+
+
 def test_login_never_accepts_a_credential_as_an_argument():
     """An argument is visible in the process listing to every local account for
     as long as the process runs, and in the shell history afterwards.

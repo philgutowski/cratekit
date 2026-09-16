@@ -92,6 +92,9 @@ class Remedy(StrEnum):
     #: instructions are opposites at the only moment either is read. Retrying a
     #: throttle is correct; retrying a block is what turns it into a lockout.
     PAUSE_AND_CHECK_ACCOUNT = "pause-and-check-account"
+    #: The failure is a defect in this program, not in the provider or the
+    #: machine. Retrying repeats it forever, so the only act is a report.
+    REPORT_DEFECT = "report-defect"
 
 
 class AdapterError(Exception):
@@ -442,6 +445,32 @@ def dispatch_invocation(
 TRANSIENT_MARKERS = ("503", "5xx", "server error", "service unavailable")
 
 
+#: Python error classes a provider cannot raise. Each one means the code calling
+#: the provider is wrong, whether that code is this repository's or the vendored
+#: tool's, and no amount of waiting changes it. ``UnboundLocalError`` is a
+#: ``NameError`` and is covered by it.
+DEFECT_ERRORS: tuple[type[BaseException], ...] = (AttributeError, TypeError, NameError)
+
+
+def raise_if_defect(exc: BaseException) -> None:
+    """Escalate a code defect raised under a per-track call to ``AdapterBroken``.
+
+    Asked BEFORE any reading of the message. The per-track fallback reads text
+    for provider signals and calls everything else transient, which is honest
+    for an unknown provider error and wrong for a class no provider raises: the
+    first real download reported ``'function' object has no attribute 'info'``
+    as a retryable outage, and a job retrying it would have retried it forever
+    (R-348). An invocation failure also keeps every unlanded track queued, so
+    the fix is one report and one re-run rather than a lost batch.
+    """
+    if isinstance(exc, DEFECT_ERRORS):
+        raise AdapterBroken(
+            f"a defect in the acquisition code, not a provider failure "
+            f"({type(exc).__name__}: {exc})",
+            remedy=Remedy.REPORT_DEFECT,
+        ) from exc
+
+
 def classify_unavailable(exc: BaseException) -> TrackOutcome:
     """Classify a failed per-track lookup as permanently or transiently unavailable.
 
@@ -790,6 +819,7 @@ def acquire_one(
     except (AdapterAuthFailed, AdapterBroken):
         raise
     except Exception as exc:  # noqa: BLE001 - one dead track never sinks the run
+        raise_if_defect(exc)
         return _unavailable(request, exc)
 
     decision = decide_lossless(settings.lossless_policy, source_is_lossless=offer.lossless)
@@ -816,6 +846,7 @@ def acquire_one(
             remedy=exc.remedy,
         )
     except Exception as exc:  # noqa: BLE001 - same rule as the lookup above
+        raise_if_defect(exc)
         return _unavailable(request, exc)
 
     return TrackResult(
@@ -969,6 +1000,7 @@ class BaseAdapter:
 
 
 __all__ = [
+    "DEFECT_ERRORS",
     "FAILED_INVOCATIONS",
     "TRANSIENT_MARKERS",
     "AcquisitionAdapter",
@@ -993,6 +1025,7 @@ __all__ = [
     "acquire_one",
     "acquire_with_source",
     "classify_unavailable",
+    "raise_if_defect",
     "decide_lossless",
     "dispatch",
     "dispatch_invocation",
