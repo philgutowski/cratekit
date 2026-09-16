@@ -1875,3 +1875,54 @@ def test_every_remedy_is_a_token_and_not_a_command():
         assert remedy.value == remedy.value.lower()
         assert " " not in remedy.value
         assert remedy.value.replace("-", "").isalnum()
+
+
+# ---------------------------------------------------------------------------
+# #82: the logger the adapter hands the vendored tool
+# ---------------------------------------------------------------------------
+
+VENDORED_TOOL_ROOT = REPO_ROOT / "src" / "cratekit" / "_vendor" / "tidal_dl_ng"
+
+
+def _attributes_the_tool_uses_on_its_logger() -> dict[str, set[str]]:
+    """Every ``fn_logger.<name>`` access in the vendored tree, by attribute.
+
+    Read off the tree rather than listed here, so a revendor that starts calling
+    a new method is a red test and not the next real download.
+    """
+    found: dict[str, set[str]] = {}
+    for source in sorted(VENDORED_TOOL_ROOT.rglob("*.py")):
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Attribute):
+                continue
+            owner = node.value
+            is_logger = (isinstance(owner, ast.Name) and owner.id == "fn_logger") or (
+                isinstance(owner, ast.Attribute) and owner.attr == "fn_logger"
+            )
+            if is_logger:
+                found.setdefault(node.attr, set()).add(source.name)
+    return found
+
+
+def test_the_logger_handed_to_the_vendored_tool_has_every_method_the_tool_calls():
+    """The tool annotates ``fn_logger`` as a callable and uses it as a logger.
+
+    A plain function satisfied the annotation and every offline test, and died
+    on the first real download with ``'function' object has no attribute
+    'info'``. The set is read off the vendored tree so it cannot drift from the
+    tool it describes.
+    """
+    from cratekit.acquire import vendored
+
+    used = _attributes_the_tool_uses_on_its_logger()
+    assert used, "the vendored tree stopped using fn_logger; this guard is stale"
+    assert {"info", "debug", "error", "exception"} <= set(used)
+    logger = vendored._discard_tool_logging
+    missing = sorted(name for name in used if not callable(getattr(logger, name, None)))
+    assert not missing, f"the adapter's logger lacks {missing}, used in {[used[m] for m in missing]}"
+    for name in used:
+        assert getattr(logger, name)("free-form %s", "text", exc_info=True) is None
+    assert callable(logger), "the tool's annotation promises a callable"
+    assert logger("also fine as a call") is None
+

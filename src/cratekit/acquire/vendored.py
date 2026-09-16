@@ -555,13 +555,52 @@ def landed_file(
     return path
 
 
-def _discard_tool_logging(*_args: object, **_kwargs: object) -> None:
-    """Absorb the wrapped tool's progress logging.
+class _DiscardedToolLogging:
+    """Absorb the wrapped tool's logging: every method it calls, writing nothing.
 
-    The tool requires a logging callable and writes free-form progress through
-    it. Structured output is U5's envelope, so tool chatter is dropped here
-    rather than allowed onto a stream a caller may be parsing.
+    THE TOOL SAYS CALLABLE AND USES A LOGGER. Its ``fn_logger`` parameter is
+    annotated ``Callable`` and its body never calls the value; it calls
+    ``.debug``, ``.info``, ``.error`` and ``.exception`` on it, at twenty two
+    sites across the vendored tree. A plain function satisfied the annotation
+    and every offline test, because every test injects a fake tool, and died on
+    the first real download with ``'function' object has no attribute 'info'``,
+    which the translation in ``_source`` then reported as a transient provider
+    outage. Found 2026-09-16 on the first real track through this adapter, the
+    observation R-210 asked for (#82).
+
+    Structured output is U5's envelope, so tool chatter is dropped here rather
+    than allowed onto a stream a caller may be parsing. ``__call__`` stays so the
+    annotation's promise holds as well as the body's. The method set is pinned
+    by ``tests/test_adapter_contract.py``, which reads it off the vendored tree
+    rather than off a list here, so a revendor that starts calling ``.warning``
+    fails the suite instead of the next real download.
     """
+
+    def __call__(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    def debug(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    def info(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    def warning(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    def error(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    def exception(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    def critical(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+
+#: The one instance the adapter hands the tool. A name rather than a class so the
+#: construction site reads as before and a test can ask the same object.
+_discard_tool_logging = _DiscardedToolLogging()
 
 
 class VendoredAdapter(BaseAdapter):
