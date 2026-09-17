@@ -113,6 +113,7 @@ SNAPSHOT_SETTINGS = "snapshot-settings"
 RESTORE_MIRROR = "restore-mirror"
 RESTORE_DATABASE = "restore-database"
 LIST_SNAPSHOTS = "list-snapshots"
+LIST_SNAPSHOT_CONTENTS = "list-snapshot-contents"
 
 #: What a portion says about a rotation that did not happen, as codes rather
 #: than as sentences, for the same reason the labels above are constants: a
@@ -917,13 +918,22 @@ def _prune_archive(
 
 @dataclass(frozen=True, slots=True)
 class RestorePlan:
-    """What a restore will do, including the sidecars it clears first."""
+    """What a restore will do, including the sidecars it clears first.
+
+    ``absent_sidecars`` are the suffixes the inventory says to write back that
+    this snapshot does not hold. A checkpointed database has no write ahead log,
+    and the snapshot verb copies a sidecar only when it is present, so a restore
+    that always copies the log is a restore that always fails against the only
+    kind of snapshot this product takes (R-367). They are named rather than
+    transferred, so a person is told the sidecar was absent, not that it arrived.
+    """
 
     target: Path
     database_target: Path
     snapshot: str | None
     clears: tuple[Path, ...]
     commands: tuple[Command, ...] = field(default_factory=tuple)
+    absent_sidecars: tuple[str, ...] = field(default_factory=tuple)
 
 
 def database_target_for(cfg: config.Config, target: Path) -> Path:
@@ -963,6 +973,40 @@ def latest_snapshot(cfg: config.Config, *, runner: Runner) -> str | None:
         return None
     names = sorted(line.strip().rstrip("/") for line in result.stdout.splitlines() if line.strip())
     return names[-1] if names else None
+
+
+def snapshot_filenames(
+    cfg: config.Config, snapshot: str, *, runner: Runner
+) -> frozenset[str]:
+    """The filenames a dated database snapshot actually holds.
+
+    A listing that fails is a snapshot this account cannot see, not an empty
+    folder. Treating a failed listing as no sidecars would skip the log and
+    report a complete restore against a remote that never answered.
+    """
+    result = runner(
+        Command(
+            label=LIST_SNAPSHOT_CONTENTS,
+            argv=(
+                _rclone(),
+                "lsf",
+                f"{cfg.backup.db_dest_root}/{snapshot}/db/",
+                "--files-only",
+            ),
+        )
+    )
+    if result.returncode != 0:
+        raise BackupRefused(
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
+            f"be listed; a restore cannot be planned against a snapshot this "
+            f"account cannot see",
+        )
+    return frozenset(
+        line.strip().rstrip("/")
+        for line in result.stdout.splitlines()
+        if line.strip()
+    )
 
 
 def plan_restore(
@@ -1092,28 +1136,41 @@ def _plan_restore_inside_the_gates(
             argv=(rclone, "copy", f"{base}/{database_target.name}", f"{database_target.parent}/"),
         )
     )
-    # Only the sidecars a restore writes BACK. The shared-memory index is derived
-    # from the log, so putting a stale one back beside a fresh log hands SQLite
-    # two disagreeing views of one database; the declaration says which.
+    # Only the sidecars a restore writes BACK, and only when the snapshot holds
+    # them. The shared-memory index is derived from the log, so putting a stale
+    # one back beside a fresh log hands SQLite two disagreeing views of one
+    # database; the declaration says which. Absence is normal: a checkpointed
+    # database has no write ahead log, and the snapshot verb copies a sidecar
+    # only when it is present, so a restore that always copies the log is a
+    # restore that always fails against the only kind of snapshot this product
+    # takes (R-367).
+    held = snapshot_filenames(cfg, chosen, runner=runner)
+    absent: list[str] = []
     for sidecar in config.state_file("rekordbox_db").sidecars:
-        if sidecar.restored:
-            commands.append(
-                Command(
-                    label=RESTORE_DATABASE,
-                    argv=(
-                        rclone,
-                        "copy",
-                        f"{base}/{database_target.name}{sidecar.suffix}",
-                        f"{database_target.parent}/",
-                    ),
-                )
+        if not sidecar.restored:
+            continue
+        name = f"{database_target.name}{sidecar.suffix}"
+        if name not in held:
+            absent.append(sidecar.suffix)
+            continue
+        commands.append(
+            Command(
+                label=RESTORE_DATABASE,
+                argv=(
+                    rclone,
+                    "copy",
+                    f"{base}/{name}",
+                    f"{database_target.parent}/",
+                ),
             )
+        )
     return RestorePlan(
         target=target,
         database_target=database_target,
         snapshot=chosen,
         clears=clears,
         commands=tuple(commands),
+        absent_sidecars=tuple(absent),
     )
 
 
@@ -1297,6 +1354,7 @@ __all__ = [
     "PortionOutcome",
     "PortionPlan",
     "Refusal",
+    "LIST_SNAPSHOT_CONTENTS",
     "RESTORE_MIRROR",
     "RestorePlan",
     "database_fileset",
@@ -1304,6 +1362,7 @@ __all__ = [
     "dry_run_argv",
     "latest_snapshot",
     "plan_backup",
+    "snapshot_filenames",
     "plan_payload",
     "plan_restore",
     "outcome_payload",

@@ -1,0 +1,210 @@
+# R-367, author's table. A restore lists the snapshot and copies only the
+# sidecars it holds. Write surface, so user facing zeros owe a composite.
+#
+# Subset is the backup restore tests. A death there is a real death. A zero
+# there is promoted to the full suite by the driver.
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r367-rows.toml
+
+name = "r367"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_always_copy_the_restored_sidecar"
+description = "the original defect: copy every restored sidecar whether the snapshot holds it or not"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''    held = snapshot_filenames(cfg, chosen, runner=runner)
+    absent: list[str] = []
+    for sidecar in config.state_file("rekordbox_db").sidecars:
+        if not sidecar.restored:
+            continue
+        name = f"{database_target.name}{sidecar.suffix}"
+        if name not in held:
+            absent.append(sidecar.suffix)
+            continue
+        commands.append(
+'''
+new = '''    absent: list[str] = []
+    for sidecar in config.state_file("rekordbox_db").sidecars:
+        if not sidecar.restored:
+            continue
+        name = f"{database_target.name}{sidecar.suffix}"
+        commands.append(
+'''
+
+[[rows]]
+id = "G2_a_failed_listing_is_an_empty_snapshot"
+description = "absence read as evidence of absence: a listing that fails is treated as no sidecars"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''    if result.returncode != 0:
+        raise BackupRefused(
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
+            f"be listed; a restore cannot be planned against a snapshot this "
+            f"account cannot see",
+        )
+    return frozenset(
+'''
+new = '''    if result.returncode != 0:
+        return frozenset()
+    return frozenset(
+'''
+
+[[rows]]
+id = "G3_membership_is_inverted"
+description = "copy the sidecar when it is absent and skip it when it is present"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''        if name not in held:'''
+new = '''        if name in held:'''
+
+[[rows]]
+id = "G4_the_inventory_restored_flag_is_ignored"
+description = "a listed shared memory index is written back beside a fresh log"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''        if not sidecar.restored:
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "G5_absent_sidecars_are_not_recorded"
+description = "the plan copies nothing extra and also does not name what it skipped"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''            absent.append(sidecar.suffix)
+'''
+new = ""
+
+[[rows]]
+id = "G6_listing_failure_is_ignored"
+description = "a non zero listing return code is read as success and parsed as names"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''    if result.returncode != 0:
+        raise BackupRefused(
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+'''
+new = '''    if result.returncode == 0:
+        raise BackupRefused(
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+'''
+
+[[rows]]
+id = "G7_the_listing_is_of_the_snapshot_root"
+description = "list the dated folder, not the db folder inside it, so the log is never seen"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''                f"{cfg.backup.db_dest_root}/{snapshot}/db/",'''
+new = '''                f"{cfg.backup.db_dest_root}/{snapshot}/",'''
+
+[[rows]]
+id = "G8_files_only_is_dropped"
+description = "directories in the snapshot folder can be read as sidecar names"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "maintainer"
+tests = ["tests/modules/test_tools.py"]
+old = '''                f"{cfg.backup.db_dest_root}/{snapshot}/db/",
+                "--files-only",'''
+new = '''                f"{cfg.backup.db_dest_root}/{snapshot}/db/",'''
+
+[[rows]]
+id = "G9_the_listing_message_is_reworded"
+description = "reword the listing refusal, never append, because the suite asserts with in"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''            f"be listed; a restore cannot be planned against a snapshot this "'''
+new = '''            f"be read; a restore cannot be planned against a snapshot this "'''
+
+[[rows]]
+id = "G10_the_report_drops_the_absent_field"
+description = "the off machine half ran and the person is not told the sidecar was missing"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''            missing = pulled.absent_sidecars'''
+new = '''            missing = ()'''
+
+[[rows]]
+id = "G11_the_payload_omits_absent_sidecars"
+description = "the structured report has no key for the sidecar the snapshot did not hold"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''        "absent_sidecars": list(report.absent),'''
+new = '''        "absent_sidecars": [],'''
+
+[[rows]]
+id = "G12_listing_results_are_discarded"
+description = "the listing runs and its names are thrown away, so every sidecar is treated as absent"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''    held = snapshot_filenames(cfg, chosen, runner=runner)'''
+new = '''    snapshot_filenames(cfg, chosen, runner=runner)
+    held = frozenset()'''
+
+[[rows]]
+id = "E1_a_failed_transfer_is_unread"
+description = "existing guard sample: run_restore returns results without reading return codes"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''        if result.returncode != 0:
+            raise BackupRefused(
+                Refusal.RESTORE_TRANSFER_FAILED,'''
+new = '''        if result.returncode == 0:
+            raise BackupRefused(
+                Refusal.RESTORE_TRANSFER_FAILED,'''
+
+[[rows]]
+id = "E2_an_unconfirmed_restore_is_allowed"
+description = "existing guard sample: a restore proceeds without the named decision"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''    if not confirmed:
+        raise BackupRefused(
+            Refusal.RESTORE_NOT_CONFIRMED,'''
+new = '''    if confirmed and False:
+        raise BackupRefused(
+            Refusal.RESTORE_NOT_CONFIRMED,'''
+
+[[rows]]
+id = "E3_a_live_rekordbox_is_ignored"
+description = "existing guard sample: a restore proceeds while rekordbox holds the database"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''    if running:
+        raise BackupRefused(
+            Refusal.REKORDBOX_RUNNING,'''
+new = '''    if running and False:
+        raise BackupRefused(
+            Refusal.REKORDBOX_RUNNING,'''
+
+[[dropped]]
+id = "G13_database_copy_removed"
+description = "drop the database transfer entirely"
+reason = "ranked below the cap: the new guard is the sidecar listing, and E1 already measures a failed database copy"
+
+[[dropped]]
+id = "G14_clears_omit_the_wal"
+description = "stop clearing live sidecars before copy"
+reason = "ranked below the cap: pre-existing ordering guard, not this unit's surface"
+
+[[dropped]]
+id = "G9_composite_row"
+description = "what G9 holds if the message mutation kills zero"
+reason = "G2 mutates the same raise the message sits on, so G2 is the composite; a second copy of that mutation would not be a new measurement"

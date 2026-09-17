@@ -149,6 +149,14 @@ class Recorder:
         return [c.label for c in self.commands]
 
 
+def snapshot_listing(cfg, *sidecar_suffixes, extra=()):
+    """Stdout for a snapshot that holds the database and the named sidecars."""
+    database = config.state_path("rekordbox_db", cfg).name
+    names = [database, *extra]
+    names.extend(database + suffix for suffix in sidecar_suffixes)
+    return "".join(name + "\n" for name in names)
+
+
 def no_processes():
     return ()
 
@@ -1802,7 +1810,10 @@ def test_restore_removes_stale_sidecars_before_copying(cfg, tmp_path, rclone_on_
     observed = []
 
     def runner(command):
-        observed.append((command.label, [p.exists() for p in stale]))
+        if command.label in backup.TRANSFERRING_LABELS:
+            observed.append((command.label, [p.exists() for p in stale]))
+        if command.label == backup.LIST_SNAPSHOT_CONTENTS:
+            return backup.CommandResult(returncode=0, stdout=snapshot_listing(cfg))
         return backup.CommandResult(returncode=0)
 
     plan = backup.plan_restore(
@@ -1818,7 +1829,8 @@ def test_restore_removes_stale_sidecars_before_copying(cfg, tmp_path, rclone_on_
 
     assert not any(p.exists() for p in stale), "stale sidecars survived the restore"
     assert observed, "no copy command was issued"
-    # Every command ran with both sidecars already gone.
+    # Every transfer ran with both sidecars already gone. The listing is a
+    # probe at plan time, before anything is cleared, and is not a transfer.
     for _, present in observed:
         assert present == [False, False]
 
@@ -1840,7 +1852,9 @@ def test_a_rehearsed_restore_does_not_clear_the_live_sidecars(cfg, tmp_path, rcl
         path.write_bytes(b"live log")
         sidecars.append(path)
 
-    recorder = Recorder()
+    recorder = Recorder(
+        stdout_for={backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg)}
+    )
     plan = backup.plan_restore(
         cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
         runner=recorder, process_lister=no_processes, gates=open_gates)
@@ -1859,6 +1873,7 @@ def test_restore_writes_back_the_log_and_never_the_shared_memory_index(
     The shared-memory index is derived from the log, so restoring a stale one
     beside a fresh log hands SQLite two disagreeing views of one database. Which
     sidecars come back is read from ``Sidecar.restored`` rather than retyped.
+    The listing includes both so presence is not what decides: the inventory is.
     """
     target = tmp_path / "scratch"
     backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
@@ -1867,7 +1882,11 @@ def test_restore_writes_back_the_log_and_never_the_shared_memory_index(
         target=target,
         confirmed=True,
         snapshot="2026-08-01T000000Z",
-        runner=Recorder(),
+        runner=Recorder(
+            stdout_for={
+                backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg, "-wal", "-shm"),
+            }
+        ),
         process_lister=no_processes, gates=open_gates)
     sources = [c.argv[c.argv.index("copy") + 1] for c in plan.commands]
     restored = {s.suffix for s in config.SQLITE_SIDECARS if s.restored}
@@ -1907,8 +1926,121 @@ def test_the_file_half_is_off_by_default(cfg, tmp_path, rclone_on_path):
     backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
     plan = backup.plan_restore(
         cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
-        runner=Recorder(), process_lister=no_processes, gates=open_gates)
+        runner=Recorder(
+            stdout_for={backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg)}
+        ),
+        process_lister=no_processes, gates=open_gates)
     assert backup.RESTORE_MIRROR not in [c.label for c in plan.commands]
+
+
+def test_a_restore_from_a_snapshot_holding_only_the_database_skips_the_absent_sidecar(
+    cfg, tmp_path, rclone_on_path
+):
+    """The residual
+    "A restore from a snapshot taken with rekordbox closed always reports failure".
+
+    The only snapshot this product takes has no write ahead log.
+    ``plan_database_snapshot`` copies a sidecar only when it is present.
+    ``plan_restore`` used to copy the log unconditionally, rclone exited 3, and
+    the person was told the restore failed after the database had already landed.
+    """
+    target = tmp_path / "scratch"
+    backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
+    database = backup.database_target_for(cfg, target).name
+    recorder = Recorder(
+        stdout_for={backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg)}
+    )
+    plan = backup.plan_restore(
+        cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
+        runner=recorder, process_lister=no_processes, gates=open_gates)
+    sources = [c.argv[c.argv.index("copy") + 1] for c in plan.commands]
+    assert any(source.endswith(database) for source in sources)
+    assert not any(source.endswith(database + "-wal") for source in sources)
+    assert plan.absent_sidecars == ("-wal",)
+    results = backup.run_restore(plan, cfg, runner=recorder, gates=open_gates)
+    assert results and all(result.returncode == 0 for result in results)
+
+
+def test_a_restore_from_a_snapshot_holding_the_log_copies_it(
+    cfg, tmp_path, rclone_on_path
+):
+    """The other shape: a snapshot taken while the database still had a log."""
+    target = tmp_path / "scratch"
+    backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
+    database = backup.database_target_for(cfg, target).name
+    recorder = Recorder(
+        stdout_for={
+            backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg, "-wal"),
+        }
+    )
+    plan = backup.plan_restore(
+        cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
+        runner=recorder, process_lister=no_processes, gates=open_gates)
+    sources = [c.argv[c.argv.index("copy") + 1] for c in plan.commands]
+    assert any(source.endswith(database) for source in sources)
+    assert any(source.endswith(database + "-wal") for source in sources)
+    assert plan.absent_sidecars == ()
+    results = backup.run_restore(plan, cfg, runner=recorder, gates=open_gates)
+    assert results and all(result.returncode == 0 for result in results)
+
+
+def test_a_failed_database_copy_still_refuses_when_the_sidecar_is_absent(
+    cfg, tmp_path, rclone_on_path
+):
+    """Skipping an absent sidecar does not swallow a failed database transfer."""
+    target = tmp_path / "scratch"
+    backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
+    recorder = Recorder(
+        stdout_for={backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg)},
+        fail_labels={backup.RESTORE_DATABASE},
+    )
+    plan = backup.plan_restore(
+        cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
+        runner=recorder, process_lister=no_processes, gates=open_gates)
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.run_restore(plan, cfg, runner=recorder, gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.RESTORE_TRANSFER_FAILED
+
+
+def test_a_snapshot_that_cannot_be_listed_refuses_before_clearing(
+    cfg, tmp_path, rclone_on_path
+):
+    """A failed listing is not an empty snapshot.
+
+    Treating it as no sidecars would skip the log and report a complete restore
+    against a remote that never answered.
+    """
+    target = tmp_path / "scratch"
+    database = backup.database_target_for(cfg, target)
+    database.parent.mkdir(parents=True, exist_ok=True)
+    wal = database.with_name(database.name + "-wal")
+    wal.write_bytes(b"live log")
+    recorder = Recorder(fail_labels={backup.LIST_SNAPSHOT_CONTENTS})
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
+            runner=recorder, process_lister=no_processes, gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
+    assert wal.exists() and wal.read_bytes() == b"live log"
+    assert backup.RESTORE_DATABASE not in recorder.labels()
+
+
+def test_the_snapshot_listing_is_of_the_database_folder(
+    cfg, tmp_path, rclone_on_path
+):
+    """Listing the snapshot root would see dated folder names, never the log."""
+    target = tmp_path / "scratch"
+    backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
+    recorder = Recorder(
+        stdout_for={backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg, "-wal")}
+    )
+    backup.plan_restore(
+        cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
+        runner=recorder, process_lister=no_processes, gates=open_gates)
+    listed = [c for c in recorder.commands if c.label == backup.LIST_SNAPSHOT_CONTENTS]
+    assert len(listed) == 1
+    assert listed[0].argv[-2].endswith("/2026-08-01T000000Z/db/")
+    assert "--files-only" in listed[0].argv
 
 
 def test_the_sidecars_are_cleared_before_the_mirror_too(cfg, tmp_path, rclone_on_path):
@@ -1927,7 +2059,10 @@ def test_the_sidecars_are_cleared_before_the_mirror_too(cfg, tmp_path, rclone_on
     observed = []
 
     def runner(command):
-        observed.append((command.label, any(p.exists() for p in stale)))
+        if command.label in backup.TRANSFERRING_LABELS:
+            observed.append((command.label, any(p.exists() for p in stale)))
+        if command.label == backup.LIST_SNAPSHOT_CONTENTS:
+            return backup.CommandResult(returncode=0, stdout=snapshot_listing(cfg))
         return backup.CommandResult(returncode=0)
 
     plan = backup.plan_restore(

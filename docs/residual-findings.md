@@ -16180,6 +16180,14 @@ snapshot holding the database alone, which is the only kind the product takes.
 and reports the database transferred and the sidecar absent, with a test that
 pins it.
 
+**Closed 2026-09-17 on `unit/issue87-a-restore-from-a-snapshot-taken-with-rek`.**
+`plan_restore` lists the snapshot's database folder and copies only the
+sidecars it holds. A snapshot holding `master.db` alone completes, names
+`-wal` on `absent_sidecars`, and does not transfer it. A snapshot holding the
+log still copies it. A failed database copy still refuses. A listing that
+fails refuses before anything is cleared, so a silent empty listing cannot be
+read as a snapshot with no log.
+
 ---
 
 ## R-368. No verb restores anywhere but the live library root, so a rehearsal needs a script
@@ -16712,5 +16720,51 @@ file, collected 47 against 47: the `get_ep_singles` case and the equality pin.
 The other three removals, one added name, and the empty set all kill. Table
 `docs/mutation/u66.md`, 6 of 6 killing, null control 0 of 7590, no collect
 drift, every restore verified against `git show HEAD`.
+
+---
+
+## R-387. The listing refusal message is untested, so a reword kills nothing
+
+**Found:** 2026-09-17, the author's mutation table for the restore sidecar
+fix, row `G9_the_listing_message_is_reworded`.
+
+Rewording "could not be listed" to "could not be read" killed 0 of 7596,
+promoted from a subset zero, no collect drift. The tests that drive a failed
+listing assert the refusal enum `no-snapshot-available`, not the wording.
+The raise itself is held: G2, treating a failed listing as an empty snapshot,
+killed 1 on the subset. That is the composite. The author could not kill the
+wording.
+
+**Measured cost:** none today. A later edit can change what the person is
+told and the suite stays green. The diagnosis slug and the reserved steps
+stay, so the envelope still classifies the failure.
+
+**Closes when:** a test asserts a distinctive phrase of the listing refusal
+message, and a reword of that phrase kills it.
+
+---
+
+## R-388. A snapshot whose listing fails tells the person to take a backup
+
+**Found:** 2026-09-17, the restore sidecar fix. Conservative call, not a
+defect in the listing itself.
+
+A named snapshot whose `rclone lsf` of the database folder exits non zero
+raises `no-snapshot-available`. The exception detail says the snapshot
+could not be listed. The reserved steps for that slug say to take a backup
+before a restore can be planned. Those steps are the wrong next act when
+the snapshot exists and the remote became unreadable: a person who follows
+them takes a new snapshot instead of checking the credential or the path.
+
+No new refusal member was added, because expanding the cause table was
+outside the three scenarios the brief named, and a failed listing is still
+a snapshot this account cannot restore from.
+
+**Measured cost:** unmeasured on a live remote. The suite drives the refusal
+with a runner that exits 1, not with a person reading the reserved steps.
+
+**Closes when:** a failed listing of a named snapshot has its own slug whose
+steps say to check the remote, or the existing reservation's steps name both
+acts.
 
 ---

@@ -4237,6 +4237,10 @@ CITED_RESIDUALS = (
     # tests/modules/test_reports.py, above ALLOWED_IMPORTS and in the closure's
     # own docstring.
     "The reports allowlist audit is one hop deep",
+    # Declared on the restore sidecar fix, 2026-09-17. Cited from
+    # tests/modules/test_tools.py, the test that restores from a snapshot holding
+    # the database alone.
+    "A restore from a snapshot taken with rekordbox closed always reports failure",
 )
 
 #: WHAT A CITATION LOOKS LIKE, as a form rather than as a convention: the word
@@ -5132,7 +5136,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # sync-playlists-unreadable is the WARNING code a pass carries when one
     # playlist could not be listed while the others still queued. Every refusal
     # the playlists source raises reuses a slug the table already reserves.
-    assert (len(literals), len(literals - set(causes))) == (408, 255), (
+    # Re-pinned on the residual finding "A restore from a snapshot taken with
+    # rekordbox closed always reports failure", 2026-09-17: 408 to 409 distinct,
+    # 255 to 256 non-keys. ONE literal joined and NOTHING left, differenced over
+    # the branch's diff of `src` against `main`, which removes no kebab literal.
+    # It is not a cause: list-snapshot-contents, the command LABEL a restore
+    # listing of a dated snapshot's database folder carries, the same kind of
+    # literal as list-snapshots which this population has carried since the
+    # backup module landed. The refusal a failed listing raises is
+    # no-snapshot-available, already reserved.
+    assert (len(literals), len(literals - set(causes))) == (409, 256), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
