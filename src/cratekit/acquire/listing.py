@@ -260,7 +260,18 @@ def paginate(
 
     total: int | None = None
     if stop is StopRule.DECLARED_TOTAL and declared_total is not None:
-        total = declared_total()
+        # THE SAME LADDER A PAGE GETS, and the asymmetry it would otherwise have
+        # is the reason to say so. The count is a request this walk did not used
+        # to make, against the same API and the same session, so the rate limit
+        # that makes page one retry five times would make the count fail outright
+        # and take the whole listing with it. A new failure path introduced BY a
+        # correctness fix is a bad trade for a saved line. Retried here rather
+        # than inside the callable because this is where the caller's retry
+        # settings are, and a ladder that ignores them cannot be driven by a test
+        # without sleeping for real.
+        total = fetch_with_retry(
+            lambda _limit, _offset: declared_total(), limit=0, offset=0, **retry
+        )
         # A provider that has not parsed a count yet says so with a sentinel
         # rather than an absence. ``tidalapi``'s Playlist.num_tracks is -1 until
         # the object is parsed, and a zero total is indistinguishable from an
@@ -346,10 +357,13 @@ def _declared_count(owner: Any, method: str) -> Callable[[], int | None]:
 
     Costs one request, and saves the one the empty page rule would have spent
     ending the walk. A client that does not expose the method returns ``None``
-    rather than raising, for the reason :func:`_declared_attribute` gives. A
-    method that exists and FAILS is left to raise: it is the same API and the
-    same session the listing itself is about to use, so a failure there is the
-    caller's to see through its own provider boundary, not this module's to hide.
+    rather than raising, since a missing count is a weaker answer and not a
+    broken one.
+
+    It is a plain call and does no retrying of its own. :func:`paginate` puts it
+    through the same ladder it puts a page through, which is the only place that
+    knows the caller's retry settings, and the reason it must be retried at all is
+    written there.
     """
 
     def total() -> int | None:

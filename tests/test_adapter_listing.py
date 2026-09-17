@@ -750,3 +750,40 @@ def test_every_budget_clears_the_largest_collection_this_project_has_measured():
             # exactly the product would raise while blaming a working offset.
             reachable -= listing.PAGE_SIZES[name]
         assert reachable >= largest * 10, f"{name} budget reaches only {reachable}"
+
+
+def test_the_declared_count_is_retried_on_the_same_ladder_every_page_is():
+    """U65's own P6 row: the count is a request the walk did not used to make.
+
+    Against the same API and the same session, so the rate limit that makes page
+    one retry five times would otherwise make the count fail outright and take the
+    whole listing with it. A correctness fix that introduces a new failure path is
+    a bad trade for a saved line.
+    """
+    slept: list[float] = []
+    attempts = {"n": 0}
+
+    class Flaky(Omitting):
+        def get_tracks_count(self) -> int:
+            attempts["n"] += 1
+            if attempts["n"] < 3:
+                raise TimeoutError("the provider is busy")
+            return len(self._held)
+
+    favorites = Flaky(corpus(150), set())
+    got = listing.favorite_tracks(Session(User(favorites=favorites)), sleep=slept.append)
+    assert len(got) == 150
+    assert attempts["n"] == 3
+    assert slept == [1.0, 2.0]
+
+
+def test_a_permanent_count_failure_still_surfaces_at_the_ceiling():
+    """Retrying it must not become swallowing it."""
+
+    class Broken(Omitting):
+        def get_tracks_count(self) -> int:
+            raise RuntimeError("the count endpoint is gone")
+
+    favorites = Broken(corpus(150), set())
+    with pytest.raises(RuntimeError, match="count endpoint"):
+        listing.favorite_tracks(Session(User(favorites=favorites)), sleep=lambda _: None)

@@ -16672,3 +16672,33 @@ items on one of these two shapes, which would turn this from a narrowing into a
 measured defect.
 
 ---
+
+## R-386. One member of the listing guard's method set is carried and never tested
+
+**Found:** by U65's mutation table, row `F2_the_structural_guard_loses_a_method_name`,
+confirmed zero on the full suite at 7584 collected.
+
+`acquire.listing.GUARDED_METHODS` names the four provider listing methods no
+module outside the wrappers may call. Removing `get_ep_singles` from that set
+kills nothing. The structural guard would stop catching a hand written
+`get_ep_singles` pagination loop and the suite would stay green, because every
+test that drives the guard drives it through `tracks` or
+`playlist_and_favorite_playlists`.
+
+**Measured cost: none today, and the shape is the point.** The guard exists for
+call sites nobody has written yet, which is where this defect came from all three
+previous times in the source system. A member of the set that no test exercises
+is a member that can be deleted in a refactor with a green suite, and the loss
+shows up only when somebody writes the call it was there to catch.
+
+**Not fixed here** because U65's two fix rounds were spent, one on the review's
+finding that the empty page rule narrows rather than closes R-383, and one on the
+refusal that was being slept on for 31 seconds. The fix is small: a case in
+`test_the_guard_catches_a_hand_written_pagination_loop` per guarded method name,
+driven from `GUARDED_METHODS` itself so adding a name arms its own case.
+
+**Closes when:** every member of `GUARDED_METHODS` has a case that fails when that
+member is removed from the set, and the parametrisation is derived from the set
+rather than written beside it.
+
+---
