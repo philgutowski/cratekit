@@ -33,7 +33,7 @@ from cratekit.core.naming import AUDIO_EXTS
 
 _ORIGIN = ("vocals", "cli")
 
-INSTALL = "pip install 'cratekit[vocals]'"
+INSTALL = scoring.INSTALL
 
 
 def _load() -> config.Config:
@@ -99,42 +99,26 @@ def _nothing_to_queue(ctx, folder: Path) -> Envelope:
     )
 
 
-def extra_available() -> bool:
-    """Whether the vocals extra is installed in this process, WITHOUT importing it.
-
-    Importing ``panns_inference`` executes its config module, which shells out
-    to wget for a label table it cannot find under HOME and then raises on the
-    file it did not fetch. A queue check that imported it turned a slim
-    process, or a home with no model files, into an internal error (R-370).
-    ``find_spec`` answers installed or not and runs nothing.
-    """
-    from importlib.util import find_spec
-
-    try:
-        return find_spec("torch") is not None and find_spec("panns_inference") is not None
-    except (ImportError, ValueError):
-        return False
-
-
 def _require_extra() -> None:
-    """Refuse when the extra is absent here and no fake loader is bound."""
-    if scoring.loader_bound() or extra_available():
+    """Refuse when the model cannot load here and no fake loader is bound.
+
+    ``scoring.missing_requirement`` names the first thing that is missing, the
+    extra, the label table or the checkpoint, so a job that could score
+    nothing is refused before it is filed rather than driven to a clean
+    report of nothing scored (R-370).
+    """
+    if scoring.loader_bound():
+        return
+    missing = scoring.missing_requirement()
+    if missing is None:
         return
     raise refuse(
         "module-extras-missing",
-        "scoring vocals needs the 'vocals' extra, and it is not installed in "
-        "the process running this job",
+        f"scoring vocals cannot start in the process running this job: {missing}",
         remedy=Remedy.INSTALL_MODULE_EXTRA,
         origin=_ORIGIN,
-        detail={"extras": "vocals", "install": INSTALL},
+        detail={"extras": "vocals", "install": INSTALL, "missing": missing},
     )
-
-
-def vocal_checkpoint() -> str:
-    """Where the frame level checkpoint is expected, for a message."""
-    from cratekit.analysis import vocal
-
-    return str(vocal.CHECKPOINT)
 
 
 def _bind_defaults() -> None:
@@ -211,17 +195,7 @@ def _summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
 
 
 def _unscored_warning(summary: Mapping[str, Any]) -> dict[str, str] | None:
-    count = int(summary.get("by_vocal_reason", {}).get(scoring.REASON_MODEL_UNAVAILABLE, 0))
-    if not count:
-        return None
-    return {
-        "code": scoring.REASON_MODEL_UNAVAILABLE,
-        "message": (
-            f"{count} track(s) were scored with no vocal model loaded and carry "
-            f"no voxlevel; the model needs the 'vocals' extra, {INSTALL}, and "
-            f"its checkpoint at {vocal_checkpoint()}"
-        ),
-    }
+    return scoring.unscored_warning(summary, verb="scored")
 
 
 def build(parser, entry) -> None:

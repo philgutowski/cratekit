@@ -1179,6 +1179,8 @@ def test_a_corrupt_undo_log_refuses_by_name_rather_than_failing_every_item_as_a_
 
 def test_a_model_whose_inference_raises_is_a_named_absence_with_the_head_intact(monkeypatch):
     class Rejects:
+        labels = ("Singing", "Male singing", "Female singing")
+
         def inference(self, wav):
             raise RuntimeError("shape the network does not take")
 
