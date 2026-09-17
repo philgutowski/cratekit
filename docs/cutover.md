@@ -45,6 +45,25 @@ Relay run held the repository.
 
 R-9 is closed on the ledger. Three findings filed, R-367 to R-369.
 
+## Sitting 3, 2026-09-17, morning
+
+Machine state before: rekordbox and its agent closed, the volume mounted,
+`crate doctor` reporting no failing check, both backup ages at 0 days, the
+backup acknowledgment minted last night by the author and valid until 13:11Z.
+Neither the analysis nor the vocals extra was installed in the venv; both were
+installed at the start of the sitting, and the checkpoint and label table the
+source system uses were already in `~/panns_data`.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| Vocal restamp, R-133 | yes, twice, one folder | The shipped loader could not score anything (R-370), fixed in the sitting. First real run over `This Never Happened LIBRARY 2026-07-02`, 36 tracks, 102 seconds, 1.3 GB peak on the 18 GB machine: 35 scored within one point of what DJ_tools stamped, every gender call matching, one failed on a quarter second tail chunk (R-371), fixed in the sitting. Second run: that track scored, the other 35 unchanged. | cut over for one folder, the full library pass is R-376 |
+| Vocal cut | carried | DJ_tools' hand set 5.0 written into `.cratekit/local/vocal_calibration.json` by hand, since no verb sets a cut (R-374). | live |
+| Location prefix rule | added by hand | The first My Tags plan resolved 0 of 9937 rows and reported ok (R-372). `location_prefix_map` now maps the drive's old volume name to the current mount; 9770 rows resolve, 167 are streaming and home directory rows. | live |
+| My Tags, `metadata mytags-vocals` | plan, then apply on the live database | Plan: 1117 tracks, 288 male, 491 female, cut 5.0. Read only comparison before the apply predicted 4 new associations and 1892 already present. Apply inside the ack window: written 4, already 1892, snapshot captured first, read back vox 1141, male vox 296, female vox 502. Forty three associations DJ_tools wrote sit on files with no voxlevel today (R-373). No session record is written for a gated write (R-375). | live |
+
+R-133 is closed on the ledger. Eight findings filed, R-370 to R-377, two of
+them fixed in the sitting and one raised by the review of that fix.
+
 ## What blocks a full sync cycle, stated plainly
 
 The board is complete and the product cannot yet do its central workflow,
@@ -89,9 +108,9 @@ lists Tidal. The vendored downloader is the only Tidal facing code that runs.
 
 ## Next sitting
 
-The vocal restamp on the 18 GB machine, R-133, which needs nothing from Tidal.
-It writes, so it needs a backup acknowledgment inside its validity window:
-`crate session ack` from a Terminal window, answered with `crate run decide`,
-continued with `--run`, by the author and never by a session. After that, the
-three real Tidal runs U62, U63 and U64 owe, listed below, reading R-355 and
-R-358 first.
+The three real Tidal runs U62, U63 and U64 owe, listed above, reading R-355
+and R-358 first. Any of them that writes needs a backup acknowledgment inside
+its validity window: `crate session ack` from a Terminal window, answered with
+`crate run decide`, continued with `--run`, by the author and never by a
+session. The full library vocal pass, R-376, is a separate attended choice and
+is not blocked on anything.

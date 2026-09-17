@@ -4,7 +4,29 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last sitting 2026-09-16, evening, attended, R-9 on
+**Last sitting 2026-09-17, morning, attended, R-133 on
+`sitting/r133-vocal-restamp`.** Not a unit. The vocal restamp ran on the live
+library and R-133 is CLOSED on the ledger. It took two fixes, both driven and
+both landed in the sitting: R-370, the shipped loader built the clip level
+PANNs wrapper against a checkpoint this machine does not hold and the scorer
+read the speech columns rather than the singing ones, so no real track could
+score; R-371, a tail chunk under a third of a second failed a track. With
+them, `crate analyze vocals` over a real 36 track folder completed twice on
+the 18 GB machine, 102 and 100 seconds, 1.3 GB peak, every score within one
+point of what DJ_tools stamped. `metadata mytags-vocals --apply` then wrote
+four associations to the live database inside the acknowledgment window,
+1892 already present, after the plan first read clean over 9770 rows it could
+not resolve (R-372, the location prefix rule for rekordbox's renamed drive,
+added to the config by hand) and after DJ_tools' hand set 5.0 cut was carried
+into the calibration state by hand (R-374). Also filed: R-373, R-375, R-376,
+and R-377 from the review, which drove ten findings against the fix and
+nine are applied.
+The analysis and vocals extras are now installed in the venv, which changed
+what one slim assumption test drives. `docs/cutover.md` carries the sitting
+table. Main's highest residual is R-377. Battery on the committed tree is in
+the merge commit. Do not take #29.
+
+**The sitting before, 2026-09-16, evening, attended, R-9 on
 `docs/r9-restore-rehearsal`.** Not a unit. The real backup job
 `2026-09-16T16:30:43Z-4c99` reports succeeded and was read back on Drive: the
 dated archive holds the 1139 objects the dry run predicted and the snapshot's
