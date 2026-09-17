@@ -211,8 +211,16 @@ def _drive_help(argv: list[str]) -> tuple[int, str, str]:
 
 
 def test_a_slim_worker_refuses_at_the_queue_rather_than_reporting_done(
-    cfg, folder, silence
+    cfg, folder, silence, monkeypatch
 ):
+    """Nothing bound and no extra is the state of a real slim process.
+
+    The availability check is patched rather than relied on, because the
+    suite runs in a venv that may carry the extra (R-370).
+    """
+    from cratekit.vocals import cli as vocals_cli
+
+    monkeypatch.setattr(vocals_cli, "extra_available", lambda: False)
     place(folder, silence, "track")
     code, refused = drive(["analyze", "vocals", str(folder)])
     assert code != int(ExitCode.OK), refused

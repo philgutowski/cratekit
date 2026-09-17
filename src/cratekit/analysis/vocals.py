@@ -116,14 +116,17 @@ def analyse(partial: dict[str, Any]) -> dict[str, Any]:
     samples = _decode(result.get("path"))
     if samples is None:
         return _inactive(result, REASON_AUDIO_UNDECODABLE)
-    from cratekit.analysis.vocal import infer_frames, reduce_frames
+    from cratekit.analysis.vocal import class_indices, infer_frames, reduce_frames
 
     # THE MODEL'S OWN FAILURE IS A REASON, NOT A DEFECT. The first version had
     # no boundary here, so a clip the network rejected, or a torch out of
     # memory on a long track, failed the whole item as an internal error and
-    # threw away the key and tempo the head had already found.
+    # threw away the key and tempo the head had already found. The columns
+    # are resolved from the model's label table on every call, never assumed
+    # to be the first three (R-370).
     try:
-        score = reduce_frames(*infer_frames(model, samples))
+        columns = class_indices(model)
+        score = reduce_frames(*infer_frames(model, samples, class_idx=columns))
     except Exception:
         return _inactive(result, REASON_INFERENCE_FAILED)
     result["vocal_active"] = True

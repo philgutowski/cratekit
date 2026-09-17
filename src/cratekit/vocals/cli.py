@@ -100,13 +100,20 @@ def _nothing_to_queue(ctx, folder: Path) -> Envelope:
 
 
 def extra_available() -> bool:
-    """Whether the vocals extra is importable in this process."""
+    """Whether the vocals extra is installed in this process, WITHOUT importing it.
+
+    Importing ``panns_inference`` executes its config module, which shells out
+    to wget for a label table it cannot find under HOME and then raises on the
+    file it did not fetch. A queue check that imported it turned a slim
+    process, or a home with no model files, into an internal error (R-370).
+    ``find_spec`` answers installed or not and runs nothing.
+    """
+    from importlib.util import find_spec
+
     try:
-        import panns_inference  # noqa: F401
-        import torch  # noqa: F401
-    except ImportError:
+        return find_spec("torch") is not None and find_spec("panns_inference") is not None
+    except (ImportError, ValueError):
         return False
-    return True
 
 
 def _require_extra() -> None:
@@ -121,6 +128,13 @@ def _require_extra() -> None:
         origin=_ORIGIN,
         detail={"extras": "vocals", "install": INSTALL},
     )
+
+
+def vocal_checkpoint() -> str:
+    """Where the frame level checkpoint is expected, for a message."""
+    from cratekit.analysis import vocal
+
+    return str(vocal.CHECKPOINT)
 
 
 def _bind_defaults() -> None:
@@ -204,7 +218,8 @@ def _unscored_warning(summary: Mapping[str, Any]) -> dict[str, str] | None:
         "code": scoring.REASON_MODEL_UNAVAILABLE,
         "message": (
             f"{count} track(s) were scored with no vocal model loaded and carry "
-            f"no voxlevel; the model needs the 'vocals' extra, {INSTALL}"
+            f"no voxlevel; the model needs the 'vocals' extra, {INSTALL}, and "
+            f"its checkpoint at {vocal_checkpoint()}"
         ),
     }
 
