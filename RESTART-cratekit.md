@@ -4,7 +4,24 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last session 2026-09-16, #83 on `relay/83`, unattended.** Not a unit. The four
+**Last sitting 2026-09-16, evening, attended, R-9 on
+`docs/r9-restore-rehearsal`.** Not a unit. The real backup job
+`2026-09-16T16:30:43Z-4c99` reports succeeded and was read back on Drive: the
+dated archive holds the 1139 objects the dry run predicted and the snapshot's
+`master.db` matches the live file. The restore rehearsal ran to a scratch
+directory through the engine's `target` seam under the real gates, landed the
+database byte for byte, MD5 matched, `integrity_check` ok, and the verb then
+reported the restore failed because it copies a write ahead log the snapshot
+never holds. R-9 is CLOSED on observation and issue #46 can close back to it.
+Three findings filed: R-367, the unconditional sidecar copy, which is a fix
+unit; R-368, no verb restores anywhere but the live root; R-369, an
+acknowledgment answered from a shell with no terminal cannot be continued
+there. The backup acknowledgment is minted, by the author from a Terminal
+window, valid until 2026-09-17T13:11Z. The live database was not touched.
+`docs/cutover.md` carries the sitting table. Main's highest residual is R-369.
+Battery on the committed tree is in the merge commit. Do not take #29.
+
+**The session before, 2026-09-16, #83 on `relay/83`, unattended.** Not a unit. The four
 small defects the first attended sitting found are fixed and closed in the
 ledger. R-344: `preflight.same_identity` folds the case on both sides of both
 identity compares, and setup still records the identity as given, because it is
@@ -26,8 +43,8 @@ session then waited on the output file with nothing edited meanwhile. Every row
 reports its restore verified against HEAD and the tree held only the driver's own
 output afterwards, which is the same shape
 `docs/solutions/workflow-issues/a-relay-task-finished-a-mutation-table-by-backgrounding-the-driver-the-rule-forbids.md`
-says is not validated. Phillip may want the tables rerun attended. Main's highest residual is R-366 once
-`relay/83` merges. Battery on the committed tree before the record: ruff clean,
+says is not validated. Phillip may want the tables rerun attended. Main's highest residual was R-366 once
+`relay/83` merged. Battery on the committed tree before the record: ruff clean,
 `scan_repo.py` exit 0, pytest 7543 passed and 1 skipped in 393 seconds. Do not
 take #29.
 
@@ -106,15 +123,15 @@ account and track was served AAC. The first real download found **#82**, the
 adapter handing the vendored tool a function where it calls a logger, fixed and
 merged as `8f89efc` with a guard that reads the method set off the vendored
 tree. R-9's dry run ran and its real run, job `2026-09-16T16:30:43Z-4c99`,
-ended succeeded, verified on the Drive side and recorded on the ledger entry;
-the restore rehearsal is still owed. Seven findings are filed, R-343 to R-349.
+ended succeeded; the second sitting that evening read it back on Drive, ran
+the restore rehearsal and closed R-9. Seven findings are filed, R-343 to R-349.
 R-346 is fixed on `relay/83`, so setup from a real terminal no longer needs
 `PYTHONUNBUFFERED=1`.
 
 **THE BOARD IS COMPLETE AND THE PRODUCT CANNOT SYNC.** `docs/cutover.md` says
 why in one section: R-258 and R-226 are unbound adapter seams and the playlists
 source has no listing, so nothing in the product lists Tidal. That was the
-remaining build, on the board as U62 (#84), U63 (#85) and U64 (#86), with #29 declared dependent on all three. U62, U63 and U64 have since landed their agent halves, R-355 means the account half matches nothing live yet, and R-358 means a playlist Cratekit sweeps is not marked on the account. R-9's real backup run succeeded and is on the ledger; its restore rehearsal is still owed. Do not take #29.
+remaining build, on the board as U62 (#84), U63 (#85) and U64 (#86), with #29 declared dependent on all three. U62, U63 and U64 have since landed their agent halves, R-355 means the account half matches nothing live yet, and R-358 means a playlist Cratekit sweeps is not marked on the account. R-9 is closed on the ledger; the restore verb's defect is R-367. Do not take #29.
 
 **The session before, 2026-09-11, U25 on `unit/u25-vocal-restamp-and-my-tags-shells`.**
 The two remaining vocal CLI shells landed. `cratekit.vocals.cli` queues
