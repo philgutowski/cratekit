@@ -26,12 +26,32 @@ absence rather than a zero.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+import sys
+from pathlib import Path
+from typing import Any, Callable, Mapping
 
 from cratekit.core import pool
 
 VOCAL_WORKER_BYTES = 1024 ** 3
 VOCAL_CEILING = 2
+
+INSTALL = "pip install 'cratekit[vocals]'"
+
+#: The frame level checkpoint the source system scored the library with. It is
+#: named here, rather than left to the library's default, because the library
+#: shells out to wget for a checkpoint it cannot find and this machine has no
+#: wget. Readiness is checked before the library is asked for anything (R-370).
+#: These live in THIS module, which imports no numpy, so a slim process can
+#: name them in a message without importing the analysis extra.
+CHECKPOINT = Path.home() / "panns_data" / "Cnn14_DecisionLevelMax.pth"
+
+#: The AudioSet label table the library reads AT IMPORT, and fetches the same
+#: way when it is absent. Checked before the import for the same reason.
+LABELS = Path.home() / "panns_data" / "class_labels_indices.csv"
+
+#: The library's own floor: a file smaller than this is treated as a broken
+#: download and fetched again, which is the shell out above.
+CHECKPOINT_MIN_BYTES = 300_000_000
 
 #: Why a track came back vocal inactive, so an absence is never silent.
 REASON_MODEL_UNAVAILABLE = "vocal-model-unavailable"
@@ -42,14 +62,107 @@ REASON_INFERENCE_FAILED = "vocal-inference-failed"
 _VOCAL_LOADER: Callable[[], Any] | None = None
 _VOCAL_MODEL: Any = None
 _VOCAL_FAILED = False
+_VOCAL_FAILURE: str | None = None
+_VOCAL_COLUMNS: tuple[int, int, int] | None = None
 _DECODER: Callable[[Any], Any] | None = None
 
 
 def bind_loader(loader: Callable[[], Any] | None) -> None:
-    global _VOCAL_LOADER, _VOCAL_MODEL, _VOCAL_FAILED
+    global _VOCAL_LOADER, _VOCAL_MODEL, _VOCAL_FAILED, _VOCAL_FAILURE, _VOCAL_COLUMNS
     _VOCAL_LOADER = loader
     _VOCAL_MODEL = None
     _VOCAL_FAILED = False
+    _VOCAL_FAILURE = None
+    _VOCAL_COLUMNS = None
+
+
+def labels_ready() -> bool:
+    """Whether the label table the library reads at import is on disk."""
+    try:
+        return LABELS.is_file() and LABELS.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def checkpoint_ready() -> bool:
+    """Whether the frame level checkpoint is on disk and not a truncated fetch."""
+    try:
+        return CHECKPOINT.is_file() and CHECKPOINT.stat().st_size >= CHECKPOINT_MIN_BYTES
+    except OSError:
+        return False
+
+
+def _installed(name: str) -> bool:
+    """Whether a distribution is installed here, without executing it.
+
+    A module already in ``sys.modules`` counts, because ``find_spec`` raises
+    on a spec less stub and a stub is what a test binds.
+    """
+    if name in sys.modules:
+        return True
+    from importlib.util import find_spec
+
+    try:
+        return find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def missing_requirement() -> str | None:
+    """The FIRST thing the vocal model cannot do without, as a sentence, or None.
+
+    Asked at the queue so a job that could score nothing is refused before it
+    is filed, and asked again for the summary warning so the person is pointed
+    at the thing that is actually missing. The order is the order the loader
+    needs them, and the label table is checked BEFORE ``panns_inference`` is
+    imported, because importing it reads that table and shells out to wget
+    when it is absent. torch is imported for real, since an installed torch
+    whose native library will not load is the case a mere lookup cannot see.
+    """
+    try:
+        import torch  # noqa: F401
+    except Exception as exc:  # noqa: BLE001 - a torch that will not load is the case
+        return f"the 'vocals' extra is not usable here ({type(exc).__name__}: {exc}); {INSTALL}"
+    if not _installed("panns_inference"):
+        return f"the 'vocals' extra is not installed here; {INSTALL}"
+    if not labels_ready():
+        return (
+            f"the vocal model's label table is not at {LABELS}; place "
+            f"class_labels_indices.csv there before scoring"
+        )
+    if not checkpoint_ready():
+        return (
+            f"the vocal model checkpoint is not at {CHECKPOINT}, or is smaller than "
+            f"{CHECKPOINT_MIN_BYTES} bytes; place Cnn14_DecisionLevelMax.pth there "
+            f"before scoring"
+        )
+    try:
+        import panns_inference  # noqa: F401
+    except Exception as exc:  # noqa: BLE001 - the import does file work
+        return f"the 'vocals' extra will not import ({type(exc).__name__}: {exc}); {INSTALL}"
+    return None
+
+
+def unscored_warning(summary: Mapping[str, Any], *, verb: str) -> dict[str, str] | None:
+    """The one warning both verbs emit for tracks scored with no model loaded.
+
+    Names the first missing requirement when one is missing, else the failure
+    the loader recorded, so the person is never told to install what is
+    installed (R-370). Shared, because two copies of one message had already
+    drifted apart.
+    """
+    count = int(summary.get("by_vocal_reason", {}).get(REASON_MODEL_UNAVAILABLE, 0))
+    if not count:
+        return None
+    why = missing_requirement() or _VOCAL_FAILURE or "the loader reported no reason"
+    return {
+        "code": REASON_MODEL_UNAVAILABLE,
+        "message": (
+            f"{count} track(s) were {verb} with no vocal model loaded and carry "
+            f"no voxlevel; the model needs the 'vocals' extra, {INSTALL}, and "
+            f"its files under {CHECKPOINT.parent}. {why}"
+        ),
+    }
 
 
 def loader_bound() -> bool:
@@ -64,7 +177,14 @@ def bind_decoder(decoder: Callable[[Any], Any] | None) -> None:
 
 
 def _load() -> Any:
-    global _VOCAL_MODEL, _VOCAL_FAILED
+    """The model, loaded once per process, or None with the failure recorded.
+
+    The three columns are resolved HERE, once beside the model, rather than
+    per track after a decode: a label table that does not name the targets is
+    knowable at load, and reporting it per track as inference failed would
+    decode every file in a restamp before saying the same thing each time.
+    """
+    global _VOCAL_MODEL, _VOCAL_FAILED, _VOCAL_FAILURE, _VOCAL_COLUMNS
     if _VOCAL_FAILED:
         return None
     if _VOCAL_MODEL is not None:
@@ -73,10 +193,16 @@ def _load() -> Any:
     if loader is None:
         return None
     try:
-        _VOCAL_MODEL = loader()
-    except Exception:
+        model = loader()
+        from cratekit.analysis.vocal import class_indices
+
+        _VOCAL_COLUMNS = class_indices(model)
+        _VOCAL_MODEL = model
+    except Exception as exc:  # noqa: BLE001 - recorded, and reported as a reason
         _VOCAL_FAILED = True
+        _VOCAL_FAILURE = f"{type(exc).__name__}: {exc}"
         _VOCAL_MODEL = None
+        _VOCAL_COLUMNS = None
     return _VOCAL_MODEL
 
 
@@ -116,14 +242,18 @@ def analyse(partial: dict[str, Any]) -> dict[str, Any]:
     samples = _decode(result.get("path"))
     if samples is None:
         return _inactive(result, REASON_AUDIO_UNDECODABLE)
-    from cratekit.analysis.vocal import infer_frames, reduce_frames
+    from cratekit.analysis.vocal import class_indices, infer_frames, reduce_frames
 
     # THE MODEL'S OWN FAILURE IS A REASON, NOT A DEFECT. The first version had
     # no boundary here, so a clip the network rejected, or a torch out of
     # memory on a long track, failed the whole item as an internal error and
-    # threw away the key and tempo the head had already found.
+    # threw away the key and tempo the head had already found. The columns
+    # come from the model's label table, resolved once at load, never assumed
+    # to be the first three (R-370). A model bound directly by a test, without
+    # going through the loader, resolves them here.
     try:
-        score = reduce_frames(*infer_frames(model, samples))
+        columns = _VOCAL_COLUMNS if _VOCAL_COLUMNS is not None else class_indices(model)
+        score = reduce_frames(*infer_frames(model, samples, class_idx=columns))
     except Exception:
         return _inactive(result, REASON_INFERENCE_FAILED)
     result["vocal_active"] = True

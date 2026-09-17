@@ -211,13 +211,44 @@ def _drive_help(argv: list[str]) -> tuple[int, str, str]:
 
 
 def test_a_slim_worker_refuses_at_the_queue_rather_than_reporting_done(
-    cfg, folder, silence
+    cfg, folder, silence, monkeypatch
 ):
+    """Nothing bound and no extra is the state of a real slim process.
+
+    The availability check is patched rather than relied on, because the
+    suite runs in a venv that may carry the extra (R-370).
+    """
+    monkeypatch.setattr(
+        vocals, "missing_requirement", lambda: "the 'vocals' extra is not installed here"
+    )
     place(folder, silence, "track")
     code, refused = drive(["analyze", "vocals", str(folder)])
     assert code != int(ExitCode.OK), refused
     assert refused["cause"]["reason"] == "module-extras-missing"
     assert refused["cause"]["detail"]["install"] == "pip install 'cratekit[vocals]'"
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
+def test_a_missing_checkpoint_is_refused_at_the_queue_and_named(
+    cfg, folder, silence, monkeypatch, tmp_path
+):
+    """A job that could score nothing is not filed, and the message names the file."""
+    import sys
+    import types
+
+    labels = tmp_path / "class_labels_indices.csv"
+    labels.write_text("index,mid,display_name\n", encoding="utf-8")
+    monkeypatch.setattr(vocals, "LABELS", labels)
+    monkeypatch.setattr(vocals, "CHECKPOINT", tmp_path / "absent.pth")
+    monkeypatch.setitem(sys.modules, "torch", types.ModuleType("torch"))
+    monkeypatch.setitem(sys.modules, "panns_inference", types.ModuleType("panns_inference"))
+    place(folder, silence, "track")
+    code, refused = drive(["analyze", "vocals", str(folder)])
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "module-extras-missing"
+    assert "absent.pth" in refused["cause"]["detail"]["missing"]
+    assert "absent.pth" in refused["cause"]["message"]
     with jobs.open_store() as store:
         assert jobs.list_jobs(store) == ()
 

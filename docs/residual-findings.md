@@ -8458,6 +8458,14 @@ planned, and R-277 records what its absence now costs.
 `metadata.mytags-vocals` exist, R-277 is closed, and the 18 GB full-library
 run is still the whole of what this entry says. It stays attended.
 
+**CLOSED 2026-09-17, the third attended sitting.** Both conditions hold.
+`analyze.vocals` landed with U25, and a default configuration run of it
+completed twice over a real library folder of 36 tracks on the 18 GB
+machine, 102 and 100 seconds, 1.3 GB peak resident, no out of memory kill,
+every score within one point of what DJ_tools stamped. It took two fixes to
+get there, R-370 and R-371, both driven and both landed in the sitting.
+The full library pass, 343 folders, is R-376 and stays attended.
+
 ---
 
 ## R-134. The first delete.review drive baselines before the confirm gate
@@ -16142,5 +16150,207 @@ person's, minted from a real terminal, and a session cannot mint it.
 **Closes when:** the no terminal refusal says that the recorded answer stands
 and the continuation must come from a terminal, or the ack verb checks for a
 terminal before it opens a run.
+
+---
+
+## R-370. The shipped vocal loader could not score a track, and the scorer read speech, not singing
+
+**Found:** 2026-09-17, the third attended U29 sitting, the first real
+`crate analyze vocals`. **Fixed in the sitting on `sitting/r133-vocal-restamp`.**
+
+Driven with the vocals extra installed and the checkpoint the source system
+scored the library with at `~/panns_data/Cnn14_DecisionLevelMax.pth`:
+`vocal.default_loader` built PANNs `AudioTagging`, which defaults to a
+different checkpoint, `Cnn14_mAP=0.431.pth`, and whose answer to a missing
+checkpoint is `os.system("wget ...")`. This machine has no wget, so the shell
+printed `wget: command not found`, `torch.load` raised `FileNotFoundError`,
+`vocals._load` recorded the failure, and every track came back
+`vocal-model-unavailable` with a warning saying to install the extra that was
+installed. Had the checkpoint been fetched, `AudioTagging.inference` returns
+a clip level pair and no frame output, so `infer_frames` would have failed
+on it too. Under both, `infer_frames` read columns 0, 1 and 2 of the label
+table, which are Speech, Male speech and Female speech. The source system
+reads Singing, Male singing and Female singing, columns 27, 32 and 33. A
+scratch drive of the frame wrapper with the speech columns scored four known
+tracks 0, 0, 2 and 7 with male calls where DJ_tools had stamped 11, 10, 0
+and 0; with the singing columns it scored 13, 11, 0 and 1 and matched every
+gender call.
+
+A third shape sat under the first two: importing `panns_inference` at all
+executes its config module, which shells out to wget for a label table it
+cannot find under HOME and then raises opening the file it did not fetch.
+`extra_available` imported it to answer installed or not, so on a home with
+no model files, which is every test's home, the queue check turned into an
+internal error the moment the extra was installed.
+
+**Measured cost.** A full library restamp on the shipped code would have
+written nothing and told the person to install what was installed. Every
+fake driven test was green, because no test ever instantiated the wrapper
+and every fixture filled the first three columns.
+
+**Fixed.** The loader builds `SoundEventDetection` from the named checkpoint
+and redirects the wrapper's stdout chatter away from the JSON envelope.
+`vocals.missing_requirement` names the first thing the model cannot do
+without, in the order the loader needs them: torch imported for real, since
+an installed torch that will not load is the case a lookup cannot see; the
+extra installed; the label table on disk, checked BEFORE the extra is
+imported because the import reads it; the checkpoint on disk and not
+truncated. The queue asks it and refuses a job that could score nothing,
+naming the missing file. `class_indices` resolves the three columns by name
+from the model's own label table, once at load beside the model, and a model
+with no table or a table that does not name a target is a failed load with
+its reason kept, never a read by number. The one summary warning both
+verbs emit is shared and names the first missing requirement or the
+recorded failure, so nobody is told to install what is installed. The
+review of the branch drove ten findings against the first cut of this fix
+and nine hold and are applied; the tenth is R-377. The real folder then
+scored 35 of 36 within one point of the source system, and the 36th is
+R-371.
+
+---
+
+## R-371. A tail chunk shorter than the network can pool failed the whole track
+
+**Found:** 2026-09-17, the same sitting, the first real run's one failure.
+**Fixed in the sitting on `sitting/r133-vocal-restamp`.**
+
+`infer_frames` walks the signal in eight second pieces and sent the last
+piece whatever its length. `08A - 123 - Satellite - Ashibah - Forever.flac`
+is 7,176,000 samples at 32 kHz, which leaves a tail of 8,000 samples, a
+quarter second. CNN14 pools its time axis by two five times, so that tail
+pooled to `(1024x0x2)` and the forward pass raised `Output size is too
+small`. The scorer's boundary caught it as `vocal-inference-failed` and the
+track kept its previous tag, so nothing was lost on a restamp, but a new
+track of that length would never receive a score. One in thirty six on this
+folder. DJ_tools never chunked, so it could not have hit this.
+
+**Fixed.** A tail shorter than one second is folded into the piece before
+it, a lone clip shorter than that is padded with silence to the floor on the
+chunked and the unchunked path alike, and the frames the padding added are
+trimmed off again so a short clip scores on its own length. Tests pin the
+fold at the real chunk size, that a three second tail stands alone, the pad
+on both paths, the trim, and that an exact multiple still walks in equal
+pieces. The second real run scored the track 3 F and left the other 35
+unchanged.
+
+---
+
+## R-372. Setup wrote no location prefix rule for rekordbox's renamed drive, and the My Tags plan read clean over 9770 rows it could not resolve
+
+**Found:** 2026-09-17, the same sitting, the first real `crate metadata mytags-vocals`.
+
+rekordbox records nearly every row of this library under the drive's old
+volume name and maps it to the current mount at runtime
+through its `BaseDBDrive` and `CurrentDBDrive` registry entries. The source
+system verified that on 2026-08-01 and carries the old name as a constant.
+Cratekit's designed answer is `library.location_prefix_map`, and setup wrote
+it empty. Driven: the plan reported `count 0, active 9937, unresolved 9937`,
+outcome ok, no warning. That is a clean report over state the tool could not
+read: an apply on it would have written nothing and reported success.
+`crate doctor` reported no failing check before or after.
+
+**Cost.** Bounded to this sitting because the author knew the old name. A
+person who did not would read the empty plan as a library with no vocals.
+
+**Worked around in the sitting** by adding the rule to the config by hand:
+`location_prefix_map = [{ from = "/Volumes/<old name>", to = "/Volumes/<current name>" }]`.
+With it the plan resolved 9770 rows and left 167 unresolved, which are 14
+streaming rows, 137 Tidal catalogue paths and 16 rows under two home
+directories.
+
+**Closes when:** setup reads the two registry entries from the database and
+offers the rule, or the plan and the doctor warn when unresolved rows are
+the majority of active rows rather than reporting ok.
+
+---
+
+## R-373. Forty three Vocals associations the source system wrote sit on files that carry no voxlevel today
+
+**Found:** 2026-09-17, the same sitting, comparing the plan to the database.
+
+Before the apply the database held 1935 Vocals associations and the plan
+held 1896. Of the 43 the plan lacked, every one resolves to a file on the
+volume that reads no `voxlevel` at all today, 24 `vox`, 11 `female vox`, 8
+`male vox`. The apply is add only, so they stand. Nothing here says which
+side is right: the file may have been replaced since it was scored, or the
+tag may have been lost in a rewrite.
+
+**Closes when:** those files are restamped and the associations either
+confirmed by a fresh score or reviewed by hand.
+
+---
+
+## R-374. No verb sets the with-vox cut by hand, so the source system's 5.0 was carried by writing the state file
+
+**Found:** 2026-09-17, the same sitting, before the My Tags plan.
+
+`crate analyze calibrate` fits an Otsu cut over a folder and refuses when
+the clusters do not separate. The source system's `dj-vocal-calibrate` took
+`--threshold`, and the library's cut is 5.0, hand set after the author
+reviewed named tracks because Otsu's 16.5 was too tight. With no calibration
+recorded, `metadata.mytags-vocals` uses 12.0, so a plan on Cratekit alone
+would have tagged fewer tracks than the source system did. The sitting wrote
+`.cratekit/local/vocal_calibration.json` by hand with `threshold 5.0` and a
+note naming its origin.
+
+**Closes when:** `analyze calibrate` accepts a threshold, or a documented
+verb carries a cut over.
+
+---
+
+## R-375. A gated write leaves no session record, and the gate's docstring says the workflow is recorded in the session log
+
+**Found:** 2026-09-17, the same sitting, after the My Tags apply.
+
+`session.assert_gates` says its `workflow` argument "is recorded in the
+session log". It is not: `open_session` writes the records under
+`history/sessions/`, and only ingest and restore call it. `metadata_cli`,
+`trees`, `deletion`, `adopt` and the backup module assert the gates and
+write nothing there. Driven: after `mytags-vocals --apply` wrote four
+associations to the live database, the sessions directory held last night's
+rehearsal alone, and the write's only trace is the snapshot it captured
+first, `history/snapshots/2026-09-17T114753Z-2736227cd932636e`.
+
+**Cost.** Low. The doctor's unresolved session check has nothing to report
+because nothing was left open, and the database change is real and
+committed. What is lost is the ledger the docstring promises.
+
+**Closes when:** the docstring stops claiming a record, or the gate writes
+one.
+
+---
+
+## R-376. The vocal restamp is one folder per invocation, and the library is 343 folders
+
+**Found:** 2026-09-17, the same sitting, measured on the real run.
+
+`crate analyze vocals` scores one folder, not recursively. `Music/` holds
+9868 audio files in 343 leaf folders under `Processed_Tracks`. Measured on
+the first real folder, 36 tracks in 102 seconds, 1.3 GB peak, so the full
+library is about 7.7 hours of scoring across 343 invocations, each a queue
+and a resume by hand. The source system's `dj-vocal-restamp` walked the
+whole library in one skip idempotent, resumable command.
+
+**Closes when:** the verb takes many folders or walks a tree, or a scripted
+full pass is run and recorded.
+
+---
+
+## R-377. The chunk floor is a rounded cover for the network's real floor, clamped by the caller's chunk size
+
+**Found:** 2026-09-17, the same sitting, the review of the R-371 fix.
+Plausible, not driven on a real track.
+
+`MIN_CHUNK_SAMPLES` is one second, 32000 samples. The network's own floor
+is 32 frames after five pool by two stages, about 9920 samples at a hop of
+320, and the constant is a cover for that rather than derived from it. On
+the chunked path the floor is clamped to the caller's chunk size, so a
+caller passing a chunk under the floor lowers the floor with it, and a
+chunk of 8000 samples reproduces R-371 exactly. Today the only caller uses
+eight second chunks and the unchunked path applies the floor in full, so it
+is latent.
+
+**Closes when:** the floor is a model property applied whatever the chunk
+size, or a chunk size under it is refused.
 
 ---

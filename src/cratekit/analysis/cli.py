@@ -189,17 +189,7 @@ def _unscored_vocals_warning(summary: Mapping[str, Any]) -> dict[str, str] | Non
     and this is what lifts it to the envelope, the way the restamp lifts its
     unwritten database half.
     """
-    count = int(summary.get("by_vocal_reason", {}).get(vocals.REASON_MODEL_UNAVAILABLE, 0))
-    if not count:
-        return None
-    return {
-        "code": vocals.REASON_MODEL_UNAVAILABLE,
-        "message": (
-            f"{count} track(s) were analysed with no vocal model loaded and carry "
-            f"no voxlevel; the model needs the 'vocals' extra, "
-            f"pip install 'cratekit[vocals]', and the planned re-score verb"
-        ),
-    }
+    return vocals.unscored_warning(summary, verb="analysed")
 
 
 # ---------------------------------------------------------------------------

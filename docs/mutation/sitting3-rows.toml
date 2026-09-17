@@ -1,0 +1,233 @@
+# Third attended sitting, 2026-09-17, R-370 and R-371. Author's rows.
+#
+# Light table over the guards the sitting added. Every row names its subset,
+# so a death on the new tests is a real death and a zero on the subset is not
+# yet a zero. Run attended:
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/sitting3-rows.toml
+
+name = "sitting3"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_columns_by_number"
+description = "Read the first three columns whatever the label table says, the R-370 defect"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_analysis.py"]
+old = '''    labels = getattr(model, "labels", None)
+    if labels is None:
+        raise ValueError(
+'''
+new = '''    labels = getattr(model, "labels", None)
+    if True:
+        return (0, 1, 2)
+        raise ValueError(
+'''
+
+[[rows]]
+id = "G2_missing_target_read_as_fixture"
+description = "A label table lacking a target falls back to the first three columns instead of raising"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_analysis.py"]
+old = '''    except ValueError as exc:
+        raise ValueError(
+            f"the vocal model's label table does not name all of {TARGET_LABELS}"
+        ) from exc
+    return (first, second, third)
+'''
+new = '''    except ValueError:
+        return (0, 1, 2)
+    return (first, second, third)
+'''
+
+[[rows]]
+id = "G3_analyse_ignores_columns"
+description = "The scorer resolves the columns and then does not pass them"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+tests = ["tests/test_analysis.py", "tests/test_vocals_cli.py"]
+old = '''        score = reduce_frames(*infer_frames(model, samples, class_idx=columns))
+'''
+new = '''        score = reduce_frames(*infer_frames(model, samples))
+'''
+
+[[rows]]
+id = "G4_clip_wrapper"
+description = "Build the clip level wrapper again"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_analysis.py"]
+old = '''    from panns_inference import SoundEventDetection
+
+    # The wrapper prints its checkpoint path and device to stdout on
+    # construction, and stdout is where the JSON envelope goes.
+    with contextlib.redirect_stdout(io.StringIO()):
+        return SoundEventDetection(checkpoint_path=str(scoring.CHECKPOINT), device="cpu")
+'''
+new = '''    from panns_inference import AudioTagging
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        return AudioTagging(checkpoint_path=str(scoring.CHECKPOINT), device="cpu")
+'''
+
+[[rows]]
+id = "G5_loader_skips_readiness"
+description = "Ask the library for files that are not there, which is the wget shell out"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_analysis.py"]
+old = '''    missing = scoring.missing_requirement()
+    if missing is not None:
+        raise FileNotFoundError(missing)
+'''
+new = '''    missing = None
+    if missing is not None:
+        raise FileNotFoundError(missing)
+'''
+
+[[rows]]
+id = "G6_no_labels_check"
+description = "Readiness does not check the label table, so the extra is imported without it"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+tests = ["tests/test_analysis.py", "tests/test_vocals_cli.py"]
+old = '''    if not labels_ready():
+        return (
+            f"the vocal model's label table is not at {LABELS}; place "
+'''
+new = '''    if False:
+        return (
+            f"the vocal model's label table is not at {LABELS}; place "
+'''
+
+[[rows]]
+id = "G7_chatter_on_stdout"
+description = "Let the wrapper print onto the JSON envelope's stream"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_analysis.py"]
+old = '''    with contextlib.redirect_stdout(io.StringIO()):
+        return SoundEventDetection(checkpoint_path=str(scoring.CHECKPOINT), device="cpu")
+'''
+new = '''    with contextlib.nullcontext():
+        return SoundEventDetection(checkpoint_path=str(scoring.CHECKPOINT), device="cpu")
+'''
+
+[[rows]]
+id = "G8_queue_skips_readiness"
+description = "File the job whatever is missing, so a restamp scores nothing and reports ok"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''    if scoring.loader_bound():
+        return
+    missing = scoring.missing_requirement()
+    if missing is None:
+        return
+'''
+new = '''    if scoring.loader_bound():
+        return
+    missing = scoring.missing_requirement()
+    if True:
+        return
+'''
+
+[[rows]]
+id = "G9_tail_sent_alone"
+description = "Send a short tail to the network as its own piece, the R-371 defect"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_analysis.py"]
+old = '''    slices = _without_a_short_tail(slices, floor=floor)
+'''
+new = '''    slices = list(slices)
+'''
+
+[[rows]]
+id = "G10_lone_clip_not_padded"
+description = "A lone clip shorter than the floor goes to the network unpadded"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_analysis.py"]
+old = '''    if len(slices) == 1:
+        pad = floor - int(last.shape[-1])
+        return [np.concatenate([last, np.zeros((last.shape[0], pad), last.dtype)], axis=-1)]
+'''
+new = '''    if len(slices) == 1:
+        return slices
+'''
+
+[[rows]]
+id = "G11_tail_dropped"
+description = "Drop a short tail instead of folding it, so its frames are never scored"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_analysis.py"]
+old = '''    merged = np.concatenate([slices[-2], last], axis=-1)
+    return [*slices[:-2], merged]
+'''
+new = '''    return slices[:-1]
+'''
+
+[[rows]]
+id = "G12_columns_per_track"
+description = "Resolve the columns per track after the decode instead of once at load"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+tests = ["tests/test_analysis.py"]
+old = '''        _VOCAL_COLUMNS = class_indices(model)
+        _VOCAL_MODEL = model
+'''
+new = '''        _VOCAL_COLUMNS = None
+        _VOCAL_MODEL = model
+'''
+
+[[rows]]
+id = "G13_padded_frames_kept"
+description = "Count the frames the padding added, so a short clip's presence is diluted"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_analysis.py"]
+old = '''    if padded > width and vocals.size:
+'''
+new = '''    if False:
+'''
+
+[[rows]]
+id = "G14_unchunked_floor_is_width"
+description = "Let the unchunked path's floor collapse to the signal's own width"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_analysis.py"]
+old = '''    floor = MIN_CHUNK_SAMPLES if chunk_samples is None else min(MIN_CHUNK_SAMPLES, chunk_samples)
+'''
+new = '''    floor = min(MIN_CHUNK_SAMPLES, chunk_samples or width)
+'''
+
+[[rows]]
+id = "G15_fold_any_ragged_tail"
+description = "Fold every tail shorter than the chunk, not only one under the floor"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_analysis.py"]
+old = '''    floor = MIN_CHUNK_SAMPLES if chunk_samples is None else min(MIN_CHUNK_SAMPLES, chunk_samples)
+'''
+new = '''    floor = MIN_CHUNK_SAMPLES if chunk_samples is None else chunk_samples
+'''
+
+[[rows]]
+id = "G16_torch_by_lookup"
+description = "Answer torch by a lookup, so an installed torch that will not load passes the queue"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+tests = ["tests/test_analysis.py"]
+old = '''    try:
+        import torch  # noqa: F401
+    except Exception as exc:  # noqa: BLE001 - a torch that will not load is the case
+        return f"the 'vocals' extra is not usable here ({type(exc).__name__}: {exc}); {INSTALL}"
+'''
+new = '''    if not _installed("torch"):
+        return f"the 'vocals' extra is not usable here; {INSTALL}"
+'''

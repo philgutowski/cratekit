@@ -13,6 +13,7 @@ paths agree without loading PANNs.
 from __future__ import annotations
 
 import contextlib
+import io
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,6 +29,22 @@ _EPS = 1e-9
 #: rate rather than borrowing the head's samples (U58).
 MODEL_SAMPLE_RATE = 32000
 DEFAULT_CHUNK_SAMPLES = MODEL_SAMPLE_RATE * 8
+
+#: The shortest piece the network will take. Its time axis is pooled by two
+#: five times, so a piece under about a third of a second pools to nothing
+#: and the forward pass raises. A tail shorter than this is folded into the
+#: piece before it, and a whole signal shorter than this is padded, because
+#: the alternative was one track in thirty six failing on the length of its
+#: last quarter second (R-371).
+MIN_CHUNK_SAMPLES = MODEL_SAMPLE_RATE
+
+#: The AudioSet leaf classes the scorer reads, resolved to columns BY NAME from
+#: the model's own label table. Columns 0, 1 and 2 of that table are Speech,
+#: Male speech and Female speech, which is what the first version read on a
+#: real model, so a sung lead scored as an instrumental (R-370). There is no
+#: numeric fallback: a model with no label table is not scored, and every
+#: fake in the suite carries a table naming these at the columns it fills.
+TARGET_LABELS = ("Singing", "Male singing", "Female singing")
 
 
 def decode(path: Any) -> np.ndarray | None:
@@ -56,16 +73,56 @@ def decode(path: Any) -> np.ndarray | None:
 
 
 def default_loader() -> Any:
-    """Load the pretrained tagging model, behind the extra.
+    """Load the pretrained FRAME level model, behind the extra.
 
-    Raises when the extra is absent, which ``vocals._load`` records as a failed
-    load and reports as vocal inactive. It does not return None, because a
-    loader that returns None on a missing extra and a loader that returns None
-    because the checkpoint is corrupt are the same None to the caller.
+    ``SoundEventDetection`` is the wrapper whose ``inference`` returns one row
+    per frame, which is what ``infer_frames`` reduces. ``AudioTagging``, the
+    wrapper the first version built, returns a clip level pair, has no frame
+    output, and defaults to a different checkpoint (R-370).
+
+    Raises when the extra is absent or the checkpoint is not on disk, which
+    ``vocals._load`` records as a failed load and reports as vocal inactive.
+    It does not return None, because a loader that returns None on a missing
+    extra and a loader that returns None because the checkpoint is corrupt
+    are the same None to the caller. The checkpoint is checked HERE, before
+    the library is asked for it, because the library's answer to a missing
+    checkpoint is a shell out to wget.
     """
-    from panns_inference import AudioTagging
+    from cratekit.analysis import vocals as scoring
 
-    return AudioTagging(checkpoint_path=None, device="cpu")
+    missing = scoring.missing_requirement()
+    if missing is not None:
+        raise FileNotFoundError(missing)
+    from panns_inference import SoundEventDetection
+
+    # The wrapper prints its checkpoint path and device to stdout on
+    # construction, and stdout is where the JSON envelope goes.
+    with contextlib.redirect_stdout(io.StringIO()):
+        return SoundEventDetection(checkpoint_path=str(scoring.CHECKPOINT), device="cpu")
+
+
+def class_indices(model: Any) -> tuple[int, int, int]:
+    """The columns of ``TARGET_LABELS`` in the model's frame output.
+
+    Resolved by name from the label table the wrapper carries, so the columns
+    follow the model rather than a number typed here. A model with no table,
+    or a table that does not name a target, raises, and ``vocals._load``
+    records that as a failed load rather than scoring the wrong column.
+    """
+    labels = getattr(model, "labels", None)
+    if labels is None:
+        raise ValueError(
+            "the vocal model carries no label table, so its columns cannot be "
+            "resolved by name and it will not be scored by number"
+        )
+    names = [str(name) for name in labels]
+    try:
+        first, second, third = (names.index(target) for target in TARGET_LABELS)
+    except ValueError as exc:
+        raise ValueError(
+            f"the vocal model's label table does not name all of {TARGET_LABELS}"
+        ) from exc
+    return (first, second, third)
 
 
 @dataclass(frozen=True)
@@ -92,19 +149,44 @@ def _as_batch(wav: Any) -> np.ndarray:
     return batch
 
 
+def _without_a_short_tail(slices: list[np.ndarray], *, floor: int) -> list[np.ndarray]:
+    """Fold a last piece shorter than ``floor`` into the one before it.
+
+    A lone piece shorter than the floor is padded with silence to the floor
+    instead, so a very short clip still reaches the network as something it
+    can pool.
+    """
+    if not slices or floor <= 0:
+        return slices
+    last = slices[-1]
+    if int(last.shape[-1]) >= floor:
+        return slices
+    if len(slices) == 1:
+        pad = floor - int(last.shape[-1])
+        return [np.concatenate([last, np.zeros((last.shape[0], pad), last.dtype)], axis=-1)]
+    merged = np.concatenate([slices[-2], last], axis=-1)
+    return [*slices[:-2], merged]
+
+
 def infer_frames(
     model: Any,
     wav: Any,
     *,
     chunk_samples: int | None = DEFAULT_CHUNK_SAMPLES,
-    class_idx: tuple[int, int, int] = (0, 1, 2),
+    class_idx: tuple[int, int, int] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return (vocals, male, female) frame arrays for wav.
 
     chunk_samples None is the unchunked path, kept so a fixture can prove
     the chunked path agrees with it. A positive chunk size walks the
-    signal and concatenates frames. Both paths run under no_grad.
+    signal and concatenates frames. Both paths run under no_grad, both
+    apply the same floor, and a signal padded to the floor has the frames
+    the padding added trimmed off again, so a short clip is scored on its
+    own length. ``class_idx`` None resolves the columns from the model's
+    label table; there is no positional default (R-370).
     """
+    if class_idx is None:
+        class_idx = class_indices(model)
     batch = _as_batch(wav)
     width = int(batch.shape[-1])
     if chunk_samples is None or width <= chunk_samples:
@@ -114,6 +196,9 @@ def infer_frames(
             batch[:, start : start + chunk_samples]
             for start in range(0, width, chunk_samples)
         ]
+    floor = MIN_CHUNK_SAMPLES if chunk_samples is None else min(MIN_CHUNK_SAMPLES, chunk_samples)
+    slices = _without_a_short_tail(slices, floor=floor)
+    padded = sum(int(piece.shape[-1]) for piece in slices)
     parts: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
     with _no_grad():
         for piece in slices:
@@ -130,6 +215,9 @@ def infer_frames(
     vocals = np.concatenate([p[0] for p in parts], axis=0)
     male = np.concatenate([p[1] for p in parts], axis=0)
     female = np.concatenate([p[2] for p in parts], axis=0)
+    if padded > width and vocals.size:
+        keep = max(1, int(round(vocals.size * width / padded)))
+        vocals, male, female = vocals[:keep], male[:keep], female[:keep]
     return vocals, male, female
 
 
