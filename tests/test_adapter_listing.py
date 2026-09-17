@@ -86,15 +86,21 @@ def test_the_same_fixture_truncates_under_an_unpaginated_re_fetch():
     assert len(playlist.tracks()) != len(listing.playlist_tracks(playlist))
 
 
-def test_paging_stops_on_a_short_page_rather_than_on_an_empty_one():
-    """One saved round trip per listing, and the reason the page size matters."""
+def test_paging_stops_on_an_empty_page_rather_than_on_a_short_one():
+    """U65. The short page stop is what R-383 measured wrong, and this is its cost.
+
+    Reading 150 items now costs a third request that returns nothing. That request
+    is the whole price of the fix, paid once per listing, and it is asserted here
+    rather than described so that a later author reverting to the short page rule
+    to save it has to delete a test that says what the saving buys.
+    """
     playlist = Paged(corpus(150), 100)
     listing.playlist_tracks(playlist)
-    assert playlist.calls == [(100, 0), (100, 100)]
+    assert playlist.calls == [(100, 0), (100, 100), (100, 200)]
 
 
 def test_an_exact_multiple_of_the_page_size_needs_the_empty_page():
-    """The one case where stopping on short cannot help, asserted so it is known."""
+    """The case the short page rule could never have handled either."""
     playlist = Paged(corpus(200), 100)
     got = listing.playlist_tracks(playlist)
     assert len(got) == 200
@@ -105,18 +111,154 @@ def test_an_empty_listing_reads_as_empty_and_not_as_an_error():
     assert listing.playlist_tracks(Paged([], 100)) == []
 
 
-def test_a_runaway_offset_cannot_loop_forever():
-    """A provider that ignores the offset otherwise turns a read into a hang.
+def test_a_runaway_offset_raises_rather_than_returning_what_it_collected():
+    """U65. A provider that ignores the offset otherwise turns a read into a hang.
 
     This is not hypothetical tidiness: a full page every time is exactly what a
-    broken or renamed offset parameter produces, and the loop's stop condition is
-    "a page shorter than the page size", which never arrives.
+    broken or renamed offset parameter produces, and no stop condition arrives.
+
+    What changed in U65 is the ENDING. The budget used to break the loop and
+    return, which traded a hang for a capped length answer indistinguishable from
+    a complete one, the exact thing ``ListingNotPaginated`` already refuses to do
+    one function over. Spending the budget now raises.
     """
 
     def ignores_the_offset(limit: int, offset: int) -> list:
         return corpus(limit)
 
-    assert len(listing.paginate(ignores_the_offset, page_size=100, max_pages=3)) == 300
+    with pytest.raises(listing.ListingTruncated) as raised:
+        listing.paginate(
+            ignores_the_offset,
+            page_size=100,
+            stop=listing.StopRule.EMPTY_PAGE,
+            max_pages=3,
+            shape="favorite_tracks",
+        )
+    message = str(raised.value)
+    assert "favorite_tracks" in message
+    assert "3 requests" in message
+    assert "offset" in message
+
+
+def test_the_budget_is_spent_on_requests_and_the_walk_is_not_restarted():
+    """The count in the message is items collected, so a zero there is its own bug."""
+
+    def ignores_the_offset(limit: int, offset: int) -> list:
+        return corpus(limit)
+
+    with pytest.raises(listing.ListingTruncated) as raised:
+        listing.paginate(
+            ignores_the_offset,
+            page_size=10,
+            stop=listing.StopRule.EMPTY_PAGE,
+            max_pages=4,
+        )
+    assert "40 item(s)" in str(raised.value)
+
+
+def test_the_short_page_rule_still_stops_short_when_a_caller_declares_it():
+    """The rule no shape uses today is still the rule this module offers.
+
+    Kept tested rather than deleted: an untested branch in a policy enum is how
+    the next author discovers it does not work, at the moment they need it.
+    """
+    playlist = Paged(corpus(150), 100)
+    got = listing.paginate(
+        lambda limit, offset: playlist.tracks(limit=limit, offset=offset),
+        page_size=100,
+        stop=listing.StopRule.SHORT_PAGE,
+        max_pages=10,
+    )
+    assert len(got) == 150
+    assert playlist.calls == [(100, 0), (100, 100)]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Scenario: the provider omits items from the window it serves (R-383)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class Omitting:
+    """A provider listing that OMITS items from the window it serves.
+
+    R-383's mechanism as a fixture. The provider holds ``held`` rows and will not
+    serve some of them, but it still COUNTS them when it slices the window, so a
+    request for ``page_size`` at ``offset`` returns the servable subset of
+    ``held[offset : offset + page_size]``. That subset is shorter than the page
+    size while items remain past it, which is what makes a short page a lie here.
+
+    Measured against tidalapi 0.8.11, the omission is the provider's and not the
+    client's: ``user.Favorites.tracks`` hands the response straight to
+    ``request.map_json``, which maps every item in ``items`` with no filtering.
+    ``Favorites.get_tracks_count`` documents the other half, that the total the
+    API reports "also includes track that may not be available for playback".
+    """
+
+    def __init__(self, held: list[Item], omitted: set[str]) -> None:
+        self._held = held
+        self._omitted = omitted
+        self.calls: list[tuple[int, int]] = []
+
+    def _serve(self, limit: int | None = None, offset: int = 0) -> list:
+        self.calls.append((limit or 0, offset))
+        window = self._held[offset : offset + (limit or len(self._held))]
+        return [item for item in window if item.id not in self._omitted]
+
+    tracks = _serve
+    playlist_and_favorite_playlists = _serve
+    get_albums = _serve
+
+    def get_ep_singles(self, limit: int | None = None, offset: int = 0) -> list:
+        return []
+
+
+def omitting_corpus(held: int, omit_first: int, prefix: str = "t") -> Omitting:
+    """``held`` rows of which the first ``omit_first`` will not be served."""
+    rows = corpus(held, prefix=prefix)
+    return Omitting(rows, {item.id for item in rows[:omit_first]})
+
+
+def test_the_favourites_listing_reads_the_whole_account_and_not_its_newest_fraction():
+    """R-383, reproduced at the numbers it was measured at on 2026-09-17.
+
+    204 rows counted, 7 of them unservable, page size 100. The shipped short page
+    rule sees 93 on the first window, reads 93 as the end, and returns 93 out of
+    the 197 the account actually serves. That is the live measurement exactly.
+    """
+    favorites = omitting_corpus(204, 7)
+    session = Session(User(favorites=favorites))
+
+    assert len(favorites.tracks(limit=100, offset=0)) == 93  # the page that lied
+    favorites.calls.clear()
+
+    got = listing.favorite_tracks(session)
+    assert len(got) == 197
+    assert favorites.calls == [(100, 0), (100, 100), (100, 200), (100, 300)]
+
+
+def test_a_playlist_whose_provider_omits_a_track_reads_to_the_end():
+    """The placeholder acquire walks this read, and nothing downstream sees a gap."""
+    playlist = omitting_corpus(204, 7)
+    got = listing.playlist_tracks(playlist)
+    assert len(got) == 197
+    assert playlist.calls[0] == (100, 0)
+    assert playlist.calls[-1] == (100, 300)
+
+
+def test_the_account_playlists_listing_reads_to_the_end_at_its_own_page_size():
+    """Page size 50 here, not 100, so a shared constant would page this one wrong."""
+    playlists = omitting_corpus(105, 6, prefix="p")
+    session = Session(playlists)  # the fake IS the user: it answers the listing method
+    got = listing.account_playlists(session)
+    assert len(got) == 99
+    assert playlists.calls == [(50, 0), (50, 50), (50, 100), (50, 150)]
+
+
+def test_an_artist_release_listing_reads_to_the_end_across_both_methods():
+    """A label catalogue that stops early is this product's core job done wrong."""
+    artist = omitting_corpus(204, 7, prefix="a")
+    got = listing.artist_releases(artist)
+    assert len(got) == 197
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -289,8 +431,11 @@ def test_a_missing_release_listing_is_skipped_rather_than_fatal():
     """Losing one listing beats refusing to crawl a label at all."""
 
     class OnlyAlbums:
+        # Honours the offset. Under U65's empty page rule a fake that ignores it
+        # is a runaway, which is a different test's subject and would mask this
+        # one's: the assertion here is about a MISSING method being skipped.
         def get_albums(self, limit: int | None = None, offset: int = 0) -> list:
-            return corpus(2, prefix="a")
+            return corpus(2, prefix="a")[offset : offset + (limit or 2)]
 
     assert len(listing.artist_releases(OnlyAlbums())) == 2
 
@@ -388,8 +533,83 @@ def test_every_declared_listing_shape_has_a_wrapper():
     """P4: the guarded set and the wrapper set describe the same thing.
 
     A page size declared with no wrapper is a shape somebody will page by hand,
-    and a wrapper with no page size is a wrapper guessing.
+    and a wrapper with no page size is a wrapper guessing. U65 adds two more
+    tables to the set, and a shape missing from either one is a shape whose stop
+    rule or whose budget somebody picked at the call site.
     """
     assert set(listing.WRAPPERS) == set(listing.PAGE_SIZES)
+    assert set(listing.WRAPPERS) == set(listing.STOP_RULES)
+    assert set(listing.WRAPPERS) == set(listing.PAGE_CAPS)
     for name, wrapper in listing.WRAPPERS.items():
         assert callable(wrapper), name
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U65: the stop rule is declared per listing, and the declaration is guarded
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_every_shape_declares_the_empty_page_rule():
+    """Asserted from the table, not from behaviour.
+
+    A behavioural test proves a shape reads to the end against the fixture it was
+    handed. This one proves which rule it SAYS it uses, so a shape moved back to
+    the short page stop fails here by name even if some fixture happens not to
+    notice.
+    """
+    assert listing.STOP_RULES == dict.fromkeys(listing.WRAPPERS, listing.StopRule.EMPTY_PAGE)
+
+
+def test_each_wrapper_docstring_names_the_rule_its_table_declares():
+    """The prose and the table cannot drift apart unnoticed.
+
+    Phillip's requirement for this unit was that each listing says which rule it
+    uses AND why. The why is prose and cannot be machine checked. That the prose
+    is talking about the rule actually in force can be, and this is the half that
+    goes stale first: a rule changes in a dict and the paragraph under it keeps
+    arguing for the old one.
+    """
+    for name, wrapper in listing.WRAPPERS.items():
+        phrase = listing.STOP_RULES[name].value
+        doc = (wrapper.__doc__ or "").lower()
+        assert phrase in doc, f"{name} declares {phrase!r} and its docstring never says so"
+
+
+@pytest.mark.parametrize("missing", ["stop", "max_pages"])
+def test_paginate_refuses_to_be_called_without_a_declared_rule_or_budget(missing):
+    """The guard that makes the declaration real rather than conventional.
+
+    R-383's shape was one rule written once into this function, silently
+    governing four listings nobody had checked against it. A default on either
+    argument rebuilds that, so both are required and a wrapper that forgets to
+    choose fails to call.
+    """
+    arguments = {
+        "page_size": 100,
+        "stop": listing.StopRule.EMPTY_PAGE,
+        "max_pages": 5,
+    }
+    del arguments[missing]
+    with pytest.raises(TypeError) as raised:
+        listing.paginate(lambda limit, offset: [], **arguments)
+    assert missing in str(raised.value)
+
+
+def test_every_budget_clears_the_largest_collection_this_project_has_measured():
+    """A budget that can fire on real data turns a correctness fix into an outage.
+
+    The numbers on the right are the live reads of 2026-09-17. The margin is the
+    assertion: each budget is checked against a collection an order of magnitude
+    past anything measured, so a future edit that tightens a budget toward real
+    data fails here rather than in a sweep.
+    """
+    measured = {
+        "playlist_tracks": 197,
+        "account_playlists": 599,
+        "favorite_tracks": 197,
+        "artist_releases": 197,
+    }
+    assert set(measured) == set(listing.PAGE_CAPS)
+    for name, largest in measured.items():
+        reachable = listing.PAGE_CAPS[name] * listing.PAGE_SIZES[name]
+        assert reachable >= largest * 10, f"{name} budget reaches only {reachable}"

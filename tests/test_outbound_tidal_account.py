@@ -385,7 +385,10 @@ def test_has_heart_answers_a_whole_sweep_from_one_paged_read():
     answers = [remote.has_heart(str(1000 + index)) for index in range(400)]
 
     assert answers == [index < 250 for index in range(400)]
-    assert client.user.favorites.pages == [(100, 0), (100, 100), (100, 200)]
+    # U65: the walk now ends on the empty page at offset 300, not on the short
+    # page at 200. One extra request for the whole sweep, and the point of the
+    # test is unchanged: 400 questions cost one walk.
+    assert client.user.favorites.pages == [(100, 0), (100, 100), (100, 200), (100, 300)]
 
 
 def test_a_heart_already_held_makes_no_write_and_a_new_one_makes_exactly_one():
@@ -399,7 +402,10 @@ def test_a_heart_already_held_makes_no_write_and_a_new_one_makes_exactly_one():
     remote.add_heart("6")
     assert client.user.favorites.added == ["6"]
     assert remote.has_heart("6") is True
-    assert len(client.user.favorites.pages) == 1
+    # One complete walk and no second one. Under U65 a complete walk over a
+    # corpus this small is two requests, the page and the empty page that ends
+    # it; a cache miss would show a second (100, 0).
+    assert client.user.favorites.pages == [(100, 0), (100, 100)]
 
 
 def test_a_member_already_on_the_playlist_makes_no_write():
@@ -414,7 +420,10 @@ def test_a_member_already_on_the_playlist_makes_no_write():
     remote.add_to_playlist(playlist.id, "13")
     assert playlist.adds == [["13"]]
     assert remote.playlist_tracks(playlist.id) == ("11", "12", "13")
-    assert len(playlist.pages) == 1
+    # One complete walk and no second one. Under U65 a complete walk over a
+    # corpus this small is two requests, the page and the empty page that ends
+    # it; a cache miss would show a second (100, 0).
+    assert playlist.pages == [(100, 0), (100, 100)]
 
 
 def test_a_created_playlist_returns_the_identifier_the_provider_assigned():
@@ -646,7 +655,10 @@ def test_a_hearts_sweep_runs_to_done_and_the_ledger_records_every_heart(
     assert client.user.favorites.added == ["501", "503"]
     assert ledger.recorded_hearts(installed) == frozenset({"501", "503"})
     assert client.logins == 1
-    assert len(client.user.favorites.pages) == 1
+    # One complete walk and no second one. Under U65 a complete walk over a
+    # corpus this small is two requests, the page and the empty page that ends
+    # it; a cache miss would show a second (100, 0).
+    assert client.user.favorites.pages == [(100, 0), (100, 100)]
 
 
 def test_a_playlist_export_runs_to_done_and_the_ledger_records_every_add(
