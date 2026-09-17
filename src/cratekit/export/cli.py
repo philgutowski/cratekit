@@ -249,7 +249,7 @@ def run_export_item(
     and every item after it reads that record rather than creating a second one.
     """
     library = source.read_library(Path(str(payload[EXPORT])))
-    tracks = source.local_tracks(library, (track_id,))
+    tracks = source.local_tracks(library, (track_id,), cfg=cfg)
     if not tracks:
         raise refuse(
             "outbound-item-absent",

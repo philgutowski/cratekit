@@ -79,6 +79,7 @@ ALL_FIELDS = {
     "voxlevel": 55,
     "voxgender": "F",
     "voxgenderconf": 80,
+    "isrc": "ZZ0000000001",
 }
 
 
@@ -377,3 +378,22 @@ def test_reading_a_file_that_is_not_there_returns_none(tmp_path):
     which is why this answer is only acceptable downstream of the volume check.
     """
     assert read_genre_from_file(tmp_path / "gone.flac") is None
+
+
+@pytest.mark.parametrize("suffix", [".aiff", ".mp3"])
+def test_an_isrc_another_tagger_wrote_is_read_from_the_standard_frame(tmp_path, suffix):
+    """R-355. The round trip above cannot pin the frame, since it reads back through
+    the same table it wrote with. A file tagged elsewhere carries ``TSRC``, which is
+    the frame the ID3 standard names, and that is what the outbound source reads.
+    """
+    import mutagen
+    import mutagen.id3 as id3
+
+    path = _synth(tmp_path, suffix)
+    handle = mutagen.File(path)
+    if handle.tags is None:
+        handle.add_tags()
+    handle.tags.add(id3.TSRC(encoding=3, text=["ZZX9A2600042"]))
+    handle.save()
+
+    assert read_tag(path, "isrc") == "ZZX9A2600042"

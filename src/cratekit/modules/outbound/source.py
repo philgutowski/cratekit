@@ -32,10 +32,12 @@ Layer: modules.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
+from cratekit.core import config, locations, tags
 from cratekit.core.cause import Scope, refuse
 from cratekit.modules.outbound.export import LocalTrack
 from cratekit.modules.outbound.hearts import HeartCandidate
@@ -260,38 +262,139 @@ def resolve(library: Library, identifier: str) -> ResolvedPlaylist:
 
 
 def local_tracks(
-    library: Library, track_ids: tuple[str, ...] | list[str]
+    library: Library,
+    track_ids: tuple[str, ...] | list[str],
+    *,
+    cfg: config.Config,
 ) -> tuple[LocalTrack, ...]:
     """The export engine's input for these identifiers.
 
-    THE ISRC IS EMPTY AND THAT IS THE FORMAT RATHER THAN AN OMISSION. A rekordbox
-    collection export carries no ISRC attribute, so there is none to read and
-    inventing one would hand the provider seam a fabricated identity. The title
-    and artist are carried anyway, because ``export.plan`` puts them on an
-    ``Unmatched`` row and an unmatched row with no name is unreportable.
+    THE ISRC COMES FROM THE AUDIO FILE, NOT THE EXPORT (R-355). A rekordbox
+    collection export carries no ISRC attribute, and the account matches on
+    nothing else a row has, so without the file's own tag every live export
+    matched nothing and reported a clean job. See :func:`isrc_for` for how the
+    file is found and when the answer is empty. The title and artist are carried
+    anyway, because ``export.plan`` puts them on an ``Unmatched`` row and an
+    unmatched row with no name is unreportable.
+
+    ``cfg`` IS REQUIRED, never defaulted. A default of none would restore the
+    defect for any caller that forgot it, silently, as a job that hearts nothing.
     """
+    rules = prefix_rules(cfg)
+    _require_root(cfg)
     return tuple(
         LocalTrack(
             identity=track_id,
             title=entry.name,
             artist=entry.artist,
+            isrc=isrc_for(entry, root=cfg.library.root, prefix_map=rules),
         )
         for track_id, entry in _rows(library, track_ids)
     )
 
 
 def heart_candidates(
-    library: Library, track_ids: tuple[str, ...] | list[str]
+    library: Library,
+    track_ids: tuple[str, ...] | list[str],
+    *,
+    cfg: config.Config,
 ) -> tuple[HeartCandidate, ...]:
     """The hearts engine's input for these identifiers.
 
-    ``remote_id`` is left empty so the engine asks the account to match, which is
-    the only route this build has: see :func:`local_tracks` about the ISRC.
+    ``remote_id`` is left empty so the engine asks the account to match, and the
+    ISRC is read from the file exactly as :func:`local_tracks` reads it, so the
+    two engines cannot come to disagree about one row's identity.
     """
+    rules = prefix_rules(cfg)
+    _require_root(cfg)
     return tuple(
-        HeartCandidate(row_id=track_id)
-        for track_id, _entry in _rows(library, track_ids)
+        HeartCandidate(
+            row_id=track_id,
+            isrc=isrc_for(entry, root=cfg.library.root, prefix_map=rules),
+        )
+        for track_id, entry in _rows(library, track_ids)
     )
+
+
+def _require_root(cfg: config.Config) -> None:
+    """Refuse when the library root is not there, before any tag is read.
+
+    :func:`isrc_for` reads a file that is not there as no ISRC, which is the
+    honest answer for ONE untagged or moved file. With the volume unmounted it is
+    the answer for EVERY row, and the job would end succeeded with the whole sweep
+    unmatched, which is R-355's symptom arriving by a second route. So an absent
+    root stops the item rather than reading as a library of untagged files.
+
+    A root that is present but holds a different volume is not caught here; that
+    is ``library.mounted`` in doctor, which the registry already declares.
+    """
+    root = Path(cfg.library.root)
+    if root.is_dir():
+        return
+    raise refuse(
+        "library-volume-unmounted",
+        f"the library root {root} is not a directory on this machine, so no "
+        f"track's audio file can be read for its ISRC and every row would be "
+        f"reported unmatched; nothing was written",
+        steps=("mount the library volume and resume the job",),
+        origin=("outbound", "source"),
+        detail={"library": str(root)},
+    )
+
+
+def prefix_rules(cfg: config.Config) -> list[locations.PrefixRule]:
+    """The configured volume prefix map, as the resolver takes it.
+
+    Without it a library whose drive was renamed resolves no row at all, which
+    R-372 measured on the live library as 0 of 9937.
+    """
+    return [
+        locations.PrefixRule(source_prefix, target)
+        for source_prefix, target in cfg.resolved_prefix_map()
+    ]
+
+
+#: Twelve characters: country, registrant, year, designation. Hyphens and spaces
+#: are presentation and are folded away before this is asked.
+_ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
+
+
+def isrc_for(
+    entry: library_export.CollectionEntry,
+    *,
+    root: Path | str,
+    prefix_map: list[locations.PrefixRule],
+) -> str:
+    """The ISRC the row's audio file carries, or ``""`` when there is none to trust.
+
+    EMPTY IS NOT A GUESS, IT IS THE EXISTING ROUTE. An empty ISRC makes the
+    account fall back to an exact provider reference and otherwise report the row
+    unmatched, which is what every row did before this read existed. So each way
+    this can fail, a location that is not a local file, a prefix no rule maps, a
+    file that is gone, a container with no tag, a value that is not an ISRC, ends
+    in the same honest unmatched row rather than a refusal that would fail the
+    item over one untagged file.
+
+    A MALFORMED VALUE IS DROPPED rather than passed on, because the account
+    queries the provider with exactly this string, and a tag holding a catalogue
+    number or a stray label would be a lookup of something that is not a
+    recording's identity.
+    """
+    if not entry.location:
+        return ""
+    try:
+        recorded = locations.location_to_path(entry.location)
+    except locations.LocationDecodeError:
+        return ""
+    resolved = locations.resolve_recorded_path(recorded, root=root, prefix_map=prefix_map)
+    if resolved.path is None:
+        return ""
+    path = Path(resolved.path)
+    if not path.is_file():
+        return ""
+    raw = tags.read_tag(path, "isrc") or ""
+    folded = re.sub(r"[\s-]", "", raw).upper()
+    return folded if _ISRC.fullmatch(folded) else ""
 
 
 def _rows(
@@ -317,7 +420,9 @@ __all__ = [
     "ResolvedPlaylist",
     "forget_libraries",
     "heart_candidates",
+    "isrc_for",
     "local_tracks",
+    "prefix_rules",
     "read_library",
     "required_path",
     "resolve",

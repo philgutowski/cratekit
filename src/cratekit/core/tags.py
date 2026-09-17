@@ -143,6 +143,11 @@ FIELDS: dict[str, TagSpec] = {
     "voxgenderconf": TagSpec(
         "voxgenderconf", "TXXX:VoxGenderConf", "----:com.apple.iTunes:VoxGenderConf"
     ),
+    # R-355. The recording's identity, which the outbound verbs hand the account
+    # to match on, because a rekordbox collection export carries none. ``TSRC``
+    # is the ID3 frame the standard names for it, and the downloader writes the
+    # Vorbis ``isrc`` comment on every file it delivers.
+    "isrc": TagSpec("isrc", "TSRC", "----:com.apple.iTunes:ISRC"),
 }
 
 FLAC_SUFFIXES = (".flac",)

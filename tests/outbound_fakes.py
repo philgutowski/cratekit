@@ -21,7 +21,7 @@ Not a test module: pytest does not collect it.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable, Mapping, Sequence
 
 from tests.modules.test_reports import _close, _collection, _document, _folder, _playlist
 
@@ -164,6 +164,7 @@ def export_document(
     tracks: int = 3,
     extra_children: Sequence[str] = (),
     root_count: int | None = None,
+    locations: Mapping[int, str] | None = None,
 ) -> bytes:
     """A collection export carrying a crate and a favourites playlist.
 
@@ -176,13 +177,17 @@ def export_document(
     ``extra_children`` takes already-rendered nodes so a test can add the second
     playlist that makes a bare name ambiguous, or a folder that makes a name
     resolve to nothing.
+
+    ``locations`` replaces a row's ``Location`` by index, so a test can point a
+    row at a real audio file whose tag the outbound source reads (R-355). A row
+    left out keeps a location naming no file, which reads as no ISRC.
     """
     rows = [
         (
             index,
             f"08A - 124 - Track {index}",
             f"Artist {index}",
-            f"file://localhost/library/{index}.flac",
+            (locations or {}).get(index, f"file://localhost/library/{index}.flac"),
         )
         for index in range(1, tracks + 1)
     ]
