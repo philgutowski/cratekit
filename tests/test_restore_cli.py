@@ -1059,7 +1059,7 @@ def test_a_transfer_that_succeeds_is_still_reported(cfg):
 
 
 def test_a_restore_from_a_database_only_snapshot_names_the_absent_sidecar(cfg, tmp_path):
-    """R-367 at the report a person reads.
+    """The report a person reads names the sidecar the snapshot did not hold.
 
     The snapshot this product takes holds ``master.db`` alone. The restore used
     to copy the write ahead log anyway, rclone exited 3, and the verb reported

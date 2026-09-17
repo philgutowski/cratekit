@@ -1936,8 +1936,10 @@ def test_the_file_half_is_off_by_default(cfg, tmp_path, rclone_on_path):
 def test_a_restore_from_a_snapshot_holding_only_the_database_skips_the_absent_sidecar(
     cfg, tmp_path, rclone_on_path
 ):
-    """R-367. The only snapshot this product takes has no write ahead log.
+    """The residual
+    "A restore from a snapshot taken with rekordbox closed always reports failure".
 
+    The only snapshot this product takes has no write ahead log.
     ``plan_database_snapshot`` copies a sidecar only when it is present.
     ``plan_restore`` used to copy the log unconditionally, rclone exited 3, and
     the person was told the restore failed after the database had already landed.
