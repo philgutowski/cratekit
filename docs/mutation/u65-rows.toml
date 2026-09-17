@@ -1,0 +1,282 @@
+# U65, author's table. Every listing declares its own stop rule and page budget.
+#
+# Scoped to this unit's own diff plus a fixed sample of U14's existing guards in
+# the same module, per METHOD. Read only unit, so the table is scoped to the new
+# guards rather than run at full depth, and every row names its subset so a death
+# on the subset is a real death and a zero on it is not yet a zero.
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/u65-rows.toml
+
+name = "u65"
+pass_kind = "light"
+
+# ── the required declarations ───────────────────────────────────────────────
+
+[[rows]]
+id = "A1_stop_gets_a_default"
+description = "stop becomes optional, so a new wrapper inherits an assumption instead of choosing"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''    stop: StopRule,
+    max_pages: int,'''
+new = '''    stop: StopRule = StopRule.SHORT_PAGE,
+    max_pages: int,'''
+
+[[rows]]
+id = "A2_max_pages_gets_a_default"
+description = "the request budget becomes optional and effectively unbounded"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''    stop: StopRule,
+    max_pages: int,
+    declared_total'''
+new = '''    stop: StopRule,
+    max_pages: int = 1_000_000,
+    declared_total'''
+
+# ── the stop rules themselves ───────────────────────────────────────────────
+
+[[rows]]
+id = "B1_favourites_back_to_the_short_page"
+description = "R-383 reintroduced exactly: the favourites walk ends on a short page again"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''    "favorite_tracks": StopRule.DECLARED_TOTAL,'''
+new = '''    "favorite_tracks": StopRule.SHORT_PAGE,'''
+
+[[rows]]
+id = "B2_favourites_back_to_the_empty_page"
+description = "the fix as first written: the empty middle window ends the favourites walk"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''    "favorite_tracks": StopRule.DECLARED_TOTAL,'''
+new = '''    "favorite_tracks": StopRule.EMPTY_PAGE,'''
+
+[[rows]]
+id = "B3_playlist_tracks_back_to_the_short_page"
+description = "the placeholder acquire read ends on a short page, dropping the rest of a playlist"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''    "playlist_tracks": StopRule.DECLARED_TOTAL,'''
+new = '''    "playlist_tracks": StopRule.SHORT_PAGE,'''
+
+[[rows]]
+id = "B4_account_playlists_back_to_the_short_page"
+description = "the sync all listing ends on a short page, silently skipping playlists"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''    "account_playlists": StopRule.EMPTY_PAGE,'''
+new = '''    "account_playlists": StopRule.SHORT_PAGE,'''
+
+[[rows]]
+id = "B5_artist_releases_back_to_the_short_page"
+description = "a label catalogue ends at the first short page, which is the core job done wrong"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/modules/test_labels.py"]
+old = '''    "artist_releases": StopRule.EMPTY_PAGE,'''
+new = '''    "artist_releases": StopRule.SHORT_PAGE,'''
+
+# ── the walk ────────────────────────────────────────────────────────────────
+
+[[rows]]
+id = "C1_the_declared_total_is_ignored"
+description = "the total is read and then never consulted, so every walk falls back to a page shape"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''        if total is not None:'''
+new = '''        if False and total is not None:'''
+
+[[rows]]
+id = "C2_an_empty_page_ends_a_declared_total_walk"
+description = "the empty middle window ends the walk again, the exact defect the review found"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''            if offset >= total and len(page) < page_size:
+                break
+        elif not page:
+            break'''
+new = '''            if offset >= total and len(page) < page_size:
+                break
+        if not page:
+            break'''
+
+[[rows]]
+id = "C3_a_full_page_at_the_declared_end_stops_anyway"
+description = "a total that under reports now truncates, because the walk trusts it over what it sees"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''            if offset >= total and len(page) < page_size:'''
+new = '''            if offset >= total:'''
+
+[[rows]]
+id = "C4_the_short_page_rule_stops_every_walk"
+description = "the rule argument is dropped from the short page test, so every shape stops short"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''        if stop is StopRule.SHORT_PAGE and len(page) < page_size:'''
+new = '''        if len(page) < page_size:'''
+
+
+[[rows]]
+id = "C6_offset_advances_by_what_was_served"
+description = "the plausible wrong fix: advance by the page's length, not the window width, re-serving items"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''        offset += page_size
+
+        if total is not None:'''
+new = '''        offset += len(page)
+
+        if total is not None:'''
+
+[[rows]]
+id = "C7_a_zero_total_is_trusted_as_an_end"
+description = "the sentinel check goes, so an unparsed num_tracks of -1 ends the walk at once"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''        if total is not None and total <= 0:
+            total = None'''
+new = '''        if total is not None and total < -1:
+            total = None'''
+
+# ── the budget and its ending ───────────────────────────────────────────────
+
+[[rows]]
+id = "D1_the_budget_truncates_quietly"
+description = "spending the budget returns what it collected, the pre U65 behaviour"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py"]
+old = '''        if pages >= max_pages:
+            raise ListingTruncated('''
+new = '''        if pages >= max_pages:
+            break
+        if False:
+            raise ListingTruncated('''
+
+
+[[rows]]
+id = "D3_the_empty_page_is_not_counted_against_the_budget"
+description = "pages counts only pages with items, so the budget means something other than requests"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py"]
+old = '''        page = list(page or [])
+        pages += 1
+        for item in page:'''
+new = '''        page = list(page or [])
+        if page:
+            pages += 1
+        for item in page:'''
+
+[[rows]]
+id = "D4_the_refusal_stops_naming_the_listing"
+description = "the message loses the shape, so an operator cannot tell which listing ran away"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py"]
+old = '''                f"{shape or 'listing'} spent its whole budget of {max_pages} requests "'''
+new = '''                f"a listing spent its whole budget of {max_pages} requests "'''
+
+[[rows]]
+id = "D5_the_favourites_budget_is_tightened_onto_real_data"
+description = "a budget that can fire on a real account, which turns a correctness fix into an outage"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py"]
+old = '''    "favorite_tracks": 200,  # reaches 19,900 tracks. Largest measured: 197.'''
+new = '''    "favorite_tracks": 3,  # reaches 19,900 tracks. Largest measured: 197.'''
+
+# ── the policy tables, read rather than copied ──────────────────────────────
+
+[[rows]]
+id = "E1_the_shape_helper_ignores_the_rule_table"
+description = "every shape gets one hard coded rule again, which is R-383's own shape"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''        "stop": STOP_RULES[name],'''
+new = '''        "stop": StopRule.EMPTY_PAGE,'''
+
+[[rows]]
+id = "E2_the_shape_helper_ignores_the_page_size_table"
+description = "one shared page size, so account playlists is paged at the wrong window width"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''        "page_size": PAGE_SIZES[name],'''
+new = '''        "page_size": 100,'''
+
+[[rows]]
+id = "E3_the_favourites_total_is_never_wired"
+description = "the shape declares the total rule and is handed no total, so it degrades silently"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''    kwargs.setdefault("declared_total", _declared_count(favorites, "get_tracks_count"))'''
+new = '''    kwargs.setdefault("declared_total", lambda: None)'''
+
+[[rows]]
+id = "E4_the_playlist_total_is_never_wired"
+description = "the playlist count on the object is ignored, so that shape degrades too"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''    kwargs.setdefault("declared_total", _declared_attribute(playlist, "num_tracks"))'''
+new = '''    kwargs.setdefault("declared_total", lambda: None)'''
+
+# ── a fixed sample of U14's existing guards in the same module ──────────────
+
+[[rows]]
+id = "F1_an_unpageable_listing_takes_its_single_page"
+description = "U14's guard: a listing that cannot page truncates silently instead of refusing"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py"]
+old = '''        except TypeError as exc:
+            raise ListingNotPaginated('''
+new = '''        except TypeError as exc:
+            del exc
+            return fn()
+        except RuntimeError as exc:
+            raise ListingNotPaginated('''
+
+[[rows]]
+id = "F2_the_structural_guard_loses_a_method_name"
+description = "U14's guard: one provider listing method may be called by hand again"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py"]
+old = '''    {"tracks", "playlist_and_favorite_playlists", "get_albums", "get_ep_singles"}'''
+new = '''    {"tracks", "playlist_and_favorite_playlists", "get_albums"}'''
+
+[[rows]]
+id = "F3_the_retry_ceiling_is_raised"
+description = "U14's bound, mutated to a realistic nearby value rather than removed"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py"]
+old = '''            if attempt > max_retries:'''
+new = '''            if attempt > max_retries + 3:'''
+
+[[rows]]
+id = "F4_the_favourites_dedup_goes"
+description = "U14's dedup: a favourite re-served on a shifted page boundary is returned twice"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_outbound_tidal_account.py"]
+old = '''    kwargs.setdefault("key", lambda track: str(getattr(track, "id", "")))'''
+new = '''    kwargs.setdefault("key", None)'''
