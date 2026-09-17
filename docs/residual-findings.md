@@ -513,6 +513,26 @@ time as the live database on the library volume. Not measured: a full
 one minute listing. **Still open:** the restore rehearsal to a scratch
 directory, the second of the two gates this entry names, has not run.
 
+**CLOSED 2026-09-16, both gates run, in the second attended U29 sitting.** The
+restore rehearsal ran to a scratch directory under `/private/tmp`, database
+half only, through `session.restore_cli.restore_under_one_session` with its
+`target` seam, because no shipped verb restores anywhere but the live library
+root (R-368). It passed the real gates: the backup acknowledgment the author
+minted from a Terminal window at 01:11Z, the library lock and the volume
+identity. rclone pulled `master.db` from snapshot `2026-09-16T173512Z`,
+281153536 bytes, MD5 `954ac500d282bbe607755918407893b4` on both sides, and it
+opens through `rb_writer.open_db` with the library key, `pragma
+integrity_check` answers `ok` and `djmdContent` holds 17341 rows. The live
+database and its directory were not touched, same size and time before and
+after, and the recovery session `2026-09-17T01-11-54Z-bf81` closed abandoned
+with the lock released, because the plan's second command failed: the restore
+copies `master.db-wal` unconditionally and the snapshot holds none, which is
+R-367. So both argument vectors run and are accepted where the file exists,
+the database restores intact, and the verb as shipped reports the whole
+restore failed after doing so. The mirror half was not pulled, hundreds of
+gigabytes, and is the one thing this entry leaves unmeasured. Issue #46 can
+close back to this entry.
+
 ---
 
 ## R-10. Membership insertion is one database round trip per track
@@ -16031,3 +16051,96 @@ site has its own cause vocabulary to decide against.
 failure as a session or a provider answer, with a test per path, or the entry
 records why a path is exempt.
 
+
+---
+
+## R-367. A restore from a snapshot taken with rekordbox closed always reports failure
+
+**Found:** 2026-09-16, the restore rehearsal of the second attended U29 sitting.
+
+`plan_database_snapshot` copies each SQLite sidecar only when it is present,
+and its comment says why: a checkpointed database legitimately has none.
+`plan_restore` builds a copy of `master.db-wal` unconditionally for every
+sidecar marked `restored`, and `run_restore` reads any non zero rclone exit as
+a failed transfer. The snapshot verb refuses while rekordbox or its agent runs,
+so every snapshot it takes is of a closed database, and a closed, checkpointed
+database has no write ahead log. Driven today: `2026-09-16T173512Z/db/` holds
+`master.db` alone, the first restore command landed it byte for byte, the
+second ran `rclone copy <snapshot>/db/master.db-wal <target>/`, exited 3,
+directory not found, and the run raised `BackupRefused` saying the transfer
+exited 3, the restore did not complete, and the live companion files were
+cleared and not put back.
+
+**Cost:** the person is told a restore failed after the database arrived
+intact, and told to run it again rather than open the library, and the rerun
+fails the same way. Against the live root that is a restore the product cannot
+complete from the only kind of snapshot it takes, and a person who follows the
+message never opens rekordbox. The measured cost today was one failed
+rehearsal into a scratch directory; the live root was not the target.
+
+**Why not fixed here.** An attended sitting runs one workflow and files what
+it finds. The fix is a unit's: list the snapshot folder before planning and
+copy only the sidecars it holds, or treat a source not found on an optional
+sidecar as skipped rather than failed, with a test that restores from a
+snapshot holding the database alone, which is the only kind the product takes.
+
+**Closes when:** a restore from a snapshot holding `master.db` alone completes
+and reports the database transferred and the sidecar absent, with a test that
+pins it.
+
+---
+
+## R-368. No verb restores anywhere but the live library root, so a rehearsal needs a script
+
+**Found:** 2026-09-16, the same sitting.
+
+`crate restore run --from-backup` has no target option, and
+`restore_under_one_session` says why: its `target` parameter is a seam for
+tests, and recovering onto a different volume is a different verb with
+different gates, which is what `core.restore.bare_metal_session` exists for.
+That function has no caller in `src`, verified with
+`git grep -n bare_metal_session -- src`, which returns its definition and the
+docstrings that name it. So the rehearsal R-9 asked for, a restore to a
+scratch directory, cannot be run by any shipped command, and this sitting ran
+it from a script in the session scratchpad calling the engine with `target`
+set, under the real gates and real rclone. The script is one call and is not
+committed. The recovery session still took the library lock and wrote a
+session record on the live volume for a restore that touched nothing on it,
+which is right for the gates and odd for a rehearsal.
+
+**Cost:** the only restore the person can run is the destructive one. The
+rehearsal that would tell them a restore works before they need it is a
+session's script, and nothing in the product offers it.
+
+**Closes when:** a verb restores a named snapshot into a named directory,
+database only by default, under gates that fit a target that is not the
+library, or the decision is recorded that rehearsal is out of scope and R-9's
+second gate is read as satisfied by this sitting's script.
+
+---
+
+## R-369. An acknowledgment run can be answered from a shell that can never continue it
+
+**Found:** 2026-09-16, the same sitting.
+
+`crate session ack` stops at `session.ack.backup` naming a run, `crate run
+decide` records the answer, and the continuation with `--run` mints the
+record. The mint refuses without a controlling terminal, by design, so a
+detached job cannot acknowledge. Driven today: the run was opened and answered
+from the operator's shell, the continuation was run from the session's own
+shell, which has no terminal, and it failed `ACK_REQUIRED` with
+`fix: crate session ack`, the run was marked failed, and nothing was written.
+The same three commands from a Terminal window succeeded. `decide` cannot know
+where the continuation will run, so this may be a message rather than a code
+change.
+
+**Cost:** one wasted round and a run left failed, with a fix line that sends
+the person back to the command that opened the run. No data cost. Recorded so
+the next session does not spend the same round: the acknowledgment is the
+person's, minted from a real terminal, and a session cannot mint it.
+
+**Closes when:** the no terminal refusal says that the recorded answer stands
+and the continuation must come from a terminal, or the ack verb checks for a
+terminal before it opens a run.
+
+---

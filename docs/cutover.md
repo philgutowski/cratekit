@@ -30,6 +30,21 @@ Defects found by running rather than by testing, all on the ledger: R-343
 through R-349. Four are a sitting's worth of small fixes (R-344, R-346, R-347,
 R-348), two are product gaps (R-345, R-349), one is a driver question (R-343).
 
+## Sitting 2, 2026-09-16, evening
+
+Machine state before: rekordbox and its agent closed, the volume mounted,
+`crate doctor` reporting no failing check and both backup ages at 0 days. No
+Relay run held the repository.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| Backup, R-9, real run | yes, read back on Drive | Job `2026-09-16T16:30:43Z-4c99` succeeded, 2 of 2 items. The dated archive holds the 1139 objects the dry run predicted, 6.9 GiB, and the snapshot's `master.db` matches the live file in size and time. | live |
+| Restore rehearsal, R-9 | yes, to a scratch directory | The database landed byte for byte, MD5 matched, `integrity_check` ok through the product's own opener, 17341 content rows. The verb then reported the restore failed, because it copies a write ahead log the snapshot does not hold (R-367). No shipped verb targets anything but the live root, so the rehearsal was a script calling the engine (R-368). The live database was not touched. | rehearsed once, verb defective |
+| Backup acknowledgment | yes | Minted by the author from a Terminal window at 01:11Z, valid twelve hours. A session cannot mint it, and answering the gate is not minting it (R-369). | live until 13:11Z |
+| Vocal restamp, R-133 | no | Next sitting, one workflow per sitting. | open |
+
+R-9 is closed on the ledger. Three findings filed, R-367 to R-369.
+
 ## What blocks a full sync cycle, stated plainly
 
 The board is complete and the product cannot yet do its central workflow,
@@ -74,6 +89,9 @@ lists Tidal. The vendored downloader is the only Tidal facing code that runs.
 
 ## Next sitting
 
-Read the real backup's outcome from the ledger's R-9 entry. If the age was
-published, run the restore rehearsal to a scratch directory. Then the vocal
-restamp on the 18 GB machine, R-133, which needs nothing from Tidal.
+The vocal restamp on the 18 GB machine, R-133, which needs nothing from Tidal.
+It writes, so it needs a backup acknowledgment inside its validity window:
+`crate session ack` from a Terminal window, answered with `crate run decide`,
+continued with `--run`, by the author and never by a session. After that, the
+three real Tidal runs U62, U63 and U64 owe, listed below, reading R-355 and
+R-358 first.
