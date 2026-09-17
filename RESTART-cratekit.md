@@ -4,7 +4,18 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U66, issue #89, `unit/u66-every-guarded-listing-method-has-a-plant`.**
+**Last merged: R-367, issue #87, `unit/issue87-a-restore-from-a-snapshot-taken-with-rek`.**
+A restore from a snapshot holding only the database completes and names the
+absent write ahead log, rather than failing on a copy the snapshot never
+held. `plan_restore` lists the snapshot's database folder and copies only
+the sidecars it holds. A listing that fails refuses before anything is
+cleared. A failed database copy still refuses. Mutation table
+`docs/mutation/r367.md`, 14 of 15 killing, G9 a user facing zero on the
+wording with G2 as composite (1 kill), null control 0 of 7596, no collect
+drift, every restore verified against `git show HEAD`. R-387 and R-388
+filed. R-367 is closed in place. Main's highest residual number is R-388.
+
+**The session before, 2026-09-17, U66, issue #89, `unit/u66-every-guarded-listing-method-has-a-plant`.**
 Every member of `acquire.listing.GUARDED_METHODS` now has a planted pagination
 loop case in `tests/test_adapter_listing.py`. The planted names live in the test
 file and equal the production set, so adding a name arms its own case and
