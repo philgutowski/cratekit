@@ -67,7 +67,21 @@ def _year_of(release: Any) -> str:
 
 
 def _artist_of(release: Any) -> str:
-    return str(getattr(release, "artist", "") or "")
+    """The artist's name, never a provider object's repr.
+
+    ``album.artist`` on this provider is an Artist object. ``str`` of that
+    object is a memory address, which is what 98 live review rows already
+    carry. A plain string is already the name, and that is what the suite's
+    stand-ins have always used, which is why the address survived every green
+    battery.
+    """
+    artist = getattr(release, "artist", None)
+    if artist is None:
+        return ""
+    if isinstance(artist, str):
+        return artist
+    name = getattr(artist, "name", None)
+    return name if isinstance(name, str) else ""
 
 
 def _title_of(release: Any) -> str:
