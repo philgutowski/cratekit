@@ -1,0 +1,65 @@
+# U66, author's table. Every guarded listing method has a planted pagination loop.
+#
+# Scoped to this unit's own guard: GUARDED_METHODS membership. Maintainer facing,
+# so a zero gets a line rather than a composite. Every row names the listing
+# test file, because a death there is a real death and a zero there is not yet
+# a zero.
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/u66-rows.toml
+
+name = "u66"
+pass_kind = "light"
+
+[[rows]]
+id = "F2_the_structural_guard_loses_a_method_name"
+description = "U65 F2 rerun: get_ep_singles may be called by hand again"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py"]
+old = '''    {"tracks", "playlist_and_favorite_playlists", "get_albums", "get_ep_singles"}'''
+new = '''    {"tracks", "playlist_and_favorite_playlists", "get_albums"}'''
+
+[[rows]]
+id = "F2b_the_structural_guard_loses_get_albums"
+description = "get_albums may be called by hand again, and the catalogue plant is not this unit's surface"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py"]
+old = '''    {"tracks", "playlist_and_favorite_playlists", "get_albums", "get_ep_singles"}'''
+new = '''    {"tracks", "playlist_and_favorite_playlists", "get_ep_singles"}'''
+
+[[rows]]
+id = "F2c_the_structural_guard_loses_tracks"
+description = "tracks may be paged by hand again"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py"]
+old = '''    {"tracks", "playlist_and_favorite_playlists", "get_albums", "get_ep_singles"}'''
+new = '''    {"playlist_and_favorite_playlists", "get_albums", "get_ep_singles"}'''
+
+[[rows]]
+id = "F2d_the_structural_guard_loses_playlists"
+description = "playlist_and_favorite_playlists may be called by hand again"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py"]
+old = '''    {"tracks", "playlist_and_favorite_playlists", "get_albums", "get_ep_singles"}'''
+new = '''    {"tracks", "get_albums", "get_ep_singles"}'''
+
+[[rows]]
+id = "F2e_the_structural_guard_gains_a_fifth_name"
+description = "a name is added to the set with no planted case"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py"]
+old = '''    {"tracks", "playlist_and_favorite_playlists", "get_albums", "get_ep_singles"}'''
+new = '''    {"tracks", "playlist_and_favorite_playlists", "get_albums", "get_ep_singles", "items"}'''
+
+[[rows]]
+id = "F2f_the_structural_guard_is_empty"
+description = "the guarded set is emptied, so every listing method may be called by hand"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py"]
+old = '''    {"tracks", "playlist_and_favorite_playlists", "get_albums", "get_ep_singles"}'''
+new = '''    set()'''
