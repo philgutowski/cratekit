@@ -55,10 +55,25 @@ def cfg(tmp_path, monkeypatch):
     return built
 
 
+class ProviderArtist:
+    """The real client shape: album.artist is an object with a name, not a string.
+
+    ``str`` of a tidalapi Artist is a memory address. A stand-in that
+    stringifies to the name would hide the defect the live sweep wrote into
+    98 review rows.
+    """
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def __str__(self) -> str:
+        return f"<tidalapi.artist.Artist object at {hex(id(self))}>"
+
+
 class Album:
     """A provider release the listing wrappers can page."""
 
-    def __init__(self, album_id: str, *, year: str, artist: str, title: str, copyright: str = ""):
+    def __init__(self, album_id: str, *, year: str, artist: object, title: str, copyright: str = ""):
         self.id = album_id
         self.year = year
         self.artist = artist
@@ -309,6 +324,59 @@ def test_a_sweep_review_output_is_a_review_queue_item_not_a_file(cfg, tmp_path):
 
     written = [path for path in tmp_path.rglob("*") if path.suffix in {".csv", ".tsv"}]
     assert written == []
+
+
+def test_an_offered_release_records_the_artist_name_not_the_provider_object(cfg):
+    """The live sweep stored str(album.artist), which is a memory address.
+
+    Identity, label and title were correct. A stand-in whose str is the name
+    would hide it, so this one stringifies the way the client does.
+    """
+    from cratekit.label import registry as labels
+    from cratekit.label import sweep
+
+    credited = ProviderArtist("Oliver Koletzki")
+    assert "object at 0x" in str(credited)
+    store = labels.RegistryStore()
+    label_id = store.add("Stil Vor Talent", match="stil vor talent")
+    artist = PagedArtist(
+        [Album("r1", year="2026", artist=credited, title="First")]
+    )
+    found = sweep.list_for_label(
+        cfg,
+        store.load().by_id(label_id),
+        artist=artist,
+        verify=_always_confirm,
+    )
+    assert len(found.candidates) == 1
+    payload = found.candidates[0].payload
+    assert payload["artist"] == "Oliver Koletzki"
+    assert "object at 0x" not in payload["artist"]
+    assert payload["title"] == "First"
+
+    with review.open_store(cfg) as queue:
+        item = sweep.offer_release(queue, found.candidates[0])
+        stored = item.payload["artist"]
+    assert stored == "Oliver Koletzki"
+    assert "object at 0x" not in stored
+
+
+def test_a_string_artist_is_still_recorded_as_the_string(cfg):
+    """The suite's stand-ins pass a string, and that spelling must keep working."""
+    from cratekit.label import registry as labels
+    from cratekit.label import sweep
+
+    store = labels.RegistryStore()
+    label_id = store.add("Sudbeat", match="sudbeat")
+    found = sweep.list_for_label(
+        cfg,
+        store.load().by_id(label_id),
+        artist=PagedArtist(
+            [Album("r1", year="2026", artist="Hernan Cattaneo", title="New Cut")]
+        ),
+        verify=_always_confirm,
+    )
+    assert found.candidates[0].payload["artist"] == "Hernan Cattaneo"
 
 
 def test_the_label_package_does_not_construct_a_csv_writer():
