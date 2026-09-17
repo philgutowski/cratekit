@@ -148,8 +148,16 @@ bill is tool calls times context size. Thinking is cheap here. Reading is not.
   `pytest --collect-only -o addopts=` for the collected count.
 - **Check the collected count on every row.** A file that fails to COLLECT
   takes its tests with it and the run still looks green.
-- **Run rows synchronously in the foreground.** A backgrounded driver outlived
-  its parent twice and contaminated later rows.
+- **One driver at a time, waited on, with nothing else touching the tree.** The
+  rule used to say "run rows synchronously in the foreground", because a
+  backgrounded driver outlived its parent twice and contaminated later rows. That
+  is still the failure to defeat and the foreground is no longer how. Corrected by
+  U65, 2026-09-17: `mutate.py`'s fixed overhead on this suite is over 600 seconds,
+  which is the harness tool ceiling, so a foreground run is KILLED mid row. Three
+  were, and two left a partial mutation in the source that had to be restored from
+  `git show HEAD:`. Foreground is now the contaminating option. Run it as a
+  tracked background job, start nothing else against the tree until it reports,
+  and check `git status` plus every row's `head_verified` when it does.
 - **Never let a driver invoke git.** `git checkout` silently discards
   uncommitted edits. Snapshot and rewrite file text yourself.
 - **Verify restores against `git show HEAD:<path>`,** never against a scratch

@@ -16545,8 +16545,17 @@ the first real sweep wrote.
 
 `listing.paginate` ends its walk when a page comes back shorter than the page size
 it asked for. That rule is wrong for this provider's favourite tracks listing,
-because the client drops tracks the account cannot play from each page before
-returning it, so a full window arrives short. Walked by hand at the same moment,
+because the provider serves a WINDOW of a counted collection and omits from it the
+tracks it will not serve, so a full window arrives short.
+
+**Cause corrected by U65.** This entry originally said the CLIENT drops the
+unplayable tracks. It does not. Read against tidalapi 0.8.11, `Favorites.tracks`
+hands the response to `map_json`, which maps every item with no filtering, and the
+`Track ... is unavailable` line visible during the sitting comes from
+`session.track()`, a per identifier lookup off the listing path. The omission is
+the API's, and `Favorites.get_tracks_count` documents the other half of it, that
+the total it reports "also includes track that may not be available for playback".
+The measurements below are unchanged. Walked by hand at the same moment,
 the account holds **197 favourite tracks; the shipped read returned 93** and
 stopped at the second page. The same read is what `TidalAccount.has_heart`
 answers from.
@@ -16572,8 +16581,124 @@ a listing whose offset parameter is broken walk forever. That is a unit with a
 test per listing, not a late change inside an attended sitting. Phillip's call,
 2026-09-17.
 
-**Closes when:** a listing walks to an empty page under a declared page cap, each
-listing states which rule it uses, and the favourites read returns the account's
-full set on the live library.
+**The code half is done, by U65.** Every shape declares its own stop rule and its
+own request budget. The favourites read ends on `get_tracks_count`, a count the
+provider publishes for the same collection its windows are cut from, so no page
+shape ends that walk any more. The unit's own review found that stopping on an
+empty page, which was U65's first fix, only moved the boundary: a window whose
+every counted item is unservable comes back empty mid collection. Two shapes with
+no published count are narrowed rather than closed and carry R-385.
+
+**Still open, and it is the live half.** Nothing here has read the real account
+under the new rule, and a live provider call is attended. The closing condition
+below is deliberately unchanged.
+
+**Closes when:** the favourites read returns the account's full set on the live
+library, 197 both ways at the numbers this entry records, or whatever the account
+holds on the day.
+
+---
+
+## R-384. Every listing now pays one extra request, and on artist releases that is doubled
+
+**Found:** by U65, in its own P6 pass, asking what depended on the old stop rule.
+
+Two of the four shapes end on a count the provider declares, and they pay nothing
+for it: the count replaces the request the walk would have spent on the page that
+ends it, and for a playlist the count is already parsed onto the object, so
+`playlist_tracks` got one request CHEAPER. The other two publish no count and end
+on an empty page, which costs one request per walk that the short page rule did
+not.
+
+**The arithmetic, and it is not flat.** `account_playlists` is read once per sync,
+so the cost is one request. `artist_releases` is read once per release METHOD per
+ARTIST, and there are two methods, so a label crawl over A artists pays 2A extra
+requests. Almost every artist fits inside one page, which is why the cost is very
+nearly the full doubling of that crawl's request count rather than a fraction of
+it. The sitting of 2026-09-17 crawled 15 labels of the 47 it swept, and the artist
+count behind those labels was not recorded, so the absolute number is unknown.
+
+**Measured cost: none, and that is the point of filing it.** This was reasoned
+from the code and the request shape, not observed. No live sweep has run under the
+new rule. `fetch_with_retry` already backs off on a rate limit with capped
+exponential backoff, so the predicted outcome is a slower sweep rather than a
+failed one, and that prediction is also unmeasured.
+
+**Why not fixed here.** The alternative is keeping a page shape rule on
+`artist_releases`, which is the shape whose early stop would silently shorten a
+label catalogue, and that is this product's core job. Slower beats wrong.
+
+**Closes when:** a live label sweep runs under the new rule and its request count
+and wall clock are recorded next to the sitting of 2026-09-17, or the provider
+exposes a release count the walk can end on, which would remove the cost entirely.
+
+---
+
+## R-385. Two listings are narrowed rather than closed, because their provider publishes no count
+
+**Found:** by U65's own review, which found that the fix it had just written moved
+R-383's boundary instead of closing it.
+
+No page SHAPE can say where a filtered collection ends. The provider omits items it
+will not serve from a window while still counting them in it, so a short page is
+not the end and neither is an empty one: a window whose every counted item is
+unservable comes back empty in the MIDDLE of a collection. Only a count the
+provider declares for the collection it is serving closes the class.
+
+`favorite_tracks` and `playlist_tracks` have one, `get_tracks_count` and
+`numberOfTracks`, and they end on it. The other two do not:
+
+* `account_playlists` serves `playlistsAndFavoritePlaylists`. The near miss is
+  `Favorites.get_playlists_count`, and it must not be used: it counts the root
+  collection folder through `my-collection/playlists/folders`, a different
+  collection that excludes the playlists the account merely follows. A count of
+  the wrong collection is a wrong answer arriving with a confident number.
+* `artist_releases` has no count on either release listing.
+
+Both therefore end on an empty page, which is safer than a short one and is not
+safe.
+
+**Measured cost: none observed, and the input is not known to be reachable.** It
+takes a run of consecutive unservable items one page long to break: 50 for account
+playlists, 100 for artist releases. Nothing has been driven that produces such a
+run on either shape. On the favourites listing the producer is plausible, since
+that listing is ordered by date added and a label catalogue is hearted in one
+batch, which is why that shape was the one worth closing properly. Two shapes were
+checked for a producer and neither was driven.
+
+**Closes when:** the provider exposes a count for either collection and the shape
+ends on it, or a producer is driven that builds a page length run of unservable
+items on one of these two shapes, which would turn this from a narrowing into a
+measured defect.
+
+---
+
+## R-386. One member of the listing guard's method set is carried and never tested
+
+**Found:** by U65's mutation table, row `F2_the_structural_guard_loses_a_method_name`,
+confirmed zero on the full suite at 7584 collected.
+
+`acquire.listing.GUARDED_METHODS` names the four provider listing methods no
+module outside the wrappers may call. Removing `get_ep_singles` from that set
+kills nothing. The structural guard would stop catching a hand written
+`get_ep_singles` pagination loop and the suite would stay green, because every
+test that drives the guard drives it through `tracks` or
+`playlist_and_favorite_playlists`.
+
+**Measured cost: none today, and the shape is the point.** The guard exists for
+call sites nobody has written yet, which is where this defect came from all three
+previous times in the source system. A member of the set that no test exercises
+is a member that can be deleted in a refactor with a green suite, and the loss
+shows up only when somebody writes the call it was there to catch.
+
+**Not fixed here** because U65's two fix rounds were spent, one on the review's
+finding that the empty page rule narrows rather than closes R-383, and one on the
+refusal that was being slept on for 31 seconds. The fix is small: a case in
+`test_the_guard_catches_a_hand_written_pagination_loop` per guarded method name,
+driven from `GUARDED_METHODS` itself so adding a name arms its own case.
+
+**Closes when:** every member of `GUARDED_METHODS` has a case that fails when that
+member is removed from the set, and the parametrisation is derived from the set
+rather than written beside it.
 
 ---

@@ -4,6 +4,62 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Last merged: U65, issue #88, `unit/u65-every-listing-declares-its-own-stop-rule`.**
+Every provider listing now declares its own stop rule and its own request budget,
+in `STOP_RULES` and `PAGE_CAPS` beside the page sizes, and `paginate` takes both
+as required keyword arguments so a wrapper that forgets to choose fails to call.
+
+**R-383's code half is done and R-383 is still OPEN**, because its closing
+condition is a live read and a live provider call is attended. Two corrections
+matter more than the fix itself:
+
+1. **The recorded cause was wrong.** R-383 and its solutions entry both blamed the
+   client for dropping unplayable tracks from each page. tidalapi 0.8.11 does no
+   such thing: `Favorites.tracks` hands the response to `map_json`, which maps
+   every item with no filtering, and the `Track ... is unavailable` line seen
+   during the sitting comes from `session.track()`, off the listing path. The
+   omission is the API's, and `get_tracks_count` documents it, saying the total
+   "also includes track that may not be available for playback". Both records are
+   corrected and the measurements are untouched.
+2. **The obvious fix is wrong too, and this unit wrote it first.** Stopping on an
+   empty page instead of a short one only moves the boundary, because an empty
+   page is a page shape as well: a window whose every counted item is unservable
+   comes back empty in the MIDDLE of a collection. Reproduced at 300 rows with
+   rows 100 to 199 unservable, returning 100 of 200 servable rows silently. The
+   unit's own `/code-review` found it.
+
+**No page SHAPE says where a filtered collection ends.** Only a count the provider
+publishes for the collection it is serving. `favorite_tracks` ends on
+`get_tracks_count` and `playlist_tracks` on the `numberOfTracks` already parsed
+onto the object, and neither costs a request, since the count replaces the page
+that would have ended the walk. `account_playlists` and `artist_releases` have no
+honest count, so they take the weaker empty page rule and carry **R-385** saying
+they are narrowed rather than closed. `Favorites.get_playlists_count` is the near
+miss and is refused in a docstring: it counts a different collection.
+
+Also in this unit: `max_pages` became a budget of REQUESTS that RAISES
+`ListingTruncated` when spent, rather than returning quietly; and a listing that
+cannot page now refuses at once instead of being slept on for 31 seconds by the
+retry ladder, which was costing this repository's own test file 31 of its 32
+seconds and would have cost a 200 artist label crawl over three hours before
+reporting a fault it knew about at the first request.
+
+Mutation table `docs/mutation/u65.md`, 25 rows of 27 written, 23 killed, 2 zeros,
+both maintainer facing and each given a line, no collect drift, every restore
+verified against `git show HEAD`, null control 0. The table was measured at
+`42fc8a2` and the file names the two changes that landed after it. Filed: R-384
+the request cost, R-385 the two narrowed shapes, R-386 a guarded method name no
+test exercises. Main's highest residual is R-386.
+
+**A METHOD rule could not be followed and needs correcting.** METHOD says run
+`scripts/mutate.py` in the foreground. Its fixed overhead on this suite is over
+600 seconds, which is the harness tool ceiling, so all three foreground attempts
+were killed mid row and two left a partial mutation in
+`src/cratekit/acquire/listing.py` that was restored from `git show HEAD:`. The
+run that succeeded was a tracked background job, waited on, with nothing else
+touching the tree. On this harness foreground is the CONTAMINATING option, which
+is the opposite of what the rule assumes.
+
 **Last sitting 2026-09-17, afternoon, attended, six workflows on
 `sitting/tidal-runs`.** Not a unit. The three adapters U62, U63 and U64 landed
 in September have now each run against the live Tidal account, which is what
