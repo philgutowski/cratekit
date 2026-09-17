@@ -602,13 +602,31 @@ def direct_listing_calls(source: str, module: str) -> list[str]:
     return problems
 
 
-def test_the_guard_catches_a_hand_written_pagination_loop():
+PLANTED_PAGINATION_METHODS = frozenset(
+    {"tracks", "playlist_and_favorite_playlists", "get_albums", "get_ep_singles"}
+)
+
+
+def test_the_planted_pagination_loop_cases_cover_the_guarded_set():
+    """P4: the planted names and the production set describe the same thing.
+
+    The names live in this file because the mutation driver edits ``src`` and
+    never the suite. Parametrising over the live ``GUARDED_METHODS`` would drop
+    the case for a name the set just lost, and removing a member would stay
+    green. Adding a name without a planted case fails here, and a planted case
+    for a name not in the set fails here too.
+    """
+    assert PLANTED_PAGINATION_METHODS == listing.GUARDED_METHODS
+
+
+@pytest.mark.parametrize("method", sorted(PLANTED_PAGINATION_METHODS))
+def test_the_guard_catches_a_hand_written_pagination_loop(method):
     source = (
-        "def read(playlist):\n"
+        "def read(obj):\n"
         "    out = []\n"
         "    offset = 0\n"
         "    while True:\n"
-        "        page = playlist.tracks(limit=100, offset=offset)\n"
+        f"        page = obj.{method}(limit=100, offset=offset)\n"
         "        if not page:\n"
         "            break\n"
         "        out.extend(page)\n"
