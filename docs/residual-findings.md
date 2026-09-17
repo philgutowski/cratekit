@@ -16701,4 +16701,16 @@ driven from `GUARDED_METHODS` itself so adding a name arms its own case.
 member is removed from the set, and the parametrisation is derived from the set
 rather than written beside it.
 
+**Closed 2026-09-17 on `unit/u66-every-guarded-listing-method-has-a-plant`.**
+`test_the_guard_catches_a_hand_written_pagination_loop` now has one case per
+member, planted from a test local frozenset that is asserted equal to
+`listing.GUARDED_METHODS`. The names live in the test file because the mutation
+driver edits `src` and never the suite: parametrising over the live set would
+drop the case for a name the set just lost, and F2 would still have been a
+zero. U65's exact F2 row, removing `get_ep_singles`, now kills 2 on the listing
+file, collected 47 against 47: the `get_ep_singles` case and the equality pin.
+The other three removals, one added name, and the empty set all kill. Table
+`docs/mutation/u66.md`, 6 of 6 killing, null control 0 of 7590, no collect
+drift, every restore verified against `git show HEAD`.
+
 ---
