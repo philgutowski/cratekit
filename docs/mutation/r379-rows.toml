@@ -1,0 +1,65 @@
+# R-379, author's table. The artist name, never a provider object's repr.
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r379-rows.toml
+
+name = "r379"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_stringify_the_provider_object"
+description = "the original defect: str of album.artist, which is a memory address"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py"]
+old = '''    artist = getattr(release, "artist", None)
+    if artist is None:
+        return ""
+    if isinstance(artist, str):
+        return artist
+    name = getattr(artist, "name", None)
+    return name if isinstance(name, str) else ""
+'''
+new = '''    return str(getattr(release, "artist", "") or "")
+'''
+
+[[rows]]
+id = "G2_str_of_a_non_string_artist"
+description = "fall through to str of the object when it is not a string"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py"]
+old = '''    name = getattr(artist, "name", None)
+    return name if isinstance(name, str) else ""
+'''
+new = '''    return str(artist)
+'''
+
+[[rows]]
+id = "G3_the_name_attribute_is_ignored"
+description = "an object artist is recorded as empty rather than by its name"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py"]
+old = '''    name = getattr(artist, "name", None)
+    return name if isinstance(name, str) else ""
+'''
+new = '''    return ""
+'''
+
+[[rows]]
+id = "G4_a_string_artist_is_rejected"
+description = "plain strings, which the suite's stand-ins pass, are dropped"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py"]
+old = '''    if isinstance(artist, str):
+        return artist
+'''
+new = '''    if isinstance(artist, bytes):
+        return artist
+'''
+
+[[dropped]]
+id = "G5_title_is_also_stringified"
+description = "apply the same str() defect to title"
+reason = "ranked below the cap: title is a string on this provider, and the sitting measured the artist field only"
