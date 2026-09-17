@@ -9129,6 +9129,36 @@ landing it inside U27 would widen a unit that is already large.
 **Closes when:** an AST-derived check asserts every `requires(...)` key in
 `tests/` is declared, and is driven against a deliberately dangling one.
 
+**CLOSED 2026-09-17, the fourth attended sitting.** Both engines ran against the
+live account, twice each, after R-355 was fixed in the same sitting, because
+before that the rows carried no ISRC and matched nothing.
+
+**The export, twice.** `crate export playlist` over a four track library
+playlist created ONE remote playlist across a four item job, added the two rows
+the account matched, and reported the other two unmatched. The account was read
+back independently: the remote playlist holds exactly the two identifiers the
+report names. The second run created nothing, added nothing, and reported both
+matched rows as already present, and the account still holds one playlist of that
+name with two tracks. That is the update rather than duplicate condition, driven.
+
+**The hearts sweep, twice.** `crate sync favorites` swept the 109 row favourites
+playlist: 18 hearted, 41 already, 50 unmatched, 0 coloured, no failed item. All
+18 are present on the account when every page of the favourites listing is walked
+by hand. The second pass hearted NOTHING, reported all 59 matched rows as already
+hearted and the same 50 unmatched, which is the add only property driven on the
+live account. The local colour and tag write this verb declares is still unbound, and
+the forward acquisition of unowned hearts is still not composed, so those two
+halves of the entry above stay open as their own residuals rather than under this
+number. The hearted and already split is not trustworthy in principle, for the reason
+R-383 records: the shipped favourites listing stops early, so a track already
+hearted can be reported as newly hearted. Nothing is written wrongly by that,
+because a heart is add only and idempotent, and the second pass shows the
+listing's ordering keeps it from biting in practice.
+
+**The unmatched rows are R-356, measured.** Of the export's two, both carry an
+ISRC the provider answers with several tracks: three releases for one, two for
+the other.
+
 ---
 
 ## R-148. Adoption's memberships are collected and never written, because no unit lands a collection reader
@@ -15775,6 +15805,22 @@ are incomplete.
 system's discovery for the same label, and either the gap is measured as
 acceptable or discovery is ported behind the same seam.
 
+**Measured 2026-09-17, the fourth attended sitting, and the gap is large.** All
+47 labels from the source system's `favorite_labels.json` were carried into the
+registry, with their match needles and track limits. Not one of them carries a
+seed artist, which the source system's document has no field for in practice, so
+the roster is the label's own artist page alone. `crate sync labels` over the 47:
+**15 labels swept, 32 failed.** 31 of the 32 failed as `LabelUnresolvable`, the
+provider having no artist named exactly for the label and the registry naming no
+seeds, and the 32nd, Freerange, read one release and could not confirm it. The 15
+that swept offered 98 releases from 12 of them, and 3 swept clean with nothing
+new. The refusal is honest, and two thirds of a carried over registry refusing is
+the shortfall this entry predicted, now with a number on it.
+
+**Closes when, restated:** discovery is ported behind the same seam, or the
+registry gains seed artists for the labels whose artist page is not named for
+them, and a sweep of the 47 refuses materially fewer.
+
 ---
 
 ## R-353. The login classification is read off a fake's shape, not a live rejection
@@ -15811,6 +15857,11 @@ share sheet produces today was not observed.
 **Closes when:** the attended sitting records the share sheet's actual output and
 the parser accepts every shape it produces.
 
+**Observed 2026-09-17, the fourth attended sitting.** The provider's share sheet,
+on the desktop application, produced `https://tidal.com/playlist/<uuid>` with no
+query string, which the parser already accepts, and both `crate label harvest`
+and `crate intake playlist` took it unchanged. The app scheme and embed shapes
+were not produced and so are still unobserved.
 
 ---
 
@@ -15844,6 +15895,23 @@ the brief placed out of scope. Both choices are Phillip's: read the file tag in
 **Closes when:** the rows the outbound workers build carry an ISRC or an exact
 provider reference for a track that has one, and a live sweep matches it.
 
+**CLOSED 2026-09-17, the fourth attended sitting, by fixing it.** The rows both
+outbound workers build now carry the ISRC the row's own audio file holds.
+`source.isrc_for` resolves the row's `Location` through the configured prefix
+map, the same resolver R-372 added the rule for, and reads the new `isrc` field
+in `core/tags.py`, which is `TSRC` in ID3, the `isrc` Vorbis comment, and the
+iTunes freeform atom. A value that is not twelve characters of ISRC shape reads
+as none, because the account queries the provider with exactly this string.
+**Measured on the live export:** 103 of 109 favourites and 8246 of 9937
+collection rows carry one, where every row carried none before. The six
+favourites without one are AIFF files, which is the container the sample found
+untagged. A live `crate sync favorites` then matched 59 of 109 rows and a live
+`crate export playlist` matched 2 of 4, so R-144's two live runs could happen at
+all. The review of the fix found that an unmounted volume would read as a library
+of untagged files and report a clean unmatched sweep, which is this same defect
+by a second route, so the row builders now refuse `library-volume-unmounted` when
+the root is not a directory.
+
 ---
 
 ## R-356. An ISRC several provider tracks carry is unmatched rather than resolved
@@ -15860,6 +15928,14 @@ library's recordings the provider carries more than once was not observed.
 
 **Closes when:** a rule that picks among same ISRC releases without guessing is
 decided, for example the one already in the favourites, and pinned by a test.
+
+**Measured 2026-09-17, the fourth attended sitting, on both verbs.** In the four
+track export, two rows were unmatched and BOTH were this: one ISRC the provider
+answers with three tracks, a single, an EP and a ten year compilation, and one it
+answers with two, a single and an album. In the 109 row favourites sweep, 50 rows
+were unmatched, of which 6 carry no ISRC at all and the rest are this shape or an
+ISRC the provider does not know. On a real library this is not an edge case, it is
+half of a small playlist.
 
 ---
 
@@ -15964,6 +16040,14 @@ account.
 
 **Closes when:** the attended sitting reads the live account's playlist names and
 either finds no debris or a rule is decided for it.
+
+**Observed 2026-09-17, the fourth attended sitting, and the debris is real.** A
+live `crate sync all` listed 599 playlists on the account and queued 18 as intake,
+of which **11 are source system label run debris**: `Rebellion LIBRARY`, `Do Not
+Sit On The Furniture LIBRARY`, five playlists all named `Sol Selectas LIBRARY` and
+four all named `Colorize LIBRARY`, about 1600 tracks between them. The duplicates
+are the source system having left one per run. Nothing was written: the jobs were
+left queued and unresumed.
 
 ---
 
@@ -16352,5 +16436,144 @@ is latent.
 
 **Closes when:** the floor is a model property applied whatever the chunk
 size, or a chunk size under it is refused.
+
+---
+## R-378. The harvest prints nothing a person can read
+
+**Found:** during the fourth attended sitting, 2026-09-17, the first real
+`crate label harvest`.
+
+The verb ran on a real playlist and printed `label.harvest: ok` and a run id, and
+nothing else. The four labels it found and the six tracks it could not resolve
+are in the envelope and reach a person only through `--output json`. The human
+renderer has no case for a `review_set/1` payload's items, so the whole answer of
+a read only verb is invisible in the output a person gets by default.
+
+**Measured cost:** the verb is unusable as documented without a second
+invocation in another output mode. Nothing is wrong in what it computed.
+
+**Closes when:** the human rendering of `review_set/1` names the harvested
+labels and the unresolved count, and a test drives the rendered text.
+
+---
+
+## R-379. Every offered release records its artist as a Python object address
+
+**Found:** during the fourth attended sitting, 2026-09-17, reading the review
+queue the first real label sweep filled.
+
+The 98 rows the sweep offered carry, in their payload, `"artist": "<tidalapi.artist.Artist object at 0x10b77ec00>"`.
+The provider's object was stringified into the record rather than its name being
+read off it. The identity, label and title fields are correct, so this is a
+display field carrying a memory address.
+
+**Measured cost:** every release a person reviews shows an address where the
+artist belongs, and a review record written today is not readable tomorrow, since
+the address means nothing outside the process that wrote it. 98 rows on the live
+library already carry it.
+
+**Closes when:** the offer records the artist's name, a test pins that a provider
+object never reaches a stored payload, and the rows already written are migrated
+or discarded.
+
+---
+
+## R-380. A job whose failures are permanent reports itself as transient and resumable
+
+**Found:** during the fourth attended sitting, 2026-09-17, when 32 of 47 labels
+failed.
+
+The inner cause is exact and final: `sync-source-lookups-failed`, `retryable:
+false`, because the provider has no artist named for the label. The cause the job
+wraps it in is `unavailable-transient`, `retryable: true`, with the remedy
+`resume-job` and the step "retry this source when the provider is reachable". The
+provider was reachable throughout; 15 labels swept in the same pass.
+
+**Measured cost:** a person is told to retry work that cannot succeed, and the
+resume costs another full crawl of the 15 that already worked. The honest reading
+is in the inner cause, which is only visible in JSON.
+
+**Closes when:** a job whose every item failure is non retryable reports itself
+non retryable, and a mixed job says which half is which.
+
+---
+
+## R-381. An accented label name yields a mangled identifier
+
+**Found:** during the fourth attended sitting, 2026-09-17, carrying the source
+system's registry over.
+
+`registry.slug` folds anything outside `[a-z0-9]` to a hyphen, so `Sueño` becomes
+`sue-o` and `Voll Schön` becomes `voll-sch-n`. The source system's own keys for
+those two are `sueno` and `voll-schoen`, so the same label has two identifiers
+across the two systems, and every watermark keyed on one is invisible to the
+other.
+
+**Measured cost:** two of 47 labels on the live registry. Nothing collides today,
+and a slug is stable once created, so this is a migration and a legibility cost
+rather than a correctness one.
+
+**Closes when:** the slug transliterates before folding, and a carried over
+registry produces the identifiers the source system used.
+
+---
+
+## R-382. A playlist intake run on its own is not recorded, so the next sync queues it again
+
+**Found:** during the fourth attended sitting, 2026-09-17.
+
+`crate intake playlist` ran to done over a real account playlist, ten items, every
+one resolved. `crate sync all` in the same sitting then listed that same playlist
+as new and queued a second `intake.playlist` job for it. The playlists cursor is
+written by `sync.playlists.reconcile` over the jobs THAT SOURCE queued, and a job
+queued by the standalone verb carries no source id it recognises.
+
+**Measured cost:** duplicated work rather than wrong data, and it compounds with
+R-358: a playlist a person imports by hand is neither marked on the account nor
+recorded in the cursor, so it is new to every future pass of both systems.
+
+**Closes when:** a completed playlist intake records the playlist whichever verb
+queued it, or the cursor is stated to be the sync source's private bookkeeping and
+the verbs say so.
+
+---
+
+## R-383. The favourites listing stops at the first short page, so it reads a fraction of the account
+
+**Found:** during the fourth attended sitting, 2026-09-17, verifying the hearts
+the first real sweep wrote.
+
+`listing.paginate` ends its walk when a page comes back shorter than the page size
+it asked for. That rule is wrong for this provider's favourite tracks listing,
+because the client drops tracks the account cannot play from each page before
+returning it, so a full window arrives short. Walked by hand at the same moment,
+the account holds **197 favourite tracks; the shipped read returned 93** and
+stopped at the second page. The same read is what `TidalAccount.has_heart`
+answers from.
+
+**Not every listing.** Measured in the same sitting: the account's playlists read
+599 both ways, and a 197 track playlist's membership read 197 both ways, so this
+is the listings the client filters rather than the pagination helper being wrong
+everywhere.
+
+**Measured cost, and it is a reporting one that mostly does not bite.** A track
+already hearted is read as not hearted, so the sweep hearts it again. The write is
+add only and idempotent, so the account ends correct. The listing is ordered
+newest first, which is why the damage is bounded: the 93 rows it does return are
+the most recent hearts, so the second sweep in the same sitting read all 59
+matched rows as already hearted and wrote nothing. What is unreliable is any
+question about an OLD heart, and the first sweep's 18 hearted against 41 already
+cannot be trusted as a split for that reason. `favorites.placeholders` exclusions and anything else keyed on the
+favourites read are affected the same way.
+
+**Why not fixed here.** One rule governs every listing in the product, including
+the label crawls and the playlists source, and removing the short page stop makes
+a listing whose offset parameter is broken walk forever. That is a unit with a
+test per listing, not a late change inside an attended sitting. Phillip's call,
+2026-09-17.
+
+**Closes when:** a listing walks to an empty page under a declared page cap, each
+listing states which rule it uses, and the favourites read returns the account's
+full set on the live library.
 
 ---

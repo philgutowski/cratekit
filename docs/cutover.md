@@ -64,6 +64,36 @@ source system uses were already in `~/panns_data`.
 R-133 is closed on the ledger. Eight findings filed, R-370 to R-377, two of
 them fixed in the sitting and one raised by the review of that fix.
 
+## Sitting 4, 2026-09-17, afternoon
+
+Machine state before: rekordbox and its agent closed, the volume mounted,
+`crate doctor` reporting no failing check and both backup ages at 0 days. The
+night's acknowledgment had expired at 13:11Z and a new one was minted by the
+author from a Terminal window at 15:23Z, valid twelve hours. Cratekit's label
+registry was empty; all 47 labels from the source system's `favorite_labels.json`
+were carried into it at the start of the sitting, with their match needles and
+track limits, through the store's own `add` because no verb sets a track limit.
+The author exported a fresh collection from rekordbox mid sitting and closed it
+again, since both outbound verbs read an export and never the database (R-227).
+
+Six workflows rather than one, at the author's direction, because the three
+landed adapters each owed a live run and they share one set of preconditions.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| Playlist harvest, U62 | yes | A share sheet link, `https://tidal.com/playlist/<uuid>`, taken unchanged (R-354 observed). Four labels found behind a ten track playlist, six tracks unresolved. The verb printed none of it: the human renderer has no case for its payload (R-378). | live, output defective |
+| Playlist intake, U62 | yes | Ten items, all resolved, none acquired, every one reported `missing / not-in-library`, which an independent check of the library confirmed. `sync all` then queued the same playlist again (R-382). | live |
+| Label sweep, U62 | yes | 47 labels queued, **15 swept, 32 failed**: 31 `LabelUnresolvable` for want of a seed artist, one unverifiable. 98 releases offered into review from 12 labels. R-352 measured. The job then reported itself transient and resumable over permanent failures (R-380), and every offered row carries a Python object address where the artist belongs (R-379). Two accented labels got mangled identifiers (R-381). | live, and two thirds of the registry refuses |
+| `crate sync all`, U64 | yes, favourites answered abort | 599 playlists listed, 18 queued as intake plus one labels job, nothing resumed. **11 of the 18 are source system label debris**, five of them named `Sol Selectas LIBRARY` and four `Colorize LIBRARY`: R-361 observed. `"mark": "unbound"` on every pass, as R-358 says. | live |
+| R-355, the ISRC | fixed in the sitting | The rows both outbound verbs build carry no ISRC, so a live run matched nothing. `source.isrc_for` now reads the file's own tag through the prefix map, `isrc` is a field in the one tag table, and an absent library root refuses rather than reading as a library of untagged files. Live: 103 of 109 favourites and 8246 of 9937 collection rows carry one. | fixed, merged with the sitting |
+| Playlist export, U63 | yes, twice | Four track playlist, one remote playlist created across a four item job, 2 added, 2 unmatched, and the account read back holds exactly the two reported. The second run created nothing and added nothing. Both unmatched rows are R-356, an ISRC the provider answers with several tracks. | cut over |
+| Favourites sweep, U63 | yes, twice | 109 rows: 18 hearted, 41 already, 50 unmatched, 0 coloured, no failed item, and all 18 verified present on the account. The second pass hearted nothing and read all 59 as already. The shipped favourites listing reads 93 of the account's real 197 (R-383), newest first, so an old heart's state is unreliable while a recent one is not. The colour write this verb declares is still unbound. | cut over |
+
+R-355 is closed by fixing it. R-144 is closed outright, both engines driven
+twice. R-352, R-354, R-356 and R-361 carry their live measurements. Six
+findings filed, R-378 to R-383, of which R-383 is the one with reach beyond this
+sitting.
+
 ## What blocks a full sync cycle, stated plainly
 
 The board is complete and the product cannot yet do its central workflow,
@@ -108,9 +138,19 @@ lists Tidal. The vendored downloader is the only Tidal facing code that runs.
 
 ## Next sitting
 
-The three real Tidal runs U62, U63 and U64 owe, listed above, reading R-355
-and R-358 first. Any of them that writes needs a backup acknowledgment inside
-its validity window: `crate session ack` from a Terminal window, answered with
-`crate run decide`, continued with `--run`, by the author and never by a
-session. The full library vocal pass, R-376, is a separate attended choice and
-is not blocked on anything.
+The three adapters have all run live, so the next sitting is the first one that
+can attempt a sync cycle rather than a seam. In order:
+
+1. **A decision on R-383**, which is a unit rather than a sitting's work: one
+   pagination rule governs every Tidal facing read in the product.
+2. **The tree flip, R-131**, which has been blocked behind a sync placing tracks
+   and is no longer blocked by a seam.
+3. **The 19 jobs `sync all` left queued**, which include 11 label debris
+   playlists nobody wants swept. Decide R-361's rule before resuming any of them,
+   or cancel the debris.
+
+Anything that writes needs a backup acknowledgment inside its validity window:
+`crate session ack` from a Terminal window, answered with `crate run decide`,
+continued with `--run`, by the author and never by a session. The full library
+vocal pass, R-376, is still a separate attended choice and is still blocked on
+nothing.
