@@ -25,6 +25,13 @@ THE THREE THINGS EACH WRAPPER DOES, and why each is not optional:
    as 93 (R-383, U65). Every shape now says which rule it uses and why, because
    the convention is an assumption about the PROVIDER and not a property of
    offset and limit APIs in general.
+
+   **The lesson underneath that, which cost this unit a whole fix round:** no
+   page SHAPE can say where a filtered collection ends. Swapping the short page
+   stop for an empty page stop only moves the boundary, since a window whose
+   every counted item is unservable comes back empty mid collection. Only a count
+   the provider declares for the collection it is serving closes the class, and
+   two of the four shapes here have one.
 2. **Retries a transient failure with capped exponential backoff.** A first full
    read of a large favourites library is dozens of requests, and a rate limit
    partway through drops a page. A dropped page in a paginated read is not an
@@ -51,18 +58,38 @@ class StopRule(Enum):
     The value of each member is the phrase a wrapper's docstring must use for it,
     so the prose and the table cannot drift apart unnoticed.
 
-    ``EMPTY_PAGE`` walks until a page comes back with nothing in it. It is the
-    only rule that is safe against a provider that omits items from a window,
-    and it costs exactly one extra request per listing.
+    **The thing every rule here is up against** is a provider that serves a
+    WINDOW of a counted collection and omits from that window the items it will
+    not serve. The window is still ``page_size`` wide and the offset arithmetic
+    is still right; what is wrong is any attempt to read the END of the
+    collection off the SHAPE of a page.
+
+    ``DECLARED_TOTAL`` stops when the offset has passed a total the provider
+    itself declares, and reads no meaning into a page's shape at all. It is the
+    only rule here that closes the class rather than narrowing it, and it is
+    available only where the provider publishes a count for the same collection
+    it is serving. It costs nothing extra: the count request replaces the
+    terminating empty page, and for a playlist the count is already on the object.
+
+    ``EMPTY_PAGE`` walks until a page comes back with nothing in it. It is
+    SAFER than the short page rule and it is not safe. A window in which every
+    counted item is unservable comes back empty in the middle of a collection,
+    and this rule reads that as the end. That needs ``page_size`` consecutive
+    unservable items, which is 100 for the track listings and 50 for account
+    playlists, and a catalogue hearted in one batch and later withdrawn is how a
+    run that long gets built. Declare it only where the provider publishes no
+    total, and expect a residual to say so.
 
     ``SHORT_PAGE`` stops as soon as a page comes back with fewer items than the
-    size it asked for. It saves that one request and is correct ONLY where the
-    provider is known to serve every window full. No shape declares it today.
-    It is kept declarable rather than deleted because the saving is real for a
-    listing that is read per item in a crawl, and a future shape that can prove
-    the provider serves it full should be able to say so in one word.
+    size it asked for. It saves one request and is correct ONLY where the
+    provider is known to serve every window full. It is what R-383 was measured
+    on. No shape declares it. It is kept declarable rather than deleted because
+    the saving is real for a listing read per item in a crawl, and a future shape
+    that can PROVE the provider serves it full should be able to say so in one
+    word rather than reinventing the loop.
     """
 
+    DECLARED_TOTAL = "declared total"
     EMPTY_PAGE = "empty page"
     SHORT_PAGE = "short page"
 
@@ -77,16 +104,15 @@ PAGE_SIZES: dict[str, int] = {
     "artist_releases": 100,
 }
 
-#: The stop rule each listing shape declares. Every shape reads to an empty page,
-#: and the reason is the same for all four: the evidence that any of them is safe
-#: on the short page rule is one account read on one day that happened to contain
-#: no omitted items, which is absence read as evidence of absence. The one that
-#: was measured broken, ``favorite_tracks``, was also measured clean by that same
-#: standard the week before. Each wrapper's docstring carries its own argument.
+#: The stop rule each listing shape declares. Nothing here reads the end of a
+#: collection off a page's shape any more. Two shapes can do better than that,
+#: because the provider publishes a count for the same collection it serves; two
+#: cannot, and they take the weaker rule and a residual saying so (R-385).
+#: Each wrapper's docstring carries its own argument.
 STOP_RULES: dict[str, StopRule] = {
-    "playlist_tracks": StopRule.EMPTY_PAGE,
+    "playlist_tracks": StopRule.DECLARED_TOTAL,
     "account_playlists": StopRule.EMPTY_PAGE,
-    "favorite_tracks": StopRule.EMPTY_PAGE,
+    "favorite_tracks": StopRule.DECLARED_TOTAL,
     "artist_releases": StopRule.EMPTY_PAGE,
 }
 
@@ -96,16 +122,23 @@ STOP_RULES: dict[str, StopRule] = {
 #: offset parameter the provider is ignoring, and a capped length answer is
 #: indistinguishable from a complete one.
 #:
-#: Sized far above any real collection on purpose, since a cap that can fire on
-#: real data turns a correctness fix into an outage. The largest reads this
+#: **The reachable item count is one page less than the budget times the page
+#: size**, because a walk that does not end on a declared total spends its last
+#: request on the page that ends it. The figures below are the real reachable
+#: counts and not the product, which is what they said before and was wrong by a
+#: page: a collection of exactly the product would have raised, blaming an offset
+#: parameter that was working.
+#:
+#: Sized far above any real collection on purpose, since a budget that can fire
+#: on real data turns a correctness fix into an outage. The largest reads this
 #: project has actually measured, live on 2026-09-17, are written beside each one
 #: so the margin is visible rather than asserted.
 PAGE_CAPS: dict[str, int] = {
-    "playlist_tracks": 200,  # 20,000 tracks. Largest measured: 197 in one playlist.
-    "account_playlists": 400,  # 20,000 playlists. Largest measured: 599.
-    "favorite_tracks": 200,  # 20,000 tracks. Largest measured: 197.
-    # 10,000 releases PER RELEASE METHOD. ``artist_releases`` walks each method
-    # separately, so this budget is spent once per method and not once per artist.
+    "playlist_tracks": 200,  # reaches 19,900 tracks. Largest measured: 197.
+    "account_playlists": 400,  # reaches 19,950 playlists. Largest measured: 599.
+    "favorite_tracks": 200,  # reaches 19,900 tracks. Largest measured: 197.
+    # Reaches 9,900 releases PER RELEASE METHOD. ``artist_releases`` walks each
+    # method separately, so this is spent once per method, not once per artist.
     "artist_releases": 100,
 }
 
@@ -172,6 +205,7 @@ def paginate(
     page_size: int,
     stop: StopRule,
     max_pages: int,
+    declared_total: Callable[[], int | None] | None = None,
     shape: str | None = None,
     key: Callable[[Any], Any] | None = None,
     **retry: Any,
@@ -196,6 +230,13 @@ def paginate(
     a hang. Stopping quietly at the budget is not the fix for that: it trades a
     hang for a wrong answer nobody can see.
 
+    ``declared_total`` is how :attr:`StopRule.DECLARED_TOTAL` learns where the
+    collection ends: a callable returning the provider's own count of the items
+    it is serving, or ``None`` where it publishes none. It is called once, before
+    the walk. A shape that declares that rule and then gets ``None`` degrades to
+    stopping on an empty page rather than refusing, because a missing count is a
+    weaker answer and not a broken one.
+
     ``shape`` names the listing in that exception and does nothing else. It is
     optional so this function stays a mechanism a test can drive directly, while
     :data:`STOP_RULES` and :data:`PAGE_CAPS` hold the policy.
@@ -204,6 +245,16 @@ def paginate(
     seen: set[Any] = set()
     offset = 0
     pages = 0
+
+    total: int | None = None
+    if stop is StopRule.DECLARED_TOTAL and declared_total is not None:
+        total = declared_total()
+        # A provider that has not parsed a count yet says so with a sentinel
+        # rather than an absence. ``tidalapi``'s Playlist.num_tracks is -1 until
+        # the object is parsed, and a zero total is indistinguishable from an
+        # undeclared one, so neither is trusted as an end.
+        if total is not None and total <= 0:
+            total = None
 
     while True:
         if pages >= max_pages:
@@ -219,8 +270,6 @@ def paginate(
         page = fetch_with_retry(fetch_page, limit=page_size, offset=offset, **retry)
         page = list(page or [])
         pages += 1
-        if not page:
-            break
         for item in page:
             if key is not None:
                 identity = key(item)
@@ -228,9 +277,22 @@ def paginate(
                     continue
                 seen.add(identity)
             items.append(item)
+
         if stop is StopRule.SHORT_PAGE and len(page) < page_size:
             break
         offset += page_size
+
+        if total is not None:
+            # An empty page means NOTHING here, which is the whole point of this
+            # rule: a window whose every counted item is unservable comes back
+            # empty in the middle of a collection. Only the offset says where the
+            # end is. A last page that came back FULL still continues, because a
+            # total that under reports is the one way this rule could truncate
+            # and one more request settles it.
+            if offset >= total and len(page) < page_size:
+                break
+        elif not page:
+            break
 
     return items
 
@@ -250,6 +312,42 @@ def _shape(name: str, **overrides: Any) -> dict[str, Any]:
         "max_pages": PAGE_CAPS[name],
         **overrides,
     }
+
+
+def _declared_attribute(owner: Any, name: str) -> Callable[[], int | None]:
+    """A count the provider has already parsed onto an object, read lazily.
+
+    Free: no request. A client version that stopped parsing the attribute
+    returns ``None`` here rather than raising, which degrades the walk to the
+    empty page rule instead of failing a read that would otherwise succeed.
+    """
+
+    def total() -> int | None:
+        value = getattr(owner, name, None)
+        return value if isinstance(value, int) else None
+
+    return total
+
+
+def _declared_count(owner: Any, method: str) -> Callable[[], int | None]:
+    """A count the provider serves from its own endpoint, read lazily.
+
+    Costs one request, and saves the one the empty page rule would have spent
+    ending the walk. A client that does not expose the method returns ``None``
+    rather than raising, for the reason :func:`_declared_attribute` gives. A
+    method that exists and FAILS is left to raise: it is the same API and the
+    same session the listing itself is about to use, so a failure there is the
+    caller's to see through its own provider boundary, not this module's to hide.
+    """
+
+    def total() -> int | None:
+        fn = getattr(owner, method, None)
+        if fn is None:
+            return None
+        value = fn()
+        return value if isinstance(value, int) else None
+
+    return total
 
 
 def _paged_caller(owner: Any, method: str) -> Callable[[int, int], Any]:
@@ -288,29 +386,38 @@ def _paged_caller(owner: Any, method: str) -> Callable[[int, int], Any]:
 def playlist_tracks(playlist: Any, **kwargs: Any) -> list[Any]:
     """Every track in a playlist, in playlist order, across pages.
 
-    Stops on an **empty page**, not a short one. A playlist can hold a track the
-    account cannot play, and the provider omits it from the window it serves
-    while still counting it, so a full window arrives short. This is the read the
-    quarterly placeholder acquire walks, so a short page taken as the end would
-    drop the rest of a playlist of tracks Phillip does not own yet, which is the
-    one listing whose omissions nothing downstream can notice.
+    Stops on the **declared total**, and reads nothing from a page's shape. A
+    playlist can hold a track the account cannot play, and the provider omits it
+    from the window it serves while still counting it, so neither a short window
+    nor an empty one says anything about where the playlist ends. The count comes
+    from ``numberOfTracks``, which the client has already parsed onto the
+    playlist object, so this shape pays no request at all for the rule.
+
+    This is the read the quarterly placeholder acquire walks, so an early stop
+    would silently drop the rest of a playlist of tracks Phillip does not own
+    yet, which is the one listing whose omissions nothing downstream can notice.
 
     No deduplication: a playlist that lists a track twice means it twice.
     """
+    kwargs.setdefault("declared_total", _declared_attribute(playlist, "num_tracks"))
     return paginate(_paged_caller(playlist, "tracks"), **_shape("playlist_tracks", **kwargs))
 
 
 def favorite_tracks(session: Any, **kwargs: Any) -> list[Any]:
     """Every track the account has favourited, deduplicated by track identifier.
 
-    Stops on an **empty page**, not a short one. This is the listing R-383 was
-    measured on: 197 favourites read back as 93, because the provider omits the
-    tracks it will not serve from each window while counting them in it. Its own
-    client corroborates that, ``Favorites.get_tracks_count`` documenting that the
-    total it returns "also includes track that may not be available for
-    playback". The ordering is newest first, which is what made it hard to see:
-    the rows that do come back are the recent ones, so the defect bites only on
-    questions about OLD state, and ``TidalAccount.has_heart`` asks exactly that.
+    Stops on the **declared total**, and reads nothing from a page's shape. This
+    is the listing R-383 was measured on: 197 favourites read back as 93, because
+    the provider omits the tracks it will not serve from each window while
+    counting them in it. ``Favorites.get_tracks_count`` is both the count this
+    walk ends on and the evidence for the defect, its own docstring saying the
+    total "also includes track that may not be available for playback", so the
+    number that ends the walk is by construction the number the windows are cut
+    from. It costs one request and saves the one an empty page ending would cost.
+
+    The ordering is newest first, which is what made the defect hard to see: the
+    rows that did come back were the recent ones, so it bit only on questions
+    about OLD state, and ``TidalAccount.has_heart`` asks exactly that.
 
     Deduplicated because this listing is ordered by when the favourite was
     created, and a favourite added while the read is in progress shifts every
@@ -318,19 +425,24 @@ def favorite_tracks(session: Any, **kwargs: Any) -> list[Any]:
     """
     favorites = session.user.favorites
     kwargs.setdefault("key", lambda track: str(getattr(track, "id", "")))
+    kwargs.setdefault("declared_total", _declared_count(favorites, "get_tracks_count"))
     return paginate(_paged_caller(favorites, "tracks"), **_shape("favorite_tracks", **kwargs))
 
 
 def account_playlists(session: Any, **kwargs: Any) -> list[Any]:
     """Every playlist the listing exposes for this account, across pages.
 
-    Stops on an **empty page**, not a short one. This listing read 599 both ways
-    when it was walked by hand on 2026-09-17, so nothing was omitted from it that
-    day, and that is the whole of the evidence for it. A playlist the account can
-    no longer open is the same shape of omission the favourites listing was
-    measured on, and one clean read is not a property of the endpoint. The cost
-    of being wrong here is `sync all` silently skipping playlists; the cost of
-    being right is one request.
+    Stops on an **empty page**, which is the weaker rule, because this endpoint
+    publishes no total for what it serves. ``Favorites.get_playlists_count`` is
+    the near miss and must not be used: it counts the root collection folder
+    through ``my-collection/playlists/folders``, while this listing serves
+    ``playlistsAndFavoritePlaylists``, which also carries the playlists the
+    account merely follows. A count of a different collection used as this one's
+    end is a wrong answer arriving with a confident number.
+
+    So this shape is narrowed rather than closed, and R-385 says so on the
+    ledger. It would take 50 consecutive unopenable playlists, this shape's page
+    size, to break it. It read 599 both ways when walked by hand on 2026-09-17.
 
     Returns the provider's own objects rather than reduced dictionaries.
     Filtering to the ones the account CREATED is a policy question that differs
@@ -355,15 +467,17 @@ def artist_releases(artist: Any, methods: Iterable[str] = RELEASE_METHODS,
                     **kwargs: Any) -> list[Any]:
     """Every release credited to an artist, across both release-type listings.
 
-    Stops on an **empty page**, not a short one, and this is the shape where that
-    costs the most: the walk runs once per release method per artist, and almost
-    every artist fits inside a single page today, so a label crawl over A artists
-    pays 2A requests it did not pay before. It is still the right rule. A label
-    catalogue that stops early is this product's core job done wrong, and a
-    prolific artist crossing the page boundary is exactly where the omission
-    would land. The extra requests make a sweep slower, which
-    :func:`fetch_with_retry` already absorbs; an early stop makes it wrong, which
-    nothing absorbs. Recorded with its arithmetic as R-384.
+    Stops on an **empty page**, which is the weaker rule, because the client
+    exposes no count for either release listing. R-385 says so on the ledger.
+
+    This is also the shape where the extra request costs most: the walk runs once
+    per release method per artist, and almost every artist fits inside one page,
+    so a label crawl over A artists pays 2A requests it did not pay before. It is
+    still the right trade. A label catalogue that stops early is this product's
+    core job done wrong, and a prolific artist crossing the page boundary is
+    exactly where an omission would land. Extra requests make a sweep slower,
+    which :func:`fetch_with_retry` already absorbs; an early stop makes it wrong,
+    which nothing absorbs. Recorded with its arithmetic as R-384.
 
     Two methods rather than one because the provider splits albums from
     extended plays and singles, and a label catalogue lives mostly in the second.

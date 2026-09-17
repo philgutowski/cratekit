@@ -34,9 +34,14 @@ VENDOR_ROOT = SRC_ROOT / "cratekit" / "_vendor"
 class Paged:
     """A provider listing that serves a fixed corpus in server pages.
 
-    ``unpaginated_cap`` is the interesting part: called with no arguments it
-    returns only the first page, exactly as the real client does. That is what
-    lets a test assert the truncation is real rather than hypothetical.
+    Called with no arguments it returns only the first page, exactly as the real
+    client does. That is what lets a test assert the truncation is real rather
+    than hypothetical.
+
+    It publishes NO count, no ``num_tracks`` and no ``get_tracks_count``, so
+    every wrapper driven against it exercises the degraded walk: a shape that
+    declares the total rule and cannot get one falls back to ending on an empty
+    page. ``Omitting`` is the fake that publishes a count.
     """
 
     def __init__(self, items: list, page_size: int) -> None:
@@ -86,13 +91,14 @@ def test_the_same_fixture_truncates_under_an_unpaginated_re_fetch():
     assert len(playlist.tracks()) != len(listing.playlist_tracks(playlist))
 
 
-def test_paging_stops_on_an_empty_page_rather_than_on_a_short_one():
+def test_a_listing_with_no_declared_total_walks_to_an_empty_page():
     """U65. The short page stop is what R-383 measured wrong, and this is its cost.
 
-    Reading 150 items now costs a third request that returns nothing. That request
-    is the whole price of the fix, paid once per listing, and it is asserted here
-    rather than described so that a later author reverting to the short page rule
-    to save it has to delete a test that says what the saving buys.
+    This fixture publishes no count, so the walk takes the weaker rule. Reading
+    150 items costs a third request that returns nothing. That request is the
+    whole price of the fallback, and it is asserted here rather than described so
+    that a later author reverting to the short page rule to save it has to delete
+    a test that says what the saving buys.
     """
     playlist = Paged(corpus(150), 100)
     listing.playlist_tracks(playlist)
@@ -100,7 +106,11 @@ def test_paging_stops_on_an_empty_page_rather_than_on_a_short_one():
 
 
 def test_an_exact_multiple_of_the_page_size_needs_the_empty_page():
-    """The case the short page rule could never have handled either."""
+    """The case the short page rule could never have handled either.
+
+    Undeclared again, so this is the fallback walk. A shape ending on a declared
+    total pays no terminating request here at all.
+    """
     playlist = Paged(corpus(200), 100)
     got = listing.playlist_tracks(playlist)
     assert len(got) == 200
@@ -194,10 +204,20 @@ class Omitting:
     API reports "also includes track that may not be available for playback".
     """
 
-    def __init__(self, held: list[Item], omitted: set[str]) -> None:
+    def __init__(self, held: list[Item], omitted: set[str], *, declares: bool = True) -> None:
         self._held = held
         self._omitted = omitted
         self.calls: list[tuple[int, int]] = []
+        self.counted = 0
+        # The count the provider publishes is the count of what it HOLDS, not of
+        # what it serves. That is the whole reason it can end the walk: it is cut
+        # from the same sequence the windows are cut from.
+        self.num_tracks = len(held) if declares else -1
+        self._declares = declares
+
+    def get_tracks_count(self) -> int:
+        self.counted += 1
+        return len(self._held)
 
     def _serve(self, limit: int | None = None, offset: int = 0) -> list:
         self.calls.append((limit or 0, offset))
@@ -212,10 +232,10 @@ class Omitting:
         return []
 
 
-def omitting_corpus(held: int, omit_first: int, prefix: str = "t") -> Omitting:
-    """``held`` rows of which the first ``omit_first`` will not be served."""
+def omitting_corpus(held: int, omit: range, prefix: str = "t") -> Omitting:
+    """``held`` rows of which the ones at ``omit`` will not be served."""
     rows = corpus(held, prefix=prefix)
-    return Omitting(rows, {item.id for item in rows[:omit_first]})
+    return Omitting(rows, {rows[index].id for index in omit})
 
 
 def test_the_favourites_listing_reads_the_whole_account_and_not_its_newest_fraction():
@@ -224,8 +244,12 @@ def test_the_favourites_listing_reads_the_whole_account_and_not_its_newest_fract
     204 rows counted, 7 of them unservable, page size 100. The shipped short page
     rule sees 93 on the first window, reads 93 as the end, and returns 93 out of
     the 197 the account actually serves. That is the live measurement exactly.
+
+    The walk ends on the declared total of 204, so it spends three requests and
+    one count, not four requests: the count replaces the page that would have
+    ended it.
     """
-    favorites = omitting_corpus(204, 7)
+    favorites = omitting_corpus(204, range(7))
     session = Session(User(favorites=favorites))
 
     assert len(favorites.tracks(limit=100, offset=0)) == 93  # the page that lied
@@ -233,21 +257,72 @@ def test_the_favourites_listing_reads_the_whole_account_and_not_its_newest_fract
 
     got = listing.favorite_tracks(session)
     assert len(got) == 197
-    assert favorites.calls == [(100, 0), (100, 100), (100, 200), (100, 300)]
+    assert favorites.calls == [(100, 0), (100, 100), (100, 200)]
+    assert favorites.counted == 1
+
+
+def test_a_whole_window_of_unservable_items_does_not_end_the_favourites_walk():
+    """The defect the empty page rule left behind, which the total closes.
+
+    300 counted rows with rows 100 to 199 unservable. That middle window comes
+    back EMPTY in the middle of the collection, so any rule reading the end off a
+    page's shape stops there and returns 100 of the 200 servable rows, silently.
+    Reachable here specifically: this listing is ordered by date added and a
+    label catalogue is hearted in one batch, so a withdrawn label leaves exactly
+    this, a contiguous run of unservable hearts one page long.
+    """
+    favorites = omitting_corpus(300, range(100, 200))
+    session = Session(User(favorites=favorites))
+
+    assert favorites.tracks(limit=100, offset=100) == []  # the empty middle
+
+    got = listing.favorite_tracks(session)
+    assert len(got) == 200
+    assert [item.id for item in got[:2]] == ["t0", "t1"]
+    assert [item.id for item in got[-2:]] == ["t298", "t299"]
+
+
+def test_a_favourites_total_that_under_reports_does_not_truncate_the_walk():
+    """The one way a declared total could stop early, and what settles it.
+
+    A full window at the declared end means the count is behind the collection,
+    so the walk carries on rather than trusting the number over what it can see.
+    """
+
+    class UnderReporting(Omitting):
+        def get_tracks_count(self) -> int:
+            self.counted += 1
+            return 100
+
+    favorites = UnderReporting(corpus(250), set())
+    got = listing.favorite_tracks(Session(User(favorites=favorites)))
+    assert len(got) == 250
 
 
 def test_a_playlist_whose_provider_omits_a_track_reads_to_the_end():
-    """The placeholder acquire walks this read, and nothing downstream sees a gap."""
-    playlist = omitting_corpus(204, 7)
+    """The placeholder acquire walks this read, and nothing downstream sees a gap.
+
+    The count is already on the playlist object, so this shape pays no request
+    for its rule: three windows, no count call, no terminating page.
+    """
+    playlist = omitting_corpus(204, range(7))
     got = listing.playlist_tracks(playlist)
     assert len(got) == 197
-    assert playlist.calls[0] == (100, 0)
-    assert playlist.calls[-1] == (100, 300)
+    assert playlist.calls == [(100, 0), (100, 100), (100, 200)]
+    assert playlist.counted == 0
+
+
+def test_a_playlist_that_publishes_no_count_degrades_rather_than_refusing():
+    """A weaker answer beats a failed read, and the weaker rule is still declared."""
+    playlist = Omitting(corpus(150), set(), declares=False)
+    got = listing.playlist_tracks(playlist)
+    assert len(got) == 150
+    assert playlist.calls == [(100, 0), (100, 100), (100, 200)]
 
 
 def test_the_account_playlists_listing_reads_to_the_end_at_its_own_page_size():
     """Page size 50 here, not 100, so a shared constant would page this one wrong."""
-    playlists = omitting_corpus(105, 6, prefix="p")
+    playlists = omitting_corpus(105, range(6), prefix="p")
     session = Session(playlists)  # the fake IS the user: it answers the listing method
     got = listing.account_playlists(session)
     assert len(got) == 99
@@ -256,7 +331,7 @@ def test_the_account_playlists_listing_reads_to_the_end_at_its_own_page_size():
 
 def test_an_artist_release_listing_reads_to_the_end_across_both_methods():
     """A label catalogue that stops early is this product's core job done wrong."""
-    artist = omitting_corpus(204, 7, prefix="a")
+    artist = omitting_corpus(204, range(7), prefix="a")
     got = listing.artist_releases(artist)
     assert len(got) == 197
 
@@ -549,15 +624,23 @@ def test_every_declared_listing_shape_has_a_wrapper():
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_every_shape_declares_the_empty_page_rule():
+def test_every_shape_declares_the_rule_its_provider_can_actually_support():
     """Asserted from the table, not from behaviour.
 
     A behavioural test proves a shape reads to the end against the fixture it was
-    handed. This one proves which rule it SAYS it uses, so a shape moved back to
-    the short page stop fails here by name even if some fixture happens not to
-    notice.
+    handed. This one proves which rule it SAYS it uses. The split is not a
+    preference: the two shapes on the declared total are the two whose provider
+    publishes a count of the collection it serves, and the other two take the
+    weaker rule because it publishes none, which R-385 records. A shape moved
+    onto a rule its provider cannot support fails here by name.
     """
-    assert listing.STOP_RULES == dict.fromkeys(listing.WRAPPERS, listing.StopRule.EMPTY_PAGE)
+    assert listing.STOP_RULES == {
+        "playlist_tracks": listing.StopRule.DECLARED_TOTAL,
+        "favorite_tracks": listing.StopRule.DECLARED_TOTAL,
+        "account_playlists": listing.StopRule.EMPTY_PAGE,
+        "artist_releases": listing.StopRule.EMPTY_PAGE,
+    }
+    assert listing.StopRule.SHORT_PAGE not in listing.STOP_RULES.values()
 
 
 def test_each_wrapper_docstring_names_the_rule_its_table_declares():
@@ -612,4 +695,10 @@ def test_every_budget_clears_the_largest_collection_this_project_has_measured():
     assert set(measured) == set(listing.PAGE_CAPS)
     for name, largest in measured.items():
         reachable = listing.PAGE_CAPS[name] * listing.PAGE_SIZES[name]
+        if listing.STOP_RULES[name] is not listing.StopRule.DECLARED_TOTAL:
+            # A walk that does not end on a total spends its last request on the
+            # page that ends it, so one page of the budget buys no items. Leaving
+            # this out overstates every ceiling by a page, and a collection of
+            # exactly the product would raise while blaming a working offset.
+            reachable -= listing.PAGE_SIZES[name]
         assert reachable >= largest * 10, f"{name} budget reaches only {reachable}"
