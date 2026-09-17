@@ -187,11 +187,23 @@ def fetch_with_retry(
     types across versions. Bounding the retries and re-raising at the ceiling is
     what keeps that breadth honest, since a permanent failure still surfaces, just
     later.
+
+    **:class:`ListingNotPaginated` is excluded from that breadth**, and this is
+    not a narrowing of the retry policy but a correction to what the policy was
+    ever about. That exception is raised by this module, from inspecting the
+    client's own signature, and it says the method CANNOT page. Waiting cannot
+    change a signature. Before U65 it went round the ladder five times and slept
+    1, 2, 4, 8 and 16 seconds, 31 in all, before re-raising the answer it had at
+    the first attempt. That cost is per listing, and ``artist_releases`` reads one
+    per release method per artist, so a label crawl over 200 artists would have
+    slept for over three hours before reporting a fault it knew about immediately.
     """
     attempt = 0
     while True:
         try:
             return fetch_page(limit, offset)
+        except ListingNotPaginated:
+            raise
         except Exception:  # noqa: BLE001 - see docstring: bounded, then re-raised
             attempt += 1
             if attempt > max_retries:

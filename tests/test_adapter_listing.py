@@ -352,6 +352,54 @@ def test_a_listing_that_rejects_pagination_arguments_refuses():
         listing.playlist_tracks(Old())
 
 
+def test_the_refusal_is_immediate_and_is_not_slept_on():
+    """U65. Waiting cannot change a client's signature.
+
+    This refusal is raised by this module from the client's own shape, so it is
+    permanent by construction, and the retry ladder used to catch it anyway: five
+    attempts sleeping 1, 2, 4, 8 and 16 seconds, 31 in all, before re-raising the
+    answer it had at the first attempt. It cost this very test file 31 of its 32
+    seconds, which is how it was found.
+
+    The cost is per listing. ``artist_releases`` reads one per release method per
+    artist, so a label crawl over 200 artists would have slept for over three
+    hours before reporting a fault it knew about immediately.
+
+    The sleep is captured rather than timed. A wall clock assertion on a test that
+    is fast when it passes measures the machine, and would go green on a slow
+    machine for the wrong reason.
+    """
+    slept: list[float] = []
+
+    class Old:
+        def tracks(self) -> list:
+            return corpus(100)
+
+    with pytest.raises(listing.ListingNotPaginated):
+        listing.playlist_tracks(Old(), sleep=slept.append)
+    assert slept == []
+
+
+def test_a_transient_failure_is_still_slept_on_the_full_ladder():
+    """The exclusion above is one exception, not a narrowing of the policy.
+
+    Paired with the test above deliberately: an exclusion written one line wide is
+    one line away from swallowing the retry that this module's first full read of
+    a large library depends on.
+    """
+    slept: list[float] = []
+    attempts = {"n": 0}
+
+    def flaky(limit: int, offset: int) -> list:
+        attempts["n"] += 1
+        raise TimeoutError("the provider is busy")
+
+    with pytest.raises(TimeoutError):
+        listing.fetch_with_retry(flaky, limit=10, offset=0, sleep=slept.append)
+    assert attempts["n"] == listing.DEFAULT_MAX_RETRIES + 1
+    assert slept == [1.0, 2.0, 4.0, 8.0, 16.0]
+
+
 def test_a_listing_method_that_does_not_exist_refuses_by_name():
     class Renamed:
         pass
