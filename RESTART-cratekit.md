@@ -4,7 +4,19 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U65, issue #88, `unit/u65-every-listing-declares-its-own-stop-rule`.**
+**Last merged: U66, issue #89, `unit/u66-every-guarded-listing-method-has-a-plant`.**
+Every member of `acquire.listing.GUARDED_METHODS` now has a planted pagination
+loop case in `tests/test_adapter_listing.py`. The planted names live in the test
+file and equal the production set, so adding a name arms its own case and
+removing one fails that case rather than dropping it. U65's F2, removing
+`get_ep_singles`, now kills 2 on the listing file. R-386 is closed in place.
+Mutation table `docs/mutation/u66.md`, 6 of 6 killing, null control 0 of 7590,
+no collect drift, every restore verified against `git show HEAD`. The learning
+is `docs/solutions/workflow-issues/a-parametrize-over-the-live-set-drops-the-case-the-mutation-is-supposed-to-fail.md`:
+a parametrize over the live set makes the mutation delete the case that would
+have caught it.
+
+**The session before, 2026-09-17, U65, issue #88, `unit/u65-every-listing-declares-its-own-stop-rule`.**
 Every provider listing now declares its own stop rule and its own request budget,
 in `STOP_RULES` and `PAGE_CAPS` beside the page sizes, and `paginate` takes both
 as required keyword arguments so a wrapper that forgets to choose fails to call.
@@ -49,7 +61,8 @@ both maintainer facing and each given a line, no collect drift, every restore
 verified against `git show HEAD`, null control 0. The table was measured at
 `42fc8a2` and the file names the two changes that landed after it. Filed: R-384
 the request cost, R-385 the two narrowed shapes, R-386 a guarded method name no
-test exercises. Main's highest residual is R-386.
+test exercises, closed in place by U66. Main's highest residual number is still
+R-386. R-383's live half and R-384's live measurement stay attended.
 
 **A METHOD rule could not be followed and needs correcting.** METHOD says run
 `scripts/mutate.py` in the foreground. Its fixed overhead on this suite is over
