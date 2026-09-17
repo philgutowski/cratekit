@@ -4,7 +4,20 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-367, issue #87, `unit/issue87-a-restore-from-a-snapshot-taken-with-rek`.**
+**Last merged: R-379, issue #90, `unit/issue90-every-offered-release-records-its-artist`.**
+A label sweep offer records the artist's name, never a provider object's
+repr. `_artist_of` reads a string as the name and an object's `name`
+attribute otherwise. The suite's stand-ins passed a string, which is why
+every green battery missed the address the live sweep wrote. A new test
+drives an object whose `str` is a memory address. Mutation table
+`docs/mutation/r379.md`, 4 of 4 killing, null control 0 of 7598, no collect
+drift, every restore verified against `git show HEAD`. R-379's producer
+half is closed. The 98 live rows still carry addresses, filed as R-389.
+The learning is
+`docs/solutions/workflow-issues/a-string-stand-in-cannot-catch-str-of-a-provider-object.md`.
+Main's highest residual number is R-389.
+
+**The session before, 2026-09-17, R-367, issue #87, `unit/issue87-a-restore-from-a-snapshot-taken-with-rek`.**
 A restore from a snapshot holding only the database completes and names the
 absent write ahead log, rather than failing on a copy the snapshot never
 held. `plan_restore` lists the snapshot's database folder and copies only

@@ -1,0 +1,163 @@
+{
+  "name": "r379",
+  "pass_kind": "light",
+  "branch": "unit/issue90-every-offered-release-records-its-artist",
+  "head": "3e1593e",
+  "when": "2026-09-17 23:15 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7598,
+  "baseline_exit": 0,
+  "pytest_runs": 7,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/sweep.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/sweep.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "1a549e1228e8c5de",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7598,
+    "baseline_collected": 7598,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G1_stringify_the_provider_object",
+      "description": "the original defect: str of album.artist, which is a memory address",
+      "file": "src/cratekit/label/sweep.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "890e7a8ff1b4ba74",
+      "subset": [
+        "tests/modules/test_labels.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 36,
+      "baseline_collected": 36,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_labels.py::test_an_offered_release_records_the_artist_name_not_the_provider_object"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    artist = getattr(release, \"artist\", None)\n    if artist is None:\n        return \"\"\n    if isinstance(artist, str):\n        return artist\n    name = getattr(artist, \"name\", None)\n    return name if isinstance(name, str) else \"\"\n",
+      "new": "    return str(getattr(release, \"artist\", \"\") or \"\")\n"
+    },
+    {
+      "id": "G2_str_of_a_non_string_artist",
+      "description": "fall through to str of the object when it is not a string",
+      "file": "src/cratekit/label/sweep.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3e3d98f917e531cd",
+      "subset": [
+        "tests/modules/test_labels.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 36,
+      "baseline_collected": 36,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_labels.py::test_an_offered_release_records_the_artist_name_not_the_provider_object"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    name = getattr(artist, \"name\", None)\n    return name if isinstance(name, str) else \"\"\n",
+      "new": "    return str(artist)\n"
+    },
+    {
+      "id": "G3_the_name_attribute_is_ignored",
+      "description": "an object artist is recorded as empty rather than by its name",
+      "file": "src/cratekit/label/sweep.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "347410c39805ba5b",
+      "subset": [
+        "tests/modules/test_labels.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 36,
+      "baseline_collected": 36,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_labels.py::test_an_offered_release_records_the_artist_name_not_the_provider_object"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    name = getattr(artist, \"name\", None)\n    return name if isinstance(name, str) else \"\"\n",
+      "new": "    return \"\"\n"
+    },
+    {
+      "id": "G4_a_string_artist_is_rejected",
+      "description": "plain strings, which the suite's stand-ins pass, are dropped",
+      "file": "src/cratekit/label/sweep.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1b67c3fd20ff811d",
+      "subset": [
+        "tests/modules/test_labels.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 36,
+      "baseline_collected": 36,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_labels.py::test_a_string_artist_is_still_recorded_as_the_string",
+        "tests/modules/test_labels.py::test_a_tombstoned_version_is_reported_suppressed_by_the_sweep"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if isinstance(artist, str):\n        return artist\n",
+      "new": "    if isinstance(artist, bytes):\n        return artist\n"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "G5_title_is_also_stringified",
+      "description": "apply the same str() defect to title",
+      "reason": "ranked below the cap: title is a string on this provider, and the sitting measured the artist field only"
+    }
+  ]
+}

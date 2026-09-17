@@ -16484,6 +16484,16 @@ library already carry it.
 object never reaches a stored payload, and the rows already written are migrated
 or discarded.
 
+**Closed 2026-09-17 on `unit/issue90-every-offered-release-records-its-artist`,
+the producer half.** `_artist_of` reads a string as the name and an object's
+`name` attribute otherwise. It never stringifies a provider object. A test
+drives a stand-in whose `str` is a memory address and whose `name` is the
+artist, through `list_for_label` and `offer_release`. The suite's older
+stand-ins still pass a string, and that spelling still works. Mutation table
+`docs/mutation/r379.md`, 4 of 4 killing, null control 0 of 7598, no collect
+drift, every restore verified against `git show HEAD`. The 98 live rows still
+carry addresses. That remaining half is R-389.
+
 ---
 
 ## R-380. A job whose failures are permanent reports itself as transient and resumable
@@ -16766,5 +16776,23 @@ with a runner that exits 1, not with a person reading the reserved steps.
 **Closes when:** a failed listing of a named snapshot has its own slug whose
 steps say to check the remote, or the existing reservation's steps name both
 acts.
+
+---
+
+## R-389. Ninety eight live review rows still carry a provider object address as the artist
+
+**Found:** 2026-09-17, the producer half of R-379. The sitting measured 98
+rows. This unit did not touch them.
+
+The offer now records the artist's name. The rows already written in the live
+review store still carry `"<tidalapi.artist.Artist object at 0x...>"`. Reading
+them tomorrow still shows an address. Migrating or discarding them is a write
+to the live review store, which is attended.
+
+**Measured cost:** the 98 rows the first real label sweep offered. New offers
+are clean. The person reviewing the existing queue still sees addresses.
+
+**Closes when:** those rows are discarded or rewritten with the artist name,
+on the live store, and a later offer of the same releases records the name.
 
 ---
