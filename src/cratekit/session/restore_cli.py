@@ -448,11 +448,16 @@ class RestoreReport:
     ``outcome`` is the capture restore, ``None`` when no session was named. Both
     empty is the honest description of a run that had nothing to do, and it is a
     different fact from either one alone.
+
+    ``absent`` is the suffixes the off-machine snapshot did not hold, so a
+    restore from a checkpointed database reports the write ahead log as missing
+    rather than as transferred. Empty when the off-machine half did not run.
     """
 
     pulled: tuple[str, ...]
     outcome: restore.RestoreOutcome | None
     dry_run: bool
+    absent: tuple[str, ...] = ()
 
 
 def restore_under_one_session(
@@ -532,6 +537,7 @@ def restore_under_one_session(
         mount_enumerator=mount_enumerator,
     ) as held:
         transferred: tuple[str, ...] = ()
+        missing: tuple[str, ...] = ()
         if from_backup:
             where = Path(target) if target is not None else Path(cfg.library.root)
             try:
@@ -570,8 +576,11 @@ def restore_under_one_session(
                 command.label
                 for command, _result in zip(pulled.commands, ran, strict=True)
             )
+            missing = pulled.absent_sidecars
         if session_id is None:
-            return RestoreReport(pulled=transferred, outcome=None, dry_run=dry_run)
+            return RestoreReport(
+                pulled=transferred, outcome=None, dry_run=dry_run, absent=missing
+            )
         decided = restore.plan(
             cfg,
             session_id,
@@ -589,6 +598,7 @@ def restore_under_one_session(
                 process_lister=process_lister,
             ),
             dry_run=dry_run,
+            absent=missing,
         )
 
 
@@ -644,6 +654,7 @@ def _performed(report: RestoreReport, offered: dict[str, Any]) -> dict[str, Any]
         "transfers": len(report.pulled),
         "steps": len(outcome.performed) if outcome is not None else 0,
         "dry_run": report.dry_run,
+        "absent_sidecars": list(report.absent),
     }
     if outcome is not None:
         totals["converged"] = outcome.converged

@@ -268,6 +268,13 @@ def test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened(
     """
     acknowledge(cfg)
     (tmp_path / "recovered").mkdir()
+    database = config.state_path("rekordbox_db", cfg).name
+    restored = tuple(
+        sidecar.suffix
+        for sidecar in config.state_file("rekordbox_db").sidecars
+        if sidecar.restored
+    )
+    listing = "".join([database + "\n", *(database + suffix + "\n" for suffix in restored)])
 
     report = restore_cli.restore_under_one_session(
         cfg,
@@ -275,29 +282,35 @@ def test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened(
         from_backup=True,
         snapshot="2026-08-01T000000Z",
         target=tmp_path / "recovered",
-        runner=lambda command: backup.CommandResult(returncode=0, stdout=""),
+        runner=lambda command: backup.CommandResult(
+            returncode=0,
+            stdout=listing if command.label == backup.LIST_SNAPSHOT_CONTENTS else "",
+        ),
         process_lister=lambda: (),
         **gate_seams(cfg),
     )
 
-    # DERIVED FROM THE STATE INVENTORY, NOT FROM THE REPORT. Both of these
-    # assertions used to take their expected value from ``report.pulled``, which
-    # made them X equals X: an independent reviewer's mutation deduplicating the
-    # transfer labels killed nothing, because both sides moved together. The
-    # inventory is the same declaration ``plan_restore`` reads to decide which
-    # companions come back, so it is the honest independent source for how many
-    # transfers a database-only restore is made of: the database itself, plus one
-    # per sidecar the schema marks as restored.
-    expected = 1 + sum(
-        1 for sidecar in config.state_file("rekordbox_db").sidecars if sidecar.restored
-    )
+    # DERIVED FROM THE STATE INVENTORY INTERSECTED WITH THE SNAPSHOT, NOT FROM
+    # THE REPORT. Both of these assertions used to take their expected value from
+    # ``report.pulled``, which made them X equals X: an independent reviewer's
+    # mutation deduplicating the transfer labels killed nothing, because both
+    # sides moved together. The inventory is the same declaration ``plan_restore``
+    # reads to decide which companions MAY come back, and the listing is what
+    # this snapshot actually holds, so together they are the honest independent
+    # source for how many transfers a database restore is made of: the database
+    # itself, plus one per sidecar the schema marks as restored AND the snapshot
+    # holds. This listing holds every restored sidecar so the inventory is still
+    # what moves the count.
+    expected = 1 + len(restored)
     assert expected > 1, "the inventory restores no sidecar, so this pins nothing"
 
     assert report.outcome is None
     assert report.pulled == (backup.RESTORE_DATABASE,) * expected
+    assert report.absent == ()
 
     payload = restore_cli._performed(report, {"digest": "d"})
     assert payload["totals"]["transfers"] == expected
+    assert payload["totals"]["absent_sidecars"] == []
     assert [item["half"] for item in payload["items"]] == ["off-machine"] * expected
     assert "converged" not in payload["totals"], (
         "a run that spent no capture reported on the capture restore's own question"
@@ -1043,6 +1056,38 @@ def test_a_transfer_that_succeeds_is_still_reported(cfg):
     )
 
     assert report.pulled, "a run whose every transfer succeeded reported nothing"
+
+
+def test_a_restore_from_a_database_only_snapshot_names_the_absent_sidecar(cfg, tmp_path):
+    """R-367 at the report a person reads.
+
+    The snapshot this product takes holds ``master.db`` alone. The restore used
+    to copy the write ahead log anyway, rclone exited 3, and the verb reported
+    failure after the database had already landed.
+    """
+    acknowledge(cfg)
+    (tmp_path / "recovered").mkdir()
+    database = config.state_path("rekordbox_db", cfg).name
+
+    report = restore_cli.restore_under_one_session(
+        cfg,
+        session_id=None,
+        from_backup=True,
+        snapshot="2026-08-01T000000Z",
+        target=tmp_path / "recovered",
+        runner=lambda command: backup.CommandResult(
+            returncode=0,
+            stdout=(database + "\n") if command.label == backup.LIST_SNAPSHOT_CONTENTS else "",
+        ),
+        process_lister=lambda: (),
+        **gate_seams(cfg),
+    )
+
+    assert report.pulled == (backup.RESTORE_DATABASE,)
+    assert report.absent == ("-wal",)
+    payload = restore_cli._performed(report, {"digest": "d"})
+    assert payload["totals"]["transfers"] == 1
+    assert payload["totals"]["absent_sidecars"] == ["-wal"]
 
 
 def test_a_capture_this_product_pruned_is_refused_by_name_and_not_as_a_defect(installed):
